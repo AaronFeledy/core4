@@ -8,9 +8,10 @@ import { LandofileParseError } from "@lando/core/errors";
 import type { TemplateRenderContext } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
+import { landofileRuntimeInputs } from "@lando/engine/composition";
 import {
   LandofileServiceLive,
-  bundledTemplateEngineRegistry,
+  makeBundledTemplateEngineRegistry,
   renderLandofileTemplate,
 } from "@lando/engine/services/landofile-live";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
@@ -79,7 +80,8 @@ describe("detectTemplateDirective", () => {
 
 describe("renderLandofileTemplate (bundled engines)", () => {
   test("registry exposes the bundled handlebars + mustache engines", () => {
-    expect([...bundledTemplateEngineRegistry.keys()].sort()).toEqual(["handlebars", "mustache"]);
+    const registry = makeBundledTemplateEngineRegistry(landofileRuntimeInputs());
+    expect([...registry.keys()].sort()).toEqual(["handlebars", "mustache"]);
   });
 
   test("renders a handlebars Landofile and strips the directive line", async () => {
