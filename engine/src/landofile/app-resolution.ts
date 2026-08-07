@@ -6,6 +6,7 @@ import { Renderer } from "@lando/sdk/services";
 
 import { type UserAppResolution, makeUserAppResolution } from "@lando/landofile/app-resolution";
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -105,12 +106,14 @@ export const assertLandoVersionConstraint = (
   );
 };
 
-const userAppResolution = (): UserAppResolution =>
+export const makeEngineUserAppResolution = (inputs: LandofileRuntimeInputs): UserAppResolution =>
   makeUserAppResolution({
-    inputs: landofileRuntimeInputs(),
+    inputs,
     assertVersionConstraint: (landofile, sourcePath) =>
       assertLandoVersionConstraint(landofile, sourcePath === undefined ? undefined : { sourcePath }),
   });
+
+const userAppResolution = (): UserAppResolution => makeEngineUserAppResolution(landofileRuntimeInputs());
 
 export const loadUserLandofile: UserAppResolution["loadUserLandofile"] = (...args) =>
   userAppResolution().loadUserLandofile(...args);
