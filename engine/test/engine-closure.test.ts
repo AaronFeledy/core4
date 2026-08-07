@@ -60,7 +60,6 @@ const coreRuntimeAllowlist = new Set([
   "schema/index.ts",
   "secrets/index.ts",
   "services/index.ts",
-  "state-store/index.ts",
 ]);
 const pluginPackagePattern =
   /^@lando\/(?:ca-|file-sync-|logger-|notify-|provider-|proxy-|renderer-|service-|template-)/u;
@@ -195,14 +194,17 @@ describe("Engine closure", () => {
     const missingDirectories = runtimeBrainDirectories.filter(
       (directory) => !engineDirectories.has(directory),
     );
-    const unexpectedCoreFiles = coreFiles
-      .map((file) => relative(coreSourceRoot, file))
-      .filter((file) => !corePathAllowed(file));
+    const normalizedCoreFiles = coreFiles.map((file) => relative(coreSourceRoot, file).replaceAll("\\", "/"));
+    const unexpectedCoreFiles = normalizedCoreFiles.filter((file) => !corePathAllowed(file));
+    const unusedCoreAllowlistEntries = [...coreRuntimeAllowlist].filter(
+      (allowed) => !normalizedCoreFiles.some((file) => file === allowed || file.startsWith(`${allowed}/`)),
+    );
 
     // Then
-    expect({ missingDirectories, unexpectedCoreFiles }).toEqual({
+    expect({ missingDirectories, unexpectedCoreFiles, unusedCoreAllowlistEntries }).toEqual({
       missingDirectories: [],
       unexpectedCoreFiles: [],
+      unusedCoreAllowlistEntries: [],
     });
   });
 });
