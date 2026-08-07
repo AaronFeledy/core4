@@ -22,7 +22,7 @@ export const coreLandofileRuntimeInputs: LandofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 };
 
-export const installCoreEngineComposition = (): void =>
+const installCoreEngineComposition = (): void =>
   installEngineComposition({
     bundledPluginModules: BUNDLED_PLUGIN_MODULES,
     builtInCommandIds: BUILT_IN_COMMAND_IDS,
