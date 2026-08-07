@@ -5,8 +5,8 @@ import {
   type GlobalInstallResult,
   GlobalInstallResultSchema,
   globalInstall,
-  renderGlobalInstallResult,
 } from "../../../../../operations/global-install.ts";
+import { renderGlobalInstallResult } from "../../../../commands/meta/global-install.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 

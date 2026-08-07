@@ -82,6 +82,7 @@ export * from "./commands/share.ts";
 export * from "./commands/poweroff.ts";
 export * from "./commands/config.ts";
 export * from "../operations/global-install.ts";
+export * from "./commands/meta/global-install.ts";
 export * from "./commands/app-config.ts";
 export * from "../operations/app-config-lint.ts";
 export * from "./commands/app-config-lint.ts";
