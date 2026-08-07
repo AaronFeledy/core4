@@ -196,3 +196,14 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - **Learnings for future iterations:**
   - Tests that construct private engine layers directly must inject generated composition inputs and shell-owned ports rather than relying on process-global core initialization.
 ---
+
+## 2026-08-07 16:53 CDT - US-542 Drift Audit
+- Trigger: 2 cycles, 5904 changed lines, 10 commits
+- Weakened proof: removed a stale closure-test exemption for a nonexistent core state-store shim and made the proof reject unused allowlist entries.
+- Ceremony modules: made the branch-added composition installer private because it has no external importer.
+- Collateral edits: restored executable-guide structure lost during a required engine path retarget.
+- Contract drift: reconciled the test inventory as 13 moved suites, one pre-existing package-seam suite, and one new closure suite rather than 14 moved suites.
+- Fixed: tightened closure proof, removed a dead export, and restored guide structure.
+- Split/excise decisions: none; no absorbed feature or incomplete public contract was found, and US-542 remains passing.
+- Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, explicit-base guide drift, package-DAG, import-cycle, core-layering, 141 engine tests, 150 focused tests, and 4 focused guide scenarios passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference findings.
+---
