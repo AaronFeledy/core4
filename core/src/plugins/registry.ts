@@ -6,9 +6,9 @@ import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
 
+import { findAppRoot } from "@lando/landofile/discovery";
 import { makeLandoPaths } from "@lando/paths";
 import { resolveUserDataRoot } from "../config/roots.ts";
-import { findAppRoot } from "../landofile/discovery.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
 import { PluginContributionGraph } from "./contribution-graph.ts";
 import { BUNDLED_PLUGIN_MODULES } from "./generated/bundled.ts";

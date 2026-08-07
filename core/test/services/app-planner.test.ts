@@ -35,10 +35,10 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {

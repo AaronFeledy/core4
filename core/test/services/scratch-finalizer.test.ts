@@ -20,13 +20,13 @@ import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
 const providerId = ProviderId.make("lando");

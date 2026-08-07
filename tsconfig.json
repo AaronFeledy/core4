@@ -15,6 +15,12 @@
       "path": "./state-store"
     },
     {
+      "path": "./landofile"
+    },
+    {
+      "path": "./engine"
+    },
+    {
       "path": "./container-runtime"
     },
     {

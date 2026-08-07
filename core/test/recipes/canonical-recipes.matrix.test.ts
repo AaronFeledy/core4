@@ -8,11 +8,11 @@ import type { LandofileShape } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
 interface CanonicalAnswers {

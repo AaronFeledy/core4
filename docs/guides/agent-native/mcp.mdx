@@ -28,7 +28,7 @@ only; it does not wrap startup or shutdown in a Lando command-result envelope.
 const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
-const { LandofileService } = yield* Effect.promise(() => import("../../../../../core/src/landofile/service.ts"));
+const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
 const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
 const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));

@@ -31,6 +31,8 @@ import {
   type RegisteredCommand,
 } from "@lando/sdk/services";
 
+import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { compileAppCommands } from "../cache/command-compiler.ts";
 import {
   readFreshAppCommandCacheForCwd,
@@ -38,9 +40,7 @@ import {
   writePluginCommandCache,
 } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
-import { loadUserLandofile } from "../cli/app-resolution.ts";
-import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../landofile/bun-sh-discovery.ts";
-import { findAppRoot } from "../landofile/discovery.ts";
+import { loadUserLandofile } from "../landofile/app-resolution.ts";
 
 const discoverScriptsForCwd = (cwd: string): Effect.Effect<ReadonlyArray<DiscoveredBunShellScript>, never> =>
   Effect.gen(function* () {

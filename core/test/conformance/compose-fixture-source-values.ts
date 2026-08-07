@@ -1,6 +1,6 @@
 import type { ServiceConfig } from "@lando/core/schema";
 
-import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
+import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import type { ComposePlanAssertion } from "./compose-fixture-assertion-metadata.ts";
 import { ComposeFixtureOutcomeError, valueAt } from "./compose-fixture-outcome-values.ts";
 

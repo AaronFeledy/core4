@@ -13,8 +13,8 @@ import { LandofileShape, ProviderId, type ServiceConfig } from "@lando/core/sche
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
+import { parseLandofile } from "@lando/landofile/parser";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 

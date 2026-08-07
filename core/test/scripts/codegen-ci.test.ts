@@ -279,7 +279,7 @@ describe("ci workflow codegen", () => {
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(23);
+      expect(versionFileMatches).toBe(24);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -469,6 +469,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Network boundary lint");
       expect(workflow).toContain("run: bun run check:network-boundary");
+      expect(workflow).toContain("- name: Core layering boundary lint");
+      expect(workflow).toContain("run: bun run check:core-layering-boundary");
       expect(workflow).toContain("- name: Runtime-bundle manifest invariant");
       expect(workflow).toContain("run: bun run check:runtime-bundle-manifest");
       expect(workflow).toContain("- name: Static scope notice for portable static matrix");
@@ -496,7 +498,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
       expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(14);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(15);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");

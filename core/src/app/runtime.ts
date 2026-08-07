@@ -17,7 +17,7 @@ import {
 import type { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, withResolvedCwd } from "../cli/app-resolution.ts";
+import { type ResolvedAppTarget, withResolvedCwd } from "../landofile/app-resolution.ts";
 import type { RuntimeCwd } from "../runtime/cwd.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer.ts";
 import { ScratchRegistryLive } from "../scratch-app/registry.ts";

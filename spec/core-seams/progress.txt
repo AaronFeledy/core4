@@ -13,4 +13,127 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 
 ## Codebase Patterns
 
-- (accumulates during execution)
+- Preserve superseded ROADMAP decisions as struck historical text followed by an explicit **Superseded** authority and the still-deferred remainder.
+- Discover workspace manifests by expanding root `package.json#workspaces`; package-boundary rules must not maintain a second fixed package-root list.
+- When a boundary rule has manifest and source halves, both must consume one exported policy table; a private source allowlist can silently reopen edges the manifest policy forbids.
+- Source-edge burn-down allowlists must pin normalized target, edge kind, and type-only status; raw specifier matching alone permits nested-path and value-import bypasses.
+- Package-local tests in a new workspace package need an explicit `scripts/test-shards.ts` include; workspace membership alone does not put them in CI unit shards.
+
+## 2026-08-06 01:03 CDT - US-535
+- Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
+- Verification: typecheck, lint/deprecations, diff validation, direct acceptance inspection, and high-rigor review passed; no executable test surface changed. The optional spec-reference gate retains only pre-existing `.omo/**` violations outside this story.
+- **Learnings for future iterations:**
+  - Keep post-wave source-layout diagrams ownership-focused so later moves can preserve the shell/composition versus runtime seam without re-documenting every file.
+---
+
+## 2026-08-06 01:16 CDT - US-535 Review
+- Corrected the private-seam contract so plugin dependencies remain limited to DAG-declared seams and runtime dependencies on `@lando/engine` or `@lando/core` stay forbidden.
+- Review notes (deferred/rejected): rejected restoring the removed file-by-file source tree because US-535 requires the post-wave ownership split, not a fixed exhaustive layout; deferred the full edge-table implementation to US-536.
+- Guide-Coverage-Skip: US-535 changes internal architecture contracts only; no user-visible guide surface changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, diff validation, acceptance text checks, and post-fix Bugbot passed; no executable test surface changed.
+---
+
+## 2026-08-06 02:14 CDT - US-536
+- Replaced plugin-only import scanning with one full-workspace runtime/dev dependency policy sourced from root workspace manifests; tagged failures now explain undeclared and forbidden runtime edges, and future Landofile/engine roots participate in cycle scanning.
+- Verification: typecheck and lint/deprecations passed; package-DAG, import-cycle, workspace-root, and boundary-CLI spot checks passed with positive counts; both real boundary commands passed; high-rigor review approved. The full boundary runner retained only pre-existing `.omo/**` spec-reference violations outside this story.
+- **Learnings for future iterations:**
+  - Keep runtime and dev/test edge permissions distinct; plugin test-harness dependencies on core are legal without permitting runtime plugin-to-core edges.
+  - Reserve future package roots in the shared all-package scan tier before scaffolding so import-cycle coverage activates as soon as their source trees appear.
+---
+
+## 2026-08-06 03:56 CDT - US-536 Review
+- Restored the source-edge enforcement dropped by the manifest-DAG rewrite, moved manifest and source decisions onto one policy table, and closed plugin imports of the reserved `@lando/engine` seam before that package exists.
+- Review notes (deferred/rejected): rejected canonical relative-import, dynamic-loader, alias, symlink, optional/peer dependency, and locator-value enforcement because those pre-existing gaps exceed US-536's manifest-edge acceptance criteria; the historical locator-alias gap remains explicitly deferred.
+- Guide-Coverage-Skip: US-536 changes an internal CI boundary policy only; no user-visible command or guide-owned contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 38 focused and adjacent tests, package-DAG, and import-cycle passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference violations outside this story.
+---
+
+## 2026-08-06 04:51 CDT - US-537
+- Added the private `@lando/landofile` workspace scaffold with isolated package scripts, exact sdk/paths/state-store dependencies, root project wiring, and synchronized package-DAG fixtures while leaving the public core Landofile implementation unchanged.
+- Verification: typecheck and lint/deprecations passed; 20 focused and adjacent tests passed with positive counts; package build, package-DAG, import-cycle, and direct Bun package-resolution checks passed.
+- **Learnings for future iterations:**
+  - Keep the scaffold entry point empty until the domain move so package creation cannot accidentally change the existing `@lando/core/landofile` runtime surface.
+  - Update synthetic workspace fixtures alongside root workspace membership; the real DAG gate and its fixture should describe the same package set.
+---
+
+## 2026-08-06 05:15 CDT - US-537 Review
+- Added the Landofile package test to CI unit-shard discovery and locked the coverage with a regression assertion so the scaffold cannot pass PR checks without exercising its seam contract.
+- Review notes (deferred/rejected): deferred release-package inventory and workflow wiring to US-538, when published core first consumes the private package; rejected a generated CI workflow edit because the existing workflow resolves shard contents dynamically from `scripts/test-shards.ts`.
+- Guide-Coverage-Skip: US-537 changes private workspace and CI test plumbing only; no user-visible command, Landofile behavior, or guide-owned contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package build, 30 focused and adjacent tests, package-DAG, import-cycle, codegen drift, and direct shard discovery passed.
+---
+
+## 2026-08-06 10:31 CDT - US-538
+- Moved Landofile discovery, parsing, merge, includes, lint, template, tooling, and version-constraint implementation into `@lando/landofile`; core now retains the public serializer shim and the Live layer that supplies host capabilities.
+- Inverted cache, downloader, package-resolution, and environment reaches behind package ports; moved the unit suite with the domain and wired the private package into release packaging and generated workflows.
+- Verification: 268 package tests, 86 adjacent tests, 106 public/bootstrap tests, 46 policy/release tests, 67 release tests, 16 codegen-CI tests, and 3 guide tests passed with positive counts; typecheck, lint/deprecations, build, package-DAG, import-cycle, schema compatibility, relevant boundary and guide gates, packed-manifest smoke, diagnostics, and post-commit `codegen:check` passed. The optional spec-reference gate retains only pre-existing `.omo/**` violations outside this story.
+- **Learnings for future iterations:**
+  - Remove source-path aliases when extracting a workspace package so production and test graphs resolve one canonical module identity; duplicate service tags can otherwise make valid Effect layers appear to lack their own services.
+  - Keep host capabilities in the core Live layer and expose narrow pure ports from the extracted package, allowing package tests to supply deterministic implementations without recreating core services.
+---
+
+## 2026-08-06 11:49 CDT - US-538 Verify
+- Compiled `core/dist/lando`, ran `setup --yes --no-interactive --skip-file-sync` in lando4-dev, and exercised app Landofile discovery/config/lint/validate, local includes update+verify (merged redis), version-constraint reject/accept, `.lando.local.yml` overlay, nested-cwd discovery, plus adjacent cache:refresh/doctor/version/meta:config/apps:list/config:translate --list — all green against the compiled binary.
+- Committed Review leftovers as verify fixes: npm include port inversion completed in core, frozen-landofile version-constraint entries retained, package-seam checks hosted in core, release/docs references aligned. Bugbot found no bugs.
+- **Learnings for future iterations:**
+  - Real compiled-binary Landofiles must use shipped service shapes (`type: compose` + image); invalid MVP keys surface as `LandofileValidationError` and can look like a package-move regression.
+  - Dev binary reports version `0.0.0`, so `lando: ">=4.0.0-alpha"` correctly fails with `LandofileVersionConstraintError`; use `>=0.0.0` for positive constraint smoke.
+---
+
+## 2026-08-06 16:23 CDT - Babysit
+- PR: #710 https://github.com/AaronFeledy/core4/pull/710
+- CI outcome: fail (unit-tests-linux-x64 shards on earlier HEAD; latest head all checks stuck PENDING — Actions queue stall)
+- Review feedback: fixed (state-store boundary includes landofile/src; version-constraint test uses host include adapter; workspace-roots expectation; drop stale US-189 runbook assertion)
+- Merge: deferred (required checks still PENDING after 90m+; GitHub Actions never acquired runners for head d6bf57ac — zero in_progress runs repo-wide)
+---
+## 2026-08-06 16:29 CDT - Babysit
+- PR: #710 https://github.com/AaronFeledy/core4/pull/710
+- CI outcome: fail (all required checks stuck PENDING — GitHub Actions major_outage; run 31127392432 never left queued)
+- Review feedback: none
+- Merge: deferred (cannot merge while required checks remain PENDING during Actions outage)
+---
+
+## 2026-08-06 16:34 CDT - US-538 Build Verification
+- Verified the Landofile domain move remains complete on the in-flight branch with its package ports, core Live wiring, public serializer shim, and package boundaries intact; no new code was required.
+- Verification: typecheck and lint/deprecations passed; 265 package tests, 63 adjacent Landofile/CLI tests, and 26 policy tests passed with positive counts; package build, package-DAG, import-cycle, schema compatibility, and codegen drift checks passed.
+- **Learnings for future iterations:**
+  - When a completed story returns to Build because its PR remains open, re-run the story gates and preserve existing work rather than inventing implementation changes.
+---
+
+## 2026-08-06 17:58 CDT - Babysit
+- PR: #710 https://github.com/AaronFeledy/core4/pull/710
+- CI outcome: pass (workflow_dispatch on triage HEAD after Actions outage; unit shards/static/builds green; earlier PR run abandoned windows static-checks during major_outage)
+- Review feedback: fixed (cover landofile in state-store boundary; host include adapter in version-constraint test; align state-store root expectation; drop stale US-189 runbook assertion)
+- Merge: merged (squash)
+---
+
+## 2026-08-06 18:06 CDT - US-539
+- Moved user-app discovery, explicit-root resolution, cwd serialization, and resolved-target contracts onto the Landofile seam; core now binds runtime inputs and version-warning behavior while CLI modules retain one thin shared re-export.
+- Added a temporary core-layering gate that rejects app/services imports into the CLI and pins only the documented app-operation and logs type-import burn-down edges.
+- Verification: typecheck and lint/deprecations passed; 267 Landofile tests, 54 focused seam/CLI/app tests, and 40 command-registry/bootstrap tests passed with positive counts; package-DAG, import-cycle, production layering gate, manual app-config JSON, nested-edge rejection, diagnostics, teardown, and high-rigor review passed.
+- **Learnings for future iterations:**
+  - Resolve relative source edges against the importing file before applying a boundary policy; string-prefix checks do not cover nested modules.
+  - Keep core-only policy such as the running version and renderer warnings in a core binder while the private package owns reusable mechanics and accepts injected runtime inputs.
+---
+
+## 2026-08-06 19:33 CDT - US-539 Review
+- Hardened the process-wide cwd serialization regression proof by coordinating the second resolution explicitly and exercising two independently constructed resolution seams instead of relying on a scheduler delay.
+- Review notes (deferred/rejected): deferred pre-existing include/CWD TOCTOU hardening and the same-cwd concurrency limitation because this behavior-preserving seam move neither introduced nor owns them; Bugbot and all five review-work lanes found no in-scope implementation defect.
+- Guide-Coverage-Skip: US-539 relocates internal app-resolution ownership without changing user-visible commands, Landofile behavior, or public contracts.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, package-DAG, import-cycle, production layering gate, 31 focused app-resolution/layering tests, 25 CI/boundary tests, diagnostics, mutation proof, and initial/post-fix Bugbot passed.
+---
+
+## 2026-08-06 21:02 CDT - US-540
+- Added the private `@lando/engine` workspace scaffold with the approved five seam dependencies, root project wiring, package-DAG fixture membership, and CI unit-shard discovery while leaving runtime behavior in core for the next stories.
+- Verification: typecheck and lint/deprecations passed; 46 focused and adjacent tests passed with positive counts; package build/test, package-DAG, import-cycle, Bun workspace resolution, empty export surface, diagnostics, artifact teardown, and high-rigor review passed.
+- **Learnings for future iterations:**
+  - Keep scaffold entry points empty until domain ownership moves so package creation cannot introduce runtime behavior or premature core dependencies.
+  - Register package-local tests in CI shard discovery at scaffold time; package scripts alone do not make the tests part of PR execution.
+---
+
+## 2026-08-06 22:24 CDT - US-540 Review
+- Closed the package-DAG source bypass by applying workspace ownership to every package source root and rejecting named, subpath, and relative imports that cross a forbidden package seam; focused regressions now prove engine-to-core/plugin and plugin-to-engine/core failures while preserving approved engine seams and package-local relative imports.
+- Review notes (deferred/rejected): rejected expanding the US-536 DAG model to optionalDependencies and peerDependencies because its source contract explicitly governs dependencies and devDependencies, US-540 introduced neither edge kind, and the source prohibition is now enforced independently; initial Bugbot found no bugs.
+- Guide-Coverage-Skip: US-540 adds a private empty package and internal boundary enforcement without changing commands, runtime behavior, or public contracts.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, import-cycle, package build/test, 27 focused and adjacent tests, and diagnostics passed.
+---

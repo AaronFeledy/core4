@@ -14,14 +14,14 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 
+import { presentLandofileLayers } from "@lando/landofile/layers";
+import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
-} from "../config/version-constraint.ts";
-import { presentLandofileLayers } from "../landofile/layers.ts";
-import type { LandofileReferencedFile } from "../landofile/load-expression-provenance.ts";
+} from "@lando/landofile/version-constraint";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 

@@ -1,7 +1,7 @@
 import type { LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sdk/schema";
 
-import type { DiscoveredBunShellScript } from "../landofile/bun-sh-discovery.ts";
-import { getInternalToolingTasks } from "../landofile/tooling-include-provenance.ts";
+import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
+import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import type { CommandIndexEntry } from "./command-index.ts";
 
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";

@@ -4,7 +4,7 @@ import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 
-import { mergeValues } from "../landofile/merge.ts";
+import { mergeValues } from "@lando/landofile/merge";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;

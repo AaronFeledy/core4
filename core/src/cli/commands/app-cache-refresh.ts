@@ -40,13 +40,13 @@ import {
 
 import { loadUserLandofile } from "../app-resolution.ts";
 
+import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { compileAppCommands } from "../../cache/command-compiler.ts";
 import {
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "../../cache/command-index-writer.ts";
-import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
-import { findAppRoot } from "../../landofile/discovery.ts";
 
 export interface AppCacheRefreshOptions {
   readonly cwd?: string;

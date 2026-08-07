@@ -16,7 +16,7 @@ import { Duration, Effect } from "effect";
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
 
-import { isSandboxParseFailure, resolveTsModuleResult, sandboxScan } from "../landofile/ts-loader.ts";
+import { isSandboxParseFailure, resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
 
 export const DEFAULT_RECIPE_TS_TIMEOUT_MS = 30_000;
 export const RECIPE_TS_TIMEOUT_ENV = "LANDO_RECIPE_TS_TIMEOUT_MS";

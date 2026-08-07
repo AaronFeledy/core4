@@ -1,8 +1,8 @@
 import { dirname, resolve } from "node:path";
 import { Effect } from "effect";
 
-import { analyzeComposeDispositions } from "../core/src/landofile/compose/rejections.ts";
-import { parseLandofile } from "../core/src/landofile/parser.ts";
+import { analyzeComposeDispositions } from "../landofile/src/compose/rejections.ts";
+import { parseLandofile } from "../landofile/src/parser.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { listComposeFixtures } from "./compose-fixtures.ts";
 import { writeFixtureFileSafely } from "./fixture-safe-write.ts";

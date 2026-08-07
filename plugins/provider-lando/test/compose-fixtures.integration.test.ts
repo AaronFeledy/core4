@@ -14,8 +14,8 @@ import {
 import { CapabilityError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
-import { loadLandofileFile } from "../../../core/src/landofile/service.ts";
 import { makePluginRegistryLive } from "../../../core/src/plugins/registry.ts";
+import { loadLandofileFile } from "../../../core/src/services/landofile-live.ts";
 import { AppPlanner, AppPlannerLive } from "../../../core/src/services/planner.ts";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 

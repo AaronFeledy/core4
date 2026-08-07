@@ -37,8 +37,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { findLandofilePath } from "../../landofile/discovery.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
+import { findLandofilePath } from "@lando/landofile/discovery";
+import { parseLandofile } from "@lando/landofile/parser";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../app-resolution.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 

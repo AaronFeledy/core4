@@ -20,7 +20,6 @@ import { makeLandoPaths } from "@lando/paths";
 import { StateStoreLive } from "@lando/state-store/service";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import {
@@ -33,6 +32,7 @@ import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { SecretStoreLive } from "../../src/services/secret-store.ts";
 

@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { ConfigError } from "@lando/core/errors";
 import { ConfigService } from "@lando/core/services";
-import { mergeLandofiles } from "../../src/landofile/merge.ts";
+import { mergeLandofiles } from "@lando/landofile/merge";
 import { resolveProviderSelection } from "../../src/providers/precedence.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 

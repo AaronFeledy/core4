@@ -15,7 +15,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01 contract"
     },
     {
@@ -31,7 +31,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {
@@ -45,7 +45,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -62,7 +62,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -77,7 +77,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -91,7 +91,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03"
     },
     {

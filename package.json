@@ -8,7 +8,16 @@
   "homepage": "https://github.com/lando-community/core4",
   "repository": "lando-community/core4",
   "bugs": "https://github.com/lando-community/core4/issues",
-  "workspaces": ["core", "sdk", "container-runtime", "paths", "state-store", "plugins/*"],
+  "workspaces": [
+    "core",
+    "sdk",
+    "container-runtime",
+    "paths",
+    "state-store",
+    "landofile",
+    "engine",
+    "plugins/*"
+  ],
   "engines": {
     "bun": ">=1.3.14"
   },
@@ -37,6 +46,7 @@
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
+    "check:core-layering-boundary": "bun run scripts/check-core-layering-boundary.ts",
     "check:renderer-boundary": "bun run scripts/check-renderer-boundary.ts",
     "check:spec-reference": "bun run scripts/check-spec-reference.ts",
     "check:managed-file-boundary": "bun run scripts/check-managed-file-boundary.ts",

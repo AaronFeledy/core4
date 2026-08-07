@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { LandofileValidationError } from "@lando/core/errors";
 import { PortablePath, ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-spellings-"));

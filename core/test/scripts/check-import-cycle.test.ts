@@ -28,6 +28,13 @@ const writePackage = async (
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "import-cycle-"));
   await Promise.all([
+    write(
+      "package.json",
+      `${JSON.stringify({
+        private: true,
+        workspaces: ["core", "sdk", "container-runtime", "landofile", "engine", "plugins/*"],
+      })}\n`,
+    ),
     writePackage("core", "@lando/core", "./src/index.ts"),
     writePackage("sdk", "@lando/sdk", {
       ".": "./src/index.ts",
@@ -157,6 +164,25 @@ describe("check-import-cycle", () => {
     // Then
     expect(result.cycles.map((cycle) => cycle.modules)).toEqual([
       ["plugins/example/src/b.ts", "plugins/example/src/generated/a.ts"],
+    ]);
+  });
+
+  test("scans future landofile and engine package roots", async () => {
+    // Given
+    await Promise.all([
+      writePackage("landofile", "@lando/landofile", "./src/index.ts"),
+      writePackage("engine", "@lando/engine", "./src/index.ts"),
+      write("landofile/src/index.ts", 'import "@lando/engine";\n'),
+      write("engine/src/index.ts", 'import "@lando/landofile";\n'),
+    ]);
+
+    // When
+    const result = await checkImportCycle({ root });
+
+    // Then
+    expect(result.cycles.map((cycle) => cycle.modules)).toContainEqual([
+      "engine/src/index.ts",
+      "landofile/src/index.ts",
     ]);
   });
 

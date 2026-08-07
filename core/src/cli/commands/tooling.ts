@@ -22,7 +22,7 @@ import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.t
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserved-aliases.ts";
 
-import { findAppRoot } from "../../landofile/discovery.ts";
+import { findAppRoot } from "@lando/landofile/discovery";
 
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";

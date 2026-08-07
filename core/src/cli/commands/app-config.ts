@@ -26,11 +26,15 @@ import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
+import { parseLandofile } from "@lando/landofile/parser";
+import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
-import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../landofile/service.ts";
-import { detectTemplateDirective, renderLandofileTemplate } from "../../landofile/template-render.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
+import {
+  findDiscoveredLandofilePath,
+  loadLandofileLayers,
+  renderLandofileTemplate,
+} from "../../services/landofile-live.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { getAtPath } from "../config-write/dot-path.ts";
 import {

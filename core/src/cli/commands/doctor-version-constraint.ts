@@ -10,9 +10,9 @@ import {
   evaluateVersionConstraints,
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
-} from "../../config/version-constraint.ts";
-import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../landofile/service.ts";
+} from "@lando/landofile/version-constraint";
 import { createStandaloneRedactor } from "../../redaction/service.ts";
+import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../services/landofile-live.ts";
 import { CORE_VERSION } from "../../version.ts";
 
 export interface AppVersionConstraintDoctorCheck {

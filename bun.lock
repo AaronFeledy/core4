@@ -34,6 +34,7 @@
       },
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/landofile": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
@@ -46,6 +47,31 @@
         "@oclif/test": "^4.1.18",
         "@types/semver": "^7.7.1",
         "oclif": "^4.23.0",
+      },
+    },
+    "engine": {
+      "name": "@lando/engine",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/container-runtime": "workspace:*",
+        "@lando/landofile": "workspace:*",
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+      },
+    },
+    "landofile": {
+      "name": "@lando/landofile",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+        "effect": "^3.21.2",
+        "semver": "^7.8.5",
+      },
+      "devDependencies": {
+        "@types/semver": "^7.7.1",
       },
     },
     "paths": {
@@ -337,7 +363,11 @@
 
     "@lando/core": ["@lando/core@workspace:core"],
 
+    "@lando/engine": ["@lando/engine@workspace:engine"],
+
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
+
+    "@lando/landofile": ["@lando/landofile@workspace:landofile"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 

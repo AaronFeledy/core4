@@ -20,7 +20,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
-  ["state-store", ["core/src", "plugins"]],
+  ["state-store", ["core/src", "landofile/src", "plugins"]],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
@@ -32,7 +32,7 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "renderer",
 ] as const;
 
-const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output", "package-dag"] as const;
+const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
 const rootCoversPath = (root: string, path: string): boolean => {
   const rootSegments = root.split("/");
@@ -70,10 +70,7 @@ describe("workspace source-root drift gate", () => {
     // When: filtering to packages that actually have a src/ tree
     const packagesWithSource = packageDirs.filter((dir) => existsSync(resolve(repoRoot, dir, "src")));
 
-    // Then: at least the four known package families are present, and each is
-    // matched by some root in ALL_PACKAGE_SOURCE_ROOTS — this is the assertion
-    // that goes red the moment a new top-level package (e.g. `paths/`) gains a
-    // src/ tree without extending the shared constants.
+    // Then: known package families and every discovered source tree are covered
     expect(packagesWithSource).toEqual(
       expect.arrayContaining(["core", "sdk", "container-runtime", "paths", "state-store"]),
     );
@@ -83,6 +80,18 @@ describe("workspace source-root drift gate", () => {
       const covered = ALL_PACKAGE_SOURCE_ROOTS.some((root) => rootCoversPath(root, sourcePath));
       expect(covered).toBe(true);
     }
+  });
+
+  test("reserves the future landofile and engine source roots", () => {
+    // Given / When / Then
+    expect(ALL_PACKAGE_SOURCE_ROOTS).toEqual(expect.arrayContaining(["landofile/src", "engine/src"]));
+    expect(NON_PLUGIN_SOURCE_ROOTS).toEqual(expect.arrayContaining(["landofile/src", "engine/src"]));
+  });
+
+  test("covers Landofile implementation code with shared runtime behavior gates", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("landofile/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("landofile/src");
   });
 
   test("classifies narrow-by-design rules with their exact current roots", () => {
@@ -133,6 +142,15 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
+  test("routes the package DAG rule through workspace manifests and package sources", () => {
+    // Given / When
+    const rule = BOUNDARY_RULES.get("package-dag");
+
+    // Then
+    expect(rule?.scope.roots).toEqual(["."]);
+    expect(rule?.scope.extensions).toEqual([".json", ".ts", ".tsx", ".mts", ".cts"]);
+  });
+
   test("policies the reverse-direction tier as the all-package tier minus plugins", () => {
     // Given
     const expectedRoots: readonly string[] = ALL_PACKAGE_SOURCE_ROOTS.filter(
@@ -145,7 +163,7 @@ describe("workspace source-root drift gate", () => {
   });
 
   test("routes walk-based gates through the shared plain-directory roots", () => {
-    // Given: the two pre-substrate gates that recursively walk plain directories
+    // Given: the two gates that recursively walk plain directories
     const gateModules = [telemetryInventory, deprecations];
 
     // When: reading their exported scan-root declarations

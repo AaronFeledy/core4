@@ -1,6 +1,6 @@
 import { Args, Flags } from "../../../metadata.ts";
 
-import type { IncludeUpdateReport } from "../../../../../landofile/includes.ts";
+import type { IncludeUpdateReport } from "@lando/landofile/includes";
 import {
   AppIncludesUpdateResultSchema,
   appIncludesUpdate,

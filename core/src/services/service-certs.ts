@@ -20,7 +20,7 @@ import {
 import type { RouteInput, ServiceConfig } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
-import { assertUnderRoot } from "../landofile/include-guard.ts";
+import { assertUnderRoot } from "@lando/landofile/include-guard";
 
 const CERTS_FEATURE_ID = "lando.certs" as const;
 
