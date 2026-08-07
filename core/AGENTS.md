@@ -61,8 +61,8 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 ## App operations staging tier
 
 - App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `core/src/operations/**`, not in command bodies. `core/src/app/**` and the CLI both call them; a module under `core/src/operations/` must never import `core/src/cli/**` (enforced by `check:core-layering-boundary`, no allowlist).
-- `core/src/cli/commands/<op>.ts` holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
-- Operations may publish events and write through the sdk-published `Renderer`/`InteractionService` tags (see `core/src/operations/renderer-passthrough.ts`), but never import a renderer implementation or anything else under `core/src/cli/`.
+- `core/src/cli/commands/<op>.ts` (or its namespace-specific equivalent) holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
+- Operations may publish events but must not couple to `Renderer` or `InteractionService` beyond event publication. Optional renderer output and CLI result passthrough belong in private CLI helpers such as `core/src/cli/renderer-output.ts`; operation modules never import anything under `core/src/cli/`.
 - `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.
 
 ## Runtime layer service wiring
