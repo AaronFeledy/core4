@@ -20,20 +20,21 @@ import {
   type ScratchAcquireInput,
   ScratchAppService,
 } from "@lando/core/services";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { DataMoverLive } from "@lando/engine/data-mover/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { type RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { ScratchRegistryLive, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchAppServiceLive, readScratchLandofile } from "@lando/engine/scratch-app/service";
+import { makeScratchAppServiceLive, readScratchLandofile } from "@lando/engine/scratch-app/service";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
@@ -54,9 +55,35 @@ import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
+import { ScratchInitAppPortLive } from "../../src/cli/scratch-init-port.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
+
+const landofileRuntimeInputs = {
+  ports: {
+    resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    npmRecipeSource: {
+      resolve: (packageSpec) =>
+        Promise.resolve({
+          packageName: packageSpec,
+          version: "0.0.0",
+          dist: { tarball: "https://example.test/unused.tgz" },
+        }),
+    },
+    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
+    tarball: {
+      fetch: () => Promise.resolve(new Uint8Array()),
+      extract: () => Promise.resolve(),
+    },
+    publication: { publish: () => Promise.resolve() },
+  },
+  templates: { modules: BUNDLED_PLUGIN_MODULES },
+} satisfies LandofileRuntimeInputs;
+
+const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -201,7 +228,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   };
 
   const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
   const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
@@ -213,7 +240,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    LandofileServiceLive,
+    landofileServiceLive,
     plannerLive,
     registryLive,
     eventLive,
@@ -221,8 +248,17 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     redactionLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
+    ScratchInitAppPortLive,
     DataMoverLive.pipe(
-      Layer.provide(Layer.mergeAll(StateStoreLive, pathsLive, Layer.succeed(RuntimeProvider, provider))),
+      Layer.provide(
+        Layer.mergeAll(
+          StateStoreLive,
+          eventLive,
+          redactionLive,
+          pathsLive,
+          Layer.succeed(RuntimeProvider, provider),
+        ),
+      ),
     ),
   );
   const buildOrchestratorLive = BuildOrchestratorLive.pipe(
@@ -231,7 +267,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   return Layer.mergeAll(
     scratchDeps,
     buildOrchestratorLive,
-    ScratchAppServiceLive.pipe(Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive))),
+    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(
+      Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive)),
+    ),
     options.configLayer ?? ConfigServiceLive,
   );
 };

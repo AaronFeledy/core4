@@ -16,25 +16,63 @@ import {
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { DataMoverLive } from "@lando/engine/data-mover/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
+import { RedactionService } from "@lando/engine/redaction/service";
 import {
   ScratchRegistry,
   ScratchRegistryLive,
   makeScratchRegistry,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
 import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { makeLandoPaths } from "@lando/paths";
+import { createRedactor } from "@lando/sdk/secrets";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const providerId = ProviderId.make("lando");
+
+const landofileRuntimeInputs = {
+  ports: {
+    resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    npmRecipeSource: {
+      resolve: (packageSpec) =>
+        Promise.resolve({
+          packageName: packageSpec,
+          version: "0.0.0",
+          dist: { tarball: "https://example.test/unused.tgz" },
+        }),
+    },
+    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
+    tarball: {
+      fetch: () => Promise.resolve(new Uint8Array()),
+      extract: () => Promise.resolve(),
+    },
+    publication: { publish: () => Promise.resolve() },
+  },
+  templates: { modules: BUNDLED_PLUGIN_MODULES },
+} satisfies LandofileRuntimeInputs;
+
+const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+
+const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const redactionLive = Layer.succeed(RedactionService, {
+  forProfile: () => Effect.succeed(createRedactor("secrets")),
+});
+
+const scratchInitAppPortLive = Layer.succeed(ScratchInitAppPort, {
+  initApp: () => Promise.reject(new TypeError("fork scratch fixtures must not initialize recipes")),
+});
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -160,6 +198,7 @@ const makeScratchForkLayer = (
   } = {},
 ) => {
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: String(providerId),
     displayName: "Scratch Fork Test Provider",
     version: "0.0.0",
@@ -198,7 +237,7 @@ const makeScratchForkLayer = (
   };
 
   const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -233,6 +272,8 @@ const makeScratchForkLayer = (
     Layer.provide(
       Layer.mergeAll(
         StateStoreLive,
+        EventServiceLive,
+        redactionLive,
         Layer.succeed(PathsService, makeLandoPaths()),
         Layer.succeed(RuntimeProvider, provider),
       ),
@@ -259,16 +300,20 @@ const makeScratchForkLayer = (
         ];
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    LandofileServiceLive,
+    landofileServiceLive,
     plannerLive,
     registryLive,
     scratchRegistryLive,
     ScratchResourceScannerLive,
+    scratchInitAppPortLive,
     dataMoverLive,
     ...proxyLayers,
   );
 
-  return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
+  return Layer.mergeAll(
+    scratchDeps,
+    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+  );
 };
 
 describe("ScratchAppServiceLive fork acquire", () => {
