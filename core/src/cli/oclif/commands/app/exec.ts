@@ -3,6 +3,7 @@ import { Args, Flags } from "../../metadata.ts";
 import { StreamFrame } from "@lando/sdk/schema";
 import { type ExecAppResult, execApp } from "../../../../operations/exec.ts";
 import { renderExecAppResult } from "../../../commands/exec.ts";
+import { withOptionalStderrOutput } from "../../../renderer-output.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -22,12 +23,14 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   streaming: StreamFrame,
   run: (input) => {
     const flags = extractSpecFlags(input);
-    return execApp({
-      command: extractSpecParsedArgv(input),
-      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
-      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
-      ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
-    });
+    return withOptionalStderrOutput(
+      execApp({
+        command: extractSpecParsedArgv(input),
+        ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+        ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+        ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
+      }),
+    );
   },
   streamFrames: (value) => {
     const result = value as ExecAppResult;

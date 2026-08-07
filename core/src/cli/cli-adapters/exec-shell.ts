@@ -11,6 +11,7 @@ import {
   rejectInvalidInvocation,
   runCompiledCommand,
 } from "../compiled-runtime.ts";
+import { withOptionalStderrOutput } from "../renderer-output.ts";
 
 interface ParsedExecArgv {
   readonly service?: string;
@@ -98,12 +99,14 @@ const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
 export const runExec = (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseExecArgv(argv);
   return runCompiledCommand(
-    execApp({
-      command: parsed.command,
-      ...(parsed.service === undefined ? {} : { service: parsed.service }),
-      ...(parsed.user === undefined ? {} : { user: parsed.user }),
-      ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
-    }),
+    withOptionalStderrOutput(
+      execApp({
+        command: parsed.command,
+        ...(parsed.service === undefined ? {} : { service: parsed.service }),
+        ...(parsed.user === undefined ? {} : { user: parsed.user }),
+        ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
+      }),
+    ),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
   );
@@ -202,13 +205,15 @@ export const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
   const command = parsed.command.length === 0 ? ["sh", "-l"] : parsed.command;
   await runCompiledCommand(
-    execApp({
-      command,
-      interactive: true,
-      tty: true,
-      ...(parsed.service === undefined ? {} : { service: parsed.service }),
-      ...(parsed.user === undefined ? {} : { user: parsed.user }),
-    }),
+    withOptionalStderrOutput(
+      execApp({
+        command,
+        interactive: true,
+        tty: true,
+        ...(parsed.service === undefined ? {} : { service: parsed.service }),
+        ...(parsed.user === undefined ? {} : { user: parsed.user }),
+      }),
+    ),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
   );
