@@ -121,7 +121,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(relocatedHelp.stdout).toContain("USAGE");
     expect(relocatedHelp.stdout).toContain("TOPICS");
     expect(relocatedHelp.stdout).toContain("COMMANDS");
-    expect(relocatedHelp.stderr).not.toContain("could not find package.json");
+    expect(relocatedHelp.stderr).toBe("");
     const versionJson = await runCommand([relocatedBinary, "meta:version", "--format=json"], {
       cwd: appRoot,
       env,
