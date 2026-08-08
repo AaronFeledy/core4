@@ -2,7 +2,12 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { BOUNDARY_RULE_IDS } from "../../../../scripts/boundary/registry.ts";
+import {
+  BOUNDARY_RULE_IDS,
+  BOUNDARY_RULE_REGISTRATIONS,
+  indexBoundaryRuleRegistrations,
+} from "../../../../scripts/boundary/registry.ts";
+import type { BoundaryRule } from "../../../../scripts/boundary/types.ts";
 
 const inventoryPath = join(import.meta.dirname, "../../../../scripts/boundary/README.md");
 const inventoryFile = Bun.file(inventoryPath);
@@ -49,7 +54,32 @@ const inventoryRows = async (): Promise<readonly InventoryRow[]> => {
     });
 };
 
+const registrationJustifications = (): ReadonlyMap<string, string> =>
+  new Map(
+    BOUNDARY_RULE_REGISTRATIONS.map(({ rule, seamJustification }) => [rule.id, seamJustification] as const),
+  );
+
 describe("boundary rule inventory", () => {
+  test("rejects duplicate boundary rule registrations before indexing", () => {
+    // Given: two registrations claiming the same boundary rule id.
+    const duplicateRule = {
+      id: "duplicate",
+      scope: { roots: [], extensions: [] },
+      carveOuts: { files: [], prefixes: [] },
+      passMessage: "passes",
+      failureHeadline: "fails",
+    } as const satisfies BoundaryRule;
+    const registrations = [
+      { rule: duplicateRule, seamJustification: "first" },
+      { rule: duplicateRule, seamJustification: "second" },
+    ] as const;
+
+    // When / Then: registry indexing rejects the duplicate instead of overwriting it.
+    expect(() => indexBoundaryRuleRegistrations(registrations)).toThrow(
+      "Duplicate boundary rule id: duplicate",
+    );
+  });
+
   test("covers every registered boundary rule exactly once", async () => {
     // Given: the canonical registry and its maintained inventory.
     const rows = await inventoryRows();
@@ -58,6 +88,7 @@ describe("boundary rule inventory", () => {
     const inventoryIds = rows.map((row) => row.id).sort();
 
     // Then: no registered rule is missing or duplicated.
+    expect(new Set(BOUNDARY_RULE_IDS).size).toBe(BOUNDARY_RULE_IDS.length);
     expect(inventoryIds).toEqual([...BOUNDARY_RULE_IDS].sort());
   });
 
@@ -77,6 +108,17 @@ describe("boundary rule inventory", () => {
 
     // Then: every rule has a complete valid classification.
     expect(invalidRows).toEqual([]);
+  });
+
+  test("registers one seam-first justification per inventory rule", async () => {
+    // Given: the maintained inventory from the seam-thinning audit.
+    const rows = await inventoryRows();
+
+    // When: canonical registrations are projected to their review justifications.
+    const registered = registrationJustifications();
+
+    // Then: registration and inventory carry the same complete policy.
+    expect(registered).toEqual(new Map(rows.map((row) => [row.id, row.justification])));
   });
 
   test("marks behavioral survivors and records the retired engine-owned layering alias", async () => {
