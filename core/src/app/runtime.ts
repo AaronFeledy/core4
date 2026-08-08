@@ -1,12 +1,6 @@
 import { type Context, Effect, Layer, Scope } from "effect";
 
-import type {
-  App,
-  AppSelector,
-  LandoRuntime,
-  LandoRuntimeServices,
-  ScratchAcquireError,
-} from "@lando/sdk/app";
+import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
 import {
   type AppResolveError,
   type ConfigError,
@@ -14,9 +8,10 @@ import {
   LandofileParseError,
   ScratchAppError,
 } from "@lando/sdk/errors";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 
+import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
 import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
 import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
@@ -26,7 +21,7 @@ import { ScratchInitAppPortLive } from "../cli/scratch-init-port.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
 import { buildAppHandle, resolveApp } from "./resolve";
 
-type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService | RuntimeCwd>;
+type RuntimeContext = Context.Context<AppHandleRuntimeServices | ScratchAppService | RuntimeCwd>;
 
 /**
  * Options for {@link openLandoRuntime}. Extends the runtime layer options with
@@ -49,7 +44,7 @@ export const openLandoRuntime = (
 ): Effect.Effect<LandoRuntime, ConfigError | LandoRuntimeBootstrapError | ScratchAcquireError, Scope.Scope> =>
   Effect.gen(function* () {
     const { scratch: scratchInput, ...runtimeOptions } = options;
-    const capturedCwd = (runtimeOptions.cwd ?? process.cwd()) as AbsolutePath;
+    const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? process.cwd());
     const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
       readonly bootstrap: "app";
     });
@@ -66,7 +61,7 @@ export const openLandoRuntime = (
       ScratchInitAppPortLive,
       ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
     );
-    const context = (yield* Layer.build(layer)) as unknown as RuntimeContext;
+    const context: RuntimeContext = yield* Layer.build(layer);
     const runtimeScope = yield* Effect.scope;
 
     const defaultTarget: ResolvedAppTarget | undefined =

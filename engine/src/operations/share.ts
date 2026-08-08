@@ -1,5 +1,6 @@
 import { Effect, type ParseResult, Schema, type Scope } from "effect";
 
+import type { ShareAppError } from "@lando/sdk/app";
 import {
   type CapabilityError,
   type NoProviderInstalledError,
@@ -14,7 +15,6 @@ import {
   TunnelSession,
   type TunnelSession as TunnelSessionType,
   TunnelStatus,
-  type TunnelStatus as TunnelStatusType,
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
@@ -93,6 +93,13 @@ export type ShareStopCommandError =
   | ParseResult.ParseError
   | StateStoreError;
 
+type ShareRuntimeError =
+  | TunnelError
+  | TunnelProviderUnavailableError
+  | ParseResult.ParseError
+  | StateStoreError;
+type ShareListRuntimeError = TunnelError | TunnelProviderUnavailableError | StateStoreError;
+
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
   new TunnelProviderUnavailableError({
     message:
@@ -140,13 +147,13 @@ const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
   return { _tag: "route", routeId: plan.id };
 };
 
-export const appShare = (
-  options: ShareOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.Effect<TunnelSessionType, ShareCommandError, ShareServices | Scope.Scope | StateStore> =>
+const appShareWithPlan = <E, R>(
+  options: ShareOptions,
+  planEffect: Effect.Effect<AppPlan, E, R>,
+): Effect.Effect<TunnelSessionType, ShareRuntimeError | E, R | Scope.Scope | StateStore> =>
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
-    const plan = yield* resolvePlan(options.cwd, target);
+    const plan = yield* planEffect;
     const tunnelTarget = yield* Schema.decodeUnknown(TunnelTarget)(
       options.target ?? defaultTunnelTarget(plan),
     );
@@ -171,13 +178,25 @@ export const appShare = (
     return session;
   });
 
-export const appShareList = (
-  options: ShareListOptions = {},
+export const appShareForTarget = (
+  options: ShareOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<TunnelSessionType, ShareAppError, Scope.Scope | StateStore> =>
+  appShareWithPlan(options ?? {}, Effect.succeed(target.plan));
+
+export const appShare = (
+  options: ShareOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListCommandError, ShareServices | StateStore> =>
+): Effect.Effect<TunnelSessionType, ShareCommandError, ShareServices | Scope.Scope | StateStore> =>
+  appShareWithPlan(options, resolvePlan(options.cwd, target));
+
+const appShareListWithPlan = <E, R>(
+  options: ShareListOptions,
+  planEffect: Effect.Effect<AppPlan, E, R>,
+): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListRuntimeError | E, R | StateStore> =>
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
-    const plan = yield* resolvePlan(options.cwd, target);
+    const plan = yield* planEffect;
     const app = plan.id;
     const listed = yield* service.list({
       app,
@@ -193,6 +212,18 @@ export const appShareList = (
     );
   });
 
+export const appShareListForTarget = (
+  options: ShareListOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareAppError, StateStore> =>
+  appShareListWithPlan(options ?? {}, Effect.succeed(target.plan));
+
+export const appShareList = (
+  options: ShareListOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListCommandError, ShareServices | StateStore> =>
+  appShareListWithPlan(options, resolvePlan(options.cwd, target));
+
 export const appShareStop = (
   options: ShareStopOptions,
 ): Effect.Effect<ShareStopResult, ShareStopCommandError, StateStore> =>
@@ -205,5 +236,5 @@ export const appShareStop = (
     const service = yield* resolveTunnelService(stopRequest.provider);
     yield* service.stop(stopRequest);
     yield* removeTunnelSession(stopRequest.sessionId);
-    return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" as TunnelStatusType };
+    return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" };
   });

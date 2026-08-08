@@ -69,6 +69,8 @@ type StartAppServices =
   | RuntimeProviderRegistry
   | ShellRunner;
 
+type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
+
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
@@ -76,29 +78,22 @@ const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: pl
 const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
   publishedEndpointUrl(endpoint);
 
-export const startApp = (
-  options: StartAppOptions = {},
-  target?: ResolvedAppTarget,
+export const startAppForTarget = (
+  options: StartAppOptions | undefined,
+  target: ResolvedAppTarget,
   managed?: StartManagedScope,
   execution: { readonly forceAppBuild?: boolean } = {},
-): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
+): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
   Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
+    const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
     const proxy = yield* ProxyService;
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+    const plan = target.plan;
     const provider = yield* registry.select(plan);
-    const ref = target?.app ?? appRef(plan);
+    const ref = target.app;
     const applyStarted = yield* Ref.make(false);
     const routesApplied = yield* Ref.make(false);
 
@@ -106,7 +101,7 @@ export const startApp = (
     if (neededGlobalServices.length > 0) {
       yield* ensureGlobalServicesRunning({
         services: neededGlobalServices,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -160,8 +155,8 @@ export const startApp = (
             yield* Ref.set(applyStarted, true);
             yield* Effect.scoped(
               provider.apply(builtPlan, {
-                reconcile: options.reconcile ?? false,
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
+                reconcile: resolvedOptions.reconcile ?? false,
+                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
               }),
             );
             return yield* Effect.forEach(serviceList, (service) =>
@@ -219,7 +214,7 @@ export const startApp = (
             withBuildProvider(
               builds.buildApp(builtPlan, {
                 ...(execution.forceAppBuild === true ? { force: true } : {}),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
+                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
               }),
               provider,
             ),
@@ -267,3 +262,26 @@ export const startApp = (
       ),
     );
   });
+
+export const startApp = (
+  options: StartAppOptions = {},
+  target?: ResolvedAppTarget,
+  managed?: StartManagedScope,
+  execution: { readonly forceAppBuild?: boolean } = {},
+): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
+  target === undefined
+    ? Effect.gen(function* () {
+        const landofileService = yield* LandofileService;
+        const registry = yield* RuntimeProviderRegistry;
+        const planner = yield* AppPlanner;
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        const plan = yield* planner.plan(landofile, capabilities);
+        return yield* startAppForTarget(
+          options,
+          { plan, root: plan.root, app: appRef(plan), landofile },
+          managed,
+          execution,
+        );
+      })
+    : startAppForTarget(options, target, managed, execution);

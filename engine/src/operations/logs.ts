@@ -169,7 +169,7 @@ const servicesForPlan = (
   options: LogsAppOptions,
 ): Effect.Effect<
   { readonly services: ReadonlyArray<ServicePlan>; readonly provider: RuntimeProviderShape },
-  LogsAppError,
+  SdkLogsAppError,
   RuntimeProviderRegistry
 > =>
   Effect.gen(function* () {
@@ -276,7 +276,7 @@ const collectLogLines = (
   provider: RuntimeProviderShape,
   logOptions: LogOptions,
   requestedSource: string | undefined,
-): Effect.Effect<LogsAppResult, LogsAppError, never> =>
+): Effect.Effect<LogsAppResult, SdkLogsAppError, never> =>
   Effect.gen(function* () {
     const perService = yield* Effect.forEach(services, (service) =>
       provider
@@ -310,7 +310,7 @@ const drainLogFollow = (
   logOptions: LogOptions,
   requestedSource: string | undefined,
   signal: AbortSignal | undefined,
-): Effect.Effect<LogsAppResult, LogsAppError, StreamFrameSink> =>
+): Effect.Effect<LogsAppResult, SdkLogsAppError, StreamFrameSink> =>
   Effect.gen(function* () {
     const sink = yield* StreamFrameSink;
     const streams = services.map((service) =>
@@ -334,10 +334,11 @@ const drainLogFollow = (
     return { app: plan.name, lines: [] };
   });
 
-export const logsForPlan = (
+const collectLogsForPlan = (
   plan: AppPlan,
-  options: LogsAppOptions = {},
-): Effect.Effect<LogsAppResult, LogsAppError, RuntimeProviderRegistry> =>
+  options: LogsAppOptions,
+  follow: boolean,
+): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const since = yield* validateSince(options.since);
     const { services, provider } = yield* servicesForPlan(plan, options);
@@ -345,15 +346,21 @@ export const logsForPlan = (
       plan,
       services,
       provider,
-      logOptionsFor(options, false, since),
+      logOptionsFor(options, follow, since),
       options.source,
     );
   });
 
+export const logsForPlan = (
+  plan: AppPlan,
+  options: LogsAppOptions = {},
+): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
+  collectLogsForPlan(plan, options, false);
+
 export const followLogsForPlan = (
   plan: AppPlan,
   options: FollowLogsAppOptions = {},
-): Effect.Effect<LogsAppResult, LogsAppError, RuntimeProviderRegistry | StreamFrameSink> =>
+): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry | StreamFrameSink> =>
   Effect.gen(function* () {
     const since = yield* validateSince(options.since);
     const { services, provider } = yield* servicesForPlan(plan, options);
@@ -382,6 +389,12 @@ export const logsApp = (
       options.source,
     );
   });
+
+export const logsAppForTarget = (
+  options: LogsAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
+  collectLogsForPlan(target.plan, options ?? {}, options?.follow ?? false);
 
 export const followLogsApp = (
   options: FollowLogsAppOptions = {},

@@ -8,7 +8,7 @@
  */
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -33,6 +33,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestProxyService } from "@lando/sdk/test";
 
@@ -237,6 +238,68 @@ describe("@lando/core App-handle library contract", () => {
     });
   });
 
+  test("deep info exposes an outside-root load failure through the bound handle", async () => {
+    await withTempApp(async (dir) => {
+      // Given: a valid resolved handle whose Landofile is replaced by an invalid outside-root load.
+      const outsidePath = join(dir, "..", `${basename(dir)}-outside.pem`);
+      try {
+        const failure = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+              Effect.flatMap((runtime) => runtime.app()),
+              Effect.flatMap((app) =>
+                Effect.promise(() => Bun.write(outsidePath, "certificate")).pipe(
+                  Effect.flatMap(() =>
+                    Effect.promise(() =>
+                      Bun.write(
+                        join(dir, ".lando.yml"),
+                        `name: embedded-app\nruntime: 4\nservices:\n  cache:\n    type: redis\n    security:\n      ca:\n        - "{{ load('../${basename(outsidePath)}') }}"\n`,
+                      ),
+                    ),
+                  ),
+                  // When: deep info reloads the captured app root.
+                  Effect.flatMap(() => Effect.flip(app.info({ deep: true }))),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // Then: the reachable typed Landofile error is preserved by the public handle.
+        expect(failure).toBeInstanceOf(LandofileLoadOutsideRootError);
+      } finally {
+        await rm(outsidePath, { force: true });
+      }
+    });
+  });
+
+  test("deep info exposes a rejected Compose key through the bound handle", async () => {
+    await withTempApp(async (dir) => {
+      // Given: a valid resolved handle whose Landofile is replaced with a rejected Compose key.
+      const failure = await Effect.runPromise(
+        Effect.scoped(
+          openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+            Effect.flatMap((runtime) => runtime.app()),
+            Effect.flatMap((app) =>
+              Effect.promise(() =>
+                Bun.write(
+                  join(dir, ".lando.yml"),
+                  "name: embedded-app\nruntime: 4\nservices:\n  cache:\n    type: redis\n    container_name: fixed-cache\n",
+                ),
+              ).pipe(
+                // When: deep info reloads the captured app root.
+                Effect.flatMap(() => Effect.flip(app.info({ deep: true }))),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Then: the reachable Compose rejection remains tagged through the public handle.
+      expect(failure).toBeInstanceOf(ComposeKeyRejectedError);
+    });
+  });
+
   test("a decoded Landofile selector resolves with an explicit root", async () => {
     await withTempApp(async (dir) => {
       const app = await Effect.runPromise(
@@ -247,7 +310,7 @@ describe("@lando/core App-handle library contract", () => {
       );
 
       expect(app.id).toBe("embedded-app");
-      expect(app.root).toBe(dir);
+      expect(app.root).toBe(AbsolutePath.make(dir));
     });
   });
 
