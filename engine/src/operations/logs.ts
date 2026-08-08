@@ -334,9 +334,10 @@ const drainLogFollow = (
     return { app: plan.name, lines: [] };
   });
 
-export const logsForPlan = (
+const collectLogsForPlan = (
   plan: AppPlan,
-  options: LogsAppOptions = {},
+  options: LogsAppOptions,
+  follow: boolean,
 ): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const since = yield* validateSince(options.since);
@@ -345,10 +346,16 @@ export const logsForPlan = (
       plan,
       services,
       provider,
-      logOptionsFor(options, false, since),
+      logOptionsFor(options, follow, since),
       options.source,
     );
   });
+
+export const logsForPlan = (
+  plan: AppPlan,
+  options: LogsAppOptions = {},
+): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
+  collectLogsForPlan(plan, options, false);
 
 export const followLogsForPlan = (
   plan: AppPlan,
@@ -387,7 +394,7 @@ export const logsAppForTarget = (
   options: LogsAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> =>
-  logsForPlan(target.plan, options);
+  collectLogsForPlan(target.plan, options ?? {}, options?.follow ?? false);
 
 export const followLogsApp = (
   options: FollowLogsAppOptions = {},

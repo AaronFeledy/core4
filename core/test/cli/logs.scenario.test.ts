@@ -6,6 +6,7 @@ import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
+import { logsAppForTarget } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
 
 import {
@@ -253,6 +254,19 @@ describe("lando logs", () => {
     const rendered = renderLogsAppResult(result);
     expect(rendered).toContain("web stdout: web line 1");
     expect(rendered).toContain("database stderr: database warn");
+  });
+
+  test("bound-target logs preserve the requested follow option", async () => {
+    const harness = makeLogsLayer();
+    await Effect.runPromise(
+      logsAppForTarget(
+        { follow: true, service: "web" },
+        { plan, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } },
+      ).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls).toHaveLength(1);
+    expect(harness.logCalls[0]?.options.follow).toBe(true);
   });
 
   test("filters by --service when set", async () => {
