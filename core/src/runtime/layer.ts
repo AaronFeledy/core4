@@ -17,7 +17,7 @@
  */
 import { Effect, Either, Layer, Schema } from "effect";
 
-import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
   AppPlanSanitizer,
   AppPlanner,
@@ -55,6 +55,7 @@ import type {
   ToolingEngine,
 } from "@lando/sdk/services";
 
+import { bundledPluginModules } from "@lando/engine/composition";
 import type { LoggerMode } from "@lando/engine/logging/service";
 import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
@@ -228,6 +229,15 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   }
 
   const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
+  if (pluginPolicy.discovery.bundled && bundledPluginModules().length === 0) {
+    return Layer.fail(
+      new LandoRuntimeBootstrapError({
+        message:
+          "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
+        stage: "plugins",
+      }),
+    );
+  }
   const capturedCwd = decoded.right.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
   const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);

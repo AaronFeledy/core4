@@ -38,7 +38,7 @@ describe("generated bootstrap layers", () => {
     const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
 
     // When: command-registry and subscriber-runtime composition is inspected.
-    const subscriberInstall = "makeSubscriberRuntimeLive(BUNDLED_PLUGIN_MODULES, BUILT_IN_COMMAND_IDS)";
+    const subscriberInstall = "makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS)";
     const commandRegistryInstall = "CommandRegistryLive.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
@@ -50,6 +50,7 @@ describe("generated bootstrap layers", () => {
     expect(minimal).not.toContain("makePluginRegistryLive");
     expect(commands).toContain("makeEngineLandofileServiceLive");
     expect(commands).toContain('from "@lando/engine/services/landofile-live"');
+    expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
@@ -88,5 +89,23 @@ describe("generated bootstrap layers", () => {
 
     // Then: file-sync resolution stays behind the core plugin-module seam.
     expect(importsMutagenPackage).toBe(false);
+  });
+
+  test("generated layers resolve composition through engine accessors", async () => {
+    // Given: every generated bootstrap layer source.
+    const sources = await Promise.all(
+      (await readdir(generatedLayersDir))
+        .filter((file) => file.endsWith(".ts"))
+        .map((file) => readFile(resolve(generatedLayersDir, file), "utf8")),
+    );
+
+    // When: generated imports and composition reads are inspected.
+    const combined = sources.join("\n");
+
+    // Then: no layer reaches core's static plugin table or host Landofile value directly.
+    expect(combined).not.toContain("plugins/generated/bundled");
+    expect(combined).not.toContain("coreLandofileRuntimeInputs");
+    expect(combined).toContain("bundledPluginModules()");
+    expect(combined).toContain("landofileRuntimeInputs()");
   });
 });

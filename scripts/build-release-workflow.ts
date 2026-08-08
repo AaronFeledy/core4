@@ -201,8 +201,9 @@ ${publishLines}
           done
           npm install --ignore-scripts --no-audit --no-fund "@lando/core@$LANDO_NPM_VERSION"
           bun -e 'Bun.resolveSync("@lando/engine", process.env.SMOKE_ROOT); Bun.resolveSync("@lando/landofile", process.env.SMOKE_ROOT); await import("@lando/core/testing");'
+          bun -e 'const core = await import("@lando/core"); if (typeof core.makeLandoRuntime !== "function" || typeof core.openLandoRuntime !== "function") throw new Error("@lando/core runtime exports are unavailable"); const bundledPluginResolved = await import("@lando/provider-lando").then(() => true, () => false); if (bundledPluginResolved) throw new Error("bundled plugin resolved before installation");'
           npm install --ignore-scripts --no-audit --no-fund ${bundledPluginInstallSpecs}
-          bun -e 'const core = await import("@lando/core"); if (typeof core.makeLandoRuntime !== "function" || typeof core.openLandoRuntime !== "function") throw new Error("@lando/core runtime exports are unavailable");'
+          bun -e 'const bundled = await import("@lando/core/bundled-plugins"); const core = await import("@lando/core"); if (bundled.BUNDLED_PLUGIN_MODULES.length !== 12 || typeof core.makeLandoRuntime !== "function") throw new Error("@lando/core bundled composition is unavailable");'
 `;
 
 const main = async (): Promise<void> => {

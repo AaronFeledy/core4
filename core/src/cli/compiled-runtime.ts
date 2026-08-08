@@ -16,6 +16,7 @@ import type {
 
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";

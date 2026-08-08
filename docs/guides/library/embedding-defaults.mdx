@@ -12,7 +12,7 @@ tags: [beta, docs, library, embedding]
       <Variable name="logger" value="silent" display="Library runtimes use the silent logger by default" />
       <Variable name="renderer" value="json" display="Library runtimes provide a json renderer service by default" />
       <Variable name="telemetry" value="off" display="Telemetry is disabled unless the embedder opts in" />
-      <Variable name="pluginDiscovery" value="explicit" display="Plugin discovery is host-provided only by default" />
+      <Variable name="pluginDiscovery" value="explicit" display="The root entry installs no bundled plugin modules; plugin discovery is host-provided only by default" />
     </Step>
   </Scenario>
 
@@ -20,7 +20,7 @@ tags: [beta, docs, library, embedding]
     <Step name="explicit-options">
       <Variable name="renderer" value="plain" display="Embedders can override the renderer field at runtime construction" />
       <Variable name="telemetry" value="true" display="Embedders can opt into telemetry at runtime construction" />
-      <Variable name="plugins" value="bundled-only" display="Embedders can opt into bundled plugin loading instead of the explicit-only default" />
+      <Variable name="plugins" value="bundled-only" display="Embedders can import @lando/core/bundled-plugins before runtime construction to opt into bundled-only loading" />
       <Variable name="layers" value="host overrides" display="Host plugin layers are built once and override matching generated runtime services" />
       <Variable name="manifests" value="pre-resolved modules" display="Resolved plugin manifests register contributions without enabling external imports" />
     </Step>
