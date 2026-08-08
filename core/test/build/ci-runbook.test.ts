@@ -73,7 +73,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run check:state-store-boundary");
     expect(runbook).toContain("bun run check:probe-boundary");
     expect(runbook).toContain("bun run check:network-boundary");
-    expect(runbook).toContain("bun run check:core-layering-boundary");
+    expect(runbook).not.toContain("bun run check:core-layering-boundary");
     expect(runbook).toContain("bun run check:libpod-prefix");
     expect(runbook).toContain("bun run check:machine-output");
     expect(runbook).toContain("bun run check:runtime-bundle-manifest");

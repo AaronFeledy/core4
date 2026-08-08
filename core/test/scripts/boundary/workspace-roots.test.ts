@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { BOUNDARY_RULES } from "../../../../scripts/boundary/registry.ts";
+import { BOUNDARY_RULES, BOUNDARY_RULE_IDS } from "../../../../scripts/boundary/registry.ts";
 import {
   ALL_PACKAGE_SOURCE_ROOTS,
   ALL_PACKAGE_WALK_ROOTS,
@@ -20,7 +20,11 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
-  ["state-store", ["core/src", "engine/src", "landofile/src", "plugins"]],
+]);
+
+const OWNER_EXCLUDING_RULES: ReadonlyMap<string, string> = new Map([
+  ["paths", "paths/src"],
+  ["state-store", "state-store/src"],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
@@ -124,16 +128,16 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("routes the paths rule through the shared runtime tier minus its owner", () => {
-    // Given: the shared shipped-runtime tier and the package that owns path construction
-    const expectedRoots = CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "paths/src");
+  test("routes owner-excluding rules through the shared runtime tier minus only their owner", () => {
+    // Given: behavioral rules whose owning implementation must be excluded
+    for (const [id, ownerRoot] of OWNER_EXCLUDING_RULES) {
+      // When: reading the rule's declared scope from the live registry
+      const rule = BOUNDARY_RULES.get(id);
 
-    // When: reading the paths rule's declared scope from the live registry
-    const rule = BOUNDARY_RULES.get("paths");
-
-    // Then: every shared runtime consumer remains covered except the owning implementation
-    expect(rule).toBeDefined();
-    expect(rule?.scope.roots).toEqual(expectedRoots);
+      // Then: every shared runtime consumer remains covered except the owning implementation
+      expect(rule).toBeDefined();
+      expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== ownerRoot));
+    }
   });
 
   test("routes package-wide boundary rules through the all-package source tier", () => {
@@ -155,6 +159,25 @@ describe("workspace source-root drift gate", () => {
     // Then
     expect(rule?.scope.roots).toEqual(["."]);
     expect(rule?.scope.extensions).toEqual([".json", ".ts", ".tsx", ".mts", ".cts"]);
+  });
+
+  test("classifies every registered rule into exactly one source-root tier", () => {
+    // Given
+    const classifiedIds = [
+      ...NARROW_BY_DESIGN.keys(),
+      ...CORE_AND_PLUGIN_RULE_IDS,
+      ...ALL_PACKAGE_RULE_IDS,
+      ...OWNER_EXCLUDING_RULES.keys(),
+      "package-dag",
+      "spec-reference",
+    ];
+
+    // When
+    const uniqueIds = new Set(classifiedIds);
+
+    // Then
+    expect(uniqueIds.size).toBe(classifiedIds.length);
+    expect([...uniqueIds].sort()).toEqual([...BOUNDARY_RULE_IDS].sort());
   });
 
   test("policies the reverse-direction tier as the all-package tier minus plugins", () => {

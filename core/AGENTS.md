@@ -61,7 +61,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 
 ## Engine operations tier
 
-- App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `engine/src/operations/**`, not in command bodies. Core app shims and the CLI both consume them through `@lando/engine`; engine modules must never import the core shell (enforced by the package DAG and `check:core-layering-boundary`).
+- App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `engine/src/operations/**`, not in command bodies. Core app shims and the CLI both consume them through `@lando/engine`; engine modules must never import the core shell (enforced by the package DAG; `check:core-layering-boundary` is a stable alias for `check:package-dag`).
 - `core/src/cli/commands/<op>.ts` (or its namespace-specific equivalent) holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
 - Operations may publish events but must not couple to `Renderer` or `InteractionService` beyond event publication. Optional renderer output and CLI result passthrough belong in private CLI helpers such as `core/src/cli/renderer-output.ts`; engine operation modules never import the core shell.
 - `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.

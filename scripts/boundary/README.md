@@ -8,11 +8,10 @@ Verdicts describe the next action for the current rule:
 - `thin`: remove an ownership half but retain behavioral residue.
 - `delete`: package-DAG source-edge enforcement carries the whole constraint.
 
-No live rule is currently classified `thin`: the paths, probe, redaction, renderer, and state-store rules already contain only their residual enforcement. The core-layering rule is the one remaining duplicate ownership scanner.
+No live rule is classified `thin`: the paths, probe, redaction, renderer, and state-store rules contain only their residual enforcement. The sole `delete` verdict has been executed.
 
 | Rule | Kind | What it bans | Package edge carrying ownership | Verdict | Justification |
 | --- | --- | --- | --- | --- | --- |
-| `core-layering` | `ownership` | Engine app, operation, and service modules importing the core CLI shell | `@lando/engine -> @lando/core` is forbidden by package-DAG | `delete` | Named, subpath, and relative engine-to-core source edges already fail the package-DAG rule. |
 | `env-helper` | `behavioral` | Service implementations importing the `lando.env` feature helpers directly | None; producer and consumers share `@lando/service-lando` | `keep` | A workspace edge cannot express an intra-package feature-ordering constraint. |
 | `import-cycle` | `structural` | Runtime module cycles across first-party source trees | None; package edges do not model module-level cycles | `keep` | Package-DAG controls allowed package direction, not cycles among modules inside an allowed edge. |
 | `libpod-prefix` | `behavioral` | Podman 5 `/v5.x.x` libpod API prefixes in provider production code | None | `keep` | API-version literals are independent of package ownership. |
@@ -27,3 +26,7 @@ No live rule is currently classified `thin`: the paths, probe, redaction, render
 | `spec-reference` | `behavioral` | Durable repository files citing or reading the removable specification tree | None | `keep` | Reference text and constructed paths are content, not dependency direction. |
 | `state-store` | `behavioral` | Hand-rolled atomic rename, lockfile, and version-envelope combinations | Runtime consumers may depend on `@lando/state-store`; package-DAG owns direction | `keep` | The rule is already owner-excluding and retains only the durable-write behavior combination. |
 | `generated-output` | `behavioral` | Missing generated-file banners and generated banners outside generated paths | None | `keep` | Generated-source placement and banners are file-content conventions. |
+
+## Retired rule aliases
+
+- `core-layering`: `check:core-layering-boundary` → `check:package-dag`. The workspace DAG now rejects every named, subpath, relative, type-only, re-export, and dynamic `@lando/engine` to `@lando/core` source edge; the stable command remains an alias for existing local callers.
