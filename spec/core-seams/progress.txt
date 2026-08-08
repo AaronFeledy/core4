@@ -296,8 +296,8 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 ## 2026-08-08 05:45 CDT - US-546
 - Retired the duplicate core-layering scanner because package-DAG now rejects every engine-to-core source edge; preserved `check:core-layering-boundary` as an explicit package-DAG alias and removed its duplicate CI execution.
 - Kept surviving scanners on their shared runtime or all-package source-root tiers with owning-package exclusions, and added exhaustive registry coverage so every rule has exactly one root-tier disposition.
-- Scanner LOC decreased from 3,431 to 3,378 (-53).
-- Verification: typecheck and lint/deprecations passed; 81 focused and adjacent tests passed, the focused generated-workflow test passed, package-DAG and the stable alias passed, generated-output passed, and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings. The nightly codegen suite passed 15 of 16 tests with its previously recorded `15`-versus-`19` baseline failure unchanged.
+- Scanner LOC decreased from 3,431 to 3,379 (-52).
+- Verification: typecheck and lint/deprecations passed; 80 focused and adjacent tests passed, including the focused generated-workflow assertions; package-DAG and the stable alias passed, generated-output passed, and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings. The nightly codegen suite passed 15 of 16 tests with its previously recorded `15`-versus-`19` baseline failure unchanged.
 - **Learnings for future iterations:**
   - Characterize the structural package rule against every edge form before deleting a duplicate scanner, then keep only a stable command alias for external callers rather than a second implementation or CI run.
 ---
