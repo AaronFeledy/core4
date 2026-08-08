@@ -65,7 +65,7 @@ describe("release workflow", () => {
     expect(smoke).toContain("node-version: 22");
     expect(smoke).toContain(`bun-version: ${bunVersion}`);
 
-    // Then: exact-version loop awaits every canonical release package, then install / seam / root-import smoke
+    // Then: exact-version loop awaits every canonical release package, then verifies root and opt-in imports.
     expect(smoke).toContain("- name: Smoke-test published npm packages");
     expect(smoke).toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
     expect(smoke).toContain('SMOKE_ROOT="$RUNNER_TEMP/lando-npm-smoke"');
@@ -81,6 +81,15 @@ describe("release workflow", () => {
       'npm install --ignore-scripts --no-audit --no-fund "@lando/provider-lando@$LANDO_NPM_VERSION"',
     );
     expect(smoke).toContain('await import("@lando/core")');
+    expect(smoke).toContain('await import("@lando/provider-lando").then(() => true, () => false)');
+    expect(smoke).toContain("bundled plugin resolved before installation");
+    expect(smoke.indexOf('await import("@lando/core")')).toBeLessThan(
+      smoke.indexOf(
+        'npm install --ignore-scripts --no-audit --no-fund "@lando/provider-lando@$LANDO_NPM_VERSION"',
+      ),
+    );
+    expect(smoke).toContain('await import("@lando/core/bundled-plugins")');
+    expect(smoke).toContain("BUNDLED_PLUGIN_MODULES.length !== 12");
     expect(smoke).toContain("makeLandoRuntime");
     expect(smoke).toContain("openLandoRuntime");
   });

@@ -19,6 +19,10 @@
   "types": "./src/index.ts",
   "exports": {
     ".": { "types": "./src/index.ts", "import": "./src/index.ts" },
+    "./bundled-plugins": {
+      "types": "./src/runtime/bundled-plugins.ts",
+      "import": "./src/runtime/bundled-plugins.ts"
+    },
     "./schema": { "types": "./src/schema/index.ts", "import": "./src/schema/index.ts" },
     "./secrets": { "types": "./src/secrets/index.ts", "import": "./src/secrets/index.ts" },
     "./docs/components": {
