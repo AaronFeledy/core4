@@ -29,6 +29,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
+- `NIGHTLY_TIER_TESTS` in `scripts/test-shards.ts` (the CI-workflow codegen suite and the Linux acceptance suite) is excluded from PR shards, so drift those files guard can reach `main` without a red PR. Run them by path whenever you touch their generator.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
 
 ## Generated Files

@@ -83,6 +83,30 @@ Extract the runtime brain into a private `@lando/engine` workspace package, leav
 - [ ] The publish path (`scripts/prepare-npm-dev-packages.ts` + release workflow) handles the new workspace deps exactly like `@lando/paths`/`@lando/state-store` (version and `workspace:*` rewrite or bundling), so the library install form of `@lando/core` resolves.
 - [ ] Tests pass; typecheck passes; lint passes
 
+### US-549: Resolve library-mode bundled plugin loading
+
+**Description:** As a library consumer, a clean root import of the packed `@lando/core` resolves without manually installing the bundled plugin packages first, while opt-in library discovery and the compiled binary's static composition both keep working. US-544 found that the root entry statically imports the bundled plugin packages even though they are not declared dependencies, so a clean library install fails until those plugins are installed by hand; this story owns the fix that US-544's parity contract explicitly kept out of scope.
+
+**Acceptance Criteria:**
+
+- [ ] A packed/published `@lando/core` installed alone (no bundled plugin packages installed) resolves its root entry point without throwing or requiring a manual bundled-plugin install step.
+- [ ] Opt-in library plugin discovery (embedders that want the bundled plugins) remains available and documented; embedders who do not want them are not forced to install or load them.
+- [ ] The compiled binary's static composition root (generated bootstrap layers importing bundled plugins) is unchanged in behavior; the fix does not reintroduce eager plugin loading into compiled-binary cold start.
+- [ ] Production-path contract tests cover a clean install without bundled plugins, a clean install with opt-in discovery enabled, and the compiled binary's unchanged plugin composition.
+- [ ] Tests pass; typecheck passes; lint passes
+
+### US-550: Reconcile App handle error contracts
+
+**Description:** As an embedder, the library `App` handle no longer needs an `as unknown as App` double cast: engine operation error and requirement channels are reconciled with the published SDK `App` contract, and the canonical public `ShareAppError`/`RemoteSyncError` unions and exports are decided and applied. US-541 Review deferred this reconciliation to US-544; US-544 determined it was a contract change outside its own parity scope and re-deferred it here.
+
+**Acceptance Criteria:**
+
+- [ ] The `as unknown as App` double cast in the engine handle is removed; engine operation error unions (for example `ComposeKeyRejectedError`) and requirement channels are reconciled against the published SDK `App` contract without silently widening it.
+- [ ] A canonical decision is made and applied for `ShareAppError`/`RemoteSyncError`: whether they are re-exported from `@lando/core`, stay SDK-only, or are replaced, with the public export surface updated to match the decision.
+- [ ] Schema snapshot and API compatibility gates reflect the decided contract with no undocumented diff; any intentional public contract change is recorded in progress notes and, if applicable, `sdk/API_COMPATIBILITY.md`.
+- [ ] Production-path contract tests exercise the reconciled `App` handle and the decided `ShareAppError`/`RemoteSyncError` public surface.
+- [ ] Tests pass; typecheck passes; lint passes
+
 ## Functional Requirements
 
 - Behavior-preserving move: no command semantics, event sequences, or cache formats change.

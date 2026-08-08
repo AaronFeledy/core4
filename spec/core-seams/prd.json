@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Core Seams",
   "branchName": "docs/core-seams-prd",
-  "description": "Concurrent meta/infra wave (US-535..US-548): finish package-seams-over-architecture-by-lint. Extract @lando/landofile and @lando/engine as private workspace packages, hoist business logic out of CLI command bodies, fix the app/services→cli layering inversion, extend check:package-dag to a full workspace DAG contract, and thin the behavioral scanner suite to justified residual bans. Public @lando/core stays the single publishable package (§2.7 rejection stands). No end-user surface changes.",
+  "description": "Concurrent meta/infra wave (US-535..US-550): finish package-seams-over-architecture-by-lint. Extract @lando/landofile and @lando/engine as private workspace packages, hoist business logic out of CLI command bodies, fix the app/services→cli layering inversion, extend check:package-dag to a full workspace DAG contract, and thin the behavioral scanner suite to justified residual bans. Public @lando/core stays the single publishable package (§2.7 rejection stands). No end-user surface changes.",
   "userStories": [
     {
       "id": "US-535",
@@ -154,7 +154,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03"
     },
     {
@@ -200,16 +200,46 @@
       "notes": "PRD-04"
     },
     {
+      "id": "US-549",
+      "title": "Resolve library-mode bundled plugin loading",
+      "description": "As a library consumer, a clean root import of the packed @lando/core resolves without manually installing the bundled plugin packages first, while opt-in library discovery and the compiled binary's static composition both keep working.",
+      "acceptanceCriteria": [
+        "A packed/published @lando/core installed alone (no bundled plugin packages installed) resolves its root entry point without throwing or requiring a manual bundled-plugin install step.",
+        "Opt-in library plugin discovery (embedders that want the bundled plugins) remains available and documented; embedders who do not want them are not forced to install or load them.",
+        "The compiled binary's static composition root (generated bootstrap layers importing bundled plugins) is unchanged in behavior; the fix does not reintroduce eager plugin loading into compiled-binary cold start.",
+        "Production-path contract tests cover a clean install without bundled plugins, a clean install with opt-in discovery enabled, and the compiled binary's unchanged plugin composition.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "PRD-03 follow-up; deferred from US-544 (root entry statically loads bundled plugins that are not declared dependencies)"
+    },
+    {
+      "id": "US-550",
+      "title": "Reconcile App handle error contracts",
+      "description": "As an embedder, the library App handle no longer needs an `as unknown as App` double cast: engine operation error and requirement channels are reconciled with the published SDK App contract, and the canonical public ShareAppError/RemoteSyncError unions and exports are decided and applied.",
+      "acceptanceCriteria": [
+        "The `as unknown as App` double cast in the engine handle is removed; engine operation error unions (e.g. ComposeKeyRejectedError) and requirement channels are reconciled against the published SDK App contract without widening it silently.",
+        "A canonical decision is made and applied for ShareAppError/RemoteSyncError: whether they are re-exported from @lando/core, stay SDK-only, or are replaced, with the public export surface updated to match the decision.",
+        "Schema snapshot and API compatibility gates reflect the decided contract with no undocumented diff; any intentional public contract change is recorded in progress notes and, if applicable, sdk/API_COMPATIBILITY.md.",
+        "Production-path contract tests exercise the reconciled App handle and the decided ShareAppError/RemoteSyncError public surface.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "PRD-03 follow-up; deferred from US-541 Review to US-544, re-deferred by US-544/US-544 Review"
+    },
+    {
       "id": "US-548",
       "title": "Wave closure",
       "description": "As the wave owner, every story's verification contract is re-run green from a clean worktree and the closure is recorded.",
       "acceptanceCriteria": [
-        "All US-535..US-547 passes:true; index verification contract green: codegen:check, typecheck, lint/deprecations, boundary suite, workspace package-dag, guide coverage, contract suites, benchmarks, compiled-binary + relocated smoke.",
+        "All US-535..US-547, US-549, and US-550 passes:true; index verification contract green: codegen:check, typecheck, lint/deprecations, boundary suite, workspace package-dag, guide coverage, contract suites, benchmarks, compiled-binary + relocated smoke.",
         "Focused spot-checks use path filters with positive test counts.",
         "Progress notes record scanner-LOC delta, core-LOC delta, and import-edge assertions (no engine→shell, no app/services→cli).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 14,
+      "priority": 16,
       "passes": false,
       "notes": "PRD-04 closure"
     }
