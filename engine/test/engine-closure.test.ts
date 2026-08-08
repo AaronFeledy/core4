@@ -54,6 +54,7 @@ const coreRuntimeAllowlist = new Set([
   "lifecycle/index.ts",
   "plugins/generated",
   "runtime/generated",
+  "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
   "runtime/layer.ts",
   "schema/index.ts",
