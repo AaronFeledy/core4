@@ -87,7 +87,10 @@ const collectStaticClosure = (entry: string, traversalRoot: string): StaticClosu
 const bundledPluginPackages = new Set(
   readdirSync(join(repoRoot, "plugins")).map((directory) => `@lando/${directory}`),
 );
-const generatedPluginTablesRoot = join(repoRoot, "core", "src", "plugins", "generated");
+const generatedCompositionRoots = [
+  join(repoRoot, "core", "src", "plugins", "generated"),
+  join(repoRoot, "core", "src", "runtime", "generated", "layers"),
+] as const;
 const forbiddenRuntimeImport = (path: string): boolean =>
   path === "effect" ||
   path.startsWith("effect/") ||
@@ -211,13 +214,14 @@ describe("OpenTUI cold-start canary", () => {
     (entry) => {
       const closure = collectStaticClosure(join(repoRoot, entry), repoRoot);
       const forbiddenImports = closure.imports.filter((edge) => forbiddenRuntimeImport(edge.path));
-      const generatedPluginImports = closure.imports.filter(
-        (edge) => edge.resolved !== undefined && isWithin(generatedPluginTablesRoot, edge.resolved),
-      );
+      const generatedCompositionImports = closure.imports.filter((edge) => {
+        const resolved = edge.resolved;
+        return resolved !== undefined && generatedCompositionRoots.some((root) => isWithin(root, resolved));
+      });
 
       expect(closure.files.size).toBeGreaterThan(0);
       expect(forbiddenImports).toEqual([]);
-      expect(generatedPluginImports).toEqual([]);
+      expect(generatedCompositionImports).toEqual([]);
     },
   );
 

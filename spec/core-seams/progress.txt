@@ -227,8 +227,8 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 ---
 
 ## 2026-08-07 20:30 CDT - US-543 Review
-- Hardened the cold-start closure proof by keeping canonical paths in one domain and replacing regex-based eager-require discovery with the shared AST module-edge scanner; negative controls now cover spaced requires plus comment and string lookalikes.
+- Hardened the cold-start closure proof by keeping canonical paths in one domain, replacing regex-based eager-require discovery with the shared AST module-edge scanner, and explicitly excluding both generated composition roots; negative controls now cover spaced requires plus comment and string lookalikes.
 - Review notes (deferred/rejected): rejected exposing or directly invoking the private composition installer because the US-542 Drift Audit deliberately removed that dead public seam and US-543 owns boundary proof, not a new callable API; all security findings were clear on direct retry.
 - Guide-Coverage-Skip: review changes internal architecture-test correctness only; no command behavior, public contract, or guide-owned surface changed.
-- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial Bugbot, and all five review-work lanes passed after the focused fixes.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial and post-fix Bugbot, and all five review-work lanes passed after the focused fixes.
 ---
