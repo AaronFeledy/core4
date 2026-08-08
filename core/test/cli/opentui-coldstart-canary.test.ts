@@ -13,7 +13,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
-const repoRoot = join(import.meta.dir, "..", "..", "..");
+import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
+
+const repoRoot = realpathSync(join(import.meta.dir, "..", "..", ".."));
 
 const readSource = (relativePath: string): string => readFileSync(join(repoRoot, relativePath), "utf8");
 
@@ -41,8 +43,6 @@ type StaticClosure = {
   readonly imports: ReadonlyArray<StaticImport>;
 };
 
-const transpiler = new Bun.Transpiler({ loader: "ts" });
-
 const isWithin = (root: string, path: string): boolean => {
   const fromRoot = relative(root, path);
   return fromRoot === "" || (!fromRoot.startsWith("..") && !isAbsolute(fromRoot));
@@ -69,14 +69,13 @@ const collectStaticClosure = (entry: string, traversalRoot: string): StaticClosu
     if (importer === undefined || files.has(importer)) continue;
     files.add(importer);
     const source = readFileSync(importer, "utf8");
-    const importPaths = transpiler
-      .scan(transpiler.transformSync(source))
-      .imports.filter((edge) => edge.kind === "import-statement")
-      .map((edge) => edge.path);
-    const requirePaths = [...source.matchAll(/\brequire\(\s*["']([^"']+)["']\s*\)/gu)].flatMap((match) =>
-      match[1] === undefined ? [] : [match[1]],
-    );
-    for (const path of [...importPaths, ...requirePaths]) {
+    const edgePaths = scanModuleEdges(importer, source)
+      .filter(
+        (edge) =>
+          !edge.typeOnly && (edge.kind === "import" || edge.kind === "re-export" || edge.kind === "require"),
+      )
+      .map((edge) => edge.specifier);
+    for (const path of edgePaths) {
       const resolved = resolveFollowableImport(path, importer, root);
       imports.push({ importer, path, resolved });
       if (resolved !== undefined && !files.has(resolved)) pending.push(resolved);
@@ -175,7 +174,17 @@ describe("OpenTUI cold-start canary", () => {
         entry,
         'import type { Erased } from "./types";\nimport "./middle";\nimport "eager-dependency";\nvoid import("./dynamic");\n',
       );
-      writeFileSync(join(fixtureRoot, "middle.ts"), 'const effect = require("effect");\nvoid effect;\n');
+      writeFileSync(
+        join(fixtureRoot, "middle.ts"),
+        [
+          'const effect = require ( "effect" );',
+          '// require("comment-only")',
+          'const lookalike = "require(\\"string-only\\")";',
+          "void effect;",
+          "void lookalike;",
+          "",
+        ].join("\n"),
+      );
       writeFileSync(
         join(fixtureRoot, "types.ts"),
         'import { Effect } from "effect";\nexport type Erased = Effect;\n',
@@ -187,6 +196,8 @@ describe("OpenTUI cold-start canary", () => {
       const closure = collectStaticClosure(entry, fixtureRoot);
 
       expect(closure.imports.filter((edge) => edge.path === "effect")).toHaveLength(2);
+      expect(closure.imports.some((edge) => edge.path === "comment-only")).toBe(false);
+      expect(closure.imports.some((edge) => edge.path === "string-only")).toBe(false);
       expect([...closure.files].sort()).toEqual(
         [entry, join(fixtureRoot, "middle.ts"), join(packageRoot, "index.js")].sort(),
       );
