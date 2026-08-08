@@ -18,6 +18,8 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - When a boundary rule has manifest and source halves, both must consume one exported policy table; a private source allowlist can silently reopen edges the manifest policy forbids.
 - Source-edge burn-down allowlists must pin normalized target, edge kind, and type-only status; raw specifier matching alone permits nested-path and value-import bypasses.
 - Package-local tests in a new workspace package need an explicit `scripts/test-shards.ts` include; workspace membership alone does not put them in CI unit shards.
+- Assert public entry-point coverage against the `package.json#exports` keys rather than a hand-maintained list; an inventory that omits a subpath silently stops proving that subpath resolves.
+- A post-publish install smoke must wait for every exact-version package it installs, not only the primary one; packages published later can still be unresolvable when the first install runs.
 
 ## 2026-08-06 01:03 CDT - US-535
 - Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
@@ -231,4 +233,14 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Review notes (deferred/rejected): rejected exposing or directly invoking the private composition installer because the US-542 Drift Audit deliberately removed that dead public seam and US-543 owns boundary proof, not a new callable API; all security findings were clear on direct retry.
 - Guide-Coverage-Skip: review changes internal architecture-test correctness only; no command behavior, public contract, or guide-owned surface changed.
 - Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial and post-fix Bugbot, and all five review-work lanes passed after the focused fixes.
+---
+
+## 2026-08-07 22:12 CDT - US-544
+- Proved the public surface survived the engine extraction: the entry-point suite now derives its inventory from the package exports map, so `@lando/core/secrets` and `@lando/core/landofile` resolve and expose their symbols instead of going uncovered.
+- Extended compiled-binary coverage so root help is exercised from a binary relocated outside the repository, alongside the existing relocated machine-result and tagged-failure checks.
+- Taught the generated release workflow to smoke the published library install form: it waits for every release package at the exact version, installs core alone to prove the engine and Landofile seams resolve inside the install tree, then installs the bundled plugins and imports the root entry.
+- Verification: typecheck, scripts typecheck, and lint/deprecations passed; 671 focused and adjacent tests passed across public entry points, library/app runtime, SDK compatibility, release preparation, and the compiled binary; package-DAG, import-cycle, schema-compatibility, generated-output, and managed-file gates passed; codegen reproduced the release workflow byte-identically. Manual QA imported both newly covered entry points and ran root help against a relocated compiled binary. High-rigor review first blocked on a plugin-propagation race in the smoke and approved once the readiness loop covered every published package.
+- **Learnings for future iterations:**
+  - The standalone `core/test/tsconfig.json` project is not a repo gate: it imports `scripts/**` outside its `rootDir` and reports pre-existing cross-root errors, so rely on `bun run typecheck` plus per-file diagnostics.
+  - The root entry of `@lando/core` statically loads the bundled plugin packages even though they are not declared dependencies, so any clean-install check must install those plugins before importing the default entry; a follow-up story should decide whether to declare them.
 ---

@@ -97,9 +97,34 @@ const documentedAuxiliaryEntryPoints = [
   },
 ] as const;
 
+/** Package re-export seams covered by resolve inventory but not embedding docs. */
+const reExportEntryPoints = [
+  {
+    specifier: "@lando/core/secrets",
+    exportKey: "./secrets",
+    target: "./src/secrets/index.ts",
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.createRedactor).toBeFunction();
+      expect(mod.createSecretRedactor).toBeFunction();
+      expect(mod.REDACTED).toBeDefined();
+    },
+  },
+  {
+    specifier: "@lando/core/landofile",
+    exportKey: "./landofile",
+    target: "./src/landofile/index.ts",
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.emitLandofileYaml).toBeFunction();
+      expect(mod.parseLandofile).toBeFunction();
+    },
+  },
+] as const;
+
 const publishedEntryPoints = [...publicEntryPoints, ...documentedAuxiliaryEntryPoints] as const;
 
-type EntryPoint = (typeof publishedEntryPoints)[number];
+const resolveEntryPoints = [...publishedEntryPoints, ...reExportEntryPoints] as const;
+
+type EntryPoint = (typeof resolveEntryPoints)[number];
 
 const getExportTarget = (entry: EntryPoint): { readonly types: string; readonly import: string } => {
   const value = corePackage.exports[entry.exportKey as keyof typeof corePackage.exports];
@@ -117,7 +142,19 @@ const getExportTarget = (entry: EntryPoint): { readonly types: string; readonly 
 };
 
 describe("@lando/core public package entry points", () => {
-  test.each([...publishedEntryPoints] as EntryPoint[])(
+  test("resolve inventory covers every package.json#exports key", () => {
+    // Given: the package exports map and the resolve-inventory export keys
+    const packageExportKeys: readonly string[] = Object.keys(corePackage.exports).toSorted();
+    const resolveInventoryKeys: readonly string[] = resolveEntryPoints
+      .map((entry) => entry.exportKey)
+      .toSorted();
+
+    // When: comparing the two key sets
+    // Then: every package export is present in the resolve inventory
+    expect(resolveInventoryKeys).toEqual(packageExportKeys);
+  });
+
+  test.each([...resolveEntryPoints] as EntryPoint[])(
     "$specifier exposes explicit TS types and ESM import target",
     async (entry) => {
       const target = getExportTarget(entry);

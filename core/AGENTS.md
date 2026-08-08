@@ -6,6 +6,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 - `core/test/cli/fixtures/*.json` is formatted by `bun run lint`. Renderer tests should compare `JSON.parse(output)` to `Bun.file(fixture).json()`, not raw compact JSON strings.
 - Guide TDD specifics live in the root file. Use the core notes here only when changing the guide generator/runtime behavior, not for routine MDX edits.
+- `core/test/tsconfig.json` is an editor/LSP project, not a gate: it imports `scripts/**` outside its `rootDir` and reports cross-root `TS6059` errors even on a clean tree. Gate test types with `bun run typecheck` plus per-file diagnostics.
 
 ## Recipe Sources
 

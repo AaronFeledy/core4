@@ -170,3 +170,30 @@ jobs:
           after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
           test "$before_latest" = "$after_latest"
           npm view @lando/core dist-tags.dev --json | grep -Eq '"?4\.0\.0-alpha\.[0-9]+"?'
+
+      - name: Smoke-test published npm packages
+        env:
+          LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          export SMOKE_ROOT="$RUNNER_TEMP/lando-npm-smoke"
+          rm -rf "$SMOKE_ROOT"
+          mkdir -p "$SMOKE_ROOT"
+          cd "$SMOKE_ROOT"
+          npm init --yes >/dev/null
+          for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION" "@lando/container-runtime@$LANDO_NPM_VERSION" "@lando/state-store@$LANDO_NPM_VERSION" "@lando/landofile@$LANDO_NPM_VERSION" "@lando/engine@$LANDO_NPM_VERSION" "@lando/core@$LANDO_NPM_VERSION" "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"; do
+            for attempt in {1..30}; do
+              if test "$(npm view "$package_spec" version 2>/dev/null || true)" = "$LANDO_NPM_VERSION"; then
+                break
+              fi
+              if test "$attempt" -eq 30; then
+                echo "$package_spec did not propagate to npm in time" >&2
+                exit 1
+              fi
+              sleep 2
+            done
+          done
+          npm install --ignore-scripts --no-audit --no-fund "@lando/core@$LANDO_NPM_VERSION"
+          bun -e 'Bun.resolveSync("@lando/engine", process.env.SMOKE_ROOT); Bun.resolveSync("@lando/landofile", process.env.SMOKE_ROOT); await import("@lando/core/testing");'
+          npm install --ignore-scripts --no-audit --no-fund "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"
+          bun -e 'const core = await import("@lando/core"); if (typeof core.makeLandoRuntime !== "function" || typeof core.openLandoRuntime !== "function") throw new Error("@lando/core runtime exports are unavailable");'
