@@ -277,6 +277,7 @@ describe("ci workflow codegen", () => {
       const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
+      const bunVersion = (await readFile(resolve(repoRoot, ".bun-version"), "utf8")).trim();
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(24);
@@ -284,7 +285,8 @@ describe("ci workflow codegen", () => {
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
-      expect(releaseWorkflow).not.toContain("bun-version: ");
+      expect(releaseWorkflow.match(/bun-version: /g) ?? []).toHaveLength(1);
+      expect(releaseWorkflow).toContain(`bun-version: ${bunVersion}`);
       expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
@@ -299,8 +301,9 @@ describe("ci workflow codegen", () => {
       ]) {
         const setupBunMatches = (generatedWorkflow.match(/uses: oven-sh\/setup-bun@\S+/g) ?? []).length;
         const versionFileMatches = (generatedWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length;
+        const literalVersionMatches = (generatedWorkflow.match(/bun-version: /g) ?? []).length;
 
-        expect(versionFileMatches).toBe(setupBunMatches);
+        expect(versionFileMatches + literalVersionMatches).toBe(setupBunMatches);
         expect(generatedWorkflow).not.toContain("engines.bun");
       }
 
