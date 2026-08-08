@@ -84,8 +84,8 @@ const collectStaticClosure = (entry: string, traversalRoot: string): StaticClosu
   return { files, imports };
 };
 
-const bundledPluginPackages = new Set(
-  readdirSync(join(repoRoot, "plugins")).map((directory) => `@lando/${directory}`),
+const bundledPluginPackages = readdirSync(join(repoRoot, "plugins")).map(
+  (directory) => `@lando/${directory}`,
 );
 const generatedCompositionRoots = [
   join(repoRoot, "core", "src", "plugins", "generated"),
@@ -99,20 +99,17 @@ const forbiddenRuntimeImport = (path: string): boolean =>
   path.startsWith("@opentui/") ||
   path === "@lando/sdk" ||
   path.startsWith("@lando/sdk/") ||
-  [...bundledPluginPackages].some(
-    (packageName) => path === packageName || path.startsWith(`${packageName}/`),
-  );
+  bundledPluginPackages.some((packageName) => path === packageName || path.startsWith(`${packageName}/`));
 
 describe("OpenTUI cold-start canary", () => {
   test("the renderer plugin entry does not statically import OpenTUI or the prompt driver", () => {
     const index = readSource("plugins/renderer-lando/src/index.ts");
     expect(index).not.toMatch(/import\s[^;]*from\s+["']@opentui\/core["']/);
     expect(index).not.toMatch(/import\s[^;]*from\s+["']\.\/opentui\/prompt-driver/);
-    // The driver must be reached through a dynamic import only.
     expect(index).toMatch(/await import\(["']\.\/opentui\/prompt-driver/);
   });
 
-  test("production source has exactly one lazy literal OpenTUI import", async () => {
+  test("production source has exactly one lazy literal OpenTUI import", () => {
     const pluginSrcDirs = readdirSync(join(repoRoot, "plugins"))
       .map((entry) => join(repoRoot, "plugins", entry, "src"))
       .filter((path) => existsSync(path) && statSync(path).isDirectory());
@@ -134,7 +131,6 @@ describe("OpenTUI cold-start canary", () => {
       }
     }
 
-    // Only the two renderer substrate modules may import @opentui/core, each via lazy dynamic import.
     for (const edge of opentuiImports) {
       expect(edge.path).toBe("@opentui/core");
       expect(edge.kind).toBe("dynamic-import");
