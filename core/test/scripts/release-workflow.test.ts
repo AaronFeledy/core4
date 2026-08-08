@@ -2,6 +2,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
 const renderWorkflow = async (): Promise<string> => {
@@ -59,6 +61,9 @@ describe("release workflow", () => {
     expect(smokeStart).toBeGreaterThan(packagesStart);
 
     const smoke = jobBlock(workflow, "npm-alpha-smoke");
+    const expectedReadinessLoop = `for package_spec in ${releasePackageNames
+      .map((name) => `"${name}@$LANDO_NPM_VERSION"`)
+      .join(" ")}; do`;
 
     // Then: separate job ordering + least privilege
     expect(smoke).toContain("needs: [npm-alpha-packages]");
@@ -76,16 +81,11 @@ describe("release workflow", () => {
     expect(smoke).toContain("node-version: 22");
     expect(smoke).toContain(`bun-version: ${bunVersion}`);
 
-    // Then: exact-version loop / install / seam / root-import smoke content
+    // Then: exact-version loop awaits every canonical release package, then install / seam / root-import smoke
     expect(smoke).toContain("- name: Smoke-test published npm packages");
     expect(smoke).toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
     expect(smoke).toContain('SMOKE_ROOT="$RUNNER_TEMP/lando-npm-smoke"');
-    expect(smoke).toContain(
-      'for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION"',
-    );
-    expect(smoke).toContain('"@lando/core@$LANDO_NPM_VERSION"');
-    expect(smoke).toContain('"@lando/provider-lando@$LANDO_NPM_VERSION"');
-    expect(smoke).toContain('"@lando/template-mustache@$LANDO_NPM_VERSION"; do');
+    expect(smoke).toContain(expectedReadinessLoop);
     expect(smoke).toContain('npm view "$package_spec" version');
     expect(smoke).toContain(
       'npm install --ignore-scripts --no-audit --no-fund "@lando/core@$LANDO_NPM_VERSION"',
