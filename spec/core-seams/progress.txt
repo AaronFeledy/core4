@@ -21,6 +21,7 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Assert public entry-point coverage against the `package.json#exports` keys rather than a hand-maintained list; an inventory that omits a subpath silently stops proving that subpath resolves.
 - A post-publish install smoke must wait for every exact-version package it installs, not only the primary one; packages published later can still be unresolvable when the first install runs.
 - Suites listed in `NIGHTLY_TIER_TESTS` (`scripts/test-shards.ts`) never run in PR shards, so their drift assertions can go red on `main` unnoticed; run them by path after touching the generator they guard.
+- Derive boundary-inventory completeness from `BOUNDARY_RULE_IDS`; a maintained table without a registry-backed test can silently omit a new rule and its seam justification.
 
 ## 2026-08-06 01:03 CDT - US-535
 - Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
@@ -280,4 +281,13 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Fixed: strengthened clean-output proof, deleted redundant test validation, and bound both deferred public-contract decisions to follow-up acceptance criteria.
 - Split/excise decisions: library-mode bundled plugin loading moved to US-549 and App handle error contracts moved to US-550; US-548 now requires both, while US-544 remains passing because no parity or new-workspace-dependency contract changed.
 - Verification: typecheck and lint passed; 32 focused changed-file tests passed; the nightly codegen suite passed 15 of 16 with its pre-existing `15`-versus-`19` baseline failure; relocated root help passed in `lando4-dev` with empty stderr, while the host-unsafe compiled-binary test and post-publish npm smoke were not rerun end to end.
+---
+
+## 2026-08-08 02:18 CDT - US-545
+- Classified every registered boundary rule by banned behavior, package-edge ownership, and keep/thin/delete verdict, with the surviving behavioral bans called out explicitly and the engine-owned layering scanner marked for deletion.
+- Added registry-backed coverage so a new rule cannot land without an inventory row or a complete classification.
+- Verification: typecheck and lint/deprecations passed; 3 focused inventory tests and 20 adjacent boundary tests passed; package-DAG, core-layering, and the live boundary-rule listing passed.
+- **Learnings for future iterations:**
+  - The engine package-DAG source rule rejects named, subpath, and relative engine-to-core imports, so the residual core-layering scanner now duplicates a structurally enforced ownership edge.
+  - Earlier paths, probe, redaction, renderer, and state-store thinning already removed their ownership halves; their current rules are behavioral residue to keep rather than thin again.
 ---
