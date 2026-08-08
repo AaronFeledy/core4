@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -8,10 +8,10 @@ import {
   PluginAddResultSchema,
   pluginAdd,
   renderPluginAddResult,
-} from "../../../../commands/plugin-add.ts";
-import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
+} from "../../../../commands/plugin-add";
+import { resolveNonInteractive } from "../../../../prompts/answer-flags";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const extractInput = (input: unknown): { spec: string; trust: boolean; force: boolean; yes: boolean } => {
   if (typeof input !== "object" || input === null) {

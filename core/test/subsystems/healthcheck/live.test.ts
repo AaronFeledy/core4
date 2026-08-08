@@ -6,8 +6,8 @@ import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
 
-import * as liveModule from "../../../src/subsystems/healthcheck/live.ts";
-import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
+import * as liveModule from "@lando/engine/subsystems/healthcheck/live";
+import { makeHealthcheckRunner } from "@lando/engine/subsystems/healthcheck/runner-factory";
 import {
   appId,
   commandPlan,

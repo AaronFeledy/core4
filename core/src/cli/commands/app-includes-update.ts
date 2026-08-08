@@ -19,10 +19,10 @@ import type {
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 
+import { loadLandofileFile, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import { loadLandofileFile, updateLandofileIncludes } from "../../services/landofile-live.ts";
 
 export type {
   IncludeUpdateEntry,

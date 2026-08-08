@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { PublicTranscript, type PublicTranscriptFrame } from "@lando/core/schema";
 import { Either, type ParseResult, Schema } from "effect";
 
-import { type RedactionEnvironment, redactPublicTranscript } from "./redaction.ts";
+import { type RedactionEnvironment, redactPublicTranscript } from "./redaction";
 
 export {
   redactPublicTranscript,
   redactPublicTranscriptText,
   type RedactionEnvironment,
-} from "./redaction.ts";
+} from "./redaction";
 
 export const decodePublicTranscriptEither = (
   input: unknown,

@@ -11,6 +11,8 @@ import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PluginRegistry } from "@lando/sdk/services";
 
+import { RedactionService } from "@lando/engine/redaction/service";
+import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/oclif/commands/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
@@ -22,8 +24,6 @@ import {
   McpServiceLive,
 } from "../../src/mcp/service.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
-import { makeBootstrapLifecycleTracker } from "../../src/runtime/bootstrap-lifecycle.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

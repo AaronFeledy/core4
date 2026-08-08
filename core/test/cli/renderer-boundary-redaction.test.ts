@@ -1,10 +1,10 @@
 import { Effect, Layer } from "effect";
 
+import { RedactionService } from "@lando/engine/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),

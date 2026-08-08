@@ -18,9 +18,9 @@
  * compiled entries emit identical diagnostics.
  */
 
-import { resolveUserCacheRoot } from "../cache/paths.ts";
-import { escapeDiagnosticText } from "./diagnostic-text.ts";
-import { redactDetails, redactString } from "./redact.ts";
+import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { escapeDiagnosticText } from "./diagnostic-text";
+import { redactDetails, redactString } from "./redact";
 
 export type RendererMode = "lando" | "plain" | "json" | "verbose";
 

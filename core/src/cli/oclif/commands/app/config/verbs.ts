@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import {
   type AppConfigResult,
@@ -6,9 +6,9 @@ import {
   type AppConfigSubcommand,
   appConfig,
   renderAppConfigResult,
-} from "../../../../commands/app-config.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
-import { appConfigOptionsFromInput } from "./index.ts";
+} from "../../../../commands/app-config";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import { appConfigOptionsFromInput } from "./index";
 
 const typeFlag = Flags.string({
   description: "Value type for set.",

@@ -33,9 +33,9 @@ import {
   runShareStop,
   runStart,
   runStop,
-} from "./cli-adapters/app-lifecycle.ts";
-import { runExec, runShell, runSsh } from "./cli-adapters/exec-shell.ts";
-import { runWithProcessAbortSignal } from "./compiled-runtime.ts";
+} from "./cli-adapters/app-lifecycle";
+import { runExec, runShell, runSsh } from "./cli-adapters/exec-shell";
+import { runWithProcessAbortSignal } from "./compiled-runtime";
 
 export const dispatchAppCommand = async (argv: ReadonlyArray<string>): Promise<boolean> => {
   if (argv[0] === "start" || argv[0] === "app:start") {

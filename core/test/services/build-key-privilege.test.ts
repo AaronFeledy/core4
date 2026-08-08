@@ -4,7 +4,7 @@ import { DateTime, Effect } from "effect";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { buildKeyForService } from "../../src/services/build-key.ts";
+import { buildKeyForService } from "@lando/engine/services/build-key";
 
 const providerId = ProviderId.make("test");
 const provider = { ...TestRuntimeProvider, id: providerId, version: "1.0.0", platform: "linux" as const };

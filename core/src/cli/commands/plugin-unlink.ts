@@ -11,15 +11,15 @@ import {
 } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
-import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 import {
   type InstalledPluginRegistry,
   readInstalledPluginRegistry,
   recordInstalledPlugin,
   removeInstalledPlugin,
-} from "../../plugins/installed-registry.ts";
-import { assertInsidePluginsRoot, readLinkedState, writeLinkedState } from "./plugin-link.ts";
+} from "@lando/engine/plugins/installed-registry";
+import { makeLandoPaths } from "@lando/paths";
+import { assertInsidePluginsRoot, readLinkedState, writeLinkedState } from "./plugin-link";
 
 export class PluginUnlinkNotLinkedError extends Data.TaggedError("PluginUnlinkNotLinkedError")<{
   readonly message: string;

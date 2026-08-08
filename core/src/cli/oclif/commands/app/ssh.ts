@@ -1,18 +1,18 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../metadata.ts";
+import { Args, Flags } from "../../metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp } from "../../../../operations/exec.ts";
-import { renderExecAppResult } from "../../../commands/exec.ts";
-import { withOptionalStderrOutput } from "../../../renderer-output.ts";
+import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
+import { renderExecAppResult } from "../../../commands/exec";
+import { withOptionalStderrOutput } from "../../../renderer-output";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary.ts";
+} from "../../command-base";
+import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 

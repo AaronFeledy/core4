@@ -1,5 +1,5 @@
 /** `lando logs` result rendering. */
-import type { LogsAppResult } from "../../operations/logs.ts";
+import type { LogsAppResult } from "@lando/engine/operations/logs";
 
 export const renderLogsAppResult = (result: LogsAppResult): string => {
   if (result.lines.length === 0) return `${result.app} (no log lines)`;

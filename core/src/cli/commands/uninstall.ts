@@ -5,18 +5,18 @@ import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
 
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { resolveUserCacheRoot } from "../../cache/paths.ts";
-import { resolveUserDataRoot } from "../../config/roots.ts";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { resolveUserDataRoot } from "@lando/engine/config/roots";
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
 import {
   type ManagedProviderMachineClassification,
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
-} from "../../runtime/managed-provider-machine.ts";
-import type { RenderContext } from "../renderer-boundary.ts";
-import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
+} from "@lando/engine/runtime/managed-provider-machine";
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import type { RenderContext } from "../renderer-boundary";
+import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary";
 
 export type UninstallStepStatus = "owned" | "user-owned" | "skipped" | "manual";
 export type UninstallStepOutcome = "completed" | "failed" | "manual" | "skipped";
@@ -142,7 +142,7 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
 const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
-  const { terminateOwnedHostProxyWorkersInRoot } = await import("../../subsystems/host-proxy/worker.ts");
+  const { terminateOwnedHostProxyWorkersInRoot } = await import("@lando/engine/subsystems/host-proxy/worker");
   await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot));
 };
 

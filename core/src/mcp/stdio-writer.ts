@@ -7,7 +7,7 @@ import {
   MAX_OUTBOUND_QUEUED_MESSAGES,
   OUTBOUND_WRITE_DEADLINE,
   stdioTransportError,
-} from "./stdio-limits.ts";
+} from "./stdio-limits";
 
 interface OutboundMessage {
   readonly line: string;

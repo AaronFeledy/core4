@@ -6,8 +6,8 @@ import { Effect } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { ConfigServiceLive } from "../services/config.ts";
-import type { ResolvedRecipe } from "./source.ts";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import type { ResolvedRecipe } from "./source";
 
 export interface GitRecipeCloneInput {
   readonly url: string;

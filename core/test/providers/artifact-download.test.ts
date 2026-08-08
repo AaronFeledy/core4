@@ -9,9 +9,9 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { ProviderBundleChecksumError } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { makeHttpClientLive } from "../../src/http-client/live.ts";
-import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { makeHttpClientLive } from "@lando/engine/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const tempDirs: string[] = [];

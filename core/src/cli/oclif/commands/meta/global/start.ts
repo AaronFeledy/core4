@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   type GlobalStartOptions,
@@ -6,13 +6,13 @@ import {
   GlobalStartResultSchema,
   globalStart,
   renderGlobalStartResult,
-} from "../../../../commands/meta/global-start.ts";
+} from "../../../../commands/meta/global-start";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");

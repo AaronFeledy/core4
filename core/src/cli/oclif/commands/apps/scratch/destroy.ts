@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import type { ScratchHandle } from "@lando/sdk/services";
 import {
@@ -6,8 +6,8 @@ import {
   renderScratchDestroyResult,
   scratchDestroy,
   scratchIdFromInput,
-} from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/scratch";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const keepVolumesFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;

@@ -13,8 +13,8 @@ import { MUTAGEN_TOOL_MANIFEST, mutagenAgentInstallPath, provisionMutagen } from
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities, ToolArtifactEntry } from "@lando/sdk/schema";
 
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { HttpClient, type HttpClientShape } from "@lando/engine/http-client/service";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const ACCEPTANCE_HTTP_CAPABILITIES: HttpClientCapabilities = {

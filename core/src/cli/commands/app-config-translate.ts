@@ -16,6 +16,7 @@ import type { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import { LandofileShape } from "@lando/sdk/schema";
 import type { ConfigTranslateMatch, ConfigTranslatorShape } from "@lando/sdk/services";
 
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import {
   detectConfigTranslators,
   resolveConfigTranslators,
@@ -25,7 +26,6 @@ import { findLandofilePath } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
 import { parseLandofile } from "@lando/landofile/parser";
 import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 
 export type AppConfigTranslateFormat = "yaml" | "table" | "json";
 

@@ -3,8 +3,8 @@ import { Schema } from "effect";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { RenderContext } from "../renderer-boundary.ts";
-import { isDecoratedContext } from "../renderer-boundary.ts";
+import type { RenderContext } from "../renderer-boundary";
+import { isDecoratedContext } from "../renderer-boundary";
 import {
   type SummaryDocument,
   type SummaryRow,
@@ -12,17 +12,17 @@ import {
   type SummaryTone,
   formatSummary,
   worstSummaryTone,
-} from "../renderer/summary.ts";
-import { renderConfigLintViolation } from "./config-lint-rendering.ts";
-import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract.ts";
-import { DoctorReportSchema } from "./doctor-report-contract.ts";
-import type { DoctorSelfReport } from "./doctor-self.ts";
-export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson.ts";
-import { renderGlobalAppDoctorResult } from "./doctor-global-app.ts";
-import { renderMcpDoctorResult } from "./doctor-mcp.ts";
-import { renderSubsystemDoctorResult } from "./doctor-subsystems.ts";
-import { renderAppVersionConstraintResult } from "./doctor-version-constraint.ts";
-import { renderDoctorResult, renderSolution } from "./doctor.ts";
+} from "../renderer/summary";
+import { renderConfigLintViolation } from "./config-lint-rendering";
+import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
+import { DoctorReportSchema } from "./doctor-report-contract";
+import type { DoctorSelfReport } from "./doctor-self";
+export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson";
+import { renderDoctorResult, renderSolution } from "./doctor";
+import { renderGlobalAppDoctorResult } from "./doctor-global-app";
+import { renderMcpDoctorResult } from "./doctor-mcp";
+import { renderSubsystemDoctorResult } from "./doctor-subsystems";
+import { renderAppVersionConstraintResult } from "./doctor-version-constraint";
 
 interface DoctorCheckLike {
   readonly name: string;

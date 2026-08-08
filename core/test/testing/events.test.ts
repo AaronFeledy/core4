@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, Effect, Exit, Fiber, TestClock, TestContext } from "effect";
 
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { expectEvent } from "../../src/testing/events.ts";
 
 describe("expectEvent", () => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ServiceName } from "@lando/sdk/schema";
 
-import * as liveModule from "../../../src/subsystems/scanner/live.ts";
+import * as liveModule from "@lando/engine/subsystems/scanner/live";
 import { appId, drive, endpointsOf, httpStatus, publishedEndpoint, requestSequence } from "./support.ts";
 
 const { makeUrlScanner } = liveModule;

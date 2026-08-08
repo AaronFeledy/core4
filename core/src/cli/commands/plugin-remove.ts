@@ -12,11 +12,11 @@ import {
 } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
+import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { makeLandoPaths } from "@lando/paths";
-import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import { removeInstalledPlugin } from "../../plugins/installed-registry.ts";
-import { parseNpmPackageSpec } from "../../recipes/npm-source.ts";
+import { parseNpmPackageSpec } from "../../recipes/npm-source";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 const RESERVED_PLUGIN_ROOT_NAMES = new Set([

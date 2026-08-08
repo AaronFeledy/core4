@@ -5,7 +5,10 @@ import { describe, expect, test } from "bun:test";
 
 import { makeLandoPaths } from "@lando/paths";
 
-const registrySource = readFileSync(join(import.meta.dir, "../../src/providers/registry.ts"), "utf8");
+const registrySource = readFileSync(
+  join(import.meta.dir, "../../../engine/src/providers/registry.ts"),
+  "utf8",
+);
 const providerSource = readFileSync(
   join(import.meta.dir, "../../../plugins/provider-lando/src/index.ts"),
   "utf8",

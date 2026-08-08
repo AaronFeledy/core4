@@ -3,7 +3,7 @@
  *
  * Status: stub.
  */
-import type { Hook } from "../metadata.ts";
+import type { Hook } from "../metadata";
 
 export const prerunHook: Hook<"prerun"> = async (_options) => {
   // TODO: publish CliCommandRunEvent through EventService.

@@ -16,13 +16,13 @@ import { Effect, Layer } from "effect";
 import type { ConfigService } from "@lando/sdk/services";
 import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
-import { GlobalAppServiceLive } from "../../global-app/service.ts";
-import { LoggerLive } from "../../logging/service.ts";
-import { PluginRegistryLive } from "../../plugins/registry.ts";
-import { FileSystemLive } from "../../services/file-system.ts";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
-import { renderSolution } from "./doctor.ts";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { LoggerLive } from "@lando/engine/logging/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { renderSolution } from "./doctor";
+import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 
 export interface GlobalAppDoctorCheck {
   readonly name: "global-app";

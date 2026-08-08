@@ -175,3 +175,35 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Split/excise decisions: none; no adjacent feature or incomplete public contract was found, and US-541 remains passing.
 - Verification: typecheck, lint/deprecations, public transcripts, relevant boundaries, and 69 focused tests passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference failures. Host-unsafe sandbox parity and the earlier 29 manual CLI invocations were not rerun.
 ---
+
+## 2026-08-07 12:52 CDT - US-542
+- Moved the runtime brain from `core/src/**` into the private `@lando/engine` package while retaining only shell adapters, public re-export shims, and the core-owned generated composition/bootstrap layers in core; `core/src` fell from 79,572 to 50,250 TypeScript lines, a reduction of 29,322 lines.
+- Inverted all five generated-table reaches behind engine composition inputs, retargeted codegen and shared boundary roots, and removed source aliases so runtime and tests resolve one canonical workspace identity for Effect tags and tagged errors.
+- Kept readline/TTY, host-proxy shim entry, worker argv, and install-root facts in the core shell; engine receives required REPL IO, worker entry data, and development dist roots through injected composition inputs with no fallback path.
+- Moved 14 self-contained suites into `engine/test` and added the closure contract; the engine package now runs 141 tests across 15 files, while the total sharded inventory increased only for the new closure proof.
+- Verification: `codegen:check`, typecheck, lint/deprecations, package-DAG, import-cycle, core-layering, renderer, state-store, generated-output, compiled host-proxy shim builds, CLI smoke, 115 focused remediation tests, and 141 engine tests passed. The full boundary runner retains only pre-existing `.omo/**` spec-reference failures outside this story; high-rigor review approved with no blockers.
+- Guide-Coverage-Skip: US-542 changes private package ownership and internal composition only; command behavior and public contracts are unchanged.
+- **Learnings for future iterations:**
+  - Remove source-path aliases when extracting workspace packages; duplicate module identities can make valid Effect layers and tagged errors fail runtime identity checks even when TypeScript accepts them.
+  - Treat process argv, TTY streams, and install-relative paths as host-shell facts and inject them into the engine rather than allowing moved modules to recompute them from their new package location.
+---
+
+## 2026-08-07 15:35 CDT - US-542 Review
+- Restored package-move behavior and proof by injecting composition inputs into isolated scratch test layers, repairing generated plugin scaffolds, keeping core lifecycle exports independent of process-global initialization, and retargeting boundary, codegen, telemetry, guidance, and specification ownership to the engine seam.
+- Review notes (deferred/rejected): rejected the post-fix Bugbot version-fallback finding for this story because source packages currently share the same development version, compiled binaries inject the core version, and npm workspace version rewriting is explicitly owned by US-544; rejected the touched plugin-new fixture's LSP-only `InteractionPrompter.select` diagnostic because it predates the review delta and repository typecheck is green; deferred composition exclusivity, performance budgets, and publish/install parity to US-543 and US-544.
+- Guide-Coverage-Skip: US-542 review repairs internal ownership, test isolation, and behavior-preserving regressions without changing the documented command contract.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, package-DAG, import-cycle, all behavioral boundary rules, 291 focused and adjacent tests, initial Bugbot, and post-fix Bugbot triage passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference findings.
+- **Learnings for future iterations:**
+  - Tests that construct private engine layers directly must inject generated composition inputs and shell-owned ports rather than relying on process-global core initialization.
+---
+
+## 2026-08-07 16:53 CDT - US-542 Drift Audit
+- Trigger: 2 cycles, 5904 changed lines, 10 commits
+- Weakened proof: removed a stale closure-test exemption for a nonexistent core state-store shim and made the proof reject unused allowlist entries.
+- Ceremony modules: made the branch-added composition installer private because it has no external importer.
+- Collateral edits: restored executable-guide structure lost during a required engine path retarget.
+- Contract drift: reconciled the test inventory as 13 moved suites, one pre-existing package-seam suite, and one new closure suite rather than 14 moved suites.
+- Fixed: tightened closure proof, removed a dead export, and restored guide structure.
+- Split/excise decisions: none; no absorbed feature or incomplete public contract was found, and US-542 remains passing.
+- Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, explicit-base guide drift, package-DAG, import-cycle, core-layering, 141 engine tests, 150 focused tests, and 4 focused guide scenarios passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference findings.
+---

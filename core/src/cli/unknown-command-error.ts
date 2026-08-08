@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { escapeDiagnosticText } from "./diagnostic-text.ts";
+import { escapeDiagnosticText } from "./diagnostic-text";
 
 export class UnknownCommandError extends Schema.TaggedError<UnknownCommandError>()("UnknownCommandError", {
   message: Schema.String,

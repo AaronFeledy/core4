@@ -16,17 +16,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
-import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/subsystems/host-proxy/session-env.ts";
-import { defaultSpawnWorker } from "../../../src/subsystems/host-proxy/worker-process.ts";
-import { readWorkerRecordStateAt } from "../../../src/subsystems/host-proxy/worker-state-file.ts";
-import {
-  HOST_PROXY_WORKER_PROTOCOL_VERSION,
-  type HostProxyWorkerRecord,
-  probeWorker,
-  readWorkerRecord,
-  writeWorkerRecord,
-} from "../../../src/subsystems/host-proxy/worker-state.ts";
+import { hostProxyWorkerEntry } from "@lando/engine/composition";
+import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-proxy/session-env";
 import {
   hostProxyMountInfoFromPlan,
   hostProxyWorkerArgv,
@@ -35,7 +26,18 @@ import {
   terminateOwnedHostProxyWorker,
   terminateOwnedHostProxyWorkersInRoot,
   workerStatePath,
-} from "../../../src/subsystems/host-proxy/worker.ts";
+} from "@lando/engine/subsystems/host-proxy/worker";
+import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
+import {
+  HOST_PROXY_WORKER_PROTOCOL_VERSION,
+  type HostProxyWorkerRecord,
+  probeWorker,
+  readWorkerRecord,
+  writeWorkerRecord,
+} from "@lando/engine/subsystems/host-proxy/worker-state";
+import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import "../../../src/runtime/engine-composition.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const spacedApp = {
@@ -91,6 +93,7 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
 });
 
 const tempRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-host-proxy-worker-"));
+const workerEntry = hostProxyWorkerEntry();
 
 const fakeShim = async (root: string): Promise<string> => {
   const path = join(root, "shim");
@@ -273,7 +276,9 @@ describe("detached host-proxy worker manager", () => {
       expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
       expect(record).toContain('"probeServices": [\n    "appserver",\n    "worker"\n  ]');
       expect(record).not.toContain("secret-token");
-      expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
+      expect(hostProxyWorkerArgv({ ...workerEntry, appId: "demo" })).toEqual(
+        expect.arrayContaining(["--app-id", "demo"]),
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -339,10 +344,34 @@ describe("detached host-proxy worker manager", () => {
     const argv = hostProxyWorkerArgv({
       entryPath: "/$bunfs/root/core/bin/lando.ts",
       execPath: "/usr/local/bin/lando",
+      bunSourceEntryPath: "/repo/core/bin/lando.ts",
       appId: "demo",
     });
 
     expect(argv).toEqual(["/usr/local/bin/lando", "__internal:host-proxy-worker", "--app-id", "demo"]);
+  });
+
+  test("spawns Bun source workers through the explicitly supplied core entry", async () => {
+    // Given
+    const { bunSourceEntryPath } = hostProxyWorkerEntry();
+
+    // When
+    const argv = hostProxyWorkerArgv({
+      entryPath: "/repo/scripts/launcher.ts",
+      execPath: "/usr/local/bin/bun",
+      bunSourceEntryPath,
+      appId: "demo",
+    });
+
+    // Then
+    expect(await Bun.file(bunSourceEntryPath).exists()).toBe(true);
+    expect(argv).toEqual([
+      "/usr/local/bin/bun",
+      bunSourceEntryPath,
+      "__internal:host-proxy-worker",
+      "--app-id",
+      "demo",
+    ]);
   });
 
   test("isolates worker state for the same app id in different app roots", async () => {
@@ -529,7 +558,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: () => ({
             pid: 56789,
-            argv: hostProxyWorkerArgv({ appId: "demo" }),
+            argv: hostProxyWorkerArgv({ ...workerEntry, appId: "demo" }),
             writeStdin: async () => undefined,
             readReady: async () => ({
               _tag: "ready" as const,

@@ -5,7 +5,7 @@ import {
   LandoCommandBase,
   type LandoCommandNamespace,
   type LandoCommandSpec,
-} from "./command-base.ts";
+} from "./command-base";
 
 interface DeferredStubInput {
   readonly id: string;

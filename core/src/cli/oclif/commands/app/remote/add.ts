@@ -1,7 +1,7 @@
-import { RemoteMutationResultSchema, appRemoteAdd } from "../../../../../operations/remote.ts";
-import { renderRemoteMutationResult } from "../../../../commands/remote.ts";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
-import { remoteAddFlags, remoteAddOptionsFromInput, remoteNameArg, remoteSourceArg } from "./common.ts";
+import { RemoteMutationResultSchema, appRemoteAdd } from "@lando/engine/operations/remote";
+import { renderRemoteMutationResult } from "../../../../commands/remote";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { remoteAddFlags, remoteAddOptionsFromInput, remoteNameArg, remoteSourceArg } from "./common";
 
 export const remoteAddSpec: LandoCommandSpec = {
   id: "app:remote:add",

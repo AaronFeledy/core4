@@ -8,7 +8,7 @@
  */
 import { Effect, Schema } from "effect";
 
-import { CORE_VERSION } from "../../version.ts";
+import { CORE_VERSION } from "@lando/engine/version";
 
 export interface VersionResult {
   readonly core: string;

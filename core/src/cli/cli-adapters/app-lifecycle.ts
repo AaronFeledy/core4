@@ -2,12 +2,12 @@ import { dirname } from "node:path";
 
 import { Effect, type Layer } from "effect";
 
-import { confirmRemoteSyncWithInteraction } from "../../app/remote-confirmation.ts";
-import { appConfigLint } from "../../operations/app-config-lint.ts";
-import { destroyApp } from "../../operations/destroy.ts";
-import { infoApp } from "../../operations/info.ts";
-import { followLogsApp, logsApp } from "../../operations/logs.ts";
-import { rebuildApp } from "../../operations/rebuild.ts";
+import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
+import { appConfigLint } from "@lando/engine/operations/app-config-lint";
+import { destroyApp } from "@lando/engine/operations/destroy";
+import { infoApp } from "@lando/engine/operations/info";
+import { followLogsApp, logsApp } from "@lando/engine/operations/logs";
+import { rebuildApp } from "@lando/engine/operations/rebuild";
 import {
   appPull,
   appPush,
@@ -17,47 +17,47 @@ import {
   appRemoteRemove,
   appRemoteSetup,
   appRemoteTest,
-} from "../../operations/remote.ts";
-import { restartApp } from "../../operations/restart.ts";
-import { appShare, appShareList, appShareStop } from "../../operations/share.ts";
-import { startApp } from "../../operations/start.ts";
-import { stopApp } from "../../operations/stop.ts";
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh.ts";
-import { renderConfigLintResult } from "../commands/app-config-lint.ts";
-import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate.ts";
-import { appConfig, renderAppConfigResult } from "../commands/app-config.ts";
+} from "@lando/engine/operations/remote";
+import { restartApp } from "@lando/engine/operations/restart";
+import { appShare, appShareList, appShareStop } from "@lando/engine/operations/share";
+import { startApp } from "@lando/engine/operations/start";
+import { stopApp } from "@lando/engine/operations/stop";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../../runtime/layer";
+import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh";
+import { appConfig, renderAppConfigResult } from "../commands/app-config";
+import { renderConfigLintResult } from "../commands/app-config-lint";
+import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate";
 import {
   type AppIncludesUpdateFormat,
   appIncludesUpdate,
   renderIncludesUpdateResult,
-} from "../commands/app-includes-update.ts";
-import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify.ts";
-import { renderDestroyAppResult } from "../commands/destroy.ts";
-import { resilientDoctorReport } from "../commands/doctor-bootstrap.ts";
+} from "../commands/app-includes-update";
+import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify";
+import { renderDestroyAppResult } from "../commands/destroy";
+import { resilientDoctorReport } from "../commands/doctor-bootstrap";
 import {
   type DoctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
-} from "../commands/doctor-report.ts";
-import { renderInfoAppResult } from "../commands/info-render.ts";
-import { renderLogsAppResult } from "../commands/logs.ts";
-import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open.ts";
-import { renderRebuildAppResult } from "../commands/rebuild.ts";
+} from "../commands/doctor-report";
+import { renderInfoAppResult } from "../commands/info-render";
+import { renderLogsAppResult } from "../commands/logs";
+import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open";
+import { renderRebuildAppResult } from "../commands/rebuild";
 import {
   renderRemoteEnvListResult,
   renderRemoteListResult,
   renderRemoteMutationResult,
   renderRemoteTestResult,
   renderSyncResult,
-} from "../commands/remote.ts";
-import { renderRestartAppResult } from "../commands/restart.ts";
-import { renderShareListResult, renderShareResult, renderShareStopResult } from "../commands/share.ts";
-import { renderStartAppResult } from "../commands/start-result.ts";
-import { renderStopAppResult } from "../commands/stop.ts";
-import { compiledCommandInputFromArgv } from "../compiled-input.ts";
+} from "../commands/remote";
+import { renderRestartAppResult } from "../commands/restart";
+import { renderShareListResult, renderShareResult, renderShareStopResult } from "../commands/share";
+import { renderStartAppResult } from "../commands/start-result";
+import { renderStopAppResult } from "../commands/stop";
+import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeDeprecationWarnings,
   activeRendererMode,
@@ -73,9 +73,9 @@ import {
   rejectInvalidInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
-} from "../compiled-runtime.ts";
-import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index.ts";
-import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs.ts";
+} from "../compiled-runtime";
+import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index";
+import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs";
 import {
   remoteAddOptionsFromInput,
   remoteEnvListOptionsFromInput,
@@ -84,15 +84,15 @@ import {
   remoteSetupOptionsFromInput,
   remoteSyncOptionsFromInput,
   remoteTestOptionsFromInput,
-} from "../oclif/commands/app/remote/common.ts";
+} from "../oclif/commands/app/remote/common";
 import {
   shareListOptionsFromInput,
   shareOptionsFromInput,
   shareStopOptionsFromInput,
-} from "../oclif/commands/app/share/common.ts";
-import { setupSpec } from "../oclif/commands/meta/setup.ts";
-import { type RenderContext, runWithRendererHandling } from "../renderer-boundary.ts";
-import type { RendererIO } from "../renderer/io.ts";
+} from "../oclif/commands/app/share/common";
+import { setupSpec } from "../oclif/commands/meta/setup";
+import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
+import type { RendererIO } from "../renderer/io";
 
 type DestroyCommandServices =
   | import("@lando/sdk/services").AppPlanner

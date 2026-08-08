@@ -2,9 +2,9 @@ import { Effect } from "effect";
 
 import type { McpTransportError } from "@lando/sdk/errors";
 
-import { stringifyBoundedJson } from "./bounded-json.ts";
-import { type JsonRpcId, errorData, errorMessage, rpcError, rpcResult } from "./stdio-rpc.ts";
-import type { McpTransportReply } from "./transport.ts";
+import { stringifyBoundedJson } from "./bounded-json";
+import { type JsonRpcId, errorData, errorMessage, rpcError, rpcResult } from "./stdio-rpc";
+import type { McpTransportReply } from "./transport";
 
 const serializationErrorResponse = (id: JsonRpcId, error: McpTransportError) =>
   rpcError(id, -32603, error.message, {

@@ -15,6 +15,11 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/core/services";
+import { RedactionService } from "@lando/engine/redaction/service";
+import { buildKeyForService } from "@lando/engine/services/build-key";
+import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
+import { openScratchBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
@@ -28,11 +33,6 @@ import {
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
-import { RedactionService } from "../../src/redaction/service.ts";
-import { buildKeyForService } from "../../src/services/build-key.ts";
-import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
-import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("test");

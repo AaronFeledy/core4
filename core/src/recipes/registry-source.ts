@@ -12,15 +12,15 @@ import { RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeRegistryResponse } from "@lando/sdk/schema";
 import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
 
-import { httpJsonFetch } from "../http-client/json-fetch.ts";
+import { httpJsonFetch } from "@lando/engine/http-client/json-fetch";
 
-import { type GitRecipeCloner, resolveGitRecipeSource } from "./git-source.ts";
-import type { ResolvedRecipe } from "./source.ts";
+import { type GitRecipeCloner, resolveGitRecipeSource } from "./git-source";
+import type { ResolvedRecipe } from "./source";
 import {
   type TarballRecipeExtractor,
   type TarballRecipeFetcher,
   resolveTarballRecipeSource,
-} from "./tarball-source.ts";
+} from "./tarball-source";
 
 export const DEFAULT_RECIPE_REGISTRY_URL = "https://registry.lando.dev/recipes/";
 

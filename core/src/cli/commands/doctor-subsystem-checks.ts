@@ -1,7 +1,7 @@
 import { Data, Effect, Either } from "effect";
 
-import { redactString } from "../redact.ts";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
+import { redactString } from "../redact";
+import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 
 /**
  * Whether a degraded subsystem can be recovered automatically by re-running its

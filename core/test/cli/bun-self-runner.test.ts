@@ -1,9 +1,9 @@
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
+import { RedactionService } from "@lando/engine/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),

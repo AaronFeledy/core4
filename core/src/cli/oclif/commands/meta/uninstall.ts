@@ -1,4 +1,4 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
 import {
   type UninstallOptions,
@@ -6,8 +6,8 @@ import {
   UninstallResultSchema,
   renderUninstallResult,
   uninstall,
-} from "../../../commands/uninstall.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+} from "../../../commands/uninstall";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};

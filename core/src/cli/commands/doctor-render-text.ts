@@ -1,4 +1,4 @@
-import type { DoctorCheck, DoctorResult, DoctorSelectionRecord, DoctorSolution } from "./doctor-contract.ts";
+import type { DoctorCheck, DoctorResult, DoctorSelectionRecord, DoctorSolution } from "./doctor-contract";
 
 const renderCapabilityValue = (value: unknown): string => {
   if (value === null || value === undefined) return String(value);

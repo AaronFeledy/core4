@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 
 import type { PromptMode } from "@lando/sdk/schema";
 
-import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+import { parseAnswerFlags } from "../../recipes/prompts/index";
 
 export { parseAnswerFlags };
 

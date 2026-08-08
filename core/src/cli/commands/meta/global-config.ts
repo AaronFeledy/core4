@@ -7,10 +7,10 @@ import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { parseLandofile } from "@lando/landofile/parser";
-import { writeFileAtomicViaRename } from "../../../cache/atomic.ts";
-import { decodeGlobalLandofile } from "../../../operations/global-plan.ts";
-import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command.ts";
+import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 import {
   type ValueType,
   applySetMutation,
@@ -18,7 +18,7 @@ import {
   decodeIssues,
   emitConfigYaml,
   writeValidationErrorFromIssues,
-} from "../../config-write/write-core.ts";
+} from "../../config-write/write-core";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 

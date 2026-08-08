@@ -55,20 +55,18 @@ import type {
   ToolingEngine,
 } from "@lando/sdk/services";
 
-import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
-
-import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
-import type { LoggerMode } from "../logging/service.ts";
-import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import type { PluginContributionGraph } from "../plugins/contribution-graph.ts";
-import type { RedactionService } from "../redaction/service.ts";
-import type { EventDeliveryMetrics } from "../services/event-service.ts";
-import { type BootstrapLifecycleTracker, makeBootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
-import type { BootstrapLevel } from "./bootstrap.ts";
-import { RuntimeCwd } from "./cwd.ts";
-import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
-import type { HostMaintenanceRegistry } from "./host-maintenance.ts";
-import { installSignalHandlers } from "./interrupt.ts";
+import type { LoggerMode } from "@lando/engine/logging/service";
+import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import type { RedactionService } from "@lando/engine/redaction/service";
+import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
+import {
+  type BootstrapLifecycleTracker,
+  makeBootstrapLifecycleTracker,
+} from "@lando/engine/runtime/bootstrap-lifecycle";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import type { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
 import {
   LandoRuntimeOptions,
   type LibraryRendererMode,
@@ -78,9 +76,15 @@ import {
   normalizeLibraryRendererMode,
   normalizePluginPolicy,
   rootOverridesFromConfig,
-} from "./runtime-options.ts";
+} from "@lando/engine/runtime/runtime-options";
+import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 
-export { LandoRuntimeOptions } from "./runtime-options.ts";
+import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
+import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
+import "./engine-composition";
+
+export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
 
 type MinimalRuntimeServices =
   | Logger

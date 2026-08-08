@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import type {
   RemoteAddOptions,
@@ -8,7 +8,7 @@ import type {
   RemoteSetupOptions,
   RemoteSyncOptions,
   RemoteTestOptions,
-} from "../../../../../operations/remote.ts";
+} from "@lando/engine/operations/remote";
 
 export const remoteFormatFlag = Flags.string({
   description: "Output format.",

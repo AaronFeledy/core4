@@ -17,13 +17,14 @@ import {
 import type { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, withResolvedCwd } from "../landofile/app-resolution.ts";
-import type { RuntimeCwd } from "../runtime/cwd.ts";
-import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer.ts";
-import { ScratchRegistryLive } from "../scratch-app/registry.ts";
-import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
-import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "../scratch-app/service.ts";
-import { buildAppHandle, resolveApp } from "./resolve.ts";
+import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
+import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
+import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPortLive } from "../cli/scratch-init-port.ts";
+import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
+import { buildAppHandle, resolveApp } from "./resolve";
 
 type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService | RuntimeCwd>;
 
@@ -52,11 +53,17 @@ export const openLandoRuntime = (
     const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
       readonly bootstrap: "app";
     });
-    const scratchDeps = Layer.mergeAll(appLayer, ScratchRegistryLive, ScratchResourceScannerLive);
+    const scratchDeps = Layer.mergeAll(
+      appLayer,
+      ScratchRegistryLive,
+      ScratchResourceScannerLive,
+      ScratchInitAppPortLive,
+    );
     const layer = Layer.mergeAll(
       appLayer,
       ScratchRegistryLive,
       ScratchResourceScannerLive,
+      ScratchInitAppPortLive,
       ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
     );
     const context = (yield* Layer.build(layer)) as unknown as RuntimeContext;

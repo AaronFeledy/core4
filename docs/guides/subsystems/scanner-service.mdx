@@ -34,7 +34,7 @@ tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
     <Step name="probe-primitive">
       <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="The default scanner maps retry/delay/timeout onto runProbe instead of a hand-rolled Effect.retry or Schedule loop" />
       <Variable name="verdict" value="ScanEndpoint.outcome/detail" display="Probe-backed scans return green/yellow/red verdicts plus redacted detail for non-green results" />
-      <Variable name="apiRef" value="core/src/subsystems/scanner/live.ts" display="UrlScannerLive is the default runtime scanner; UrlScannerUnavailableLive remains only for explicit degraded/test wiring" />
+<Variable name="apiRef" value="engine/src/subsystems/scanner/live.ts" display="UrlScannerLive is the default runtime scanner; UrlScannerUnavailableLive remains only for explicit degraded/test wiring" />
     </Step>
   </Scenario>
 </Guide>

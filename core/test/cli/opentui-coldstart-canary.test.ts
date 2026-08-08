@@ -78,7 +78,7 @@ describe("OpenTUI cold-start canary", () => {
     expect(loader).not.toMatch(/import\s[^;]*from\s+["']@lando\/renderer-lando["']/);
     expect(loader).not.toMatch(/import\(\s*["']@lando\/renderer-lando["']\s*\)/);
     expect(loader).not.toMatch(/^import\s[^;]*from\s+["']\.\.\/plugins\/generated\/renderers\.ts["']/m);
-    expect(loader).toMatch(/import\(\s*["']\.\.\/plugins\/generated\/renderers\.ts["']\s*\)/);
+    expect(loader).toMatch(/import\(\s*["']\.\.\/plugins\/generated\/renderers(?:\.ts)?["']\s*\)/);
     expect(loader).not.toContain("@opentui/core");
     expect(loader).not.toMatch(/import\(\s*[A-Za-z_$][\w$]*\s*\)/);
   });

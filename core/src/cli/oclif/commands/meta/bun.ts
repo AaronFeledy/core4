@@ -1,20 +1,15 @@
 import { Effect, Layer } from "effect";
 
-import {
-  type MetaBunResult,
-  MetaBunResultSchema,
-  metaBun,
-  renderMetaBunResult,
-} from "../../../commands/bun.ts";
+import { type MetaBunResult, MetaBunResultSchema, metaBun, renderMetaBunResult } from "../../../commands/bun";
 
-import { newInvocationId } from "../../../command-lifecycle.ts";
-import { runWithRendererHandling } from "../../../renderer-boundary.ts";
+import { newInvocationId } from "../../../command-lifecycle";
+import { runWithRendererHandling } from "../../../renderer-boundary";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

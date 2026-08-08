@@ -17,16 +17,16 @@ import {
   type ScratchAppService,
 } from "@lando/sdk/services";
 
-import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
-import { withAgentContextEnv } from "../../config/agent-env.ts";
+import { withAgentContextEnv } from "@lando/engine/config/agent-env";
+import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import {
   acquireScratchAppWithPlan,
   detachScratchApp,
   findPrimaryServiceName,
   readScratchLandofile,
-} from "../../scratch-app/service.ts";
-import { parseAnswerFlags } from "../prompts/answer-flags.ts";
-import type { RenderContext } from "../renderer-boundary.ts";
+} from "@lando/engine/scratch-app/service";
+import { parseAnswerFlags } from "../prompts/answer-flags";
+import type { RenderContext } from "../renderer-boundary";
 
 export const DEFAULT_SCRATCH_RUN_RECIPE = "toolbox";
 

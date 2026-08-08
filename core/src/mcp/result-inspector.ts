@@ -2,9 +2,9 @@ import { Effect } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { isRuntimeProxy } from "./runtime-proxy.ts";
-import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits.ts";
+import type { CommandResultOutcome } from "../cli/result-encode";
+import { isRuntimeProxy } from "./runtime-proxy";
+import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
 const STRING_CHUNK_CODE_UNITS = 1_024;
 

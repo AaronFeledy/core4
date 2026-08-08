@@ -7,7 +7,7 @@ import {
   HOST_PROXY_SPEC,
   buildDegradedCheck,
   passCheck,
-} from "./doctor-subsystem-checks.ts";
+} from "./doctor-subsystem-checks";
 
 export const buildHostProxyCheck = (
   hostProxy: typeof HostProxyService.Service,

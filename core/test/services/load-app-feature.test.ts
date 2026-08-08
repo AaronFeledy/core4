@@ -7,11 +7,11 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/core/errors";
 import { PluginRegistry } from "@lando/core/services";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
-import { makePluginRegistryLive } from "../../src/plugins/registry.ts";
 
 const runWithPluginRegistry = <A, E>(
   effect: Effect.Effect<A, E, PluginRegistry>,

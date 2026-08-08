@@ -24,7 +24,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "../../../operations/global-plan.ts";
+import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 

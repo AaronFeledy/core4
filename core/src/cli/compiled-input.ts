@@ -1,5 +1,5 @@
-import type { RendererMode } from "./bug-report.ts";
-import { normalizeScratchStartArgv } from "./commands/scratch.ts";
+import type { RendererMode } from "./bug-report";
+import { normalizeScratchStartArgv } from "./commands/scratch";
 import {
   argDefinitionsForCommand,
   commandSpecForId,
@@ -7,15 +7,15 @@ import {
   flagNameByToken,
   hasUniversalFormatFlag,
   setParsedFlag,
-} from "./compiled-argv.ts";
+} from "./compiled-argv";
 import {
   type CompiledCommandInput,
   activeRendererMode,
   activeResultFormat,
   setActiveCommandInvocation,
-} from "./compiled-runtime.ts";
-import { normalizeCliFlagTokens, validateCommandFlagValues } from "./flag-value-validation.ts";
-import { type ResultFormat, resolveResultFormat } from "./format-flags.ts";
+} from "./compiled-runtime";
+import { normalizeCliFlagTokens, validateCommandFlagValues } from "./flag-value-validation";
+import { type ResultFormat, resolveResultFormat } from "./format-flags";
 
 export const compiledCommandInputFromArgv = (
   commandId: string,

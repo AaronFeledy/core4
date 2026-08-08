@@ -17,9 +17,9 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 
-import { PluginRegistryLive } from "../../../core/src/plugins/registry.ts";
-import { AppPlannerLive } from "../../../core/src/services/planner.ts";
-import { ProviderExecToolingEngineLive } from "../../../core/src/services/tooling-engine.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
 import { services } from "../src/index.ts";
 

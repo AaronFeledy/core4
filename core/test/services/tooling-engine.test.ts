@@ -19,7 +19,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {

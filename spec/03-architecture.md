@@ -167,7 +167,7 @@ test/                                # Cross-package tests
 
 ### 3.4 Core Effect services
 
-The following services are provided by core. Each has a `Live` Layer in core and may be replaced by a plugin Layer at runtime.
+The following services are provided by the Lando runtime. Their `Live` Layers live in `@lando/engine` unless they require a core shell adapter, and replaceable services may be supplied by plugin Layers at runtime.
 
 | Service tag | Responsibility | Default Live Layer |
 |---|---|---|

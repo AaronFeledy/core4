@@ -9,6 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,
@@ -16,7 +17,6 @@ import {
   certsDoctorStatus,
   certsSubsystemId,
 } from "../../src/cli/commands/doctor-certs-status.ts";
-import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 
 const redact = (value: string): string => value.replaceAll("secret", "[redacted]");
 

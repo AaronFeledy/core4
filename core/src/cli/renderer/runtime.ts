@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import type { RendererIO } from "./io.ts";
+import type { RendererIO } from "./io";
 
 type LineFormatter = (event: LandoEvent) => string | null;
 

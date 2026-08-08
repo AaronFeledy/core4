@@ -1,7 +1,7 @@
 /** `lando app:config:lint` result rendering. */
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import { renderConfigLintViolation } from "./config-lint-rendering.ts";
+import { renderConfigLintViolation } from "./config-lint-rendering";
 
 export type AppConfigLintFormat = "text" | "json";
 

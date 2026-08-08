@@ -20,9 +20,9 @@ import * as templateMustache from "@lando/template-mustache";
 
 import { ConfigService, Logger } from "@lando/sdk/services";
 
+import { PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
-import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   providerLando.plugin,

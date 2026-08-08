@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../metadata.ts";
+import { Args, Flags } from "../../metadata";
 
 import {
   type ConfigOptions,
@@ -6,9 +6,9 @@ import {
   ConfigResultSchema,
   config,
   renderConfigResult,
-} from "../../../commands/config.ts";
+} from "../../../commands/config";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";

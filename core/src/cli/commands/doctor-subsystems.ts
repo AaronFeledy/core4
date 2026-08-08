@@ -29,22 +29,23 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 
-import { HttpClientLive } from "../../http-client/live.ts";
-import { runtimeProviderService } from "../../runtime/bootstrap-layer-support.ts";
-import { HealthcheckRunnerLive } from "../../subsystems/healthcheck/live.ts";
-import { HostProxyServiceDisabledLive } from "../../subsystems/host-proxy/api.ts";
-import { ProxyServiceUnavailableLive } from "../../subsystems/proxy/api.ts";
-import { UrlScannerLive } from "../../subsystems/scanner/live.ts";
-import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
+import { HttpClientLive } from "@lando/engine/http-client/live";
+import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
+import { HealthcheckRunnerLive } from "@lando/engine/subsystems/healthcheck/live";
+import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
+import { ProxyServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
+import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
+import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import { renderSolution } from "./doctor";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,
   certsCheckContext,
   certsSubsystemId,
-} from "./doctor-certs-status.ts";
-import { buildHostProxyCheck } from "./doctor-host-proxy-check.ts";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
-import type { NetworkTrustDoctorStatus } from "./doctor-network-trust.ts";
+} from "./doctor-certs-status";
+import { buildHostProxyCheck } from "./doctor-host-proxy-check";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import {
   CERTS_SPEC,
   type DoctorSubsystemCheck,
@@ -53,8 +54,7 @@ import {
   SCANNER_SPEC,
   SSH_SPEC,
   buildIdCheck,
-} from "./doctor-subsystem-checks.ts";
-import { renderSolution } from "./doctor.ts";
+} from "./doctor-subsystem-checks";
 
 export {
   DoctorSubsystemFailure,
@@ -62,7 +62,7 @@ export {
   subsystemFailureDiagnostic,
   type DoctorSubsystemCheck,
   type SubsystemRecovery,
-} from "./doctor-subsystem-checks.ts";
+} from "./doctor-subsystem-checks";
 
 export interface SubsystemDoctorResult {
   readonly checks: ReadonlyArray<DoctorSubsystemCheck>;

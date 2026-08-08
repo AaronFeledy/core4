@@ -19,19 +19,19 @@ import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import { RedactionService } from "@lando/engine/redaction/service";
 import {
   emptyCompletedRequestIds,
   forgetCompletedRequestId,
   rememberCompletedRequestId,
   replyMcpCanceled,
-} from "./cancellation.ts";
-import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
-import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
-import { makeNestedExecute } from "./execute.ts";
-import { makeStreamFrameSink } from "./framing.ts";
-import type { McpCommandEntry } from "./registry.ts";
-import { McpTransport, type McpTransportRequest } from "./transport.ts";
+} from "./cancellation";
+import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
+import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch";
+import { makeNestedExecute } from "./execute";
+import { makeStreamFrameSink } from "./framing";
+import type { McpCommandEntry } from "./registry";
+import { McpTransport, type McpTransportRequest } from "./transport";
 
 /** Default in-flight tool-call cap (config `mcp.maxConcurrent`). */
 export const DEFAULT_MCP_MAX_CONCURRENT = 4;

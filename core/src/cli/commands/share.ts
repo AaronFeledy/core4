@@ -1,8 +1,8 @@
 /** `lando share` result rendering. */
 import type { TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
 
-import type { ShareStopResult } from "../../operations/share.ts";
-import type { RenderContext } from "../renderer-boundary.ts";
+import type { ShareStopResult } from "@lando/engine/operations/share";
+import type { RenderContext } from "../renderer-boundary";
 
 export const renderShareResult = (
   result: TunnelSessionType,

@@ -9,7 +9,7 @@ import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,
   composeExtendedServiceType,
   mergeResolutionOverParent,
-} from "../../src/services/extends.ts";
+} from "@lando/engine/services/extends";
 
 const emptyConfig = (): ServiceConfig => ({}) as ServiceConfig;
 

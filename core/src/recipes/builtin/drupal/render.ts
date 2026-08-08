@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { DRUPAL_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { DRUPAL_RECIPE_ID } from "./manifest";
 
 export const DRUPAL_SCAFFOLD_COMMAND = [
   "set -eu",

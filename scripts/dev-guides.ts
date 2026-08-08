@@ -199,6 +199,8 @@ const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> 
       paths: {
         "@lando/core": ["core/src/index.ts"],
         "@lando/core/*": ["core/src/*/index.ts"],
+        "@lando/engine": ["engine/src/index.ts"],
+        "@lando/engine/*": ["engine/src/*.ts"],
         "@lando/sdk": ["sdk/src/index.ts"],
         "@lando/sdk/*": ["sdk/src/*"],
       },
@@ -334,6 +336,7 @@ const main = async (): Promise<void> => {
   const watchedRoots: string[] = [
     resolve(REPO_ROOT, GUIDE_ROOT),
     resolve(REPO_ROOT, "core/src"),
+    resolve(REPO_ROOT, "engine/src"),
     resolve(REPO_ROOT, "sdk/src"),
     ...(await pluginSrcRoots()),
   ];

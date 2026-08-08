@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 
-import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-plugin-flags.ts";
-import SetupCommand from "../../src/cli/oclif/commands/meta/setup.ts";
 import {
   SETUP_BUILTIN_FLAG_NAMES,
   SetupFlagCollisionError,
   findSetupFlagCollision,
   manifestSetupFlagContributions,
-} from "../../src/plugins/setup-flags.ts";
+} from "@lando/engine/plugins/setup-flags";
+import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-plugin-flags.ts";
+import SetupCommand from "../../src/cli/oclif/commands/meta/setup.ts";
 
 const manifest = (name: string, flagNames: ReadonlyArray<string>): PluginManifest =>
   ({

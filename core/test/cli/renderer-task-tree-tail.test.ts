@@ -14,6 +14,7 @@ import { Effect } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import {
   TASK_DETAIL_TAIL_CAPACITY,
   TaskDetailRing,
@@ -22,7 +23,6 @@ import {
 } from "@lando/renderer-lando/task-tree-tail";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
 

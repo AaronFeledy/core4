@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ScratchAppService } from "@lando/core/services";
 import { Effect } from "effect";
 
+import { resolveScratchAcquireIsolation } from "@lando/engine/scratch-app/service";
 import {
   normalizeScratchStartArgv,
   scratchStart,
@@ -10,7 +11,6 @@ import {
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { parseScratchStartArgv } from "../../src/cli/run.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { resolveScratchAcquireIsolation } from "../../src/scratch-app/service.ts";
 
 const failureTag = async <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<string> => {
   const result = await Effect.runPromise(

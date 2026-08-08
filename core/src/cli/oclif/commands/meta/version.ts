@@ -1,4 +1,4 @@
-import { renderMetaVersion } from "../../../../version.ts";
+import { renderMetaVersion } from "@lando/engine/version";
 
 /**
  * `lando meta:version` — native command metadata adapter for the Effect operation.
@@ -7,8 +7,8 @@ import { renderMetaVersion } from "../../../../version.ts";
  * `core/src/cli/commands/version.ts` (so `@lando/core/cli` can re-export
  * it without pulling the command registry).
  */
-import { type VersionResult, VersionResultSchema, version } from "../../../commands/version.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { type VersionResult, VersionResultSchema, version } from "../../../commands/version";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   resultSchema: VersionResultSchema,

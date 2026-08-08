@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   type GlobalStatusOptions,
@@ -6,8 +6,8 @@ import {
   GlobalStatusResultSchema,
   globalStatus,
   renderGlobalStatusResult,
-} from "../../../../commands/meta/global-status.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/meta/global-status";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");

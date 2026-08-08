@@ -3,13 +3,13 @@ import {
   GlobalRestartResultSchema,
   globalRestart,
   renderGlobalRestartResult,
-} from "../../../../commands/meta/global-restart.ts";
+} from "../../../../commands/meta/global-restart";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 export const metaGlobalRestartSpec: LandoCommandSpec<GlobalRestartResult> = {
   resultSchema: GlobalRestartResultSchema,

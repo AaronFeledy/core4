@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { NODE_TS_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { NODE_TS_RECIPE_ID } from "./manifest";
 
 const landofileTs = (appName: string): string => {
   const safeName = JSON.stringify(appName);

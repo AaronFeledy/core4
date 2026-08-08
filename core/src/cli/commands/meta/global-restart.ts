@@ -6,8 +6,8 @@ import {
   GlobalStartResultSchema,
   type GlobalStartServices,
   globalStart,
-} from "./global-start.ts";
-import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
+} from "./global-start";
+import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop";
 
 export interface GlobalRestartOptions {
   readonly signal?: AbortSignal;

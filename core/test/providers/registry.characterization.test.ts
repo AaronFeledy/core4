@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import "../../src/runtime/engine-composition.ts";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
@@ -16,8 +17,8 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
+import { RuntimeProviderRegistryLive } from "@lando/engine/providers/registry";
 import { makeLandoPaths } from "@lando/paths";
-import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

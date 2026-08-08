@@ -5,7 +5,7 @@ import { AbsolutePath, type LogSource, LogSourceId } from "@lando/sdk/schema";
 import {
   redirectLogSourceBuildSteps,
   runtimeFollowLogSources,
-} from "../../src/services/redirect-log-sources.ts";
+} from "@lando/engine/services/redirect-log-sources";
 
 const source = (input: {
   readonly id: string;

@@ -10,13 +10,13 @@
  */
 import { Effect } from "effect";
 
-import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
-import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle.ts";
-import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
-import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "./renderer-boundary.ts";
-import { activeRendererMode } from "./renderer-mode-state.ts";
+import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report";
+import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
+import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "./renderer-boundary";
+import { activeRendererMode } from "./renderer-mode-state";
 
-export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state.ts";
+export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 
 export interface CompiledCommandInput {
   readonly argv: ReadonlyArray<string>;

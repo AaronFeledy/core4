@@ -1,11 +1,11 @@
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
+import { RedactionServiceLive } from "@lando/engine/redaction/service";
+import { makeEnvSecretStoreLive } from "@lando/engine/services/secret-store";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { RedactionServiceLive } from "../../src/redaction/service.ts";
-import { makeEnvSecretStoreLive } from "../../src/services/secret-store.ts";
 
 const secretEnv = { LANDO_SECRET_AC6: "ac6secretvalue" };
 const realRedactionLayer = RedactionServiceLive.pipe(

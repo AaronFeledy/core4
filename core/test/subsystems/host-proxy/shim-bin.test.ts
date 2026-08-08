@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const HOST_PROXY_SHIM_SOURCE = "core/src/subsystems/host-proxy/shim-bin.ts";
+const HOST_PROXY_SHIM_SOURCE = "core/src/cli/host-proxy/shim-bin.ts";
 
 const tempDirs: string[] = [];
 

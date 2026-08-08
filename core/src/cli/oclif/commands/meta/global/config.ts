@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import {
   type GlobalConfigOptions,
@@ -6,9 +6,9 @@ import {
   GlobalConfigResultSchema,
   globalConfig,
   renderGlobalConfigResult,
-} from "../../../../commands/meta/global-config.ts";
-import type { ValueType } from "../../../../config-write/write-core.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/meta/global-config";
+import type { ValueType } from "../../../../config-write/write-core";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const isValueType = (s: unknown): s is ValueType =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";

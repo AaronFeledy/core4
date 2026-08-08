@@ -15,9 +15,9 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { validateGlobalServiceContributions } from "@lando/engine/services/global-services";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
   name: "@lando/proxy-traefik",

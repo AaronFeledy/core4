@@ -4,7 +4,7 @@ import { Duration } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { ResultFormat } from "../cli/format-flags.ts";
+import type { ResultFormat } from "../cli/format-flags";
 
 export const MAX_FRAME_BYTES = 1_048_576;
 export const MAX_PARTIAL_BUFFER_BYTES = 1_048_576;

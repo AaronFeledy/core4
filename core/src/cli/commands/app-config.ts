@@ -26,17 +26,17 @@ import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
-import { parseLandofile } from "@lando/landofile/parser";
-import { detectTemplateDirective } from "@lando/landofile/template-render";
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import {
   findDiscoveredLandofilePath,
   loadLandofileLayers,
   renderLandofileTemplate,
-} from "../../services/landofile-live.ts";
-import { loadUserLandofile } from "../app-resolution.ts";
-import { getAtPath } from "../config-write/dot-path.ts";
+} from "@lando/engine/services/landofile-live";
+import { parseLandofile } from "@lando/landofile/parser";
+import { detectTemplateDirective } from "@lando/landofile/template-render";
+import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { loadUserLandofile } from "../app-resolution";
+import { getAtPath } from "../config-write/dot-path";
 import {
   ConfigWriteResultFields,
   type ValueType,
@@ -45,7 +45,7 @@ import {
   decodeIssues,
   emitConfigYaml,
   writeValidationErrorFromIssues,
-} from "../config-write/write-core.ts";
+} from "../config-write/write-core";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 

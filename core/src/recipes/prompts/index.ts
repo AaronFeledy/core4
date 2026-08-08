@@ -4,7 +4,7 @@ export {
   type CollectPromptsOptions,
   type PromptAnswer,
   type PromptAnswers,
-} from "./runtime.ts";
+} from "./runtime";
 export {
   createDefaultEditorRunner,
   defaultEditorSpawner,
@@ -15,13 +15,13 @@ export {
   type EditorRunResult,
   type EditorSpawner,
   type EditorSpawnerOptions,
-} from "./editor-command.ts";
+} from "./editor-command";
 export {
   PromptCancelledError,
   type PromptDriver,
   type PromptDriverMode,
   type PromptDriverRequest,
-} from "./driver.ts";
+} from "./driver";
 export {
   createBufferedPromptIO,
   createLineReader,
@@ -30,7 +30,7 @@ export {
   type PromptIO,
   type PromptLineReader,
   type PromptReadOptions,
-} from "./io.ts";
+} from "./io";
 export {
   ChoicesParseFailure,
   createDefaultChoicesCommandRunner,
@@ -41,4 +41,4 @@ export {
   type ChoicesCommandResult,
   type ChoicesCommandRunner,
   type ChoicesCommandSpawner,
-} from "./choices-command.ts";
+} from "./choices-command";

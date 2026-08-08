@@ -13,16 +13,16 @@
  */
 import { Effect, Layer, Option } from "effect";
 
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { ConfigServiceLive } from "../../services/config.ts";
-import { interruptOnAbort } from "./doctor-abort.ts";
-import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status.ts";
-import type { DoctorReport } from "./doctor-report-contract.ts";
-import { collectDoctorReport, doctorDeprecations } from "./doctor-report.ts";
-import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
-import { type DoctorOptions, doctor } from "./doctor.ts";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { makeLandoRuntime } from "../../runtime/layer";
+import { type DoctorOptions, doctor } from "./doctor";
+import { interruptOnAbort } from "./doctor-abort";
+import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { collectDoctorReport, doctorDeprecations } from "./doctor-report";
+import type { DoctorReport } from "./doctor-report-contract";
+import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",

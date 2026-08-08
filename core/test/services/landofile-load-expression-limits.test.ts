@@ -8,8 +8,8 @@ import { LandofileLoadLimitError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { IMPORTED_PEM, PEM, withApp } from "./landofile-load-expression-support.ts";
 
 test("enforces the configured recursion limit", async () => {

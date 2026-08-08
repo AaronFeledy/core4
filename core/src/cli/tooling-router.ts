@@ -3,9 +3,9 @@ import { Effect } from "effect";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import type { CacheError } from "@lando/sdk/errors";
 
+import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { readFreshAppCommandCacheForCwd } from "../cache/command-index-writer.ts";
-import { escapeDiagnosticText } from "./diagnostic-text.ts";
+import { escapeDiagnosticText } from "./diagnostic-text";
 
 const CACHE_REMEDIATION =
   "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";

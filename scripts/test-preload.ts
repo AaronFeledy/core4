@@ -5,6 +5,8 @@
  * entries (`core/bin/lando.ts`, the host-proxy worker, the shim) install a
  * loopback NO_PROXY guard; this preload mirrors it for the test process.
  */
+import "../core/src/runtime/engine-composition.ts";
+
 const entries = (process.env.NO_PROXY ?? "")
   .split(",")
   .map((entry) => entry.trim())

@@ -21,7 +21,7 @@ describe("generated bootstrap layers", () => {
   test("runtime layer factory consumes generated bootstrap composition", async () => {
     const source = await readFile(runtimeLayerPath, "utf8");
 
-    expect(source).toContain("./generated/layers/index.ts");
+    expect(source).toContain("./generated/layers/index");
     expect(source).not.toContain("Layer.mergeAll(");
     expect(source).not.toContain("Layer.provide(");
   });
@@ -38,7 +38,7 @@ describe("generated bootstrap layers", () => {
     const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
 
     // When: command-registry and subscriber-runtime composition is inspected.
-    const subscriberInstall = "makeSubscriberRuntimeLive()";
+    const subscriberInstall = "makeSubscriberRuntimeLive(BUNDLED_PLUGIN_MODULES, BUILT_IN_COMMAND_IDS)";
     const commandRegistryInstall = "CommandRegistryLive.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
@@ -48,7 +48,8 @@ describe("generated bootstrap layers", () => {
     }
 
     expect(minimal).not.toContain("makePluginRegistryLive");
-    expect(commands).toContain("LandofileServiceLive");
+    expect(commands).toContain("makeEngineLandofileServiceLive");
+    expect(commands).toContain('from "@lando/engine/services/landofile-live"');
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);

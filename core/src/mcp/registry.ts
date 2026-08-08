@@ -10,7 +10,7 @@
  */
 import { McpToolInputError } from "@lando/sdk/errors";
 
-import type { LandoCommandSpec } from "../cli/oclif/command-base.ts";
+import type { LandoCommandSpec } from "../cli/oclif/command-base";
 
 /** A single command projected as an MCP tool. */
 export interface McpCommandEntry {

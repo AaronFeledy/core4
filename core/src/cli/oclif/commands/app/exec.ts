@@ -1,16 +1,16 @@
-import { Args, Flags } from "../../metadata.ts";
+import { Args, Flags } from "../../metadata";
 
+import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
 import { StreamFrame } from "@lando/sdk/schema";
-import { type ExecAppResult, execApp } from "../../../../operations/exec.ts";
-import { renderExecAppResult } from "../../../commands/exec.ts";
-import { withOptionalStderrOutput } from "../../../renderer-output.ts";
+import { renderExecAppResult } from "../../../commands/exec";
+import { withOptionalStderrOutput } from "../../../renderer-output";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary.ts";
+} from "../../command-base";
+import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary";
 
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,

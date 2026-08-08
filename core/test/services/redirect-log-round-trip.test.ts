@@ -5,7 +5,7 @@ import { Chunk, Effect, Stream } from "effect";
 import { AbsolutePath, AppId, type LogSource, LogSourceId, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { runtimeFollowLogSources } from "../../src/services/redirect-log-sources.ts";
+import { runtimeFollowLogSources } from "@lando/engine/services/redirect-log-sources";
 
 const redirectSource = (id: string, path: string, stream: LogSource["stream"]): LogSource => ({
   id: LogSourceId.make(id),

@@ -24,12 +24,12 @@ import { Effect, Layer } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { ConfigService, Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "../downloader/service.ts";
-import { HttpClientLive } from "../http-client/live.ts";
-import { ConfigServiceLive } from "../services/config.ts";
-import { EventServiceLive } from "../services/event-service.ts";
-import { publish } from "./git-source.ts";
-import type { ResolvedRecipe } from "./source.ts";
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { HttpClientLive } from "@lando/engine/http-client/live";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { publish } from "./git-source";
+import type { ResolvedRecipe } from "./source";
 
 export interface TarballRecipeFetcher {
   readonly fetch: (url: string) => Promise<Uint8Array>;

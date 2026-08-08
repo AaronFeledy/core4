@@ -12,9 +12,9 @@ import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { ConfigService, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { makeHttpClientLive } from "@lando/engine/http-client/live";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
-import { makeHttpClientLive } from "../../src/http-client/live.ts";
-import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 interface EventSink {
   readonly events: LandoEvent[];

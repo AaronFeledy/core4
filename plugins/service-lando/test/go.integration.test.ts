@@ -25,7 +25,7 @@ import {
 } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
-import { ProviderExecToolingEngineLive } from "../../../core/src/services/tooling-engine.ts";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

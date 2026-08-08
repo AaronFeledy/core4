@@ -9,14 +9,14 @@ import {
   type BunSelfSpawner,
   childEnv as buildChildEnv,
   defaultBunSelfSpawner,
-} from "../../cli/commands/bun-self-runner.ts";
-import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command.ts";
+} from "../../cli/commands/bun-self-runner";
+import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command";
 import {
   createRecipeRunContext,
   defaultRunWarning,
   evaluateRunPermission,
   runNotAllowedError,
-} from "../run-allowlist.ts";
+} from "../run-allowlist";
 
 export interface PostInitIO {
   readonly out: (line: string) => void;

@@ -5,8 +5,8 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
 import { buildUninstallPlan, formatUninstallResult, uninstall } from "../../src/cli/commands/uninstall.ts";
-import type { ManagedProviderMachineClassification } from "../../src/runtime/managed-provider-machine.ts";
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-machine-"));

@@ -46,11 +46,11 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
+import { withAgentContextEnv } from "@lando/engine/config/agent-env";
+import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { makeLandoPaths } from "@lando/paths";
-import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
-import { withAgentContextEnv } from "../../config/agent-env.ts";
-import { loadUserLandofile } from "../app-resolution.ts";
-import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
+import { loadUserLandofile } from "../app-resolution";
+import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary";
 
 export interface ShellAppOptions {
   readonly host?: boolean;

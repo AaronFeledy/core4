@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
 

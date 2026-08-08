@@ -18,7 +18,9 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "engine", "runtime"],
@@ -27,7 +29,12 @@
     "@lando/landofile": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "@lando/state-store": "workspace:*"
+    "@lando/state-store": "workspace:*",
+    "effect": "^3.21.2",
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.7.1"
   },
   "scripts": {
     "build": "tsc -b",

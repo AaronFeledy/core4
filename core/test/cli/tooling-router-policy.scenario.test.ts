@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");

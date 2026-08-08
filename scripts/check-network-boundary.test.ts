@@ -11,6 +11,7 @@ let root: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "network-boundary-"));
   await mkdir(join(root, "core", "src"), { recursive: true });
+  await mkdir(join(root, "engine", "src"), { recursive: true });
   await mkdir(join(root, "plugins", "x", "src"), { recursive: true });
 });
 
@@ -99,9 +100,9 @@ describe("check-network-boundary", () => {
   });
 
   test("allows the HttpClient adapter file", async () => {
-    await mkdir(join(root, "core", "src", "http-client"), { recursive: true });
+    await mkdir(join(root, "engine", "src", "http-client"), { recursive: true });
     await writeFile(
-      join(root, "core", "src", "http-client", "live.ts"),
+      join(root, "engine", "src", "http-client", "live.ts"),
       `export const f = (fetchImpl: typeof fetch) => () => fetchImpl("https://a");\nexport const g = () => fetch("https://b");\n`,
     );
     const result = await checkNetworkBoundary({ root });

@@ -7,7 +7,7 @@ import {
   type ProviderSelectionInputs,
   readProviderEnvVar,
   resolveProviderSelection,
-} from "../../src/providers/precedence.ts";
+} from "@lando/engine/providers/precedence";
 
 const pid = (value: string): ProviderId => ProviderId.make(value);
 

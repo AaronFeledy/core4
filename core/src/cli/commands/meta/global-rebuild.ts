@@ -1,5 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
+import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import type {
   CapabilityError,
   EventError,
@@ -29,10 +30,9 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { publishedEndpointUrls } from "../../../operations/authority-url.ts";
 
-import { globalInstall } from "../../../operations/global-install.ts";
-import { loadGlobalPlan } from "../../../operations/global-plan.ts";
+import { globalInstall } from "@lando/engine/operations/global-install";
+import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 

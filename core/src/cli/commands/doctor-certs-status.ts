@@ -6,7 +6,7 @@ import type {
   PluginLoadError,
 } from "@lando/sdk/errors";
 
-import { CertificateAuthorityResolver } from "../../plugins/certificate-authority-resolver.ts";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 export type CertsDoctorStatus =
   | { readonly _tag: "unresolved" }

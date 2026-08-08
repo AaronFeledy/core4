@@ -5,8 +5,8 @@ import type {
   SyncResult as SyncResultType,
 } from "@lando/sdk/schema";
 
-import type { RemoteEntry, RemoteMutationResult } from "../../operations/remote.ts";
-import type { RenderContext } from "../renderer-boundary.ts";
+import type { RemoteEntry, RemoteMutationResult } from "@lando/engine/operations/remote";
+import type { RenderContext } from "../renderer-boundary";
 
 export const renderRemoteListResult = (
   result: ReadonlyArray<RemoteEntry>,

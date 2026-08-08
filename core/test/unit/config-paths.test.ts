@@ -9,7 +9,7 @@ import {
   managedFilesRoot,
   resolveUserConfRoot,
   resolveUserDataRoot,
-} from "../../src/config/roots.ts";
+} from "@lando/engine/config/roots";
 
 const ENV_KEYS = [
   "HOME",

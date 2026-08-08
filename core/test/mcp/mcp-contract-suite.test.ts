@@ -24,6 +24,7 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { RedactionService } from "@lando/engine/redaction/service";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
@@ -39,7 +40,6 @@ import {
   McpServiceLive,
 } from "../../src/mcp/service.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 /** A prompt-required tagged failure, standing in for interactive recipe answers. */
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {

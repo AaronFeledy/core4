@@ -1,4 +1,4 @@
-import type { GlobalInstallResult } from "../../../operations/global-install.ts";
+import type { GlobalInstallResult } from "@lando/engine/operations/global-install";
 
 export const renderGlobalInstallResult = (result: GlobalInstallResult): string =>
   [

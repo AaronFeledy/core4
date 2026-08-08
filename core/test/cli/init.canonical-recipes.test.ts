@@ -7,9 +7,9 @@ import { Effect } from "effect";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { initApp } from "../../src/cli/commands/init.ts";
 import { BUILTIN_RECIPE_RENDERERS, builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-canonical-")));

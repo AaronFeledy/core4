@@ -6,14 +6,14 @@ import { Effect } from "effect";
  * `<userConfRoot>/plugin-auth.json` and are consumed by the registry
  * plugin source for private packages.
  */
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 export const pluginLoginSpec: LandoCommandSpec<never> = {
   resultSchema: EmptyResultSchema,

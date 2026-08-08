@@ -12,10 +12,10 @@ import {
 } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
+import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import type { InstalledPluginRegistryEntry } from "../../plugins/installed-registry.ts";
-import { validatePluginManifest } from "./plugin-add.ts";
+import { validatePluginManifest } from "./plugin-add";
 
 const RESERVED_PLUGIN_ROOT_ENTRIES = new Set([
   ".lando-linked.json",

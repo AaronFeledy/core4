@@ -13,10 +13,10 @@ import { LandofileShape, ProviderId, type ServiceConfig } from "@lando/core/sche
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
 
 const provider = { ...TestRuntimeProvider, id: "lando" };
 
@@ -465,7 +465,7 @@ describe("GlobalAppService Landofile materialization", () => {
 describe("globalInstall command operation", () => {
   test("materializes both global Landofile files", async () => {
     await withTempRoots(async (dataRoot) => {
-      const { globalInstall } = await import("../../src/operations/global-install.ts");
+      const { globalInstall } = await import("@lando/engine/operations/global-install");
       const result = await runWithGlobalApp(globalInstall({}));
 
       expect(result).toEqual({
@@ -488,7 +488,7 @@ describe("globalInstall command operation", () => {
 
   test("fails plugin-specific enablement with a tagged remediation", async () => {
     await withTempRoots(async () => {
-      const { globalInstall } = await import("../../src/operations/global-install.ts");
+      const { globalInstall } = await import("@lando/engine/operations/global-install");
       const exit = await runWithGlobalAppExit(globalInstall({ plugin: "x" }));
       const failure = failureOf(exit);
 

@@ -1,13 +1,13 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
   appConfigTranslate,
   renderConfigTranslateResult,
-} from "../../../../commands/app-config-translate.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
-import { extractSpecFlags } from "../../../command-boundary.ts";
+} from "../../../../commands/app-config-translate";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import { extractSpecFlags } from "../../../command-boundary";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,

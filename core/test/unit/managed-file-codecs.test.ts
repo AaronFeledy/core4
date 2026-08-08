@@ -4,7 +4,7 @@ import { Effect, Exit } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
 
-import { decode, encode, mergeManaged } from "../../src/managed-file/codecs.ts";
+import { decode, encode, mergeManaged } from "@lando/engine/managed-file/codecs";
 
 const run = <A>(effect: Effect.Effect<A, ManagedFileError>): Promise<A> => Effect.runPromise(effect);
 

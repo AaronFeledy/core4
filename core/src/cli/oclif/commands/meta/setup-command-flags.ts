@@ -8,11 +8,11 @@
  * plugin. `contributedSetupFlagsForProvider` reads the values a plugin declared
  * for the active provider off the parsed input.
  */
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
-import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../../generated/setup-plugin-flags.ts";
-import { mergeSetupPluginFlags } from "../../../setup-plugin-flags-merge.ts";
-import { contributedSetupInputFlags } from "./setup-inputs.ts";
+import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../../generated/setup-plugin-flags";
+import { mergeSetupPluginFlags } from "../../../setup-plugin-flags-merge";
+import { contributedSetupInputFlags } from "./setup-inputs";
 
 export const SETUP_BUILTIN_FLAGS = {
   yes: Flags.boolean({ description: "Skip confirmation prompts.", default: false }),

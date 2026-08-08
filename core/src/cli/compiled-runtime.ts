@@ -14,12 +14,12 @@ import type {
   ScratchAppService,
 } from "@lando/sdk/services";
 
-import type { BootstrapLevel } from "../runtime/bootstrap.ts";
-import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../runtime/layer.ts";
+import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
+import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../runtime/layer";
 
-import type { StreamFrameSink } from "../operations/stream-frame-sink.ts";
-import { landoSpecForId } from "./compiled-argv.ts";
+import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { landoSpecForId } from "./compiled-argv";
 import {
   type CompiledCommandInput,
   activeCommandId,
@@ -27,18 +27,18 @@ import {
   activeResultFormat,
   commandErrorMessage,
   getActiveCommandInvocation,
-} from "./compiled-session.ts";
-import { EmptyResultSchema } from "./oclif/command-base.ts";
-import { type RenderContext, runWithRendererHandling } from "./renderer-boundary.ts";
-import { activeRendererMode } from "./renderer-mode-state.ts";
-import type { RendererIO } from "./renderer/io.ts";
+} from "./compiled-session";
+import { EmptyResultSchema } from "./oclif/command-base";
+import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
+import { activeRendererMode } from "./renderer-mode-state";
+import type { RendererIO } from "./renderer/io";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 
 const makeCompiledRuntime: CompiledRuntimeFactory = (bootstrap) =>
   makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }));
 
-export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state.ts";
+export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 export {
   type CompiledCommandInput,
   activeCommandId,
@@ -55,12 +55,12 @@ export {
   setActiveCommandInvocation,
   setActiveDeprecationWarnings,
   setActiveResultFormat,
-} from "./compiled-session.ts";
+} from "./compiled-session";
 export {
   flagTokenOf,
   invocationParityError,
   rejectInvalidInvocation,
-} from "./compiled-invocation-parity.ts";
+} from "./compiled-invocation-parity";
 
 export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   commandId: string,

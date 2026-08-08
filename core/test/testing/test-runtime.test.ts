@@ -34,10 +34,10 @@ import {
   provideTestRuntime,
   recordedEvents,
 } from "@lando/core/testing";
+import { ScratchRegistry } from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
-import { ScratchRegistry } from "../../src/scratch-app/registry.ts";
-import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
 const CacheValue = Schema.Struct({
   name: Schema.String,

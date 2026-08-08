@@ -1,12 +1,7 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
-import {
-  type UpdateOptions,
-  type UpdateResult,
-  UpdateResultSchema,
-  update,
-} from "../../../commands/update.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { type UpdateOptions, type UpdateResult, UpdateResultSchema, update } from "../../../commands/update";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   const flags =

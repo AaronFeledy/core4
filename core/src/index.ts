@@ -13,12 +13,12 @@
  */
 
 // Runtime factory.
-export { makeLandoRuntime, type LandoRuntimeOptions } from "./runtime/layer.ts";
-export type { BootstrapLevel } from "./runtime/bootstrap.ts";
+export { makeLandoRuntime, type LandoRuntimeOptions } from "./runtime/layer";
+export type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 
 // App handle convenience API for embedding hosts.
-export { resolveApp } from "./app/resolve.ts";
-export { openLandoRuntime } from "./app/runtime.ts";
+export { resolveApp } from "./app/resolve";
+export { openLandoRuntime } from "./app/runtime";
 export { AppResolveError } from "@lando/sdk/errors";
 export type {
   App,

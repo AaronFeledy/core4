@@ -31,10 +31,10 @@ import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
   writeCachedAppPlan,
-} from "../../src/cache/app-plan.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+} from "@lando/engine/cache/app-plan";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

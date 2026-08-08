@@ -6,9 +6,9 @@ import type {
   DoctorSeverity,
   DoctorSolution,
   DoctorStatus,
-} from "./doctor-contract.ts";
-import { providerKindFor } from "./doctor-contract.ts";
-import type { SetupReadinessRuntimeService } from "./setup-readiness.ts";
+} from "./doctor-contract";
+import { providerKindFor } from "./doctor-contract";
+import type { SetupReadinessRuntimeService } from "./setup-readiness";
 
 export interface RuntimeServiceStatusShape {
   readonly running: boolean;

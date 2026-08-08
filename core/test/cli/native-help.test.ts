@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 

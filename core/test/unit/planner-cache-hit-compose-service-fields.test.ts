@@ -11,12 +11,12 @@ import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/c
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
-import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
+import { appPlanCachePath } from "@lando/engine/cache/paths";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);

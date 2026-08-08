@@ -1,39 +1,35 @@
 import { Effect, Layer } from "effect";
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import type { RedactionService } from "../../../../redaction/service.ts";
+import type { RedactionService } from "@lando/engine/redaction/service";
 
-import { cliRuntimeOptions } from "../../../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../../../runtime/layer.ts";
-import type { RendererMode } from "../../../bug-report.ts";
-import { newInvocationId } from "../../../command-lifecycle.ts";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../../../../runtime/layer";
+import type { RendererMode } from "../../../bug-report";
+import { newInvocationId } from "../../../command-lifecycle";
+import { type McpCommandRegistry, dispatchMcpCommand, mcpFlagsFromParsed } from "../../../commands/meta/mcp";
 import {
   type McpListResult,
   McpListResultSchema,
   renderMcpListResult,
-} from "../../../commands/meta/mcp-list.ts";
-import {
-  type McpCommandRegistry,
-  dispatchMcpCommand,
-  mcpFlagsFromParsed,
-} from "../../../commands/meta/mcp.ts";
-import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
-import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../../renderer-boundary.ts";
+} from "../../../commands/meta/mcp-list";
+import { type ResultFormat, resolveResultFormat } from "../../../format-flags";
+import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../../renderer-boundary";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
-} from "../../command-boundary.ts";
-import { getCommandRuntimeLayer } from "../../hooks/init.ts";
+} from "../../command-boundary";
+import { getCommandRuntimeLayer } from "../../hooks/init";
 
 let mcpCommandRegistrySource: McpCommandRegistry = { commandEntries: [] };
 

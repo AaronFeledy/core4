@@ -1,7 +1,7 @@
 import type { HostPlatform } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor.ts";
+import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor";
 
 /**
  * Best-effort correlation of a Podman container died event to the affected

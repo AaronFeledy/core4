@@ -15,13 +15,13 @@ import {
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
+import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
-import { makeInteractionService } from "../../interaction/service.ts";
-import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
-import { publish } from "../../recipes/git-source.ts";
-import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner.ts";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
+import { makeInteractionService } from "../../interaction/service";
+import { publish } from "../../recipes/git-source";
+import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
 
 import {
   DEFAULT_NPM_REGISTRY_URL,
@@ -31,13 +31,13 @@ import {
   parseNpmPackageSpec,
   resolveNpmPackageVersion,
   verifyNpmPackageDistIntegrity,
-} from "../../recipes/npm-source.ts";
+} from "../../recipes/npm-source";
 import {
   type TarballRecipeExtractor,
   type TarballRecipeFetcher,
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
-} from "../../recipes/tarball-source.ts";
+} from "../../recipes/tarball-source";
 
 export interface PluginAddSpawner {
   readonly install: (request: {
