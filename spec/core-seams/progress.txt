@@ -255,3 +255,12 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
   - Prove a public-surface parity story by mutating its own inventory: deleting one export entry must turn the coverage assertion red, otherwise the inventory is decorative.
   - The library `App` handle is cast because engine operations publish wider error unions than the SDK contract; treat reconciling them as an SDK contract change with its own story rather than folding it into a parity pass.
 ---
+
+## 2026-08-07 23:29 CDT - US-544 Review
+- Isolated the published-package smoke in a dependent job with no repository, npm, checkout, or OIDC credentials, so registry-installed module code no longer executes inside the privileged publish job; focused regressions lock job separation, zero permissions, immutable action pins, and the exact-version install checks.
+- Review notes (deferred/rejected): rejected declaring bundled plugins as core dependencies or changing the `App` error contract because both are pre-existing public-contract decisions explicitly deferred outside this parity story; rejected checkout-ref pinning and release concurrency as pre-existing release hardening not introduced by this branch; rejected embedding-doc and exhaustive symbol-inventory expansion as pre-existing non-blocking drift beyond US-544's unchanged-surface proof.
+- Guide-Coverage-Skip: US-544 adds parity, release-smoke, and credential-isolation proof without changing documented command or library behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, 55 focused public-surface/release/compiled-binary tests, initial and post-fix Bugbot, and post-fix security review passed. The nightly-tier codegen suite passed 15 of 16 tests; its sole failure is the previously recorded `15`-versus-`19` CI codegen-step baseline drift unchanged from `origin/main`.
+- **Learnings for future iterations:**
+  - Post-publish smoke tests that import registry packages must run in a separate `permissions: {}` job without checkout or trusted-publishing setup; `--ignore-scripts` does not prevent top-level module execution.
+---
