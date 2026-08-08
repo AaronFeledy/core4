@@ -19,6 +19,24 @@ export interface BoundaryRuleRegistration {
   readonly seamJustification: string;
 }
 
+export interface BoundaryRuleIndex {
+  readonly ids: readonly string[];
+  readonly rules: ReadonlyMap<string, BoundaryRule>;
+}
+
+export const indexBoundaryRuleRegistrations = (
+  registrations: readonly BoundaryRuleRegistration[],
+): BoundaryRuleIndex => {
+  const ids = registrations.map(({ rule }) => rule.id);
+  const duplicateId = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicateId !== undefined) throw new TypeError(`Duplicate boundary rule id: ${duplicateId}`);
+
+  return {
+    ids,
+    rules: new Map(registrations.map(({ rule }) => [rule.id, rule] as const)),
+  };
+};
+
 export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: envHelperRule,
@@ -81,8 +99,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
 ] as const satisfies readonly BoundaryRuleRegistration[];
 
-export const BOUNDARY_RULE_IDS: readonly string[] = BOUNDARY_RULE_REGISTRATIONS.map(({ rule }) => rule.id);
+const BOUNDARY_RULE_INDEX = indexBoundaryRuleRegistrations(BOUNDARY_RULE_REGISTRATIONS);
 
-export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = new Map(
-  BOUNDARY_RULE_REGISTRATIONS.map(({ rule }) => [rule.id, rule] as const),
-);
+export const BOUNDARY_RULE_IDS: readonly string[] = BOUNDARY_RULE_INDEX.ids;
+
+export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = BOUNDARY_RULE_INDEX.rules;
