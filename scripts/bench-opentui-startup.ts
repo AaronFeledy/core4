@@ -5,17 +5,24 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
+const DEFAULT_BASELINE = resolve(REPO_ROOT, "scripts/bench-baselines.json");
 const DEFAULT_BINARY = resolve(REPO_ROOT, "core/dist/lando");
-const COMMAND = ["--version"] as const;
-const DEFAULT_RUNS = 20;
-const STARTUP_BUDGET_MS = 50;
-const FIRST_OUTPUT_BUDGET_MS = 50;
 
-type Options = {
-  readonly binary: string;
+type Baseline = {
+  readonly description: string;
+  readonly platform: "linux-x64";
+  readonly command: ReadonlyArray<string>;
   readonly runs: number;
   readonly startupBudgetMs: number;
   readonly firstOutputBudgetMs: number;
+};
+
+type Options = {
+  readonly binary: string;
+  readonly baselinePath: string;
+  readonly runs?: number;
+  readonly startupBudgetMs?: number;
+  readonly firstOutputBudgetMs?: number;
   readonly json: boolean;
 };
 
@@ -26,7 +33,7 @@ type RunTiming = {
 
 type Summary = {
   readonly platform: "linux-x64";
-  readonly command: typeof COMMAND;
+  readonly command: ReadonlyArray<string>;
   readonly runs: number;
   readonly startupP95Ms: number;
   readonly firstOutputP95Ms: number;
@@ -38,11 +45,16 @@ const usage = `Usage: bun run scripts/bench-opentui-startup.ts [options]
 
 Options:
   --binary <path>                  Linux x64 compiled binary (default: core/dist/lando)
-  --runs <n>                       Process samples (default: ${DEFAULT_RUNS})
-  --startup-budget-ms <n>          End-to-end p95 budget (default: ${STARTUP_BUDGET_MS})
-  --first-output-budget-ms <n>     First-output p95 budget (default: ${FIRST_OUTPUT_BUDGET_MS})
+  --baseline <path>                Baseline JSON path (default: scripts/bench-baselines.json)
+  --runs <n>                       Process samples (default: baseline runs)
+  --startup-budget-ms <n>          End-to-end p95 budget (default: baseline startupBudgetMs)
+  --first-output-budget-ms <n>     First-output p95 budget (default: baseline firstOutputBudgetMs)
   --json                           Emit a JSON summary
 `;
+
+class BaselineError extends Error {
+  override readonly name = "BaselineError";
+}
 
 const positiveNumber = (value: string, label: string): number => {
   const parsed = Number(value);
@@ -58,9 +70,10 @@ const positiveInteger = (value: string, label: string): number => {
 
 export const parseArgs = (argv: ReadonlyArray<string>): Options => {
   let binary = DEFAULT_BINARY;
-  let runs = DEFAULT_RUNS;
-  let startupBudgetMs = STARTUP_BUDGET_MS;
-  let firstOutputBudgetMs = FIRST_OUTPUT_BUDGET_MS;
+  let baselinePath = DEFAULT_BASELINE;
+  let runs: number | undefined;
+  let startupBudgetMs: number | undefined;
+  let firstOutputBudgetMs: number | undefined;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -77,6 +90,7 @@ export const parseArgs = (argv: ReadonlyArray<string>): Options => {
       process.stdout.write(usage);
       process.exit(0);
     } else if (arg === "--binary") binary = resolve(value());
+    else if (arg === "--baseline") baselinePath = resolve(value());
     else if (arg === "--runs") runs = positiveInteger(value(), arg);
     else if (arg === "--startup-budget-ms") startupBudgetMs = positiveNumber(value(), arg);
     else if (arg === "--first-output-budget-ms") firstOutputBudgetMs = positiveNumber(value(), arg);
@@ -84,7 +98,67 @@ export const parseArgs = (argv: ReadonlyArray<string>): Options => {
     else throw new Error(`Unknown option ${arg}`);
   }
 
-  return { binary, runs, startupBudgetMs, firstOutputBudgetMs, json };
+  return {
+    binary,
+    baselinePath,
+    ...(runs === undefined ? {} : { runs }),
+    ...(startupBudgetMs === undefined ? {} : { startupBudgetMs }),
+    ...(firstOutputBudgetMs === undefined ? {} : { firstOutputBudgetMs }),
+    json,
+  };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const stringField = (record: Record<string, unknown>, key: string): string => {
+  const value = record[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new BaselineError(`Baseline field ${key} must be a non-empty string`);
+  }
+  return value;
+};
+
+const numberField = (record: Record<string, unknown>, key: string): number => {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new BaselineError(`Baseline field ${key} must be a positive number`);
+  }
+  return value;
+};
+
+const isNonEmptyStringArray = (value: unknown): value is ReadonlyArray<string> =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every((entry: unknown): entry is string => typeof entry === "string");
+
+export const readBaseline = async (path: string): Promise<Baseline> => {
+  const parsed: unknown = await Bun.file(path).json();
+  if (!isRecord(parsed) || !("openTuiStartup" in parsed)) {
+    throw new BaselineError("Baseline JSON must contain openTuiStartup");
+  }
+  const record = parsed.openTuiStartup;
+  if (!isRecord(record)) throw new BaselineError("openTuiStartup baseline must be an object");
+
+  const platform = stringField(record, "platform");
+  if (platform !== "linux-x64") {
+    throw new BaselineError("Baseline field platform must be linux-x64");
+  }
+  const command = record.command;
+  if (!isNonEmptyStringArray(command)) {
+    throw new BaselineError("Baseline field command must be a non-empty string array");
+  }
+  const runs = numberField(record, "runs");
+  if (!Number.isInteger(runs)) throw new BaselineError("Baseline field runs must be a positive integer");
+
+  return {
+    description: stringField(record, "description"),
+    platform,
+    command,
+    runs,
+    startupBudgetMs: numberField(record, "startupBudgetMs"),
+    firstOutputBudgetMs: numberField(record, "firstOutputBudgetMs"),
+  };
 };
 
 const percentile95 = (values: ReadonlyArray<number>): number => {
@@ -106,13 +180,14 @@ const consume = async (stream: ReadableStream<Uint8Array>, onChunk: () => void):
 
 const measureOne = async (input: {
   readonly binary: string;
+  readonly command: ReadonlyArray<string>;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
 }): Promise<RunTiming> => {
   const start = performance.now();
   let firstOutputMs: number | undefined;
   const proc = Bun.spawn({
-    cmd: [input.binary, ...COMMAND],
+    cmd: [input.binary, ...input.command],
     cwd: input.cwd,
     env: input.env,
     stdout: "pipe",
@@ -131,9 +206,12 @@ const measureOne = async (input: {
   return { startupMs: performance.now() - start, firstOutputMs };
 };
 
-export const runBenchmark = async (options: Options): Promise<Summary> => {
+export const runBenchmark = async (options: Options, baseline: Baseline): Promise<Summary> => {
   const sandbox = await mkdtemp(resolve(tmpdir(), "lando-opentui-startup-"));
   try {
+    const runs = options.runs ?? baseline.runs;
+    const startupBudgetMs = options.startupBudgetMs ?? baseline.startupBudgetMs;
+    const firstOutputBudgetMs = options.firstOutputBudgetMs ?? baseline.firstOutputBudgetMs;
     const env = {
       ...process.env,
       LANDO_USER_CONF_ROOT: resolve(sandbox, "config"),
@@ -141,17 +219,19 @@ export const runBenchmark = async (options: Options): Promise<Summary> => {
       LANDO_USER_CACHE_ROOT: resolve(sandbox, "cache"),
     };
     const timings: RunTiming[] = [];
-    for (let index = 0; index < options.runs; index += 1) {
-      timings.push(await measureOne({ binary: options.binary, cwd: sandbox, env }));
+    for (let index = 0; index < runs; index += 1) {
+      timings.push(
+        await measureOne({ binary: options.binary, command: baseline.command, cwd: sandbox, env }),
+      );
     }
     return {
-      platform: "linux-x64",
-      command: COMMAND,
-      runs: options.runs,
+      platform: baseline.platform,
+      command: baseline.command,
+      runs,
       startupP95Ms: percentile95(timings.map((timing) => timing.startupMs)),
       firstOutputP95Ms: percentile95(timings.map((timing) => timing.firstOutputMs)),
-      startupBudgetMs: options.startupBudgetMs,
-      firstOutputBudgetMs: options.firstOutputBudgetMs,
+      startupBudgetMs,
+      firstOutputBudgetMs,
     };
   } finally {
     await rm(sandbox, { recursive: true, force: true });
@@ -173,7 +253,8 @@ const formatSummary = (summary: Summary): string =>
 
 const main = async (): Promise<void> => {
   const options = parseArgs(Bun.argv.slice(2));
-  const summary = await runBenchmark(options);
+  const baseline = await readBaseline(options.baselinePath);
+  const summary = await runBenchmark(options, baseline);
   const startupPassed = summary.startupP95Ms < summary.startupBudgetMs;
   const firstOutputPassed = summary.firstOutputP95Ms < summary.firstOutputBudgetMs;
   if (!startupPassed || !firstOutputPassed) {

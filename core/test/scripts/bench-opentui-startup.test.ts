@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const benchScript = resolve(repoRoot, "scripts/bench-opentui-startup.ts");
+const trackedBaseline = resolve(repoRoot, "scripts/bench-baselines.json");
 
 const writeFakeBinary = async (dir: string): Promise<string> => {
   const path = join(dir, "fake-lando");
@@ -24,25 +25,41 @@ const writeFakeBinary = async (dir: string): Promise<string> => {
   return path;
 };
 
+const writeBaseline = async (
+  dir: string,
+  openTuiStartup?: {
+    readonly runs: number;
+    readonly startupBudgetMs: number;
+    readonly firstOutputBudgetMs: number;
+  },
+): Promise<string> => {
+  const path = join(dir, "bench-baselines.json");
+  await writeFile(
+    path,
+    JSON.stringify(
+      openTuiStartup === undefined
+        ? { toolingHotPath: {} }
+        : {
+            openTuiStartup: {
+              description: "test OpenTUI startup baseline",
+              platform: "linux-x64",
+              command: ["--version"],
+              ...openTuiStartup,
+            },
+          },
+      null,
+      2,
+    ),
+  );
+  return path;
+};
+
 const runBench = async (
-  binary: string,
-  budgets: { readonly startupMs: number; readonly firstOutputMs: number },
+  args: ReadonlyArray<string>,
   env: NodeJS.ProcessEnv = {},
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const proc = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "run",
-      benchScript,
-      "--binary",
-      binary,
-      "--runs",
-      "3",
-      "--startup-budget-ms",
-      String(budgets.startupMs),
-      "--first-output-budget-ms",
-      String(budgets.firstOutputMs),
-    ],
+    cmd: [process.execPath, "run", benchScript, ...args],
     cwd: repoRoot,
     env: { ...process.env, ...env },
     stdout: "pipe",
@@ -57,12 +74,110 @@ const runBench = async (
 };
 
 describe("bench-opentui-startup", () => {
+  test("tracked baseline pins the canonical OpenTUI startup gate", async () => {
+    const parsed: unknown = await Bun.file(trackedBaseline).json();
+    expect(parsed).toMatchObject({
+      openTuiStartup: {
+        description: expect.stringMatching(/.+/),
+        platform: "linux-x64",
+        command: ["--version"],
+        runs: 20,
+        startupBudgetMs: 50,
+        firstOutputBudgetMs: 50,
+      },
+    });
+  });
+
+  test("uses the selected baseline command, runs, and budgets by default", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-opentui-startup-baseline-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir, {
+        runs: 2,
+        startupBudgetMs: 1_000,
+        firstOutputBudgetMs: 1_000,
+      });
+
+      const result = await runBench(["--binary", binary, "--baseline", baseline]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("command: --version");
+      expect(result.stdout).toContain("samples: 2");
+      expect(result.stdout).toContain("startup p95");
+      expect(result.stdout).toContain("budget 1000ms");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CLI timing options override the selected baseline", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-opentui-startup-overrides-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir, {
+        runs: 1,
+        startupBudgetMs: 1,
+        firstOutputBudgetMs: 1,
+      });
+
+      const result = await runBench(
+        [
+          "--binary",
+          binary,
+          "--baseline",
+          baseline,
+          "--runs",
+          "3",
+          "--startup-budget-ms",
+          "1000",
+          "--first-output-budget-ms",
+          "1000",
+        ],
+        { LANDO_FAKE_FIRST_OUTPUT_SECONDS: "0.030" },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("samples: 3");
+      expect(result.stdout).toMatch(/startup p95 [\d.]+ms \(budget 1000ms\)/);
+      expect(result.stdout).toMatch(/first output p95 [\d.]+ms \(budget 1000ms\)/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails clearly when the selected baseline omits openTuiStartup", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-opentui-startup-missing-baseline-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir);
+
+      const result = await runBench(["--binary", binary, "--baseline", baseline]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("Baseline JSON must contain openTuiStartup");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("reports stable p95 startup and first-output budgets for the canonical command", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-opentui-startup-pass-"));
     try {
       const binary = await writeFakeBinary(dir);
 
-      const result = await runBench(binary, { startupMs: 1_000, firstOutputMs: 1_000 });
+      const result = await runBench([
+        "--binary",
+        binary,
+        "--runs",
+        "3",
+        "--startup-budget-ms",
+        "1000",
+        "--first-output-budget-ms",
+        "1000",
+      ]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe("");
@@ -81,8 +196,7 @@ describe("bench-opentui-startup", () => {
       const binary = await writeFakeBinary(dir);
 
       const result = await runBench(
-        binary,
-        { startupMs: 1_000, firstOutputMs: 1 },
+        ["--binary", binary, "--runs", "3", "--startup-budget-ms", "1000", "--first-output-budget-ms", "1"],
         { LANDO_FAKE_FIRST_OUTPUT_SECONDS: "0.030" },
       );
 
