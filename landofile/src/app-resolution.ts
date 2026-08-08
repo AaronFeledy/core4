@@ -20,7 +20,7 @@ import {
   type NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import type { AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
+import type { AbsolutePath, AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
 import { hasResolvableIncludes, resolveLandofileIncludes } from "./includes.ts";
@@ -32,7 +32,7 @@ const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
 export interface ResolvedAppTarget {
   readonly plan: AppPlan;
-  readonly root: string;
+  readonly root: AbsolutePath;
   readonly app: AppRef;
   readonly landofile?: LandofileShape;
 }

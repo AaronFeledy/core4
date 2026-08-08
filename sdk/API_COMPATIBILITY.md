@@ -4,6 +4,12 @@
 
 ## Compatibility notes
 
+- The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
+  `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
+  reloading or planning through those bound App-handle methods. `ShareAppError` additively includes
+  `StateStoreError | ParseResult.ParseError`, matching tunnel-registry persistence and request decode
+  failures. The start, stop, restart, rebuild, destroy, logs, pull, and push SDK error unions are not
+  widened by this change.
 - `ProxyServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived

@@ -21,23 +21,31 @@ import type {
   StopAppOptions,
   ToolingOptions,
 } from "@lando/sdk/app";
-import { LogSourceId, type ServiceName } from "@lando/sdk/schema";
-import type { LogChunk } from "@lando/sdk/services";
+import { LogSourceId, ServiceName } from "@lando/sdk/schema";
+import type { BuildOrchestrator, LogChunk, ProxyService, ShellRunner } from "@lando/sdk/services";
 import { EventService, Renderer } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
+import type { RedactionService } from "../redaction/service.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
 import { confirmRemoteSyncWithInteraction } from "./remote-confirmation.ts";
 
 const toLogChunk = (line: LogsAppLine): LogChunk => ({
-  service: line.service as ServiceName,
+  service: ServiceName.make(line.service),
   stream: line.stream,
   line: line.line,
   ...(line.source === undefined ? {} : { source: LogSourceId.make(line.source) }),
   ...(line.timestamp === undefined ? {} : { timestamp: new Date(line.timestamp) }),
 });
+
+export type AppHandleRuntimeServices =
+  | LandoRuntimeServices
+  | BuildOrchestrator
+  | ProxyService
+  | ShellRunner
+  | RedactionService;
 
 /**
  * Builds the opaque/branded `App` handle returned by `resolveApp`/`runtime.app`.
@@ -47,12 +55,12 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
  */
 export const makeAppHandle = (
   target: ResolvedAppTarget,
-  runtime: Runtime.Runtime<LandoRuntimeServices>,
+  runtime: Runtime.Runtime<AppHandleRuntimeServices>,
   ops: AppOperations,
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  return {
+  const implementation = {
     id: plan.id,
     ref,
     root,
@@ -204,5 +212,6 @@ export const makeAppHandle = (
           ),
         ),
     },
-  } as unknown as App;
+  } satisfies Omit<App, symbol>;
+  return implementation as typeof implementation & App;
 };

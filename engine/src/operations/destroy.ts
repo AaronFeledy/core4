@@ -40,33 +40,27 @@ type DestroyAppServices =
   | LandofileService
   | PathsService
   | RuntimeProviderRegistry;
+type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const destroyApp = (
-  options: DestroyAppOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
+export const destroyAppForTarget = (
+  options: DestroyAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
+    const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
     const events = yield* EventService;
     const paths = yield* PathsService;
     const proxy = yield* Effect.serviceOption(ProxyService);
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+    const plan = target.plan;
     const provider = yield* registry.select(plan);
-    const ref = target?.app ?? appRef(plan);
-    const volumes = options.volumes ?? false;
+    const ref = target.app;
+    const volumes = resolvedOptions.volumes ?? false;
 
     yield* events.publish(
       PreDestroyEvent.make({
@@ -83,7 +77,7 @@ export const destroyApp = (
         { app: plan.id, plan },
         {
           volumes,
-          ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
+          ...(resolvedOptions.purgeCaches === undefined ? {} : { purgeCaches: resolvedOptions.purgeCaches }),
           removeState: true,
         },
       )
@@ -121,6 +115,27 @@ export const destroyApp = (
       servicesDestroyed: Object.values(plan.services)
         .reverse()
         .map((service) => String(service.name)),
-      volumesRemoved: volumes || options.purgeCaches === true,
+      volumesRemoved: volumes || resolvedOptions.purgeCaches === true,
     };
   });
+
+export const destroyApp = (
+  options: DestroyAppOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
+  target === undefined
+    ? Effect.gen(function* () {
+        const landofileService = yield* LandofileService;
+        const registry = yield* RuntimeProviderRegistry;
+        const planner = yield* AppPlanner;
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        const plan = yield* planner.plan(landofile, capabilities);
+        return yield* destroyAppForTarget(options, {
+          plan,
+          root: plan.root,
+          app: appRef(plan),
+          landofile,
+        });
+      })
+    : destroyAppForTarget(options, target);

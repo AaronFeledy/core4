@@ -8,7 +8,7 @@
 // they are handed; they do not structurally implement the interface, which keeps
 // future method additions non-breaking inside the 4.x line.
 
-import type { Effect, Scope, Stream } from "effect";
+import type { Effect, ParseResult, Scope, Stream } from "effect";
 
 import type {
   AppIdReservedError,
@@ -18,6 +18,7 @@ import type {
   BunShellScriptFrontMatterError,
   CapabilityError,
   CommandAliasConflictError,
+  ComposeKeyRejectedError,
   ConfigError,
   EventError,
   FileSyncDriftError,
@@ -29,6 +30,7 @@ import type {
   LandoCommandError,
   LandofileFormConflictError,
   LandofileIncludeError,
+  LandofileLoadExpressionError,
   LandofileLockMismatchError,
   LandofileNotFoundError as LandofileMissingError,
   LandofileParseError,
@@ -52,6 +54,7 @@ import type {
   ScratchSourceUnresolvedError,
   ShellExecError,
   ShellScriptOutsideRootError,
+  StateStoreError,
   ToolingCompileError,
   ToolingExecError,
   ToolingIncludeCycleError,
@@ -330,6 +333,7 @@ export interface InfoAppResult {
 
 export type InfoAppError =
   | AppIdReservedError
+  | ComposeKeyRejectedError
   | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
@@ -337,6 +341,7 @@ export type InfoAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | LandofileIncludeError
+  | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
@@ -371,6 +376,7 @@ export interface ExecAppResult {
 
 export type ExecAppError =
   | AppIdReservedError
+  | ComposeKeyRejectedError
   | CapabilityError
   | PublicationUnsupportedError
   | ConfigError
@@ -380,6 +386,7 @@ export type ExecAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | LandofileIncludeError
+  | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
@@ -419,12 +426,14 @@ export type ToolingError =
   | CapabilityError
   | PublicationUnsupportedError
   | ConfigError
+  | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
   | LandofileIncludeError
+  | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
@@ -501,7 +510,12 @@ export interface ShareStopAppResult {
   readonly status: "stopped";
 }
 
-export type ShareAppError = TunnelError | TunnelProviderUnavailableError | AppResolveError;
+export type ShareAppError =
+  | TunnelError
+  | TunnelProviderUnavailableError
+  | AppResolveError
+  | StateStoreError
+  | ParseResult.ParseError;
 
 export type RemoteSyncError =
   | AppIdReservedError
