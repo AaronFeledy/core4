@@ -610,7 +610,7 @@ export interface AppEventsApi {
   readonly subscribe: (name?: string) => Stream.Stream<LandoEvent, EventError, Scope.Scope>;
 }
 
-const AppBrand: unique symbol = Symbol("@lando/sdk/App");
+declare const AppBrand: unique symbol;
 
 /**
  * A stable, Effect-native handle to one resolved Lando app. Returned by
@@ -623,7 +623,8 @@ const AppBrand: unique symbol = Symbol("@lando/sdk/App");
  * foreground `share`, `logs`, `events.subscribe`) keep `Scope.Scope` in `R` so
  * the host owns the subscription/resource lifetime.
  */
-export interface AppImplementation {
+export interface App {
+  readonly [AppBrand]: never;
   readonly id: string;
   readonly ref: AppRef;
   readonly root: AbsolutePath;
@@ -649,16 +650,6 @@ export interface AppImplementation {
   readonly config: AppConfigApi;
   readonly events: AppEventsApi;
 }
-
-export interface App extends AppImplementation {
-  readonly [AppBrand]: typeof AppBrand;
-}
-
-/** Applies the SDK-owned opaque brand to a complete App implementation. */
-export const brandApp = (implementation: AppImplementation): App => ({
-  ...implementation,
-  [AppBrand]: AppBrand,
-});
 
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
