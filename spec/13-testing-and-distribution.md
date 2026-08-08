@@ -397,6 +397,6 @@ Gate names, script paths (`scripts/check-*.ts`), CLI output strings, and pass/fa
 
 `check:generated-output` is a new gate on the same substrate. It enforces that generated outputs — files whose path includes a `generated/` path segment — carry the standard generated-file banner, and that every file carrying that banner lives under a `generated/` path segment or a declared allowlist. It joins the gate family listed in §13.4 alongside `check:redaction-boundary` and `check:machine-output`.
 
-Adding a new architecture boundary is now: add a rule file under `scripts/boundary/rules/` plus a thin `scripts/check-*.ts` shim that invokes it — not a new bespoke scanner that re-implements its own file walk and AST parse.
+Adding a new architecture boundary is now: add a rule file under `scripts/boundary/rules/`, register it in the canonical `scripts/boundary/registry.ts`, add the matching seam-first inventory justification in `scripts/boundary/README.md`, and add a thin `scripts/check-*.ts` shim that invokes it — not a new bespoke scanner that re-implements its own file walk and AST parse.
 
 ---
