@@ -2,7 +2,9 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { BOUNDARY_RULE_IDS } from "../../../../scripts/boundary/registry.ts";
+import * as boundaryRegistry from "../../../../scripts/boundary/registry.ts";
+
+const { BOUNDARY_RULE_IDS } = boundaryRegistry;
 
 const inventoryPath = join(import.meta.dirname, "../../../../scripts/boundary/README.md");
 const inventoryFile = Bun.file(inventoryPath);
@@ -49,6 +51,25 @@ const inventoryRows = async (): Promise<readonly InventoryRow[]> => {
     });
 };
 
+const property = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+
+const registrationJustifications = (): ReadonlyMap<string, string> => {
+  const registrations = property(boundaryRegistry, "BOUNDARY_RULE_REGISTRATIONS");
+  if (!Array.isArray(registrations)) return new Map();
+
+  return new Map(
+    registrations.flatMap((registration) => {
+      const rule = property(registration, "rule");
+      const id = property(rule, "id");
+      const seamJustification = property(registration, "seamJustification");
+      return typeof id === "string" && typeof seamJustification === "string"
+        ? ([[id, seamJustification]] as const)
+        : [];
+    }),
+  );
+};
+
 describe("boundary rule inventory", () => {
   test("covers every registered boundary rule exactly once", async () => {
     // Given: the canonical registry and its maintained inventory.
@@ -77,6 +98,17 @@ describe("boundary rule inventory", () => {
 
     // Then: every rule has a complete valid classification.
     expect(invalidRows).toEqual([]);
+  });
+
+  test("registers one seam-first justification per inventory rule", async () => {
+    // Given: the maintained inventory from the seam-thinning audit.
+    const rows = await inventoryRows();
+
+    // When: canonical registrations are projected to their review justifications.
+    const registered = registrationJustifications();
+
+    // Then: registration and inventory carry the same complete policy.
+    expect(registered).toEqual(new Map(rows.map((row) => [row.id, row.justification])));
   });
 
   test("marks behavioral survivors and records the retired engine-owned layering alias", async () => {

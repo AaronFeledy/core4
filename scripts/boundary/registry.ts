@@ -14,36 +14,75 @@ import { specReferenceRule } from "./rules/spec-reference.ts";
 import { stateStoreRule } from "./rules/state-store.ts";
 import type { BoundaryRule } from "./types.ts";
 
-export const BOUNDARY_RULE_IDS = [
-  "env-helper",
-  "import-cycle",
-  "libpod-prefix",
-  "machine-output",
-  "managed-file",
-  "network",
-  "package-dag",
-  "paths",
-  "probe",
-  "redaction",
-  "renderer",
-  "spec-reference",
-  "state-store",
-  "generated-output",
-] as const;
+export interface BoundaryRuleRegistration {
+  readonly rule: BoundaryRule;
+  readonly seamJustification: string;
+}
 
-export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = new Map<string, BoundaryRule>([
-  [envHelperRule.id, envHelperRule],
-  [importCycleRule.id, importCycleRule],
-  [libpodPrefixRule.id, libpodPrefixRule],
-  [machineOutputRule.id, machineOutputRule],
-  [managedFileRule.id, managedFileRule],
-  [networkRule.id, networkRule],
-  [packageDagRule.id, packageDagRule],
-  [pathsRule.id, pathsRule],
-  [probeRule.id, probeRule],
-  [redactionRule.id, redactionRule],
-  [rendererRule.id, rendererRule],
-  [specReferenceRule.id, specReferenceRule],
-  [stateStoreRule.id, stateStoreRule],
-  [generatedOutputRule.id, generatedOutputRule],
-]);
+export const BOUNDARY_RULE_REGISTRATIONS = [
+  {
+    rule: envHelperRule,
+    seamJustification: "A workspace edge cannot express an intra-package feature-ordering constraint.",
+  },
+  {
+    rule: importCycleRule,
+    seamJustification:
+      "Package-DAG controls allowed package direction, not cycles among modules inside an allowed edge.",
+  },
+  {
+    rule: libpodPrefixRule,
+    seamJustification: "API-version literals are independent of package ownership.",
+  },
+  {
+    rule: machineOutputRule,
+    seamJustification: "Serialization and schema-presence contracts are call-site behavior.",
+  },
+  {
+    rule: managedFileRule,
+    seamJustification: "Marker and write-pattern use cannot be represented by a workspace dependency edge.",
+  },
+  {
+    rule: networkRule,
+    seamJustification: "An allowed package dependency cannot require every egress call to use one adapter.",
+  },
+  {
+    rule: packageDagRule,
+    seamJustification: "This is the primary package ownership gate.",
+  },
+  {
+    rule: pathsRule,
+    seamJustification:
+      "The rule is already owner-excluding and retains only derived-path construction behavior.",
+  },
+  {
+    rule: probeRule,
+    seamJustification: "A dependency on the SDK cannot prove the required probe primitive was called.",
+  },
+  {
+    rule: redactionRule,
+    seamJustification: "A dependency on the SDK cannot prove the canonical redactor was used.",
+  },
+  {
+    rule: rendererRule,
+    seamJustification: "Package ownership cannot enforce output routing or the narrow shell carve-outs.",
+  },
+  {
+    rule: specReferenceRule,
+    seamJustification: "Reference text and constructed paths are content, not dependency direction.",
+  },
+  {
+    rule: stateStoreRule,
+    seamJustification:
+      "The rule is already owner-excluding and retains only the durable-write behavior combination.",
+  },
+  {
+    rule: generatedOutputRule,
+    seamJustification: "Generated-source placement and banners are file-content conventions.",
+  },
+] as const satisfies readonly BoundaryRuleRegistration[];
+
+export const BOUNDARY_RULE_IDS: readonly string[] = BOUNDARY_RULE_REGISTRATIONS.map(({ rule }) => rule.id);
+
+export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = new Map(
+  BOUNDARY_RULE_REGISTRATIONS.map(({ rule }) => [rule.id, rule] as const),
+);
