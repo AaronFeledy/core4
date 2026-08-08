@@ -18,8 +18,8 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { makeRuntimeProviderRegistry } from "@lando/engine/providers/registry";
 import { makeLandoPaths } from "@lando/paths";
-import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

@@ -27,9 +27,9 @@ import { RENDERER_CAPABILITIES_TTY_INITIAL, type RendererIO } from "@lando/sdk/r
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "../../../core/src/cli/renderer/io.ts";
-import { EventServiceLive } from "../../../core/src/services/event-service.ts";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";

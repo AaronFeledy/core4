@@ -23,9 +23,9 @@ import {
   type DoctorSelfCheck,
   type DoctorSelfFailureReason,
   type DoctorSelfSolution,
-} from "./doctor-self-contract.ts";
+} from "./doctor-self-contract";
 
-export * from "./doctor-self-contract.ts";
+export * from "./doctor-self-contract";
 
 const DEFAULT_SECTION_BUDGET_MS = 10_000;
 const MIN_SECTION_BUDGET_MS = 1_000;

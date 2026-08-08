@@ -16,14 +16,14 @@ import { createHash } from "node:crypto";
 import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
 import { RecipeSourceError } from "@lando/sdk/errors";
 
-import { httpJsonFetch } from "../http-client/json-fetch.ts";
-import type { ResolvedRecipe } from "./source.ts";
+import { httpJsonFetch } from "@lando/engine/http-client/json-fetch";
+import type { ResolvedRecipe } from "./source";
 import {
   type TarballRecipeExtractor,
   type TarballRecipeFetcher,
   defaultTarballRecipeFetcher,
   resolveTarballRecipeSource,
-} from "./tarball-source.ts";
+} from "./tarball-source";
 
 export interface NpmPackageDist {
   readonly tarball: string;

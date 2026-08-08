@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { redactString } from "../redact.ts";
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { redactString } from "../redact";
 
 export type SetupReadinessStepStatus =
   | "deferred"

@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { DJANGO_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { DJANGO_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string, celery: boolean): string => {
   const lines = [

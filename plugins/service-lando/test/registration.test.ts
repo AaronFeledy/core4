@@ -4,8 +4,8 @@ import { Effect, Layer, Schema } from "effect";
 import { AppPlanner, PluginRegistry } from "@lando/core/services";
 import { AppPlan, type LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
 
-import { PluginRegistryLive } from "../../../core/src/plugins/registry.ts";
-import { AppPlannerLive } from "../../../core/src/services/planner.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { services } from "../src/index.ts";
 
 const providerCapabilities = {

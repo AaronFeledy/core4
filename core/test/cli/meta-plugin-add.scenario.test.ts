@@ -8,10 +8,10 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
-import { makePluginTrustStore } from "../../src/plugins/trust-store.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 

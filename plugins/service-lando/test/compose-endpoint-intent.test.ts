@@ -4,8 +4,8 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { PluginRegistryLive } from "../../../core/src/plugins/registry.ts";
-import { AppPlannerLive } from "../../../core/src/services/planner.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { linuxMvpCapabilities } from "../../provider-lando/src/capabilities.ts";
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";

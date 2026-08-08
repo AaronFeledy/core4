@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Stream } from "effect";
 
 import { FileNotFoundError } from "@lando/core/errors";
 import { FileSystem } from "@lando/core/services";
-import { FileSystemLive, writeAtomicFile } from "../../src/services/file-system.ts";
+import { FileSystemLive, writeAtomicFile } from "@lando/engine/services/file-system";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-file-system-"));

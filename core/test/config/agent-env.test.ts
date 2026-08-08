@@ -10,7 +10,7 @@ import {
   resolveAgentContextEnv,
   resolveAgentEnvAllowlist,
   withAgentContextEnv,
-} from "../../src/config/agent-env.ts";
+} from "@lando/engine/config/agent-env";
 
 describe("agent-context env allowlist", () => {
   test("is exactly the built-in names, in order", () => {

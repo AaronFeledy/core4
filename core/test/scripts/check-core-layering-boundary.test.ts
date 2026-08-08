@@ -43,13 +43,17 @@ afterEach(async () => {
 });
 
 describe("core layering boundary", () => {
-  test("rejects new app and services imports into CLI while allowing burn-down edges", async () => {
+  test("rejects every app, services, and operations import into the CLI shell", async () => {
     // Given
     await Promise.all([
-      write("core/src/app/new-edge.ts", 'import "../cli/app-resolution.ts";\n'),
-      write("core/src/app/normalized-edge.ts", 'import "./../cli/commands/info.ts";\n'),
+      write("engine/src/app/new-edge.ts", 'import "../../../core/src/cli/app-resolution.ts";\n'),
       write(
-        "core/src/app/package-imports.ts",
+        "engine/src/operations/start.ts",
+        'import { publishTaskStart } from "../../../core/src/cli/progress.ts";\n',
+      ),
+      write("engine/src/app/normalized-edge.ts", 'import "./../../../core/src/cli/commands/info.ts";\n'),
+      write(
+        "engine/src/app/package-imports.ts",
         [
           'import { runCli } from "@lando/core/cli";',
           'import type { AppOperation } from "@lando/core/cli/operations";',
@@ -61,7 +65,7 @@ describe("core layering boundary", () => {
         ].join("\n"),
       ),
       write(
-        "core/src/app/package-import-guards.ts",
+        "engine/src/app/package-import-guards.ts",
         [
           'import "@lando/core/services";',
           'import "@lando/core/client";',
@@ -69,17 +73,20 @@ describe("core layering boundary", () => {
           "",
         ].join("\n"),
       ),
-      write("core/src/services/new-edge.ts", 'void import("../cli/commands/info.ts");\n'),
-      write("core/src/services/nested/new-edge.ts", 'import "../../cli/commands/info.ts";\n'),
+      write("engine/src/services/new-edge.ts", 'void import("../../../core/src/cli/commands/info.ts");\n'),
       write(
-        "core/src/app/operations.ts",
-        'import { startApp } from "../cli/commands/start.ts";\nvoid startApp;\n',
+        "engine/src/services/nested/new-edge.ts",
+        'import "../../../../core/src/cli/commands/info.ts";\n',
       ),
       write(
-        "core/src/app/handle.ts",
+        "engine/src/app/operations.ts",
+        'import { startApp } from "../../../core/src/cli/commands/start.ts";\nvoid startApp;\n',
+      ),
+      write(
+        "engine/src/app/handle.ts",
         [
-          'import type { LogsAppLine } from "../cli/commands/logs.ts";',
-          'import { logsApp } from "../cli/commands/logs.ts";',
+          'import type { LogsAppLine } from "../../../core/src/cli/commands/logs.ts";',
+          'import { logsApp } from "../../../core/src/cli/commands/logs.ts";',
           "export type Line = LogsAppLine;",
           "void logsApp;",
           "",
@@ -97,17 +104,20 @@ describe("core layering boundary", () => {
     // Then
     expect(result).toMatchObject({ exitCode: 1, stdout: "" });
     expect(result.stderr.trimEnd().split("\n").slice(1)).toEqual([
-      'core/src/app/handle.ts:2: imports CLI internals via "../cli/commands/logs.ts"',
-      'core/src/app/new-edge.ts:1: imports CLI internals via "../cli/app-resolution.ts"',
-      'core/src/app/normalized-edge.ts:1: imports CLI internals via "./../cli/commands/info.ts"',
-      'core/src/app/package-imports.ts:1: imports CLI internals via "@lando/core/cli"',
-      'core/src/app/package-imports.ts:2: imports CLI internals via "@lando/core/cli/operations"',
-      'core/src/app/package-imports.ts:3: imports CLI internals via "@lando/core/cli"',
-      'core/src/app/package-imports.ts:4: imports CLI internals via "@lando/core/cli/operations"',
-      'core/src/services/nested/new-edge.ts:1: imports CLI internals via "../../cli/commands/info.ts"',
-      'core/src/services/new-edge.ts:1: imports CLI internals via "../cli/commands/info.ts"',
+      'engine/src/app/handle.ts:1: imports CLI internals via "../../../core/src/cli/commands/logs.ts"',
+      'engine/src/app/handle.ts:2: imports CLI internals via "../../../core/src/cli/commands/logs.ts"',
+      'engine/src/app/new-edge.ts:1: imports CLI internals via "../../../core/src/cli/app-resolution.ts"',
+      'engine/src/app/normalized-edge.ts:1: imports CLI internals via "./../../../core/src/cli/commands/info.ts"',
+      'engine/src/app/operations.ts:1: imports CLI internals via "../../../core/src/cli/commands/start.ts"',
+      'engine/src/app/package-imports.ts:1: imports CLI internals via "@lando/core/cli"',
+      'engine/src/app/package-imports.ts:2: imports CLI internals via "@lando/core/cli/operations"',
+      'engine/src/app/package-imports.ts:3: imports CLI internals via "@lando/core/cli"',
+      'engine/src/app/package-imports.ts:4: imports CLI internals via "@lando/core/cli/operations"',
+      'engine/src/operations/start.ts:1: imports CLI internals via "../../../core/src/cli/progress.ts"',
+      'engine/src/services/nested/new-edge.ts:1: imports CLI internals via "../../../../core/src/cli/commands/info.ts"',
+      'engine/src/services/new-edge.ts:1: imports CLI internals via "../../../core/src/cli/commands/info.ts"',
     ]);
-    expect(result.stderr).not.toContain("core/src/app/package-import-guards.ts");
+    expect(result.stderr).not.toContain("engine/src/app/package-import-guards.ts");
     expect(result.stderr).not.toContain('"@lando/core/services"');
     expect(result.stderr).not.toContain('"@lando/core/client"');
     expect(result.stderr).not.toContain('"@lando/sdk/probe"');

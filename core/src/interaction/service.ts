@@ -58,9 +58,9 @@ import {
   collectPrompts,
   createLineReader,
   createStdioPromptIO,
-} from "../recipes/prompts/index.ts";
-import { type InteractiveDriverGate, resolveInteractivePromptDriver } from "./interactive-driver.ts";
-import { getInteractionServiceOverride } from "./testing-override.ts";
+} from "../recipes/prompts/index";
+import { type InteractiveDriverGate, resolveInteractivePromptDriver } from "./interactive-driver";
+import { getInteractionServiceOverride } from "./testing-override";
 
 const STDIO_INTERACTION_ID = "stdio";
 

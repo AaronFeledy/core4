@@ -2,15 +2,15 @@ import { Effect } from "effect";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
-import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app.ts";
-import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp.ts";
-import { DoctorNdjsonSummarySchema } from "./doctor-ndjson.ts";
-import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract.ts";
-import type { DoctorSelfCheck } from "./doctor-self.ts";
-import { renderSubsystemDoctorResultAsNdjson } from "./doctor-subsystems.ts";
-import { appVersionConstraintCheckPayload } from "./doctor-version-constraint.ts";
-import { renderDoctorResultAsNdjson } from "./doctor.ts";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode";
+import { renderDoctorResultAsNdjson } from "./doctor";
+import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app";
+import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp";
+import { DoctorNdjsonSummarySchema } from "./doctor-ndjson";
+import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
+import type { DoctorSelfCheck } from "./doctor-self";
+import { renderSubsystemDoctorResultAsNdjson } from "./doctor-subsystems";
+import { appVersionConstraintCheckPayload } from "./doctor-version-constraint";
 
 const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
   Effect.runSync(encodeStreamEventFrame({ event: "doctor.check", payload, redactor: identityRedactor }));

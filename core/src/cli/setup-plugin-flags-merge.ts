@@ -9,9 +9,9 @@
  */
 import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 
-import { SetupFlagCollisionError, findSetupFlagCollision } from "../plugins/setup-flags.ts";
-import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags.ts";
-import { type BooleanFlag, Flags, type OptionFlag } from "./oclif/metadata.ts";
+import { SetupFlagCollisionError, findSetupFlagCollision } from "@lando/engine/plugins/setup-flags";
+import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags";
+import { type BooleanFlag, Flags, type OptionFlag } from "./oclif/metadata";
 
 export { SetupFlagCollisionError };
 

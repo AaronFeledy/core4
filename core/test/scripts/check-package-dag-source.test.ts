@@ -41,19 +41,23 @@ describe("check-package-dag source policy", () => {
     },
   );
 
-  test.each(["@lando/core", "@lando/core/paths", "@lando/provider-lando", "@lando/provider-lando/runtime"])(
-    "rejects engine source import %s",
-    async (specifier) => {
-      // Given
-      await fixture.write("engine/src/index.ts", `import "${specifier}";\n`);
+  test.each([
+    "@lando/core",
+    "@lando/core/paths",
+    "@lando/core/plugins/generated/bundled.ts",
+    "@lando/core/runtime/generated/layers/index.ts",
+    "@lando/provider-lando",
+    "@lando/provider-lando/runtime",
+  ])("rejects engine source import %s", async (specifier) => {
+    // Given
+    await fixture.write("engine/src/index.ts", `import "${specifier}";\n`);
 
-      // When
-      const result = await fixture.runGate(["--report"]);
+    // When
+    const result = await fixture.runGate(["--report"]);
 
-      // Then
-      expect(result.stdout).toContain(`engine/src/index.ts:1: ${specifier}`);
-    },
-  );
+    // Then
+    expect(result.stdout).toContain(`engine/src/index.ts:1: ${specifier}`);
+  });
 
   test("rejects relative source imports that cross package roots", async () => {
     // Given
@@ -163,12 +167,20 @@ describe("check-package-dag source policy", () => {
     }
   });
 
-  test("allows core plugin imports only from the generated composition root", async () => {
+  test("allows core plugin imports only from the generated composition roots", async () => {
     // Given
     await Promise.all([
       fixture.write("core/src/providers/provider.ts", 'import "@lando/service-lando";\n'),
       fixture.write(
         "core/src/plugins/generated/bundled.ts",
+        'export { service } from "@lando/service-lando";\n',
+      ),
+      fixture.write(
+        "core/src/runtime/generated/layers/index.ts",
+        'export { service } from "@lando/service-lando";\n',
+      ),
+      fixture.write(
+        "core/src/runtime/generated/table.ts",
         'export { service } from "@lando/service-lando";\n',
       ),
     ]);
@@ -178,7 +190,9 @@ describe("check-package-dag source policy", () => {
 
     // Then
     expect(result.stdout).toContain("core/src/providers/provider.ts:1: @lando/service-lando");
+    expect(result.stdout).toContain("core/src/runtime/generated/table.ts:1: @lando/service-lando");
     expect(result.stdout).not.toContain("core/src/plugins/generated/bundled.ts");
+    expect(result.stdout).not.toContain("core/src/runtime/generated/layers/index.ts");
   });
 
   test("scans every production TypeScript module extension", async () => {

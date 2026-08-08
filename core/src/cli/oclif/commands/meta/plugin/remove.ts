@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -8,9 +8,9 @@ import {
   PluginRemoveResultSchema,
   pluginRemove,
   renderPluginRemoveResult,
-} from "../../../../commands/plugin-remove.ts";
+} from "../../../../commands/plugin-remove";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const extractInput = (input: unknown): { name: string } => {
   if (typeof input !== "object" || input === null) return { name: "" };

@@ -11,7 +11,7 @@ import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 import { type ManagedFileContractHarness, runManagedFileContract } from "@lando/sdk/test";
 
-import { makeDiskBackend, makeManagedFileService } from "../../src/managed-file/service.ts";
+import { makeDiskBackend, makeManagedFileService } from "@lando/engine/managed-file/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);

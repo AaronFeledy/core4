@@ -1,31 +1,13 @@
 import { dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, type Layer } from "effect";
 
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh.ts";
-import { appConfigLint, renderConfigLintResult } from "../commands/app-config-lint.ts";
-import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate.ts";
-import { appConfig, renderAppConfigResult } from "../commands/app-config.ts";
-import {
-  type AppIncludesUpdateFormat,
-  appIncludesUpdate,
-  renderIncludesUpdateResult,
-} from "../commands/app-includes-update.ts";
-import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify.ts";
-import { destroyApp, renderDestroyAppResult } from "../commands/destroy.ts";
-import { resilientDoctorReport } from "../commands/doctor-bootstrap.ts";
-import {
-  type DoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
-} from "../commands/doctor-report.ts";
-import { infoApp, renderInfoAppResult } from "../commands/info.ts";
-import { followLogsApp, logsApp, renderLogsAppResult } from "../commands/logs.ts";
-import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open.ts";
-import { rebuildApp, renderRebuildAppResult } from "../commands/rebuild.ts";
+import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
+import { appConfigLint } from "@lando/engine/operations/app-config-lint";
+import { destroyApp } from "@lando/engine/operations/destroy";
+import { infoApp } from "@lando/engine/operations/info";
+import { followLogsApp, logsApp } from "@lando/engine/operations/logs";
+import { rebuildApp } from "@lando/engine/operations/rebuild";
 import {
   appPull,
   appPush,
@@ -35,24 +17,47 @@ import {
   appRemoteRemove,
   appRemoteSetup,
   appRemoteTest,
+} from "@lando/engine/operations/remote";
+import { restartApp } from "@lando/engine/operations/restart";
+import { appShare, appShareList, appShareStop } from "@lando/engine/operations/share";
+import { startApp } from "@lando/engine/operations/start";
+import { stopApp } from "@lando/engine/operations/stop";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../../runtime/layer";
+import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh";
+import { appConfig, renderAppConfigResult } from "../commands/app-config";
+import { renderConfigLintResult } from "../commands/app-config-lint";
+import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate";
+import {
+  type AppIncludesUpdateFormat,
+  appIncludesUpdate,
+  renderIncludesUpdateResult,
+} from "../commands/app-includes-update";
+import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify";
+import { renderDestroyAppResult } from "../commands/destroy";
+import { resilientDoctorReport } from "../commands/doctor-bootstrap";
+import {
+  type DoctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+  renderDoctorReportAsYaml,
+} from "../commands/doctor-report";
+import { renderInfoAppResult } from "../commands/info-render";
+import { renderLogsAppResult } from "../commands/logs";
+import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open";
+import { renderRebuildAppResult } from "../commands/rebuild";
+import {
   renderRemoteEnvListResult,
   renderRemoteListResult,
   renderRemoteMutationResult,
   renderRemoteTestResult,
   renderSyncResult,
-} from "../commands/remote.ts";
-import { renderRestartAppResult, restartApp } from "../commands/restart.ts";
-import {
-  appShare,
-  appShareList,
-  appShareStop,
-  renderShareListResult,
-  renderShareResult,
-  renderShareStopResult,
-} from "../commands/share.ts";
-import { renderStartAppResult, startApp } from "../commands/start.ts";
-import { renderStopAppResult, stopApp } from "../commands/stop.ts";
-import { compiledCommandInputFromArgv } from "../compiled-input.ts";
+} from "../commands/remote";
+import { renderRestartAppResult } from "../commands/restart";
+import { renderShareListResult, renderShareResult, renderShareStopResult } from "../commands/share";
+import { renderStartAppResult } from "../commands/start-result";
+import { renderStopAppResult } from "../commands/stop";
+import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeDeprecationWarnings,
   activeRendererMode,
@@ -68,9 +73,9 @@ import {
   rejectInvalidInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
-} from "../compiled-runtime.ts";
-import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index.ts";
-import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs.ts";
+} from "../compiled-runtime";
+import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index";
+import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs";
 import {
   remoteAddOptionsFromInput,
   remoteEnvListOptionsFromInput,
@@ -79,14 +84,26 @@ import {
   remoteSetupOptionsFromInput,
   remoteSyncOptionsFromInput,
   remoteTestOptionsFromInput,
-} from "../oclif/commands/app/remote/common.ts";
+} from "../oclif/commands/app/remote/common";
 import {
   shareListOptionsFromInput,
   shareOptionsFromInput,
   shareStopOptionsFromInput,
-} from "../oclif/commands/app/share/common.ts";
-import { setupSpec } from "../oclif/commands/meta/setup.ts";
-import { type RenderContext, runWithRendererHandling } from "../renderer-boundary.ts";
+} from "../oclif/commands/app/share/common";
+import { setupSpec } from "../oclif/commands/meta/setup";
+import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
+import type { RendererIO } from "../renderer/io";
+
+type DestroyCommandServices =
+  | import("@lando/sdk/services").AppPlanner
+  | import("@lando/sdk/services").LandofileService
+  | import("@lando/sdk/services").PathsService
+  | import("@lando/sdk/services").RuntimeProviderRegistry;
+
+interface RunDestroyOptions {
+  readonly runtime?: Layer.Layer<DestroyCommandServices, unknown>;
+  readonly io?: RendererIO;
+}
 
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -120,14 +137,16 @@ export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-export const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
+export const runDestroy = (argv: ReadonlyArray<string>, options: RunDestroyOptions = {}): Promise<void> => {
   const volumes = argv.includes("--volumes") || argv.includes("--purge");
   const purgeCaches = argv.includes("--purge-caches");
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     destroyApp({ volumes, purgeCaches, yes }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    options.runtime ??
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderDestroyAppResult,
+    { renderEvents: true, ...(options.io === undefined ? {} : { io: options.io }) },
   );
 };
 
@@ -223,16 +242,20 @@ export const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
 export const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:pull", argv);
-  return runCompiledCommand(appPull(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
-    renderSyncResult(value, compiledFormat(input), ctx),
+  return runCompiledCommand(
+    appPull(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
+    appRuntimeLayer(),
+    (value, ctx) => renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 
 export const runPush = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:push", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:push", argv);
-  return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
-    renderSyncResult(value, compiledFormat(input), ctx),
+  return runCompiledCommand(
+    appPush(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
+    appRuntimeLayer(),
+    (value, ctx) => renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 
@@ -511,9 +534,9 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const app = argv.some((arg) => arg === "--app");
   const deprecations = argv.some((arg) => arg === "--deprecations");
   const format = activeTextJsonYamlFormat();
-  // Doctor provisions its own runtime so a bootstrap failure is reported rather
-  // than fatal; native dispatch therefore runs it at `none` and threads the
-  // process abort signal so Ctrl-C cancels here too.
+  // Doctor uses its own runtime so bootstrap failures are reported, not fatal.
+  // Native dispatch runs it at `none` and threads the process abort signal so
+  // Ctrl-C cancels here too.
   await runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       resilientDoctorReport({

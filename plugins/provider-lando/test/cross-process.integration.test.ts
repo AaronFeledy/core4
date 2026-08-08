@@ -11,6 +11,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -24,7 +25,6 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
-import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 

@@ -11,10 +11,10 @@ import type {
   DoctorSeverity,
   DoctorSolution,
   DoctorStatus,
-} from "./doctor-contract.ts";
-import { providerKindFor } from "./doctor-contract.ts";
-import type { PluginDoctorProvider } from "./doctor-plugin-checks.ts";
-import { type DoctorSelfFailureReason, describeDoctorFailure, redactDoctorMessage } from "./doctor-self.ts";
+} from "./doctor-contract";
+import { providerKindFor } from "./doctor-contract";
+import type { PluginDoctorProvider } from "./doctor-plugin-checks";
+import { type DoctorSelfFailureReason, describeDoctorFailure, redactDoctorMessage } from "./doctor-self";
 
 export interface ProviderStatusShape {
   readonly running: boolean;

@@ -20,7 +20,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
-  ["state-store", ["core/src", "landofile/src", "plugins"]],
+  ["state-store", ["core/src", "engine/src", "landofile/src", "plugins"]],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
@@ -92,6 +92,12 @@ describe("workspace source-root drift gate", () => {
     // Given / When / Then
     expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("landofile/src");
     expect(ALL_PACKAGE_WALK_ROOTS).toContain("landofile/src");
+  });
+
+  test("covers engine implementation code with shared runtime behavior gates", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("engine/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("engine/src");
   });
 
   test("classifies narrow-by-design rules with their exact current roots", () => {

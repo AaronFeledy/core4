@@ -4,17 +4,17 @@
  * and `@lando/core/docs/redactions` subpaths remain unstable until GA.
  */
 
-export * from "./downloader.ts";
-export * from "./host-proxy.ts";
-export * from "./data-mover.ts";
-export * from "./events.ts";
-export * from "./http-client.ts";
-export * from "./interaction.ts";
-export * from "./live-provider-socket.ts";
-export * from "./managed-file.ts";
-export * from "./remote-sync.ts";
-export * from "./scenario-context.ts";
-export * from "./secret-store.ts";
-export * from "./state-store.ts";
-export * from "./test-runtime.ts";
-export * from "./tunnel.ts";
+export * from "./downloader";
+export * from "./host-proxy";
+export * from "./data-mover";
+export * from "./events";
+export * from "./http-client";
+export * from "./interaction";
+export * from "./live-provider-socket";
+export * from "./managed-file";
+export * from "./remote-sync";
+export * from "./scenario-context";
+export * from "./secret-store";
+export * from "./state-store";
+export * from "./test-runtime";
+export * from "./tunnel";

@@ -115,11 +115,11 @@ describe("StateStore package seam", () => {
     const packageLock: unknown = await import("@lando/state-store/lock");
     const packagePaths: unknown = await import("@lando/state-store/paths");
     const packageAtomic: unknown = await import("@lando/state-store/atomic");
-    const legacyService: unknown = await import("../../src/state/service.ts");
-    const legacyCodec: unknown = await import("../../src/state/codec.ts");
-    const legacyLock: unknown = await import("../../src/state/lock.ts");
-    const legacyPaths: unknown = await import("../../src/state/paths.ts");
-    const legacyAtomic: unknown = await import("../../src/state-store/atomic.ts");
+    const legacyService: unknown = await import("@lando/engine/state/service");
+    const legacyCodec: unknown = await import("@lando/engine/state/codec");
+    const legacyLock: unknown = await import("@lando/engine/state/lock");
+    const legacyPaths: unknown = await import("@lando/engine/state/paths");
+    const legacyAtomic: unknown = await import("@lando/engine/state-store/atomic");
     const modulePairs = [
       [legacyService, packageService],
       [legacyCodec, packageCodec],

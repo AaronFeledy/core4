@@ -19,8 +19,8 @@ import {
 import { RecipeManifest } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { decodeOrFail } from "../../schema/decode.ts";
-import { parseRecipeYaml } from "./parser.ts";
+import { decodeOrFail } from "@lando/engine/schema/decode";
+import { parseRecipeYaml } from "./parser";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 

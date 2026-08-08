@@ -9,10 +9,10 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 test("Given supported project fields, when planning twice, then the cache hit retains the Compose extension", async () => {
   // Given

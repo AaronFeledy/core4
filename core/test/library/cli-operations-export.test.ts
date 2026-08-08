@@ -12,6 +12,7 @@ import {
   listServices,
   renderAppsListResult,
   renderConfigResult,
+  renderGlobalInstallResult,
 } from "@lando/core/cli/operations";
 
 import corePackage from "../../package.json";
@@ -25,6 +26,7 @@ describe("@lando/core/cli/operations package export", () => {
 
     expect(operations.invokeOperation).toBeFunction();
     expect(operations.listServices).toBeFunction();
+    expect(operations.renderGlobalInstallResult).toBe(renderGlobalInstallResult);
     expect(corePackage.exports["./cli/operations"]).toEqual({
       types: "./src/cli/operations.ts",
       import: "./src/cli/operations.ts",

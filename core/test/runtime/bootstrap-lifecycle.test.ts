@@ -8,9 +8,9 @@ import { type EventFor, EventService, type EventServiceShape, type LandoEvent } 
 import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
-} from "../../src/runtime/bootstrap-lifecycle.ts";
+} from "@lando/engine/runtime/bootstrap-lifecycle";
+import { makeEventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { makeEventServiceLive } from "../../src/services/event-service.ts";
 
 const stubEventService = (
   publish: (event: LandoEvent) => Effect.Effect<void, EventError>,

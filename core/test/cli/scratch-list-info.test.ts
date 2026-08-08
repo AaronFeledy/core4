@@ -18,6 +18,7 @@ import {
 import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
+import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import {
   ScratchInfoResultSchema,
   ScratchListResultSchema,
@@ -25,7 +26,6 @@ import {
   renderScratchListResult,
 } from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 
 const fixtureDir = join(import.meta.dirname, "fixtures");
 

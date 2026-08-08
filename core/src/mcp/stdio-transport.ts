@@ -3,10 +3,10 @@ import { Deferred, Effect, Queue, Ref, Scope } from "effect";
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { McpCatalog } from "@lando/sdk/schema";
 
-import { stringifyBoundedJson } from "./bounded-json.ts";
-import { MAX_OUTSTANDING_REQUESTS, MAX_PENDING_CANCELLATIONS, stdioTransportError } from "./stdio-limits.ts";
-import { encodeStdioReply } from "./stdio-outbound.ts";
-import { runStdioReader, takeUntilTerminal } from "./stdio-reader.ts";
+import { stringifyBoundedJson } from "./bounded-json";
+import { MAX_OUTSTANDING_REQUESTS, MAX_PENDING_CANCELLATIONS, stdioTransportError } from "./stdio-limits";
+import { encodeStdioReply } from "./stdio-outbound";
+import { runStdioReader, takeUntilTerminal } from "./stdio-reader";
 import {
   type JsonObject,
   type JsonRpcId,
@@ -22,14 +22,14 @@ import {
   rpcResult,
   stringField,
   toolInputFrom,
-} from "./stdio-rpc.ts";
-import { makeStdioWriter, makeStdoutLineWriter } from "./stdio-writer.ts";
+} from "./stdio-rpc";
+import { makeStdioWriter, makeStdoutLineWriter } from "./stdio-writer";
 import type {
   McpTransportNotification,
   McpTransportReply,
   McpTransportRequest,
   McpTransportShape,
-} from "./transport.ts";
+} from "./transport";
 
 export interface StdioTransportOptions {
   readonly catalog: McpCatalog;

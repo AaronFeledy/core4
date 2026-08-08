@@ -1,16 +1,18 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../metadata.ts";
+import { Args, Flags } from "../../metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
+import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
+import { renderExecAppResult } from "../../../commands/exec";
+import { withOptionalStderrOutput } from "../../../renderer-output";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary.ts";
+} from "../../command-base";
+import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
@@ -26,13 +28,15 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const parsedArgv = extractSpecParsedArgv(input);
     if (typeof flags.subsystem === "string") return Effect.fail(subsystemDeferred("subsystem"));
     if (flags.sidecar === true) return Effect.fail(subsystemDeferred("sidecar"));
-    return execApp({
-      command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
-      interactive: true,
-      tty: true,
-      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
-      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
-    });
+    return withOptionalStderrOutput(
+      execApp({
+        command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
+        interactive: true,
+        tty: true,
+        ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+        ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+      }),
+    );
   },
   successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),

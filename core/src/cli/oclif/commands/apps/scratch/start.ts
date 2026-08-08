@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   type ScratchStartResult,
@@ -7,8 +7,8 @@ import {
   renderScratchStartResult,
   scratchStart,
   scratchStartOptionsFromInput,
-} from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/scratch";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
   resultSchema: ScratchStartResultSchema,

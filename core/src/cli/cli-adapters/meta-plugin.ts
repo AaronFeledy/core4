@@ -1,38 +1,39 @@
 import { Effect, Layer } from "effect";
 
+import type { RedactionService } from "@lando/engine/redaction/service";
 import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
-import type { RedactionService } from "../../redaction/service.ts";
 
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { renderMetaVersion } from "../../version.ts";
-import { builtInCommandEntries } from "../built-in-command-registry.ts";
-import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun.ts";
-import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config.ts";
-import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy.ts";
-import { globalInfo, renderGlobalInfoResult } from "../commands/meta/global-info.ts";
-import { globalInstall, renderGlobalInstallResult } from "../commands/meta/global-install.ts";
-import { DefaultGlobalListLayer, globalList, renderGlobalListResult } from "../commands/meta/global-list.ts";
-import { followGlobalLogs, globalLogs, renderGlobalLogsResult } from "../commands/meta/global-logs.ts";
-import { globalRebuild, renderGlobalRebuildResult } from "../commands/meta/global-rebuild.ts";
-import { globalRestart, renderGlobalRestartResult } from "../commands/meta/global-restart.ts";
-import { globalStart, renderGlobalStartResult } from "../commands/meta/global-start.ts";
-import { globalStatus, renderGlobalStatusResult } from "../commands/meta/global-status.ts";
-import { globalStop, renderGlobalStopResult } from "../commands/meta/global-stop.ts";
-import { globalUninstall, renderGlobalUninstallResult } from "../commands/meta/global-uninstall.ts";
-import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromBuiltIns } from "../commands/meta/mcp.ts";
-import { pluginAdd, renderPluginAddResult } from "../commands/plugin-add.ts";
-import { pluginBuild, renderPluginBuildResult } from "../commands/plugin-build.ts";
-import { pluginLink, renderPluginLinkResult } from "../commands/plugin-link.ts";
-import { pluginNew, renderPluginNewResult } from "../commands/plugin-new.ts";
+import { globalInstall } from "@lando/engine/operations/global-install";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { renderMetaVersion } from "@lando/engine/version";
+import { makeLandoRuntime } from "../../runtime/layer";
+import { builtInCommandEntries } from "../built-in-command-registry";
+import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun";
+import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config";
+import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy";
+import { globalInfo, renderGlobalInfoResult } from "../commands/meta/global-info";
+import { renderGlobalInstallResult } from "../commands/meta/global-install";
+import { DefaultGlobalListLayer, globalList, renderGlobalListResult } from "../commands/meta/global-list";
+import { followGlobalLogs, globalLogs, renderGlobalLogsResult } from "../commands/meta/global-logs";
+import { globalRebuild, renderGlobalRebuildResult } from "../commands/meta/global-rebuild";
+import { globalRestart, renderGlobalRestartResult } from "../commands/meta/global-restart";
+import { globalStart, renderGlobalStartResult } from "../commands/meta/global-start";
+import { globalStatus, renderGlobalStatusResult } from "../commands/meta/global-status";
+import { globalStop, renderGlobalStopResult } from "../commands/meta/global-stop";
+import { globalUninstall, renderGlobalUninstallResult } from "../commands/meta/global-uninstall";
+import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromBuiltIns } from "../commands/meta/mcp";
+import { pluginAdd, renderPluginAddResult } from "../commands/plugin-add";
+import { pluginBuild, renderPluginBuildResult } from "../commands/plugin-build";
+import { pluginLink, renderPluginLinkResult } from "../commands/plugin-link";
+import { pluginNew, renderPluginNewResult } from "../commands/plugin-new";
 import {
   type PluginPublishOptions,
   pluginPublish,
   renderPluginPublishResult,
-} from "../commands/plugin-publish.ts";
-import { pluginRemove, renderPluginRemoveResult } from "../commands/plugin-remove.ts";
-import { pluginTest, renderPluginTestResult } from "../commands/plugin-test.ts";
+} from "../commands/plugin-publish";
+import { pluginRemove, renderPluginRemoveResult } from "../commands/plugin-remove";
+import { pluginTest, renderPluginTestResult } from "../commands/plugin-test";
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
@@ -42,8 +43,8 @@ import {
   renderPluginTrustListResult,
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
-} from "../commands/plugin-trust.ts";
-import { pluginUnlink, renderPluginUnlinkResult } from "../commands/plugin-unlink.ts";
+} from "../commands/plugin-trust";
+import { pluginUnlink, renderPluginUnlinkResult } from "../commands/plugin-unlink";
 import {
   recipePathFromInput,
   recipeRefFromInput,
@@ -53,11 +54,11 @@ import {
   renderRecipesDescribeResult,
   renderRecipesListResult,
   renderRecipesValidateResult,
-} from "../commands/recipes.ts";
-import { renderShellenv } from "../commands/shellenv.ts";
-import { renderUninstallResult, uninstall } from "../commands/uninstall.ts";
-import { version as versionOperation } from "../commands/version.ts";
-import { compiledCommandInputFromArgv } from "../compiled-input.ts";
+} from "../commands/recipes";
+import { renderShellenv } from "../commands/shellenv";
+import { renderUninstallResult, uninstall } from "../commands/uninstall";
+import { version as versionOperation } from "../commands/version";
+import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeRendererMode,
   activeResultFormat,
@@ -71,24 +72,24 @@ import {
   runCompiledCommand,
   runWithProcessAbortSignal,
   setActiveCommandId,
-} from "../compiled-runtime.ts";
+} from "../compiled-runtime";
 import {
   globalConfigFormatFromInput,
   globalConfigOptionsFromInput,
-} from "../oclif/commands/meta/global/config.ts";
-import { globalDestroyOptionsFromInput } from "../oclif/commands/meta/global/destroy.ts";
-import { globalInfoOptionsFromInput } from "../oclif/commands/meta/global/info.ts";
-import { globalInstallOptionsFromInput } from "../oclif/commands/meta/global/install.ts";
-import { globalLogsFollowFromInput, globalLogsOptionsFromInput } from "../oclif/commands/meta/global/logs.ts";
-import { globalStartOptionsFromInput } from "../oclif/commands/meta/global/start.ts";
+} from "../oclif/commands/meta/global/config";
+import { globalDestroyOptionsFromInput } from "../oclif/commands/meta/global/destroy";
+import { globalInfoOptionsFromInput } from "../oclif/commands/meta/global/info";
+import { globalInstallOptionsFromInput } from "../oclif/commands/meta/global/install";
+import { globalLogsFollowFromInput, globalLogsOptionsFromInput } from "../oclif/commands/meta/global/logs";
+import { globalStartOptionsFromInput } from "../oclif/commands/meta/global/start";
 import {
   globalStatusFormatFromInput,
   globalStatusOptionsFromInput,
-} from "../oclif/commands/meta/global/status.ts";
-import { globalUninstallOptionsFromInput } from "../oclif/commands/meta/global/uninstall.ts";
-import { shellenvShellFromInput } from "../oclif/commands/meta/shellenv.ts";
-import { uninstallOptionsFromInput } from "../oclif/commands/meta/uninstall.ts";
-import { resolveNonInteractive } from "../prompts/answer-flags.ts";
+} from "../oclif/commands/meta/global/status";
+import { globalUninstallOptionsFromInput } from "../oclif/commands/meta/global/uninstall";
+import { shellenvShellFromInput } from "../oclif/commands/meta/shellenv";
+import { uninstallOptionsFromInput } from "../oclif/commands/meta/uninstall";
+import { resolveNonInteractive } from "../prompts/answer-flags";
 
 export const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>

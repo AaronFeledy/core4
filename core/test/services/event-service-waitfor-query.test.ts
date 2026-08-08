@@ -5,8 +5,8 @@ import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream, TestClock, TestConte
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
 
-import { RedactionServiceLive } from "../../src/redaction/service.ts";
-import { EventServiceLive, makeEventServiceLive } from "../../src/services/event-service.ts";
+import { RedactionServiceLive } from "@lando/engine/redaction/service";
+import { EventServiceLive, makeEventServiceLive } from "@lando/engine/services/event-service";
 
 const progressEvent = (bytes: number): { readonly _tag: "download-progress"; readonly bytes: number } => ({
   _tag: "download-progress",

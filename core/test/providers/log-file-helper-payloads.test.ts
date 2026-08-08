@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
@@ -9,7 +9,8 @@ import {
   defaultLogFileHelperDistRoot,
   loadLogFileHelperPayloads,
   resolveLogFileHelperPayloadPath,
-} from "../../src/providers/log-file-helper-payloads.ts";
+} from "@lando/engine/providers/log-file-helper-payloads";
+import "../../src/runtime/engine-composition.ts";
 
 describe("log file helper payloads", () => {
   test("core build script delivers every supported compiled helper payload path", async () => {
@@ -39,6 +40,17 @@ describe("log file helper payloads", () => {
     expect(
       defaultLogFileHelperDistRoot({ env: { LANDO_LOG_FILE_HELPER_DIST_ROOT: "/opt/lando/dist" } }),
     ).toBe("/opt/lando/dist");
+  });
+
+  test("uses the core-supplied dist root for Bun development", () => {
+    // Given
+    const expected = resolve(import.meta.dirname, "../../dist");
+
+    // When
+    const distRoot = defaultLogFileHelperDistRoot({ env: {}, execPath: process.execPath });
+
+    // Then
+    expect(distRoot).toBe(expected);
   });
 
   test("loads available helper payloads and ignores missing architectures", async () => {

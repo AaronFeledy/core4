@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import {
   type GlobalDestroyOptions,
@@ -6,8 +6,8 @@ import {
   GlobalDestroyResultSchema,
   globalDestroy,
   renderGlobalDestroyResult,
-} from "../../../../commands/meta/global-destroy.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/meta/global-destroy";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};

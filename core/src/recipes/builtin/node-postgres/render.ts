@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { NODE_POSTGRES_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { NODE_POSTGRES_RECIPE_ID } from "./manifest";
 
 const landofile = (name: string): string =>
   [

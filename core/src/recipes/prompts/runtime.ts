@@ -18,17 +18,17 @@ import { resolve as resolvePath } from "node:path";
 import { RecipeChoicesError, RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
 import type { RecipeChoicesFrom, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 
-import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist.ts";
+import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist";
 import {
   type ChoicesCommandRunner,
   ChoicesParseFailure,
   type ChoicesParseFailureKind,
   createDefaultChoicesCommandRunner,
   parseChoicesOutput,
-} from "./choices-command.ts";
-import { PromptCancelledError, type PromptDriver, type PromptDriverMode } from "./driver.ts";
-import { type EditorRunner, createDefaultEditorRunner } from "./editor-command.ts";
-import type { PromptIO } from "./io.ts";
+} from "./choices-command";
+import { PromptCancelledError, type PromptDriver, type PromptDriverMode } from "./driver";
+import { type EditorRunner, createDefaultEditorRunner } from "./editor-command";
+import type { PromptIO } from "./io";
 
 export type PromptAnswer = string | number | boolean | ReadonlyArray<string | number | boolean>;
 

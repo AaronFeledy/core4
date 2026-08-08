@@ -12,6 +12,7 @@
  */
 export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "core/src",
+  "engine/src",
   "landofile/src",
   "paths/src",
   "state-store/src",
@@ -42,6 +43,7 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  */
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
+  "engine/src",
   "landofile/src",
   "paths/src",
   "sdk/src",

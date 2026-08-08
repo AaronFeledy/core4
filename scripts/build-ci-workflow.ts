@@ -617,7 +617,9 @@ ${matrixBlock}    runs-on: ${runsOn}
 
 ${timingStartStep}
 
-${setupBunSteps}${platform.liveProviderIntegration ? `\n\n${codegenStep}` : ""}
+${setupBunSteps}
+
+${codegenStep}
 
       - name: Download ${platform.id} binary artifact
         uses: actions/download-artifact@v7

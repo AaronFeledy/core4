@@ -20,10 +20,10 @@ import {
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
-import { renderRecipeCatalog } from "../../recipes/catalog-render.ts";
-import { getRecipeCatalog } from "../../recipes/catalog.ts";
-import { parseRecipe } from "../../recipes/manifest/service.ts";
-import { resolveRecipeRef } from "../../recipes/source.ts";
+import { getRecipeCatalog } from "../../recipes/catalog";
+import { renderRecipeCatalog } from "../../recipes/catalog-render";
+import { parseRecipe } from "../../recipes/manifest/service";
+import { resolveRecipeRef } from "../../recipes/source";
 
 export const RecipesListEntrySchema = Schema.Struct({
   id: Schema.String,

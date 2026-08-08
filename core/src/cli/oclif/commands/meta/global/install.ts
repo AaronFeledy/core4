@@ -1,14 +1,14 @@
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import {
   type GlobalInstallOptions,
   type GlobalInstallResult,
   GlobalInstallResultSchema,
   globalInstall,
-  renderGlobalInstallResult,
-} from "../../../../commands/meta/global-install.ts";
+} from "@lando/engine/operations/global-install";
+import { renderGlobalInstallResult } from "../../../../commands/meta/global-install";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const globalInstallOptionsFromInput = (input: unknown): GlobalInstallOptions => {
   if (typeof input !== "object" || input === null) return {};

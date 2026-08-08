@@ -6,8 +6,8 @@ import { Effect, Schema } from "effect";
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { listCwdAppMapEntries } from "../../cache/cwd-app-map.ts";
-import { resolveUserCacheRoot } from "../../cache/paths.ts";
+import { listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
+import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 
 export interface AppsListEntry {
   readonly appId: string;

@@ -18,7 +18,7 @@ import {
   type ManagedFileBackend,
   type ManagedFileEvents,
   makeManagedFileService,
-} from "../managed-file/service.ts";
+} from "@lando/engine/managed-file/service";
 
 export interface TestManagedFileStore {
   /** The `ManagedFileService` implementation backed by memory. */

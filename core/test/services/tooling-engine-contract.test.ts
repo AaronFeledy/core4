@@ -12,8 +12,8 @@ import {
 import { type ExecResult, type RuntimeProviderShape, ToolingEngine } from "@lando/sdk/services";
 import { type ToolingEngineContractHarness, runToolingEngineContractSuite } from "@lando/sdk/test";
 
-import { HostToolingEngineLive } from "../../src/services/host-tooling-engine.ts";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+import { HostToolingEngineLive } from "@lando/engine/services/host-tooling-engine";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {

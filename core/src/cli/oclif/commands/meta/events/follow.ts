@@ -7,7 +7,7 @@ import {
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 export const metaEventsFollowSpec: LandoCommandSpec<never> = {
   resultSchema: EmptyResultSchema,

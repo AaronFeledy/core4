@@ -4,10 +4,10 @@ import type { PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { type Logger, PluginRegistry } from "@lando/sdk/services";
 
-import { LoggerLive } from "../../../logging/service.ts";
-import { PluginRegistryLive } from "../../../plugins/registry.ts";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
-import { type SummaryDocument, formatSummary } from "../../renderer/summary.ts";
+import { LoggerLive } from "@lando/engine/logging/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
+import { type SummaryDocument, formatSummary } from "../../renderer/summary";
 
 export type GlobalServiceListState = "enabled" | "disabled" | "blocked";
 

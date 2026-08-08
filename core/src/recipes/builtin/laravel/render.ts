@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { LARAVEL_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { LARAVEL_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string, php: string, database: string, worker: boolean): string => {
   const lines = [

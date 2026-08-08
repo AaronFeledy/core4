@@ -1,7 +1,7 @@
-import { renderRecipeCatalog } from "../recipes/catalog-render.ts";
-import { getRecipeCatalog } from "../recipes/catalog.ts";
-import { CORE_VERSION } from "../version.ts";
-import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest.ts";
+import { CORE_VERSION } from "@lando/engine/version";
+import { getRecipeCatalog } from "../recipes/catalog";
+import { renderRecipeCatalog } from "../recipes/catalog-render";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 
 type ColdCommandEntry = {
   readonly aliases: ReadonlyArray<string>;

@@ -12,12 +12,12 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 
-import { AppPlanSanitizerLive } from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
+import { AppPlanSanitizerLive } from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
 import {
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   stripHostProxyRunLando,
-} from "../../../src/subsystems/host-proxy/transport-feature.ts";
+} from "@lando/engine/subsystems/host-proxy/transport-feature";
 
 test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () => {
   // Given

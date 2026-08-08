@@ -1,6 +1,6 @@
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { McpTransportShape } from "./transport.ts";
+import type { McpTransportShape } from "./transport";
 
 export const MAX_RETAINED_COMPLETED_REQUEST_IDS = 256;
 

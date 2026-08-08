@@ -1,13 +1,15 @@
 import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema";
 
-import { appPull, renderSyncResult } from "../../../commands/remote.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
+import { appPull } from "@lando/engine/operations/remote";
+import { renderSyncResult } from "../../../commands/remote";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 import {
   remoteEnvArg,
   remoteFormatFromInput,
   remoteSkeletonFlags,
   remoteSyncOptionsFromInput,
-} from "./remote/common.ts";
+} from "./remote/common";
 
 export const pullSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:pull",
@@ -18,7 +20,7 @@ export const pullSpec: LandoCommandSpec<SyncResultType> = {
   flags: remoteSkeletonFlags,
   args: { env: remoteEnvArg },
   resultSchema: SyncResult,
-  run: (input) => appPull(remoteSyncOptionsFromInput(input)),
+  run: (input) => appPull(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
   render: (result, input, ctx) =>
     renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
 };

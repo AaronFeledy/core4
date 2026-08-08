@@ -2,8 +2,8 @@ import { Effect, Schema } from "effect";
 
 import type { NotImplementedError } from "@lando/sdk/errors";
 
-import { emitOptionalStdout } from "../renderer-boundary.ts";
-import { type BunSelfSpawner, bunSelfRun, bunSelfX } from "./bun-self-runner.ts";
+import { emitOptionalStdout } from "../renderer-boundary";
+import { type BunSelfSpawner, bunSelfRun, bunSelfX } from "./bun-self-runner";
 
 export interface MetaBunOptions {
   readonly argv: ReadonlyArray<string>;

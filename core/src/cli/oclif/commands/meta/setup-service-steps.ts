@@ -10,9 +10,9 @@ import { type Context, Effect } from "effect";
 
 import { CertificateAuthority, type PrivilegeService, ProxyService, SshService } from "@lando/sdk/services";
 
-import { CertificateAuthorityResolver } from "../../../../plugins/certificate-authority-resolver.ts";
-import { inputBooleanFlag } from "./setup-inputs.ts";
-import type { SetupReadinessRecorder } from "./setup-steps.ts";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { inputBooleanFlag } from "./setup-inputs";
+import type { SetupReadinessRecorder } from "./setup-steps";
 
 type SetupPrivilegeOptions = {
   readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;

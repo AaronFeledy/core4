@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { FASTAPI_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { FASTAPI_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string): string =>
   [

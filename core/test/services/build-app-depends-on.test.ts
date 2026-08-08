@@ -8,7 +8,7 @@ import { ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { appSteps } from "../../src/services/build-app-plan.ts";
+import { appSteps } from "@lando/engine/services/build-app-plan";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
 
 const healthcheck: HealthcheckPlan = {

@@ -8,9 +8,9 @@ import { PluginManifest } from "@lando/sdk/schema";
 
 import type { PromptSpec } from "@lando/sdk/schema";
 
-import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
-import { makeInteractionService } from "../../interaction/service.ts";
-import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
+import { makeInteractionService } from "../../interaction/service";
+import { parseAnswerFlags } from "../../recipes/prompts/index";
 
 export const PLUGIN_NEW_TEMPLATE_IDS = [
   "service-type",

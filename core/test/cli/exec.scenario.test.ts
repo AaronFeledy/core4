@@ -19,6 +19,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import { withOptionalStderrOutput } from "../../src/cli/renderer-output.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -291,7 +292,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.user).toBe("www-data");
   });
 
-  test("writes captured stderr to the renderer stderr so the CLI user sees it verbatim", async () => {
+  test("plain execApp stays renderer-silent while returning captured stderr", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider } = makeProvider([{ exitCode: 1, stdout: "", stderr: "boom\n" }]);
 
@@ -307,7 +308,28 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
       ),
     );
     expect(result.exitCode).toBe(1);
-    expect(io.stderr()).toContain("boom\n");
+    expect(result.stderr).toBe("boom\n");
+    expect(io.stderr()).toBe("");
+  });
+
+  test("the CLI boundary emits captured stderr verbatim", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider } = makeProvider([{ exitCode: 1, stdout: "", stderr: "boom\n" }]);
+    const io = createBufferedRendererIO();
+
+    const result = await Effect.runPromise(
+      withOptionalStderrOutput(execApp({ service: "appserver", command: ["sh", "-c", "exit 1"] })).pipe(
+        Effect.provide(
+          Layer.merge(
+            makeLayer({ landofile: { name: "scenario" }, plan, provider }),
+            makePlainRendererServiceLive(io),
+          ),
+        ),
+      ),
+    );
+
+    expect(result.stderr).toBe("boom\n");
+    expect(io.stderr()).toBe("boom\n");
   });
 
   test("provider stderr is returned in the typed result for library callers without a renderer", async () => {

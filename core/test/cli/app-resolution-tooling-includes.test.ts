@@ -8,7 +8,7 @@ import { type Context, Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
+import { loadUserLandofile } from "@lando/engine/landofile/app-resolution";
 
 test("loadUserLandofile resolves toolingIncludes-only injected services", async () => {
   // Given an injected Landofile service whose only include surface is toolingIncludes

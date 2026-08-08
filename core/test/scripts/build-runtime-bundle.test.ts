@@ -8,6 +8,8 @@ import { Effect, Layer } from "effect";
 import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { HttpClientLive } from "@lando/engine/http-client/live";
 import {
   LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
   RUNTIME_BUNDLE_TARGETS,
@@ -17,8 +19,6 @@ import {
   releaseBundleUrl,
   resolveRuntimeBundleRepository,
 } from "../../../scripts/build-runtime-bundle.ts";
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClientLive } from "../../src/http-client/live.ts";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");

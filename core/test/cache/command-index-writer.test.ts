@@ -6,15 +6,15 @@ import { Effect } from "effect";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 
+import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
 import {
   invalidatePluginCommandCache,
   readPluginCommandCache,
   writePluginCommandCacheStrict,
-} from "../../src/cache/command-index-writer.ts";
-import { decodePluginCommandIndex } from "../../src/cache/command-index.ts";
-import { pluginCommandCachePath } from "../../src/cache/paths.ts";
+} from "@lando/engine/cache/command-index-writer";
+import { pluginCommandCachePath } from "@lando/engine/cache/paths";
+import { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { mergeDiscoveredPlugins } from "../../src/plugins/plugin-discovery.ts";
 
 const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
   name: name as PluginManifest["name"],

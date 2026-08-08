@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import type { InfoAppResult } from "@lando/engine/operations/info";
 import type { ScratchSummary } from "@lando/sdk/services";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report.ts";
-import { type InfoAppResult, buildInfoSummary } from "../../src/cli/commands/info.ts";
+import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { type UninstallResult, buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";

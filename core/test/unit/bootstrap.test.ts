@@ -3,7 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { BOOTSTRAP_RANK, isAtLeast } from "../../src/runtime/bootstrap.ts";
+import { BOOTSTRAP_RANK, isAtLeast } from "@lando/engine/runtime/bootstrap";
 
 describe("BootstrapLevel ranking", () => {
   test("strictly orders levels from none → app", () => {

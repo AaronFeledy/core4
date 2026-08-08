@@ -7,7 +7,7 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";

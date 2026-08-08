@@ -12,7 +12,7 @@ import {
   type MachineSpawnResult,
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
-} from "../../src/runtime/managed-provider-machine.ts";
+} from "@lando/engine/runtime/managed-provider-machine";
 
 const enoent = (): never => {
   throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
@@ -257,6 +257,8 @@ describe("teardownManagedProviderMachine", () => {
       const modulePath = join(
         dirname(import.meta.dir),
         "..",
+        "..",
+        "engine",
         "src",
         "runtime",
         "managed-provider-machine.ts",

@@ -7,8 +7,8 @@ import { Effect, Layer } from "effect";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { uninstall } from "../../src/cli/commands/uninstall.ts";
-import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-runtime-service-test-"));

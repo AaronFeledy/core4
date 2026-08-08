@@ -2,13 +2,14 @@ import { Effect, Layer, Schema } from "effect";
 
 import { type CacheError, ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 
-import { cliRuntimeOptions } from "../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../runtime/layer.ts";
-import { runBunShellTooling } from "./commands/tooling-bun-script.ts";
-import { type RunToolingResult, renderRunToolingResult, runTooling } from "./commands/tooling.ts";
-import { resetActiveCommandInvocation, runCompiledCommand, setActiveCommandId } from "./compiled-runtime.ts";
-import { escapeDiagnosticText } from "./diagnostic-text.ts";
-import { resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router.ts";
+import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
+import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../runtime/layer";
+import { renderRunToolingResult } from "./commands/tooling";
+import { resetActiveCommandInvocation, runCompiledCommand, setActiveCommandId } from "./compiled-runtime";
+import { escapeDiagnosticText } from "./diagnostic-text";
+import { resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
 const ToolingResultSchema = Schema.Struct({
   tool: Schema.String,

@@ -47,7 +47,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(15);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(19);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -1123,11 +1123,22 @@ describe("ci workflow", () => {
 
   test("generates the multi-platform build and provider integration matrix", async () => {
     const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
 
     for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      const providerJob = findIndentedBlock(
+        jobs,
+        platform === "linux-x64"
+          ? `provider-integration-${platform}-runner`
+          : `provider-integration-${platform}`,
+        2,
+      );
       expect(workflow).toContain(`build-${platform}:`);
       expect(workflow).toContain(`provider-integration-${platform}:`);
       expect(workflow).toContain(`name: lando-${platform}`);
+      expect(providerJob.indexOf("Regenerate derived sources")).toBeLessThan(
+        providerJob.indexOf("Run provider contract tests"),
+      );
     }
 
     expect(workflow).toContain("runs-on: macos-15");

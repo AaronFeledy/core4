@@ -2,27 +2,27 @@ import { resolve } from "node:path";
 
 import { Clock, Duration, Effect, Option } from "effect";
 
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import { readWorkerRecordStateAt } from "../../subsystems/host-proxy/worker-state-file.ts";
-import {
-  buildHostProxyAllowlistDoctorCheck,
-  currentHostProxyAllowlistFreshness,
-} from "./doctor-host-proxy-allowlist.ts";
-import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem.ts";
-import { compareCodePointStrings } from "./doctor-host-proxy-order.ts";
-import {
-  type HostProxyDoctorLimits,
-  type HostProxyDoctorProvider,
-  diagnoseHostProxyWorker,
-} from "./doctor-host-proxy-worker.ts";
 import type {
   DoctorCheck,
   DoctorProviderKind,
   DoctorRuntime,
   DoctorSelectionRecord,
   DoctorSolution,
-} from "./doctor.ts";
+} from "./doctor";
+import {
+  buildHostProxyAllowlistDoctorCheck,
+  currentHostProxyAllowlistFreshness,
+} from "./doctor-host-proxy-allowlist";
+import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
+import { compareCodePointStrings } from "./doctor-host-proxy-order";
+import {
+  type HostProxyDoctorLimits,
+  type HostProxyDoctorProvider,
+  diagnoseHostProxyWorker,
+} from "./doctor-host-proxy-worker";
 
 const DEFAULT_LIMITS: HostProxyDoctorLimits = {
   maxWorkers: 32,

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
-import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");

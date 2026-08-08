@@ -4,8 +4,8 @@ import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 
-import { compareCodePointStrings } from "./doctor-host-proxy-order.ts";
-import { OpenAppResultSchema } from "./open.ts";
+import { compareCodePointStrings } from "./doctor-host-proxy-order";
+import { OpenAppResultSchema } from "./open";
 
 export type HostProxyContainerProbeResult = "reachable" | "failed" | "inconclusive" | "cap-exhausted";
 

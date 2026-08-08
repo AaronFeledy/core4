@@ -32,16 +32,20 @@ import type {
 } from "@lando/sdk/services";
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { RedactionService, createStandaloneRedactor } from "../../src/redaction/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { ShellRunnerLive } from "../../src/services/shell-runner.ts";
+import "../../src/runtime/engine-composition.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
+const shellRunnerLive = makeShellRunnerLive(() => {
+  throw new TypeError("Interactive shell IO is not used by restart scenarios.");
+});
 
 interface RunResult {
   readonly exitCode: number;
@@ -164,7 +168,7 @@ const requiredStartServicesLayer = (proxy: ProxyServiceShape) =>
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(ProxyService, proxy),
-    ShellRunnerLive,
+    shellRunnerLive,
   );
 
 const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPlan> } = {}) => {

@@ -11,11 +11,12 @@ import { Effect, Layer, Option } from "effect";
 
 import { type EventService, Renderer } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
-import type { ResultFormat } from "./format-flags.ts";
-import type { RendererMode } from "./renderer-selection.ts";
-import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
-import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService } from "@lando/engine/redaction/service";
+import type { ResultFormat } from "./format-flags";
+import type { RendererMode } from "./renderer-selection";
+import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers";
+import { type RendererIO, createStdioRendererIO } from "./renderer/io";
 import {
   makeJsonNotificationRendererLive,
   makeJsonRendererLive,
@@ -25,9 +26,8 @@ import {
   makePlainTaskDetailRendererLive,
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
-} from "./renderer/runtime.ts";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode.ts";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "./stream-frame-sink.ts";
+} from "./renderer/runtime";
+import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -83,17 +83,6 @@ export const makeRendererNotificationConsumerLiveForMode = (
   }
 };
 
-const requireRenderer = Effect.serviceOption(Renderer).pipe(
-  Effect.flatMap((option) =>
-    Option.isNone(option)
-      ? Effect.dieMessage("Renderer not provided at the CLI command boundary")
-      : Effect.succeed(option.value),
-  ),
-);
-
-export const writeStdout = (chunk: string): Effect.Effect<void> =>
-  requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(chunk)));
-
 const optionalRenderer = Effect.serviceOption(Renderer);
 
 export const emitOptionalStdout = (chunk: string): Effect.Effect<void> =>
@@ -105,6 +94,24 @@ export const emitOptionalStderr = (chunk: string): Effect.Effect<void> =>
   optionalRenderer.pipe(
     Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
   );
+
+export const withOptionalStderrOutput = <A extends { readonly stderr: string }, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(
+    Effect.tap((result) => (result.stderr.length === 0 ? Effect.void : emitOptionalStderr(result.stderr))),
+  );
+
+const requireRenderer = Effect.serviceOption(Renderer).pipe(
+  Effect.flatMap((option) =>
+    Option.isNone(option)
+      ? Effect.dieMessage("Renderer not provided at the CLI command boundary")
+      : Effect.succeed(option.value),
+  ),
+);
+
+export const writeStdout = (chunk: string): Effect.Effect<void> =>
+  requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(chunk)));
 
 export const writeResultLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(`${text}\n`)));

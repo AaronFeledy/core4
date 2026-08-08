@@ -7,9 +7,9 @@ import { Chunk, Effect, Layer, Queue } from "effect";
 import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, ManagedFileService } from "@lando/sdk/services";
 
-import { ManagedFileServiceLive } from "../../src/managed-file/service.ts";
-import { RedactionServiceLive } from "../../src/redaction/service.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import { ManagedFileServiceLive } from "@lando/engine/managed-file/service";
+import { RedactionServiceLive } from "@lando/engine/redaction/service";
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
 const file = (base: ManagedFile["base"], owner: string): ManagedFile => ({

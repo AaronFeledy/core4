@@ -7,9 +7,7 @@
       "@lando/core": ["../src/index.ts"],
       "@lando/core/*": ["../src/*/index.ts"],
       "@lando/paths": ["../../paths/src/paths.ts"],
-      "@lando/paths/*": ["../../paths/src/*.ts"],
-      "@lando/state-store": ["../../state-store/src/index.ts"],
-      "@lando/state-store/*": ["../../state-store/src/*.ts"]
+      "@lando/paths/*": ["../../paths/src/*.ts"]
     }
   },
   "include": ["./**/*.ts"],

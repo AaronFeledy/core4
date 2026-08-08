@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { EMPTY_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { EMPTY_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string): string =>
   [`name: ${appName}`, "runtime: 4", `recipe: ${EMPTY_RECIPE_ID}`, ""].join("\n");

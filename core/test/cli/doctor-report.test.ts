@@ -17,6 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import {
   type DoctorReport,
   DoctorReportSchema,
@@ -33,7 +34,6 @@ import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
-import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 const decodeFrames = (ndjson: string) =>
   ndjson

@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Option } from "effect";
 
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { RedactionService } from "@lando/engine/redaction/service";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
@@ -12,7 +13,6 @@ import {
   McpServiceLive,
 } from "../../src/mcp/service.ts";
 import { McpTransport, type McpTransportReply, makeInMemoryTransport } from "../../src/mcp/transport.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 const spec = (id: string, run: LandoCommandSpec["run"]): LandoCommandSpec => ({
   id,

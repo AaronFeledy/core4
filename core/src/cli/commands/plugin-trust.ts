@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { PluginTrustStore } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 

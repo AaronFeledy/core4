@@ -3,17 +3,18 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
-import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
-import { SecretStoreLive } from "../services/secret-store.ts";
+import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
+import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import {
   type CliInvocationSnapshot,
   runCommandLifecycle,
   withCommandEventService,
-} from "./command-lifecycle.ts";
-import { CommandWarnings, makeCommandWarnings } from "./command-warnings.ts";
-import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
-import { renderDeprecationDiagnostics } from "./renderer-deprecations.ts";
-import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output.ts";
+} from "./command-lifecycle";
+import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
+import { renderDeprecationDiagnostics } from "./renderer-deprecations";
+import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import {
   makeRendererEventConsumerLiveForMode,
   makeRendererNotificationConsumerLiveForMode,
@@ -21,10 +22,9 @@ import {
   makeStreamFrameSinkLive,
   writeDiagnosticLine,
   writeResultLine,
-} from "./renderer-output.ts";
-import type { RendererMode } from "./renderer-selection.ts";
-import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
-import type { StreamFrameSink } from "./stream-frame-sink.ts";
+} from "./renderer-output";
+import type { RendererMode } from "./renderer-selection";
+import { type RendererIO, createStdioRendererIO } from "./renderer/io";
 
 export {
   type RendererEventConsumerOptions,
@@ -35,18 +35,18 @@ export {
   writeDiagnosticLine,
   writeResultLine,
   writeStdout,
-} from "./renderer-output.ts";
+} from "./renderer-output";
 export {
   type ResolveCliDeprecationWarningsOptions,
   type ResolveCliDeprecationWarningsResult,
   resolveCliDeprecationWarnings,
-} from "./renderer-deprecations.ts";
-export type { StreamOutputFrame } from "./renderer-machine-output.ts";
+} from "./renderer-deprecations";
+export type { StreamOutputFrame } from "./renderer-machine-output";
 export {
   type ResolveCliRendererModeOptions,
   readConfigRendererValue,
   resolveCliRendererMode,
-} from "./renderer-mode-resolution.ts";
+} from "./renderer-mode-resolution";
 
 export interface RenderContext {
   readonly mode: RendererMode;

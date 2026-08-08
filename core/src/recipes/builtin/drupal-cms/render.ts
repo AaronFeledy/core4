@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { DRUPAL_CMS_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { DRUPAL_CMS_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string, php: string, database: string): string =>
   [

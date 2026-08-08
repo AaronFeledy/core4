@@ -1,15 +1,11 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
-import {
-  AppInfoResultSchema,
-  type InfoAppResult,
-  infoApp,
-  renderInfoAppResult,
-} from "../../../commands/info.ts";
+import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/operations/info";
+import { renderInfoAppResult } from "../../../commands/info-render";
 /**
  * `lando app:info` — native command metadata adapter.
  */
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 const infoDeepFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;

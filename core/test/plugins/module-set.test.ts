@@ -7,7 +7,7 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { plugin as mustachePlugin } from "@lando/template-mustache";
 
-import { makePluginCapabilityIndex } from "../../src/plugins/module-set.ts";
+import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 
 const makeSubscriberModule = (name: string, subscriberId: string): LandoPluginModule => ({
   name,

@@ -9,10 +9,10 @@ import { EventService } from "@lando/core/services";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent, ShellReplInput } from "@lando/sdk/services";
 
-import { RedactionService } from "../../src/redaction/service.ts";
-import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line.ts";
-import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor.ts";
-import { runHostShellRepl } from "../../src/services/host-shell-repl.ts";
+import { RedactionService } from "@lando/engine/redaction/service";
+import { hostShellEvaluatorArgv, runHostShellLine } from "@lando/engine/services/host-shell-line";
+import { makeStatefulShellRedactor } from "@lando/engine/services/host-shell-redactor";
+import { runHostShellRepl } from "@lando/engine/services/host-shell-repl";
 
 const input = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<ShellReplInput> =>
   (async function* () {

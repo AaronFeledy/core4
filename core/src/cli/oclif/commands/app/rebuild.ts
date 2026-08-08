@@ -1,15 +1,11 @@
-import {
-  type RebuildAppResult,
-  RebuildAppResultSchema,
-  rebuildApp,
-  renderRebuildAppResult,
-} from "../../../commands/rebuild.ts";
+import { type RebuildAppResult, RebuildAppResultSchema, rebuildApp } from "@lando/engine/operations/rebuild";
+import { renderRebuildAppResult } from "../../../commands/rebuild";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 import { StreamFrame } from "@lando/sdk/schema";
 

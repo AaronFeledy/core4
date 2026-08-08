@@ -7,14 +7,14 @@ import {
   DeprecationSurfaceKind,
 } from "@lando/sdk/schema";
 
-import type { GlobalAppDoctorResult } from "./doctor-global-app.ts";
-import type { McpDoctorResult } from "./doctor-mcp.ts";
-import type { DoctorSelfReport } from "./doctor-self.ts";
-import { DoctorSelfReportSchema } from "./doctor-self.ts";
-import type { SubsystemDoctorResult } from "./doctor-subsystems.ts";
-import type { AppVersionConstraintDoctorResult } from "./doctor-version-constraint.ts";
-import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constraint.ts";
-import type { DoctorResult } from "./doctor.ts";
+import type { DoctorResult } from "./doctor";
+import type { GlobalAppDoctorResult } from "./doctor-global-app";
+import type { McpDoctorResult } from "./doctor-mcp";
+import type { DoctorSelfReport } from "./doctor-self";
+import { DoctorSelfReportSchema } from "./doctor-self";
+import type { SubsystemDoctorResult } from "./doctor-subsystems";
+import type { AppVersionConstraintDoctorResult } from "./doctor-version-constraint";
+import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constraint";
 
 export interface DoctorReport {
   readonly provider: DoctorResult;

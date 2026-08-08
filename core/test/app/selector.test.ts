@@ -5,7 +5,7 @@ import { Either } from "effect";
 import type { AppSelector } from "@lando/sdk/app";
 import type { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
 
-import { normalizeAppSelector } from "../../src/app/selector.ts";
+import { normalizeAppSelector } from "@lando/engine/app/selector";
 
 const abs = (value: string): AbsolutePath => value as AbsolutePath;
 

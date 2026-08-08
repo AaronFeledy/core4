@@ -4,8 +4,8 @@ import { Effect, Layer } from "effect";
 import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
 
-import { AGENT_CONTEXT_ENV_ALLOWLIST, resolveAgentContextEnv } from "../../src/config/agent-env.ts";
-import { RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
+import { AGENT_CONTEXT_ENV_ALLOWLIST, resolveAgentContextEnv } from "@lando/engine/config/agent-env";
+import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 
 const emptySecretStore = Layer.succeed(SecretStore, {
   id: "test",

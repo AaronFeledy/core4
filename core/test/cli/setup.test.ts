@@ -19,6 +19,11 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeHttpClientLive } from "@lando/engine/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
+import type { HttpClient } from "@lando/engine/http-client/service";
+import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { InteractionCancelledError, InteractionUnavailableError } from "@lando/sdk/errors";
@@ -44,11 +49,6 @@ import SetupCommand, {
   shouldDisableHostProxyForSetup,
 } from "../../src/cli/oclif/commands/meta/setup.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
-import { makeHttpClientLive } from "../../src/http-client/live.ts";
-import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
-import type { HttpClient } from "../../src/http-client/service.ts";
-import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
-import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const makeConfigService = (
   overrides: Partial<GlobalConfig> = {},

@@ -1,8 +1,8 @@
-import { Flags } from "./oclif/metadata.ts";
+import { Flags } from "./oclif/metadata";
 
 import { RendererSelectionError } from "@lando/sdk/errors";
 
-import type { RendererMode } from "./renderer-selection.ts";
+import type { RendererMode } from "./renderer-selection";
 
 export const RESULT_FORMATS = ["text", "json", "table", "yaml", "ndjson"] as const;
 export type ResultFormat = (typeof RESULT_FORMATS)[number];

@@ -1,13 +1,13 @@
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import {
   type PluginUnlinkResult,
   PluginUnlinkResultSchema,
   pluginUnlink,
   renderPluginUnlinkResult,
-} from "../../../../commands/plugin-unlink.ts";
+} from "../../../../commands/plugin-unlink";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const extractName = (input: unknown): string => {
   if (typeof input !== "object" || input === null) return "";

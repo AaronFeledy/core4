@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `core/src/data-mover/generated/provider-images.ts`: the pinned
+ * Regenerate `engine/src/data-mover/generated/provider-images.ts`: the pinned
  * `{ image, digest }` manifest for provider images Lando provisions at the
  * provider-image layer.
  *
@@ -16,7 +16,7 @@ import { resolve } from "node:path";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "core/src/data-mover/generated/provider-images.ts");
+const OUTPUT = resolve(REPO_ROOT, "engine/src/data-mover/generated/provider-images.ts");
 
 export interface ProviderImageEntry {
   readonly image: string;

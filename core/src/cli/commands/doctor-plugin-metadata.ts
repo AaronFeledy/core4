@@ -2,19 +2,19 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { makeLandoPaths } from "@lando/paths";
-import { loadInstalledPluginManifest } from "../../plugins/installed-plugin-loader.ts";
+import { loadInstalledPluginManifest } from "@lando/engine/plugins/installed-plugin-loader";
 import {
   type InstalledPluginRegistryFailure,
   inspectInstalledPluginRegistry,
-} from "../../plugins/installed-registry.ts";
+} from "@lando/engine/plugins/installed-registry";
+import { makeLandoPaths } from "@lando/paths";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,
   describeDoctorFailure,
   doctorSelfCheck,
   redactDoctorMessage,
-} from "./doctor-self.ts";
+} from "./doctor-self";
 
 const PLUGIN_METADATA_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",

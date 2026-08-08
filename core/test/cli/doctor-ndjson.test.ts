@@ -5,8 +5,8 @@ import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
 import { StreamFrame } from "@lando/sdk/schema";
 
+import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { type DoctorNdjsonCheck, renderDoctorChecksAsNdjson } from "../../src/cli/commands/doctor-ndjson.ts";
-import { RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 
 interface LeakyCheck extends DoctorNdjsonCheck {
   readonly detail: string;

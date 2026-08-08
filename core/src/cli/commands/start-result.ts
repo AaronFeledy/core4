@@ -1,17 +1,5 @@
-import { Schema } from "effect";
-
+/** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
-
-export const StartedServiceResultSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
-
-export const StartAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: Schema.Array(StartedServiceResultSchema),
-});
 
 const READY_STATES = new Set(["running", "ready"]);
 

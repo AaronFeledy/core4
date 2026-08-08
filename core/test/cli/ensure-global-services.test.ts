@@ -32,15 +32,15 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
-} from "../../src/cli/commands/meta/ensure-global-services.ts";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+} from "@lando/engine/operations/ensure-global-services";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 interface ApplyCall {
   readonly plan: AppPlan;

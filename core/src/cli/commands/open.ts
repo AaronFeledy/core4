@@ -13,11 +13,11 @@ import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from 
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService } from "../../redaction/service.ts";
-import { canOpenHost, openUrl } from "../../services/host-opener.ts";
-import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
-import { publishedEndpointHost, publishedEndpointUrl } from "../authority-url.ts";
-import type { RenderContext } from "../renderer-boundary.ts";
+import { publishedEndpointHost, publishedEndpointUrl } from "@lando/engine/operations/authority-url";
+import { RedactionService } from "@lando/engine/redaction/service";
+import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
+import type { RenderContext } from "../renderer-boundary";
 
 export const OpenTargetSchema = Schema.Struct({
   service: Schema.String,

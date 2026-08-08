@@ -3,23 +3,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
 
 import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
-import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
-import { redactDetails, redactString } from "../../src/cli/redact.ts";
 import {
   type DownloaderEvents,
   makeDownloaderService,
   makeLiveDownloaderEvents,
-} from "../../src/downloader/service.ts";
-import type { HttpClientShape } from "../../src/http-client/service.ts";
-import { RedactionServiceLive } from "../../src/redaction/service.ts";
-import { ShellRunnerLive } from "../../src/services/shell-runner.ts";
-import { HostProxyServiceDisabled } from "../../src/subsystems/host-proxy/api.ts";
+} from "@lando/engine/downloader/service";
+import type { HttpClientShape } from "@lando/engine/http-client/service";
+import { RedactionServiceLive } from "@lando/engine/redaction/service";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
+import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
+import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
 /**
  * These assertions target each surface's shipped redaction point:
@@ -49,9 +49,12 @@ const secretStoreLayer = Layer.succeed(SecretStore, {
   },
   has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
   list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-} satisfies SecretStore.Service);
+} satisfies Context.Tag.Service<typeof SecretStore>);
 
 const realRedactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer));
+const shellRunnerLive = makeShellRunnerLive(() => {
+  throw new TypeError("Interactive shell IO is not used by redaction service tests.");
+});
 
 const captureEventLayer = (events: LandoEvent[]) =>
   Layer.succeed(EventService, {
@@ -61,7 +64,7 @@ const captureEventLayer = (events: LandoEvent[]) =>
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies EventService.Service);
+  } satisfies Context.Tag.Service<typeof EventService>);
 
 const capturingDownloaderEvents = (): {
   readonly events: DownloaderEvents;
@@ -75,20 +78,29 @@ const capturingDownloaderEvents = (): {
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies EventService.Service;
+  } satisfies Context.Tag.Service<typeof EventService>;
   return { events: makeLiveDownloaderEvents(Option.some(eventService)), captured };
 };
 
 const fakeHttpClient = (url: string, payload: string): HttpClientShape => ({
   id: "redaction-proof-http",
+  capabilities: {
+    schemes: ["https"],
+    streaming: true,
+    upload: false,
+    customCa: false,
+    proxyAware: false,
+  },
+  request: () => Effect.die("request not used"),
   stream: (request) =>
     request.url === url
       ? Effect.succeed({
           status: 200,
-          headers: new Map<string, string>(),
+          headers: [],
           body: Stream.fromIterable([new TextEncoder().encode(payload)]),
         })
       : Effect.die(new Error(`unexpected download URL ${request.url}`)),
+  upload: () => Effect.die("upload not used"),
 });
 
 const shellSingleQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -125,7 +137,7 @@ describe("audited services compose canonical redaction", () => {
             env: { BUN_AUTH_TOKEN: REGISTERED_SECRET },
           }),
         ).pipe(
-          Effect.provide(Layer.mergeAll(ShellRunnerLive, realRedactionLayer, captureEventLayer(events))),
+          Effect.provide(Layer.mergeAll(shellRunnerLive, realRedactionLayer, captureEventLayer(events))),
         ),
       );
 
@@ -180,12 +192,14 @@ describe("audited services compose canonical redaction", () => {
     const downloader = makeDownloaderService(fakeHttpClient(url, "payload"), capture.events);
 
     await Effect.runPromise(
-      downloader.download({
-        url,
-        destination: { kind: "memory" },
-        callerId,
-        redactionTokens: [registeredToken],
-      }),
+      Effect.scoped(
+        downloader.download({
+          url,
+          destination: { kind: "memory" },
+          callerId,
+          redactionTokens: [registeredToken],
+        }),
+      ),
     );
 
     const serialized = JSON.stringify(capture.captured);

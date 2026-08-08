@@ -3,9 +3,9 @@ import { type Context, Effect, Option, Schema } from "effect";
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
-import { type AppsListEntry, listServices } from "./list.ts";
+import { type AppsListEntry, listServices } from "./list";
 
 export interface RuntimeServiceStopResult {
   readonly terminated: boolean;

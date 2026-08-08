@@ -4,6 +4,7 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import {
   makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,
@@ -12,7 +13,6 @@ import {
   writeResultLine,
 } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 beforeEach(() => {
   process.exitCode = undefined;

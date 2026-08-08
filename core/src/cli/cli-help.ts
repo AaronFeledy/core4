@@ -5,7 +5,7 @@ import {
   argDefinitionsForCommand,
   commandName,
   flagDefinitionsForCommand,
-} from "./compiled-argv.ts";
+} from "./compiled-argv";
 
 export const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
   const short = definition.char === undefined ? "" : `, -${definition.char}`;

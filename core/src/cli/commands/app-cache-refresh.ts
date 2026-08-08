@@ -38,15 +38,15 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { loadUserLandofile } from "../app-resolution";
 
-import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { findAppRoot } from "@lando/landofile/discovery";
-import { compileAppCommands } from "../../cache/command-compiler.ts";
+import { compileAppCommands } from "@lando/engine/cache/command-compiler";
 import {
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
-} from "../../cache/command-index-writer.ts";
+} from "@lando/engine/cache/command-index-writer";
+import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { findAppRoot } from "@lando/landofile/discovery";
 
 export interface AppCacheRefreshOptions {
   readonly cwd?: string;

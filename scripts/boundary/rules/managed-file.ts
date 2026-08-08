@@ -56,9 +56,9 @@ export const managedFileRule = {
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: [], prefixes: ["core/src/managed-file/"] },
+  carveOuts: { files: [], prefixes: ["engine/src/managed-file/"] },
   passMessage: "Managed-file boundary check passed.",
   failureHeadline:
-    "Managed-file boundary check failed. Host project-file ownership-marker/overwrite logic must route through ManagedFileService (core/src/managed-file/).",
+    "Managed-file boundary check failed. Host project-file ownership-marker/overwrite logic must route through ManagedFileService (engine/src/managed-file/).",
   onProgram,
 } satisfies BoundaryRule;

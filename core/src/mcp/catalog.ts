@@ -8,9 +8,9 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import type { LandoCommandSpec } from "../cli/oclif/command-base.ts";
-import { isMcpAllowlistForbidden } from "../cli/oclif/mcp-allowlist.ts";
-import { type McpCommandEntry, deriveToolInputSchema } from "./registry.ts";
+import type { LandoCommandSpec } from "../cli/oclif/command-base";
+import { isMcpAllowlistForbidden } from "../cli/oclif/mcp-allowlist";
+import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
 export interface EffectiveAllowlistInput {
   readonly defaults: ReadonlyArray<string>;

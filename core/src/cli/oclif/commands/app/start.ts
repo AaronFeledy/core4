@@ -1,9 +1,5 @@
-import {
-  type StartAppResult,
-  StartAppResultSchema,
-  renderStartAppResult,
-  startApp,
-} from "../../../commands/start.ts";
+import { type StartAppResult, StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import { renderStartAppResult } from "../../../commands/start-result";
 /**
  * `lando app:start` — native command metadata adapter.
  */
@@ -12,7 +8,7 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 import { StreamFrame } from "@lando/sdk/schema";
 

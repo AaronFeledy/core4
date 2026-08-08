@@ -18,11 +18,11 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/events";
 import { REDACTED, type Redactor } from "@lando/sdk/secrets";
 
-import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { buildCommandResultEnvelope } from "../cli/result-encode.ts";
-import { redactBoundedJsonValue } from "./bounded-json.ts";
-import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry.ts";
-import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector.ts";
+import type { CommandResultOutcome } from "../cli/result-encode";
+import { buildCommandResultEnvelope } from "../cli/result-encode";
+import { redactBoundedJsonValue } from "./bounded-json";
+import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry";
+import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
 

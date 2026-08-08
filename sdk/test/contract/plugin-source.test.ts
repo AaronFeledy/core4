@@ -28,7 +28,7 @@ interface SourceSpec {
 
 // Models the registry containment guarantee: resolve a spec relative to the
 // managed store root, then reject anything that escapes it (mirrors
-// `resolvePluginModulePath` in core/src/plugins/registry.ts).
+// `resolvePluginModulePath` in engine/src/plugins/registry.ts).
 const makeContainmentResolver =
   (managedStoreRoot: string) =>
   (spec: SourceSpec): Effect.Effect<string, PluginSourceTaggedError> =>

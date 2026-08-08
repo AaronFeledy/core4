@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { BindAddress } from "@lando/sdk/schema";
 
-import { publishedEndpointUrl, publishedEndpointUrls } from "../../../src/cli/authority-url.ts";
+import { publishedEndpointUrl, publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 
 test("renders only explicitly published endpoint URLs", () => {
   const urls = publishedEndpointUrls([

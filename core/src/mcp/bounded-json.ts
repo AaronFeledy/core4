@@ -3,8 +3,8 @@ import { Effect } from "effect";
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import { isRuntimeProxy } from "./runtime-proxy.ts";
-import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits.ts";
+import { isRuntimeProxy } from "./runtime-proxy";
+import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
 const LIMIT_LABEL = "8 MiB";
 const STRING_CHUNK_CODE_UNITS = 1_024;

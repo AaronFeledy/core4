@@ -13,9 +13,9 @@ import { DateTime, Effect } from "effect";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
+import type { ProviderSelectionResolution } from "@lando/engine/providers/precedence";
 import type { InteractionUnavailableError } from "@lando/sdk/errors";
 import type { InteractionError, InteractionServiceShape } from "@lando/sdk/services";
-import type { ProviderSelectionResolution } from "../../../../providers/precedence.ts";
 
 export const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
   docker: "Docker",

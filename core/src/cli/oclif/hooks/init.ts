@@ -12,10 +12,10 @@ import { Either, Schema } from "effect";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { BootstrapLevel, type BootstrapLevel as BootstrapLevelType } from "@lando/sdk/schema";
 
-import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../../runtime/layer.ts";
-import { preCommandOutputMode, renderPreCommandFailure } from "../../oclif/command-boundary.ts";
-import type { CommandClass, Hook } from "../metadata.ts";
+import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../../../runtime/layer";
+import { preCommandOutputMode, renderPreCommandFailure } from "../command-boundary";
+import type { CommandClass, Hook } from "../metadata";
 
 type LandoCommandClass = CommandClass & {
   readonly bootstrap?: unknown;

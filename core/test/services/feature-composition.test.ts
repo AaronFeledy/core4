@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { type BaseSeed, type ComposeServiceInput, composeService } from "@lando/engine/services/feature";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-import { type BaseSeed, type ComposeServiceInput, composeService } from "../../src/services/feature.ts";
 
 const base: BaseSeed = {
   name: ServiceName.make("appserver"),

@@ -19,7 +19,7 @@ import {
   evaluateHostVar,
   resolveScriptPath,
   runHostScript,
-} from "../../src/services/host-tooling-engine.ts";
+} from "@lando/engine/services/host-tooling-engine";
 
 const providerId = ProviderId.make("lando");
 

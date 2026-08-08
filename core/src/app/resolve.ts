@@ -7,6 +7,9 @@ import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { makeAppHandle } from "@lando/engine/app/handle";
+import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
+import { type NormalizedAppSelector, normalizeAppSelector } from "@lando/engine/app/selector";
 import {
   type ResolvedAppTarget,
   assertLandoVersionConstraint,
@@ -15,12 +18,9 @@ import {
   loadUserLandofileFile,
   userAppRef,
   withResolvedCwd,
-} from "../landofile/app-resolution.ts";
-import { RuntimeCwd } from "../runtime/cwd.ts";
-import { resolveLandofileIncludes } from "../services/landofile-live.ts";
-import { makeAppHandle } from "./handle.ts";
-import { makeAppLifecycle } from "./lifecycle.ts";
-import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
+} from "@lando/engine/landofile/app-resolution";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd;
 
@@ -206,7 +206,7 @@ export const buildAppHandle = (
     const runtimeScope = yield* Effect.scope;
     const handleScope = yield* Scope.fork(runtimeScope, ExecutionStrategy.sequential);
     const lifecycle = yield* makeAppLifecycle(handleScope);
-    const { appOperations } = yield* Effect.promise(() => import("./operations.ts"));
+    const { appOperations } = yield* Effect.promise(() => import("@lando/engine/app/operations"));
     return makeAppHandle(target, runtime, appOperations, lifecycle);
   });
 

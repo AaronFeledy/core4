@@ -19,12 +19,12 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { renderPlainLine } from "@lando/renderer-lando/format";
 import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { type RendererIO, createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
 import { createTestLiveRegionController, makeLiveRegionFixture } from "./renderer-live-region-test-kit.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";

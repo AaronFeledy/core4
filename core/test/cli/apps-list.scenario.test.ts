@@ -7,7 +7,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
-import { writeCwdAppMapEntry } from "../../src/cache/cwd-app-map.ts";
+import { writeCwdAppMapEntry } from "@lando/engine/cache/cwd-app-map";
 import { AppsListResultSchema, listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 let userDataRoot: string;

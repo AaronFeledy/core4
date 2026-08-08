@@ -4,8 +4,8 @@ import { Effect, Layer, Schema } from "effect";
 import { MessageWarnEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "../../../core/src/cli/renderer/io.ts";
-import { EventServiceLive } from "../../../core/src/services/event-service.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { createTestLiveRegionController, makeLiveRegionFixture } from "./live-region-test-kit.ts";
 

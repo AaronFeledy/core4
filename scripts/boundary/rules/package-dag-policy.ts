@@ -14,6 +14,11 @@ export type WorkspaceManifest = {
   readonly devDependencies: readonly string[];
 };
 
+export const GENERATED_COMPOSITION_PREFIXES = [
+  "core/src/plugins/generated/",
+  "core/src/runtime/generated/layers/",
+] as const;
+
 const PLUGIN_RUNTIME_TARGETS = [
   "@lando/sdk",
   "@lando/paths",

@@ -1,4 +1,4 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
 import {
   type OpenAppResult,
@@ -6,8 +6,8 @@ import {
   openApp,
   openOptionsFromInput,
   renderOpenAppResult,
-} from "../../../commands/open.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+} from "../../../commands/open";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const openSpec: LandoCommandSpec<OpenAppResult> = {
   resultSchema: OpenAppResultSchema,

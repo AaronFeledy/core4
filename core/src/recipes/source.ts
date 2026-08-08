@@ -27,9 +27,9 @@ import {
 } from "@lando/sdk/errors";
 import type { RecipeManifest } from "@lando/sdk/schema";
 
-import { BUNDLED_RECIPES } from "./bundled.ts";
-import { validateRecipeManifestObject } from "./manifest/service.ts";
-import { loadRecipeTs } from "./ts-loader.ts";
+import { BUNDLED_RECIPES } from "./bundled";
+import { validateRecipeManifestObject } from "./manifest/service";
+import { loadRecipeTs } from "./ts-loader";
 
 /**
  * The directory-resolution boundary enforces that a local recipe id matches

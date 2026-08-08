@@ -1,6 +1,6 @@
-import type { DoctorCheck, DoctorResult, DoctorSelectionRecord } from "./doctor-contract.ts";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
-import { DOCTOR_CAPABILITY_FIELDS } from "./doctor-provider.ts";
+import type { DoctorCheck, DoctorResult, DoctorSelectionRecord } from "./doctor-contract";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { DOCTOR_CAPABILITY_FIELDS } from "./doctor-provider";
 
 const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): Record<string, unknown> => {
   const ordered: Record<string, unknown> = {};

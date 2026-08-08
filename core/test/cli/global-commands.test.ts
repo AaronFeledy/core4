@@ -42,8 +42,14 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
-import { CacheServiceLive } from "../../src/cache/service.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
@@ -56,12 +62,6 @@ import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
 import { globalConfigOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
-import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
 
 interface ApplyCall {
   readonly plan: AppPlan;

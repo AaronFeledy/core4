@@ -4,7 +4,11 @@ import type { LogsAppError } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import type { StreamFrameSink } from "../../stream-frame-sink.ts";
+import {
+  type LoadGlobalPlanError,
+  type LoadGlobalPlanServices,
+  loadGlobalPlan,
+} from "@lando/engine/operations/global-plan";
 import {
   type FollowLogsAppOptions,
   type LogsAppOptions,
@@ -12,10 +16,10 @@ import {
   followLogsForPlan,
   logsForPlan,
   validateSince,
-} from "../logs.ts";
-import { type LoadGlobalPlanError, type LoadGlobalPlanServices, loadGlobalPlan } from "./global-plan.ts";
+} from "@lando/engine/operations/logs";
+import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 
-export { renderLogsAppResult as renderGlobalLogsResult } from "../logs.ts";
+export { renderLogsAppResult as renderGlobalLogsResult } from "../logs";
 export type { LogsAppOptions as GlobalLogsOptions, FollowLogsAppOptions as FollowGlobalLogsOptions };
 
 export type GlobalLogsResult = LogsAppResult;

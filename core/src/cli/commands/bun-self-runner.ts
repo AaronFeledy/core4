@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService } from "../../redaction/service.ts";
+import { RedactionService } from "@lando/engine/redaction/service";
 
 export interface BunSelfSpawnerOptions {
   readonly cmd: ReadonlyArray<string>;

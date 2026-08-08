@@ -11,7 +11,7 @@ import { Context, Deferred, Effect, Option, Queue, Ref, Scope } from "effect";
 
 import type { McpTransportError } from "@lando/sdk/errors";
 
-import type { McpDispatchError, McpDispatchResult, McpToolCallRequest } from "./dispatch.ts";
+import type { McpDispatchError, McpDispatchResult, McpToolCallRequest } from "./dispatch";
 
 export interface McpTransportRequest {
   readonly id: string;

@@ -6,22 +6,22 @@ import { Effect, Schema } from "effect";
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
-import { validatePluginManifest } from "./plugin-add.ts";
+import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { validatePluginManifest } from "./plugin-add";
 import {
   PluginBuildMixedTreeError,
   assertNoMixedTrees,
   listOutputs,
   outputDirectoryExists,
-} from "./plugin-build-files.ts";
+} from "./plugin-build-files";
 import {
   commandError,
   declarationRootDir,
   entriesFromExports,
   readPackageJson,
   writeDistPackageJson,
-} from "./plugin-build-package.ts";
-import { findNearestPluginPackageRoot } from "./plugin-package-root.ts";
+} from "./plugin-build-package";
+import { findNearestPluginPackageRoot } from "./plugin-package-root";
 
 export { PluginBuildMixedTreeError };
 

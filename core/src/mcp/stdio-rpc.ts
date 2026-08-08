@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
-import type { McpToolInput } from "./registry.ts";
-import type { McpTransportReply } from "./transport.ts";
+import type { McpToolInput } from "./registry";
+import type { McpTransportReply } from "./transport";
 
 export type JsonRpcId = string | number | null;
 export type ProgressToken = string | number;

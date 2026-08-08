@@ -8,7 +8,7 @@
 
 import { ReadStream } from "node:tty";
 
-import { PromptCancelledError } from "./driver.ts";
+import { PromptCancelledError } from "./driver";
 
 /** Captured write stream payload. Either a string or a raw byte buffer. */
 export type PromptIOWriteChunk = string;

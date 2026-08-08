@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
+import { RedactionService } from "@lando/engine/redaction/service";
 import {
   DefaultMcpDoctorLayer,
   MCP_DOCTOR_CANARY_SECRET,
@@ -12,7 +13,6 @@ import {
 } from "../../src/cli/commands/doctor-mcp.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
 import { identityRedactor } from "../../src/cli/result-encode.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 const runWithDefault = (): Promise<McpDoctorResult> =>
   Effect.runPromise(mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)));

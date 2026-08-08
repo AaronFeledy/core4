@@ -1,12 +1,12 @@
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import {
   type PluginTrustAuthoringRootResult,
   PluginTrustAuthoringRootResultSchema,
   pluginTrustAuthoringRoot,
   renderPluginTrustAuthoringRootResult,
-} from "../../../../commands/plugin-trust.ts";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+} from "../../../../commands/plugin-trust";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
 
 const extractInput = (input: unknown): { path: string } => {
   if (typeof input !== "object" || input === null) return { path: "" };

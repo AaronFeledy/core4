@@ -17,14 +17,9 @@ import type {
 } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
-import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags.ts";
-import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary.ts";
-import {
-  type SummaryDocument,
-  type SummaryTone,
-  formatSummary,
-  worstSummaryTone,
-} from "../renderer/summary.ts";
+import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
+import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary";
+import { type SummaryDocument, type SummaryTone, formatSummary, worstSummaryTone } from "../renderer/summary";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;

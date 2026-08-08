@@ -3,10 +3,10 @@ import { Either, Schema } from "effect";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 
-import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path.ts";
-import { type ValueType, parseTypedValue } from "./value-parse.ts";
+import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path";
+import { type ValueType, parseTypedValue } from "./value-parse";
 
-export type { ValueType } from "./value-parse.ts";
+export type { ValueType } from "./value-parse";
 
 const pathRemediation =
   "Use a dot-separated path (`services.web.type`) with `[n]` for array indices (`tooling.test.cmds[0]`).";

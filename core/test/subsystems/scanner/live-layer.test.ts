@@ -6,7 +6,7 @@ import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import { HttpClient, RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { UrlScannerDefaultLayer, UrlScannerLive } from "../../../src/subsystems/scanner/live.ts";
+import { UrlScannerDefaultLayer, UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
 import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSequence } from "./support.ts";
 
 const web = ServiceName.make("web");

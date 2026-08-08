@@ -6,10 +6,10 @@ import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/core/errors";
 import { EventService, ProcessRunner } from "@lando/core/services";
+import { RedactionService } from "@lando/engine/redaction/service";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
-import { RedactionService } from "../../src/redaction/service.ts";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),

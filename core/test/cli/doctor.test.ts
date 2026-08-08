@@ -7,6 +7,7 @@ import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { plugin as podmanPlugin } from "@lando/provider-podman";
 import {
   AbsolutePath,
@@ -23,7 +24,6 @@ import {
   renderDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
-import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");

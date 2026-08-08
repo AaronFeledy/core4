@@ -6,7 +6,7 @@ const cliRoot = resolve(import.meta.dirname, "../../src/cli");
 
 const CARVE_OUTS = new Set([resolve(cliRoot, "oclif/pre-renderer.ts")]);
 
-const DIRECT_WRITE = /\bconsole\.(log|error|warn|info|debug)\b|\bprocess\.(stdout|stderr)\.write\b/;
+const DIRECT_WRITE = /\bconsole\.(log|error|warn|info|debug)\s*\(|\bprocess\.(stdout|stderr)\.write\s*\(/;
 
 const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   const entries = await readdir(dir, { withFileTypes: true });

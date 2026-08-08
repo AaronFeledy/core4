@@ -1,15 +1,16 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { type LogsAppResult, followLogsApp, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
-import { normalizeCliFlagTokens } from "../../../flag-value-validation.ts";
+import { type LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
+import { renderLogsAppResult } from "../../../commands/logs";
+import { normalizeCliFlagTokens } from "../../../flag-value-validation";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 export interface LogsFlags {
   readonly service?: string;

@@ -1,5 +1,5 @@
 import type { ConfigLintViolation } from "@lando/sdk/schema";
-import { escapeDiagnosticText } from "../diagnostic-text.ts";
+import { escapeDiagnosticText } from "../diagnostic-text";
 
 export const renderConfigLintViolation = (violation: ConfigLintViolation): string => {
   const where = violation.path.length === 0 ? "(root)" : escapeDiagnosticText(violation.path);

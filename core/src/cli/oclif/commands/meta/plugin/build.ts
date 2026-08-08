@@ -3,8 +3,8 @@ import {
   PluginBuildResultSchema,
   pluginBuild,
   renderPluginBuildResult,
-} from "../../../../commands/plugin-build.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/plugin-build";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   resultSchema: PluginBuildResultSchema,

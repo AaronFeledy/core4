@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata.ts";
+import { Flags } from "../../../metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
@@ -7,14 +7,14 @@ import {
   followGlobalLogs,
   globalLogs,
   renderGlobalLogsResult,
-} from "../../../../commands/meta/global-logs.ts";
-import { normalizeCliFlagTokens } from "../../../../flag-value-validation.ts";
+} from "../../../../commands/meta/global-logs";
+import { normalizeCliFlagTokens } from "../../../../flag-value-validation";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 export interface GlobalLogsFlags {
   readonly service?: string;

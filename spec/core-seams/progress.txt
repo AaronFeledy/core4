@@ -137,3 +137,98 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Guide-Coverage-Skip: US-540 adds a private empty package and internal boundary enforcement without changing commands, runtime behavior, or public contracts.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, import-cycle, package build/test, 27 focused and adjacent tests, and diagnostics passed.
 ---
+
+## 2026-08-06 23:24 CDT - Babysit
+- PR: #712 https://github.com/AaronFeledy/core4/pull/712
+- CI outcome: pass
+- Review feedback: fixed (refreshed runtime-bundle Ubuntu snapshot so libsqlite3-dev resolves; cascade failures cleared)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-07 00:35 CDT - US-541
+- Hoisted the app-lifecycle operations (start, stop, restart, rebuild, destroy, exec, logs, info, config lint, remote, share, tooling) out of CLI command bodies into a core-internal `core/src/operations/**` staging tier consumed by both `core/src/app/**` and thin CLI adapters; result schemas moved with their operation while `render*` functions stayed in `core/src/cli/commands/`.
+- Pulled the supporting closure out of the shell with them (task-tree progress, published-endpoint URLs, file-sync teardown, stream-frame sink, reserved aliases, global service ensure/install/plan, start file-sync and host-proxy helpers) and replaced the exec renderer reach with a tag-only optional passthrough, so no staging module imports `core/src/cli/**`.
+- Deleted the US-539 burn-down allowlist and extended the layering gate to the new staging root, leaving zero `core/src/{app,operations,services}` to `core/src/cli` edges; `@lando/core/cli/operations` re-exports both halves so the public entry point is unchanged.
+- Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, public transcripts, and the full boundary suite passed; 452 focused and adjacent tests passed across library/app contracts, every affected command scenario suite, and the registry/manifest surfaces. Manual CLI QA compiled the binary and ran 29 command invocations against a real app in the sandbox: every output and exit code was byte-identical to a binary built from origin/main, and the public export surface of `@lando/core`, `@lando/core/cli`, and `@lando/core/cli/operations` was identical name-for-name.
+- The one live-Podman scenario test that fails does so identically on unmodified `origin/main` in this environment, and the single transient `app:logs` output difference resolved to the same message on both binaries under interleaved reruns.
+- **Learnings for future iterations:**
+  - Split each command module by contract, not by file: the result schema belongs with the operation (machine output is a contract) while the `render*` function stays in the shell, which keeps `--format json` byte-identical through the move.
+  - A public `export *` entry point survives a split when it star-exports both halves; comparing sorted export-name dumps against an `origin/main` worktree is a cheap, decisive parity proof.
+  - WSL2 distros share one network stack, so the host global Traefik on 38080 blocks a sandbox `lando start`; verify command surfaces that do not need the proxy instead of assuming the sandbox runtime is broken.
+---
+
+## 2026-08-07 02:05 CDT - US-541 Review
+- Replaced the remote and share operations' `unknown` Effect error channels with concrete unions covering Landofile resolution, provider planning, remote/tunnel failures, schema parsing, and state-store failures; the repair is type-only and preserves command behavior.
+- Review notes (deferred/rejected): deferred reconciliation of the pre-existing public `ShareAppError`/`RemoteSyncError` aliases and `App` handle cast to US-544, which owns public-surface parity; rejected mapping parse or state-store failures because that would change behavior in this move-only story; rejected moving sdk-published Renderer/InteractionService tag use because the staging-tier convention permits service tags while forbidding renderer implementations and CLI imports; rejected relocating the supporting global-install renderer and broadening export tests as out-of-scope non-blocking cleanup.
+- Guide-Coverage-Skip: US-541 review changes internal Effect typing only; no user-visible command or public contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, core-layering, import-cycle, renderer-boundary, and public-transcript gates passed; 51 focused app lifecycle, library, remote/share, export, and layering tests passed. Initial and post-fix Bugbot found no bugs; review security and hands-on QA lanes passed.
+---
+
+## 2026-08-07 03:33 CDT - US-541 Drift Audit
+- Trigger: 2 cycles, 4506 changed lines, 3 commits
+- Contract drift: the PRD index omitted the source PRD's ban on staged-operation Renderer/InteractionService coupling; the index now matches the authoritative criterion, superseding the Review decision made from the lossy summary.
+- Weakened proof: event-only destroy coverage blessed a warning that no longer reached the CLI, and exec coverage missed the library-handle output path; production-boundary proofs now cover both behaviors.
+- Review scar tissue / ceremony: removed the operation-tier renderer passthrough and kept renderer output, prompting, and the absorbed global-install renderer in their owning shell/app tiers without adding public SDK surface.
+- Deferred-work laundering: the branch owns shell separation for every operation it absorbed, so the global-install renderer relocation is in scope; public error-alias and handle-cast cleanup remains deferred to US-544.
+- Fixed: restored visible destroy warnings, preserved CLI and library exec stderr, injected remote confirmation from consumers, deleted the forwarding passthrough, and retained byte-compatible public render exports.
+- Split/excise decisions: none; no adjacent feature or incomplete public contract was found, and US-541 remains passing.
+- Verification: typecheck, lint/deprecations, public transcripts, relevant boundaries, and 69 focused tests passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference failures. Host-unsafe sandbox parity and the earlier 29 manual CLI invocations were not rerun.
+---
+
+## 2026-08-07 12:52 CDT - US-542
+- Moved the runtime brain from `core/src/**` into the private `@lando/engine` package while retaining only shell adapters, public re-export shims, and the core-owned generated composition/bootstrap layers in core; `core/src` fell from 79,572 to 50,250 TypeScript lines, a reduction of 29,322 lines.
+- Inverted all five generated-table reaches behind engine composition inputs, retargeted codegen and shared boundary roots, and removed source aliases so runtime and tests resolve one canonical workspace identity for Effect tags and tagged errors.
+- Kept readline/TTY, host-proxy shim entry, worker argv, and install-root facts in the core shell; engine receives required REPL IO, worker entry data, and development dist roots through injected composition inputs with no fallback path.
+- Moved 14 self-contained suites into `engine/test` and added the closure contract; the engine package now runs 141 tests across 15 files, while the total sharded inventory increased only for the new closure proof.
+- Verification: `codegen:check`, typecheck, lint/deprecations, package-DAG, import-cycle, core-layering, renderer, state-store, generated-output, compiled host-proxy shim builds, CLI smoke, 115 focused remediation tests, and 141 engine tests passed. The full boundary runner retains only pre-existing `.omo/**` spec-reference failures outside this story; high-rigor review approved with no blockers.
+- Guide-Coverage-Skip: US-542 changes private package ownership and internal composition only; command behavior and public contracts are unchanged.
+- **Learnings for future iterations:**
+  - Remove source-path aliases when extracting workspace packages; duplicate module identities can make valid Effect layers and tagged errors fail runtime identity checks even when TypeScript accepts them.
+  - Treat process argv, TTY streams, and install-relative paths as host-shell facts and inject them into the engine rather than allowing moved modules to recompute them from their new package location.
+---
+
+## 2026-08-07 15:35 CDT - US-542 Review
+- Restored package-move behavior and proof by injecting composition inputs into isolated scratch test layers, repairing generated plugin scaffolds, keeping core lifecycle exports independent of process-global initialization, and retargeting boundary, codegen, telemetry, guidance, and specification ownership to the engine seam.
+- Review notes (deferred/rejected): rejected the post-fix Bugbot version-fallback finding for this story because source packages currently share the same development version, compiled binaries inject the core version, and npm workspace version rewriting is explicitly owned by US-544; rejected the touched plugin-new fixture's LSP-only `InteractionPrompter.select` diagnostic because it predates the review delta and repository typecheck is green; deferred composition exclusivity, performance budgets, and publish/install parity to US-543 and US-544.
+- Guide-Coverage-Skip: US-542 review repairs internal ownership, test isolation, and behavior-preserving regressions without changing the documented command contract.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, package-DAG, import-cycle, all behavioral boundary rules, 291 focused and adjacent tests, initial Bugbot, and post-fix Bugbot triage passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference findings.
+- **Learnings for future iterations:**
+  - Tests that construct private engine layers directly must inject generated composition inputs and shell-owned ports rather than relying on process-global core initialization.
+---
+
+## 2026-08-07 16:53 CDT - US-542 Drift Audit
+- Trigger: 2 cycles, 5904 changed lines, 10 commits
+- Weakened proof: removed a stale closure-test exemption for a nonexistent core state-store shim and made the proof reject unused allowlist entries.
+- Ceremony modules: made the branch-added composition installer private because it has no external importer.
+- Collateral edits: restored executable-guide structure lost during a required engine path retarget.
+- Contract drift: reconciled the test inventory as 13 moved suites, one pre-existing package-seam suite, and one new closure suite rather than 14 moved suites.
+- Fixed: tightened closure proof, removed a dead export, and restored guide structure.
+- Split/excise decisions: none; no absorbed feature or incomplete public contract was found, and US-542 remains passing.
+- Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, explicit-base guide drift, package-DAG, import-cycle, core-layering, 141 engine tests, 150 focused tests, and 4 focused guide scenarios passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference findings.
+---
+
+## 2026-08-07 19:10 CDT - Babysit
+- PR: #714 https://github.com/AaronFeledy/core4/pull/714
+- CI outcome: pass
+- Review feedback: fixed (install engine composition in tests; retarget moved source-path assertions; publish engine before core and regenerate release workflow; run codegen before provider-integration jobs)
+- Drift check: fixes pushed (restore exact OpenTUI loader canary) — landed after squash merge of green HEAD, not in #714
+- Merge: merged (squash)
+---
+
+## 2026-08-07 20:06 CDT - US-543
+- Restricted engine/plugin/shell composition to the two core-owned generated roots, with focused package-DAG proofs for both authorized prefixes, neighboring-path rejection, and engine-to-composition rejection.
+- Moved the OpenTUI startup command, sample count, and unchanged strict 50 ms p95 budgets into the tracked benchmark baseline; extended cold-entry canaries across static ESM, eager require, bare-package transitives, and the engine seam.
+- Verification: typecheck, scripts typecheck, lint/deprecations, package-DAG, import-cycle, core-layering, renderer, generated-output, and codegen-drift gates passed; 79 focused and adjacent tests passed. OpenTUI startup p95 was 35.17 ms and first-output p95 was 34.92 ms against strict 50 ms budgets; tooling warm p95 was 277.22 ms against the 1125 ms regression budget (900 ms baseline, 150 ms target). High-rigor review approved with no blockers.
+- Guide-Coverage-Skip: internal boundary enforcement and benchmark plumbing changed without altering command behavior or a guide-owned contract.
+- **Learnings for future iterations:**
+  - Keep authorized generated composition roots in one shared policy constant so a boundary carve-out and its focused proof cannot drift apart.
+  - Architecture canaries that are green by construction need negative controls covering transitive static edges and alternate eager-loading forms.
+---
+
+## 2026-08-07 20:30 CDT - US-543 Review
+- Hardened the cold-start closure proof by keeping canonical paths in one domain, replacing regex-based eager-require discovery with the shared AST module-edge scanner, and explicitly excluding both generated composition roots; negative controls now cover spaced requires plus comment and string lookalikes.
+- Review notes (deferred/rejected): rejected exposing or directly invoking the private composition installer because the US-542 Drift Audit deliberately removed that dead public seam and US-543 owns boundary proof, not a new callable API; all security findings were clear on direct retry.
+- Guide-Coverage-Skip: review changes internal architecture-test correctness only; no command behavior, public contract, or guide-owned surface changed.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial and post-fix Bugbot, and all five review-work lanes passed after the focused fixes.
+---

@@ -1,4 +1,4 @@
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import {
   type ScratchLogsResult,
@@ -6,8 +6,8 @@ import {
   renderScratchLogsResult,
   scratchIdFromInput,
   scratchLogs,
-} from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/scratch";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
   resultSchema: ScratchLogsResultSchema,

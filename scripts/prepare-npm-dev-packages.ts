@@ -16,6 +16,7 @@ export const releasePackageWorkspaces: ReadonlyArray<string> = [
   "container-runtime",
   "state-store",
   "landofile",
+  "engine",
   "core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.path),
 ];
@@ -26,6 +27,7 @@ export const releasePackageNames: ReadonlyArray<string> = [
   "@lando/container-runtime",
   "@lando/state-store",
   "@lando/landofile",
+  "@lando/engine",
   "@lando/core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.name),
 ];

@@ -2,11 +2,11 @@ import {
   setActiveDeprecationWarnings,
   setActiveRendererMode,
   setActiveResultFormat,
-} from "../../compiled-runtime.ts";
-import { routeDynamicTooling } from "../../dynamic-tooling.ts";
-import { resolveResultFormat } from "../../format-flags.ts";
-import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary.ts";
-import type { Hook } from "../metadata.ts";
+} from "../../compiled-runtime";
+import { routeDynamicTooling } from "../../dynamic-tooling";
+import { resolveResultFormat } from "../../format-flags";
+import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary";
+import type { Hook } from "../metadata";
 
 const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<ReadonlyArray<string>> => {
   const renderer = await resolveCliRendererMode({ argv, env: process.env });

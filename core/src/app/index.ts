@@ -1,2 +1,2 @@
-export { resolveApp } from "./resolve.ts";
-export { openLandoRuntime } from "./runtime.ts";
+export { resolveApp } from "./resolve";
+export { openLandoRuntime } from "./runtime";

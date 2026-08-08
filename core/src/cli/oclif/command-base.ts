@@ -8,26 +8,26 @@ import {
 } from "@lando/sdk/errors";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
-import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
-import type { RendererMode } from "../bug-report.ts";
-import { newInvocationId } from "../command-lifecycle.ts";
-import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
-import { notImplementedErrorForSpec } from "../deferred-commands.ts";
-import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
+import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
+import type { RendererMode } from "../bug-report";
+import { newInvocationId } from "../command-lifecycle";
+import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run";
+import { notImplementedErrorForSpec } from "../deferred-commands";
+import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags";
 import {
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
-} from "../renderer-boundary.ts";
-import type { StreamFrameSink } from "../stream-frame-sink.ts";
+} from "../renderer-boundary";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
-} from "./command-boundary.ts";
-import { type LandoCommandSpec, formatCommandError, validateCommandSpec } from "./command-spec.ts";
-import { getCommandRuntimeLayer } from "./hooks/init.ts";
-import { Command } from "./metadata.ts";
+} from "./command-boundary";
+import { type LandoCommandSpec, formatCommandError, validateCommandSpec } from "./command-spec";
+import { getCommandRuntimeLayer } from "./hooks/init";
+import { Command } from "./metadata";
 
 export {
   type LandoAliasSpec,
@@ -41,7 +41,7 @@ export {
   isCanonicalLandoCommandId,
   resolveTopLevelAliases,
   validateCommandSpec,
-} from "./command-spec.ts";
+} from "./command-spec";
 
 /**
  * Base class for built-in commands. Plugin-contributed commands compile

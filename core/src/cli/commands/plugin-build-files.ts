@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 
 import { Data } from "effect";
 
-import type { ExportEntry } from "./plugin-build-package.ts";
+import type { ExportEntry } from "./plugin-build-package";
 
 export class PluginBuildMixedTreeError extends Data.TaggedError("PluginBuildMixedTreeError")<{
   readonly message: string;

@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
+import { loadLandofileLayers } from "@lando/engine/services/landofile-live";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
-import { loadLandofileLayers } from "../../src/services/landofile-live.ts";
 
 test("a higher Landofile layer removes internal provenance from its task winner", async () => {
   // Given a base-layer internal include shadowed by a canonical-layer task

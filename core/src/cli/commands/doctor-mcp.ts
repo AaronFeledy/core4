@@ -21,19 +21,19 @@
  */
 import { Effect, Layer, Schema } from "effect";
 
-import { buildCatalog, computeEffectiveAllowlist } from "../../mcp/catalog.ts";
-import type { McpDispatchDeps, McpRunInput } from "../../mcp/dispatch.ts";
-import { dispatchTool } from "../../mcp/dispatch.ts";
-import type { McpCommandEntry } from "../../mcp/registry.ts";
-import { RedactionService, RedactionServiceLive } from "../../redaction/service.ts";
-import { SecretStoreLive } from "../../services/secret-store.ts";
-import type { LandoCommandSpec } from "../oclif/command-base.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../oclif/generated/mcp-allowlist.ts";
-import { computeMcpDefaultAllowlist } from "../oclif/mcp-allowlist.ts";
-import type { CommandResultOutcome } from "../result-encode.ts";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
-import { renderSolution } from "./doctor.ts";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
+import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
+import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { buildCatalog, computeEffectiveAllowlist } from "../../mcp/catalog";
+import type { McpDispatchDeps, McpRunInput } from "../../mcp/dispatch";
+import { dispatchTool } from "../../mcp/dispatch";
+import type { McpCommandEntry } from "../../mcp/registry";
+import type { LandoCommandSpec } from "../oclif/command-base";
+import { MCP_DEFAULT_ALLOWLIST } from "../oclif/generated/mcp-allowlist";
+import { computeMcpDefaultAllowlist } from "../oclif/mcp-allowlist";
+import type { CommandResultOutcome } from "../result-encode";
+import { renderSolution } from "./doctor";
+import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 
 export interface McpDoctorCheck {
   readonly name: "mcp";

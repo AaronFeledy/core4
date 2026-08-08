@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
@@ -25,7 +26,6 @@ import {
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
-import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");

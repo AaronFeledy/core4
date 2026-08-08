@@ -5,7 +5,7 @@
  *
  * Status: stub.
  */
-import type { Hook } from "../metadata.ts";
+import type { Hook } from "../metadata";
 
 export const postrunHook: Hook<"postrun"> = async (_options) => {
   // TODO: publish post-command lifecycle events.

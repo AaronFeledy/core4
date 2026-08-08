@@ -1,6 +1,6 @@
-import type { DoctorCheck, DoctorSelectionRecord, DoctorStatus } from "./doctor-contract.ts";
-import { providerKindFor } from "./doctor-contract.ts";
-import type { SetupReadinessSummary } from "./setup-readiness.ts";
+import type { DoctorCheck, DoctorSelectionRecord, DoctorStatus } from "./doctor-contract";
+import { providerKindFor } from "./doctor-contract";
+import type { SetupReadinessSummary } from "./setup-readiness";
 
 const setupReadinessStepContextKey = (id: string): string =>
   `step${id

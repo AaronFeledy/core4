@@ -5,9 +5,9 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { providerImages } from "@lando/engine/data-mover/generated/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import corePackage from "../../package.json";
-import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");

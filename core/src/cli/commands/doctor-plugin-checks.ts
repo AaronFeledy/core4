@@ -16,9 +16,9 @@ import {
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
-import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract.ts";
-import { providerKindFor } from "./doctor-contract.ts";
+import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
+import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
+import { providerKindFor } from "./doctor-contract";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,
@@ -26,7 +26,7 @@ import {
   doctorSelfCheck,
   isolateDoctorSection,
   redactDoctorMessage,
-} from "./doctor-self.ts";
+} from "./doctor-self";
 
 export interface PluginDoctorInput {
   readonly providerId: string;

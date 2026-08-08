@@ -11,19 +11,12 @@ import { Effect } from "effect";
 
 import type { ScratchAppService } from "@lando/sdk/services";
 
-import { cliRuntimeOptions } from "../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../runtime/layer.ts";
-import type { RendererMode } from "./bug-report.ts";
-import { initApp } from "./commands/init.ts";
-import { listServices, renderAppsListResult } from "./commands/list.ts";
-import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
-import {
-  normalizeScratchRunArgvForParsing,
-  parseScratchRunArgv,
-  renderScratchRunResult,
-  scratchRun,
-  scratchRunSuccessExitCode,
-} from "./commands/scratch-run.ts";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../runtime/layer";
+import type { RendererMode } from "./bug-report";
+import { initApp } from "./commands/init";
+import { listServices, renderAppsListResult } from "./commands/list";
+import { poweroff, renderPoweroffResult } from "./commands/poweroff";
 import {
   type ScratchStartOptions,
   renderScratchDestroyResult,
@@ -43,8 +36,15 @@ import {
   scratchStart,
   scratchStartOptionsFromInput,
   scratchStop,
-} from "./commands/scratch.ts";
-import { compiledCommandInputFromArgv } from "./compiled-input.ts";
+} from "./commands/scratch";
+import {
+  normalizeScratchRunArgvForParsing,
+  parseScratchRunArgv,
+  renderScratchRunResult,
+  scratchRun,
+  scratchRunSuccessExitCode,
+} from "./commands/scratch-run";
+import { compiledCommandInputFromArgv } from "./compiled-input";
 import {
   type CompiledCommandInput,
   activeRendererMode,
@@ -55,12 +55,12 @@ import {
   runWithProcessAbortSignal,
   scratchRunRuntimeLayer,
   scratchRuntimeLayer,
-} from "./compiled-runtime.ts";
-import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
-import { appsListPathFromInput } from "./oclif/commands/apps/list.ts";
-import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
-import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
-import type { RenderContext } from "./renderer-boundary.ts";
+} from "./compiled-runtime";
+import { initOptionsFromInput } from "./oclif/commands/apps/init";
+import { appsListPathFromInput } from "./oclif/commands/apps/list";
+import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy";
+import { pruneFromInput } from "./oclif/commands/apps/scratch/gc";
+import type { RenderContext } from "./renderer-boundary";
 
 export const appsListPathFromArgv = (argv: ReadonlyArray<string>): string | undefined =>
   appsListPathFromInput(compiledCommandInputFromArgv("apps:list", argv));

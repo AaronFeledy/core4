@@ -1,6 +1,6 @@
 import { RecipeRunNotAllowedError } from "@lando/sdk/errors";
 
-import type { ChoicesCommandResult, ChoicesCommandRunner } from "./prompts/choices-command.ts";
+import type { ChoicesCommandResult, ChoicesCommandRunner } from "./prompts/choices-command";
 
 export const DEFAULT_RUNS_ALLOWLIST: ReadonlyArray<string> = [
   "git",

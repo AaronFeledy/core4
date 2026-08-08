@@ -1,6 +1,6 @@
 import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
 
-import { BUNDLED_RENDERER_MODULES } from "../../plugins/generated/renderers.ts";
+import { BUNDLED_RENDERER_MODULES } from "../../plugins/generated/renderers";
 
 /**
  * The renderer contributions supplied by bundled renderer plugins. Each plugin

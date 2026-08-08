@@ -4,7 +4,7 @@ import { Context, Effect, Layer, Option } from "effect";
 
 import { FileSyncEngine } from "@lando/sdk/services";
 
-import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 describe("bootstrap plugin services", () => {

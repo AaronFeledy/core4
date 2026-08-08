@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import {
   type RecipesValidateResult,
@@ -6,8 +6,8 @@ import {
   recipePathFromInput,
   recipesValidate,
   renderRecipesValidateResult,
-} from "../../../../commands/recipes.ts";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+} from "../../../../commands/recipes";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
 
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,

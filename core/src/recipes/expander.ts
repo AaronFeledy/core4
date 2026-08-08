@@ -12,7 +12,7 @@ import type { Effect } from "effect";
 
 import type { RecipeError, RecipeMissingPluginError } from "@lando/sdk/errors";
 
-import type { RecipeExpansion, RecipeInput } from "./api.ts";
+import type { RecipeExpansion, RecipeInput } from "./api";
 
 export const expandRecipe = (
   _name: string,

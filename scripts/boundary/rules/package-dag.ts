@@ -3,6 +3,7 @@ import { relative } from "node:path";
 import { collectManifests } from "../graph.ts";
 import type { BoundaryRule, ProgramContext } from "../types.ts";
 import {
+  GENERATED_COMPOSITION_PREFIXES,
   WORKSPACE_EDGE_TABLE,
   type WorkspaceEdgeKind,
   type WorkspaceManifest,
@@ -75,7 +76,7 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
 export const packageDagRule = {
   id: "package-dag",
   scope: PACKAGE_DAG_SCOPE,
-  carveOuts: { files: [], prefixes: ["core/src/plugins/generated/"] },
+  carveOuts: { files: [], prefixes: GENERATED_COMPOSITION_PREFIXES },
   passMessage: "Package DAG check passed.",
   failureHeadline: "Package DAG check failed. Fix package dependency direction:",
   onProgram: checkProgram,
