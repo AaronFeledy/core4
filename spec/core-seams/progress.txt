@@ -264,3 +264,9 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - **Learnings for future iterations:**
   - Post-publish smoke tests that import registry packages must run in a separate `permissions: {}` job without checkout or trusted-publishing setup; `--ignore-scripts` does not prevent top-level module execution.
 ---
+
+## 2026-08-07 23:58 CDT - US-544 Review
+- Strengthened the published-package readiness regression so it derives and asserts the complete canonical release-package sequence; mutation checks proved omission of either engine seam now fails the test.
+- Review notes (deferred/rejected): rejected a frozen per-symbol export fixture because it repeats the previously recorded out-of-scope exhaustive inventory expansion; export-map completeness, unchanged public sources, and the zero-diff schema gate satisfy this parity story.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, focused release-workflow and public-surface tests, all five review-work lanes after triage, and post-fix Bugbot passed; the known nightly-tier `15`-versus-`19` baseline remains unchanged.
+---
