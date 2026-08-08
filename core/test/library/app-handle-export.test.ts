@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -85,7 +85,7 @@ describe("@lando/core App-handle entry export", () => {
       const consumerDir = join(tempDir, "consumer");
       const scopedDir = join(consumerDir, "node_modules/@lando");
       await mkdir(scopedDir, { recursive: true });
-      await symlink(join(extractDir, "package"), join(scopedDir, "core"), "dir");
+      await rename(join(extractDir, "package"), join(scopedDir, "core"));
 
       for (const dependency of packedConsumerDependencies) {
         const destination = join(consumerDir, "node_modules", dependency);
@@ -116,7 +116,7 @@ describe("@lando/core App-handle entry export", () => {
       expect(JSON.parse(lines[1] ?? "[]")).toEqual([]);
       const resolvedPath = lines.at(-1);
       if (resolvedPath === undefined) throw new Error("packed import did not print a path");
-      expect(await realpath(resolvedPath)).toBe(await realpath(join(extractDir, "package/src/index.ts")));
+      expect(await realpath(resolvedPath)).toBe(await realpath(join(scopedDir, "core/src/index.ts")));
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

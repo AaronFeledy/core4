@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -81,7 +81,7 @@ const preparePackedConsumer = async (): Promise<{ readonly root: string; readonl
       await mkdir(dirname(destination), { recursive: true });
       await symlink(join(dependencyPackageRoot, dependency), destination, "dir");
     }
-    await symlink(join(extracted, "package"), join(consumer, "node_modules/@lando/core"), "dir");
+    await rename(join(extracted, "package"), join(consumer, "node_modules/@lando/core"));
     return { root, consumer };
   } catch (error) {
     await rm(root, { recursive: true, force: true });
