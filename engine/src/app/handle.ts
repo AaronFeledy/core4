@@ -1,5 +1,6 @@
 import { Effect, type Runtime, Stream } from "effect";
 
+import { brandApp } from "@lando/sdk/app";
 import type {
   App,
   AppRemoteMutationOptions,
@@ -60,7 +61,7 @@ export const makeAppHandle = (
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  const implementation = {
+  return brandApp({
     id: plan.id,
     ref,
     root,
@@ -212,6 +213,5 @@ export const makeAppHandle = (
           ),
         ),
     },
-  } satisfies Omit<App, symbol>;
-  return implementation as typeof implementation & App;
+  });
 };

@@ -73,7 +73,7 @@ const assertCommandSucceeded = (label: string, result: RunResult) => {
 };
 
 describe("@lando/core App-handle entry export", () => {
-  test("structurally checks the handle before applying only the opaque App brand", async () => {
+  test("constructs the opaque App through the SDK brand applicator without assertions", async () => {
     // Given: the production App-handle and SDK contract syntax trees.
     const handle = await sourceFile(join(repoRoot, "engine/src/app/handle.ts"));
     const appContract = await sourceFile(join(repoRoot, "sdk/src/app/index.ts"));
@@ -81,26 +81,18 @@ describe("@lando/core App-handle entry export", () => {
     // When: handle construction and brand declarations are inspected structurally.
     const handleNodes = descendants(handle);
     const appContractNodes = descendants(appContract);
-    const assertions = handleNodes.filter(ts.isAsExpression);
-
-    // Then: the implementation is checked before one narrow internal brand cast.
+    // Then: the SDK applicator owns branding and the engine manufactures no asserted App value.
     expect(
       handleNodes.some((node) => ts.isCallExpression(node) && node.expression.getText(handle) === "brandApp"),
-    ).toBe(false);
-    expect(
-      handleNodes.some(
-        (node) => ts.isSatisfiesExpression(node) && node.type.getText(handle) === "Omit<App, symbol>",
-      ),
     ).toBe(true);
-    expect(assertions).toHaveLength(1);
-    expect(assertions[0]?.type.getText(handle)).toBe("typeof implementation & App");
+    expect(handleNodes.filter(ts.isAsExpression)).toHaveLength(0);
     expect(
       appContractNodes.some(
         (node) =>
           (ts.isFunctionDeclaration(node) || ts.isInterfaceDeclaration(node)) &&
           (node.name?.text === "brandApp" || node.name?.text === "AppImplementation"),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       appContractNodes.some(
         (node) =>
@@ -108,7 +100,7 @@ describe("@lando/core App-handle entry export", () => {
           node.name.getText(appContract) === "AppBrand" &&
           node.initializer !== undefined,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("exports the App share and remote error contracts from the canonical root", async () => {

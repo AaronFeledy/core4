@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/app` additively exports the assertion-free `brandApp` constructor seam and its
+  `AppImplementation` input contract so the engine can construct the opaque `App` handle without a
+  double cast. The unique-symbol brand remains module-private, so direct structural assignment to
+  `App` stays rejected; no JSON Schema artifact changes.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
   reloading or planning through those bound App-handle methods. `ShareAppError` additively includes
