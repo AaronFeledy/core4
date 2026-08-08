@@ -79,7 +79,7 @@ describe("boundary rule inventory", () => {
     expect(invalidRows).toEqual([]);
   });
 
-  test("marks behavioral survivors and retires engine-owned layering", async () => {
+  test("marks behavioral survivors and records the retired engine-owned layering alias", async () => {
     // Given: the survivor classes named by the boundary inventory contract.
     const behavioralIds = [
       "renderer",
@@ -92,9 +92,13 @@ describe("boundary rule inventory", () => {
     const rows = await inventoryRows();
     const byId = new Map(rows.map((row) => [row.id, row]));
 
-    // When / Then: behavioral rules stay explicit and the engine seam replaces core-layering.
+    // When / Then: behavioral rules stay explicit and the retired rule is no longer live.
     for (const id of behavioralIds) expect(byId.get(id)?.kind).toBe("behavioral");
-    expect(byId.get("core-layering")).toMatchObject({ kind: "ownership", verdict: "delete" });
-    expect(byId.get("core-layering")?.packageEdge).toContain("@lando/engine");
+    expect(byId.has("core-layering")).toBe(false);
+
+    const text = await inventoryFile.text();
+    expect(text).toContain("## Retired rule aliases");
+    expect(text).toContain("`core-layering`");
+    expect(text).toContain("`check:core-layering-boundary` → `check:package-dag`");
   });
 });

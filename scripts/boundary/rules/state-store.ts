@@ -2,6 +2,7 @@ import ts from "typescript";
 
 import { resolveConstString, scanLiteralsAndComments } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const SIGNALS = ["atomic-write-rename", "lockfile", "version-envelope"] as const;
 const FS_MODULES = new Set(["fs", "fs/promises", "node:fs", "node:fs/promises"]);
@@ -199,7 +200,7 @@ const hasVersionEnvelope = (state: ScanState): boolean => {
 export const stateStoreRule = {
   id: "state-store",
   scope: {
-    roots: ["core/src", "engine/src", "landofile/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "state-store/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },

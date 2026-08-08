@@ -131,9 +131,6 @@ ${setupBunSteps}
       - name: Network boundary lint
         run: bun run check:network-boundary
 
-      - name: Core layering boundary lint
-        run: bun run check:core-layering-boundary
-
       - name: Compose schema coverage
         run: bun run check:compose-coverage
 
