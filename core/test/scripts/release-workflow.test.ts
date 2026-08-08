@@ -2,26 +2,10 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { renderReleaseWorkflow } from "../../../scripts/build-release-workflow.ts";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-
-const renderWorkflow = async (): Promise<string> => {
-  const generator: unknown = await import(
-    new URL("../../../scripts/build-release-workflow.ts", import.meta.url).href
-  );
-  if (
-    typeof generator !== "object" ||
-    generator === null ||
-    !("renderReleaseWorkflow" in generator) ||
-    typeof generator.renderReleaseWorkflow !== "function"
-  ) {
-    throw new TypeError("release workflow generator does not export renderReleaseWorkflow");
-  }
-  const workflow: unknown = generator.renderReleaseWorkflow();
-  if (typeof workflow !== "string") throw new TypeError("renderReleaseWorkflow must return a string");
-  return workflow;
-};
 
 /** Extract a top-level GitHub Actions job block (`  job-id:`) through the next sibling job. */
 const jobBlock = (workflow: string, jobId: string): string => {
@@ -39,7 +23,7 @@ const jobBlock = (workflow: string, jobId: string): string => {
 describe("release workflow", () => {
   test("keeps npm publish in npm-alpha-packages without registry smoke", async () => {
     // Given
-    const workflow = await renderWorkflow();
+    const workflow = renderReleaseWorkflow();
     const packages = jobBlock(workflow, "npm-alpha-packages");
 
     // Then: publish stays here; smoke must not share the credentialed job
@@ -53,7 +37,7 @@ describe("release workflow", () => {
 
   test("smoke-tests the published core package in a separate credential-free npm-alpha-smoke job", async () => {
     // Given
-    const workflow = await renderWorkflow();
+    const workflow = renderReleaseWorkflow();
     const bunVersion = (await Bun.file(resolve(repoRoot, ".bun-version")).text()).trim();
     const packagesStart = workflow.indexOf("  npm-alpha-packages:");
     const smokeStart = workflow.indexOf("  npm-alpha-smoke:");
