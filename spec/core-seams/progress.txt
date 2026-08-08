@@ -207,3 +207,28 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Split/excise decisions: none; no absorbed feature or incomplete public contract was found, and US-542 remains passing.
 - Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, explicit-base guide drift, package-DAG, import-cycle, core-layering, 141 engine tests, 150 focused tests, and 4 focused guide scenarios passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference findings.
 ---
+
+## 2026-08-07 19:10 CDT - Babysit
+- PR: #714 https://github.com/AaronFeledy/core4/pull/714
+- CI outcome: pass
+- Review feedback: fixed (install engine composition in tests; retarget moved source-path assertions; publish engine before core and regenerate release workflow; run codegen before provider-integration jobs)
+- Drift check: fixes pushed (restore exact OpenTUI loader canary) — landed after squash merge of green HEAD, not in #714
+- Merge: merged (squash)
+---
+
+## 2026-08-07 20:06 CDT - US-543
+- Restricted engine/plugin/shell composition to the two core-owned generated roots, with focused package-DAG proofs for both authorized prefixes, neighboring-path rejection, and engine-to-composition rejection.
+- Moved the OpenTUI startup command, sample count, and unchanged strict 50 ms p95 budgets into the tracked benchmark baseline; extended cold-entry canaries across static ESM, eager require, bare-package transitives, and the engine seam.
+- Verification: typecheck, scripts typecheck, lint/deprecations, package-DAG, import-cycle, core-layering, renderer, generated-output, and codegen-drift gates passed; 79 focused and adjacent tests passed. OpenTUI startup p95 was 35.17 ms and first-output p95 was 34.92 ms against strict 50 ms budgets; tooling warm p95 was 277.22 ms against the 1125 ms regression budget (900 ms baseline, 150 ms target). High-rigor review approved with no blockers.
+- Guide-Coverage-Skip: internal boundary enforcement and benchmark plumbing changed without altering command behavior or a guide-owned contract.
+- **Learnings for future iterations:**
+  - Keep authorized generated composition roots in one shared policy constant so a boundary carve-out and its focused proof cannot drift apart.
+  - Architecture canaries that are green by construction need negative controls covering transitive static edges and alternate eager-loading forms.
+---
+
+## 2026-08-07 20:30 CDT - US-543 Review
+- Hardened the cold-start closure proof by keeping canonical paths in one domain, replacing regex-based eager-require discovery with the shared AST module-edge scanner, and explicitly excluding both generated composition roots; negative controls now cover spaced requires plus comment and string lookalikes.
+- Review notes (deferred/rejected): rejected exposing or directly invoking the private composition installer because the US-542 Drift Audit deliberately removed that dead public seam and US-543 owns boundary proof, not a new callable API; all security findings were clear on direct retry.
+- Guide-Coverage-Skip: review changes internal architecture-test correctness only; no command behavior, public contract, or guide-owned surface changed.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial and post-fix Bugbot, and all five review-work lanes passed after the focused fixes.
+---
