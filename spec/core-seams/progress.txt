@@ -5,7 +5,7 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 
 ## Conventions
 
-- Story IDs US-535..US-548; priority order is execution order.
+- Story IDs US-535..US-550; priority order is execution order.
 - Internal/infra only — Guide Coverage None on every PRD.
 - Do not touch unrelated dirty working-tree files from other waves.
 - Behavior-preserving moves: no command semantics, event sequences, cache formats, or public entry-point changes.
@@ -269,4 +269,15 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Strengthened the published-package readiness regression so it derives and asserts the complete canonical release-package sequence; mutation checks proved omission of either engine seam now fails the test.
 - Review notes (deferred/rejected): rejected a frozen per-symbol export fixture because it repeats the previously recorded out-of-scope exhaustive inventory expansion; export-map completeness, unchanged public sources, and the zero-diff schema gate satisfy this parity story.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, focused release-workflow and public-surface tests, all five review-work lanes after triage, and post-fix Bugbot passed; the known nightly-tier `15`-versus-`19` baseline remains unchanged.
+---
+
+## 2026-08-08 01:25 CDT - US-544 Drift Audit
+- Trigger: 4 cycles, 302 changed lines, 6 commits
+- Weakened proof: relocated root help now requires clean stderr; the published-install workflow remains a production-path check that cannot execute until a post-publish main run, while its local regression proves generated wiring only.
+- Review scar tissue: removed a dynamic-import and runtime type-validation facade around a statically typed, side-effect-guarded workflow generator.
+- Contract drift: exact export parity remains structurally proven by unchanged public sources plus export-map and schema compatibility coverage, but the source criterion's planned API-report gate is not yet runnable.
+- Deferred-work laundering: converted the root library/plugin dependency decision and App handle error-contract reconciliation from prose-only deferrals into closure-blocking stories.
+- Fixed: strengthened clean-output proof, deleted redundant test validation, and bound both deferred public-contract decisions to follow-up acceptance criteria.
+- Split/excise decisions: library-mode bundled plugin loading moved to US-549 and App handle error contracts moved to US-550; US-548 now requires both, while US-544 remains passing because no parity or new-workspace-dependency contract changed.
+- Verification: typecheck and lint passed; 32 focused changed-file tests passed; the nightly codegen suite passed 15 of 16 with its pre-existing `15`-versus-`19` baseline failure; relocated root help passed in `lando4-dev` with empty stderr, while the host-unsafe compiled-binary test and post-publish npm smoke were not rerun end to end.
 ---
