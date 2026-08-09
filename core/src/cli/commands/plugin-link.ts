@@ -13,9 +13,9 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import { validatePluginManifest } from "./plugin-add";
 
 const RESERVED_PLUGIN_ROOT_ENTRIES = new Set([
   ".lando-linked.json",

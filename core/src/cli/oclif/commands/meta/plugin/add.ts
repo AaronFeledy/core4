@@ -1,14 +1,10 @@
 import { Effect } from "effect";
 import { Args, Flags } from "../../../metadata";
 
+import { type PluginAddResult, PluginAddResultSchema } from "@lando/engine/operations/plugin-install";
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import {
-  type PluginAddResult,
-  PluginAddResultSchema,
-  pluginAdd,
-  renderPluginAddResult,
-} from "../../../../commands/plugin-add";
+import { pluginAdd, renderPluginAddResult } from "../../../../commands/plugin-add";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
