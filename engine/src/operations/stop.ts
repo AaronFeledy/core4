@@ -31,31 +31,28 @@ export const StopAppResultSchema = Schema.Struct({
 });
 
 type StopAppServices = AppPlanner | EventService | LandofileService | PathsService | RuntimeProviderRegistry;
+type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const stopAppWithPlan = (
-  _options: StopAppOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.Effect<{ readonly result: StopAppResult; readonly plan: AppPlan }, StopAppError, StopAppServices> =>
+const stopAppWithResolvedPlan = (
+  _options: StopAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<
+  { readonly result: StopAppResult; readonly plan: AppPlan },
+  SdkStopAppError,
+  BoundStopAppServices
+> =>
   Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
     const events = yield* EventService;
     const paths = yield* PathsService;
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+    const plan = target.plan;
     const provider = yield* registry.select(plan);
-    const ref = target?.app ?? appRef(plan);
+    const ref = target.app;
 
     yield* events.publish(
       PreAppStopEvent.make({
@@ -113,6 +110,37 @@ export const stopAppWithPlan = (
       plan,
     };
   });
+
+export const stopAppWithPlan = (
+  options: StopAppOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<
+  { readonly result: StopAppResult; readonly plan: AppPlan },
+  StopAppError,
+  StopAppServices
+> =>
+  target === undefined
+    ? Effect.gen(function* () {
+        const landofileService = yield* LandofileService;
+        const registry = yield* RuntimeProviderRegistry;
+        const planner = yield* AppPlanner;
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        const plan = yield* planner.plan(landofile, capabilities);
+        return yield* stopAppWithResolvedPlan(options, {
+          plan,
+          root: plan.root,
+          app: appRef(plan),
+          landofile,
+        });
+      })
+    : stopAppWithResolvedPlan(options, target);
+
+export const stopAppForTarget = (
+  options: StopAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<StopAppResult, SdkStopAppError, BoundStopAppServices> =>
+  stopAppWithResolvedPlan(options, target).pipe(Effect.map(({ result }) => result));
 
 export const stopApp = (
   options: StopAppOptions = {},

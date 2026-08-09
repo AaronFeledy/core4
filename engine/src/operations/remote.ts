@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import type { RemoteSyncError } from "@lando/sdk/app";
+import type { PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   CapabilityError,
   NoProviderInstalledError,
@@ -452,13 +452,13 @@ export const appRemoteTest = (
 
 export const appRemoteSetup = (options: RemoteSetupOptions = {}) => appRemoteTest(options);
 
-export const appPull = (
-  options: RemoteSyncOptions = {},
-  target?: ResolvedAppTarget,
+const appPullWithPlan = <E, R>(
+  options: RemoteSyncOptions,
+  planEffect: Effect.Effect<AppPlan, E, R>,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> =>
+): Effect.Effect<SyncResultType, PullAppError | E, R> =>
   Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd ?? target?.root);
+    const loaded = yield* loadRemoteLandofile(options.cwd);
     const entry = yield* chooseRemote(loaded.landofile, options.remote);
     const source = yield* resolveRemoteSource(entry);
     const dataset = yield* Effect.serviceOption(Dataset);
@@ -467,7 +467,7 @@ export const appPull = (
     const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
     if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
     const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
-    const plan = yield* resolvePlan(options.cwd, target);
+    const plan = yield* planEffect;
     const artifacts: DataEndpoint[] = [];
     const snapshots = [];
     let changed = false;
@@ -496,13 +496,37 @@ export const appPull = (
     });
   });
 
-export const appPush = (
+export const appPullForTarget = (
+  options: RemoteSyncOptions | undefined,
+  target: ResolvedAppTarget,
+  confirm?: RemoteSyncConfirmation,
+): Effect.Effect<SyncResultType, PullAppError> =>
+  appPullWithPlan(
+    { ...(options ?? {}), cwd: options?.cwd ?? target.root },
+    Effect.succeed(target.plan),
+    confirm,
+  );
+
+export const appPull = (
   options: RemoteSyncOptions = {},
   target?: ResolvedAppTarget,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> =>
+): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> => {
+  const cwd = options.cwd ?? target?.root;
+  return appPullWithPlan(
+    cwd === undefined ? options : { ...options, cwd },
+    resolvePlan(options.cwd, target),
+    confirm,
+  );
+};
+
+const appPushWithPlan = <E, R>(
+  options: RemoteSyncOptions,
+  planEffect: Effect.Effect<AppPlan, E, R>,
+  confirm?: RemoteSyncConfirmation,
+): Effect.Effect<SyncResultType, PushAppError | E, R> =>
   Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd ?? target?.root);
+    const loaded = yield* loadRemoteLandofile(options.cwd);
     const entry = yield* chooseRemote(loaded.landofile, options.remote);
     const source = yield* resolveRemoteSource(entry);
     if (!source.capabilities.push) {
@@ -529,7 +553,7 @@ export const appPush = (
         }),
       );
     }
-    const plan = yield* resolvePlan(options.cwd, target);
+    const plan = yield* planEffect;
     const artifacts: DataEndpoint[] = [];
     yield* confirmDestructive(`Push ${kinds.join(", ")} to ${entry.name}@${env}?`, options, confirm);
     for (const kind of kinds) {
@@ -553,6 +577,30 @@ export const appPush = (
       artifacts,
     });
   });
+
+export const appPushForTarget = (
+  options: RemoteSyncOptions | undefined,
+  target: ResolvedAppTarget,
+  confirm?: RemoteSyncConfirmation,
+): Effect.Effect<SyncResultType, PushAppError> =>
+  appPushWithPlan(
+    { ...(options ?? {}), cwd: options?.cwd ?? target.root },
+    Effect.succeed(target.plan),
+    confirm,
+  );
+
+export const appPush = (
+  options: RemoteSyncOptions = {},
+  target?: ResolvedAppTarget,
+  confirm?: RemoteSyncConfirmation,
+): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> => {
+  const cwd = options.cwd ?? target?.root;
+  return appPushWithPlan(
+    cwd === undefined ? options : { ...options, cwd },
+    resolvePlan(options.cwd, target),
+    confirm,
+  );
+};
 
 export const appRemote = {
   list: appRemoteList,

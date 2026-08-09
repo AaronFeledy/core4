@@ -2,12 +2,12 @@ import { dirname, join } from "node:path";
 
 import { Effect, ExecutionStrategy, Scope } from "effect";
 
-import type { App, AppSelector, LandoRuntimeServices } from "@lando/sdk/app";
+import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { makeAppHandle } from "@lando/engine/app/handle";
+import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
 import { type NormalizedAppSelector, normalizeAppSelector } from "@lando/engine/app/selector";
 import {
@@ -200,9 +200,9 @@ const targetFromResolved = (resolved: ResolvedLandofilePlan): ResolvedAppTarget 
  */
 export const buildAppHandle = (
   target: ResolvedAppTarget,
-): Effect.Effect<App, never, LandoRuntimeServices | Scope.Scope> =>
+): Effect.Effect<App, never, AppHandleRuntimeServices | Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<LandoRuntimeServices>();
+    const runtime = yield* Effect.runtime<AppHandleRuntimeServices>();
     const runtimeScope = yield* Effect.scope;
     const handleScope = yield* Scope.fork(runtimeScope, ExecutionStrategy.sequential);
     const lifecycle = yield* makeAppLifecycle(handleScope);
@@ -219,7 +219,7 @@ export const buildAppHandle = (
  */
 export const resolveApp = (
   selector?: AppSelector,
-): Effect.Effect<App, AppResolveError, LandoRuntimeServices | RuntimeCwd | Scope.Scope> =>
+): Effect.Effect<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> =>
   Effect.gen(function* () {
     const normalized = yield* normalizeAppSelector(selector);
     const resolved = yield* resolvePlan(normalized);

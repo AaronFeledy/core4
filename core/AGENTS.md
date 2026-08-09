@@ -6,6 +6,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 - `core/test/cli/fixtures/*.json` is formatted by `bun run lint`. Renderer tests should compare `JSON.parse(output)` to `Bun.file(fixture).json()`, not raw compact JSON strings.
 - Guide TDD specifics live in the root file. Use the core notes here only when changing the guide generator/runtime behavior, not for routine MDX edits.
+- `core/test/tsconfig.json` is an editor/LSP project, not a gate: it imports `scripts/**` outside its `rootDir` and reports cross-root `TS6059` errors even on a clean tree. Gate test types with `bun run typecheck` plus per-file diagnostics.
 
 ## Recipe Sources
 
@@ -60,7 +61,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 
 ## Engine operations tier
 
-- App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `engine/src/operations/**`, not in command bodies. Core app shims and the CLI both consume them through `@lando/engine`; engine modules must never import the core shell (enforced by the package DAG and `check:core-layering-boundary`).
+- App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `engine/src/operations/**`, not in command bodies. Core app shims and the CLI both consume them through `@lando/engine`; engine modules must never import the core shell (enforced by the package DAG; `check:core-layering-boundary` is a stable alias for `check:package-dag`).
 - `core/src/cli/commands/<op>.ts` (or its namespace-specific equivalent) holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
 - Operations may publish events but must not couple to `Renderer` or `InteractionService` beyond event publication. Optional renderer output and CLI result passthrough belong in private CLI helpers such as `core/src/cli/renderer-output.ts`; engine operation modules never import the core shell.
 - `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.

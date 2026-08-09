@@ -1,12 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-let root: string;
-const repoRoot = resolve(import.meta.dirname, "../../..");
-const passMessage = "Core layering check passed.";
+const repoRoot = join(import.meta.dirname, "../../..");
 
 type GateResult = {
   readonly exitCode: number;
@@ -14,8 +10,8 @@ type GateResult = {
   readonly stderr: string;
 };
 
-const runBun = async (args: readonly string[]): Promise<GateResult> => {
-  const child = Bun.spawn([process.execPath, ...args], {
+const runAlias = async (): Promise<GateResult> => {
+  const child = Bun.spawn([process.execPath, "run", "check:core-layering-boundary"], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -28,109 +24,22 @@ const runBun = async (args: readonly string[]): Promise<GateResult> => {
   return { exitCode, stdout, stderr };
 };
 
-const write = async (path: string, contents: string): Promise<void> => {
-  const file = join(root, path);
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, contents);
-};
-
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "core-layering-"));
-});
-
-afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
-});
-
-describe("core layering boundary", () => {
-  test("rejects every app, services, and operations import into the CLI shell", async () => {
-    // Given
-    await Promise.all([
-      write("engine/src/app/new-edge.ts", 'import "../../../core/src/cli/app-resolution.ts";\n'),
-      write(
-        "engine/src/operations/start.ts",
-        'import { publishTaskStart } from "../../../core/src/cli/progress.ts";\n',
-      ),
-      write("engine/src/app/normalized-edge.ts", 'import "./../../../core/src/cli/commands/info.ts";\n'),
-      write(
-        "engine/src/app/package-imports.ts",
-        [
-          'import { runCli } from "@lando/core/cli";',
-          'import type { AppOperation } from "@lando/core/cli/operations";',
-          'export { runCli as cli } from "@lando/core/cli";',
-          'void import("@lando/core/cli/operations");',
-          "void runCli;",
-          "export type Operation = AppOperation;",
-          "",
-        ].join("\n"),
-      ),
-      write(
-        "engine/src/app/package-import-guards.ts",
-        [
-          'import "@lando/core/services";',
-          'import "@lando/core/client";',
-          'import "@lando/sdk/probe";',
-          "",
-        ].join("\n"),
-      ),
-      write("engine/src/services/new-edge.ts", 'void import("../../../core/src/cli/commands/info.ts");\n'),
-      write(
-        "engine/src/services/nested/new-edge.ts",
-        'import "../../../../core/src/cli/commands/info.ts";\n',
-      ),
-      write(
-        "engine/src/app/operations.ts",
-        'import { startApp } from "../../../core/src/cli/commands/start.ts";\nvoid startApp;\n',
-      ),
-      write(
-        "engine/src/app/handle.ts",
-        [
-          'import type { LogsAppLine } from "../../../core/src/cli/commands/logs.ts";',
-          'import { logsApp } from "../../../core/src/cli/commands/logs.ts";',
-          "export type Line = LogsAppLine;",
-          "void logsApp;",
-          "",
-        ].join("\n"),
-      ),
-    ]);
-
-    // When
-    const result = await runBun([
-      join(repoRoot, "scripts/check-boundaries.ts"),
-      "core-layering",
-      `--root=${root}`,
-    ]);
+describe("retired core-layering boundary alias", () => {
+  test("maps the stable script name to package-dag", async () => {
+    // Given / When
+    const manifest = await Bun.file(join(repoRoot, "package.json")).text();
 
     // Then
-    expect(result).toMatchObject({ exitCode: 1, stdout: "" });
-    expect(result.stderr.trimEnd().split("\n").slice(1)).toEqual([
-      'engine/src/app/handle.ts:1: imports CLI internals via "../../../core/src/cli/commands/logs.ts"',
-      'engine/src/app/handle.ts:2: imports CLI internals via "../../../core/src/cli/commands/logs.ts"',
-      'engine/src/app/new-edge.ts:1: imports CLI internals via "../../../core/src/cli/app-resolution.ts"',
-      'engine/src/app/normalized-edge.ts:1: imports CLI internals via "./../../../core/src/cli/commands/info.ts"',
-      'engine/src/app/operations.ts:1: imports CLI internals via "../../../core/src/cli/commands/start.ts"',
-      'engine/src/app/package-imports.ts:1: imports CLI internals via "@lando/core/cli"',
-      'engine/src/app/package-imports.ts:2: imports CLI internals via "@lando/core/cli/operations"',
-      'engine/src/app/package-imports.ts:3: imports CLI internals via "@lando/core/cli"',
-      'engine/src/app/package-imports.ts:4: imports CLI internals via "@lando/core/cli/operations"',
-      'engine/src/operations/start.ts:1: imports CLI internals via "../../../core/src/cli/progress.ts"',
-      'engine/src/services/nested/new-edge.ts:1: imports CLI internals via "../../../../core/src/cli/commands/info.ts"',
-      'engine/src/services/new-edge.ts:1: imports CLI internals via "../../../core/src/cli/commands/info.ts"',
-    ]);
-    expect(result.stderr).not.toContain("engine/src/app/package-import-guards.ts");
-    expect(result.stderr).not.toContain('"@lando/core/services"');
-    expect(result.stderr).not.toContain('"@lando/core/client"');
-    expect(result.stderr).not.toContain('"@lando/sdk/probe"');
+    expect(manifest).toContain('"check:core-layering-boundary": "bun run check:package-dag"');
   });
 
-  test("runs through the root package gate", async () => {
-    // Given
-    const args = ["run", "check:core-layering-boundary"] as const;
-
-    // When
-    const result = await runBun(args);
+  test("runs the package-dag gate through the stable script name", async () => {
+    // Given / When
+    const result = await runAlias();
 
     // Then
-    expect(result).toMatchObject({ exitCode: 0, stdout: `${passMessage}\n` });
+    expect(result).toMatchObject({ exitCode: 0, stdout: "Package DAG check passed.\n" });
+    expect(result.stderr).toContain("$ bun run check:package-dag");
+    expect(result.stderr).not.toContain("check-core-layering-boundary.ts");
   });
 });

@@ -29,6 +29,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
+- `NIGHTLY_TIER_TESTS` in `scripts/test-shards.ts` (the CI-workflow codegen suite and the Linux acceptance suite) is excluded from PR shards, so drift those files guard can reach `main` without a red PR. Run them by path whenever you touch their generator.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
 
 ## Generated Files
@@ -68,7 +69,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Durable atomic, versioned, lockable state belongs in the private `@lando/state-store` package; plugins use `LandoPluginContext.stateStore`; host/tests override `StateStore` or use `TestStateStore`. `check:package-dag` owns package direction, while the residual `check:state-store-boundary` gate forbids hand-rolled write-temp+rename+lockfile+version-envelope combinations in core and plugins.
 - Host/provider-shaped retry/backoff/timeout-to-verdict probing (healthcheck, scanner, doctor, downloader, setup readiness) must build on `@lando/sdk/probe`'s `runProbe`; net-new hand-rolled `Effect.retry`/`Effect.repeat`/`Effect.schedule`/`Schedule.*` loops across the shared shipped-runtime tier (`core/src/**`, `engine/src/**`, `landofile/src/**`, `paths/src/**`, `state-store/src/**`, and `plugins/**`) are blocked by `check:probe-boundary` with no allowlist. Consumers redact `ProbeResult.lastError` through `RedactionService` before it reaches an event, transcript, or readiness summary.
 - User-app resolution should go through `loadUserLandofile(...)` from `engine/src/landofile/app-resolution.ts`; core CLI modules may use the CLI-only re-export at `core/src/cli/app-resolution.ts`. Do not call raw `LandofileService.discover`.
-- **Package seams first, AST second:** when a boundary is a private workspace package, `check:package-dag` is primary. Remaining boundary gates (`check:*-boundary`, `check:generated-output`, etc.) are thin shims over `scripts/boundary/` for residual behavioral bans. Gate names stay stable; `bun run scripts/check-boundaries.ts --all` runs every registered rule in one pass.
+- **Package seams first, AST second:** when a boundary is a private workspace package, `check:package-dag` is primary. Propose a package seam before adding a scanner; every new boundary-rule registration must explain why a seam is impossible or premature. Remaining boundary gates (`check:*-boundary`, `check:generated-output`, etc.) are thin shims over `scripts/boundary/` for residual behavioral bans. Gate names stay stable; `bun run scripts/check-boundaries.ts --all` runs every registered rule in one pass.
 
 ## Platform and Runtime Gotchas
 

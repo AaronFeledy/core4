@@ -5,7 +5,7 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 
 ## Conventions
 
-- Story IDs US-535..US-548; priority order is execution order.
+- Story IDs US-535..US-550; priority order is execution order.
 - Internal/infra only — Guide Coverage None on every PRD.
 - Do not touch unrelated dirty working-tree files from other waves.
 - Behavior-preserving moves: no command semantics, event sequences, cache formats, or public entry-point changes.
@@ -18,6 +18,12 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - When a boundary rule has manifest and source halves, both must consume one exported policy table; a private source allowlist can silently reopen edges the manifest policy forbids.
 - Source-edge burn-down allowlists must pin normalized target, edge kind, and type-only status; raw specifier matching alone permits nested-path and value-import bypasses.
 - Package-local tests in a new workspace package need an explicit `scripts/test-shards.ts` include; workspace membership alone does not put them in CI unit shards.
+- Assert public entry-point coverage against the `package.json#exports` keys rather than a hand-maintained list; an inventory that omits a subpath silently stops proving that subpath resolves.
+- A post-publish install smoke must wait for every exact-version package it installs, not only the primary one; packages published later can still be unresolvable when the first install runs.
+- Suites listed in `NIGHTLY_TIER_TESTS` (`scripts/test-shards.ts`) never run in PR shards, so their drift assertions can go red on `main` unnoticed; run them by path after touching the generator they guard.
+- Derive boundary-inventory completeness from `BOUNDARY_RULE_IDS`; a maintained table without a registry-backed test can silently omit a new rule and its seam justification.
+- Keep a retired boundary gate name as a package-script alias to its structural owner when callers may still use it, but remove the duplicate CI execution and record the alias in the boundary inventory.
+- Keep library-safe base composition free of optional bundled modules; install the full static bundle behind an explicit entry and have generated runtime layers consume one composition accessor for plugin and template inputs.
 
 ## 2026-08-06 01:03 CDT - US-535
 - Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
@@ -231,4 +237,138 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Review notes (deferred/rejected): rejected exposing or directly invoking the private composition installer because the US-542 Drift Audit deliberately removed that dead public seam and US-543 owns boundary proof, not a new callable API; all security findings were clear on direct retry.
 - Guide-Coverage-Skip: review changes internal architecture-test correctness only; no command behavior, public contract, or guide-owned surface changed.
 - Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, package-DAG, 48 focused and adjacent tests, initial and post-fix Bugbot, and all five review-work lanes passed after the focused fixes.
+---
+
+## 2026-08-07 22:12 CDT - US-544
+- Proved the public surface survived the engine extraction: the entry-point suite now derives its inventory from the package exports map, so `@lando/core/secrets` and `@lando/core/landofile` resolve and expose their symbols instead of going uncovered.
+- Extended compiled-binary coverage so root help is exercised from a binary relocated outside the repository, alongside the existing relocated machine-result and tagged-failure checks.
+- Taught the generated release workflow to smoke the published library install form: it waits for every release package at the exact version, installs core alone to prove the engine and Landofile seams resolve inside the install tree, then installs the bundled plugins and imports the root entry.
+- Verification: typecheck, scripts typecheck, and lint/deprecations passed; 671 focused and adjacent tests passed across public entry points, library/app runtime, SDK compatibility, release preparation, and the compiled binary; package-DAG, import-cycle, schema-compatibility, generated-output, and managed-file gates passed; codegen reproduced the release workflow byte-identically. Manual QA imported both newly covered entry points and ran root help against a relocated compiled binary. High-rigor review first blocked on a plugin-propagation race in the smoke and approved once the readiness loop covered every published package.
+- **Learnings for future iterations:**
+  - The standalone `core/test/tsconfig.json` project is not a repo gate: it imports `scripts/**` outside its `rootDir` and reports pre-existing cross-root errors, so rely on `bun run typecheck` plus per-file diagnostics.
+  - The root entry of `@lando/core` statically loads the bundled plugin packages even though they are not declared dependencies, so any clean-install check must install those plugins before importing the default entry; a follow-up story should decide whether to declare them.
+---
+
+## 2026-08-07 22:30 CDT - US-544 Build Verification
+- Verified the public-surface story is complete on the branch: the entry-point inventory is derived from the package exports map, the relocated compiled binary answers root help, and the generated release workflow smokes the published library install form. No implementation changes were required.
+- Determined that the handle-cast and error-alias cleanup deferred here by the US-541 review belongs to a contract story, not this parity story: dropping `as unknown as App` in the engine handle exposes pre-existing divergence where engine operation error unions (for example `ComposeKeyRejectedError`) and requirement channels are wider than the published SDK unions, so closing it would change the public contract this story exists to hold unchanged. `ShareAppError` stays SDK-only and is deliberately not re-exported from core for the same reason.
+- Verification: typecheck and lint/deprecations passed; 25 entry-point/release-workflow, 102 library and plugin-abstraction contract, 34 release/codegen/boundary, and 2 compiled-binary tests passed with positive counts; package-DAG, import-cycle, schema-compatibility, and public-transcript gates passed; the release workflow regenerated byte-identically. Mutation proofs confirmed both new assertions are load-bearing, and a relocated binary outside the repository printed full help with an empty stderr.
+- The CI-workflow codegen suite fails identically on `origin/main` (it expects 15 `bun run codegen` steps while the generator now emits 19 after codegen moved ahead of the provider-integration jobs); the suite is nightly-tier, so the drift never reached a PR gate. It is outside this story and left untouched.
+- **Learnings for future iterations:**
+  - Prove a public-surface parity story by mutating its own inventory: deleting one export entry must turn the coverage assertion red, otherwise the inventory is decorative.
+  - The library `App` handle is cast because engine operations publish wider error unions than the SDK contract; treat reconciling them as an SDK contract change with its own story rather than folding it into a parity pass.
+---
+
+## 2026-08-07 23:29 CDT - US-544 Review
+- Isolated the published-package smoke in a dependent job with no repository, npm, checkout, or OIDC credentials, so registry-installed module code no longer executes inside the privileged publish job; focused regressions lock job separation, zero permissions, immutable action pins, and the exact-version install checks.
+- Review notes (deferred/rejected): rejected declaring bundled plugins as core dependencies or changing the `App` error contract because both are pre-existing public-contract decisions explicitly deferred outside this parity story; rejected checkout-ref pinning and release concurrency as pre-existing release hardening not introduced by this branch; rejected embedding-doc and exhaustive symbol-inventory expansion as pre-existing non-blocking drift beyond US-544's unchanged-surface proof.
+- Guide-Coverage-Skip: US-544 adds parity, release-smoke, and credential-isolation proof without changing documented command or library behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, 55 focused public-surface/release/compiled-binary tests, initial and post-fix Bugbot, and post-fix security review passed. The nightly-tier codegen suite passed 15 of 16 tests; its sole failure is the previously recorded `15`-versus-`19` CI codegen-step baseline drift unchanged from `origin/main`.
+- **Learnings for future iterations:**
+  - Post-publish smoke tests that import registry packages must run in a separate `permissions: {}` job without checkout or trusted-publishing setup; `--ignore-scripts` does not prevent top-level module execution.
+---
+
+## 2026-08-07 23:58 CDT - US-544 Review
+- Strengthened the published-package readiness regression so it derives and asserts the complete canonical release-package sequence; mutation checks proved omission of either engine seam now fails the test.
+- Review notes (deferred/rejected): rejected a frozen per-symbol export fixture because it repeats the previously recorded out-of-scope exhaustive inventory expansion; export-map completeness, unchanged public sources, and the zero-diff schema gate satisfy this parity story.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, focused release-workflow and public-surface tests, all five review-work lanes after triage, and post-fix Bugbot passed; the known nightly-tier `15`-versus-`19` baseline remains unchanged.
+---
+
+## 2026-08-08 01:25 CDT - US-544 Drift Audit
+- Trigger: 4 cycles, 302 changed lines, 6 commits
+- Weakened proof: relocated root help now requires clean stderr; the published-install workflow remains a production-path check that cannot execute until a post-publish main run, while its local regression proves generated wiring only.
+- Review scar tissue: removed a dynamic-import and runtime type-validation facade around a statically typed, side-effect-guarded workflow generator.
+- Contract drift: exact export parity remains structurally proven by unchanged public sources plus export-map and schema compatibility coverage, but the source criterion's planned API-report gate is not yet runnable.
+- Deferred-work laundering: converted the root library/plugin dependency decision and App handle error-contract reconciliation from prose-only deferrals into closure-blocking stories.
+- Fixed: strengthened clean-output proof, deleted redundant test validation, and bound both deferred public-contract decisions to follow-up acceptance criteria.
+- Split/excise decisions: library-mode bundled plugin loading moved to US-549 and App handle error contracts moved to US-550; US-548 now requires both, while US-544 remains passing because no parity or new-workspace-dependency contract changed.
+- Verification: typecheck and lint passed; 32 focused changed-file tests passed; the nightly codegen suite passed 15 of 16 with its pre-existing `15`-versus-`19` baseline failure; relocated root help passed in `lando4-dev` with empty stderr, while the host-unsafe compiled-binary test and post-publish npm smoke were not rerun end to end.
+---
+
+## 2026-08-08 02:18 CDT - US-545
+- Classified every registered boundary rule by banned behavior, package-edge ownership, and keep/thin/delete verdict, with the surviving behavioral bans called out explicitly and the engine-owned layering scanner marked for deletion.
+- Added registry-backed coverage so a new rule cannot land without an inventory row or a complete classification.
+- Verification: typecheck and lint/deprecations passed; 3 focused inventory tests and 20 adjacent boundary tests passed; package-DAG, core-layering, and the live boundary-rule listing passed.
+- **Learnings for future iterations:**
+  - The engine package-DAG source rule rejects named, subpath, and relative engine-to-core imports, so the residual core-layering scanner now duplicates a structurally enforced ownership edge.
+  - Earlier paths, probe, redaction, renderer, and state-store thinning already removed their ownership halves; their current rules are behavioral residue to keep rather than thin again.
+---
+
+## 2026-08-08 05:45 CDT - US-546
+- Retired the duplicate core-layering scanner because package-DAG now rejects every engine-to-core source edge; preserved `check:core-layering-boundary` as an explicit package-DAG alias and removed its duplicate CI execution.
+- Kept surviving scanners on their shared runtime or all-package source-root tiers with owning-package exclusions, and added exhaustive registry coverage so every rule has exactly one root-tier disposition.
+- Scanner LOC decreased from 3,431 to 3,379 (-52).
+- Verification: typecheck and lint/deprecations passed; 80 focused and adjacent tests passed, including the focused generated-workflow assertions; package-DAG and the stable alias passed, generated-output passed, and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings. The nightly codegen suite passed 15 of 16 tests with its previously recorded `15`-versus-`19` baseline failure unchanged.
+- **Learnings for future iterations:**
+  - Characterize the structural package rule against every edge form before deleting a duplicate scanner, then keep only a stable command alias for external callers rather than a second implementation or CI run.
+---
+
+## 2026-08-08 07:38 CDT - US-547
+- Made seam-first justification part of the canonical boundary-rule registration contract, derived rule ids and dispatch entries from that registration table, and locked every live rule to the existing boundary inventory.
+- Established the durable maintainer and specification bar: propose a package seam first, and register a scanner only with a written reason the seam is impossible or premature.
+- Verification: typecheck and lint/deprecations passed; 32 focused and adjacent boundary tests passed with positive counts; the registry list surface and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings; high-rigor review approved without blockers.
+- **Learnings for future iterations:**
+  - Keep boundary justifications in the typed canonical registration and assert exact parity with the human inventory so a new scanner cannot bypass either review surface.
+---
+
+## 2026-08-08 08:17 CDT - US-547 Review
+- Rejected duplicate boundary-rule ids before registry indexing so a contributor cannot overwrite dispatch by duplicating both registration and inventory rows; aligned the boundary-addition recipe with the canonical registration and seam-first inventory requirement.
+- Review notes (deferred/rejected): rejected broader registry and inventory refactors because the focused invariant closes the confirmed overwrite path; the unchanged `.omo/**` spec-reference findings remain outside this story.
+- Guide-Coverage-Skip: US-547 changes internal maintainer policy and boundary-registry integrity only; no user-visible guide surface changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 27 focused and adjacent boundary tests, registry listing, and all in-scope boundary rules passed; initial Bugbot and all five foreground review-work lanes passed.
+- **Learnings for future iterations:**
+  - Validate uniqueness before deriving a dispatch map from a canonical registration table; parity checks alone can collapse duplicate keys on both sides.
+---
+
+## 2026-08-08 11:49 CDT - US-549
+- Made the default library import plugin-free while preserving the complete bundled composition behind an explicit opt-in entry; bundled discovery now fails early with actionable guidance when the opt-in is absent.
+- Kept compiled CLI composition lazy and complete, moved generated runtime consumers onto shared composition accessors, and made the published-package smoke prove both plugin-free root import and post-install opt-in loading.
+- Verification: typecheck and lint/deprecations passed; 38 focused tests, 51 adjacent runtime/plugin/release tests, and 3 generated embedding-guide tests passed; package-DAG, import-cycle, generated-output, renderer, guide, transcript, schema, compiled build, packed-import, and sandbox CLI checks passed. The nightly codegen suite retained its previously recorded 15-versus-19 baseline failure with its other 15 tests passing.
+- **Learnings for future iterations:**
+  - Keep test preload on the bundled composition so repository suites preserve CLI-like defaults; use preload-free subprocesses to prove the library root and packed consumer behavior.
+  - Landofile template modules must switch with bundled plugin modules through the same composition boundary or library and CLI behavior diverge.
+---
+
+## 2026-08-08 14:05 CDT - Babysit
+- PR: #720 https://github.com/AaronFeledy/core4/pull/720
+- CI outcome: pass
+- Review feedback: fixed (packed-core fixture install path; engine-closure allowlist for `runtime/bundled-plugins.ts`)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-08 16:39 CDT - US-550
+- Reconciled the stable library App handle with its engine operations: bound-target entry points now remove dead Landofile/planning failure paths while preserving real transitive requirements, and the SDK applies its module-private opaque brand through an assertion-free constructor seam instead of an `unknown` double cast.
+- Kept `ShareAppError` and `RemoteSyncError` canonical in the SDK and re-exported the complete share method family from the core root. The intentional type-only contract changes are documented: info, exec, and tooling expose reachable Compose/load-expression failures, while share exposes tunnel-registry persistence and decode failures; lifecycle, logs, pull, and push unions remain narrow.
+- Production-path coverage proves outside-root load and rejected Compose-key failures through a resolved handle, and a real TypeScript consumer resolves the core-root error aliases. Manual library QA returned the resolved `embedded-app`/`cache` result through `openLandoRuntime` and `runtime.app()`.
+- Verification: typecheck and lint/deprecations passed; 68 focused and adjacent tests passed with positive counts; schema compatibility, package-DAG, import-cycle, public transcripts, codegen drift, diagnostics, and diff checks passed.
+- **Learnings for future iterations:**
+  - A cross-package implementation of a module-private unique-symbol contract needs one typed constructor seam in the owning module; keep the symbol private and make the applicator assertion-free so the engine cannot bypass the public shape.
+  - Removing a bound operation's dead resolution branch can narrow errors without removing services needed transitively; app start still needs `AppPlanner` for global-service auto-start even when the user-app plan is already captured.
+---
+
+## 2026-08-08 17:37 CDT - US-550 Review
+- Preserved the SDK-private opaque App brand by removing the public constructor seam and retaining one narrow checked brand assertion after the full implementation satisfies the public shape; fixed the bound-target logs adapter so `follow: true` reaches the provider unchanged.
+- Review notes (deferred/rejected): rejected exporting `brandApp`/`AppImplementation` because it made arbitrary complete implementations constructible as `App` and added an unnecessary public SDK surface; the five review-work lanes never acquired execution slots, so their unavailable verdicts were replaced by foreground PRD, diff, diagnostics, contract, and behavior review.
+- Guide-Coverage-Skip: US-550 reconciles library type contracts and an internal bound-target option adapter without changing documented guide workflows.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, schema compatibility, package-DAG, import-cycle, public transcripts, diagnostics, and 55 focused and adjacent tests passed; initial Bugbot's logs-follow finding was fixed.
+- **Learnings for future iterations:**
+  - A cross-package opaque brand can remain private with one narrow intersection assertion after `satisfies` checks the complete public shape; exporting a general applicator changes who may manufacture the branded handle.
+---
+
+## 2026-08-08 19:18 CDT - US-548
+- Closed the core-seams wave with every story passing and moved the scratch-init engine-port binding from the CLI directory into the core runtime composition tier; the closure suite now enforces both zero engine-to-shell edges and zero app/services-to-CLI edges without adding another boundary scanner.
+- Recorded wave outcomes: scanner LOC fell from 3,431 to 3,379 (-52) at the thinning checkpoint, while core source fell from 79,572 to 50,250 TypeScript lines (-29,322) at the engine extraction checkpoint; the final closure repair moved the seven-line adapter without changing runtime behavior.
+- Verification: codegen drift, typecheck, lint/deprecations, clean-worktree full boundary suite, package-DAG, generated output, guide coverage, schema compatibility, and public transcripts passed; 163 library, 32 plugin-abstraction, 52 scratch/bootstrap, 15 compiled-build static, and 5 engine-closure tests passed with positive counts. The Linux x64 binary compiled and relocated help passed with empty stderr; OpenTUI startup/first-output p95 were 1.6/1.2 ms against 50 ms budgets, and tooling warm p95 was 189.6 ms against the 1,125 ms regression budget.
+- **Learnings for future iterations:**
+  - Bind an engine port to a shell-owned implementation in the core runtime composition tier, not from an app shim; lock direct app/services-to-CLI edges in the existing closure suite instead of regrowing the boundary-scanner catalog.
+---
+
+## 2026-08-08 19:54 CDT - US-548 Review
+- Replaced the closure suite's regex import detection with the canonical AST module-edge scanner so engine-to-shell and app/services-to-CLI assertions cover static imports, re-exports, `require`, and statically resolvable dynamic imports without comment or string false positives.
+- Review notes (deferred/rejected): rejected duplicating the canonical scanner's modality tests in the closure suite because its focused consumers already prove those edge forms; Bugbot and the goal, QA, security, and context lanes found no additional in-scope issue.
+- Guide-Coverage-Skip: US-548 changes internal composition ownership and architecture-test enforcement only; no user-visible command, library contract, or guide workflow changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 21 focused closure and scanner-consumer tests, 55 scratch and closure regression tests, diagnostics, initial Bugbot, and post-fix code-quality review passed.
+- **Learnings for future iterations:**
+  - Reuse the canonical AST module-edge scanner for closure assertions; regex import matching silently misses supported edge forms and can treat comments as dependencies.
 ---

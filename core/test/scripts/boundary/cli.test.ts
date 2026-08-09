@@ -31,7 +31,6 @@ describe("check-boundaries CLI", () => {
   test("lists all registered rule ids", async () => {
     // Given
     const expected = [
-      "core-layering",
       "env-helper",
       "import-cycle",
       "libpod-prefix",

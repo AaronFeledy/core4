@@ -59,6 +59,49 @@ describe("check-package-dag source policy", () => {
     expect(result.stdout).toContain(`engine/src/index.ts:1: ${specifier}`);
   });
 
+  test("rejects every engine-to-core CLI source-edge form", async () => {
+    // Given
+    await Promise.all([
+      fixture.write("engine/src/app/relative.ts", 'import "../../../core/src/cli/app-resolution.ts";\n'),
+      fixture.write(
+        "engine/src/operations/normalized.ts",
+        'export { runCli } from "./../../../core/src/cli/run.ts";\n',
+      ),
+      fixture.write(
+        "engine/src/services/nested/dynamic.ts",
+        'void import("../../../../core/src/cli/commands/info.ts");\n',
+      ),
+      fixture.write(
+        "engine/src/app/package-imports.ts",
+        [
+          'import { runCli } from "@lando/core/cli";',
+          'import type { AppOperation } from "@lando/core/cli/operations";',
+          'export { runCli as cli } from "@lando/core/cli";',
+          'void import("@lando/core/cli/operations");',
+          "void runCli;",
+          "export type Operation = AppOperation;",
+          "",
+        ].join("\n"),
+      ),
+    ]);
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    for (const violation of [
+      "engine/src/app/relative.ts:1: ../../../core/src/cli/app-resolution.ts",
+      "engine/src/operations/normalized.ts:1: ./../../../core/src/cli/run.ts",
+      "engine/src/services/nested/dynamic.ts:1: ../../../../core/src/cli/commands/info.ts",
+      "engine/src/app/package-imports.ts:1: @lando/core/cli",
+      "engine/src/app/package-imports.ts:2: @lando/core/cli/operations",
+      "engine/src/app/package-imports.ts:3: @lando/core/cli",
+      "engine/src/app/package-imports.ts:4: @lando/core/cli/operations",
+    ]) {
+      expect(result.stdout).toContain(violation);
+    }
+  });
+
   test("rejects relative source imports that cross package roots", async () => {
     // Given
     await Promise.all([

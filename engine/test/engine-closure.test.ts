@@ -6,6 +6,8 @@ import { Effect, Layer } from "effect";
 
 import { EventService, SecretStore } from "@lando/sdk/services";
 
+import { scanModuleEdges } from "../../scripts/module-edge-scan.ts";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const engineSourceRoot = resolve(repositoryRoot, "engine/src");
 const coreSourceRoot = resolve(repositoryRoot, "core/src");
@@ -54,16 +56,16 @@ const coreRuntimeAllowlist = new Set([
   "lifecycle/index.ts",
   "plugins/generated",
   "runtime/generated",
+  "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
   "runtime/layer.ts",
+  "runtime/scratch-init-port.ts",
   "schema/index.ts",
   "secrets/index.ts",
   "services/index.ts",
 ]);
 const pluginPackagePattern =
   /^@lando\/(?:ca-|file-sync-|logger-|notify-|provider-|proxy-|renderer-|service-|template-)/u;
-const importPattern =
-  /(?:\bfrom\s*|\bimport\s*\(|\bimport\s*)["']([^"']+)["']|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+["']([^"']+)["']/gu;
 const hostShellOwnershipPatterns = [
   /["']node:readline(?:\/promises)?["']/u,
   /["']node:tty["']/u,
@@ -94,6 +96,8 @@ const corePathAllowed = (path: string): boolean => {
   );
 };
 
+const repoRelative = (from: string, file: string): string => relative(from, file).replaceAll("\\", "/");
+
 describe("Engine closure", () => {
   test("engine source imports no shell or out-of-package modules", async () => {
     // Given
@@ -104,9 +108,8 @@ describe("Engine closure", () => {
       await Promise.all(
         files.map(async (file) => {
           const source = await Bun.file(file).text();
-          return [...source.matchAll(importPattern)].flatMap((match) => {
-            const specifier = match[1] ?? match[2];
-            if (specifier === undefined) return [];
+          return scanModuleEdges(file, source).flatMap((edge) => {
+            const specifier = edge.specifier;
             const staysWithinEngineSource =
               specifier.startsWith(".") &&
               !relative(engineSourceRoot, resolve(dirname(file), specifier)).startsWith("..");
@@ -115,7 +118,40 @@ describe("Engine closure", () => {
               specifier.startsWith("@lando/core/") ||
               pluginPackagePattern.test(specifier) ||
               (specifier.startsWith(".") && !staysWithinEngineSource);
-            return forbidden ? [`${relative(engineSourceRoot, file)} -> ${specifier}`] : [];
+            return forbidden
+              ? [`${repoRelative(engineSourceRoot, file)}:${edge.line}: ${edge.kind} ${specifier}`]
+              : [];
+          });
+        }),
+      )
+    ).flat();
+
+    // Then
+    expect(violations).toEqual([]);
+  });
+
+  test("core app and services source hold no direct shell cli edges", async () => {
+    // Given
+    const coreShellRoot = resolve(coreSourceRoot, "cli");
+    const files = (
+      await Promise.all(
+        ["app", "services"].map((directory) => sourceFiles(resolve(coreSourceRoot, directory))),
+      )
+    ).flat();
+
+    // When
+    const violations = (
+      await Promise.all(
+        files.map(async (file) => {
+          const source = await Bun.file(file).text();
+          return scanModuleEdges(file, source).flatMap((edge) => {
+            const specifier = edge.specifier;
+            const reachesShell = specifier.startsWith(".")
+              ? !relative(coreShellRoot, resolve(dirname(file), specifier)).startsWith("..")
+              : specifier === "@lando/core/cli" || specifier.startsWith("@lando/core/cli/");
+            return reachesShell
+              ? [`${repoRelative(coreSourceRoot, file)}:${edge.line}: ${edge.kind} ${specifier}`]
+              : [];
           });
         }),
       )

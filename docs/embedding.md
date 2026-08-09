@@ -9,6 +9,7 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | Entry point | Purpose |
 | --- | --- |
 | `@lando/core` | Runtime factory (`makeLandoRuntime`), runtime options, bootstrap types, and common service tags. |
+| `@lando/core/bundled-plugins` | Side-effect opt-in that installs the complete bundled plugin composition and exports `BUNDLED_PLUGIN_MODULES`. |
 | `@lando/core/schema` | Public schemas re-exported from `@lando/sdk/schema`. |
 | `@lando/core/errors` | Public tagged errors re-exported from `@lando/sdk/errors`. |
 | `@lando/core/events` | Event service, lifecycle payload schemas, and subscriber priority exports. |
@@ -21,4 +22,18 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/docs/render` | Public transcript view-model and deterministic HTML renderer for docs pipelines. |
 | `@lando/core/docs/redactions` | Public transcript redaction helpers for docs pipelines. |
 
-The default `@lando/core` entry and every published subpath above are OCLIF-free. OCLIF is development-only; `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters and manifest tooling, and no published package specifier exposes it to embedding hosts.
+The default `@lando/core` entry is plugin-free: importing it does not require or install any bundled plugin package. A host that installs the bundled plugin packages and wants `bundled-only` discovery must import the opt-in before constructing a runtime:
+
+```ts
+import "@lando/core/bundled-plugins";
+import { makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({
+  bootstrap: "plugins",
+  plugins: { policy: "bundled-only" },
+});
+```
+
+Requesting bundled discovery without first importing `@lando/core/bundled-plugins` fails with `LandoRuntimeBootstrapError`. The CLI performs this opt-in behind its lazy `@lando/core/cli` boundary, so CLI behavior retains the full bundled composition without adding plugins to the root library import graph.
+
+The default entry and every published subpath above are OCLIF-free. OCLIF is development-only; `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters and manifest tooling, and no published package specifier exposes it to embedding hosts.

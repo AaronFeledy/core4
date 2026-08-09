@@ -62,7 +62,7 @@ describe("runtime-bundle workflow supply chain", () => {
   test("pins every closely related release action to an immutable commit", async () => {
     const references = actionReferences(await renderReleaseWorkflow());
 
-    expect(references).toHaveLength(5);
+    expect(references).toHaveLength(7);
     for (const actionReference of references) {
       expect(actionReference).toMatch(actionReferencePattern);
     }
