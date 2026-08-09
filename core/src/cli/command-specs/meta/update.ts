@@ -17,6 +17,9 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   return {
     ...(channel === "stable" || channel === "next" || channel === "dev" ? { channel } : {}),
     dryRun: flags["dry-run"] === true,
+    // The CLI shell owns process-entry facts; the engine operation must not
+    // read process.argv itself (engine-closure), so supply the re-exec argv here.
+    selfUpdate: { argv: process.argv },
   };
 };
 

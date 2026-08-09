@@ -938,7 +938,9 @@ const resolveSelfUpdateOptions = (
     executablePath,
     platform: input?.platform ?? process.platform,
     arch: input?.arch ?? process.arch,
-    argv: input?.argv ?? process.argv,
+    // Engine owns no process-entry facts (engine-closure): the CLI shell supplies
+    // the invocation argv; absent that, re-exec falls back to the bare executable.
+    argv: input?.argv ?? [executablePath],
     env: input?.env ?? process.env,
     execve: input?.execve ?? defaultExecve,
     rename: input?.rename ?? rename,

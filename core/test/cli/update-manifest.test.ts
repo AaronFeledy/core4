@@ -1269,16 +1269,19 @@ describe("update signed manifest", () => {
   });
 
   test("source and compiled input helpers map update flags identically", () => {
+    const cliSelfUpdate = { selfUpdate: { argv: process.argv } };
     expect(updateOptionsFromInput({ flags: { channel: "next", "dry-run": true } })).toEqual({
       channel: "next",
       dryRun: true,
+      ...cliSelfUpdate,
     });
-    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({ dryRun: true });
+    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({ dryRun: true, ...cliSelfUpdate });
     expect(
       updateOptionsFromInput(compiledCommandInputFromArgv("meta:update", ["--channel=dev", "--dry-run"])),
     ).toEqual({
       channel: "dev",
       dryRun: true,
+      ...cliSelfUpdate,
     });
   });
 });
