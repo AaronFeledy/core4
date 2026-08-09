@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import compiledCommands from "../../src/cli/compiled-commands.ts";
+import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import {
   CommandRegistrationError,
   EmptyResultSchema,
@@ -9,15 +9,14 @@ import {
   validateCommandSpec,
 } from "../../src/cli/spec/command-base.ts";
 
-const specFor = (commandClass: unknown): LandoCommandSpec | undefined =>
-  (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec;
+const specFor = (id: string): LandoCommandSpec | undefined => resolveBuiltInCommand(id)?.spec;
 
-const canonicalIds = Object.keys(compiledCommands).sort();
+const canonicalIds = builtInCommandEntries.map((entry) => entry.spec.id).sort();
 
 describe("LandoCommandSpec.resultSchema registration contract", () => {
   test("every canonical command declares a resultSchema", () => {
     const missing = canonicalIds.filter((id) => {
-      const spec = specFor((compiledCommands as Record<string, unknown>)[id]);
+      const spec = specFor(id);
       return spec === undefined || spec.resultSchema === undefined || spec.resultSchema === null;
     });
     expect(missing).toEqual([]);
@@ -25,7 +24,7 @@ describe("LandoCommandSpec.resultSchema registration contract", () => {
 
   test("each declared resultSchema is an Effect Schema", () => {
     for (const id of canonicalIds) {
-      const spec = specFor((compiledCommands as Record<string, unknown>)[id]);
+      const spec = specFor(id);
       expect(Schema.isSchema(spec?.resultSchema)).toBe(true);
     }
   });

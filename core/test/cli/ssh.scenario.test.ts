@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-import SshCommand from "../../src/cli/command-specs/app/ssh.ts";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import SshCommand from "../../src/cli/command-specs/app/ssh.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

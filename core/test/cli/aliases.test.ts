@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import ExecCommand from "../../src/cli/command-specs/app/exec.ts";
 import InfoCommand from "../../src/cli/command-specs/app/info.ts";
 import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
@@ -17,7 +18,6 @@ import AppsScratchLogsCommand from "../../src/cli/command-specs/apps/scratch/log
 import AppsScratchRunCommand from "../../src/cli/command-specs/apps/scratch/run.ts";
 import AppsScratchStartCommand from "../../src/cli/command-specs/apps/scratch/start.ts";
 import AppsScratchStopCommand from "../../src/cli/command-specs/apps/scratch/stop.ts";
-import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import type { BuiltInCommandEntry } from "../core/src/cli/built-in-command-registry.ts";
@@ -18,7 +18,6 @@ const REPOSITORY_ROOT = resolve(import.meta.dirname, "..");
 const CORE_ROOT = resolve(REPOSITORY_ROOT, "core");
 const OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-registry-manifest.ts");
 const COMMAND_IDS_OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-ids.ts");
-const LEGACY_JSON_OUTPUT = resolve(CORE_ROOT, "oclif.manifest.json");
 const BOOTSTRAP_SOURCE =
   'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", topics: {}, version: "0.0.0" } as const;\n';
 const COMMAND_IDS_BOOTSTRAP_SOURCE = "export const BUILT_IN_COMMAND_IDS: ReadonlyArray<string> = [];\n";
@@ -116,7 +115,6 @@ export const BUILT_IN_COMMAND_IDS = ${JSON.stringify(commandIds, null, 2)} as co
 `;
 
 const main = async (): Promise<void> => {
-  await rm(LEGACY_JSON_OUTPUT, { force: true });
   await Promise.all(
     [
       { content: BOOTSTRAP_SOURCE, path: OUTPUT },

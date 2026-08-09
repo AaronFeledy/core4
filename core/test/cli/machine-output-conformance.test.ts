@@ -8,7 +8,7 @@ import { makeTestRuntime } from "@lando/core/testing";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
-import compiledCommands from "../../src/cli/compiled-commands.ts";
+import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -17,8 +17,7 @@ const decodeEnvelope = (line: string): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 
 const specFor = (id: string): LandoCommandSpec => {
-  const commandClass = (compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)[id];
-  const spec = commandClass?.landoSpec;
+  const spec = resolveBuiltInCommand(id)?.spec;
   if (spec === undefined) throw new Error(`No landoSpec for command id ${id}`);
   return spec;
 };
@@ -88,7 +87,7 @@ const testRuntimeLayerFor = (spec: LandoCommandSpec) => {
   }
 };
 
-const canonicalIds = Object.keys(compiledCommands).sort();
+const canonicalIds = builtInCommandEntries.map((entry) => entry.spec.id).sort();
 
 beforeEach(() => {
   process.exitCode = undefined;
