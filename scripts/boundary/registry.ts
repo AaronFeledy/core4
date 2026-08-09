@@ -82,7 +82,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: rendererRule,
-    seamJustification: "Package ownership cannot enforce output routing or the narrow shell carve-outs.",
+    seamJustification:
+      "Package ownership cannot enforce output routing; after extraction the rule retains direct-write scanning with only the compiled shell fast path carved out.",
   },
   {
     rule: specReferenceRule,
