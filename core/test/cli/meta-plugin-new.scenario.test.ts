@@ -7,11 +7,8 @@ import { Effect } from "effect";
 
 import { Readable, Writable } from "node:stream";
 
-import {
-  PLUGIN_NEW_TEMPLATE_IDS,
-  pluginNew,
-  renderPluginNewResult,
-} from "../../src/cli/commands/plugin-new.ts";
+import { PLUGIN_NEW_TEMPLATE_IDS } from "@lando/engine/operations/plugin-scaffold";
+import { pluginNew, renderPluginNewResult } from "../../src/cli/commands/plugin-new.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 import { listTree } from "./_util/fs-tree.ts";
@@ -39,6 +36,7 @@ const serviceBackedPrompter = (
     promptAll: (specs, options) =>
       Effect.runPromise(Effect.scoped(service.promptAll(specs, { ...options, mode: "interactive" }))),
     confirm: (spec) => Effect.runPromise(Effect.scoped(service.confirm({ ...spec, mode: "interactive" }))),
+    select: (spec) => Effect.runPromise(Effect.scoped(service.select({ ...spec, mode: "interactive" }))),
   };
 };
 

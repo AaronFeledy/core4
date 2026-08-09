@@ -1,11 +1,12 @@
 import { Args, Flags } from "../../../metadata";
 
 import {
+  PLUGIN_NEW_TEMPLATE_IDS,
   type PluginNewResult,
   PluginNewResultSchema,
-  pluginNew,
-  renderPluginNewResult,
-} from "../../../../commands/plugin-new";
+} from "@lando/engine/operations/plugin-scaffold";
+
+import { pluginNew, renderPluginNewResult } from "../../../../commands/plugin-new";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
@@ -58,16 +59,7 @@ export default class PluginNewCommand extends LandoCommandBase {
   static override flags = {
     template: Flags.string({
       description: "Bundled plugin template id.",
-      options: [
-        "service-type",
-        "provider",
-        "tooling-engine",
-        "template-engine",
-        "route-filter",
-        "config-translator",
-        "recipe",
-        "bare",
-      ],
+      options: [...PLUGIN_NEW_TEMPLATE_IDS],
     }),
     cspace: Flags.string({ description: "Contribution namespace used by the scaffold." }),
     description: Flags.string({ description: "Plugin description." }),
