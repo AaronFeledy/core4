@@ -363,3 +363,12 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - **Learnings for future iterations:**
   - Bind an engine port to a shell-owned implementation in the core runtime composition tier, not from an app shim; lock direct app/services-to-CLI edges in the existing closure suite instead of regrowing the boundary-scanner catalog.
 ---
+
+## 2026-08-08 19:54 CDT - US-548 Review
+- Replaced the closure suite's regex import detection with the canonical AST module-edge scanner so engine-to-shell and app/services-to-CLI assertions cover static imports, re-exports, `require`, and statically resolvable dynamic imports without comment or string false positives.
+- Review notes (deferred/rejected): rejected duplicating the canonical scanner's modality tests in the closure suite because its focused consumers already prove those edge forms; Bugbot and the goal, QA, security, and context lanes found no additional in-scope issue.
+- Guide-Coverage-Skip: US-548 changes internal composition ownership and architecture-test enforcement only; no user-visible command, library contract, or guide workflow changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 21 focused closure and scanner-consumer tests, 55 scratch and closure regression tests, diagnostics, initial Bugbot, and post-fix code-quality review passed.
+- **Learnings for future iterations:**
+  - Reuse the canonical AST module-edge scanner for closure assertions; regex import matching silently misses supported edge forms and can treat comments as dependencies.
+---
