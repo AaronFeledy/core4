@@ -55,8 +55,8 @@ import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
-import { ScratchInitAppPortLive } from "../../src/cli/scratch-init-port.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

@@ -57,6 +57,7 @@ const coreRuntimeAllowlist = new Set([
   "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
   "runtime/layer.ts",
+  "runtime/scratch-init-port.ts",
   "schema/index.ts",
   "secrets/index.ts",
   "services/index.ts",
@@ -117,6 +118,36 @@ describe("Engine closure", () => {
               pluginPackagePattern.test(specifier) ||
               (specifier.startsWith(".") && !staysWithinEngineSource);
             return forbidden ? [`${relative(engineSourceRoot, file)} -> ${specifier}`] : [];
+          });
+        }),
+      )
+    ).flat();
+
+    // Then
+    expect(violations).toEqual([]);
+  });
+
+  test("core app and services source hold no direct shell cli edges", async () => {
+    // Given
+    const coreShellRoot = resolve(coreSourceRoot, "cli");
+    const files = (
+      await Promise.all(
+        ["app", "services"].map((directory) => sourceFiles(resolve(coreSourceRoot, directory))),
+      )
+    ).flat();
+
+    // When
+    const violations = (
+      await Promise.all(
+        files.map(async (file) => {
+          const source = await Bun.file(file).text();
+          return [...source.matchAll(importPattern)].flatMap((match) => {
+            const specifier = match[1] ?? match[2];
+            if (specifier === undefined) return [];
+            const reachesShell = specifier.startsWith(".")
+              ? !relative(coreShellRoot, resolve(dirname(file), specifier)).startsWith("..")
+              : specifier === "@lando/core/cli" || specifier.startsWith("@lando/core/cli/");
+            return reachesShell ? [`${relative(coreSourceRoot, file)} -> ${specifier}`] : [];
           });
         }),
       )

@@ -36,8 +36,8 @@ import { makeLandoPaths } from "@lando/paths";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
-import { ScratchInitAppPortLive } from "../../src/cli/scratch-init-port.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 
 const providerId = ProviderId.make("lando");
 

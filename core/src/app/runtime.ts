@@ -17,8 +17,8 @@ import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
 import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
-import { ScratchInitAppPortLive } from "../cli/scratch-init-port.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
+import { ScratchInitAppPortLive } from "../runtime/scratch-init-port.ts";
 import { buildAppHandle, resolveApp } from "./resolve";
 
 type RuntimeContext = Context.Context<AppHandleRuntimeServices | ScratchAppService | RuntimeCwd>;
