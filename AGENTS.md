@@ -82,6 +82,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Guides and Docs-as-Tests
 
+- Before writing or editing docs, guides, recipe READMEs, or other user-facing prose, read `docs/STYLE.md` and follow it. Lando 4 keeps the Lando brand voice but is more concise and uses less jargon than Lando 3.
 - Executable guides are MDX sources that generate tests and public transcripts. Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass, or omit `--once` for the watch loop.
 - If a guide, recipe README, or guide-owned CLI surface changes, run the relevant guide codegen/lint/drift gates; `docs/ci-runbook.md` mirrors the CI sequence.
 - `recipes/<id>/README.mdx` feeds both guide-scenario generation and committed scaffold README generation, so it must remain executable-guide-valid, not just readable prose.
