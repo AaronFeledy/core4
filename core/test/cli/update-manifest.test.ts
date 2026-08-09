@@ -1275,7 +1275,10 @@ describe("update signed manifest", () => {
       dryRun: true,
       ...cliSelfUpdate,
     });
-    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({ dryRun: true, ...cliSelfUpdate });
+    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({
+      dryRun: true,
+      ...cliSelfUpdate,
+    });
     expect(
       updateOptionsFromInput(compiledCommandInputFromArgv("meta:update", ["--channel=dev", "--dry-run"])),
     ).toEqual({
