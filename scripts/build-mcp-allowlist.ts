@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `core/src/cli/oclif/generated/mcp-allowlist.ts` from every
+ * Regenerate `core/src/cli/generated/mcp-allowlist.ts` from every
  * `LandoCommandSpec` with `mcpAllowed: true`.
  *
  * Inputs:
  *   - `core/src/cli/built-in-command-registry.ts` (the canonical command index)
  *
  * Output:
- *   - `core/src/cli/oclif/generated/mcp-allowlist.ts` — plain literal data (no
+ *   - `core/src/cli/generated/mcp-allowlist.ts` — plain literal data (no
  *     command/Effect imports) listing the default set of canonical command ids
  *     `lando mcp` exposes as tools. Keeping it a literal-data module means a
  *     consumer never pulls the compiled CLI command graph into scope.
@@ -23,7 +23,7 @@ import { computeMcpDefaultAllowlist } from "../core/src/cli/oclif/mcp-allowlist.
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "core/src/cli/oclif/generated/mcp-allowlist.ts");
+const OUTPUT = resolve(REPO_ROOT, "core/src/cli/generated/mcp-allowlist.ts");
 
 const HEADER = `/**
  * **GENERATED FILE** — do not edit by hand.

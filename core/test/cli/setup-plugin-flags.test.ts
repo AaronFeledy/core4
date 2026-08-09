@@ -65,16 +65,11 @@ describe("meta:setup plugin flag merge", () => {
   test("generated setup contributions are owned by the native CLI tree", async () => {
     // Given
     const nativePath = resolve(import.meta.dirname, "../../src/cli/generated/setup-plugin-flags.ts");
-    const legacyPath = resolve(import.meta.dirname, "../../src/cli/oclif/generated/setup-plugin-flags.ts");
 
     // When
-    const [nativeExists, legacyExists] = await Promise.all([
-      Bun.file(nativePath).exists(),
-      Bun.file(legacyPath).exists(),
-    ]);
+    const nativeExists = await Bun.file(nativePath).exists();
 
     // Then
     expect(nativeExists).toBe(true);
-    expect(legacyExists).toBe(false);
   });
 });

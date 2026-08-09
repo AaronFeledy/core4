@@ -19,8 +19,8 @@ const derivedTypeScriptPolicies = [
   },
   {
     ids: ["mcp-allowlist", "host-proxy-allowlist"],
-    ignoreProbe: "core/src/cli/oclif/generated/mcp-allowlist.ts",
-    trackingPath: "core/src/cli/oclif/generated",
+    ignoreProbe: "core/src/cli/generated/mcp-allowlist.ts",
+    trackingPath: "core/src/cli/generated",
   },
   {
     ids: ["provider-images"],

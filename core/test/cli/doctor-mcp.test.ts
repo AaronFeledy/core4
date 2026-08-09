@@ -11,7 +11,7 @@ import {
   renderMcpDoctorResult,
   renderMcpDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor-mcp.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
+import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
 import { identityRedactor } from "../../src/cli/result-encode.ts";
 
 const runWithDefault = (): Promise<McpDoctorResult> =>

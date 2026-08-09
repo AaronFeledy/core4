@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
 
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
 import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/oclif/generated/host-proxy-allowlist.ts";
 import {
   HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS,
   assertHostProxyAllowlistSafe,

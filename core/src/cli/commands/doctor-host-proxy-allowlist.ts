@@ -1,5 +1,5 @@
 import { COMMAND_REGISTRY_MANIFEST } from "../generated/command-registry-manifest";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../oclif/generated/host-proxy-allowlist";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
 import type {
   DoctorCheck,
   DoctorProviderKind,
