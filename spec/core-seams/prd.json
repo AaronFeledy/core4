@@ -196,7 +196,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -211,7 +211,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03 follow-up; deferred from US-544 (root entry statically loads bundled plugins that are not declared dependencies)"
     },
     {
@@ -226,7 +226,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03 follow-up; deferred from US-541 Review to US-544, re-deferred by US-544/US-544 Review"
     },
     {
@@ -240,7 +240,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04 closure"
     }
   ]

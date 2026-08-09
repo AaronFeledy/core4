@@ -133,7 +133,7 @@ const renderScratch = (): string =>
     'import { AppPlannerLive } from "@lando/engine/services/planner";',
     'import { makeProxyServiceRegistryLive, SelectedProxyServiceLive } from "@lando/engine/subsystems/proxy/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
-    'import { ScratchInitAppPortLive } from "../../../cli/scratch-init-port.ts";',
+    'import { ScratchInitAppPortLive } from "../../scratch-init-port.ts";',
     'import { makeProviderBootstrapLayer } from "./provider.ts";',
     "",
     "export const makeScratchBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
