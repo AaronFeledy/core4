@@ -4,9 +4,9 @@ import {
   type UninstallOptions,
   type UninstallResult,
   UninstallResultSchema,
-  renderUninstallResult,
   uninstall,
-} from "../../../commands/uninstall";
+} from "@lando/engine/operations/uninstall";
+import { renderUninstallResult } from "../../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {

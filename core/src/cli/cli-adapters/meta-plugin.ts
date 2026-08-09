@@ -5,6 +5,7 @@ import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk
 import type { ConfigService } from "@lando/sdk/services";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
+import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { renderMetaVersion } from "@lando/engine/version";
 import { makeLandoRuntime } from "../../runtime/layer";
@@ -56,7 +57,7 @@ import {
   renderRecipesValidateResult,
 } from "../commands/recipes";
 import { renderShellenv } from "../commands/shellenv";
-import { renderUninstallResult, uninstall } from "../commands/uninstall";
+import { renderUninstallResult } from "../commands/uninstall";
 import { version as versionOperation } from "../commands/version";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
