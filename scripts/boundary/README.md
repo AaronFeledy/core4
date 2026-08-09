@@ -27,6 +27,15 @@ No live rule is classified `thin`: the paths, probe, redaction, renderer, and st
 | `state-store` | `behavioral` | Hand-rolled atomic rename, lockfile, and version-envelope combinations | Runtime consumers may depend on `@lando/state-store`; package-DAG owns direction | `keep` | The rule is already owner-excluding and retains only the durable-write behavior combination. |
 | `generated-output` | `behavioral` | Missing generated-file banners and generated banners outside generated paths | None | `keep` | Generated-source placement and banners are file-content conventions. |
 
+## Scanner retirement ratchet
+
+Every new private workspace package seam must delete or shrink at least one boundary rule. Every new boundary-rule registration must carry a written seam-impossibility justification in `registry.ts` and a matching inventory row here. Net rule count must not grow without that recorded argument.
+
+Review checklist:
+
+- New seam: name the boundary rule it retires or shrinks.
+- New rule: name why a package seam is impossible or premature.
+
 ## Retired rule aliases
 
 - `core-layering`: `check:core-layering-boundary` → `check:package-dag`. The workspace DAG now rejects every named, subpath, relative, type-only, re-export, and dynamic `@lando/engine` to `@lando/core` source edge; the stable command remains an alias for existing local callers.
