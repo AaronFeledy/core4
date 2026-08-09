@@ -7,6 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
 import {
+  ConfigResultSchema,
   config,
   invokeOperation,
   listServices,
@@ -43,6 +44,14 @@ describe("@lando/core/cli/operations update exports", () => {
 });
 
 describe("@lando/core/cli/operations package export", () => {
+  test("exposes the config operation and renderer contract", async () => {
+    const operations = await import("@lando/core/cli/operations");
+
+    expect(operations.config).toBe(config);
+    expect(operations.ConfigResultSchema).toBe(ConfigResultSchema);
+    expect(operations.renderConfigResult).toBe(renderConfigResult);
+  });
+
   test("resolves from the workspace package name", async () => {
     const operations = await import("@lando/core/cli/operations");
 
