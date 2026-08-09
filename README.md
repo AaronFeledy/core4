@@ -104,7 +104,7 @@ Development follows this phase ladder:
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
-- **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters; OCLIF is not a shipping engine.
+- **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. The CLI surface lives in `core/src/cli/spec/` (spec machinery), `core/src/cli/command-specs/` (per-command declarations), and `core/src/cli/commands/` (operation invocation and render helpers). OCLIF is not a shipping engine.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
 

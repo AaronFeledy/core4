@@ -41,7 +41,11 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 ## CLI dispatch (single native engine)
 
-Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCLIF-named files may remain in-tree as native metadata/adapters — **do not treat them as a second engine**; register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry).
+Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry). The CLI surface is split three ways by role:
+
+- `core/src/cli/commands/` — operation invocation plus the `render*` helpers for a command.
+- `core/src/cli/command-specs/` — the declarative CLI surface: `LandoCommandSpec` objects, flags/args/aliases, and `*OptionsFromInput` parsers.
+- `core/src/cli/spec/` — the spec machinery: `LandoCommandBase`, the spec type and its validation, the pre-command boundary, flag metadata primitives, and the bootstrap hooks.
 
 - One command registry is the SoT for canonical ids, flags, bootstrap level, `run`, help metadata, and `resultSchema`. Implemented vs deferred ids must not be split across a second engine switch.
 - Source (`bun core/bin/lando.ts`) and compiled `$bunfs` entries share the same dispatcher. Faithful compiled reproduction runs the binary **outside** the repo tree.
