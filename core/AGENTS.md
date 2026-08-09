@@ -65,6 +65,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 - `core/src/cli/commands/<op>.ts` (or its namespace-specific equivalent) holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
 - Operations may publish events but must not couple to `Renderer` or `InteractionService` beyond event publication. Optional renderer output and CLI result passthrough belong in private CLI helpers such as `core/src/cli/renderer-output.ts`; engine operation modules never import the core shell.
 - `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.
+- `lando init` has no engine operation and stays in `core/src/cli/commands/init.ts`: its body pulls in the entire `core/src/recipes/**` domain (catalog, builtin registry, manifest service, git/npm/tarball/registry sources, post-init runtime, prompt answer parsing) plus `core/src/interaction/**` (16 core-only imports at `core/src/cli/commands/init.ts:27-46`), and engine may never import the core shell. Extracting init means relocating the recipes domain first; re-evaluate once that domain has its own package seam.
 
 ## Runtime layer service wiring
 
