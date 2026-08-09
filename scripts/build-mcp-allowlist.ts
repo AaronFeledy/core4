@@ -17,9 +17,9 @@
  */
 import { resolve } from "node:path";
 
+import { computeMcpDefaultAllowlist } from "../core/src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../core/src/cli/commands/meta/mcp.ts";
-import { computeMcpDefaultAllowlist } from "../core/src/cli/oclif/mcp-allowlist.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");

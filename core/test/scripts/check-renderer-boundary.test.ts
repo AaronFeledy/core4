@@ -25,7 +25,7 @@ describe("renderer boundary lint gate", () => {
   test("passes when direct writes are confined to explicit carve-outs", async () => {
     const root = await makeFixtureRoot();
     try {
-      await write(root, "core/src/cli/oclif/pre-renderer.ts", "console.log('first paint');\n");
+      await write(root, "core/src/cli/pre-renderer.ts", "console.log('first paint');\n");
       await write(root, "core/bin/lando.ts", "process.stdout.write('banner');\n");
       await write(root, "core/src/cli/commands/ok.ts", "export const ok = true;\n");
 

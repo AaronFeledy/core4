@@ -13,11 +13,11 @@ import { type Effect, Schema } from "effect";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
 import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
+import { assertHostProxyAllowlistSafe } from "../allowlists/host-proxy";
+import { assertMcpAllowlistSafe } from "../allowlists/mcp";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report";
 import type { DeferredCommandPlan } from "../deferred-commands";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
-import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist";
-import { assertMcpAllowlistSafe } from "./mcp-allowlist";
 
 /**
  * The three first-class command namespaces.

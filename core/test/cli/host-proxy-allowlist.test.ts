@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 
 import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
 
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import {
   HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS,
   assertHostProxyAllowlistSafe,
   computeHostProxyRunLandoAllowlist,
   isHostProxyAllowlistForbidden,
-} from "../../src/cli/oclif/host-proxy-allowlist.ts";
+} from "../../src/cli/allowlists/host-proxy.ts";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
+import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 
 const EXPECTED_ALLOWLIST = ["app:open"];
 

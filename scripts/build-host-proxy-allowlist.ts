@@ -18,8 +18,8 @@
  */
 import { resolve } from "node:path";
 
+import { computeHostProxyRunLandoAllowlist } from "../core/src/cli/allowlists/host-proxy.ts";
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
-import { computeHostProxyRunLandoAllowlist } from "../core/src/cli/oclif/host-proxy-allowlist.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
