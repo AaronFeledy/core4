@@ -15,14 +15,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { findAgentEnvPatternNames } from "@lando/engine/config/agent-env";
-import { resolveUserConfRoot } from "@lando/engine/config/roots";
-import { type CliTelemetrySource, resolveCliTelemetryState } from "@lando/engine/runtime/cli-options";
-import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/engine/telemetry/policy";
-import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
-import { parseMinimalYaml } from "@lando/paths/yaml-min";
-import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
-import { getAtPath } from "../config-write/dot-path";
+import { getAtPath } from "@lando/engine/config-write/dot-path";
 import {
   type ValueType,
   applySetMutation,
@@ -30,7 +23,14 @@ import {
   decodeIssues,
   emitConfigYaml,
   writeValidationErrorFromIssues,
-} from "../config-write/write-core";
+} from "@lando/engine/config-write/write-core";
+import { findAgentEnvPatternNames } from "@lando/engine/config/agent-env";
+import { resolveUserConfRoot } from "@lando/engine/config/roots";
+import { type CliTelemetrySource, resolveCliTelemetryState } from "@lando/engine/runtime/cli-options";
+import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/engine/telemetry/policy";
+import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
+import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 
 export interface ConfigOptions {
   readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";

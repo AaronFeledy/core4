@@ -7,7 +7,7 @@ import {
   decodeIssues,
   parseConfigPath,
   parseConfigValue,
-} from "../../../src/cli/config-write/write-core.ts";
+} from "@lando/engine/config-write/write-core";
 
 const FILE = "/tmp/.lando.yml";
 
