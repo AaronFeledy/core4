@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
@@ -23,13 +23,13 @@ import {
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
-} from "../../command-boundary";
-import { getCommandRuntimeLayer } from "../../hooks/init";
+} from "../../../spec/command-boundary";
+import { getCommandRuntimeLayer } from "../../../spec/hooks/init";
 
 let mcpCommandRegistrySource: McpCommandRegistry = { commandEntries: [] };
 

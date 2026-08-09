@@ -36,8 +36,8 @@ import { routeDynamicTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
-import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";

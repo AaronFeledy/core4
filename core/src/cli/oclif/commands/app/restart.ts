@@ -5,7 +5,7 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   resultSchema: RestartAppResultSchema,

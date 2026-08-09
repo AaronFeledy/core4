@@ -4,7 +4,7 @@ import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
-} from "../../../../../src/cli/oclif/command-base.ts";
+} from "../../../../../src/cli/spec/command-base.ts";
 
 const missingSpec: LandoCommandSpec<void> = {
   id: "missing",

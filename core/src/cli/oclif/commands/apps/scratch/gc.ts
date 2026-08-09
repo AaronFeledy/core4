@@ -1,8 +1,12 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import type { ScratchGcReport } from "@lando/sdk/services";
 import { ScratchGcReportResultSchema, renderScratchGcReport, scratchGc } from "../../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const pruneFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;

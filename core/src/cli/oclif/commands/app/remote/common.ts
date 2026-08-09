@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import type {
   RemoteAddOptions,

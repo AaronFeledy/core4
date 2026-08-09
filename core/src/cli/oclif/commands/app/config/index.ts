@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import type { ValueType } from "@lando/engine/config-write/write-core";
 import {
@@ -8,7 +8,11 @@ import {
   appConfig,
   renderAppConfigResult,
 } from "../../../../commands/app-config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const isValueType = (s: unknown): s is ValueType =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";

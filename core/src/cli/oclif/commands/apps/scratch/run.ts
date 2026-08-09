@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import {
@@ -11,7 +11,11 @@ import {
   scratchRunSuccessExitCode,
 } from "../../../../commands/scratch-run";
 import type { RenderContext } from "../../../../renderer-boundary";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
   resultSchema: ScratchRunResultSchema,

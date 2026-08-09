@@ -4,7 +4,7 @@ import { Schema } from "effect";
 import { McpToolInputError } from "@lando/sdk/errors";
 
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";
 

@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import {
   type AppConfigResult,
@@ -7,7 +7,11 @@ import {
   appConfig,
   renderAppConfigResult,
 } from "../../../../commands/app-config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 import { appConfigOptionsFromInput } from "./index";
 
 const typeFlag = Flags.string({

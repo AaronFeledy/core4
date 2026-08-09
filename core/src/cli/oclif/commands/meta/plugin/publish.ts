@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import {
   type PluginPublishOptions,
@@ -8,7 +8,11 @@ import {
   renderPluginPublishResult,
 } from "../../../../commands/plugin-publish";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const extractInput = (input: unknown): PluginPublishOptions => {
   const flags =

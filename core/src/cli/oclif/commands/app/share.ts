@@ -4,7 +4,7 @@ import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/s
 
 import { appShare } from "@lando/engine/operations/share";
 import { renderShareResult } from "../../../commands/share";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share/common";
 
 export const shareSpec: LandoCommandSpec<TunnelSessionType> = {

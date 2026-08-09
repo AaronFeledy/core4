@@ -4,7 +4,11 @@ import {
   pluginTest,
   renderPluginTestResult,
 } from "../../../../commands/plugin-test";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

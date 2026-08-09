@@ -17,7 +17,7 @@ import {
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "../../../sdk/src/schema/index.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

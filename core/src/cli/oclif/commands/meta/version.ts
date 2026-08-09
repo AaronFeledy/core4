@@ -8,7 +8,7 @@ import { renderMetaVersion } from "@lando/engine/version";
  * it without pulling the command registry).
  */
 import { type VersionResult, VersionResultSchema, version } from "../../../commands/version";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   resultSchema: VersionResultSchema,

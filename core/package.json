@@ -70,7 +70,7 @@
     "dirname": "lando",
     "commands": {
       "strategy": "explicit",
-      "target": "./src/cli/oclif/compiled-commands.ts"
+      "target": "./src/cli/compiled-commands.ts"
     },
     "plugins": ["@oclif/plugin-help"],
     "topicSeparator": " ",
@@ -79,11 +79,11 @@
     "additionalVersionFlags": ["-v"],
     "hooks": {
       "command_not_found": {
-        "target": "./src/cli/oclif/hooks/command_not_found.ts",
+        "target": "./src/cli/spec/hooks/command_not_found.ts",
         "identifier": "commandNotFoundHook"
       },
       "init": {
-        "target": "./src/cli/oclif/hooks/init.ts",
+        "target": "./src/cli/spec/hooks/init.ts",
         "identifier": "initHook"
       }
     }

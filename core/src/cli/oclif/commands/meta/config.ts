@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import {
   type ConfigOptions,
@@ -9,7 +9,7 @@ import {
 
 import { createDefaultEditorRunner } from "../../../../recipes/prompts/editor-command";
 import { renderConfigResult } from "../../../commands/config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";

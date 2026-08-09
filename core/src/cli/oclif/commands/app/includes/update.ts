@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import type { IncludeUpdateReport } from "@lando/landofile/includes";
 import {
@@ -6,7 +6,7 @@ import {
   appIncludesUpdate,
   renderIncludesUpdateResult,
 } from "../../../../commands/app-includes-update";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 
 const inputFlags = (input: unknown): Record<string, unknown> =>
   typeof input === "object" && input !== null && "flags" in input

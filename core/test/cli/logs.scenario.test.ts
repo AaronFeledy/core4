@@ -22,9 +22,9 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
-import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

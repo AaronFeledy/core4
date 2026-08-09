@@ -1,6 +1,6 @@
 import { RemoteMutationResultSchema, appRemoteRemove } from "@lando/engine/operations/remote";
 import { renderRemoteMutationResult } from "../../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 import { remoteConfigFlags, remoteNameArg, remoteRemoveOptionsFromInput } from "./common";
 
 export const remoteRemoveSpec: LandoCommandSpec = {

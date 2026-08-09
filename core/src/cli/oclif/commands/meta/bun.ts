@@ -9,7 +9,7 @@ import {
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

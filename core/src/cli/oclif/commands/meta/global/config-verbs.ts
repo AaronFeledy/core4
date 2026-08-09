@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import {
   type GlobalConfigResult,
@@ -7,7 +7,11 @@ import {
   globalConfig,
   renderGlobalConfigResult,
 } from "../../../../commands/meta/global-config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 import { globalConfigFormatFromInput, globalConfigOptionsFromInput } from "./config";
 
 const typeFlag = Flags.string({

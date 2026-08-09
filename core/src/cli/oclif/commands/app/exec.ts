@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
 import { StreamFrame } from "@lando/sdk/schema";
@@ -9,8 +9,8 @@ import {
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary";
+} from "../../../spec/command-base";
+import { extractSpecFlags, extractSpecParsedArgv } from "../../../spec/command-boundary";
 
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,

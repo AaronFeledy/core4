@@ -1,6 +1,6 @@
 import { RemoteMutationResultSchema, appRemoteAdd } from "@lando/engine/operations/remote";
 import { renderRemoteMutationResult } from "../../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 import { remoteAddFlags, remoteAddOptionsFromInput, remoteNameArg, remoteSourceArg } from "./common";
 
 export const remoteAddSpec: LandoCommandSpec = {

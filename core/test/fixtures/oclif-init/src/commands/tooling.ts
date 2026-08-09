@@ -7,7 +7,7 @@ import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
-} from "../../../../../src/cli/oclif/command-base.ts";
+} from "../../../../../src/cli/spec/command-base.ts";
 import { events } from "../events.ts";
 
 const toolingSpec: LandoCommandSpec<void> = {

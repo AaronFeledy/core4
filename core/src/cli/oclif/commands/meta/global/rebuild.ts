@@ -9,7 +9,7 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../../command-base";
+} from "../../../../spec/command-base";
 
 export const metaGlobalRebuildSpec: LandoCommandSpec<GlobalRebuildResult> = {
   resultSchema: GlobalRebuildResultSchema,

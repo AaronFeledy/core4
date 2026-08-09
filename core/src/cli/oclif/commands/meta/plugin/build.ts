@@ -4,7 +4,11 @@ import {
   pluginBuild,
   renderPluginBuildResult,
 } from "../../../../commands/plugin-build";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   resultSchema: PluginBuildResultSchema,

@@ -1,6 +1,6 @@
 import { RemoteListResultSchema, appRemoteList } from "@lando/engine/operations/remote";
 import { renderRemoteListResult } from "../../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 import { remoteConfigFlags, remoteListOptionsFromInput } from "./common";
 
 export const remoteListSpec: LandoCommandSpec = {

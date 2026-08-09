@@ -4,10 +4,10 @@ import { Effect, Schema } from "effect";
  *
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 export const shellenvShellFromInput = (input: unknown) => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";

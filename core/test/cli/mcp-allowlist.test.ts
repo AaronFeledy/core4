@@ -11,7 +11,7 @@ import {
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
   "app:config:get",

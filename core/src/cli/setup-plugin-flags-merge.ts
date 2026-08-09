@@ -11,7 +11,7 @@ import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 
 import { SetupFlagCollisionError, findSetupFlagCollision } from "@lando/engine/plugins/setup-flags";
 import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags";
-import { type BooleanFlag, Flags, type OptionFlag } from "./oclif/metadata";
+import { type BooleanFlag, Flags, type OptionFlag } from "./spec/metadata";
 
 export { SetupFlagCollisionError };
 

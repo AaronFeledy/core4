@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import { ServiceName } from "@lando/sdk/schema";
 

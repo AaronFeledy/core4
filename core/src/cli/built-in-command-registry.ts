@@ -4,7 +4,6 @@ import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { buildBuiltInCommandIndex } from "./built-in-command-index";
 import { mcpRegistryFromBuiltIns } from "./commands/meta/mcp";
 import { type DeferredCommandPlan, notImplementedErrorForSpec } from "./deferred-commands";
-import type { LandoCommandSpec } from "./oclif/command-base";
 import AppCacheRefreshCommand from "./oclif/commands/app/cache/refresh";
 import AppConfigCommand from "./oclif/commands/app/config/index";
 import AppConfigLintCommand from "./oclif/commands/app/config/lint";
@@ -94,7 +93,8 @@ import UninstallCommand from "./oclif/commands/meta/uninstall";
 import UpdateCommand from "./oclif/commands/meta/update";
 import VersionCommand from "./oclif/commands/meta/version";
 import XCommand from "./oclif/commands/meta/x";
-import type { CommandClass } from "./oclif/metadata";
+import type { LandoCommandSpec } from "./spec/command-base";
+import type { CommandClass } from "./spec/metadata";
 
 export { buildBuiltInCommandIndex } from "./built-in-command-index";
 

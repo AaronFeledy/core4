@@ -36,9 +36,9 @@ import type { RendererMode } from "../../bug-report";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import type { ResultFormat } from "../../format-flags";
 import { MCP_DEFAULT_ALLOWLIST } from "../../generated/mcp-allowlist";
-import type { LandoCommandSpec } from "../../oclif/command-base";
 import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index";
 import { runWithRendererHandling } from "../../renderer-boundary";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { renderRunToolingResult } from "../tooling";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
 

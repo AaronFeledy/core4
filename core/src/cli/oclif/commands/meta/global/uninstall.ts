@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import {
   type GlobalUninstallOptions,
@@ -7,7 +7,11 @@ import {
   globalUninstall,
   renderGlobalUninstallResult,
 } from "../../../../commands/meta/global-uninstall";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstallOptions => {
   if (typeof input !== "object" || input === null) return {};

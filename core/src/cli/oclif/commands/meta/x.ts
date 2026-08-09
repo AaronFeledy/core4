@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Args } from "../../metadata";
+import { Args } from "../../../spec/metadata";
 
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun";
 
@@ -10,7 +10,7 @@ import {
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

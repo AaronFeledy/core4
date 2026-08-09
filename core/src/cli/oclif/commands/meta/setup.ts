@@ -28,7 +28,7 @@ import { installShellProfileIntegration } from "../../../commands/shellenv";
 import { isDecoratedContext } from "../../../renderer-boundary";
 import { formatSummary } from "../../../renderer/summary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";
 import {
   type SetupResult,

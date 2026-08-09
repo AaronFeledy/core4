@@ -1,4 +1,4 @@
-import { Args } from "../../../metadata";
+import { Args } from "../../../../spec/metadata";
 
 import {
   type PluginLinkResult,
@@ -7,7 +7,11 @@ import {
   renderPluginLinkResult,
 } from "../../../../commands/plugin-link";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const extractInput = (input: unknown): { path?: string } => {
   if (typeof input !== "object" || input === null) return {};

@@ -1,9 +1,13 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
 import { ConfigLintResult } from "@lando/sdk/schema";
 import { renderConfigLintResult } from "../../../../commands/app-config-lint";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const usesJsonFormat = (input: unknown): boolean =>
   typeof input === "object" &&

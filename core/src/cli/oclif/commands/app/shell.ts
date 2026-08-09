@@ -1,4 +1,4 @@
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../../commands/shell";
 import {
@@ -7,8 +7,8 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base";
-import { extractSpecFlags } from "../../command-boundary";
+} from "../../../spec/command-base";
+import { extractSpecFlags } from "../../../spec/command-boundary";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: EmptyResultSchema,

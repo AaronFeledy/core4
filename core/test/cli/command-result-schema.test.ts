@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import compiledCommands from "../../src/cli/compiled-commands.ts";
 import {
   CommandRegistrationError,
   EmptyResultSchema,
   type LandoCommandSpec,
   validateCommandSpec,
-} from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+} from "../../src/cli/spec/command-base.ts";
 
 const specFor = (commandClass: unknown): LandoCommandSpec | undefined =>
   (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec;

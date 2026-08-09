@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import {
   DefaultGlobalListLayer,
@@ -8,7 +8,11 @@ import {
   globalList,
   renderGlobalListResult,
 } from "../../../../commands/meta/global-list";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   resultSchema: GlobalListResultSchema,

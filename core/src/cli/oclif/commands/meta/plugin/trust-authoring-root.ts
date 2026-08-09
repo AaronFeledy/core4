@@ -1,4 +1,4 @@
-import { Args } from "../../../metadata";
+import { Args } from "../../../../spec/metadata";
 
 import {
   type PluginTrustAuthoringRootResult,
@@ -6,7 +6,7 @@ import {
   pluginTrustAuthoringRoot,
   renderPluginTrustAuthoringRootResult,
 } from "../../../../commands/plugin-trust";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 
 const extractInput = (input: unknown): { path: string } => {
   if (typeof input !== "object" || input === null) return { path: "" };

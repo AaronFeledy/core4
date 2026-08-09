@@ -4,9 +4,9 @@ import {
   poweroff,
   renderPoweroffResult,
 } from "../../../commands/poweroff";
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 const extractFlags = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};

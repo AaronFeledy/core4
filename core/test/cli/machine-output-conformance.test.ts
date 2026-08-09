@@ -8,10 +8,10 @@ import { makeTestRuntime } from "@lando/core/testing";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const decodeEnvelope = (line: string): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));

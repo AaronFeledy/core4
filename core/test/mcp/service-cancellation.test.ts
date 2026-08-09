@@ -4,7 +4,7 @@ import { Deferred, Effect, Fiber, Layer, Option } from "effect";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { RedactionService } from "@lando/engine/redaction/service";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
   McpRuntimeConfig,

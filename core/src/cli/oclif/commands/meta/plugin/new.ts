@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import {
   PLUGIN_NEW_TEMPLATE_IDS,
@@ -8,7 +8,11 @@ import {
 
 import { pluginNew, renderPluginNewResult } from "../../../../commands/plugin-new";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const extractInput = (input: unknown) => {
   const parsed =

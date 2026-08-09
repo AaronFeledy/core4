@@ -2,7 +2,7 @@ import { RemoteTestResult } from "@lando/sdk/schema";
 
 import { appRemoteSetup } from "@lando/engine/operations/remote";
 import { renderRemoteTestResult } from "../../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 import { remoteEnvArg, remoteSetupFlags, remoteSetupOptionsFromInput } from "./common";
 
 export const remoteSetupSpec: LandoCommandSpec = {

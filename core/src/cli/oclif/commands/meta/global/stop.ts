@@ -4,7 +4,11 @@ import {
   globalStop,
   renderGlobalStopResult,
 } from "../../../../commands/meta/global-stop";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const metaGlobalStopSpec: LandoCommandSpec<GlobalStopResult> = {
   resultSchema: GlobalStopResultSchema,

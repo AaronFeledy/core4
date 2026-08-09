@@ -5,7 +5,7 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 
 import { StreamFrame } from "@lando/sdk/schema";
 

@@ -8,7 +8,7 @@
  * plugin. `contributedSetupFlagsForProvider` reads the values a plugin declared
  * for the active provider off the parsed input.
  */
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../../generated/setup-plugin-flags";
 import { mergeSetupPluginFlags } from "../../../setup-plugin-flags-merge";

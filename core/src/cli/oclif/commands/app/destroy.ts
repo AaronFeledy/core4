@@ -1,12 +1,12 @@
 /**
  * `lando app:destroy` — native command metadata adapter.
  */
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import { type DestroyAppResult, DestroyAppResultSchema, destroyApp } from "@lando/engine/operations/destroy";
 import { renderDestroyAppResult } from "../../../commands/destroy";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
-import { extractSpecFlags } from "../../command-boundary";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import { extractSpecFlags } from "../../../spec/command-boundary";
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   resultSchema: DestroyAppResultSchema,

@@ -4,7 +4,11 @@ import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/s
 
 import { appShareList } from "@lando/engine/operations/share";
 import { renderShareListResult } from "../../../../commands/share";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 import { shareFormatFromInput, shareListFlags, shareListOptionsFromInput } from "./common";
 
 export const shareListSpec: LandoCommandSpec<ReadonlyArray<TunnelSessionType>> = {

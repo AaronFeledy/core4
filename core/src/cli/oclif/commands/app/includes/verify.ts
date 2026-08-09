@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import type { IncludeVerifyReport } from "@lando/landofile/includes";
 import {
@@ -6,7 +6,7 @@ import {
   appIncludesVerify,
   renderIncludesVerifyResult,
 } from "../../../../commands/app-includes-verify";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 
 const usesJsonFormat = (input: unknown): boolean =>
   typeof input === "object" &&

@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../metadata";
+import { Args, Flags } from "../../../../spec/metadata";
 
 import type { ScratchInfo } from "@lando/sdk/services";
 import {
@@ -8,7 +8,11 @@ import {
   scratchInfo,
   scratchListFormatFromInput,
 } from "../../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   resultSchema: ScratchInfoResultSchema,

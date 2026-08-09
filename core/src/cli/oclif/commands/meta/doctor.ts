@@ -1,4 +1,4 @@
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import type { DoctorOptions } from "../../../commands/doctor";
 import { resilientDoctorReport } from "../../../commands/doctor-bootstrap";
@@ -11,7 +11,7 @@ import {
 } from "../../../commands/doctor-report";
 import type { RenderContext } from "../../../renderer-boundary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};

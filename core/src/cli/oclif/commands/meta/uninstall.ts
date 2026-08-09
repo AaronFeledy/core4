@@ -1,4 +1,4 @@
-import { Flags } from "../../metadata";
+import { Flags } from "../../../spec/metadata";
 
 import {
   type UninstallOptions,
@@ -7,7 +7,7 @@ import {
   uninstall,
 } from "@lando/engine/operations/uninstall";
 import { renderUninstallResult } from "../../../commands/uninstall";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};

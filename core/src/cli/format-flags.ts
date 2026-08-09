@@ -1,4 +1,4 @@
-import { Flags } from "./oclif/metadata";
+import { Flags } from "./spec/metadata";
 
 import { RendererSelectionError } from "@lando/sdk/errors";
 

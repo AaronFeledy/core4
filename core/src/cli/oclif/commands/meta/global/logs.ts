@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
@@ -14,7 +14,7 @@ import {
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../../command-base";
+} from "../../../../spec/command-base";
 
 export interface GlobalLogsFlags {
   readonly service?: string;

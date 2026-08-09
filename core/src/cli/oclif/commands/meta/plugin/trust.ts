@@ -1,4 +1,4 @@
-import { Args } from "../../../metadata";
+import { Args } from "../../../../spec/metadata";
 
 import {
   PluginTrustCommandResultSchema,
@@ -12,7 +12,11 @@ import {
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
 } from "../../../../commands/plugin-trust";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const extractInput = (input: unknown): { action: string; name: string } => {
   if (typeof input !== "object" || input === null) return { action: "", name: "" };

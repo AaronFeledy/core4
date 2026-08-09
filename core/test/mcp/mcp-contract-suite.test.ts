@@ -29,7 +29,7 @@ import { assertMcpAllowlistSafe } from "../../src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
 import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";

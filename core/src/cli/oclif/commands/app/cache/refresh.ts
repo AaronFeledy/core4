@@ -4,7 +4,7 @@ import {
   refreshAppCache,
   renderAppCacheRefreshResult,
 } from "../../../../commands/app-cache-refresh";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../../spec/command-base";
 
 export const appCacheRefreshSpec: LandoCommandSpec<AppCacheRefreshResult> = {
   resultSchema: AppCacheRefreshResultSchema,

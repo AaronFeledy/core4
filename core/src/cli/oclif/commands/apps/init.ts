@@ -5,7 +5,7 @@ import { Effect } from "effect";
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Args, Flags } from "../../metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
@@ -29,13 +29,13 @@ import {
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base";
+} from "../../../spec/command-base";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
-} from "../../command-boundary";
-import { getCommandRuntimeLayer } from "../../hooks/init";
+} from "../../../spec/command-boundary";
+import { getCommandRuntimeLayer } from "../../../spec/hooks/init";
 
 export interface InitFlags {
   readonly full: boolean;

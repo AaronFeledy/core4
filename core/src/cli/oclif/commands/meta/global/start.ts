@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import {
   type GlobalStartOptions,
@@ -12,7 +12,7 @@ import {
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../../command-base";
+} from "../../../../spec/command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");

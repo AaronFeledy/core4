@@ -5,7 +5,6 @@ import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
@@ -13,6 +12,7 @@ import {
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
 } from "../../src/cli/result-encode.ts";
+import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,

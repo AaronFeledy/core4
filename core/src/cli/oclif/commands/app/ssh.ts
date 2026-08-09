@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -11,8 +11,8 @@ import {
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary";
+} from "../../../spec/command-base";
+import { extractSpecFlags, extractSpecParsedArgv } from "../../../spec/command-boundary";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 

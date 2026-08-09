@@ -8,7 +8,7 @@
     "commands": "./src/commands",
     "hooks": {
       "init": {
-        "target": "../../../src/cli/oclif/hooks/init.ts",
+        "target": "../../../src/cli/spec/hooks/init.ts",
         "identifier": "initHook"
       }
     }

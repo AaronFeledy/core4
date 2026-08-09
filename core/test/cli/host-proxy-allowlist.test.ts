@@ -8,9 +8,9 @@ import {
   computeHostProxyRunLandoAllowlist,
   isHostProxyAllowlistForbidden,
 } from "../../src/cli/allowlists/host-proxy.ts";
+import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_ALLOWLIST = ["app:open"];
 

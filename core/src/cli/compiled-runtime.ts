@@ -29,10 +29,10 @@ import {
   commandErrorMessage,
   getActiveCommandInvocation,
 } from "./compiled-session";
-import { EmptyResultSchema } from "./oclif/command-base";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
 import type { RendererIO } from "./renderer/io";
+import { EmptyResultSchema } from "./spec/command-base";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 

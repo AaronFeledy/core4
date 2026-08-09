@@ -1,6 +1,10 @@
 import { type ShareStopResult, ShareStopResultSchema, appShareStop } from "@lando/engine/operations/share";
 import { renderShareStopResult } from "../../../../commands/share";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 import { shareFormatFromInput, shareStopFlags, shareStopOptionsFromInput } from "./common";
 
 export const shareStopSpec: LandoCommandSpec = {

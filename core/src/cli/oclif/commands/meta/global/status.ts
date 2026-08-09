@@ -1,4 +1,4 @@
-import { Flags } from "../../../metadata";
+import { Flags } from "../../../../spec/metadata";
 
 import {
   type GlobalStatusOptions,
@@ -7,7 +7,11 @@ import {
   globalStatus,
   renderGlobalStatusResult,
 } from "../../../../commands/meta/global-status";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../../spec/command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");

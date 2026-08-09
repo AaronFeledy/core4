@@ -6,7 +6,7 @@ import {
   assertToolingNameClaimable,
   reservedTopLevelAliasOwner,
 } from "@lando/engine/operations/reserved-aliases";
-import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 describe("reservedTopLevelAliasOwner", () => {
   test("reserves the bare run alias for apps:scratch:run", () => {
