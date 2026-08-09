@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Config } from "@oclif/core";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
@@ -31,6 +30,7 @@ import {
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
+import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -700,14 +700,8 @@ describe("shellApp — shell modes", () => {
 });
 
 describe("lando shell — CLI surface", () => {
-  test("registers `shell` and `app:shell` as a top-level alias and OCLIF id", async () => {
-    const config = await Config.load({ root: resolve(repoRoot, "core"), ignoreManifest: true });
-    const rootPlugin = config.plugins.get(config.pjson.name);
-    if (rootPlugin === undefined) throw new Error("OCLIF root plugin missing");
-    const aliasesById = new Map(
-      rootPlugin.commands.map((command) => [command.id, command.aliases ?? []] as const),
-    );
-    expect(aliasesById.get("app:shell")).toContain("shell");
+  test("registers `shell` and `app:shell` as a top-level alias and native id", () => {
+    expect(resolveBuiltInCommand("app:shell")?.command.aliases).toContain("shell");
     expect(AppShellCommand.aliases).toContain("shell");
   });
 

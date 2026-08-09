@@ -3,8 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Config } from "@oclif/core";
-
 import ExecCommand from "../../src/cli/command-specs/app/exec.ts";
 import InfoCommand from "../../src/cli/command-specs/app/info.ts";
 import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
@@ -19,6 +17,7 @@ import AppsScratchLogsCommand from "../../src/cli/command-specs/apps/scratch/log
 import AppsScratchRunCommand from "../../src/cli/command-specs/apps/scratch/run.ts";
 import AppsScratchStartCommand from "../../src/cli/command-specs/apps/scratch/start.ts";
 import AppsScratchStopCommand from "../../src/cli/command-specs/apps/scratch/stop.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -77,13 +76,9 @@ describe("app command aliases", () => {
     expect(commandAliases(AppsScratchRunCommand)).toEqual(expect.arrayContaining(["scratch:run", "run"]));
   });
 
-  test("register alias metadata in the OCLIF command manifest model", async () => {
-    const config = await Config.load({ root: coreRoot, ignoreManifest: true });
-    const rootPlugin = config.plugins.get(config.pjson.name);
-    if (rootPlugin === undefined) throw new Error(`Unable to load OCLIF root plugin ${config.pjson.name}`);
-
+  test("register alias metadata in the native command registry", () => {
     const aliasesById = new Map(
-      rootPlugin.commands.map((command) => [command.id, command.aliases ?? []] as const),
+      builtInCommandEntries.map((entry) => [entry.spec.id, entry.command.aliases ?? []] as const),
     );
 
     expect(aliasesById.get("app:start")).toContain("start");
