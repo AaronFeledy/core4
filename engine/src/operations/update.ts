@@ -13,15 +13,6 @@ import { basename, dirname, join } from "node:path";
 
 import { Effect, Either, Layer, Schema } from "effect";
 
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
-import { DownloaderLive } from "@lando/engine/downloader/service";
-import { HttpClientLive } from "@lando/engine/http-client/live";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/engine/telemetry/events";
-import { scrubTelemetryValue } from "@lando/engine/telemetry/redaction";
-import { CORE_VERSION } from "@lando/engine/version";
 import type { LandoCommandError } from "@lando/sdk/errors";
 import {
   type UpdateChannel,
@@ -30,6 +21,15 @@ import {
   UpdateManifestSchema,
 } from "@lando/sdk/schema";
 import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { writeFileAtomicViaRename } from "../cache/atomic";
+import { resolveUserCacheRoot } from "../cache/paths";
+import { DownloaderLive } from "../downloader/service";
+import { HttpClientLive } from "../http-client/live";
+import { ConfigServiceLive } from "../services/config";
+import { EventServiceLive } from "../services/event-service";
+import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../telemetry/events";
+import { scrubTelemetryValue } from "../telemetry/redaction";
+import { CORE_VERSION } from "../version";
 
 export class UpdateNetworkError extends Schema.TaggedError<UpdateNetworkError>()("UpdateNetworkError", {
   message: Schema.String,

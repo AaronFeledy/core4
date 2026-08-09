@@ -1,6 +1,11 @@
 import { Flags } from "../../metadata";
 
-import { type UpdateOptions, type UpdateResult, UpdateResultSchema, update } from "../../../commands/update";
+import {
+  type UpdateOptions,
+  type UpdateResult,
+  UpdateResultSchema,
+  update,
+} from "@lando/engine/operations/update";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {

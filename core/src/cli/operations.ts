@@ -90,7 +90,7 @@ export * from "./commands/app-includes-update";
 export * from "./commands/app-includes-verify";
 export * from "./commands/app-cache-refresh";
 export * from "./commands/version";
-export * from "./commands/update";
+export * from "@lando/engine/operations/update";
 export * from "@lando/engine/operations/tooling";
 export * from "./commands/tooling";
 export * from "./commands/scratch";

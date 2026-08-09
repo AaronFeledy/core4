@@ -6,6 +6,7 @@
  * Returns `false` when the argv does not belong to this topic so the shared
  * native dispatcher can fall through to not-implemented / not-found handling.
  */
+import { update } from "@lando/engine/operations/update";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import { runDoctor, runSetup } from "./cli-adapters/app-lifecycle";
@@ -44,7 +45,6 @@ import {
   runMetaX,
 } from "./cli-adapters/meta-plugin";
 import { config, renderConfigResult } from "./commands/config";
-import { update } from "./commands/update";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { rejectInvalidInvocation, runCompiledCommand } from "./compiled-runtime";
 import { metaConfigOptionsFromInput } from "./oclif/commands/meta/config";
