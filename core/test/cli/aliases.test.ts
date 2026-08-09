@@ -5,20 +5,20 @@ import { join, resolve } from "node:path";
 
 import { Config } from "@oclif/core";
 
-import ExecCommand from "../../src/cli/oclif/commands/app/exec.ts";
-import InfoCommand from "../../src/cli/oclif/commands/app/info.ts";
-import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
-import SshCommand from "../../src/cli/oclif/commands/app/ssh.ts";
-import StartCommand from "../../src/cli/oclif/commands/app/start.ts";
-import StopCommand from "../../src/cli/oclif/commands/app/stop.ts";
-import AppsScratchDestroyCommand from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
-import AppsScratchGcCommand from "../../src/cli/oclif/commands/apps/scratch/gc.ts";
-import AppsScratchInfoCommand from "../../src/cli/oclif/commands/apps/scratch/info.ts";
-import AppsScratchListCommand from "../../src/cli/oclif/commands/apps/scratch/list.ts";
-import AppsScratchLogsCommand from "../../src/cli/oclif/commands/apps/scratch/logs.ts";
-import AppsScratchRunCommand from "../../src/cli/oclif/commands/apps/scratch/run.ts";
-import AppsScratchStartCommand from "../../src/cli/oclif/commands/apps/scratch/start.ts";
-import AppsScratchStopCommand from "../../src/cli/oclif/commands/apps/scratch/stop.ts";
+import ExecCommand from "../../src/cli/command-specs/app/exec.ts";
+import InfoCommand from "../../src/cli/command-specs/app/info.ts";
+import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
+import SshCommand from "../../src/cli/command-specs/app/ssh.ts";
+import StartCommand from "../../src/cli/command-specs/app/start.ts";
+import StopCommand from "../../src/cli/command-specs/app/stop.ts";
+import AppsScratchDestroyCommand from "../../src/cli/command-specs/apps/scratch/destroy.ts";
+import AppsScratchGcCommand from "../../src/cli/command-specs/apps/scratch/gc.ts";
+import AppsScratchInfoCommand from "../../src/cli/command-specs/apps/scratch/info.ts";
+import AppsScratchListCommand from "../../src/cli/command-specs/apps/scratch/list.ts";
+import AppsScratchLogsCommand from "../../src/cli/command-specs/apps/scratch/logs.ts";
+import AppsScratchRunCommand from "../../src/cli/command-specs/apps/scratch/run.ts";
+import AppsScratchStartCommand from "../../src/cli/command-specs/apps/scratch/start.ts";
+import AppsScratchStopCommand from "../../src/cli/command-specs/apps/scratch/stop.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

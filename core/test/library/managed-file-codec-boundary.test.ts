@@ -18,7 +18,10 @@ const codecEntry = resolve(engineSrc, "managed-file/codecs.ts");
 /** Modules whose construction would mean the codec drags in a `LandoRuntime`. */
 const runtimeCodePathDir = `${resolve(coreSrc, "runtime")}/`;
 const coreDefaultEntry = resolve(coreSrc, "index.ts");
-const oclifCodePathDirs = [`${resolve(coreSrc, "cli/spec")}/`, `${resolve(coreSrc, "cli/oclif")}/`] as const;
+const oclifCodePathDirs = [
+  `${resolve(coreSrc, "cli/spec")}/`,
+  `${resolve(coreSrc, "cli/command-specs")}/`,
+] as const;
 
 const firstPartySourceRoots = [
   `${coreSrc}/`,

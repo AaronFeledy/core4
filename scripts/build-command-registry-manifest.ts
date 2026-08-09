@@ -19,7 +19,6 @@ const CORE_ROOT = resolve(REPOSITORY_ROOT, "core");
 const OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-registry-manifest.ts");
 const COMMAND_IDS_OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-ids.ts");
 const LEGACY_JSON_OUTPUT = resolve(CORE_ROOT, "oclif.manifest.json");
-const LEGACY_TYPESCRIPT_OUTPUT = resolve(CORE_ROOT, "src/cli/oclif/compiled-manifest.ts");
 const BOOTSTRAP_SOURCE =
   'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", topics: {}, version: "0.0.0" } as const;\n';
 const COMMAND_IDS_BOOTSTRAP_SOURCE = "export const BUILT_IN_COMMAND_IDS: ReadonlyArray<string> = [];\n";
@@ -117,7 +116,7 @@ export const BUILT_IN_COMMAND_IDS = ${JSON.stringify(commandIds, null, 2)} as co
 `;
 
 const main = async (): Promise<void> => {
-  await Promise.all([rm(LEGACY_JSON_OUTPUT, { force: true }), rm(LEGACY_TYPESCRIPT_OUTPUT, { force: true })]);
+  await rm(LEGACY_JSON_OUTPUT, { force: true });
   await Promise.all(
     [
       { content: BOOTSTRAP_SOURCE, path: OUTPUT },

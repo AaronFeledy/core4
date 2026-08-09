@@ -24,7 +24,7 @@ import {
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
-import { updateOptionsFromInput } from "../../src/cli/oclif/commands/meta/update.ts";
+import { updateOptionsFromInput } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();

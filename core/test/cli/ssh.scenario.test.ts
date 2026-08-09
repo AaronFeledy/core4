@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Config } from "@oclif/core";
 
-import SshCommand from "../../src/cli/oclif/commands/app/ssh.ts";
+import SshCommand from "../../src/cli/command-specs/app/ssh.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

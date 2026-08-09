@@ -16,6 +16,7 @@ import {
   ProviderId,
   StreamFrame,
 } from "@lando/sdk/schema";
+import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorCheck,
   type DoctorOptions,
@@ -23,7 +24,6 @@ import {
   renderDoctorResult,
   renderDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor.ts";
-import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");

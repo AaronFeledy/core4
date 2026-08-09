@@ -45,11 +45,11 @@ import {
   runMetaVersion,
   runMetaX,
 } from "./cli-adapters/meta-plugin";
+import { metaConfigOptionsFromInput } from "./command-specs/meta/config";
+import { updateOptionsFromInput } from "./command-specs/meta/update";
 import { renderConfigResult } from "./commands/config";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { rejectInvalidInvocation, runCompiledCommand } from "./compiled-runtime";
-import { metaConfigOptionsFromInput } from "./oclif/commands/meta/config";
-import { updateOptionsFromInput } from "./oclif/commands/meta/update";
 
 const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:config", argv);

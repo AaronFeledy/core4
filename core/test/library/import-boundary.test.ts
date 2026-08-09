@@ -28,7 +28,10 @@ const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
  * Reaching any file under them — or importing the `@oclif/*` npm packages — from
  * a non-CLI entry point is a library import-boundary violation.
  */
-const oclifCodePathDirs = [`${resolve(coreSrc, "cli/spec")}/`, `${resolve(coreSrc, "cli/oclif")}/`] as const;
+const oclifCodePathDirs = [
+  `${resolve(coreSrc, "cli/spec")}/`,
+  `${resolve(coreSrc, "cli/command-specs")}/`,
+] as const;
 const oclifInternalEntry = resolve(coreSrc, "cli/run.ts");
 const tuiCodePathDirs = [
   `${resolve(coreSrc, "cli/tui")}/`,
@@ -603,7 +606,7 @@ describe("OCLIF-free default entry", () => {
       violation.chain.some(
         (link) =>
           link.startsWith("@oclif/") ||
-          repoRelative(link).includes("cli/oclif") ||
+          repoRelative(link).includes("cli/command-specs") ||
           repoRelative(link).includes("cli/spec"),
       ),
     );
@@ -664,7 +667,7 @@ describe("OCLIF-free default entry", () => {
     const message = formatViolation("core/src/cli/run.ts", firstViolation);
     expect(message).toContain("core/src/cli/run.ts");
     expect(message).toContain("→");
-    expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/oclif|cli\/spec/);
+    expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/command-specs|cli\/spec/);
   });
 });
 

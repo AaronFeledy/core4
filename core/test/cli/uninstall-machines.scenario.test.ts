@@ -5,8 +5,8 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import { metaUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
-import { metaUninstallSpec } from "../../src/cli/oclif/commands/meta/uninstall.ts";
 
 const seedSetupState = (userDataRoot: string, machine: unknown): void => {
   const dir = join(userDataRoot, "providers", "provider-lando");

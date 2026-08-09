@@ -84,9 +84,9 @@ const isCommandSpec = (
 describe("share command skeleton", () => {
   test("registers app share command specs with result schemas and share flags", async () => {
     const modules = await Promise.all([
-      import("../../src/cli/oclif/commands/app/share.ts"),
-      import("../../src/cli/oclif/commands/app/share/list.ts"),
-      import("../../src/cli/oclif/commands/app/share/stop.ts"),
+      import("../../src/cli/command-specs/app/share.ts"),
+      import("../../src/cli/command-specs/app/share/list.ts"),
+      import("../../src/cli/command-specs/app/share/stop.ts"),
     ]);
 
     const specs = modules.map((mod) => Object.values(mod).find((value) => isCommandSpec(value)));
