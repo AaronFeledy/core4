@@ -80,6 +80,7 @@ export * from "./commands/remote";
 export * from "@lando/engine/operations/share";
 export * from "./commands/share";
 export * from "./commands/poweroff";
+export * from "@lando/engine/operations/config";
 export * from "./commands/config";
 export * from "@lando/engine/operations/global-install";
 export * from "./commands/meta/global-install";

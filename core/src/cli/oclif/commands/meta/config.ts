@@ -5,9 +5,10 @@ import {
   type ConfigResult,
   ConfigResultSchema,
   config,
-  renderConfigResult,
-} from "../../../commands/config";
+} from "@lando/engine/operations/config";
 
+import { createDefaultEditorRunner } from "../../../../recipes/prompts/editor-command";
+import { renderConfigResult } from "../../../commands/config";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
@@ -35,6 +36,7 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
     path?: string;
     dryRun?: boolean;
     editor?: string;
+    editorRunner?: ConfigOptions["editorRunner"];
   } = {};
   if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
   if (typeof key === "string") opts.key = key;
@@ -43,7 +45,14 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
   if (format === "json" || format === "yaml" || format === "table") opts.format = format;
   if (typeof path === "string") opts.path = path;
   if (i.flags?.["dry-run"] === true) opts.dryRun = true;
-  if (typeof editor === "string") opts.editor = editor;
+  if (typeof editor === "string") {
+    opts.editor = editor;
+    opts.editorRunner = createDefaultEditorRunner({
+      env: { ...process.env, EDITOR: editor, VISUAL: editor },
+    });
+  } else {
+    opts.editorRunner = createDefaultEditorRunner();
+  }
   return opts as ConfigOptions;
 };
 

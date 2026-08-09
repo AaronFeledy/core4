@@ -4,11 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { type EditorRunner, config } from "@lando/engine/operations/config";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
-
-import { config } from "../../../src/cli/commands/config.ts";
-import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
 
 let dir = "";
 const configPath = (): string => join(dir, "config.yml");
