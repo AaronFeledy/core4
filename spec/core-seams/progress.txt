@@ -23,6 +23,7 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Suites listed in `NIGHTLY_TIER_TESTS` (`scripts/test-shards.ts`) never run in PR shards, so their drift assertions can go red on `main` unnoticed; run them by path after touching the generator they guard.
 - Derive boundary-inventory completeness from `BOUNDARY_RULE_IDS`; a maintained table without a registry-backed test can silently omit a new rule and its seam justification.
 - Keep a retired boundary gate name as a package-script alias to its structural owner when callers may still use it, but remove the duplicate CI execution and record the alias in the boundary inventory.
+- Keep library-safe base composition free of optional bundled modules; install the full static bundle behind an explicit entry and have generated runtime layers consume one composition accessor for plugin and template inputs.
 
 ## 2026-08-06 01:03 CDT - US-535
 - Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
@@ -300,4 +301,65 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Verification: typecheck and lint/deprecations passed; 80 focused and adjacent tests passed, including the focused generated-workflow assertions; package-DAG and the stable alias passed, generated-output passed, and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings. The nightly codegen suite passed 15 of 16 tests with its previously recorded `15`-versus-`19` baseline failure unchanged.
 - **Learnings for future iterations:**
   - Characterize the structural package rule against every edge form before deleting a duplicate scanner, then keep only a stable command alias for external callers rather than a second implementation or CI run.
+---
+
+## 2026-08-08 07:38 CDT - US-547
+- Made seam-first justification part of the canonical boundary-rule registration contract, derived rule ids and dispatch entries from that registration table, and locked every live rule to the existing boundary inventory.
+- Established the durable maintainer and specification bar: propose a package seam first, and register a scanner only with a written reason the seam is impossible or premature.
+- Verification: typecheck and lint/deprecations passed; 32 focused and adjacent boundary tests passed with positive counts; the registry list surface and all boundary rules passed except the pre-existing `.omo/**` spec-reference findings; high-rigor review approved without blockers.
+- **Learnings for future iterations:**
+  - Keep boundary justifications in the typed canonical registration and assert exact parity with the human inventory so a new scanner cannot bypass either review surface.
+---
+
+## 2026-08-08 08:17 CDT - US-547 Review
+- Rejected duplicate boundary-rule ids before registry indexing so a contributor cannot overwrite dispatch by duplicating both registration and inventory rows; aligned the boundary-addition recipe with the canonical registration and seam-first inventory requirement.
+- Review notes (deferred/rejected): rejected broader registry and inventory refactors because the focused invariant closes the confirmed overwrite path; the unchanged `.omo/**` spec-reference findings remain outside this story.
+- Guide-Coverage-Skip: US-547 changes internal maintainer policy and boundary-registry integrity only; no user-visible guide surface changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 27 focused and adjacent boundary tests, registry listing, and all in-scope boundary rules passed; initial Bugbot and all five foreground review-work lanes passed.
+- **Learnings for future iterations:**
+  - Validate uniqueness before deriving a dispatch map from a canonical registration table; parity checks alone can collapse duplicate keys on both sides.
+---
+
+## 2026-08-08 11:49 CDT - US-549
+- Made the default library import plugin-free while preserving the complete bundled composition behind an explicit opt-in entry; bundled discovery now fails early with actionable guidance when the opt-in is absent.
+- Kept compiled CLI composition lazy and complete, moved generated runtime consumers onto shared composition accessors, and made the published-package smoke prove both plugin-free root import and post-install opt-in loading.
+- Verification: typecheck and lint/deprecations passed; 38 focused tests, 51 adjacent runtime/plugin/release tests, and 3 generated embedding-guide tests passed; package-DAG, import-cycle, generated-output, renderer, guide, transcript, schema, compiled build, packed-import, and sandbox CLI checks passed. The nightly codegen suite retained its previously recorded 15-versus-19 baseline failure with its other 15 tests passing.
+- **Learnings for future iterations:**
+  - Keep test preload on the bundled composition so repository suites preserve CLI-like defaults; use preload-free subprocesses to prove the library root and packed consumer behavior.
+  - Landofile template modules must switch with bundled plugin modules through the same composition boundary or library and CLI behavior diverge.
+---
+
+## 2026-08-08 14:05 CDT - Babysit
+- PR: #720 https://github.com/AaronFeledy/core4/pull/720
+- CI outcome: pass
+- Review feedback: fixed (packed-core fixture install path; engine-closure allowlist for `runtime/bundled-plugins.ts`)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-08 16:39 CDT - US-550
+- Reconciled the stable library App handle with its engine operations: bound-target entry points now remove dead Landofile/planning failure paths while preserving real transitive requirements, and the SDK applies its module-private opaque brand through an assertion-free constructor seam instead of an `unknown` double cast.
+- Kept `ShareAppError` and `RemoteSyncError` canonical in the SDK and re-exported the complete share method family from the core root. The intentional type-only contract changes are documented: info, exec, and tooling expose reachable Compose/load-expression failures, while share exposes tunnel-registry persistence and decode failures; lifecycle, logs, pull, and push unions remain narrow.
+- Production-path coverage proves outside-root load and rejected Compose-key failures through a resolved handle, and a real TypeScript consumer resolves the core-root error aliases. Manual library QA returned the resolved `embedded-app`/`cache` result through `openLandoRuntime` and `runtime.app()`.
+- Verification: typecheck and lint/deprecations passed; 68 focused and adjacent tests passed with positive counts; schema compatibility, package-DAG, import-cycle, public transcripts, codegen drift, diagnostics, and diff checks passed.
+- **Learnings for future iterations:**
+  - A cross-package implementation of a module-private unique-symbol contract needs one typed constructor seam in the owning module; keep the symbol private and make the applicator assertion-free so the engine cannot bypass the public shape.
+  - Removing a bound operation's dead resolution branch can narrow errors without removing services needed transitively; app start still needs `AppPlanner` for global-service auto-start even when the user-app plan is already captured.
+---
+
+## 2026-08-08 17:37 CDT - US-550 Review
+- Preserved the SDK-private opaque App brand by removing the public constructor seam and retaining one narrow checked brand assertion after the full implementation satisfies the public shape; fixed the bound-target logs adapter so `follow: true` reaches the provider unchanged.
+- Review notes (deferred/rejected): rejected exporting `brandApp`/`AppImplementation` because it made arbitrary complete implementations constructible as `App` and added an unnecessary public SDK surface; the five review-work lanes never acquired execution slots, so their unavailable verdicts were replaced by foreground PRD, diff, diagnostics, contract, and behavior review.
+- Guide-Coverage-Skip: US-550 reconciles library type contracts and an internal bound-target option adapter without changing documented guide workflows.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, schema compatibility, package-DAG, import-cycle, public transcripts, diagnostics, and 55 focused and adjacent tests passed; initial Bugbot's logs-follow finding was fixed.
+- **Learnings for future iterations:**
+  - A cross-package opaque brand can remain private with one narrow intersection assertion after `satisfies` checks the complete public shape; exporting a general applicator changes who may manufacture the branded handle.
+---
+
+## 2026-08-08 19:18 CDT - US-548
+- Closed the core-seams wave with every story passing and moved the scratch-init engine-port binding from the CLI directory into the core runtime composition tier; the closure suite now enforces both zero engine-to-shell edges and zero app/services-to-CLI edges without adding another boundary scanner.
+- Recorded wave outcomes: scanner LOC fell from 3,431 to 3,379 (-52) at the thinning checkpoint, while core source fell from 79,572 to 50,250 TypeScript lines (-29,322) at the engine extraction checkpoint; the final closure repair moved the seven-line adapter without changing runtime behavior.
+- Verification: codegen drift, typecheck, lint/deprecations, clean-worktree full boundary suite, package-DAG, generated output, guide coverage, schema compatibility, and public transcripts passed; 163 library, 32 plugin-abstraction, 52 scratch/bootstrap, 15 compiled-build static, and 5 engine-closure tests passed with positive counts. The Linux x64 binary compiled and relocated help passed with empty stderr; OpenTUI startup/first-output p95 were 1.6/1.2 ms against 50 ms budgets, and tooling warm p95 was 189.6 ms against the 1,125 ms regression budget.
+- **Learnings for future iterations:**
+  - Bind an engine port to a shell-owned implementation in the core runtime composition tier, not from an app shim; lock direct app/services-to-CLI edges in the existing closure suite instead of regrowing the boundary-scanner catalog.
 ---
