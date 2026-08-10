@@ -32,21 +32,20 @@ Extract `ManagedFileService` from `@lando/engine` into a private `@lando/managed
 - [ ] Package scaffolded mirroring `@lando/state-store` (private, exports `.` / `service` / `marker` / `codecs`, deps: sdk, paths, state-store, redaction, effect).
 - [ ] `engine/src/managed-file/{service,marker,codecs}.ts` moved into `managed-file/src/`; `engine/src/managed-file/` gone.
 - [ ] `resolveUserDataRoot` import replaced with `resolveLandoRoots().userDataRoot` from `@lando/paths` (exact existing delegation; zero behavior change).
+- [ ] To keep root typecheck green at the source-move boundary, repoint the root-typechecked production seams in this story: `scripts/bootstrap-layer-renderers.ts` plus the regenerated minimal layer, `core/src/cli/commands/init.ts`, `core/src/testing/managed-file.ts`, and the core package dependency. Test-only consumer migration and the final import sweep remain US-553.
 - [ ] Root workspaces + root/core tsconfig **references** updated; **no** engine/tsconfig or engine/package.json dependency on `@lando/managed-file`.
 - [ ] `scripts/prepare-npm-dev-packages.ts` lists the package **before** engine; `scripts/test-shards.ts` INCLUDE_GLOBS includes `managed-file/test/**/*.test.ts`; `engine/test/engine-closure.test.ts` no longer lists `managed-file` under runtime brain directories.
 - [ ] `bun install` run; package typecheck green.
 - [ ] Tests pass; typecheck passes; lint passes
 
-### US-553: Repoint consumers and bootstrap-layer generator
+### US-553: Finish managed-file consumer migration and sweep
 
-**Description:** As a maintainer, every real importer of `@lando/engine/managed-file/*` moves to `@lando/managed-file/*`, and generated bootstrap layers are regenerated from the generator — never hand-edited.
+**Description:** As a maintainer, the remaining test-only `@lando/engine/managed-file/*` consumers move to `@lando/managed-file/*`, and the completed migration is proven clean.
 
 **Acceptance Criteria:**
 
-- [ ] Generator `scripts/bootstrap-layer-renderers.ts` updated; `bun run codegen:bootstrap-layers` regenerates layers (minimal imports `@lando/managed-file/service`).
-- [ ] Verified importers updated: `core/src/cli/commands/init.ts`, `core/src/testing/managed-file.ts`, core managed-file unit/library/contract tests. No phantom files invented.
+- [ ] Core managed-file unit, library, and contract tests updated to import `@lando/managed-file`; no phantom files invented.
 - [ ] `grep` for `engine/managed-file` under core/engine/plugins/scripts returns nothing (excluding `.local/`).
-- [ ] Core package.json depends on `@lando/managed-file` if it lists workspace deps explicitly.
 - [ ] Focused managed-file tests pass with positive counts; typecheck green.
 - [ ] Tests pass; typecheck passes; lint passes
 
