@@ -103,7 +103,7 @@ If a page is advanced, say so up top in one line, then proceed.
 | User how-to / walkthrough (± CI proof) | `docs/guides/<area>/<id>.mdx` |
 | Canonical recipe walkthrough (+ scaffold README) | `recipes/<id>/README.mdx` |
 | Flags, schemas, inventories | `docs/reference/**` (or generated reference) |
-| Guide machinery / planning | `spec/17-executable-tutorials.md` (not user-facing) |
+| Guide machinery / planning | Keep durable rules in this skill; do not put user docs only in planning notes |
 
 Guides are task-oriented and opinionated. Reference is inventory-oriented and dry.
 
@@ -358,7 +358,7 @@ paradigm, synergy, next-generation, revolutionary, filler "simply/just/easily", 
 - Guide with only a `<Guide>` tree and no `#` title/intro
 - Restoring Variable scenarios "for coverage" (always-green empty tests)
 - Hand-editing `dist/transcripts/**` or `test/scenarios/generated/**`
-- User docs that exist only under `spec/**`
+- User docs that exist only in deletable planning notes
 
 ---
 
@@ -405,6 +405,6 @@ Also run any root `AGENTS.md` gate you touched. If static tests string-match gui
 > lando php -v
 > ```
 
-## Spec pointer
+## Authority
 
-Planning detail for the guide engine lives in `spec/17-executable-tutorials.md` (§19). Durable authoring rules live **here**.
+This skill is the durable authoring contract for docs in this monorepo. Planning notes may be deleted; do not leave user-facing rules only in planning material.
