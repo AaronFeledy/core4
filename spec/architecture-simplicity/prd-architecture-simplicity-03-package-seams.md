@@ -68,7 +68,7 @@ Promote the most important ownership boundaries from AST lint rules into real pr
 **Description:** As a planner, network/managed-file and further god-package splits are explicitly deferred post-wave.
 
 **Acceptance Criteria:**
-- [ ] ROADMAP or PRD-03 Non-Goals lists deferred extractions.
+- [x] ROADMAP or PRD-03 Non-Goals lists deferred extractions. **Follow-up:** managed-file + planner/update decomposition authorized by `spec/scanner-retirement/` (US-551+); remaining deferrals (network package, data-mover package, etc.) stay deferred.
 - [ ] Tests pass; typecheck passes; lint passes
 
 ## Functional Requirements
@@ -79,7 +79,7 @@ Promote the most important ownership boundaries from AST lint rules into real pr
 ## Non-Goals
 
 - Public runtime vs CLI package split.
-- Extracting network, managed-file, data-mover, or planner packages in this wave.
+- Extracting network, managed-file, data-mover, or planner packages in this wave. ~~managed-file / in-engine planner module splits deferred post-wave.~~ **Superseded for managed-file package + planner/update module decomposition by `spec/scanner-retirement/`.**
 - Deleting the boundary substrate engine.
 
 ## Technical Considerations
