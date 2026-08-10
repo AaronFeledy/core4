@@ -15,6 +15,7 @@ export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "engine/src",
   "http-client/src",
   "landofile/src",
+  "managed-file/src",
   "paths/src",
   "redaction/src",
   "state-store/src",
