@@ -42,12 +42,11 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
+import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLock } from "@lando/state-store/lock";
 import { makeStateStore } from "@lando/state-store/service";
-import { resolveUserDataRoot } from "../config/roots.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   canCarryFileMarker,
@@ -993,7 +992,7 @@ export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.eff
   Effect.gen(function* () {
     const backend = yield* makeDiskBackend({
       defaultBase: () => process.cwd(),
-      ledgerRoot: () => resolveUserDataRoot(),
+      ledgerRoot: () => resolveLandoRoots().userDataRoot,
     });
     const eventService = yield* Effect.serviceOption(EventService);
     const redaction = yield* Effect.serviceOption(RedactionService);

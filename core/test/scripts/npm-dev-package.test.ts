@@ -34,6 +34,17 @@ describe("npm dev package preparation", () => {
     );
   });
 
+  test("includes @lando/managed-file before its engine and core dependents", () => {
+    expect(releasePackageWorkspaces).toContain("managed-file");
+    expect(releasePackageNames).toContain("@lando/managed-file");
+    expect(releasePackageWorkspaces.indexOf("managed-file")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("engine"),
+    );
+    expect(releasePackageNames.indexOf("@lando/managed-file")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/engine"),
+    );
+  });
+
   test("publishes every runtime workspace dependency before its dependent release package", async () => {
     const workspaceByName = new Map(
       releasePackageNames.map((name, index) => [name, releasePackageWorkspaces[index] ?? ""]),
