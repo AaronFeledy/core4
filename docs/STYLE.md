@@ -214,6 +214,19 @@ Lead with what the user sees (error text, bad behavior), then the fix, then opti
 
 Executable guide MDX in this repo may be scenario-driven. Prose around scenarios should still follow this style: short, plain, outcome-first. Don't let scenario machinery leak jargon into user-facing sentences.
 
+### Executable guides are Markdown first
+
+An executable guide is a Markdown document that happens to contain a small executable core — not a component tree that happens to contain words. Rules:
+
+- **Write documentation as prose.** Headings, paragraphs, lists, and fenced code blocks carry the guide's meaning. Someone reading the raw MDX should be able to follow the guide top to bottom.
+- **Components are for execution only.** `<Run>`, `<Verify>`, `<Cleanup>`, and friends wrap the commands the harness actually runs. If the harness doesn't run it, it isn't a component.
+- **Never pack sentences into attributes.** `display="…"`, `reason="…"`, and `value="…"` are machine hints, not paragraphs. If you're writing a clause with a verb in an attribute, stop and write a paragraph instead.
+- **A `<Variable>` is a binding, not a bullet point.** Declare one only when a `{{name}}` interpolation consumes it. Connection details, defaults, and command references are prose with inline code or a fenced block.
+- **Commands you don't execute are fenced code blocks.** Illustrative commands (`lando info --json`, `lando psql`) go in ordinary ```sh fences in prose, outside any `<Scenario>`. Inside a scenario, every command goes through `<Run>`.
+- **A scenario must do something.** `<Scenario render={false}>` exists for invisible regression coverage that runs and asserts. Documentation-only "scenarios" made of `<Variable>` lists are banned; write sections.
+
+Litmus test: strip every JSX tag from the file. What remains should still read as a coherent, slightly terse guide. If what remains is a title and silence, the guide is written in the wrong layer.
+
 ## Callouts
 
 Use callouts sparingly.

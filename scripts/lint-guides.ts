@@ -189,17 +189,20 @@ const lintRawShellFences = (
 ): void => {
   if (guide === undefined) return;
   walkAllNodes(guide, (node) => {
-    if (node.type !== "code") return;
-    const lang = typeof node.lang === "string" ? node.lang.toLowerCase() : undefined;
-    if (lang === undefined || !SHELL_FENCE_LANGS.has(lang)) return;
-    diagnostics.push(
-      diagnostic(
-        sourcePath,
-        node,
-        "guide.shell-fence",
-        `Raw fenced \`${node.lang}\` code block is not allowed inside <Guide>; use <Run> or <Inline>.`,
-      ),
-    );
+    if (node.type !== "mdxJsxFlowElement" || node.name !== "Scenario") return;
+    walkAllNodes(node, (inner) => {
+      if (inner.type !== "code") return;
+      const lang = typeof inner.lang === "string" ? inner.lang.toLowerCase() : undefined;
+      if (lang === undefined || !SHELL_FENCE_LANGS.has(lang)) return;
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          inner,
+          "guide.shell-fence",
+          `Raw fenced \`${inner.lang}\` code block is not allowed inside <Scenario>; use <Run> or <Inline>.`,
+        ),
+      );
+    });
   });
 };
 
