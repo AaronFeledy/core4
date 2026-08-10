@@ -1,0 +1,37 @@
+Branch: docs/scanner-retirement-prd
+Source PRDs: spec/scanner-retirement/prd-scanner-retirement-*.md
+Spec source of truth: spec/02,03,13 (§2.7, §3.3–§3.4, §13.4, §13.8) + ROADMAP Phase 5 concurrent-meta supersession
+Execution checklist: .omo/plans/finish-scanner-retirement.md (dual high-accuracy review approved, digest 8386f05f4c1b3fd3532393f01c4774c80ca40ac3585f6a141e08d91c1ac35abf)
+Origin: architecture review (2026-08-09/10) — architecture-by-scanner after core-seams; engine still hosts managed-file + planner/update god-modules; codegen:check still conflates drift with typecheck/deprecations; ~14 boundary package.json aliases
+
+## Conventions
+
+- Story IDs US-551..US-560; priority order is execution order.
+- Internal/infra only — Guide Coverage None on every PRD.
+- Behavior-preserving moves only; no ManagedFile/update/planner semantics changes; no SDK churn.
+- Full-suite lock is always `bun test` (or explicit shard --run commands). Never `bun run test` alone.
+- US-559 alias collapse + CI regen + PR-tier test rewrites = one commit.
+- Engine MUST NOT depend on @lando/managed-file (SDK tag only); core is the Live consumer.
+- Keep per-rule scripts/check-*.ts files; collapse package.json aliases only.
+- Do not add typecheck to portable static-checks-platform.
+- Preserve runLaunchProbe as single ProcessRunner.run (no runProbe migration in US-556).
+- Do not touch unrelated dirty working-tree files from other waves.
+
+## Codebase Patterns (carry forward)
+
+- Package-local tests need scripts/test-shards.ts INCLUDE_GLOBS entry.
+- New release packages need prepare-npm-dev-packages.ts before engine.
+- Owner-excluding rules use scope.roots filter (redaction/network), not carveOuts.prefixes.
+- OWNER_EXCLUDING_RULES / CORE_AND_PLUGIN_RULE_IDS in workspace-roots.test.ts must move with the rule.
+- NIGHTLY_TIER_TESTS excludes some generator suites from PR shards; ci-workflow.test.ts is PR-tier and must be updated when CI steps change.
+- Mid-wave alias deletion without CI regen breaks main.
+
+## Status
+
+- US-551: **passes** — PRD set authored; normative contract applied to §2.7, §3.3–§3.4, §13.4/§13.8, ROADMAP Phase 5, architecture-simplicity deferral notes, core-seams follow-on pointer.
+- US-552..US-560: not started (implementation via `.omo/plans/finish-scanner-retirement.md`).
+
+## 2026-08-10 - US-551
+- Authorized `@lando/managed-file` private seam; engine `planner/` + `update/` module trees; drift-only `codegen:check`; `check:boundaries` package.json surface with stable rule IDs and retained shim scripts.
+- Superseded managed-file / gate-surface deferrals from architecture-simplicity and ROADMAP Phase 5 concurrent-meta note.
+- No product code changed; implementation stories remain US-552+.
