@@ -19,7 +19,7 @@ import {
 import { RecipeManifest } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { decodeOrFail } from "@lando/engine/schema/decode";
+import { decodeOrFail } from "@lando/landofile/decode";
 import { parseRecipeYaml } from "./parser";
 
 export { RecipeManifestService } from "@lando/sdk/services";

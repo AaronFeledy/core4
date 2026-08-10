@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 
 import { Clock, Duration, Effect, Option } from "effect";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type {
   DoctorCheck,
   DoctorProviderKind,

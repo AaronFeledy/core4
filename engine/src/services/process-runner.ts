@@ -11,7 +11,7 @@ import {
 } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import { RedactionService } from "@lando/redaction/service";
 
 const textEncoder = new TextEncoder();
 

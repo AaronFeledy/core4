@@ -5,7 +5,7 @@ import { RenderEvent } from "@lando/sdk/events";
 import type { PublishRender } from "@lando/sdk/plugins";
 import type { EventService } from "@lando/sdk/services";
 
-import type { RedactionServiceShape } from "../redaction/service.ts";
+import type { RedactionServiceShape } from "@lando/redaction/service";
 
 export const makePublishRender =
   (events: Context.Tag.Service<typeof EventService>, redaction: RedactionServiceShape): PublishRender =>

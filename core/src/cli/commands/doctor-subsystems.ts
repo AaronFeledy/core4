@@ -29,13 +29,13 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 
-import { HttpClientLive } from "@lando/engine/http-client/live";
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import { HealthcheckRunnerLive } from "@lando/engine/subsystems/healthcheck/live";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
 import { ProxyServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
 import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
 import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import { HttpClientLive } from "@lando/http-client/live";
 import { renderSolution } from "./doctor";
 import {
   type CertsDoctorStatus,

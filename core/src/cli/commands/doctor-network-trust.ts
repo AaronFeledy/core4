@@ -3,7 +3,7 @@ import { Effect, Option } from "effect";
 import type { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";
 import type { SubsystemRecovery } from "./doctor-subsystem-checks";
 import { resolveSetupNetworkTrust } from "./setup-network-trust";

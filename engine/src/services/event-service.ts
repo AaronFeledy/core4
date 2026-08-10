@@ -7,7 +7,7 @@ import {
   type RedactionForProfileOptions,
   RedactionService,
   createStandaloneRedactor,
-} from "../redaction/service.ts";
+} from "@lando/redaction/service";
 import {
   decodeDeliverableEvent,
   eventError,

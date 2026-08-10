@@ -13,6 +13,8 @@ import { basename, dirname, join } from "node:path";
 
 import { Effect, Either, Layer, Schema } from "effect";
 
+import { DownloaderLive } from "@lando/http-client/downloader";
+import { HttpClientLive } from "@lando/http-client/live";
 import type { LandoCommandError } from "@lando/sdk/errors";
 import {
   type UpdateChannel,
@@ -23,8 +25,6 @@ import {
 import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
-import { DownloaderLive } from "../downloader/service";
-import { HttpClientLive } from "../http-client/live";
 import { ConfigServiceLive } from "../services/config";
 import { EventServiceLive } from "../services/event-service";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../telemetry/events";

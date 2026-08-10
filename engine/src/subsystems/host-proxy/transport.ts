@@ -4,7 +4,7 @@ import { Effect, type Scope } from "effect";
 import { type HostProxySocketStaleError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { EventService } from "@lando/sdk/services";
 
-import type { RedactionService } from "../../redaction/service.ts";
+import type { RedactionService } from "@lando/redaction/service";
 import { type HostProxyInFlightRequest, makeHostProxyRunLandoHandler } from "./transport-handler.ts";
 import { closeHostProxyServer, removeSessionState } from "./transport-lifecycle.ts";
 import { listenHostProxyServer } from "./transport-listener.ts";

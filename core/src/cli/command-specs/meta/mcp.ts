@@ -4,7 +4,7 @@ import { Flags } from "../../spec/metadata";
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/engine/redaction/service";
+import type { RedactionService } from "@lando/redaction/service";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../../../runtime/layer";

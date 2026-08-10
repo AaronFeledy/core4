@@ -4,8 +4,8 @@ import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import {
   type CliInvocationSnapshot,
   runCommandLifecycle,

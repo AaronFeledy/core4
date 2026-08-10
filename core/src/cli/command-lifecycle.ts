@@ -3,8 +3,8 @@ import { Cause, Clock, Effect, Exit, FiberRef, Option, Schema } from "effect";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/engine/redaction/service";
 import { EventServiceLive } from "@lando/engine/services/event-service";
+import { RedactionService } from "@lando/redaction/service";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";
 
 export interface CliInvocationSnapshot {

@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import type { RedactionService } from "@lando/engine/redaction/service";
+import type { RedactionService } from "@lando/redaction/service";
 import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
