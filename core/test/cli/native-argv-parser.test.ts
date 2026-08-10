@@ -1,6 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/command-specs/app/logs.ts";
+import { initOptionsFromInput } from "../../src/cli/command-specs/apps/init.ts";
+import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
+import { keepVolumesFromInput } from "../../src/cli/command-specs/apps/scratch/destroy.ts";
+import { pruneFromInput } from "../../src/cli/command-specs/apps/scratch/gc.ts";
+import { globalConfigFormatFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
+import { globalDestroyOptionsFromInput } from "../../src/cli/command-specs/meta/global/destroy.ts";
+import { globalInstallOptionsFromInput } from "../../src/cli/command-specs/meta/global/install.ts";
+import { globalStartOptionsFromInput } from "../../src/cli/command-specs/meta/global/start.ts";
+import {
+  globalStatusFormatFromInput,
+  globalStatusOptionsFromInput,
+} from "../../src/cli/command-specs/meta/global/status.ts";
+import { globalUninstallOptionsFromInput } from "../../src/cli/command-specs/meta/global/uninstall.ts";
+import { shellenvShellFromInput } from "../../src/cli/command-specs/meta/shellenv.ts";
+import { uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
 import {
   scratchIdFromInput,
   scratchListFormatFromInput,
@@ -8,22 +24,6 @@ import {
 } from "../../src/cli/commands/scratch.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import type { ResultFormat } from "../../src/cli/format-flags.ts";
-import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
-import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
-import { appsListPathFromInput } from "../../src/cli/oclif/commands/apps/list.ts";
-import { keepVolumesFromInput } from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
-import { pruneFromInput } from "../../src/cli/oclif/commands/apps/scratch/gc.ts";
-import { globalConfigFormatFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
-import { globalDestroyOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/destroy.ts";
-import { globalInstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/install.ts";
-import { globalStartOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/start.ts";
-import {
-  globalStatusFormatFromInput,
-  globalStatusOptionsFromInput,
-} from "../../src/cli/oclif/commands/meta/global/status.ts";
-import { globalUninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/uninstall.ts";
-import { shellenvShellFromInput } from "../../src/cli/oclif/commands/meta/shellenv.ts";
-import { uninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/uninstall.ts";
 import { compiledCommandInputFromArgv, normalizeCompiledCommandArgv } from "../../src/cli/run.ts";
 
 const compiledInput = (

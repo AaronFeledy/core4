@@ -8,9 +8,6 @@ import { LandofileShape, type LandofileShape as LandofileShapeType } from "@land
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
-import { parseLandofile } from "@lando/landofile/parser";
-import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 import {
   type ValueType,
   applySetMutation,
@@ -18,7 +15,10 @@ import {
   decodeIssues,
   emitConfigYaml,
   writeValidationErrorFromIssues,
-} from "../../config-write/write-core";
+} from "@lando/engine/config-write/write-core";
+import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
+import { parseLandofile } from "@lando/landofile/parser";
+import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 

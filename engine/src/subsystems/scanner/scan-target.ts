@@ -6,7 +6,7 @@ import type { AppId, BindAddress, PortNumber, PublishedEndpoint, ServiceName } f
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanEndpoint } from "@lando/sdk/services";
 
-import type { HttpClientShape } from "../../http-client/service.ts";
+import type { HttpClientShape } from "@lando/http-client/service";
 
 export const SCANNER_ID = "http-probe";
 

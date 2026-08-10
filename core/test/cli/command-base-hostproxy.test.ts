@@ -7,7 +7,7 @@ import {
   EmptyResultSchema,
   type LandoCommandSpec,
   validateCommandSpec,
-} from "../../src/cli/oclif/command-base.ts";
+} from "../../src/cli/spec/command-base.ts";
 
 describe("app:open command-base metadata", () => {
   test("app:open is a recognized implemented command id", () => {

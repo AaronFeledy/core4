@@ -2,22 +2,19 @@ import { describe, expect, test } from "bun:test";
 
 import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
 
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/oclif/generated/host-proxy-allowlist.ts";
 import {
   HOST_PROXY_ALLOWLIST_FORBIDDEN_IDS,
   assertHostProxyAllowlistSafe,
   computeHostProxyRunLandoAllowlist,
   isHostProxyAllowlistForbidden,
-} from "../../src/cli/oclif/host-proxy-allowlist.ts";
+} from "../../src/cli/allowlists/host-proxy.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_ALLOWLIST = ["app:open"];
 
-const liveSpecs = (): ReadonlyArray<LandoCommandSpec> =>
-  Object.values(compiledCommands)
-    .map((commandClass) => (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec)
-    .filter((spec): spec is LandoCommandSpec => spec !== undefined);
+const liveSpecs = (): ReadonlyArray<LandoCommandSpec> => builtInCommandEntries.map((entry) => entry.spec);
 
 describe("host-proxy allowlist forbidden-id guard", () => {
   test("flags every lifecycle command", () => {
@@ -48,7 +45,8 @@ describe("assertHostProxyAllowlistSafe", () => {
   const makeSpec = (
     id: string,
     hostProxyAllowed: boolean | undefined,
-  ): Pick<LandoCommandSpec, "id"> & { readonly hostProxyAllowed?: boolean } => ({ id, hostProxyAllowed });
+  ): Pick<LandoCommandSpec, "id"> & { readonly hostProxyAllowed?: boolean } =>
+    hostProxyAllowed === undefined ? { id } : { id, hostProxyAllowed };
 
   test("rejects a lifecycle command that self-allows", () => {
     expect(() => assertHostProxyAllowlistSafe(makeSpec("app:start", true))).toThrow(
@@ -78,7 +76,7 @@ describe("host-proxy runLando allowlist derivation", () => {
   });
 
   test("the generated cache matches the live derivation (no drift)", () => {
-    expect([...HOST_PROXY_RUNLANDO_ALLOWLIST]).toEqual(computeHostProxyRunLandoAllowlist(liveSpecs()));
+    expect([...HOST_PROXY_RUNLANDO_ALLOWLIST]).toEqual([...computeHostProxyRunLandoAllowlist(liveSpecs())]);
   });
 
   test("app:open actually declares hostProxyAllowed", () => {

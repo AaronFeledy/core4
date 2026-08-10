@@ -43,11 +43,11 @@ import {
 } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLock } from "@lando/state-store/lock";
 import { makeStateStore } from "@lando/state-store/service";
 import { resolveUserDataRoot } from "../config/roots.ts";
-import { RedactionService, createStandaloneRedactor } from "../redaction/service.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   canCarryFileMarker,

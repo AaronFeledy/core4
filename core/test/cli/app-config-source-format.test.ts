@@ -4,8 +4,8 @@ import { Schema } from "effect";
 import { type AppConfigResult, renderAppConfigResult } from "@lando/core/cli/operations";
 import { LandofileShape } from "@lando/sdk/schema";
 
+import { appConfigOptionsFromInput } from "../../src/cli/command-specs/app/config/index.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
-import { appConfigOptionsFromInput } from "../../src/cli/oclif/commands/app/config/index.ts";
 
 const landofile = Schema.decodeUnknownSync(LandofileShape)({
   name: "test-app-config",

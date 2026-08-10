@@ -7,9 +7,9 @@ import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors
 import { EventService } from "@lando/sdk/services";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
+import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { makeLandoPaths } from "@lando/paths";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
-import { validatePluginManifest } from "./plugin-add";
 import { pluginBuild } from "./plugin-build";
 import { type PluginBuildMixedTreeError, listOutputs, outputDirectoryExists } from "./plugin-build-files";
 import { type PackageJson, entriesFromExports, readPackageJson } from "./plugin-build-package";

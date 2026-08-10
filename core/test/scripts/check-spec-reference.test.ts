@@ -114,6 +114,38 @@ describe("spec reference boundary gate", () => {
     }
   });
 
+  test("does not report the unrelated core/src/cli/spec CLI directory", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/cli/run.ts", 'import { LandoCommandBase } from "./spec/command-base";\n');
+      await write(
+        root,
+        "core/src/cli/command-specs/app/start.ts",
+        'import type { Command } from "../../spec/metadata";\nexport type C = Command;\n',
+      );
+      await write(root, "core/package.json", '{ "oclif": { "target": "./src/cli/spec/hooks/init.ts" } }\n');
+      await write(root, "docs/cli.md", "The base class lives in core/src/cli/spec/command-base.ts.\n");
+
+      expect(await checkSpecReference({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports a relative citation that resolves into the specification tree", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "docs/a.md", "See [services](../spec/06-services.md).\n");
+
+      const result = await checkSpecReference({ root });
+
+      expect(result.ok).toBe(false);
+      expect(offenderPaths(root, result.offenders)).toEqual(["docs/a.md"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("never reports files inside the specification tree itself", async () => {
     const root = await makeFixtureRoot();
     try {

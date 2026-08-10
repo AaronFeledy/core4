@@ -6,7 +6,7 @@ import { ShellExecError } from "@lando/sdk/errors";
 import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 
 import { type OpenAppOptions, openForPlan, renderOpenAppResult } from "../../../src/cli/commands/open.ts";
 

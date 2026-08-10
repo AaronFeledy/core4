@@ -11,7 +11,7 @@ import type { AppRef, CommandResultEnvelope, HostProxyRunLandoRequest } from "@l
 import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService } from "../../redaction/service.ts";
+import { RedactionService } from "@lando/redaction/service";
 import { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
 import { filterHostProxyEnv } from "./shim.ts";
 

@@ -14,6 +14,10 @@ import type { ScratchAppService } from "@lando/sdk/services";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { RendererMode } from "./bug-report";
+import { initOptionsFromInput } from "./command-specs/apps/init";
+import { appsListPathFromInput } from "./command-specs/apps/list";
+import { keepVolumesFromInput } from "./command-specs/apps/scratch/destroy";
+import { pruneFromInput } from "./command-specs/apps/scratch/gc";
 import { initApp } from "./commands/init";
 import { listServices, renderAppsListResult } from "./commands/list";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff";
@@ -56,10 +60,6 @@ import {
   scratchRunRuntimeLayer,
   scratchRuntimeLayer,
 } from "./compiled-runtime";
-import { initOptionsFromInput } from "./oclif/commands/apps/init";
-import { appsListPathFromInput } from "./oclif/commands/apps/list";
-import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy";
-import { pruneFromInput } from "./oclif/commands/apps/scratch/gc";
 import type { RenderContext } from "./renderer-boundary";
 
 export const appsListPathFromArgv = (argv: ReadonlyArray<string>): string | undefined =>

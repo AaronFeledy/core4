@@ -21,16 +21,16 @@
  */
 import { Effect, Layer, Schema } from "effect";
 
-import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { buildCatalog, computeEffectiveAllowlist } from "../../mcp/catalog";
 import type { McpDispatchDeps, McpRunInput } from "../../mcp/dispatch";
 import { dispatchTool } from "../../mcp/dispatch";
 import type { McpCommandEntry } from "../../mcp/registry";
-import type { LandoCommandSpec } from "../oclif/command-base";
-import { MCP_DEFAULT_ALLOWLIST } from "../oclif/generated/mcp-allowlist";
-import { computeMcpDefaultAllowlist } from "../oclif/mcp-allowlist";
+import { computeMcpDefaultAllowlist } from "../allowlists/mcp";
+import { MCP_DEFAULT_ALLOWLIST } from "../generated/mcp-allowlist";
 import type { CommandResultOutcome } from "../result-encode";
+import type { LandoCommandSpec } from "../spec/command-base";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
@@ -95,7 +95,7 @@ interface McpDoctorSignals {
 const MCP_ALLOWLIST_STALE_SOLUTION: DoctorSolution = {
   kind: "manual",
   description:
-    "The committed MCP default allowlist is stale. Regenerate `core/src/cli/oclif/generated/mcp-allowlist.ts` from the compiled command index.",
+    "The committed MCP default allowlist is stale. Regenerate `core/src/cli/generated/mcp-allowlist.ts` from the compiled command index.",
   command: "bun run scripts/build-mcp-allowlist.ts",
 };
 

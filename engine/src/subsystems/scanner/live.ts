@@ -12,8 +12,8 @@ import {
   type UrlScannerShape,
 } from "@lando/sdk/services";
 
-import { HttpClient } from "../../http-client/service.ts";
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { HttpClient } from "@lando/http-client/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   SCANNER_ID,
   type ScanSourceEndpoint,

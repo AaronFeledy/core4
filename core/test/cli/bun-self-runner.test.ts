@@ -1,7 +1,7 @@
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 

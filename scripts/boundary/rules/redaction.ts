@@ -49,7 +49,7 @@ const isAdHocSecretRegex = (src: string): boolean => {
 export const redactionRule = {
   id: "redaction",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "redaction/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },

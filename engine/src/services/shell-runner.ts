@@ -12,7 +12,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import { RedactionService } from "@lando/redaction/service";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 

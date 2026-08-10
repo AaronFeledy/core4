@@ -12,7 +12,7 @@ import {
   type ShellReplInput,
 } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "../redaction/service.ts";
+import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import { DEFAULT_SHELL_HISTORY_LIMIT, appendShellHistory, readShellHistory } from "./host-shell-history.ts";
 import { runHostShellLine } from "./host-shell-line.ts";
 import { makeStatefulShellRedactor } from "./host-shell-redactor.ts";

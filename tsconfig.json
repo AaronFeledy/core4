@@ -18,6 +18,12 @@
       "path": "./landofile"
     },
     {
+      "path": "./http-client"
+    },
+    {
+      "path": "./redaction"
+    },
+    {
       "path": "./engine"
     },
     {

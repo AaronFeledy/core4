@@ -19,7 +19,8 @@ import {
 import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
 
-import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
+import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import {
   type DoctorReport,
@@ -28,7 +29,6 @@ import {
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
-import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 

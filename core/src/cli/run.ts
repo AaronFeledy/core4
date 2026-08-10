@@ -36,8 +36,8 @@ import { routeDynamicTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
-import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -117,6 +117,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
+  const passthroughHasPayload =
+    isBunOrX && dispatchArgv.slice(1).some((arg) => arg !== "--help" && arg !== "-h");
   const found: [string, CompiledCommand] | undefined =
     builtInCommand === undefined
       ? findCommand(argv[0] ?? "")
@@ -125,7 +127,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (found === undefined && !isReservedNamespaceHead(head) && (await routeDynamicTooling(argv))) return;
 
   if (
-    !isBunOrX &&
+    !passthroughHasPayload &&
     !scratchRunHasToolCommand &&
     (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h"))
   ) {

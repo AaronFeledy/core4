@@ -19,11 +19,11 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { makeHttpClientLive } from "@lando/engine/http-client/live";
-import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
-import type { HttpClient } from "@lando/engine/http-client/service";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { makeHttpClientLive } from "@lando/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import type { HttpClient } from "@lando/http-client/service";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { InteractionCancelledError, InteractionUnavailableError } from "@lando/sdk/errors";
@@ -34,20 +34,20 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
-import {
-  type ResolvedSetupNetworkTrust,
-  classifySetupNetworkFailure,
-  defaultSetupNetworkTrustProbe,
-} from "../../src/cli/commands/setup-network-trust.ts";
-import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
-import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
+import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
   SetupResultSchema,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
-} from "../../src/cli/oclif/commands/meta/setup.ts";
+} from "../../src/cli/command-specs/meta/setup.ts";
+import {
+  type ResolvedSetupNetworkTrust,
+  classifySetupNetworkFailure,
+  defaultSetupNetworkTrustProbe,
+} from "../../src/cli/commands/setup-network-trust.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const makeConfigService = (

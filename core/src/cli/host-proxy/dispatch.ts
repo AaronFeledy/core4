@@ -1,10 +1,10 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
-import { RedactionService } from "@lando/engine/redaction/service";
 import type {
   HostProxyRunLandoExecutorInput,
   HostProxyRunLandoResult,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
+import { RedactionService } from "@lando/redaction/service";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";

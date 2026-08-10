@@ -5,7 +5,8 @@ import { join } from "node:path";
 
 import { Layer } from "effect";
 
-import { renderUninstallResult, uninstall } from "../../src/cli/commands/uninstall.ts";
+import { uninstall } from "@lando/engine/operations/uninstall";
+import { renderUninstallResult } from "../../src/cli/commands/uninstall.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";

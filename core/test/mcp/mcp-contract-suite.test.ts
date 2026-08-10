@@ -24,12 +24,12 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
+import { assertMcpAllowlistSafe } from "../../src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
-import { assertMcpAllowlistSafe } from "../../src/cli/oclif/mcp-allowlist.ts";
+import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
 import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";

@@ -13,11 +13,11 @@ const BOOTSTRAP_MODULES = [
   },
   {
     content: "export const MCP_DEFAULT_ALLOWLIST: ReadonlyArray<string> = [];\n",
-    path: "core/src/cli/oclif/generated/mcp-allowlist.ts",
+    path: "core/src/cli/generated/mcp-allowlist.ts",
   },
   {
     content: "export const HOST_PROXY_RUNLANDO_ALLOWLIST: ReadonlyArray<string> = [];\n",
-    path: "core/src/cli/oclif/generated/host-proxy-allowlist.ts",
+    path: "core/src/cli/generated/host-proxy-allowlist.ts",
   },
   {
     content:

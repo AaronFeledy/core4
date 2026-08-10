@@ -4,7 +4,7 @@ import { join, relative, resolve } from "node:path";
 
 const cliRoot = resolve(import.meta.dirname, "../../src/cli");
 
-const CARVE_OUTS = new Set([resolve(cliRoot, "oclif/pre-renderer.ts")]);
+const CARVE_OUTS = new Set([resolve(cliRoot, "pre-renderer.ts")]);
 
 const DIRECT_WRITE = /\bconsole\.(log|error|warn|info|debug)\s*\(|\bprocess\.(stdout|stderr)\.write\s*\(/;
 

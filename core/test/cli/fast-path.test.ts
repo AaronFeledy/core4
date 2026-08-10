@@ -18,7 +18,6 @@ const nativeDispatcherProbe = resolve(
 
 const CANARY_POSITIVE_CASES = [
   { specifier: "effect", marker: "effect" },
-  { specifier: "@oclif/core", marker: "@oclif/core" },
   { specifier: "@lando/sdk", marker: "@lando/sdk" },
   { specifier: "@lando/renderer-lando", marker: "renderers" },
   { specifier: "@lando/provider-podman", marker: "plugins" },

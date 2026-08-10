@@ -17,10 +17,10 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
+import { RedactionService } from "@lando/redaction/service";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
-import { RedactionService } from "../redaction/service.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
 import { makePublishRender } from "./publish-render.ts";
 import { resolveNotifyConfig } from "./subscriber-config.ts";

@@ -38,7 +38,7 @@ export const rendererRule = {
     excludeTestFiles: true,
   },
   carveOuts: {
-    files: ["core/bin/lando.ts", "core/src/cli/oclif/pre-renderer.ts", "core/src/interaction/service.ts"],
+    files: ["core/bin/lando.ts"],
     prefixes: [],
   },
   passMessage: "Renderer boundary check passed.",

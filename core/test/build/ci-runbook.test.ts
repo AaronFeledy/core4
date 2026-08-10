@@ -201,7 +201,7 @@ describe("ci runbook", () => {
     expect(betaDecisions).toContain("windows-x64");
   });
 
-  test("keeps the Beta 1 OCLIF major decision synchronized with package metadata", async () => {
+  test("keeps the superseded Beta 1 OCLIF decision historical while package metadata is uncoupled", async () => {
     const [betaDecisions, corePackage] = await Promise.all([
       readText(betaDecisionsPath),
       readText(corePackagePath),
@@ -210,9 +210,9 @@ describe("ci runbook", () => {
 
     expect(parsedCorePackage.dependencies["@oclif/core"]).toBeUndefined();
     expect(parsedCorePackage.dependencies["@oclif/plugin-help"]).toBeUndefined();
-    expect(parsedCorePackage.devDependencies["@oclif/core"]).toBe("^4.11.2");
-    expect(parsedCorePackage.devDependencies["@oclif/plugin-help"]).toBe("^6.2.48");
-    expect(parsedCorePackage.devDependencies.oclif).toBe("^4.23.0");
+    expect(parsedCorePackage.devDependencies["@oclif/core"]).toBeUndefined();
+    expect(parsedCorePackage.devDependencies["@oclif/plugin-help"]).toBeUndefined();
+    expect(parsedCorePackage.devDependencies.oclif).toBeUndefined();
 
     expect(betaDecisions).toContain("OCLIF major lock decision");
     expect(betaDecisions).toContain("stay on OCLIF v4");

@@ -20,9 +20,9 @@ import type {
 } from "@lando/sdk/services";
 import { ProxyService } from "@lando/sdk/services";
 
+import type { RedactionService } from "@lando/redaction/service";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
-import type { RedactionService } from "../redaction/service.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 

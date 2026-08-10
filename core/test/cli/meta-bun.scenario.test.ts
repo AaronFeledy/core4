@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { Effect } from "effect";
 
 import { metaBun, metaX } from "../../src/cli/commands/bun.ts";
+
+const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
 
 describe("meta:bun command", () => {
   test("invokes the BunSelfRunner with the passed argv", async () => {
@@ -34,6 +37,25 @@ describe("meta:bun command", () => {
 });
 
 describe("meta:x command", () => {
+  test("renders native help instead of executing bunx when no package payload is present", async () => {
+    // Given / When
+    const subprocess = Bun.spawn([process.execPath, cliEntry, "meta:x", "--help"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      subprocess.exited,
+      new Response(subprocess.stdout).text(),
+      new Response(subprocess.stderr).text(),
+    ]);
+
+    // Then
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("USAGE");
+    expect(stdout).toContain("meta:x, x");
+    expect(stderr).toBe("");
+  });
+
   test("prefixes argv with `x <spec>` and prints the running banner", async () => {
     const seen: Array<{ cmd: ReadonlyArray<string> }> = [];
     const spawner = {

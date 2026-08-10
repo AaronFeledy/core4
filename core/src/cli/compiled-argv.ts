@@ -1,7 +1,7 @@
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
-import type { LandoCommandSpec } from "./oclif/command-base";
-import type { CommandClass } from "./oclif/metadata";
+import type { LandoCommandSpec } from "./spec/command-base";
+import type { CommandClass } from "./spec/metadata";
 
 export type CompiledCommand = CommandClass;
 

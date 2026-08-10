@@ -3,7 +3,7 @@ import { Cause, Effect } from "effect";
 
 import { ProviderId, type ProviderSetupPlan } from "@lando/sdk/schema";
 import type { InteractionServiceShape } from "@lando/sdk/services";
-import { authorizeProviderSetupPlan } from "../../src/cli/oclif/commands/meta/setup-provider-authorization.ts";
+import { authorizeProviderSetupPlan } from "../../src/cli/command-specs/meta/setup-provider-authorization.ts";
 
 const plan: ProviderSetupPlan = {
   providerId: ProviderId.make("lando"),

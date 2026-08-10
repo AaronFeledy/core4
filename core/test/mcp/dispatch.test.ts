@@ -6,8 +6,8 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";

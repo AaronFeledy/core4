@@ -6,10 +6,10 @@ import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 
-import type { ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
-import { fetchInitForNetwork } from "@lando/engine/http-client/network-trust";
-import type { HttpClientShape } from "@lando/engine/http-client/service";
-import { applyHttpStreamTimeout, applyHttpTimeout } from "@lando/engine/http-client/timeout";
+import type { ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import { fetchInitForNetwork } from "@lando/http-client/network-trust";
+import type { HttpClientShape } from "@lando/http-client/service";
+import { applyHttpStreamTimeout, applyHttpTimeout } from "@lando/http-client/timeout";
 
 const TEST_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],

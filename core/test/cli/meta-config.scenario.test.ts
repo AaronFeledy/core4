@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
+import { ConfigResultSchema, config } from "@lando/engine/operations/config";
 import { ConfigService } from "@lando/sdk/services";
 
-import { ConfigResultSchema, config, renderConfigResult } from "../../src/cli/commands/config.ts";
+import { renderConfigResult } from "../../src/cli/commands/config.ts";
 
 const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
 

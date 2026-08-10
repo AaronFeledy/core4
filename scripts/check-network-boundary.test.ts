@@ -99,10 +99,10 @@ describe("check-network-boundary", () => {
     expect(result.ok).toBe(true);
   });
 
-  test("allows the HttpClient adapter file", async () => {
-    await mkdir(join(root, "engine", "src", "http-client"), { recursive: true });
+  test("allows the owning @lando/http-client package", async () => {
+    await mkdir(join(root, "http-client", "src"), { recursive: true });
     await writeFile(
-      join(root, "engine", "src", "http-client", "live.ts"),
+      join(root, "http-client", "src", "live.ts"),
       `export const f = (fetchImpl: typeof fetch) => () => fetchImpl("https://a");\nexport const g = () => fetch("https://b");\n`,
     );
     const result = await checkNetworkBoundary({ root });

@@ -209,11 +209,11 @@ describe("@lando/core removed package entry points", () => {
   }
 
   test("deep file paths do not bypass the exports map", () => {
-    expect(() => Bun.resolveSync("@lando/core/src/cli/oclif/index.ts", repoRoot)).toThrow();
+    expect(() => Bun.resolveSync("@lando/core/src/cli/spec/command-base.ts", repoRoot)).toThrow();
   });
 
-  test("the legacy-named native metadata adapter remains available by source path", async () => {
-    const mod = await import("../../src/cli/oclif/index.ts");
+  test("the native command spec base remains available by source path", async () => {
+    const mod = await import("../../src/cli/spec/command-base.ts");
     expect(mod.LandoCommandBase).toBeDefined();
   });
 

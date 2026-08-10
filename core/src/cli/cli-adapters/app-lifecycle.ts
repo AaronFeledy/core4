@@ -24,6 +24,23 @@ import { startApp } from "@lando/engine/operations/start";
 import { stopApp } from "@lando/engine/operations/stop";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../../runtime/layer";
+import { appConfigOptionsFromInput } from "../command-specs/app/config";
+import { logsFollowFromInput, logsOptionsFromInput } from "../command-specs/app/logs";
+import {
+  remoteAddOptionsFromInput,
+  remoteEnvListOptionsFromInput,
+  remoteListOptionsFromInput,
+  remoteRemoveOptionsFromInput,
+  remoteSetupOptionsFromInput,
+  remoteSyncOptionsFromInput,
+  remoteTestOptionsFromInput,
+} from "../command-specs/app/remote/common";
+import {
+  shareListOptionsFromInput,
+  shareOptionsFromInput,
+  shareStopOptionsFromInput,
+} from "../command-specs/app/share/common";
+import { setupSpec } from "../command-specs/meta/setup";
 import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh";
 import { appConfig, renderAppConfigResult } from "../commands/app-config";
 import { renderConfigLintResult } from "../commands/app-config-lint";
@@ -74,23 +91,6 @@ import {
   runCompiledCommand,
   runWithProcessAbortSignal,
 } from "../compiled-runtime";
-import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index";
-import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs";
-import {
-  remoteAddOptionsFromInput,
-  remoteEnvListOptionsFromInput,
-  remoteListOptionsFromInput,
-  remoteRemoveOptionsFromInput,
-  remoteSetupOptionsFromInput,
-  remoteSyncOptionsFromInput,
-  remoteTestOptionsFromInput,
-} from "../oclif/commands/app/remote/common";
-import {
-  shareListOptionsFromInput,
-  shareOptionsFromInput,
-  shareStopOptionsFromInput,
-} from "../oclif/commands/app/share/common";
-import { setupSpec } from "../oclif/commands/meta/setup";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 import type { RendererIO } from "../renderer/io";
 

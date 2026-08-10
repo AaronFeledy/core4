@@ -45,11 +45,11 @@ import {
 } from "@lando/sdk/services";
 
 import type { UserAppResolution } from "@lando/landofile/app-resolution";
+import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
-import { decodeOrFail } from "../schema/decode.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";

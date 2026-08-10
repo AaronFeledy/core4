@@ -6,6 +6,7 @@ import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scop
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import type { LandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -54,7 +55,6 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import { RedactionService } from "../redaction/service.ts";
 import { providerImages } from "./generated/provider-images.ts";
 
 interface DataMoverEvents {

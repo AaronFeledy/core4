@@ -25,7 +25,11 @@ describe("renderer boundary lint gate", () => {
   test("passes when direct writes are confined to explicit carve-outs", async () => {
     const root = await makeFixtureRoot();
     try {
-      await write(root, "core/src/cli/oclif/pre-renderer.ts", "console.log('first paint');\n");
+      await write(
+        root,
+        "core/src/cli/pre-renderer.ts",
+        "export const paint = (stream) => stream.write('x');\n",
+      );
       await write(root, "core/bin/lando.ts", "process.stdout.write('banner');\n");
       await write(root, "core/src/cli/commands/ok.ts", "export const ok = true;\n");
 
@@ -59,9 +63,10 @@ describe("renderer boundary lint gate", () => {
     }
   });
 
-  test("carves out interaction service live-layer prompt IO", async () => {
+  test("scans former carve-outs whose output now routes through injected streams", async () => {
     const root = await makeFixtureRoot();
     try {
+      await write(root, "core/src/cli/pre-renderer.ts", "console.log('fallback');\n");
       await write(
         root,
         "core/src/interaction/service.ts",
@@ -69,7 +74,18 @@ describe("renderer boundary lint gate", () => {
       );
       await write(root, "core/src/cli/commands/ok.ts", "export const ok = true;\n");
 
-      expect(await checkRendererBoundary({ root })).toEqual({ ok: true, offenders: [] });
+      const result = await checkRendererBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/cli/pre-renderer.ts:console.log",
+        "core/src/interaction/service.ts:console.warn",
+        "core/src/interaction/service.ts:process.stdout.write",
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

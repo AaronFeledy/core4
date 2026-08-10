@@ -8,13 +8,13 @@ import { Effect, Layer } from "effect";
 import { FileSyncEngine } from "@lando/core/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
-import type { ResolvedSetupNetworkTrust } from "../../src/cli/commands/setup-network-trust.ts";
-import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
 import {
   type SetupReadinessRecorder,
   runFileSyncSetupStep,
   setupDeferredFileSyncPath,
-} from "../../src/cli/oclif/commands/meta/setup-steps.ts";
+} from "../../src/cli/command-specs/meta/setup-steps.ts";
+import type { ResolvedSetupNetworkTrust } from "../../src/cli/commands/setup-network-trust.ts";
+import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
 
 const network = {
   proxy: { noProxy: [], injectIntoServices: false },

@@ -12,7 +12,7 @@ import { Effect, Layer, Option } from "effect";
 import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import type { ResultFormat } from "./format-flags";
 import type { RendererMode } from "./renderer-selection";
 import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers";

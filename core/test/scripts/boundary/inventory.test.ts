@@ -11,6 +11,7 @@ import type { BoundaryRule } from "../../../../scripts/boundary/types.ts";
 
 const inventoryPath = join(import.meta.dirname, "../../../../scripts/boundary/README.md");
 const inventoryFile = Bun.file(inventoryPath);
+const repositoryInstructionsFile = Bun.file(join(import.meta.dirname, "../../../../AGENTS.md"));
 
 type InventoryRow = {
   readonly id: string;
@@ -60,6 +61,32 @@ const registrationJustifications = (): ReadonlyMap<string, string> =>
   );
 
 describe("boundary rule inventory", () => {
+  test("documents the scanner retirement ratchet in the boundary inventory", async () => {
+    // Given: the maintained boundary inventory.
+    const text = await inventoryFile.text();
+
+    // When / Then: the scanner-retirement policy has a stable review heading.
+    expect(text).toContain("## Scanner retirement ratchet");
+  });
+
+  test("documents the scanner-retirement ratchet in repository instructions", async () => {
+    // Given: the root repository instructions.
+    const text = await repositoryInstructionsFile.text();
+
+    // When / Then: the compact architecture policy names the ratchet explicitly.
+    expect(text).toContain("Scanner-retirement ratchet");
+  });
+
+  test("requires a non-empty seam justification for every boundary rule registration", () => {
+    // Given: every canonical boundary rule registration.
+    const registrationsWithoutJustification = BOUNDARY_RULE_REGISTRATIONS.filter(
+      ({ seamJustification }) => seamJustification.trim().length === 0,
+    );
+
+    // When / Then: no registration can omit its seam-impossibility argument.
+    expect(registrationsWithoutJustification.map(({ rule }) => rule.id)).toEqual([]);
+  });
+
   test("rejects duplicate boundary rule registrations before indexing", () => {
     // Given: two registrations claiming the same boundary rule id.
     const duplicateRule = {

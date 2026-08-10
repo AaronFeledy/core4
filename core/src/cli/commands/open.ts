@@ -14,8 +14,8 @@ import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } f
 import type { ShellRunner } from "@lando/sdk/services";
 
 import { publishedEndpointHost, publishedEndpointUrl } from "@lando/engine/operations/authority-url";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
+import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import type { RenderContext } from "../renderer-boundary";
 

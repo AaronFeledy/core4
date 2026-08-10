@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
 
-import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
 import {
   MCP_ALLOWLIST_FORBIDDEN_IDS,
   assertMcpAllowlistSafe,
   computeMcpDefaultAllowlist,
   isMcpAllowlistForbidden,
-} from "../../src/cli/oclif/mcp-allowlist.ts";
+} from "../../src/cli/allowlists/mcp.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
+import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
   "app:config:get",

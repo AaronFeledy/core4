@@ -20,9 +20,9 @@ import {
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
-import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const SECRET_VALUE = "supersecret-log-canary-9f3a";
 

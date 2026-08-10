@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
 import { RecipeSourceError } from "@lando/sdk/errors";
 
-import { httpJsonFetch } from "@lando/engine/http-client/json-fetch";
+import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import type { ResolvedRecipe } from "./source";
 import {
   type TarballRecipeExtractor,

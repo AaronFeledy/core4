@@ -6,8 +6,8 @@ import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/core/errors";
 import { EventService, ProcessRunner } from "@lando/core/services";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 

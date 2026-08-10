@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import { RedactionService } from "@lando/redaction/service";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
   type ArtifactBuildStep,

@@ -13,18 +13,18 @@ import {
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import {
-  RedactionService,
-  type RedactionServiceShape,
-  createStandaloneRedactor,
-} from "@lando/engine/redaction/service";
-import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
 import { runOpenForHostProxy } from "../../src/cli/host-proxy/dispatch.ts";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/oclif/generated/host-proxy-allowlist.ts";
 import { buildCommandResultEnvelope } from "../../src/cli/result-encode.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({

@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect } from "effect";
 
 import {
   type ConfigError,
@@ -12,11 +12,14 @@ import {
   PluginManifestError,
   RecipeSourceError,
 } from "@lando/sdk/errors";
-import { PluginManifest } from "@lando/sdk/schema";
+import type { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
-import { recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
+import {
+  type PluginAddResult,
+  finalizePluginInstall,
+  validatePluginManifest,
+} from "@lando/engine/operations/plugin-install";
 import { makeLandoPaths } from "@lando/paths";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
@@ -79,26 +82,6 @@ export interface PluginAddOptions {
   readonly trustStore?: PluginTrustStore;
 }
 
-export interface PluginAddResult {
-  readonly pluginName: string;
-  readonly pluginVersion: string;
-  readonly trustName: string;
-  readonly pluginsRoot: string;
-  readonly entry: string;
-  readonly trusted: boolean;
-  readonly trustSource: "flag" | "persistent" | "prompt" | "session" | "untrusted";
-}
-
-export const PluginAddResultSchema = Schema.Struct({
-  pluginName: Schema.String,
-  pluginVersion: Schema.String,
-  trustName: Schema.String,
-  pluginsRoot: Schema.String,
-  entry: Schema.String,
-  trusted: Schema.Boolean,
-  trustSource: Schema.Literal("flag", "persistent", "prompt", "session", "untrusted"),
-});
-
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
 
 const trustNonInteractiveError = (spec: string): InteractionRequiredError =>
@@ -153,67 +136,6 @@ const parsePackageName = (spec: string): string => {
   }
   const at = spec.indexOf("@");
   return at === -1 ? spec : spec.slice(0, at);
-};
-
-const decodePackageJson = (content: string, packageDir: string): PluginManifest => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch (cause) {
-    throw new PluginManifestError({
-      message: `package.json in ${packageDir} is not valid JSON.`,
-      issues: [(cause as Error).message],
-    });
-  }
-  const candidate = (parsed as { landoPlugin?: unknown })?.landoPlugin ?? parsed;
-  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate, { onExcessProperty: "error" });
-  if (Either.isLeft(decoded)) {
-    const nameField = (parsed as { name?: unknown })?.name;
-    const name = typeof nameField === "string" ? nameField : undefined;
-    throw new PluginManifestError({
-      message: `Plugin manifest validation failed${name === undefined ? "" : ` for ${name}`}.`,
-      ...(name === undefined ? {} : { pluginName: name }),
-      issues: [String(decoded.left)],
-    });
-  }
-  return decoded.right;
-};
-
-const verifyContainment = async (manifest: PluginManifest, packageDir: string): Promise<string> => {
-  const entryRel = manifest.entry ?? "index.js";
-  const entryAbs = resolve(packageDir, entryRel);
-  const rel = relative(packageDir, entryAbs);
-  if (rel.startsWith("..") || resolve(packageDir, rel) !== entryAbs) {
-    throw new PluginManifestError({
-      message: `Plugin ${manifest.name} declares an entry path that escapes its package directory.`,
-      pluginName: manifest.name,
-      issues: [`entry ${entryRel} resolves outside ${packageDir}`],
-    });
-  }
-  try {
-    const realRoot = await realpath(packageDir);
-    const realEntry = await realpath(entryAbs).catch(() => entryAbs);
-    const realRel = relative(realRoot, realEntry);
-    if (realRel.startsWith("..")) {
-      throw new PluginManifestError({
-        message: `Plugin ${manifest.name} entry resolves through symlink outside its package directory.`,
-        pluginName: manifest.name,
-        issues: [`realpath of entry escapes ${realRoot}`],
-      });
-    }
-  } catch (cause) {
-    if (cause instanceof PluginManifestError) throw cause;
-  }
-  return entryAbs;
-};
-
-export const validatePluginManifest = async (
-  packageDir: string,
-): Promise<{ readonly manifest: PluginManifest; readonly entry: string }> => {
-  const content = await readFile(join(packageDir, "package.json"), "utf8");
-  const manifest = decodePackageJson(content, packageDir);
-  const entry = await verifyContainment(manifest, packageDir);
-  return { manifest, entry };
 };
 
 const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> => {
@@ -517,11 +439,17 @@ export const pluginAdd = (
 
     yield* Effect.promise(async () => {
       try {
-        await recordInstalledPlugin(pluginsRoot, {
-          name: manifest.name,
-          version: manifest.version,
-          path: packageDir,
-        });
+        await Effect.runPromise(
+          finalizePluginInstall({
+            pluginsRoot,
+            entry: {
+              name: manifest.name,
+              version: manifest.version,
+              path: packageDir,
+            },
+            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+          }),
+        );
       } catch (cause) {
         if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
         if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
@@ -529,10 +457,6 @@ export const pluginAdd = (
         }
         throw cause;
       }
-    });
-
-    yield* invalidatePluginCommandCache({
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
 
     return {

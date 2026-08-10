@@ -1,3 +1,5 @@
+import { dirname, join, normalize } from "node:path/posix";
+
 import ts from "typescript";
 
 import { resolveConstString } from "../literals.ts";
@@ -13,8 +15,30 @@ const SPEC_ROOT = "spec";
 /** A section-sign citation such as `§1.2` or `spec §8.9.3`. */
 const SECTION_CITATION = /§\s*\d/u;
 
-/** A path into the specification tree, e.g. `spec/06-services.md` or `../spec/README.md`. */
-const SPEC_PATH = /(?<![\w-])spec\/[A-Za-z0-9_.-]/u;
+/**
+ * A path-shaped token whose last-but-one segment is `spec`, e.g.
+ * `spec/06-services.md`, `../spec/README.md`, or `../../src/cli/spec/metadata`.
+ * Matching alone proves nothing: `resolvesIntoSpecTree` decides whether the
+ * token actually points at the repository-root specification tree, so the
+ * unrelated `core/src/cli/spec/**` CLI directory is not mistaken for it.
+ */
+const SPEC_PATH_TOKEN =
+  /(?<![\w-])((?:\.{1,2}\/)*(?:[A-Za-z0-9_.-]+\/)*spec\/[A-Za-z0-9_.-][A-Za-z0-9_./-]*)/gu;
+
+/** True when `token`, read from `fileRelativePath`, lands inside the specification tree. */
+const resolvesIntoSpecTree = (token: string, fileRelativePath: string): boolean => {
+  const resolved = token.startsWith(".") ? join(dirname(fileRelativePath), token) : normalize(token);
+  return resolved === SPEC_ROOT || resolved.startsWith(`${SPEC_ROOT}/`);
+};
+
+/** True when any specification-tree path appears on `line`. */
+const citesSpecPath = (line: string, fileRelativePath: string): boolean => {
+  for (const match of line.matchAll(SPEC_PATH_TOKEN)) {
+    const token = match[1];
+    if (token !== undefined && resolvesIntoSpecTree(token, fileRelativePath)) return true;
+  }
+  return false;
+};
 
 /** The legacy `// SPEC: §10.2` comment banner convention. */
 const SPEC_BANNER = /\bSPEC:/u;
@@ -24,7 +48,6 @@ const SPEC_POINTER = /\bspec\b\s*[§#]/u;
 
 const TEXT_PATTERNS = [
   { pattern: SECTION_CITATION, detail: "section-sign citation" },
-  { pattern: SPEC_PATH, detail: "specification path reference" },
   { pattern: SPEC_BANNER, detail: "SPEC: comment banner" },
   { pattern: SPEC_POINTER, detail: "specification pointer" },
 ] as const;
@@ -34,8 +57,10 @@ const PATH_CALLEES = new Set(["resolve", "join", "readdir", "readFile", "file"])
 
 const AST_EXTENSIONS = [".ts", ".tsx"];
 
-const firstTextViolation = (line: string): string | undefined =>
-  TEXT_PATTERNS.find((candidate) => candidate.pattern.test(line))?.detail;
+const firstTextViolation = (line: string, fileRelativePath: string): string | undefined => {
+  if (citesSpecPath(line, fileRelativePath)) return "specification path reference";
+  return TEXT_PATTERNS.find((candidate) => candidate.pattern.test(line))?.detail;
+};
 
 const isPathCall = (node: ts.Node): boolean => {
   const call = node.parent;
@@ -51,7 +76,7 @@ const onProgram: NonNullable<BoundaryRule["onProgram"]> = async (context) => {
     const reported = new Set<number>();
 
     text.split("\n").forEach((line, index) => {
-      const detail = firstTextViolation(line);
+      const detail = firstTextViolation(line, file.relativePath);
       if (detail !== undefined) {
         reported.add(index + 1);
         context.report(file.relativePath, index + 1, detail);
@@ -66,7 +91,10 @@ const onProgram: NonNullable<BoundaryRule["onProgram"]> = async (context) => {
     const visit = (node: ts.Node): void => {
       if (ts.isExpression(node) && !ts.isStringLiteralLike(node)) {
         const resolved = resolveConstString(node, source);
-        if (resolved !== undefined && (SPEC_PATH.test(resolved) || resolved === SPEC_ROOT)) {
+        if (
+          resolved !== undefined &&
+          (citesSpecPath(resolved, file.relativePath) || resolved === SPEC_ROOT)
+        ) {
           const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
           if (!reported.has(line)) {
             reported.add(line);

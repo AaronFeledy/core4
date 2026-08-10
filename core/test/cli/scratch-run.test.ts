@@ -26,7 +26,6 @@ import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { DataMoverLive } from "@lando/engine/data-mover/service";
 import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { type RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { ScratchRegistryLive, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
 import { makeScratchAppServiceLive, readScratchLandofile } from "@lando/engine/scratch-app/service";
@@ -38,7 +37,9 @@ import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
+import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { StateStoreLive } from "@lando/state-store/service";
+import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
@@ -52,7 +53,6 @@ import {
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
-import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";

@@ -16,7 +16,7 @@ import {
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
-import { RedactionServiceLive } from "@lando/engine/redaction/service";
+import { RedactionServiceLive } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";

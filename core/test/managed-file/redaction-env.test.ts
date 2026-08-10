@@ -8,8 +8,8 @@ import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, ManagedFileService } from "@lando/sdk/services";
 
 import { ManagedFileServiceLive } from "@lando/engine/managed-file/service";
-import { RedactionServiceLive } from "@lando/engine/redaction/service";
 import { EventServiceLive } from "@lando/engine/services/event-service";
+import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
 const file = (base: ManagedFile["base"], owner: string): ManagedFile => ({

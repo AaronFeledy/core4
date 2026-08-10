@@ -7,6 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
 import {
+  ConfigResultSchema,
   config,
   invokeOperation,
   listServices,
@@ -20,7 +21,37 @@ import corePackage from "../../package.json";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(import.meta.dirname, "../..");
 
+describe("@lando/core/cli/operations update exports", () => {
+  test("exposes the self-update operation contract", async () => {
+    const operations = await import("@lando/core/cli/operations");
+
+    expect(operations.update).toBeFunction();
+    expect(operations.UpdateResultSchema).toBeDefined();
+    expect(operations.resolveUpdateManifestUrl).toBeFunction();
+    expect(operations.updateChannelForVersion).toBeFunction();
+    expect(operations.buildWindowsReplacementScript).toBeFunction();
+    expect(operations.scheduleWindowsReplacement).toBeFunction();
+    expect(operations.UpdateNetworkError).toBeFunction();
+    expect(operations.UpdateSignatureVerificationError).toBeFunction();
+    expect(operations.UpdateMinimumVersionError).toBeFunction();
+    expect(operations.UpdateDowngradeError).toBeFunction();
+    expect(operations.UpdateManifestReplayError).toBeFunction();
+    expect(operations.UpdateChecksumSignatureVerificationError).toBeFunction();
+    expect(operations.UpdateChecksumVerificationError).toBeFunction();
+    expect(operations.UpdateLaunchProbeError).toBeFunction();
+    expect(operations.UpdatePermissionError).toBeFunction();
+  });
+});
+
 describe("@lando/core/cli/operations package export", () => {
+  test("exposes the config operation and renderer contract", async () => {
+    const operations = await import("@lando/core/cli/operations");
+
+    expect(operations.config).toBe(config);
+    expect(operations.ConfigResultSchema).toBe(ConfigResultSchema);
+    expect(operations.renderConfigResult).toBe(renderConfigResult);
+  });
+
   test("resolves from the workspace package name", async () => {
     const operations = await import("@lando/core/cli/operations");
 

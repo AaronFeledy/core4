@@ -4,8 +4,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";

@@ -27,6 +27,16 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { getAtPath } from "@lando/engine/config-write/dot-path";
+import {
+  ConfigWriteResultFields,
+  type ValueType,
+  applySetMutation,
+  applyUnsetMutation,
+  decodeIssues,
+  emitConfigYaml,
+  writeValidationErrorFromIssues,
+} from "@lando/engine/config-write/write-core";
 import {
   findDiscoveredLandofilePath,
   loadLandofileLayers,
@@ -36,16 +46,6 @@ import { parseLandofile } from "@lando/landofile/parser";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
-import { getAtPath } from "../config-write/dot-path";
-import {
-  ConfigWriteResultFields,
-  type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
-  decodeIssues,
-  emitConfigYaml,
-  writeValidationErrorFromIssues,
-} from "../config-write/write-core";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 

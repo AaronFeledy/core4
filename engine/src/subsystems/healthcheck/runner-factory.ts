@@ -12,7 +12,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 type AttemptStatus =
   | { readonly _tag: "ok" }

@@ -7,11 +7,11 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { RedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import { versionSpec } from "../../src/cli/oclif/commands/meta/version.ts";
+import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
   McpRuntimeConfig,

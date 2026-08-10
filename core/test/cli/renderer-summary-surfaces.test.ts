@@ -1,15 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import type { InfoAppResult } from "@lando/engine/operations/info";
+import type { UninstallResult } from "@lando/engine/operations/uninstall";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
+import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
+import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report.ts";
 import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
-import { type UninstallResult, buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
-import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
-import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import { buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
 import { formatSummary } from "../../src/cli/renderer/summary.ts";
@@ -112,9 +114,9 @@ describe("scratch list summary", () => {
   const result: ReadonlyArray<ScratchSummary> = [
     {
       id: "scratch-node-1a2b3c",
-      app: { name: "scratch-node-1a2b3c", root: LONG_PATH },
+      app: { kind: "scratch", id: "scratch-node-1a2b3c", root: AbsolutePath.make(LONG_PATH) },
       source: { kind: "fork" },
-      mode: "none",
+      mode: "cwd",
       created: "2026-06-19T12:00:00.000Z",
       status: "attached",
     },

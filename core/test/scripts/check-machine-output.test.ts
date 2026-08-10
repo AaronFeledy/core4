@@ -74,7 +74,7 @@ describe("machine-output boundary lint gate", () => {
       );
       await write(
         root,
-        "core/src/cli/oclif/commands/app/info.ts",
+        "core/src/cli/command-specs/app/info.ts",
         'import { Schema } from "effect";\nexport const spec = {\n  id: "app:info",\n  summary: "Show app info",\n  namespace: "app" as const,\n  bootstrap: "app" as const,\n  resultSchema: Schema.Struct({ name: Schema.String }),\n  run: (input: unknown) => input,\n};\n',
       );
       await write(
@@ -137,26 +137,26 @@ describe("machine-output boundary lint gate", () => {
     try {
       await write(
         root,
-        "core/src/cli/oclif/commands/app/by-shape.ts",
+        "core/src/cli/command-specs/app/by-shape.ts",
         'export const spec = {\n  id: "app:shape",\n  summary: "Shape spec",\n  namespace: "app" as const,\n  bootstrap: "app" as const,\n  run: (input: unknown) => input,\n};\n',
       );
       await write(
         root,
-        "core/src/cli/oclif/commands/app/by-annotation.ts",
+        "core/src/cli/command-specs/app/by-annotation.ts",
         'import type { LandoCommandSpec } from "../../command-base.ts";\nexport const spec: LandoCommandSpec = {\n  id: "app:annotated",\n  summary: "Annotated spec",\n  namespace: "app",\n  bootstrap: "app",\n  run: (input) => input,\n} as never;\n',
       );
       await write(
         root,
-        "core/src/cli/oclif/commands/app/undefined-schema.ts",
+        "core/src/cli/command-specs/app/undefined-schema.ts",
         'export const spec = {\n  id: "app:undef",\n  summary: "Undefined schema",\n  namespace: "app" as const,\n  bootstrap: "app" as const,\n  resultSchema: undefined,\n  run: (input: unknown) => input,\n};\n',
       );
 
       const result = await checkMachineOutput({ root });
       expect(result.ok).toBe(false);
       expect(offenderStrings(root, result)).toEqual([
-        "core/src/cli/oclif/commands/app/by-annotation.ts:2:app:annotated (missing resultSchema)",
-        "core/src/cli/oclif/commands/app/by-shape.ts:1:app:shape (missing resultSchema)",
-        "core/src/cli/oclif/commands/app/undefined-schema.ts:1:app:undef (missing resultSchema)",
+        "core/src/cli/command-specs/app/by-annotation.ts:2:app:annotated (missing resultSchema)",
+        "core/src/cli/command-specs/app/by-shape.ts:1:app:shape (missing resultSchema)",
+        "core/src/cli/command-specs/app/undefined-schema.ts:1:app:undef (missing resultSchema)",
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });

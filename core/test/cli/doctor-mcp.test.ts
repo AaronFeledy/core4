@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import {
   DefaultMcpDoctorLayer,
   MCP_DOCTOR_CANARY_SECRET,
@@ -11,7 +11,7 @@ import {
   renderMcpDoctorResult,
   renderMcpDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor-mcp.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
+import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
 import { identityRedactor } from "../../src/cli/result-encode.ts";
 
 const runWithDefault = (): Promise<McpDoctorResult> =>

@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,

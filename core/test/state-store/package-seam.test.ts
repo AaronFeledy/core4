@@ -107,46 +107,4 @@ describe("StateStore package seam", () => {
     expect(error).toBeInstanceOf(StateStoreError);
     expect(error.reason).toBe("path");
   });
-
-  test("preserves legacy core module identities through package shims", async () => {
-    // Given dynamically imported package subpaths and their legacy core shims
-    const packageService: unknown = await import("@lando/state-store/service");
-    const packageCodec: unknown = await import("@lando/state-store/codec");
-    const packageLock: unknown = await import("@lando/state-store/lock");
-    const packagePaths: unknown = await import("@lando/state-store/paths");
-    const packageAtomic: unknown = await import("@lando/state-store/atomic");
-    const legacyService: unknown = await import("@lando/engine/state/service");
-    const legacyCodec: unknown = await import("@lando/engine/state/codec");
-    const legacyLock: unknown = await import("@lando/engine/state/lock");
-    const legacyPaths: unknown = await import("@lando/engine/state/paths");
-    const legacyAtomic: unknown = await import("@lando/engine/state-store/atomic");
-    const modulePairs = [
-      [legacyService, packageService],
-      [legacyCodec, packageCodec],
-      [legacyLock, packageLock],
-      [legacyPaths, packagePaths],
-      [legacyAtomic, packageAtomic],
-    ] as const;
-
-    // When each shim's runtime export surface and references are compared
-    const comparisons = modulePairs.map(([legacy, current]) => {
-      if (!isRuntimeModule(legacy) || !isRuntimeModule(current)) {
-        throw new TypeError("StateStore package and shim imports must be runtime modules");
-      }
-      const legacyKeys = Object.keys(legacy).sort();
-      const currentKeys = Object.keys(current).sort();
-      return {
-        currentKeys,
-        identities: legacyKeys.map((key) => Reflect.get(legacy, key) === Reflect.get(current, key)),
-        legacyKeys,
-      };
-    });
-
-    // Then no shim is empty and every export key and runtime reference is identical
-    for (const comparison of comparisons) {
-      expect(comparison.legacyKeys.length).toBeGreaterThan(0);
-      expect(comparison.legacyKeys).toEqual(comparison.currentKeys);
-      expect(comparison.identities).not.toContain(false);
-    }
-  });
 });
