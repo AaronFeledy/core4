@@ -1,6 +1,6 @@
 ---
 name: lando-write-docs
-description: Write and edit Lando v4 docs, executable guide MDX, recipe READMEs, and user-facing prose for this monorepo. Owns voice/style (formerly docs/STYLE.md) plus prose-first executable guides. Use for any docs/guides, recipe README.mdx, reference prose, INDEX coverage, guide fixtures, or doc wording changes.
+description: Write and edit Lando v4 docs, executable guide MDX, recipe READMEs, and user-facing prose for this monorepo. Owns voice/style plus prose-first executable guides for this monorepo. Use for any docs/guides, recipe README.mdx, reference prose, INDEX coverage, guide fixtures, or doc wording changes.
 ---
 
 # Lando write-docs
@@ -407,4 +407,4 @@ Also run any root `AGENTS.md` gate you touched. If static tests string-match gui
 
 ## Spec pointer
 
-Planning detail for the guide engine lives in `spec/17-executable-tutorials.md` (§19). Durable authoring rules live **here**; do not send agents to STYLE.md.
+Planning detail for the guide engine lives in `spec/17-executable-tutorials.md` (§19). Durable authoring rules live **here**.
