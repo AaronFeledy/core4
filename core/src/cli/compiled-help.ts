@@ -3,7 +3,7 @@ import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help";
 import { renderColdRootHelp } from "./cold-path-output";
 import { emitResultLine } from "./compiled-runtime";
-import { resolveTopLevelAliases } from "./oclif/command-spec";
+import { resolveTopLevelAliases } from "./spec/command-spec";
 
 export const printRootHelp = (): void => emitResultLine(renderColdRootHelp());
 

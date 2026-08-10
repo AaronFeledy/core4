@@ -1,8 +1,6 @@
 # Lando Docs Writing Style
 
-Guidance for humans and agents writing Lando 4 documentation.
-
-Lando 4 docs keep the Lando 3 brand voice, then tighten it: same personality, fewer words, less jargon.
+This is the writing context for Lando documentation. Read it before drafting or editing docs, guides, recipe READMEs, or other user-facing prose.
 
 ## Brand in one line
 
@@ -27,7 +25,7 @@ Write like a sharp teammate who has set this up a hundred times.
 | Honest about limits and sharp edges | Fake perfection or hype |
 | Confident recommendations | Endless hedging |
 
-Tone traits that match Lando:
+Tone traits:
 
 - Conversational, not corporate
 - Slightly irreverent toward unnecessary complexity
@@ -37,29 +35,27 @@ Tone traits that match Lando:
 
 Humor is seasoning, not the meal. One good line beats three bits.
 
-## Lando 4 differences from Lando 3
+## Defaults
 
-Keep the soul. Cut the bulk.
+1. **Be concise.** Prefer the shortest page that still gets someone unstuck.
+2. **Prefer plain language.** Introduce Lando terms only when needed.
+3. **Pay off fast.** Show a working snippet early. Explain after.
+4. **Stay on the path.** Link out instead of nesting every related concept inline.
+5. **Skip throat-clearing.** No long preambles, brand monologues, or "in this document we will..."
 
-1. **More concise.** Prefer the shortest page that still gets someone unstuck.
-2. **Less jargon.** Prefer plain words first; introduce Lando terms only when needed.
-3. **Faster payoff.** Show a working snippet early. Explain after.
-4. **Fewer tangents.** Link out instead of nesting every related concept inline.
-5. **Less throat-clearing.** Skip long preambles, brand monologues, and "in this document we will..."
+Get to the command or config sooner. Add color only where it helps.
 
-Lando 3 often warmed up with personality and multi-section setup. Lando 4 should get to the command or config sooner, then add color only where it helps.
-
-### Concision rules
+### Concision
 
 - One idea per section.
 - Prefer one solid example over four near-duplicates.
-- Delete throat-clearing: "It is important to note that", "As mentioned above", "In order to".
+- Delete filler: "It is important to note that", "As mentioned above", "In order to".
 - If a paragraph restates the heading, cut the paragraph.
-- Default max for a how-to body before examples: a few short paragraphs, not a essay.
+- Default max for a how-to body before examples: a few short paragraphs, not an essay.
 
-### Jargon rules
+### Jargon
 
-Allowed brand/product terms (use consistently, define once on first use in a page when non-obvious):
+Allowed product terms. Use them consistently. Define once on first use when non-obvious:
 
 - Landofile
 - app
@@ -70,7 +66,7 @@ Allowed brand/product terms (use consistently, define once on first use in a pag
 - proxy / routing
 - provider
 
-Avoid or translate on first use:
+Prefer plain wording:
 
 | Prefer | Instead of |
 | --- | --- |
@@ -177,7 +173,7 @@ Rules:
 6. **Use realistic names** (`my-app`, `web`, `db`) — not `foo`/`bar` unless truly generic.
 7. **Prefer repo fixtures/examples** when the docs system expects them.
 
-Escalation pattern (from Lando 3, still good when tightened):
+Escalation pattern:
 
 ```yaml
 # minimal
@@ -274,11 +270,11 @@ Before you merge a docs change:
 
 ## Tiny before/after
 
-**Before (Lando 3-ish, loose):**
+**Before:**
 
 > In order to leverage Lando's powerful tooling abstraction layer, you can define highly configurable command routing in your Landofile so that complex multi-service orchestration becomes a delightful developer experience.
 
-**After (Lando 4):**
+**After:**
 
 > Add tooling when you want a host command that runs in a service.
 >

@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `core/src/cli/oclif/generated/host-proxy-allowlist.ts` from every
+ * Regenerate `core/src/cli/generated/host-proxy-allowlist.ts` from every
  * `LandoCommandSpec` with `hostProxyAllowed: true`.
  *
  * Inputs:
  *   - `core/src/cli/built-in-command-registry.ts` (the canonical command index)
  *
  * Output:
- *   - `core/src/cli/oclif/generated/host-proxy-allowlist.ts` — plain literal
+ *   - `core/src/cli/generated/host-proxy-allowlist.ts` — plain literal
  *     data (no command/Effect imports) listing the canonical command ids the
  *     host-proxy `runLando` dispatcher will accept. Keeping it a literal-data
  *     module means a consumer never pulls the compiled CLI command graph into
@@ -18,12 +18,12 @@
  */
 import { resolve } from "node:path";
 
+import { computeHostProxyRunLandoAllowlist } from "../core/src/cli/allowlists/host-proxy.ts";
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
-import { computeHostProxyRunLandoAllowlist } from "../core/src/cli/oclif/host-proxy-allowlist.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "core/src/cli/oclif/generated/host-proxy-allowlist.ts");
+const OUTPUT = resolve(REPO_ROOT, "core/src/cli/generated/host-proxy-allowlist.ts");
 
 const HEADER = `/**
  * **GENERATED FILE** — do not edit by hand.

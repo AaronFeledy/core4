@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
+import { initOptionsFromInput } from "../../src/cli/command-specs/apps/init.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 describe("OCLIF init adapter", () => {

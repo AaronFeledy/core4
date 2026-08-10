@@ -59,34 +59,7 @@
     "semver": "^7.8.5"
   },
   "devDependencies": {
-    "@oclif/core": "^4.11.2",
-    "@oclif/plugin-help": "^6.2.48",
-    "@oclif/test": "^4.1.18",
-    "@types/semver": "^7.7.1",
-    "oclif": "^4.23.0"
-  },
-  "oclif": {
-    "bin": "lando",
-    "dirname": "lando",
-    "commands": {
-      "strategy": "explicit",
-      "target": "./src/cli/oclif/compiled-commands.ts"
-    },
-    "plugins": ["@oclif/plugin-help"],
-    "topicSeparator": " ",
-    "flexibleTaxonomy": true,
-    "additionalHelpFlags": ["-h"],
-    "additionalVersionFlags": ["-v"],
-    "hooks": {
-      "command_not_found": {
-        "target": "./src/cli/oclif/hooks/command_not_found.ts",
-        "identifier": "commandNotFoundHook"
-      },
-      "init": {
-        "target": "./src/cli/oclif/hooks/init.ts",
-        "identifier": "initHook"
-      }
-    }
+    "@types/semver": "^7.7.1"
   },
   "scripts": {
     "build": "bun run build:manifest && bun run build:host-proxy-shim && bun run build:log-file-helper && bun run build:compile",

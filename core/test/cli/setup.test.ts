@@ -34,20 +34,20 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
-import {
-  type ResolvedSetupNetworkTrust,
-  classifySetupNetworkFailure,
-  defaultSetupNetworkTrustProbe,
-} from "../../src/cli/commands/setup-network-trust.ts";
-import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
-import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
+import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
   SetupResultSchema,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
-} from "../../src/cli/oclif/commands/meta/setup.ts";
+} from "../../src/cli/command-specs/meta/setup.ts";
+import {
+  type ResolvedSetupNetworkTrust,
+  classifySetupNetworkFailure,
+  defaultSetupNetworkTrustProbe,
+} from "../../src/cli/commands/setup-network-trust.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const makeConfigService = (

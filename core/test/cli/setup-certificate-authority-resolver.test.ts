@@ -6,9 +6,9 @@ import { NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { runCaSetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
+import type { SetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
-import { runCaSetupStep } from "../../src/cli/oclif/commands/meta/setup-service-steps.ts";
-import type { SetupReadinessRecorder } from "../../src/cli/oclif/commands/meta/setup-steps.ts";
 
 const makeRecorder = () => {
   const steps: SetupReadinessStep[] = [];

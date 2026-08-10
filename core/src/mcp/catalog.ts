@@ -8,8 +8,8 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import type { LandoCommandSpec } from "../cli/oclif/command-base";
-import { isMcpAllowlistForbidden } from "../cli/oclif/mcp-allowlist";
+import { isMcpAllowlistForbidden } from "../cli/allowlists/mcp";
+import type { LandoCommandSpec } from "../cli/spec/command-base";
 import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
 export interface EffectiveAllowlistInput {

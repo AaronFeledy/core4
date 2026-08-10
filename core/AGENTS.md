@@ -41,8 +41,13 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 ## CLI dispatch (single native engine)
 
-Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCLIF-named files may remain in-tree as native metadata/adapters — **do not treat them as a second engine**; register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry).
+Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry). The CLI surface is split three ways by role:
 
+- `core/src/cli/commands/` — operation invocation plus the `render*` helpers for a command.
+- `core/src/cli/command-specs/` — the declarative CLI surface: `LandoCommandSpec` objects, flags/args/aliases, and `*OptionsFromInput` parsers.
+- `core/src/cli/spec/` — the spec machinery: `LandoCommandBase`, the spec type and its validation, the pre-command boundary, flag metadata primitives, and the bootstrap hooks.
+
+- `LandoCommandBase.runEffect`, `core/src/cli/spec/metadata.ts`'s `Command`/`runLegacyCommand`, and the hook entrypoints under `core/src/cli/spec/hooks/**` are not invoked by any shipping entry point. `core/src/cli/run.ts` resolves command classes only as metadata and dispatches operations through native adapters backed by `runCompiledCommand`. The classes survive solely as static metadata carriers (`landoSpec`, `bootstrap`, `flags`, `baseFlags`, `aliases`, `args`, and `strict`) read by `built-in-command-registry.ts` and `compiled-argv.ts`; some class modules still import hook helpers only for their dormant `run()` methods. Retiring the class layer in favour of plain spec records is a separate refactor; do not add new behavior to `runEffect`.
 - One command registry is the SoT for canonical ids, flags, bootstrap level, `run`, help metadata, and `resultSchema`. Implemented vs deferred ids must not be split across a second engine switch.
 - Source (`bun core/bin/lando.ts`) and compiled `$bunfs` entries share the same dispatcher. Faithful compiled reproduction runs the binary **outside** the repo tree.
 - Pre-command failures (pre-parse flag validation, missing/invalid bootstrap, runtime-layer construction) use `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })`: standard machine result envelope or text bug-report, non-zero exit, and **no** `cli-<id>-init`/`-run`/`-error` lifecycle events. Only resolved command execution attaches an invocation snapshot.
@@ -65,6 +70,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 - `core/src/cli/commands/<op>.ts` (or its namespace-specific equivalent) holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
 - Operations may publish events but must not couple to `Renderer` or `InteractionService` beyond event publication. Optional renderer output and CLI result passthrough belong in private CLI helpers such as `core/src/cli/renderer-output.ts`; engine operation modules never import the core shell.
 - `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.
+- `lando init` has no engine operation and stays in `core/src/cli/commands/init.ts`: its body pulls in the entire `core/src/recipes/**` domain (catalog, builtin registry, manifest service, git/npm/tarball/registry sources, post-init runtime, prompt answer parsing) plus `core/src/interaction/**` (16 core-only imports at `core/src/cli/commands/init.ts:27-46`), and engine may never import the core shell. Extracting init means relocating the recipes domain first; re-evaluate once that domain has its own package seam.
 
 ## Runtime layer service wiring
 

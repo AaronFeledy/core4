@@ -31,14 +31,14 @@ import {
 import { mcpServeStartupError } from "../../../mcp/stdio-limits";
 import { makeStdioMcpTransport } from "../../../mcp/stdio-transport";
 import { McpTransport } from "../../../mcp/transport";
+import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../allowlists/mcp";
 import type { RendererMode } from "../../bug-report";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
+import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { ResultFormat } from "../../format-flags";
-import type { LandoCommandSpec } from "../../oclif/command-base";
-import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index";
-import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist";
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../oclif/mcp-allowlist";
+import { MCP_DEFAULT_ALLOWLIST } from "../../generated/mcp-allowlist";
 import { runWithRendererHandling } from "../../renderer-boundary";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { renderRunToolingResult } from "../tooling";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
 

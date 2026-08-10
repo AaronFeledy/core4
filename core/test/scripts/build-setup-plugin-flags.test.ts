@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +9,6 @@ import type { ContributionRef } from "@lando/sdk/schema";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const expectedNativeOutput = resolve(repoRoot, "core/src/cli/generated/setup-plugin-flags.ts");
-const expectedLegacyOutput = resolve(repoRoot, "core/src/cli/oclif/generated/setup-plugin-flags.ts");
 const generatorPath = resolve(repoRoot, "scripts/build-setup-plugin-flags.ts");
 const fixtureFiles = [
   "package.json",
@@ -20,7 +19,6 @@ const fixtureFiles = [
 ] as const;
 type SetupPluginFlagsGenerator = {
   readonly contributionId: (entry: ContributionRef) => string;
-  readonly LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT: string;
   readonly SETUP_PLUGIN_FLAGS_OUTPUT: string;
 };
 const isSetupPluginFlagsGenerator = (value: unknown): value is SetupPluginFlagsGenerator =>
@@ -28,15 +26,13 @@ const isSetupPluginFlagsGenerator = (value: unknown): value is SetupPluginFlagsG
   value !== null &&
   "contributionId" in value &&
   typeof value.contributionId === "function" &&
-  "LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT" in value &&
-  typeof value.LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT === "string" &&
   "SETUP_PLUGIN_FLAGS_OUTPUT" in value &&
   typeof value.SETUP_PLUGIN_FLAGS_OUTPUT === "string";
 const importedGenerator: unknown = await import(pathToFileURL(generatorPath).href);
 if (!isSetupPluginFlagsGenerator(importedGenerator)) {
   throw new TypeError("setup plugin flag generator exports are incomplete");
 }
-const { contributionId, LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT, SETUP_PLUGIN_FLAGS_OUTPUT } = importedGenerator;
+const { contributionId, SETUP_PLUGIN_FLAGS_OUTPUT } = importedGenerator;
 
 describe("build-setup-plugin-flags contributionId", () => {
   test("passes through a plain provider id string", () => {
@@ -52,12 +48,11 @@ describe("build-setup-plugin-flags contributionId", () => {
     ).toBe("legacy-docker");
   });
 
-  test("exports native and legacy output paths", () => {
+  test("exports the native output path", () => {
     expect(SETUP_PLUGIN_FLAGS_OUTPUT).toBe(expectedNativeOutput);
-    expect(LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT).toBe(expectedLegacyOutput);
   });
 
-  test("writes native output and removes stale legacy output", async () => {
+  test("writes the native output", async () => {
     // Given
     const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-setup-plugin-flags-"));
     try {
@@ -72,9 +67,6 @@ describe("build-setup-plugin-flags contributionId", () => {
 
       const fixtureGenerator = resolve(fixtureRoot, "scripts/build-setup-plugin-flags.ts");
       const fixtureNativeOutput = resolve(fixtureRoot, "core/src/cli/generated/setup-plugin-flags.ts");
-      const fixtureLegacyOutput = resolve(fixtureRoot, "core/src/cli/oclif/generated/setup-plugin-flags.ts");
-      await mkdir(dirname(fixtureLegacyOutput), { recursive: true });
-      await writeFile(fixtureLegacyOutput, "export const stale = true;\n", "utf8");
       expect(await Bun.file(fixtureNativeOutput).exists()).toBe(false);
 
       // When
@@ -90,7 +82,6 @@ describe("build-setup-plugin-flags contributionId", () => {
         stderr: proc.stderr.toString(),
       }).toMatchObject({ exitCode: 0 });
       expect(await Bun.file(fixtureNativeOutput).text()).toContain("BUNDLED_SETUP_FLAG_CONTRIBUTIONS");
-      expect(await Bun.file(fixtureLegacyOutput).exists()).toBe(false);
     } finally {
       await rm(fixtureRoot, { force: true, recursive: true });
     }

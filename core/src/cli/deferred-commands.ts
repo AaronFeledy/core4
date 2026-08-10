@@ -1,5 +1,5 @@
 import { NotImplementedError } from "@lando/sdk/errors";
-import type { LandoCommandSpec } from "./oclif/command-spec";
+import type { LandoCommandSpec } from "./spec/command-spec";
 
 export type DeferredCommandPhase = "4.1";
 

@@ -8,9 +8,9 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
 const corePackagePath = resolve(repoRoot, "core/package.json");
 
-describe("OCLIF version pins", () => {
-  test("keeps retained OCLIF tooling dev-only at its locked ranges", async () => {
-    // Given: the core package manifest is the single place OCLIF versions are declared.
+describe("OCLIF dependency surface", () => {
+  test("keeps OCLIF packages absent from production and development dependencies", async () => {
+    // Given: the core package manifest declares runtime and development dependencies.
     const corePackage = JSON.parse(await Bun.file(corePackagePath).text()) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
@@ -21,11 +21,11 @@ describe("OCLIF version pins", () => {
       (name) => name === "oclif" || name.startsWith("@oclif/"),
     );
 
-    // Then: no OCLIF package ships, while retained tooling stays pinned for tests and manifests.
+    // Then: no OCLIF package ships or remains as development tooling.
     expect(productionOclifPackages).toEqual([]);
-    expect(corePackage.devDependencies?.["@oclif/core"]).toBe("^4.11.2");
-    expect(corePackage.devDependencies?.["@oclif/plugin-help"]).toBe("^6.2.48");
-    expect(corePackage.devDependencies?.oclif).toBe("^4.23.0");
+    expect(corePackage.devDependencies?.["@oclif/core"]).toBeUndefined();
+    expect(corePackage.devDependencies?.["@oclif/plugin-help"]).toBeUndefined();
+    expect(corePackage.devDependencies?.oclif).toBeUndefined();
   });
 
   test("keeps production TypeScript imports OCLIF-free", async () => {

@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
 import { appsListPathFromArgv } from "../../src/cli/dispatch-apps.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
-import { appsListPathFromInput } from "../../src/cli/oclif/commands/apps/list.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";

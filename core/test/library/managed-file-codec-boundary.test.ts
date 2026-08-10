@@ -18,7 +18,10 @@ const codecEntry = resolve(engineSrc, "managed-file/codecs.ts");
 /** Modules whose construction would mean the codec drags in a `LandoRuntime`. */
 const runtimeCodePathDir = `${resolve(coreSrc, "runtime")}/`;
 const coreDefaultEntry = resolve(coreSrc, "index.ts");
-const oclifCodePathDir = `${resolve(coreSrc, "cli/oclif")}/`;
+const oclifCodePathDirs = [
+  `${resolve(coreSrc, "cli/spec")}/`,
+  `${resolve(coreSrc, "cli/command-specs")}/`,
+] as const;
 
 const firstPartySourceRoots = [
   `${coreSrc}/`,
@@ -74,8 +77,9 @@ const classifyEdge = (edge: {
   if (edge.resolvedAbs === coreDefaultEntry) {
     return `reaches the @lando/core default entry (makeLandoRuntime) ${repoRelative(edge.resolvedAbs)}`;
   }
-  if (edge.resolvedAbs.startsWith(oclifCodePathDir)) {
-    return `reaches the OCLIF code path ${repoRelative(edge.resolvedAbs)}`;
+  const oclifPath = edge.resolvedAbs;
+  if (oclifCodePathDirs.some((dir) => oclifPath.startsWith(dir))) {
+    return `reaches the OCLIF code path ${repoRelative(oclifPath)}`;
   }
   return undefined;
 };

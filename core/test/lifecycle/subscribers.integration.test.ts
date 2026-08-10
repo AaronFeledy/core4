@@ -14,7 +14,7 @@ import { EventService, PluginRegistry } from "@lando/sdk/services";
 import { RedactionService } from "@lando/engine/redaction/service";
 import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { versionSpec } from "../../src/cli/oclif/commands/meta/version.ts";
+import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import {

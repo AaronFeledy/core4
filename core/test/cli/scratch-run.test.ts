@@ -39,6 +39,7 @@ import { AppPlannerLive } from "@lando/engine/services/planner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreLive } from "@lando/state-store/service";
+import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
@@ -52,7 +53,6 @@ import {
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
-import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";

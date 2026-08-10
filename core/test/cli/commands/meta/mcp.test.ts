@@ -5,6 +5,7 @@ import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { APP_CONFIG_MCP_UNSAFE_IDS } from "../../../../src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../../../../src/cli/built-in-command-registry.ts";
 import {
   type McpCommandRegistry,
@@ -16,7 +17,6 @@ import {
   resolveMcpOptions,
   validateMcpAllowlistIds,
 } from "../../../../src/cli/commands/meta/mcp.ts";
-import { APP_CONFIG_MCP_UNSAFE_IDS } from "../../../../src/cli/oclif/mcp-allowlist.ts";
 import type { McpCommandEntry } from "../../../../src/mcp/registry.ts";
 
 const entry = (id: string, summary: string): McpCommandEntry => ({

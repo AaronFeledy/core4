@@ -11,7 +11,7 @@ import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-pr
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoRuntime } from "../../runtime/layer";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../oclif/generated/host-proxy-allowlist";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
 import { runOpenForHostProxy } from "./dispatch";
 
 const WorkerInput = Schema.Struct({

@@ -6,9 +6,9 @@ import { ComposeKeyRejectedError, LandoRuntimeBootstrapError } from "@lando/sdk/
 import type { EventService } from "@lando/sdk/services";
 import { buildBugReport, renderJsonBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
-import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/oclif/command-boundary.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
 
 class PreCommandLayerError extends Schema.TaggedError<PreCommandLayerError>()("PreCommandLayerError", {

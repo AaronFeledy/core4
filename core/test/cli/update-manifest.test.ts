@@ -6,9 +6,6 @@ import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
-import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { buildBugReport } from "../../src/cli/bug-report.ts";
 import {
   type UpdateChecksumSignatureVerifier,
   UpdateLaunchProbeError,
@@ -23,8 +20,11 @@ import {
   scheduleWindowsReplacement,
   update,
   updateChannelForVersion,
-} from "../../src/cli/commands/update.ts";
-import { updateOptionsFromInput } from "../../src/cli/oclif/commands/meta/update.ts";
+} from "@lando/engine/operations/update";
+import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { buildBugReport } from "../../src/cli/bug-report.ts";
+import { updateOptionsFromInput } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();
@@ -554,7 +554,7 @@ describe("update signed manifest", () => {
       readonly env: Record<string, string>;
     }> = [];
     const processRunner = {
-      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+      run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
           return { exitCode: 0, stdout: "", stderr: "" };
@@ -673,7 +673,7 @@ describe("update signed manifest", () => {
       readonly manualFallback: string;
     }> = [];
     const processRunner = {
-      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+      run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probes.push(input.cmd);
           return { exitCode: 0, stdout: "", stderr: "" };
@@ -859,7 +859,7 @@ describe("update signed manifest", () => {
     });
     const probeCommands: string[] = [];
     const processRunner = {
-      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+      run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
           return { exitCode: 0, stdout: "", stderr: "" };
@@ -906,7 +906,7 @@ describe("update signed manifest", () => {
     });
     const probeCommands: string[] = [];
     const processRunner = {
-      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+      run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
           return { exitCode: 0, stdout: "", stderr: "" };
@@ -1043,7 +1043,7 @@ describe("update signed manifest", () => {
     const execs: string[] = [];
     const updateStatePath = join(root, "state.json");
     const processRunner = {
-      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+      run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probes.push(input.cmd);
           return probes.length === 1
@@ -1269,16 +1269,22 @@ describe("update signed manifest", () => {
   });
 
   test("source and compiled input helpers map update flags identically", () => {
+    const cliSelfUpdate = { selfUpdate: { argv: process.argv } };
     expect(updateOptionsFromInput({ flags: { channel: "next", "dry-run": true } })).toEqual({
       channel: "next",
       dryRun: true,
+      ...cliSelfUpdate,
     });
-    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({ dryRun: true });
+    expect(updateOptionsFromInput({ flags: { "dry-run": true } })).toEqual({
+      dryRun: true,
+      ...cliSelfUpdate,
+    });
     expect(
       updateOptionsFromInput(compiledCommandInputFromArgv("meta:update", ["--channel=dev", "--dry-run"])),
     ).toEqual({
       channel: "dev",
       dryRun: true,
+      ...cliSelfUpdate,
     });
   });
 });

@@ -49,10 +49,7 @@ describe("cold-path command topics", () => {
     const packageJson: unknown = await Bun.file(resolve(coreRoot, "package.json")).json();
 
     // When
-    const [nativeExists, legacyExists] = await Promise.all([
-      Bun.file(resolve(coreRoot, "src/cli/command-topics.ts")).exists(),
-      Bun.file(resolve(coreRoot, "src/cli/oclif/topics.ts")).exists(),
-    ]);
+    const nativeExists = await Bun.file(resolve(coreRoot, "src/cli/command-topics.ts")).exists();
     const oclif =
       typeof packageJson === "object" && packageJson !== null && "oclif" in packageJson
         ? packageJson.oclif
@@ -60,7 +57,6 @@ describe("cold-path command topics", () => {
 
     // Then
     expect(nativeExists).toBe(true);
-    expect(legacyExists).toBe(false);
     expect(typeof oclif === "object" && oclif !== null && "topics" in oclif).toBe(false);
   });
 

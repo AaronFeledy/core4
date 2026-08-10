@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +18,6 @@ const fixtureFiles = [
 type RepositoryFixture = {
   readonly root: string;
   readonly legacyManifestPath: string;
-  readonly legacyCompiledManifestPath: string;
   readonly generatedManifestPath: string;
   readonly generatedCommandIdsPath: string;
   readonly generatorPath: string;
@@ -79,7 +78,6 @@ const createRepositoryFixture = async (): Promise<RepositoryFixture> => {
   return {
     root,
     legacyManifestPath: resolve(root, "core/oclif.manifest.json"),
-    legacyCompiledManifestPath: resolve(root, "core/src/cli/oclif/compiled-manifest.ts"),
     generatedManifestPath: resolve(root, "core/src/cli/generated/command-registry-manifest.ts"),
     generatedCommandIdsPath: resolve(root, "core/src/cli/generated/command-ids.ts"),
     generatorPath: resolve(root, "scripts/build-command-registry-manifest.ts"),
@@ -119,15 +117,11 @@ describe("embedded command registry manifest", () => {
       rm(fixture.generatedManifestPath, { force: true }),
       rm(fixture.generatedCommandIdsPath, { force: true }),
     ]);
-    await writeFile(fixture.legacyManifestPath, '{ "stale": true }\n', "utf8");
-    await writeFile(fixture.legacyCompiledManifestPath, "export const stale = true;\n", "utf8");
-
     // When
     runScript(fixture, fixture.generatorPath);
 
     // Then
     expect(await Bun.file(fixture.legacyManifestPath).exists()).toBe(false);
-    expect(await Bun.file(fixture.legacyCompiledManifestPath).exists()).toBe(false);
     const importedManifest: unknown = await import(
       `${pathToFileURL(fixture.generatedManifestPath).href}?generated=${Date.now()}`
     );

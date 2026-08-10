@@ -5,10 +5,27 @@ import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk
 import type { ConfigService } from "@lando/sdk/services";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
+import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { renderMetaVersion } from "@lando/engine/version";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { builtInCommandEntries } from "../built-in-command-registry";
+import {
+  globalConfigFormatFromInput,
+  globalConfigOptionsFromInput,
+} from "../command-specs/meta/global/config";
+import { globalDestroyOptionsFromInput } from "../command-specs/meta/global/destroy";
+import { globalInfoOptionsFromInput } from "../command-specs/meta/global/info";
+import { globalInstallOptionsFromInput } from "../command-specs/meta/global/install";
+import { globalLogsFollowFromInput, globalLogsOptionsFromInput } from "../command-specs/meta/global/logs";
+import { globalStartOptionsFromInput } from "../command-specs/meta/global/start";
+import {
+  globalStatusFormatFromInput,
+  globalStatusOptionsFromInput,
+} from "../command-specs/meta/global/status";
+import { globalUninstallOptionsFromInput } from "../command-specs/meta/global/uninstall";
+import { shellenvShellFromInput } from "../command-specs/meta/shellenv";
+import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun";
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config";
 import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy";
@@ -56,7 +73,7 @@ import {
   renderRecipesValidateResult,
 } from "../commands/recipes";
 import { renderShellenv } from "../commands/shellenv";
-import { renderUninstallResult, uninstall } from "../commands/uninstall";
+import { renderUninstallResult } from "../commands/uninstall";
 import { version as versionOperation } from "../commands/version";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
@@ -73,22 +90,6 @@ import {
   runWithProcessAbortSignal,
   setActiveCommandId,
 } from "../compiled-runtime";
-import {
-  globalConfigFormatFromInput,
-  globalConfigOptionsFromInput,
-} from "../oclif/commands/meta/global/config";
-import { globalDestroyOptionsFromInput } from "../oclif/commands/meta/global/destroy";
-import { globalInfoOptionsFromInput } from "../oclif/commands/meta/global/info";
-import { globalInstallOptionsFromInput } from "../oclif/commands/meta/global/install";
-import { globalLogsFollowFromInput, globalLogsOptionsFromInput } from "../oclif/commands/meta/global/logs";
-import { globalStartOptionsFromInput } from "../oclif/commands/meta/global/start";
-import {
-  globalStatusFormatFromInput,
-  globalStatusOptionsFromInput,
-} from "../oclif/commands/meta/global/status";
-import { globalUninstallOptionsFromInput } from "../oclif/commands/meta/global/uninstall";
-import { shellenvShellFromInput } from "../oclif/commands/meta/shellenv";
-import { uninstallOptionsFromInput } from "../oclif/commands/meta/uninstall";
 import { resolveNonInteractive } from "../prompts/answer-flags";
 
 export const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>

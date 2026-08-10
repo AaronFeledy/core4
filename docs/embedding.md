@@ -36,4 +36,4 @@ const runtime = makeLandoRuntime({
 
 Requesting bundled discovery without first importing `@lando/core/bundled-plugins` fails with `LandoRuntimeBootstrapError`. The CLI performs this opt-in behind its lazy `@lando/core/cli` boundary, so CLI behavior retains the full bundled composition without adding plugins to the root library import graph.
 
-The default entry and every published subpath above are OCLIF-free. OCLIF is development-only; `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters and manifest tooling, and no published package specifier exposes it to embedding hosts.
+The default entry and every published subpath above are OCLIF-free. OCLIF is development-only; the private CLI directories `core/src/cli/spec/` and `core/src/cli/command-specs/` hold native metadata, adapters, and manifest tooling, and no published package specifier exposes them to embedding hosts.

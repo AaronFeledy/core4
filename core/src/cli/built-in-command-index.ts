@@ -1,5 +1,5 @@
 import { commandAliasConflictError } from "@lando/engine/operations/reserved-aliases";
-import { CommandRegistrationError } from "./oclif/command-spec";
+import { CommandRegistrationError } from "./spec/command-spec";
 
 type BuiltInCommandRegistration = {
   readonly spec: { readonly id: string };

@@ -10,7 +10,7 @@ import { EventService } from "@lando/sdk/services";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
-import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/oclif/pre-renderer.ts";
+import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/pre-renderer.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/renderer/runtime.ts";
@@ -18,10 +18,7 @@ import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/rende
 const ESC = String.fromCharCode(27);
 const ANSI_PREFIX = `${ESC}[`;
 
-const preRendererSource = readFileSync(
-  resolve(import.meta.dirname, "../../src/cli/oclif/pre-renderer.ts"),
-  "utf8",
-);
+const preRendererSource = readFileSync(resolve(import.meta.dirname, "../../src/cli/pre-renderer.ts"), "utf8");
 
 const collectImportSpecifiers = (source: string): ReadonlyArray<string> => {
   const specifiers: string[] = [];

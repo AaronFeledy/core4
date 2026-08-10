@@ -17,7 +17,7 @@ import {
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
-import { pushSpec } from "../../src/cli/oclif/commands/app/push.ts";
+import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -128,14 +128,14 @@ const isCommandSpec = (
 describe("remote sync command skeleton", () => {
   test("registers app command specs with result schemas and remote flags", async () => {
     const modules = await Promise.all([
-      import("../../src/cli/oclif/commands/app/pull.ts"),
-      import("../../src/cli/oclif/commands/app/push.ts"),
-      import("../../src/cli/oclif/commands/app/remote/list.ts"),
-      import("../../src/cli/oclif/commands/app/remote/add.ts"),
-      import("../../src/cli/oclif/commands/app/remote/remove.ts"),
-      import("../../src/cli/oclif/commands/app/remote/test.ts"),
-      import("../../src/cli/oclif/commands/app/remote/setup.ts"),
-      import("../../src/cli/oclif/commands/app/remote/env/list.ts"),
+      import("../../src/cli/command-specs/app/pull.ts"),
+      import("../../src/cli/command-specs/app/push.ts"),
+      import("../../src/cli/command-specs/app/remote/list.ts"),
+      import("../../src/cli/command-specs/app/remote/add.ts"),
+      import("../../src/cli/command-specs/app/remote/remove.ts"),
+      import("../../src/cli/command-specs/app/remote/test.ts"),
+      import("../../src/cli/command-specs/app/remote/setup.ts"),
+      import("../../src/cli/command-specs/app/remote/env/list.ts"),
     ]);
 
     const specs = modules.map((mod) => Object.values(mod).find((value) => isCommandSpec(value)));
@@ -148,7 +148,7 @@ describe("remote sync command skeleton", () => {
   });
 
   test("remote selector parsing keeps --remote authoritative while honoring @env", async () => {
-    const { remoteSyncOptionsFromInput } = await import("../../src/cli/oclif/commands/app/remote/common.ts");
+    const { remoteSyncOptionsFromInput } = await import("../../src/cli/command-specs/app/remote/common.ts");
 
     expect(remoteSyncOptionsFromInput({ flags: {}, args: { env: "stage@dev" } })).toMatchObject({
       remote: "stage",

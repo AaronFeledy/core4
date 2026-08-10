@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 
-import { CommandRegistrationError } from "../../src/cli/oclif/command-base.ts";
+import { CommandRegistrationError } from "../../src/cli/spec/command-base.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const repoRoot = resolve(coreRoot, "..");
