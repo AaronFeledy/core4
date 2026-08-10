@@ -6,54 +6,18 @@ timeout: 60000
 tags: [beta, docs, recipes, runs, allowlist]
 ---
 
-<Guide>
-  <Scenario id="declaring-runs" render={false} reason="Manifest parsing is covered by recipe manifest unit tests, so CI documents the authoring shape without invoking host commands">
-    <Step name="recipe-yml">
-      <Variable name="field" value="runs: [git, composer]" display="Declare the canonical command ids a recipe may execute from ctx.run, postInit command actions, or choicesFrom" />
-      <Variable name="placement" value="top-level recipe.yml" display="The allowlist sits next to requires, prompts, files, and postInit in the recipe manifest" />
-      <Variable name="scope" value="explicit allowlist" display="When runs is present, only ids in that array may execute; every other id fails before a child process starts" />
-    </Step>
-  </Scenario>
+# Author a recipe runs allowlist
 
-  <Scenario id="ctx-run-allowed" render={false} reason="ctx.run execution is unit-tested with an injected runner so executable guide CI does not spawn nested Lando commands">
-    <Step name="ctx-run">
-      <Variable name="manifest" value="runs: [git, composer]" display="The recipe explicitly permits git and composer" />
-      <Variable name="call" value="ctx.run(&quot;git&quot;, [&quot;init&quot;])" display="A command id listed in runs is allowed and runs through the Lando CLI child-process seam" />
-      <Variable name="result" value="{ exitCode, stdout, stderr }" display="ctx.run resolves with the child command result so recipe code can inspect command output" />
-    </Step>
-  </Scenario>
+Declare the canonical command ids a recipe may execute from `ctx.run`,
+`postInit` command actions, or `choicesFrom` with `runs`. It sits next to
+`requires`, `prompts`, `files`, and `postInit` in the recipe manifest:
 
-  <Scenario id="ctx-run-denied" render={false} reason="Denied command behavior is covered by run-allowlist and post-init tests with deterministic fake runners">
-    <Step name="explicit-deny">
-      <Variable name="manifest" value="runs: [git]" display="The recipe declares exactly one permitted command id" />
-      <Variable name="call" value="ctx.run(&quot;npm&quot;, [&quot;install&quot;])" display="A command outside the explicit allowlist is rejected before execution" />
-      <Variable name="error" value="RecipeRunNotAllowedError" display="The tagged error includes commandId, allowlist, remediation, and recipe when available" />
-    </Step>
-  </Scenario>
+```yaml
+runs:
+  - git
+  - composer
+```
 
-  <Scenario id="default-warn-proceed" render={false} reason="Default allowlist warning behavior is covered by fake-runner tests that capture stderr deterministically">
-    <Step name="permissive-default">
-      <Variable name="manifest" value="runs omitted" display="A recipe without runs uses the built-in permissive default allowlist" />
-      <Variable name="defaultAllowlist" value="git, composer, npm, bun, yarn, pnpm, pip, bundle, make" display="Commands in the default allowlist run without warning" />
-      <Variable name="outsideDefault" value="ctx.run(&quot;pantheon:list-sites&quot;, [])" display="A command outside the default allowlist warns, then proceeds; add explicit runs to silence the warning" />
-    </Step>
-  </Scenario>
+When `runs` is present, only ids in that array may execute; every other id
+fails before a child process starts.
 
-  <Scenario id="choices-from-gated" render={false} reason="Dynamic choices are covered by prompt runtime tests using injected choices runners and buffered prompt IO">
-    <Step name="choices-from">
-      <Variable name="field" value="choicesFrom: { command: &quot;services:list&quot;, args: [&quot;--type=php&quot;], parse: &quot;lines&quot; }" display="Dynamic prompt choices execute a canonical Lando command before the select list is rendered" />
-      <Variable name="sameGate" value="runs: [services:list]" display="The choicesFrom command is checked against the same runs allowlist before execution" />
-      <Variable name="answerBypass" value="--answer phpVersion=8.3" display="A supplied answer bypasses choicesFrom execution and therefore does not trigger the allowlist gate" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="bun-post-init-verbs" render={false} reason="bun postInit execution and argv rejection are covered by recipe post-init unit tests with a fake bun spawner">
-    <Step name="bun-post-init">
-      <Variable name="verbs" value="bun:script, bun:add, bun:create, bun:run, bun:x" display="Recipe postInit may run bundled scripts, add packages, scaffold from a template, run package scripts, or run a one-shot package via bunx (bun:x)" />
-      <Variable name="manifest" value="postInit: [{ type: bun, verb: create, template: ${answers.template} }]" display="bun create templates can interpolate prompt answers before the bun argv is built" />
-      <Variable name="bunx" value="postInit: [{ type: bun, verb: x, spec: prettier, argv: [--write, .] }]" display="bun:x runs a one-shot package; when a recipe declares runs:, the spec must be in the allowlist, otherwise x runs by default" />
-      <Variable name="argvSafety" value="empty and flag-like operands" display="Substituted bun create templates, package operands, and bun x specs are rejected before bun is spawned" />
-      <Variable name="stdio" value="injected stdout/stderr" display="Recipe post-init output flows through an injectable IO seam so tests can capture or silence the same lines without mutating global process streams" />
-    </Step>
-  </Scenario>
-</Guide>

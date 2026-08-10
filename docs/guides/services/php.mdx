@@ -5,19 +5,36 @@ timeout: 90000
 tags: [beta, docs, php, service, runtime]
 ---
 
+# PHP
+
+Add a PHP service to your app by declaring `type: php:8.3` for the primary
+service — PHP has no bare `type: php` alias, so pin a version. Lando
+currently supports four minor versions: `8.1`, `8.2`, `8.3`, and `8.4`. The
+default (and only first-class) image is the `-apache` variant, tagged
+`php:<version>-apache-bookworm` (e.g. `php:8.3-apache-bookworm`), which
+serves your code over HTTP on port `80`. Your repository is bind-mounted
+read-write at `/app`:
+
+```yaml
+name: php-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+```
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="php-demo" />
-      <Variable name="serviceType" value="php:8.3" display="Declare type: php:8.3 for the primary service (PHP has no bare type: php alias — pin a version)" />
-      <Variable name="supportedVersions" value="php:8.2, php:8.3" display="Supported PHP service versions" />
-      <Variable name="defaultImage" value="php:8.3-apache" display="Default Docker image — the -apache variant serves your code over HTTP on port 80" />
-      <Variable name="defaultPort" value="80" display="Default HTTP port the bundled Apache serves on" />
-      <Variable name="appMount" value="/app" display="Your repository is bind-mounted read-write at /app" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
       <Verify event="post-start" />
+    </Step>
+    <Step name="verify-version">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -25,26 +42,47 @@ tags: [beta, docs, php, service, runtime]
     </Step>
   </Scenario>
 
-  <Scenario id="framework-presets" render={false} reason="The framework field sets the served webroot for common PHP frameworks without hand-editing the document root">
-    <Step name="frameworks">
-      <Variable name="supportedFrameworks" value="drupal, wordpress, laravel, symfony, none" display="Set framework: under the service to apply a preset" />
-      <Variable name="drupalRoot" value="framework: drupal → webroot /app/web" display="Drupal serves from the web/ subdirectory" />
-      <Variable name="laravelRoot" value="framework: laravel → webroot /app/public" display="Laravel and Symfony serve from the public/ subdirectory" />
-      <Variable name="wordpressRoot" value="framework: wordpress → webroot /app" display="WordPress and none serve from the app root" />
-    </Step>
-  </Scenario>
+## No framework presets
 
-  <Scenario id="composer-tooling" render={false} reason="PHP projects typically expose Composer as a tooling alias targeting the service">
-    <Step name="composer">
-      <Variable name="toolingAlias" value="lando composer install" display="Declare a composer tooling alias targeting the php service to manage dependencies" />
-      <Variable name="phpCli" value="lando php -v" display="A php alias runs the CLI inside the service" />
-    </Step>
-  </Scenario>
+There's no `framework:` key on the `php` service — it has no built-in preset that switches the
+served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is fixed at `/app`.
+To serve project code from a framework's public subdirectory (e.g. Laravel's or Symfony's
+`public/`), you're responsible for pointing the web server at that path yourself — for example with
+a custom vhost delivered through a bind mount or custom image. Compose's `configs:` block isn't
+realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared
+under `configs:`.
 
-  <Scenario id="version-override" render={false} reason="Pin a different supported PHP minor version, or set image to use a php-fpm or CLI base image instead of -apache">
-    <Step name="note">
-      <Variable name="pinVersion" value="type: php:8.2" display="Pin PHP 8.2 by setting type: php:8.2 under services.app" />
-      <Variable name="fpmImage" value="image: php:8.3-fpm" display="Use image: php:8.3-fpm under services.app to pair PHP-FPM with a separate nginx service" />
-    </Step>
-  </Scenario>
+## Composer and the CLI
+
+PHP projects typically expose Composer as a tooling alias targeting the
+service:
+
+```sh
+lando composer install
+```
+
+Composer itself is installed from a checksum-pinned release (`2.10.2`), not resolved from whatever
+happens to be latest at build time.
+
+A `php` alias runs the CLI inside the service:
+
+```sh
+lando php -v
+```
+
+## Pin a version
+
+Pin any of the four supported PHP minor versions under `type`:
+
+```yaml
+services:
+  app:
+    type: php:8.2
+```
+
+`image:` overrides the base image Lando builds from, but there's no first-class FPM pairing behind
+it: Lando doesn't wire up a companion nginx service, proxy FPM's port `9000`, or adjust
+prerequisites for a `-fpm`-style tag. Setting `image:` to something other than the built-in
+`-apache-bookworm` tag is a raw substitution you're responsible for wiring end to end yourself.
+
 </Guide>

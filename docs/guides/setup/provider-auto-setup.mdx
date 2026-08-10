@@ -6,7 +6,7 @@ timeout: 60000
 tags: [beta, docs, setup, providers]
 ---
 
-## Setup is guided, not automatic
+# Setup is guided, not automatic
 
 `lando setup` provisions the container runtime provider before app lifecycle commands need one. Run it
 yourself; Lando does not provision a provider in the background when you first run `lando start`. When
@@ -21,30 +21,31 @@ combine `--yes` with an explicit `--provider` for a fully deterministic invocati
 run `lando doctor` afterward to confirm setup readiness, as described in the
 [doctor walkthrough](../subsystems/doctor-walkthrough.mdx).
 
-<Guide>
-  <Scenario id="guided-opt-in-default" render={false} reason="Setup default UX is covered by command tests; this guide keeps the reader-facing contract synchronized with the Beta 1 decision">
-    <Step name="default-model">
-      <Variable name="decision" value="guided opt-in" display="Provider setup is explicit: run lando setup before app lifecycle commands need a provider" />
-      <Variable name="defaultProvider" value="lando setup --provider=lando" display="The bundled managed provider is the capability default when no flag, env, or config selects another provider" />
-      <Variable name="noImplicitSetup" value="lando start" display="First-run app commands report readiness or remediation; they do not aggressively provision providers in the background" />
-    </Step>
-  </Scenario>
+## Non-interactive and CI
 
-  <Scenario id="non-interactive-and-ci" render={false} reason="Non-interactive setup is deterministic and covered by setup argv parsing tests">
-    <Step name="scripted-setup">
-      <Variable name="nonInteractive" value="lando setup --no-interactive" display="Uses the same guided defaults without follow-up prompts" />
-      <Variable name="confirmed" value="lando setup --yes" display="Confirms setup prompts but does not change provider precedence" />
-      <Variable name="ci" value="lando setup --yes --provider=lando" display="Recommended CI shape: choose the provider and confirmation mode explicitly" />
-      <Variable name="ciBundle" value="LANDO_RUNTIME_BUNDLE_MANIFEST" display="linux-x64 provider-integration CI stages a current-commit runtime bundle tarball and points setup at the local file manifest before ensureRuntime brings up the managed socket" />
-      <Variable name="ciTeardown" value="lando poweroff + managed podman" display="CI teardown uses the Lando-managed podman binary with isolated --root, --runroot, and --config so cleanup targets the same store the job created" />
-    </Step>
-  </Scenario>
+```sh
+# Same guided defaults, no follow-up prompts
+lando setup --no-interactive
 
-  <Scenario id="rejected-aggressive-alternative" render={false} reason="The unavailable system-provider remediation path is asserted in setup command tests">
-    <Step name="system-provider-remediation">
-      <Variable name="podman" value="lando setup --provider=podman" display="Requires an existing Podman installation and fails with remediation when Podman is unavailable" />
-      <Variable name="docker" value="lando setup --provider=docker" display="Requires an existing Docker installation and fails with remediation when Docker is unavailable" />
-      <Variable name="managedRuntime" value="lando setup --provider=lando" display="Use the bundled managed runtime instead of selecting an unavailable system provider" />
-    </Step>
-  </Scenario>
-</Guide>
+# Confirms setup prompts but does not change provider precedence
+lando setup --yes
+
+# Recommended CI shape: choose the provider and confirmation mode explicitly
+lando setup --yes --provider=lando
+```
+
+For `linux-x64` provider-integration CI, set `LANDO_RUNTIME_BUNDLE_MANIFEST`
+to stage a current-commit runtime bundle tarball and point setup at the
+local file manifest before `ensureRuntime` brings up the managed socket. CI
+teardown uses the Lando-managed `podman` binary with isolated `--root`,
+`--runroot`, and `--config` so cleanup targets the same store the job
+created, after `lando poweroff`.
+
+## System providers don't self-install
+
+`lando setup --provider=podman` requires an existing Podman installation
+and fails with remediation when Podman is unavailable.
+`lando setup --provider=docker` requires an existing Docker installation
+and fails with remediation the same way. Use
+`lando setup --provider=lando` for the bundled managed runtime instead of
+selecting a system provider you don't already have.

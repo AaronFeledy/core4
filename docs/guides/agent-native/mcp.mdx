@@ -14,13 +14,14 @@ closes stdin. Keep stdin open until every outstanding request id has answered;
 closing early interrupts in-flight tool calls. Serve mode writes protocol frames
 only; it does not wrap startup or shutdown in a Lando command-result envelope.
 
+Configure the MCP client to launch `lando mcp` with piped stdin and stdout.
+Audit the effective catalog without starting the long-running server with
+`lando mcp --list --format=json`. The wire framing is newline-delimited
+JSON-RPC: write one complete JSON-RPC object followed by a newline for every
+request or notification.
+
 <Guide>
   <Scenario id="stdio-conversation" render>
-    <Step name="launch-from-a-client">
-      <Variable name="command" value="lando mcp" display="Configure the MCP client to launch `lando mcp` with piped stdin and stdout" />
-      <Variable name="catalog" value="lando mcp --list --format=json" display="Audit the effective catalog without starting the long-running server" />
-      <Variable name="framing" value="newline-delimited JSON-RPC" display="Write one complete JSON-RPC object followed by a newline for every request or notification" />
-    </Step>
     <Step name="call-a-read-only-tool">
       <Run
         runtime="library"
@@ -32,7 +33,7 @@ const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/serv
 const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
 const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
-const { RedactionService } = yield* Effect.promise(() => import("../../../../../redaction/src/service.ts"));
+const { RedactionService } = yield* Effect.promise(() => import("../../../../../engine/src/redaction/service.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const frames = [
   { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
@@ -45,8 +46,8 @@ const frames = [
     params: { name: "app:config:get", arguments: { args: { key: "name" } } },
   },
 ];
-let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
-const input = new ReadableStream<Uint8Array>({
+let inputController: ReadableStreamDefaultController`<Uint8Array>` | undefined;
+const input = new ReadableStream`<Uint8Array>`({
   start: (controller) => {
     inputController = controller;
   },
@@ -65,7 +66,7 @@ const serviceLayer = McpServiceLive.pipe(Layer.provide(Layer.mergeAll(
   }),
 )));
 const responses = yield* Effect.gen(function* () {
-  const output = yield* Queue.unbounded<string>();
+  const output = yield* Queue.unbounded`<string>`();
   const service = yield* McpService;
   const catalog = yield* service.catalog();
   const transport = yield* makeStdioMcpTransport({
@@ -182,11 +183,13 @@ if (exitCode !== 0) throw new Error(stderr);`}
     </Step>
   </Scenario>
 
+Serve mode rejects a TTY because an MCP client must own both protocol pipes.
+It also rejects unavailable descriptors and character devices, and it rejects
+command-result machine output — use `lando mcp --list --format=json` instead
+of `lando mcp --format=json`.
+
   <Scenario id="startup-refusals" render>
     <Step name="require-protocol-pipes">
-      <Variable name="tty" value="direct terminal launch" display="Serve mode rejects a TTY because an MCP client must own both protocol pipes" />
-      <Variable name="unusable" value="missing or unsupported stdin/stdout descriptor" display="Serve mode rejects unavailable descriptors and character devices" />
-      <Variable name="machineOutput" value="lando mcp --format=json" display="Serve mode rejects command-result machine output; use `lando mcp --list --format=json` instead" />
       <Run
         runtime="library"
         code={`const { classifyMcpServeStartup } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-limits.ts"));
@@ -229,16 +232,21 @@ const tools = JSON.parse(stdout);`}
     </Step>
   </Scenario>
 
+The two read-only tools are `app:config:get`, which reads one resolved
+configuration key (`args.key` is required), and `app:config:view`, which
+reads the complete resolved Landofile. Umbrella and write-capable ids —
+`app:config`, `app:config:set`, `app:config:unset`, `app:config:edit`,
+`app:config:validate` — are not MCP tools, even through explicit allow
+configuration.
+
+Protocol input and output stay bounded: a complete inbound frame and a
+partial inbound buffer are each capped at 1 MiB. At most 256 unresolved tool
+calls are retained; request 257 receives a JSON-RPC `Server busy` error. The
+outbound queue, queued bytes, and blocked-write duration are bounded too
+(1024 messages / 8 MiB / 5 seconds).
+
   <Scenario id="bounded-read-only-regressions" render>
-    <Step name="verify-read-only-tools">
-      <Variable name="get" value="app:config:get" display="Read one resolved configuration key; `args.key` is required" />
-      <Variable name="view" value="app:config:view" display="Read the complete resolved Landofile" />
-      <Variable name="writes" value="app:config, app:config:set, app:config:unset, app:config:edit, app:config:validate" display="These umbrella and write-capable ids are not MCP tools, even through explicit allow configuration" />
-    </Step>
     <Step name="enforce-bounded-stdio">
-      <Variable name="frame" value="1 MiB" display="A complete inbound frame and a partial inbound buffer are each capped at 1 MiB" />
-      <Variable name="requests" value="256" display="At most 256 unresolved tool calls are retained; request 257 receives JSON-RPC Server busy" />
-      <Variable name="outbound" value="1024 messages / 8 MiB / 5 seconds" display="The outbound queue, queued bytes, and blocked-write duration are bounded" />
       <Run
         runtime="library"
         code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
@@ -264,7 +272,7 @@ const frames = Array.from({ length: MAX_OUTSTANDING_REQUESTS + 1 }, (_, index) =
   method: "tools/call",
   params: { name: "app:config:get", arguments: { args: { key: "name" } } },
 }));
-const input = new ReadableStream<Uint8Array>({
+const input = new ReadableStream`<Uint8Array>`({
   start: (controller) => {
     controller.enqueue(new TextEncoder().encode(frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n"));
     controller.close();

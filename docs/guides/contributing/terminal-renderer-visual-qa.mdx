@@ -6,45 +6,64 @@ timeout: 60000
 tags: [beta, docs, contributing, renderer]
 ---
 
+# Terminal renderer visual QA
+
+The visual QA gate is a deterministic unit suite that captures committed golden frames with no TTY,
+provider, or network. It covers the default `lando` renderer's task-tree progress and grouped result
+summaries, plus the frame snapshot harness used by the renderer-lando plugin.
+
+The committed reference frames are read directly by reviewers, so output that is technically
+structured but visually drab can still be rejected in review.
+
+## Why the goldens are tokenized
+
+ANSI SGR codes are rewritten to readable markers such as `bold`, `cyan`, `green`, `amber`, and
+`dim`, so the committed golden stays human readable and a color-token regression shows up as a
+marker change in the text diff. Cursor-control redraw bytes and carriage returns are stripped during
+capture, so goldens never carry invisible control characters. Display-width invariants are checked on
+the stripped raw frame, never on the tokenized string, because the readable markers change column
+counts.
+
+Regression classes are `spacing`, `color-token`, `truncation`, and `wide-character`.
+
+## Provider-free capture
+
+`TestRuntimeProvider` is the pure in-memory provider whose lifecycle methods resolve without a real
+container runtime, network, signing credentials, or host mutation. Frames are produced from
+fixed-timestamp task and message events fed through the event service and the bundled `lando`
+renderer, so captures are deterministic and need no live command.
+
+The frame snapshot harness in `plugins/renderer-lando/test/frame-snapshot-harness.ts` drives the
+substrate's own test renderer from `@opentui/core/testing` (`createTestRenderer` with
+memory-buffered `captureCharFrame`), and `plugins/renderer-lando/test/frame-snapshots.test.ts`
+asserts stable captures across repeated runs for task-tree frames, prompt chrome, a 40-column
+fixture, and a mid-tree resize. Committed character-frame fixtures carry no ANSI escape byte and no
+machine-specific path, timestamp, or host data, so a frame regression shows up as a readable text
+diff.
+
+`LANDO_UPDATE_RENDERER_FRAMES=1 bun test plugins/renderer-lando/test/frame-snapshots.test.ts`
+regenerates committed frame fixtures after an intentional renderer change; without the flag the gate
+is read-only and a missing fixture is a hard failure.
+
+## Renderer scope
+
+The visual gate snapshots the decorated TTY renderer surfaces, not machine logs. Regression fixtures
+prove the json renderer emits plain NDJSON, plain output carries no ANSI or panel framing, and the
+non-TTY `lando` renderer degrades to undecorated text.
+
+`LANDO_UPDATE_VISUAL_QA=1 bun test core/test/cli/renderer/visual-qa.test.ts` regenerates committed
+goldens after an intentional renderer change. Without the update flag the gate is read-only and a
+missing golden is a hard failure, never a silent create, so CI can't regenerate a golden it should be
+checking.
+
+Editing `core/src/cli/renderer` or `core/test/cli/renderer` requires touching this owned guide or
+recording a Guide-Coverage-Skip reason, per the guide drift gate.
+
 <Guide>
-  <Scenario id="terminal-renderer-visual-qa" render={false} reason="The visual QA gate is itself a deterministic unit suite that captures committed golden frames with no TTY, provider, or network, so guide generation does not spawn a terminal">
-    <Step name="what-the-gate-is">
-      <Variable name="harness" value="core/test/cli/renderer/visual-qa-harness.ts" display="The harness captures deterministic golden frames for the default lando renderer's task-tree progress and grouped result summaries, the surfaces shipped by the terminal UI polish work" />
-      <Variable name="suite" value="core/test/cli/renderer/visual-qa.test.ts" display="The suite asserts every captured frame against its committed golden, proves the readable diff classifies regressions, and pins the provider-free pipeline and undecorated machine modes" />
-      <Variable name="goldens" value="core/test/cli/renderer/__goldens__/<kind>.<fixture>.<cols>col.txt" display="Committed reference frames a reviewer reads directly, so output that is technically structured but visually drab can be rejected in review" />
-    </Step>
-    <Step name="why-tokenized-goldens">
-      <Variable name="tokens" value="ANSI SGR rewritten to readable markers" display="Color and intensity escapes become inline markers such as bold, cyan, green, amber, dim, so the committed golden stays human readable and a color-token regression shows up as a marker change in the text diff" />
-      <Variable name="noEscape" value="no raw escape byte in any golden" display="Cursor-control redraw bytes and carriage returns are stripped during capture, so goldens never carry invisible control characters that corrupt a diff" />
-      <Variable name="widthRule" value="width asserted on the ANSI-stripped frame" display="Display-width invariants are checked on the stripped raw frame, never on the tokenized string, because the readable markers change column counts" />
-    </Step>
-    <Step name="regression-classes">
-      <Variable name="spacing" value="spacing" display="A change in padding or alignment while the trimmed text is unchanged" />
-      <Variable name="colorToken" value="color-token" display="A change in the sequence of color and intensity markers on a line" />
-      <Variable name="truncation" value="truncation" display="An ellipsis that appears or disappears as content crosses the width budget" />
-      <Variable name="wideCharacter" value="wide-character" display="A display-width drift caused by a CJK or other wide glyph counted as one column instead of two" />
-    </Step>
-    <Step name="provider-free">
-      <Variable name="testProvider" value="TestRuntimeProvider" display="The gate constructs the pure in-memory provider whose lifecycle methods resolve without a real container runtime, network, signing credentials, or host mutation" />
-      <Variable name="injectedEvents" value="injected renderer events" display="Frames are produced from fixed-timestamp task and message events fed through the event service and the bundled lando renderer, so captures are deterministic and need no live command" />
-    </Step>
-    <Step name="frame-snapshot-harness">
-      <Variable name="frameHarness" value="plugins/renderer-lando/test/frame-snapshot-harness.ts" display="A headless frame-snapshot harness drives the substrate's own test renderer from @opentui/core/testing (createTestRenderer with memory-buffered captureCharFrame) so every drawn surface is captured with no PTY, provider, or network" />
-      <Variable name="frameSuite" value="plugins/renderer-lando/test/frame-snapshots.test.ts" display="The suite captures task-tree frames across start, detail, complete, and fail transitions, prompt chrome for every prompt type the renderer draws, a 40-column narrow-terminal fixture, and a mid-tree resize, and asserts each capture is stable across repeated runs" />
-      <Variable name="frameFixtures" value="plugins/renderer-lando/test/__frames__/<id>.<cols>col.txt" display="Committed character-frame fixtures a reviewer reads directly; they carry no ANSI escape byte and no machine-specific path, timestamp, or host data so a frame regression shows up as a readable text diff" />
-      <Variable name="treeMount" value="painter frame mounted through the real renderer" display="Task-tree fixtures mount the pure LandoTreePainter logical frame through the real headless renderer, so the harness moves onto the split-footer live region without depending on it yet" />
-      <Variable name="updateFrames" value="LANDO_UPDATE_RENDERER_FRAMES=1 bun test plugins/renderer-lando/test/frame-snapshots.test.ts" display="Regenerate committed frame fixtures after an intentional renderer change, then review the diff; without the flag the gate is read-only and a missing fixture is a hard failure, never a silent create" />
-    </Step>
-    <Step name="renderer-only-scope">
-      <Variable name="scope" value="renderer output only" display="The visual gate snapshots the decorated TTY renderer surfaces, not machine logs" />
-      <Variable name="undecorated" value="json, plain, and non-TTY stay undecorated" display="Regression fixtures prove the json renderer emits plain NDJSON, plain output carries no ANSI or panel framing, and the non-TTY lando renderer degrades to undecorated text" />
-    </Step>
-    <Step name="updating-goldens">
-      <Variable name="update" value="LANDO_UPDATE_VISUAL_QA=1 bun test core/test/cli/renderer/visual-qa.test.ts" display="Regenerate committed goldens after an intentional renderer change, then review the diff so a visual regression is never rubber-stamped" />
-      <Variable name="default" value="read-only by default" display="Without the update flag the gate is read-only and a missing golden is a hard failure, never a silent create, so CI can never regenerate a golden it should be checking" />
-    </Step>
-    <Step name="maintenance">
-      <Variable name="driftNote" value="renderer changes must touch this guide" display="Editing core/src/cli/renderer or core/test/cli/renderer requires touching this owned guide or recording a Guide-Coverage-Skip reason, per the guide drift gate" />
+  <Scenario id="terminal-renderer-visual-qa" render={false} reason="The visual QA gate above is a deterministic unit suite with committed goldens and no TTY, provider, or network; this scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

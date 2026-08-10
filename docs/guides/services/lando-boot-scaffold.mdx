@@ -6,6 +6,8 @@ timeout: 60000
 tags: [beta, docs, service, lando, boot]
 ---
 
+# The lando.boot scaffold
+
 Every `type: lando` service includes `lando.boot`. At priority 100, it adds a provider-neutral,
 artifact-phase scaffold intent to the service's build plan: an idempotent `mkdir -p` step, not a
 mount:
@@ -35,15 +37,5 @@ creates `/etc/lando/certs` itself when it writes the injected CA bundle describe
 distro exports. See [Certificates with mkcert](../subsystems/certificates-mkcert.mdx) for the
 separate leaf certificate paths and environment contract.
 
-<Guide>
-  <Scenario id="lando-boot-scaffold" render={false} reason="Production-path tests drive the artifact build function directly and verify the exact scaffold Dockerfile, root and non-root user transitions, exact-user restoration, later-step ordering, and deterministic uncached intermediate-base materialization for referenced parents">
-    <Step name="compose-scaffold">
-      <Variable name="feature" value="lando.boot" display="Emit one provider-neutral artifact-phase scaffold intent at feature priority 100" />
-      <Variable name="directories" value="/etc/lando, /etc/lando/env.d, /etc/lando/certs" display="Compile the idempotent mkdir -p step for the three shared directories into the build plan" />
-      <Variable name="inheritedUser" value="inherited effective user" display="Temporarily privilege the scaffold step, then restore the parent artifact's exact inherited effective user before later steps and in the final image" />
-      <Variable name="runtimeUser" value="service user: override" display="Record the override as runtime intent on the service plan only; never bake it into the artifact, and leave applying it to the running container to the provider" />
-      <Variable name="envOwner" value="lando.env" display="Keep environment content, env.d sourcing, and LANDO_LINUX_* exports under lando.env" />
-      <Variable name="excludedBase" value="type: compose" display="Raw Compose services use the l337 base and do not include lando.boot" />
-    </Step>
-  </Scenario>
-</Guide>
+Raw Compose services (`type: compose`) use the l337 base and do not include `lando.boot`.
+

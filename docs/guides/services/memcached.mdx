@@ -5,13 +5,31 @@ timeout: 90000
 tags: [beta, docs, memcached, service]
 ---
 
+# Memcached
+
+Add Memcached to your app by declaring `type: memcached` in your services
+block. Lando pulls `memcached:1.6` by default and listens on the standard
+port `11211`:
+
+```yaml
+name: memcached-demo
+services:
+  cache:
+    type: memcached
+tooling:
+  memcached-tool:
+    service: cache
+    cmd:
+      - sh
+      - -c
+      - printf "%s\r\n" "$*" | nc -q 1 127.0.0.1 11211
+      - memcached-tool
+```
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="memcached-demo" />
-      <Variable name="serviceType" value="memcached" display="Declare type: memcached in your services block" />
-      <Variable name="defaultImage" value="memcached:1.6" display="Default Docker image" />
-      <Variable name="defaultPort" value="11211" display="Default port" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -23,15 +41,25 @@ tags: [beta, docs, memcached, service]
     </Step>
   </Scenario>
 
-  <Scenario id="memcached-stats" render={false} reason="The fixture defines memcached-tool as an app tooling alias; run it after start to inspect the live Memcached service">
-    <Step name="stats">
-      <Variable name="statsCommand" value="lando memcached-tool stats" display="Inspect Memcached runtime stats" />
-    </Step>
-  </Scenario>
+## Inspect runtime stats
 
-  <Scenario id="version-override" render={false} reason="Use image to pin a compatible Memcached Docker image when the default image is not sufficient">
-    <Step name="note">
-      <Variable name="bookwormImage" value="memcached:1.6-bookworm" display="Pin a Debian-based image via image: memcached:1.6-bookworm under services.cache" />
-    </Step>
-  </Scenario>
+The fixture above declares `memcached-tool` as an app tooling alias. Run it
+after start to inspect the live Memcached service:
+
+```sh
+lando memcached-tool stats
+```
+
+## Pin a version
+
+Use `image:` to pin a compatible Memcached Docker image when the default
+image isn't sufficient — for example, a Debian-based image:
+
+```yaml
+services:
+  cache:
+    type: memcached
+    image: memcached:1.6-bookworm
+```
+
 </Guide>

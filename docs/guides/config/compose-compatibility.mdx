@@ -6,11 +6,14 @@ timeout: 60000
 tags: [beta, docs, config, compose]
 ---
 
+# Compose compatibility
+
 Lando treats Compose compatibility as a service-key vocabulary, not as a promise that every Compose
 project file is a valid Landofile. The committed disposition maps classify the supported vocabulary,
 and the generated [Compose key matrix](../../reference/compose-key-matrix.mdx) publishes the complete
 per-key result from that source of truth. Use `docs/reference/compose-key-matrix.mdx` instead of copying
-key lists into guides or migration notes.
+key lists into guides or migration notes. Consult the generated matrix for every current classification
+and its planning or remediation detail.
 
 Each disposition describes what happens during planning:
 
@@ -19,25 +22,10 @@ Each disposition describes what happens during planning:
   Service-level `x-*` extensions are inert and are not capability-gated.
 - **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
 
+Treat normalized and preserved entries as accepted only for the shapes documented by the generated
+matrix. Use the generated matrix remediation for rejected input instead of assuming unsupported
+intent was ignored.
+
 For a runnable example of pasting a Compose service definition into a Landofile, continue with
 [Compose service blocks](./compose-service-block.mdx).
 
-<Guide>
-  <Scenario id="compose-key-matrix" render={false} reason="The generated matrix is verified by build tests, so this documentation-only scenario must not create a duplicate runnable test">
-    <Step name="consult-generated-matrix">
-      Consult the generated matrix for every current classification and its planning or remediation detail.
-    </Step>
-  </Scenario>
-
-  <Scenario id="accepted-compose-keys" render={false} reason="Focused schema and lint suites already exercise accepted input decoding, normalization, and preservation behavior">
-    <Step name="interpret-accepted-dispositions">
-      Treat normalized and preserved entries as accepted only for the shapes documented by the generated matrix.
-    </Step>
-  </Scenario>
-
-  <Scenario id="rejected-key-remediation" render={false} reason="Configuration lint tests already assert the tagged rejection and structured remediation contract without provider workloads">
-    <Step name="follow-rejected-remediation">
-      Use the generated matrix remediation for rejected input instead of assuming unsupported intent was ignored.
-    </Step>
-  </Scenario>
-</Guide>

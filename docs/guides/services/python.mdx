@@ -5,14 +5,26 @@ timeout: 90000
 tags: [beta, docs, python, service, runtime]
 ---
 
+# Python
+
+Add a Python service to your app by declaring `type: python:3.12` for the
+primary service — Python has no bare `type: python` alias, so pin a
+version. Lando currently supports `python:3.12`, and the default image is
+`python:3.12-slim`. Your repository is bind-mounted read-write at `/app`,
+which is also the working directory:
+
+```yaml
+name: python-demo
+services:
+  app:
+    type: "python:3.12"
+    primary: true
+```
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="python-demo" />
-      <Variable name="serviceType" value="python:3.12" display="Declare type: python:3.12 for the primary service (Python has no bare type: python alias — pin a version)" />
-      <Variable name="supportedVersions" value="python:3.12" display="Supported Python service versions" />
-      <Variable name="defaultImage" value="python:3.12-slim" display="Default Docker image, derived from the pinned version" />
-      <Variable name="appMount" value="/app" display="Your repository is bind-mounted read-write at /app, the working directory" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -24,18 +36,30 @@ tags: [beta, docs, python, service, runtime]
     </Step>
   </Scenario>
 
-  <Scenario id="run-the-app" render={false} reason="The default keep-alive command holds the container open so you install dependencies and run your app via tooling">
-    <Step name="install">
-      <Variable name="pipInstall" value="lando pip install -r requirements.txt" display="Declare a pip tooling alias to install dependencies inside the service" />
-    </Step>
-    <Step name="start-server">
-      <Variable name="runApp" value="lando exec app -- python manage.py runserver 0.0.0.0:8000" display="Run a Django/Flask server with lando exec; bind to 0.0.0.0 so the proxy can reach it" />
-    </Step>
-  </Scenario>
+## Run the app
 
-  <Scenario id="version-override" render={false} reason="Set image to use a full (non-slim) or alternate Python base image when the default python:3.12-slim image is not desired">
-    <Step name="note">
-      <Variable name="customImage" value="image: python:3.12" display="Use the full image via image: python:3.12 under services.app when slim lacks build tools" />
-    </Step>
-  </Scenario>
+The default keep-alive command holds the container open so you can install
+dependencies and run your app via tooling:
+
+```sh
+# Declare a pip tooling alias to install dependencies inside the service
+lando pip install -r requirements.txt
+
+# Run a Django/Flask server with lando exec; bind to 0.0.0.0 so the proxy can reach it
+lando exec app -- python manage.py runserver 0.0.0.0:8000
+```
+
+## Pin a version
+
+Set `image:` to use the full (non-slim) or an alternate Python base image
+when the default `python:3.12-slim` isn't what you want — slim lacks build
+tools that some packages need:
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    image: python:3.12
+```
+
 </Guide>

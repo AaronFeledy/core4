@@ -6,32 +6,44 @@ timeout: 60000
 tags: [beta, docs, setup, uninstall, compiled]
 ---
 
-<Guide>
-  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Native dispatch, registry-completeness, and relocated compiled-binary smoke tests exercise setup and shellenv; this scenario documents the surface rather than rendering a transcript">
-    <Step name="setup-aliases">
-      <Variable name="setup" value="setup" display="The top-level setup alias resolves to the canonical meta:setup command through the native dispatcher" />
-      <Variable name="metaSetup" value="meta:setup" display="The canonical setup command remains available directly through the native command registry" />
-      <Variable name="unknownFlag" value="setup --definitely-not-a-setup-flag" display="Unknown setup flags fail with a non-existent-flag diagnostic" />
-    </Step>
-    <Step name="shellenv">
-      <Variable name="command" value="shellenv --shell=pwsh" display="Shellenv parsing normalizes pwsh to the PowerShell snippet through the command input helper" />
-      <Variable name="failure" value="meta:shellenv --shell=fish" display="Invalid shell values fail before runtime bootstrap" />
-    </Step>
-  </Scenario>
+# Setup compiled binary parity
 
-  <Scenario id="uninstall-preview-parity" render={false} reason="The uninstall command can be previewed safely, but confirmed execution is destructive and is covered by focused temporary-root command tests">
-    <Step name="preview">
-      <Variable name="dryRun" value="uninstall --dry-run" display="Dry-run renders the non-mutating safety plan" />
-      <Variable name="refusal" value="meta:uninstall" display="Without --yes, uninstall refuses destructive execution and renders the reviewed-plan reminder" />
-      <Variable name="unknownFlag" value="meta:uninstall --definitely-not-an-uninstall-flag" display="Unknown uninstall flags fail with a non-existent-flag diagnostic" />
-    </Step>
-  </Scenario>
+## Setup and shellenv dispatch
 
-  <Scenario id="renderer-boundary-contract" render={false} reason="Renderer-boundary lint is a source gate rather than a reader-visible CLI transcript">
-    <Step name="output-routing">
-      <Variable name="renderer" value="core/src/cli/renderer-boundary.ts" display="Command results route through Renderer output stdout and diagnostics route through Renderer output stderr" />
-      <Variable name="gate" value="bun run check:renderer-boundary" display="The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs" />
-      <Variable name="dispatchTests" value="core/test/cli/native-dispatch-unification.test.ts" display="This suite exercises the source entry through the native dispatcher; companion registry, machine-output, and relocated-binary suites prove the shared single-path contract" />
-    </Step>
-  </Scenario>
-</Guide>
+Native dispatch, registry-completeness, and relocated compiled-binary smoke tests exercise setup and shellenv; this scenario documents the surface rather than rendering a transcript.
+
+The top-level setup alias resolves to the canonical meta:setup command through the native dispatcher.
+
+The canonical setup command remains available directly through the native command registry.
+
+```sh
+lando meta:setup
+```
+
+Unknown setup flags fail with a non-existent-flag diagnostic.
+
+Shellenv parsing normalizes pwsh to the PowerShell snippet through the command input helper.
+
+Invalid shell values fail before runtime bootstrap.
+
+## Uninstall preview parity
+
+Dry-run renders the non-mutating safety plan.
+
+Without --yes, uninstall refuses destructive execution and renders the reviewed-plan reminder.
+
+```sh
+lando meta:uninstall
+```
+
+Unknown uninstall flags fail with a non-existent-flag diagnostic.
+
+## Renderer boundary contract
+
+Renderer-boundary lint is a source gate rather than a reader-visible CLI transcript.
+
+Command results route through Renderer output stdout and diagnostics route through Renderer output stderr (`core/src/cli/renderer-boundary.ts`).
+
+The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs.
+
+This suite exercises the source entry through the native dispatcher; companion registry, machine-output, and relocated-binary suites prove the shared single-path contract (`core/test/cli/native-dispatch-unification.test.ts`).

@@ -6,36 +6,44 @@ timeout: 60000
 tags: [beta, docs, subsystems, healthcheck, provider-exec]
 ---
 
+# Healthcheck runner
+
+`HealthcheckRunner` is the Effect Service tag published in `@lando/sdk`; plugins implement
+`HealthcheckRunnerShape`. The `runHealthcheckContract` runner from `@lando/sdk/test` validates a
+plugin's `id` and that `run()` resolves with a `HealthcheckResult`. `TestHealthcheckRunner` (built
+with `makeTestHealthcheckRunner`) is the in-memory test double — it records run calls and returns
+`healthy=true` — while core tests inject a fake provider exec to cover provider-exec behavior without
+a live container.
+
+## Probe types
+
+`HealthcheckPlan` supports three probe kinds:
+
+- `cmd` (`kind: command`) — runs inside the container via `RuntimeProvider.exec`.
+- `tcp` (`kind: tcp`) — checks TCP port reachability from inside the per-app network.
+- `http` (`kind: http`) — checks that the service URL returns a 2xx response from inside the per-app
+  network.
+
+## Failures and timeouts
+
+`HealthcheckTimeoutError` is raised when a healthcheck fails within its timeout; it includes
+`service`, `probe`, and `lastStatus`. `HealthcheckError` is raised for other healthcheck failures,
+such as provider-exec being unavailable. Unit tests verify the `HealthcheckRunner` contract against
+`TestHealthcheckRunner` in `sdk/test/contract/healthcheck-runner.test.ts`.
+
+## Retry primitive
+
+The provider-exec `HealthcheckRunner` uses `runProbe` from `@lando/sdk/probe` for its
+retry/delay/timeout loops, not a hand-rolled `Effect.retry` or `Schedule` (enforced by
+`check:probe-boundary`). `ProbeResult.lastError` is redacted via `RedactionService` before it reaches
+events or transcripts. `HealthcheckRunnerLive` (in `engine/src/subsystems/healthcheck/live.ts`) wires
+provider-exec to `RuntimeProvider.exec` and redacts the final provider status.
+
 <Guide>
-  <Scenario id="healthcheck-sdk-contract" render={false} reason="HealthcheckRunner SDK contract is exercised by sdk/test/contract/healthcheck-runner.test.ts against TestHealthcheckRunner; provider-exec behavior is covered by core/test/subsystems/healthcheck/live.test.ts without a live container">
-    <Step name="healthcheck-contract">
-      <Variable name="sdkTag" value="HealthcheckRunner" display="Effect Service tag published in @lando/sdk; plugins implement HealthcheckRunnerShape" />
-      <Variable name="contractRunner" value="runHealthcheckContract" display="Contract runner from @lando/sdk/test validates id and run() resolves with HealthcheckResult" />
-      <Variable name="testDouble" value="TestHealthcheckRunner / makeTestHealthcheckRunner" display="In-memory test double; records run calls and returns healthy=true; core tests inject a fake provider exec for provider-exec behavior" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="healthcheck-probe-types" render={false} reason="HealthcheckPlan supports cmd/tcp/http probes; live probe execution requires a running container via provider-exec">
-    <Step name="probe-types">
-      <Variable name="cmdProbe" value="kind: command — runs inside the container via RuntimeProvider.exec" display="Command probe: healthcheck via a shell command inside the container" />
-      <Variable name="tcpProbe" value="kind: tcp — TCP port reachability from inside the per-app network" display="TCP probe: checks that the service port accepts connections" />
-      <Variable name="httpProbe" value="kind: http — HTTP URL reachability from inside the per-app network" display="HTTP probe: checks that the service URL returns a 2xx response" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="healthcheck-timeout-error" render={false} reason="HealthcheckTimeoutError is raised when healthcheck fails within timeout; live timeout test requires a running container">
-    <Step name="timeout-error">
-      <Variable name="errorTag" value="HealthcheckTimeoutError" display="Raised when healthcheck fails within timeout — includes service, probe, and lastStatus" />
-      <Variable name="errorTag2" value="HealthcheckError" display="Raised for other healthcheck failures (e.g. provider-exec unavailable)" />
-      <Variable name="verificationRef" value="sdk/test/contract/healthcheck-runner.test.ts" display="Unit tests verify the HealthcheckRunner contract against TestHealthcheckRunner" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="healthcheck-probe-primitive" render={false} reason="Provider-exec HealthcheckRunner uses runProbe for retry/delay/timeout loops; live provider execution still requires a running container">
-    <Step name="probe-primitive">
-      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Healthcheck retry/delay/timeout-to-ready loops use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
-      <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
-      <Variable name="apiRef" value="engine/src/subsystems/healthcheck/live.ts" display="HealthcheckRunnerLive wires provider-exec to RuntimeProvider.exec and redacts final provider status" />
+  <Scenario id="healthcheck-config-check" render={false} reason="The contract, probe types, timeout error, and probe primitive above are covered by sdk/test/contract/healthcheck-runner.test.ts and core/test/subsystems/healthcheck/live.test.ts against test doubles and a fake provider exec; live probe execution needs a running container. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

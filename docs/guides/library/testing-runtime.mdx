@@ -6,112 +6,140 @@ timeout: 60000
 tags: [beta, docs, library, testing]
 ---
 
-<Guide>
-  <Scenario id="deterministic-runtime" render={false} reason="The testing runtime suite verifies deterministic doubles without requiring a provider backed app">
-    <Step name="runtime-doubles">
-      <Variable name="factory" value="makeTestRuntime()" display="makeTestRuntime() creates an isolated test runtime for library hosts" />
-      <Variable name="filesystem" value="in-memory" display="The FileSystem double records calls and never writes to the real disk" />
-      <Variable name="logger" value="captured" display="The Logger double records messages for assertions without printing by default" />
-      <Variable name="processRunner" value="captured" display="The ProcessRunner double records commands and never reaches the host shell or network" />
-      <Variable name="determinism" value="repeatable" display="The same runtime inputs produce identical recorded calls across runs" />
-    </Step>
-  </Scenario>
+# Testing runtime
 
-  <Scenario id="default-service-tags" render={false} reason="Bootstrap level coverage is verified by testing runtime contract tests without starting a provider backed app">
-    <Step name="bootstrap-levels">
-      <Variable name="minimal" value="provided" display="provideTestRuntime({ bootstrap: 'minimal' }) provides the minimal service set" />
-      <Variable name="provider" value="provided" display="provideTestRuntime({ bootstrap: 'provider' }) adds provider level services" />
-      <Variable name="global" value="provided" display="provideTestRuntime({ bootstrap: 'global' }) adds global app services" />
-      <Variable name="scratch" value="provided" display="provideTestRuntime({ bootstrap: 'scratch' }) adds scratch app services" />
-      <Variable name="scratchRuntime" value="openLandoRuntime({ scratch })" display="Library runtimes can acquire a scratch app up front; legacy isolate 'none' inputs are normalized to the canonical cwd mode before persistence" />
-      <Variable name="app" value="provided" display="provideTestRuntime({ bootstrap: 'app' }) adds the full app service set" />
-    </Step>
-  </Scenario>
+## Deterministic runtime
 
-  <Scenario id="provider-contract" render={false} reason="Provider bootstrap tests verify the default fake provider contract without starting containers">
-    <Step name="test-provider">
-      <Variable name="bootstrap" value="provider" display="The provider bootstrap layer resolves a RuntimeProvider by default" />
-      <Variable name="provider" value="TestRuntimeProvider" display="The default fake provider is TestRuntimeProvider" />
-      <Variable name="id" value="test" display="The fake provider reports the stable provider id test" />
-      <Variable name="contract" value="valid" display="The fake provider satisfies the RuntimeProvider contract used by core tests" />
-      <Variable name="dataPlaneContract" value="runProviderDataPlaneContract" display="@lando/sdk/test exposes runProviderDataPlaneContract for provider volume, service file, and artifact byte round trips, including native-vs-copy path observations" />
-      <Variable name="dataPlaneBehavior" value="in-memory" display="TestRuntimeProvider implements the data-plane methods in memory so contract tests can run without a live container runtime" />
-    </Step>
-  </Scenario>
+`makeTestRuntime()` creates an isolated test runtime for library hosts.
 
-  <Scenario id="composition-contracts" render={false} reason="Composition helpers run as pure SDK contract tests without provisioning provider backed apps">
-    <Step name="service-and-app-features">
-      <Variable name="composition" value="runServiceCompositionContract" display="runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output" />
-      <Variable name="serviceFeature" value="runServiceFeatureContract" display="runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions" />
-      <Variable name="appFeature" value="runAppFeatureContract" display="runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set" />
-      <Variable name="httpTimeout" value="runHttpClientContract timeout" display="runHttpClientContract accepts an optional timeout probe so HttpClient implementations prove timeoutMs aborts and reaps hung request or stream connections without leaking sockets" />
-      <Variable name="httpTrust" value="makeTestHttpClient({ systemCaPems })" display="makeTestHttpClient records fetchInitForNetwork output with injected host roots so HttpClient contract tests can assert network.ca.trustHost merges default roots with custom CAs or fails closed when disabled" />
-    </Step>
-  </Scenario>
+The FileSystem double records calls and never writes to the real disk (`in-memory`).
 
-  <Scenario id="tool-provisioning-extraction-limits" render={false} reason="Tool provisioning extraction limits are locked by SDK unit tests with deterministic in-memory archives">
-    <Step name="extraction-limits">
-      <Variable name="nestedArchiveCap" value="2 GiB default" display="Tool provisioning caps gzip and zip member decompression before installing pinned helper binaries so malformed artifacts fail with ToolExtractError instead of unbounded memory growth" />
-      <Variable name="testOverride" value="ProvisionToolInput.maxDecompressedBytes" display="Library hosts and tests can lower the cap for deterministic boundary coverage without changing production defaults" />
-    </Step>
-  </Scenario>
+The Logger double records messages for assertions without printing by default (`captured`).
 
-  <Scenario id="runtime-overrides" render={false} reason="Override behavior is covered by testing runtime tests without requiring a provider backed app">
-    <Step name="host-customization">
-      <Variable name="withService" value="tag override" display="withService(tag, impl) lets hosts replace one service tag" />
-      <Variable name="with" value="RuntimeProvider" display="with: { RuntimeProvider } swaps the provider implementation for a test host" />
-      <Variable name="paths" value="config root overrides" display="makeLandoRuntime({ config }) relocates userConfRoot, userCacheRoot, userDataRoot, and systemPluginRoot for an isolated PathsService" />
-      <Variable name="channel" value="next" display="@lando/core/testing is stable on the next channel for Beta 1" />
-    </Step>
-  </Scenario>
+The ProcessRunner double records commands and never reaches the host shell or network (`captured`).
 
-  <Scenario id="interaction-test-double" render={false} reason="The interaction test double drives prompt flows without a terminal and is verified by the SDK interaction contract suite without a provider backed app">
-    <Step name="seeded-prompts">
-      <Variable name="factory" value="makeTestInteractionService" display="@lando/core/testing exports makeTestInteractionService for driving prompt flows without a terminal" />
-      <Variable name="answers" value="seeded by prompt name" display="Seeded answers are keyed by prompt name and reuse the real makeInteractionService engine so coercion, validation, and precedence match the Live service" />
-      <Variable name="stdin" value="never opened" display="The test double fails on any stdin read, so a seeded flow can never block on the terminal" />
-      <Variable name="transcript" value="captured" display="The service captures a prompt transcript that hosts can assert against" />
-      <Variable name="contract" value="runInteractionContract" display="@lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees" />
-    </Step>
-  </Scenario>
+The same runtime inputs produce identical recorded calls across runs (`repeatable`).
 
-  <Scenario id="event-service-test-helpers" render={false} reason="Event helpers are verified by core testing runtime contract tests without requiring a provider backed app">
-    <Step name="wait-and-query-events">
-      <Variable name="waitFor" value="typed live wait" display="EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline" />
-      <Variable name="waitForAny" value="typed race" display="EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout" />
-      <Variable name="query" value="bounded redacted history" display="EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking" />
-      <Variable name="deliveryQueueCapacity" value="events.deliveryQueueCapacity (default 64)" display="GlobalConfig sets the positive per-subscriber delivery queue capacity; a full subscriber queue drops only that delivery so publish remains non-blocking" />
-      <Variable name="expectEvent" value="default timeout" display="@lando/core/testing exports expectEvent(name, options?) with a five second default timeout so missing test events fail fast" />
-      <Variable name="waitForEvent" value="caller timeout" display="@lando/core/testing exports waitForEvent(name, options?) for tests that need the EventService waitFor contract without the expectEvent default timeout" />
-      <Variable name="recordedEvents" value="query star" display="@lando/core/testing exports recordedEvents() as a snapshot of EventService.query('*') for assertions against emitted runtime history" />
-    </Step>
-  </Scenario>
+## Default service tags
 
-  <Scenario id="state-store-test-double" render={false} reason="The in-memory StateStore double mirrors live bucket semantics and is verified by runStateStoreContract without writing to the host disk">
-    <Step name="in-memory-buckets">
-      <Variable name="factory" value="makeTestStateStore" display="@lando/core/testing exports makeTestStateStore for hosts and plugin tests that need StateStore without filesystem IO" />
-      <Variable name="layer" value="Layer.succeed(StateStore)" display="makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks" />
-      <Variable name="semantics" value="codec and lock parity" display="The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive" />
-      <Variable name="list" value="basename keys" display="list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests" />
-      <Variable name="contract" value="runStateStoreContract" display="@lando/sdk/test exposes runStateStoreContract so live, in-memory, and host-provided StateStore implementations prove the same bucket guarantees" />
-    </Step>
-  </Scenario>
+`provideTestRuntime({ bootstrap: 'minimal' })` provides the minimal service set.
 
-  <Scenario id="live-provider-socket-gate" render={false} reason="Live integration gates resolve sockets through @lando/core/testing helpers without documenting a separate CLI walkthrough">
-    <Step name="managed-or-override">
-      <Variable name="resolver" value="resolveLiveProviderSocket" display="@lando/core/testing resolves an optional LANDO_TEST_PODMAN_SOCKET override when it is a real socket, otherwise the Lando-managed Paths default from lando setup" />
-      <Variable name="gate" value="hasLiveProviderSocket" display="Integration suites skip unless resolveLiveProviderSocket finds a live socket on disk" />
-      <Variable name="ci" value="lando setup --yes --provider=lando" display="linux-x64 provider-integration CI prepares the managed socket through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET" />
-    </Step>
-  </Scenario>
+`provideTestRuntime({ bootstrap: 'provider' })` adds provider-level services.
 
-  <Scenario id="probe-primitive" render={false} reason="The contracts-only probe primitive is pure SDK surface verified by TestClock tests without a LandoRuntime or provider backed app">
-    <Step name="retry-and-verdict">
-      <Variable name="subpath" value="@lando/sdk/probe" display="@lando/sdk/probe exports RetryPolicy, ProbeSpec, ProbeOutcome, ProbeResult, toSchedule, and runProbe as a contracts-only tier with no service Layer" />
-      <Variable name="verdict" value="green yellow red" display="runProbe stops on the first green outcome and retries yellow or red per policy until maxAttempts or overall timeout" />
-      <Variable name="clock" value="TestClock" display="Backoff, jitter, and timeout are driven through Effect Clock and Schedule so attempt counts and elapsed time are deterministic in tests" />
-      <Variable name="lastError" value="consumer redaction" display="runProbe returns lastError verbatim on non-green terminal outcomes; callers redact through RedactionService before events or transcripts" />
-      <Variable name="tests" value="sdk/test/probe" display="sdk/test/probe/run-probe.test.ts locks terminal ProbeResult semantics including zero-timeout and post-success lastError clearing" />
-    </Step>
-  </Scenario>
-</Guide>
+`provideTestRuntime({ bootstrap: 'global' })` adds global app services.
+
+`provideTestRuntime({ bootstrap: 'scratch' })` adds scratch app services.
+
+Library runtimes can acquire a scratch app up front; legacy isolate 'none' inputs are normalized to the canonical cwd mode before persistence.
+
+`provideTestRuntime({ bootstrap: 'app' })` adds the full app service set.
+
+## Provider contract
+
+The provider bootstrap layer resolves a RuntimeProvider by default.
+
+The default fake provider is TestRuntimeProvider.
+
+The fake provider reports the stable provider id test.
+
+The fake provider satisfies the RuntimeProvider contract used by core tests (`valid`).
+
+@lando/sdk/test exposes runProviderDataPlaneContract for provider volume, service file, and artifact byte round trips, including native-vs-copy path observations.
+
+TestRuntimeProvider implements the data-plane methods in memory so contract tests can run without a live container runtime (`in-memory`).
+
+## Composition contracts
+
+runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output.
+
+runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions.
+
+runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set.
+
+runHttpClientContract accepts an optional timeout probe so HttpClient implementations prove timeoutMs aborts and reaps hung request or stream connections without leaking sockets.
+
+makeTestHttpClient records fetchInitForNetwork output with injected host roots so HttpClient contract tests can assert network.ca.trustHost merges default roots with custom CAs or fails closed when disabled.
+
+## Tool provisioning extraction limits
+
+Tool provisioning extraction limits are locked by SDK unit tests with deterministic in-memory archives.
+
+Tool provisioning caps gzip and zip member decompression before installing pinned helper binaries so malformed artifacts fail with ToolExtractError instead of unbounded memory growth.
+
+Library hosts and tests can lower the cap for deterministic boundary coverage without changing production defaults (`ProvisionToolInput.maxDecompressedBytes`).
+
+## Runtime overrides
+
+withService(tag, impl) lets hosts replace one service tag.
+
+with: { RuntimeProvider } swaps the provider implementation for a test host.
+
+makeLandoRuntime({ config }) relocates userConfRoot, userCacheRoot, userDataRoot, and systemPluginRoot for an isolated PathsService.
+
+@lando/core/testing is stable on the next channel for Beta 1.
+
+## Interaction test double
+
+@lando/core/testing exports makeTestInteractionService for driving prompt flows without a terminal.
+
+Seeded answers are keyed by prompt name and reuse the real makeInteractionService engine so coercion, validation, and precedence match the Live service.
+
+The test double fails on any stdin read, so a seeded flow can never block on the terminal.
+
+The service captures a prompt transcript that hosts can assert against (`captured`).
+
+@lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees.
+
+## Event service test helpers
+
+EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline.
+
+EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout.
+
+EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking.
+
+GlobalConfig sets the positive per-subscriber delivery queue capacity; a full subscriber queue drops only that delivery so publish remains non-blocking.
+
+@lando/core/testing exports expectEvent(name, options?) with a five second default timeout so missing test events fail fast.
+
+@lando/core/testing exports waitForEvent(name, options?) for tests that need the EventService waitFor contract without the expectEvent default timeout.
+
+@lando/core/testing exports recordedEvents() as a snapshot of EventService.query('*') for assertions against emitted runtime history.
+
+## State store test double
+
+@lando/core/testing exports makeTestStateStore for hosts and plugin tests that need StateStore without filesystem IO.
+
+makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks (`Layer.succeed(StateStore)`).
+
+The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive.
+
+list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests.
+
+@lando/sdk/test exposes runStateStoreContract so live, in-memory, and host-provided StateStore implementations prove the same bucket guarantees.
+
+## Live provider socket gate
+
+Live integration gates resolve sockets through @lando/core/testing helpers without documenting a separate CLI walkthrough.
+
+@lando/core/testing resolves an optional LANDO_TEST_PODMAN_SOCKET override when it is a real socket, otherwise the Lando-managed Paths default from lando setup (`resolveLiveProviderSocket`).
+
+Integration suites skip unless resolveLiveProviderSocket finds a live socket on disk (`hasLiveProviderSocket`).
+
+linux-x64 provider-integration CI prepares the managed socket through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET.
+
+```sh
+lando setup --yes --provider=lando
+```
+
+## Probe primitive
+
+@lando/sdk/probe exports RetryPolicy, ProbeSpec, ProbeOutcome, ProbeResult, toSchedule, and runProbe as a contracts-only tier with no service Layer.
+
+runProbe stops on the first green outcome and retries yellow or red per policy until maxAttempts or overall timeout.
+
+Backoff, jitter, and timeout are driven through Effect Clock and Schedule so attempt counts and elapsed time are deterministic in tests (`TestClock`).
+
+runProbe returns lastError verbatim on non-green terminal outcomes; callers redact through RedactionService before events or transcripts.
+
+sdk/test/probe/run-probe.test.ts locks terminal ProbeResult semantics including zero-timeout and post-success lastError clearing.

@@ -6,126 +6,38 @@ timeout: 60000
 tags: [beta, docs, recipes, git, tarball, npm, registry]
 ---
 
-<Guide>
-  <Scenario id="git-source-command" render={false} reason="The live git clone path can target private or network repositories, so this executable guide documents the CLI surface without cloning during CI">
-    <Step name="command">
-      <Variable name="command" value="lando init --source=git --url=&lt;git-url&gt;" display="Clone a git repository as the recipe source, then read recipe.yml from the clone root" />
-      <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="A git source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
-    </Step>
-  </Scenario>
+# Recipes from remote sources
 
-  <Scenario id="git-source-cache" render={false} reason="Cache behavior is covered by core/test/recipes/git-source.test.ts with a fake cloner and deterministic commit SHA">
-    <Step name="cache">
-      <Variable name="cacheRoot" value="&lt;userDataRoot&gt;/recipe-cache/git/&lt;commitSha&gt;/" display="Git recipes are cached under the Lando user data root, keyed by the resolved HEAD commit SHA" />
-      <Variable name="cloneMode" value="git clone --depth 1" display="The default cloner performs a shallow clone, then runs git rev-parse HEAD to pin the cache directory" />
-      <Variable name="reuse" value="commit-addressed" display="If the commit directory already exists, Lando discards the staging clone and reuses the published cache entry" />
-    </Step>
-  </Scenario>
+`lando init` can scaffold a recipe from git, a tarball, npm, or the Lando
+recipe registry instead of a bundled recipe. Every remote source resolves
+to recipe manifest parsing and prompt collection; rendering a non-bundled
+recipe's files isn't implemented yet.
 
-  <Scenario id="git-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on external git hosts">
-    <Step name="failures">
-      <Variable name="missingUrl" value="RecipeSourceError kind=missing-url" display="--source=git requires --url=&lt;git-url&gt;" />
-      <Variable name="unsupportedSource" value="RecipeSourceError kind=unsupported-source" display="Other --source values are rejected until their stories land" />
-      <Variable name="subpathInvalid" value="RecipeSourceError kind=subpath-invalid" display="Absolute paths and .. escapes are rejected before cloning can publish a source" />
-      <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with git-specific remediation" />
-      <Variable name="auth" value="RecipeSourceError kind=auth" display="Interactive git credential prompts are disabled with GIT_TERMINAL_PROMPT=0 so CI fails fast" />
-    </Step>
-  </Scenario>
+## Git
 
-  <Scenario id="tarball-source-command" render={false} reason="The live tarball download path targets arbitrary URLs, so this executable guide documents the CLI surface without downloading during CI">
-    <Step name="command">
-      <Variable name="command" value="lando init --source=tarball --url=&lt;tarball-url&gt;" display="Download a tar/tar.gz archive as the recipe source, then read recipe.yml from the extracted root" />
-      <Variable name="checksum" value="--checksum=&lt;sha256&gt;" display="Optional 64-hex SHA-256; when present the archive is verified before extraction and a mismatch fails closed" />
-      <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="A tarball source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
-    </Step>
-  </Scenario>
+Clone a git repository as the recipe source, then read `recipe.yml` from
+the clone root:
 
-  <Scenario id="tarball-source-cache" render={false} reason="Cache and extraction behavior is covered by core/test/recipes/tarball-source.test.ts with a fake fetcher and deterministic archives">
-    <Step name="cache">
-      <Variable name="cacheRoot" value="&lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/" display="Tarball recipes are cached under the Lando user data root, keyed by the downloaded archive's SHA-256" />
-      <Variable name="extract" value="in-memory tar(.gz) reader" display="Archives are extracted by a dependency-free ustar reader (gzip auto-detected); no host tar binary is required" />
-      <Variable name="reuse" value="content-addressed" display="If the SHA-256 directory already exists, Lando discards the staging extract and reuses the published cache entry" />
-    </Step>
-  </Scenario>
+```sh
+lando init --source=git --url=<git-url>
+```
 
-  <Scenario id="tarball-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on external archive hosts">
-    <Step name="failures">
-      <Variable name="missingUrl" value="RecipeSourceError kind=missing-url" display="--source=tarball requires --url=&lt;tarball-url&gt;" />
-      <Variable name="checksumMismatch" value="RecipeSourceError kind=checksum-mismatch" display="A --checksum that does not match the downloaded archive fails before anything is extracted" />
-      <Variable name="checksumUnverified" value="RecipeSourceError kind=checksum-unverified" display="Without --checksum Lando warns with the computed digest and, when interactive, prompts once; a decline aborts" />
-      <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK URL fails with download remediation" />
-      <Variable name="extractFailed" value="RecipeSourceError kind=extract-failed" display="Bytes that are not a readable tar/tar.gz archive fail with extraction remediation" />
-      <Variable name="decompressionCap" value="2 GiB gzip output cap" display="gzip-compressed tarball recipes fail closed with RecipeSourceError kind=extract-failed when decompression would exceed the default cap" />
-      <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with tarball-specific remediation" />
-    </Step>
-  </Scenario>
+`--path=packages/my-recipe` selects an optional monorepo subdirectory;
+`recipe.yml` must live at the top level of that subpath.
 
-  <Scenario id="npm-source-command" render={false} reason="The live npm path resolves registry metadata and downloads a published tarball, so this executable guide documents the CLI surface without hitting the registry during CI">
-    <Step name="command">
-      <Variable name="command" value="lando init --source=npm --package=@lando/recipe-foo" display="Resolve an npm package's metadata, download the published tarball, and read recipe.yml from the extracted package/ root" />
-      <Variable name="version" value="--package=@lando/recipe-foo@1.2.3" display="An @version suffix is honored as an exact published version or a dist-tag; with no suffix the registry latest dist-tag is used" />
-      <Variable name="subpath" value="--path=recipes/my-recipe" display="Optional subdirectory inside the package; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="An npm source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
-    </Step>
-  </Scenario>
+Git recipes are cached under the Lando user data root, keyed by the
+resolved HEAD commit SHA: `<userDataRoot>/recipe-cache/git/<commitSha>/`.
+The default cloner performs a shallow clone (`git clone --depth 1`), then
+runs `git rev-parse HEAD` to pin the cache directory. If the commit
+directory already exists, Lando discards the staging clone and reuses the
+published cache entry.
 
-  <Scenario id="npm-source-cache" render={false} reason="Cache, extraction, and integrity behavior is covered by core/test/recipes/npm-source.test.ts with a fake registry client and deterministic tarballs">
-    <Step name="cache">
-      <Variable name="reuse" value="reuses the tarball extractor" display="The npm source delegates to the shared tarball resolver, so archives are cached under &lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/ and extracted by the same dependency-free ustar reader" />
-      <Variable name="packageRoot" value="package/ prefix" display="npm tarballs nest every file under package/, so the resolved recipe root is that package/ directory (plus any --path subpath)" />
-      <Variable name="integrity" value="dist.integrity / dist.shasum" display="The downloaded tarball is verified against the registry SRI integrity (sha512) or the legacy sha1 shasum before extraction" />
-    </Step>
-  </Scenario>
+Failure modes: `--source=git` requires `--url=<git-url>` (`missing-url`);
+other `--source` values are rejected until their stories land
+(`unsupported-source`); absolute paths and `..` escapes in `--path` are
+rejected before cloning (`subpath-invalid`); a valid `--path` without
+`recipe.yml` fails with git-specific remediation (`subpath-missing`);
+interactive git credential prompts are disabled with
+`GIT_TERMINAL_PROMPT=0` so auth failures fail fast (`auth`). All of these
+surface as `RecipeSourceError` with the matching `kind`.
 
-  <Scenario id="npm-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on the live npm registry">
-    <Step name="failures">
-      <Variable name="missingPackage" value="RecipeSourceError kind=missing-package" display="--source=npm requires --package=&lt;name&gt;[@version]" />
-      <Variable name="packageNotFound" value="RecipeSourceError kind=package-not-found" display="A package the registry returns 404 for fails with package remediation" />
-      <Variable name="versionNotFound" value="RecipeSourceError kind=version-not-found" display="An @version that matches no published version or dist-tag fails before download" />
-      <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="A registry metadata fetch error fails with registry remediation" />
-      <Variable name="integrityMismatch" value="RecipeSourceError kind=integrity-mismatch" display="A downloaded tarball that does not match the registry integrity/shasum fails before extraction" />
-      <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK tarball URL fails with download remediation" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="registry-source-command" render={false} reason="The live registry path resolves registry metadata and then follows a remote git or tarball source, so this executable guide documents the CLI surface without hitting the registry during CI">
-    <Step name="command">
-      <Variable name="command" value="lando init --source=registry --id=&lt;recipe-id&gt;" display="Resolve a recipe id through the configured registry, then read recipe.yml from the resolved git clone or tarball extract" />
-      <Variable name="defaultRegistry" value="https://registry.lando.dev/recipes/" display="With no override, Lando queries the default recipe registry URL" />
-      <Variable name="registryUrl" value="--registry-url=&lt;url&gt;" display="Override the registry base URL for private or test registries" />
-      <Variable name="scope" value="manifest and prompts" display="A registry source resolves the registry entry, then recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="registry-source-resolution" render={false} reason="Resolution behavior is covered by core/test/recipes/registry-source.test.ts with a fake registry client and deterministic downstream sources">
-    <Step name="resolution">
-      <Variable name="schema" value="RecipeRegistryResponse / RecipeRegistryResolution" display="The registry response schema is published in @lando/sdk so registries and clients share the same contract" />
-      <Variable name="git" value="kind: git" display="A registry resolution can point to a git source; Lando follows it and caches the recipe under &lt;userDataRoot&gt;/recipe-cache/git/&lt;commitSha&gt;/" />
-      <Variable name="tarball" value="kind: tarball" display="A registry resolution can point to a tarball source; Lando downloads, verifies when configured, extracts, and caches it under &lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="registry-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on the live Lando recipe registry">
-    <Step name="failures">
-      <Variable name="missingId" value="RecipeSourceError kind=missing-id" display="--source=registry requires --id=&lt;recipe-id&gt;" />
-      <Variable name="recipeNotFound" value="RecipeSourceError kind=recipe-not-found" display="A recipe id the registry returns 404 for fails with registry recipe remediation" />
-      <Variable name="registryInvalid" value="RecipeSourceError kind=registry-invalid" display="A malformed registry response fails before any downstream source is followed" />
-      <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="An unreachable registry or non-OK registry response fails with registry remediation" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="dynamic-choices-from" render={false} reason="Dynamic choices execute canonical Lando commands at prompt-collection time; runtime behavior is unit-tested with an injected choices runner so guide CI does not spawn nested Lando commands">
-    <Step name="manifest">
-      <Variable name="field" value="choicesFrom" display="A select or multiselect prompt may omit static choices when choicesFrom supplies them dynamically" />
-      <Variable name="shape" value="{ command, args?, parse: 'json' | 'lines' }" display="The command is a canonical Lando command id, args are optional strings, and stdout is parsed as JSON choices or non-empty lines" />
-      <Variable name="answers" value="--answer &lt;prompt&gt;=&lt;value&gt;" display="A supplied answer is accepted directly and does not run the dynamic choices command" />
-    </Step>
-    <Step name="fallback">
-      <Variable name="interactive" value="manual value prompt" display="Command failure, empty output, or unparseable output falls back to asking for a manual value when interactive" />
-      <Variable name="nonInteractive" value="default or RecipeChoicesError" display="With --yes or --no-interactive, Lando uses the prompt default when present; otherwise it fails with dynamic-choice remediation" />
-    </Step>
-  </Scenario>
-
-</Guide>

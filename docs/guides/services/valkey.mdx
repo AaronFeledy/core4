@@ -5,13 +5,28 @@ timeout: 90000
 tags: [beta, docs, valkey, service]
 ---
 
+# Valkey
+
+Add Valkey to your app by declaring `type: valkey` in your services block.
+Lando pulls `valkey/valkey:8` by default and listens on the standard port
+`6379`:
+
+```yaml
+name: valkey-demo
+services:
+  cache:
+    type: valkey
+tooling:
+  valkey-cli:
+    service: cache
+    cmd:
+      - valkey-cli
+```
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="valkey-demo" />
-      <Variable name="serviceType" value="valkey" display="Declare type: valkey in your services block" />
-      <Variable name="defaultImage" value="valkey/valkey:8" display="Default Docker image" />
-      <Variable name="defaultPort" value="6379" display="Default port" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -23,26 +38,43 @@ tags: [beta, docs, valkey, service]
     </Step>
   </Scenario>
 
-  <Scenario id="dual-scheme-endpoint" render={false} reason="lando info advertises both valkey:// (primary) and redis:// (alias) so new and existing client libraries connect without code changes">
-    <Step name="endpoints">
-      <Variable name="primaryScheme" value="valkey://localhost:6379" display="Primary endpoint scheme exposed by lando info" />
-      <Variable name="aliasScheme" value="redis://localhost:6379" display="Redis-compatible alias scheme for existing client libraries" />
-    </Step>
-  </Scenario>
+## Connection endpoints
 
-  <Scenario id="valkey-cli" render={false} reason="The fixture defines valkey-cli as an app tooling alias; ping/set/get the running cache from the host">
-    <Step name="ping">
-      <Variable name="pingCommand" value="lando valkey-cli ping" display="Verify the cache is reachable" />
-    </Step>
-    <Step name="set-get">
-      <Variable name="setCommand" value="lando valkey-cli set hello world" display="Store a key" />
-      <Variable name="getCommand" value="lando valkey-cli get hello" display="Read the key back" />
-    </Step>
-  </Scenario>
+`lando info` advertises both a `valkey://` endpoint (primary) and a
+`redis://` alias, so new and existing client libraries connect without code
+changes:
 
-  <Scenario id="version-override" render={false} reason="Use image to pin a specific Valkey major version when the default image is not desired">
-    <Step name="note">
-      <Variable name="valkey7Image" value="valkey/valkey:7" display="Pin Valkey 7 via image: valkey/valkey:7 under services.cache" />
-    </Step>
-  </Scenario>
+```
+valkey://localhost:6379
+redis://localhost:6379
+```
+
+## CLI access
+
+The fixture above declares `valkey-cli` as an app tooling alias. Ping the
+cache to verify it's reachable:
+
+```sh
+lando valkey-cli ping
+```
+
+Store and read a key:
+
+```sh
+lando valkey-cli set hello world
+lando valkey-cli get hello
+```
+
+## Pin a version
+
+Use `image:` to pin a specific Valkey major version when the default image
+isn't what you want:
+
+```yaml
+services:
+  cache:
+    type: valkey
+    image: valkey/valkey:7
+```
+
 </Guide>

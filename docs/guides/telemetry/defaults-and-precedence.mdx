@@ -6,27 +6,34 @@ timeout: 60000
 tags: [beta, docs, telemetry, config]
 ---
 
+# Telemetry defaults and precedence
+
+CLI runs construct telemetry as enabled when no flag, env overlay, or config value overrides it —
+`GlobalConfig` decoding treats an omitted telemetry setting as enabled for CLI config
+(`telemetry.enabled=true`).
+
+Library runtimes default the other way: telemetry stays off unless the embedding host explicitly
+opts in with `telemetry: true` at runtime construction.
+
+## Precedence chain
+
+The highest-precedence telemetry source wins, in this order:
+
+```text
+runtime option > env > config > default
+```
+
+- An env overlay (`LANDO_CONFIG__TELEMETRY__ENABLED=0`) disables telemetry before runtime
+  construction, even if `config.yml` enables it.
+- A valid global config setting (`telemetry.enabled: false`) disables CLI telemetry when no env
+  overlay is present.
+- An explicit runtime telemetry option (`telemetry: false`) wins before env and config resolution.
+
 <Guide>
-  <Scenario id="cli-default" render={false} reason="CLI telemetry defaults are verified by the CLI runtime telemetry tests without requiring a provider-backed app">
-    <Step name="default-on">
-      <Variable name="default" value="on" display="CLI runs construct telemetry as enabled when no flag, env overlay, or config value overrides it" />
-      <Variable name="configDefault" value="telemetry.enabled=true" display="GlobalConfig decoding now treats an omitted telemetry setting as enabled for CLI config" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="precedence" render={false} reason="The precedence chain is covered by the CLI runtime telemetry tests and env-overlay service tests">
-    <Step name="chain">
-      <Variable name="order" value="runtime option > env > config > default" display="The highest-precedence telemetry source wins" />
-      <Variable name="envOff" value="LANDO_CONFIG__TELEMETRY__ENABLED=0" display="An env overlay disables telemetry before runtime construction, even if config.yml enables it" />
-      <Variable name="configOff" value="telemetry.enabled: false" display="A valid global config setting disables CLI telemetry when no env overlay is present" />
-      <Variable name="runtimeOption" value="telemetry: false" display="An explicit runtime telemetry option wins before env and config resolution" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="library-default" render={false} reason="Library runtime defaults are verified by makeLandoRuntime tests and documented for embedding hosts">
-    <Step name="default-off">
-      <Variable name="libraryDefault" value="off" display="Library runtimes keep telemetry disabled unless the embedding host explicitly opts in" />
-      <Variable name="libraryOptIn" value="telemetry: true" display="Embedding hosts opt in at runtime construction" />
+  <Scenario id="telemetry-config-check" render={false} reason="Defaults and precedence above are covered by the CLI runtime telemetry tests, env-overlay service tests, and makeLandoRuntime tests without needing a provider-backed app. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

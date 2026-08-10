@@ -6,36 +6,51 @@ timeout: 60000
 tags: [beta, docs, landofile, config, version-constraint]
 ---
 
-<Guide>
-  <Scenario id="author-lando-range" render={false} reason="The Landofile schema, semver parser, and app-resolution enforcement are covered by focused version-constraint tests">
-    <Step name="declare">
-      <Variable name="landofileKey" value='lando: ">=4.1 &lt;5"' display="Declare the running Lando core semver range at the top level of .lando.yml" />
-      <Variable name="rangeGrammar" value="npm-semver comparators, unions (||), hyphen ranges, x-ranges, ^, ~, exact versions" display="Full npm-semver range grammar; prereleases participate in ordering and build metadata does not affect precedence" />
-      <Variable name="distinctSurface" value="runtime: and services.*.api remain separate" display="The lando: key constrains the Lando core binary only" />
-    </Step>
-  </Scenario>
+# Version constraints
 
-  <Scenario id="failure-payload" render={false} reason="Tagged error and machine-output envelopes are covered by app-resolution and command-result tests">
-    <Step name="fail-closed">
-      <Variable name="errorTag" value="LandofileVersionConstraintError" display="Unsatisfied constraints fail before app planning or provider action" />
-      <Variable name="messageContext" value="declared range, source layer, running version" display="The error message carries enough context for agents because JSON envelopes serialize _tag, message, and remediation" />
-      <Variable name="jsonShape" value="{ ok:false, error:{ _tag, message, remediation } }" display="--format=json uses the central command-result envelope" />
-    </Step>
-  </Scenario>
+Declare the running Lando core semver range at the top level of `.lando.yml`
+with `lando:`:
 
-  <Scenario id="skip-warning" render={false} reason="The invocation-scoped skip behavior is covered by assertLandoVersionConstraint and doctor-report tests">
-    <Step name="skip">
-      <Variable name="env" value="LANDO_SKIP_VERSION_CONSTRAINT=1" display="Downgrade an unsatisfied valid range to a warning for the current invocation only" />
-      <Variable name="scope" value="current process only" display="The skip does not rewrite the Landofile, mutate the app-plan cache, or mark the constraint satisfied" />
-      <Variable name="doctor" value="lando doctor --app" display="Doctor reports when the skip env is active and includes the same source-layer context" />
-    </Step>
-  </Scenario>
+```yaml
+lando: ">=4.1 <5"
+```
 
-  <Scenario id="repair-workflow" render={false} reason="Repair is a user workflow documented here; command behavior is protected by focused tests and machine-output gates">
-    <Step name="repair">
-      <Variable name="inspect" value="lando doctor --app --format=json" display="Inspect unsatisfied ranges and source layers without prose scraping" />
-      <Variable name="binaryFix" value="lando update" display="Install a compatible Lando binary when the project requires a newer core" />
-      <Variable name="landofileFix" value="edit lando: after confirming project support" display="Relax or correct the range only when the project intentionally supports the running version" />
-    </Step>
-  </Scenario>
-</Guide>
+The value supports the full npm-semver range grammar — comparators, unions
+(`||`), hyphen ranges, x-ranges, `^`, `~`, and exact versions. Prereleases
+participate in ordering, and build metadata doesn't affect precedence. The
+`lando:` key constrains the Lando core binary only; `runtime:` and
+`services.*.api` remain separate surfaces.
+
+## Failure
+
+Unsatisfied constraints fail before app planning or provider action, with a
+tagged `LandofileVersionConstraintError`. The message carries the declared
+range, source layer, and running version, so agents don't have to scrape
+prose — JSON envelopes serialize `_tag`, `message`, and `remediation`
+directly:
+
+```
+{ ok: false, error: { _tag, message, remediation } }
+```
+
+## Skipping the check
+
+`LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades an unsatisfied valid range to a
+warning for the current invocation only. The skip doesn't rewrite the
+Landofile, mutate the app-plan cache, or mark the constraint satisfied — it
+applies to the current process only. `lando doctor --app` reports when the
+skip env is active and includes the same source-layer context.
+
+## Repairing a mismatch
+
+```sh
+# Inspect unsatisfied ranges and source layers without prose scraping
+lando doctor --app --format=json
+
+# Install a compatible Lando binary when the project requires a newer core
+lando update
+```
+
+Or relax or correct the `lando:` range after confirming the project
+intentionally supports the running version.
+

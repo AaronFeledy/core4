@@ -6,61 +6,27 @@ timeout: 60000
 tags: [beta, docs, plugins, compatibility]
 ---
 
-<Guide>
-  <Scenario id="declare-core-compatibility" render={false} reason="The plugin SDK compatibility requirement is a static manifest field; core contract tests validate it without installing a live plugin package">
-    <Step name="manifest-field">
-      <Variable name="field" value="requires: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Every Lando v4 plugin manifest MUST declare a requires map pinning the @lando/core major version it targets" />
-      <Variable name="location" value="package.json landoPlugin / plugin manifest" display="The requires map lives alongside name, version, and api on the plugin manifest the SDK decodes before any plugin module loads" />
-    </Step>
-    <Step name="scaffolded-package-json">
-      <Variable name="name" value="&quot;name&quot;: &quot;@acme/lando-plugin-foo&quot;" display="A scaffolded plugin package.json keeps its published package name" />
-      <Variable name="api" value="&quot;api&quot;: 4" display="api: 4 selects the v4 manifest schema" />
-      <Variable name="requires" value="&quot;requires&quot;: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Scaffolded plugins ship the requires map already set to the supported core range so they pass the SDK contract out of the box" />
-      <Variable name="recipePrompts" value="text|select|multiselect|confirm|number|secret|path|editor" display="Plugin and recipe authors should consume the SDK recipe schema so compatibility checks recognize the full prompt-type vocabulary, including editor" />
-      <Variable name="pathsService" value="PathsService" display="Embedding hosts and plugin tests should consume the SDK PathsService tag instead of re-deriving Lando root directories by hand" />
-      <Variable name="runtimePaths" value="runtimeBinDir|runtimeRunDir|providerSocketPath|providerPidPath" display="PathsService exposes the managed runtime binary, run, socket, and PID paths so providers and hosts share the same private runtime locations" />
-      <Variable name="rootConfig" value="userConfRoot|userCacheRoot|userDataRoot|systemPluginRoot" display="GlobalConfig now carries the four root overrides that PathsService resolves in the same platform-aware order as core" />
-      <Variable name="stateStore" value="StateStore" display="Plugin and library hosts should depend on the SDK StateStore tag for durable, schema-validated state buckets instead of hand-rolled atomic writes or lockfiles" />
-      <Variable name="featureHostFacts" value="host?: ServiceTypeHostFacts" display="Service feature handlers can read planner-supplied host identity facts from ServiceFeatureContext.host when filesystem ownership, home directory, or platform-specific behavior must match the target host" />
-      <Variable name="landofileSdkSerializer" value="@lando/sdk/landofile" display="Plugin and library hosts can use the published SDK Landofile parser/emitter for byte-stable encoded round trips; native YAML anchors, aliases, and merge keys resolve before schema decoding, while invalid references fail as LandofileParseError with source location and remediation" />
-      <Variable name="landofileSerializer" value="@lando/core/landofile" display="Embedding hosts that already depend on @lando/core can import the canonical Landofile parse/emit helpers from @lando/core/landofile instead of reaching into core internals" />
-      <Variable name="machineOutputSchemas" value="CommandResultEnvelope|CommandWarning|CommandResultFormat|StreamFrame" display="Plugin, agent, and embedding hosts can validate future command JSON and NDJSON output with the published machine-output schemas from @lando/sdk/schema" />
-      <Variable name="httpClient" value="HttpClient|HttpRequest|HttpResponse|HttpClientContribution" display="Plugins and embedding hosts can consume the SDK HttpClient service tag, request/response schemas, tagged errors, events, and plugin contribution manifest surface without importing core internals" />
-      <Variable name="buildOrchestrator" value="BuildOrchestrator.build|BuildOrchestrator.buildApp" display="Embedding hosts can run artifact work before provider apply and app dependency steps after services are running through the additive BuildOrchestrator service methods" />
-      <Variable name="mcpEvents" value="pre-mcp-call|post-mcp-call" display="Plugin, agent, and embedding hosts can subscribe to redacted MCP tool-dispatch lifecycle events through the published SDK event union" />
-      <Variable name="toolProvisioning" value="@lando/sdk/tool-provisioning|ToolManifest|provisionTool" display="Plugins can share the verified tool provisioning helper for per-platform host CLI and agent installs without reimplementing archive extraction or path containment" />
-      <Variable name="providerSetupFlags" value="ProviderSetupOptions.setupFlags" display="Providers receive parsed values of the setup flags their plugin contributed via setup.flags on ProviderSetupOptions.setupFlags during lando setup" />
-      <Variable name="logFollowTesting" value="@lando/sdk/log-follow" display="Provider and embedding tests can use the SDK log-follow helpers to inject host log-file access; providers leave serviceLogSources disabled when that access is absent" />
-      <Variable name="rendererCapabilities" value="RendererCapabilities|NotifyDesktopEvent|NotifyConfig" display="SDK consumers read the four-field RendererCapabilities snapshot and the notify.desktop / NotifyConfig schemas from @lando/sdk; raw OpenTUI capability probing stays internal to the bundled renderer" />
-      <Variable name="hostProxyRequest" value="openUrl|openPath|runLando|runBun" display="HostProxyRequest is exactly four tagged members; container-initiated notify and clipboardCopy variants are absent with no deprecation shim" />
-      <Variable name="invocationCorrelation" value="invocationId|parentInvocationId" display="CLI lifecycle events carry CommandInvocationCorrelation so nested command: invocations keep a parent id and never independently drive foreground desktop notifications" />
-      <Variable name="bootstrapEventNames" value="pre-bootstrap-{minimal|plugins|commands|tooling|provider|app}|post-bootstrap-{minimal|plugins|commands|tooling|provider|app}" display="Bootstrap lifecycle subscriptions use a level-specific event tag for each subscribable bootstrap level instead of shared pre-bootstrap and post-bootstrap tags" />
-      <Variable name="bootstrapSubscriberLevel" value="SubscriberLevelMismatchError" display="A subscriber must declare the same bootstrap level as every selected level-specific bootstrap event; core rejects mismatches before loading the subscriber module and reports the plugin, subscriber, selected event, declared level, event level, and remediation" />
-    </Step>
-  </Scenario>
+# Declare SDK compatibility
 
-  <Scenario id="contract-classifies-core-range" render={false} reason="runPluginContract is exercised by sdk/test/contract/plugin.test.ts across every range class; this guide documents the user-facing outcomes">
-    <Step name="accepted">
-      <Variable name="compatible" value="^4.0.0" display="Only the canonical ^4.0.0 range is accepted as compatible with the Lando v4 core" />
-    </Step>
-    <Step name="rejected">
-      <Variable name="missing" value="no requires['@lando/core']" display="A missing or blank core requirement is rejected as missing" />
-      <Variable name="incompatible" value="^3.0.0 / ^5.0.0 / 4.x" display="A range that targets a different major, or a non-canonical equivalent, is rejected as incompatible" />
-      <Variable name="overly-broad" value="* / &gt;=4" display="An unbounded or wildcard range that would admit a future core major is rejected as overly broad" />
-      <Variable name="remediation" value="Set requires['@lando/core'] to '^4.0.0'." display="Every rejection carries the same tagged remediation telling the author exactly which value to declare" />
-    </Step>
-  </Scenario>
+Every Lando v4 plugin manifest must declare a `requires` map pinning the
+`@lando/core` major version it targets. The map lives alongside `name`,
+`version`, and `api` on the plugin manifest the SDK decodes before any
+plugin module loads:
 
-  <Scenario id="redaction-primitive" render={false} reason="The SDK secrets subpath is covered by pure export and redactor tests; this guide records the plugin-author compatibility contract without depending on a live runtime emitter">
-    <Step name="sdk-subpath">
-      <Variable name="import" value="@lando/sdk/secrets" display="Plugin and SDK authors can import the shared redaction primitive from @lando/sdk/secrets without depending on @lando/core or an Effect runtime" />
-      <Variable name="factory" value="createRedactor(profile, options)" display="createRedactor returns redactString, optional redactStringBounded, and redactValue helpers that compose known secret values with a profile-specific pattern pass" />
-      <Variable name="bounded" value="redactBounded? / redactStringBounded?" display="Bounded helpers accept text and a UTF-8 byte budget and return undefined rather than retaining oversized output; callers that require a bound fail closed when the helper is absent or returns undefined, and createRedactor supplies it for the secrets profile" />
-      <Variable name="profiles" value="secrets|telemetry|transcript" display="The published profiles cover general secret masking, telemetry normalization, and deterministic transcript placeholders" />
-    </Step>
-    <Step name="runtime-status">
-      <Variable name="wiring" value="caller-owned" display="Existing CLI, docs, telemetry, and event emitters are not switched to this primitive by this story; callers must opt in explicitly until later wiring stories land" />
-      <Variable name="purity" value="no core, no Effect, no Node/Bun IO" display="The primitive stays pure so plugins, tests, and future hot-path redactors can use the same API without constructing a Lando runtime" />
-    </Step>
-  </Scenario>
-</Guide>
+```json
+{
+  "requires": { "@lando/core": "^4.0.0" }
+}
+```
+
+A scaffolded plugin `package.json` ships this already set to the supported
+core range:
+
+```json
+{
+  "name": "@acme/lando-plugin-foo",
+  "api": 4,
+  "requires": { "@lando/core": "^4.0.0" }
+}
+```
+

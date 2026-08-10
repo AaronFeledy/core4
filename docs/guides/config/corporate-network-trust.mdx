@@ -6,6 +6,8 @@ timeout: 60000
 tags: [beta, docs, config, services, security, ca]
 ---
 
+# Corporate network trust
+
 Project-specific certificate authorities belong under each service's `security` block. The canonical
 form is a list of certificate paths:
 
@@ -179,68 +181,116 @@ resolved), `proxyInjectIntoServices`, and `noProxyCount`. It does not print the 
 or any embedded credential. `lando setup` does not publish those proxy fields; proxy failures still
 run through the command redaction boundary before they reach a human or a `--format json` consumer.
 
-<Guide>
-  <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
-    <Step name="declare-security">
-      <Variable name="canonical" value="security.ca" display="Declare project CA certificate paths as a list" />
-      <Variable name="aliases" value="cas, certificate-authority, certificate-authorities" display="Use a scalar or list; each form normalizes to security.ca" />
-      <Variable name="inheritFlags" value="inheritNetworkCa, inheritNetworkProxy" display="Override host network injection for this service only" />
-      <Variable name="leafTls" value="certs" display="Keep service leaf TLS separate from additional certificate authorities" />
-    </Step>
-  </Scenario>
-  <Scenario id="load-service-security-ca" render={false} reason="Focused production Landofile discovery and AppPlanner tests cover load/import decoding, provenance, containment, PEM remediation, and referenced-file cache invalidation">
-    <Step name="load-project-ca-files">
-      <Variable name="plainValue" value="load('./certs/corporate-root.pem')" display="Decode local PEM text for security.ca" />
-      <Variable name="provenance" value="import('./certs/team-root.pem')" display="Preserve the authored path, basename, checksum, and Landofile layer" />
-      <Variable name="containment" value="allowLoadOutsideRoot" display="Keep reads inside the app root unless the global policy explicitly opts out" />
-    </Step>
-  </Scenario>
-  <Scenario id="resolve-corporate-ca-paths" render={false} reason="Focused core network-trust tests cover host path loading, stable digests, and unreadable-path remediation without requiring private CA material">
-    <Step name="load-host-ca-paths">
-      <Variable name="globalConfig" value="network.ca.certs" display="Read host-global CA files from global config" />
-      <Variable name="environment" value="LANDO_NETWORK_CA_CERTS" display="Append host-global CA files from a JSON path array" />
-      <Variable name="projectConfig" value="security.ca" display="Keep project-local CA paths in the Landofile" />
-    </Step>
-  </Scenario>
-  <Scenario id="override-service-network-injection" render={false} reason="Focused ConfigService overlay tests cover true, false, absent, and malformed injection flag values without requiring a live service">
-    <Step name="set-injection-overrides">
-      <Variable name="caInjection" value="LANDO_NETWORK_CA_INJECT_INTO_SERVICES" display="Override network.ca.injectIntoServices with true or false" />
-      <Variable name="proxyInjection" value="LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES" display="Override network.proxy.injectIntoServices with true or false" />
-      <Variable name="caPaths" value="LANDO_NETWORK_CA_CERTS" display="Keep additional CA paths in the network-trust resolver as a JSON array" />
-    </Step>
-  </Scenario>
-  <Scenario id="plan-service-network-injection" render={false} reason="Focused AppPlanner tests cover global CA injection, per-service opt-out, project and inline PEM material, lando-base selection, and app-cache bundle creation without exposing private CA material">
-    <Step name="plan-service-trust">
-      <Variable name="globalDefault" value="network.ca.injectIntoServices=true" display="Inject configured host CAs into type: lando services by default" />
-      <Variable name="serviceOptOut" value="security.inheritNetworkCa=false" display="Suppress global CAs for one service while preserving security.ca" />
-      <Variable name="preflight" value="lando setup" display="Validate host trust and configured CA paths before service startup" />
-    </Step>
-  </Scenario>
-  <Scenario id="runtime-ca-environment-and-rebuild" render={false} reason="Focused lando.security feature and base-composition tests verify fixed CA environment paths and rebuild-invariant behavior without requiring private CA material or a live provider">
-    <Step name="use-runtime-ca-paths">
-      <Variable name="bundle" value="/etc/lando/certs/ca-bundle.pem" display="Use the stable concatenated CA bundle path" />
-      <Variable name="directory" value="/etc/lando/certs" display="Use the stable Lando CA directory" />
-      <Variable name="runtimeEnv" value="REQUESTS_CA_BUNDLE, NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR" display="Point Python Requests, Node, and OpenSSL-family runtimes at injected CA material" />
-      <Variable name="landoEnv" value="LANDO_CA_CERT, LANDO_CA_BUNDLE, LANDO_CA_DIR" display="Read the same paths through Lando's standard service environment" />
-      <Variable name="rebuild" value="lando rebuild" display="Rebuild services after CA material changes" />
-    </Step>
-  </Scenario>
-  <Scenario id="confirm-setup-injection-note" render={false} reason="Focused meta:setup command tests cover the informational injection note for enabled and disabled CA injection without requiring host provider setup or private CA material">
-    <Step name="read-setup-injection-note">
-      <Variable name="command" value="lando setup" display="Report that configured host certificate authorities are set to inject into eligible type: lando services" />
-      <Variable name="suppressed" value="network.ca.injectIntoServices=false" display="Omit the note when CA injection is disabled" />
-      <Variable name="machineField" value="networkCaInjectionConfigured" display="Read the boolean host-global injection condition from the setup result in --format json; false means no configured host CAs or disabled injection, and setup publishes no certificate count" />
-    </Step>
-  </Scenario>
-  <Scenario id="resolve-global-proxy" render={false} reason="Focused sdk/src/network-trust and lando.security feature tests cover canonical authoring, block-level precedence, credential-safe default-off injection, emitted service env, per-service override, and redacted diagnostics without requiring a live proxy or private credentials">
-    <Step name="author-and-resolve-proxy">
-      <Variable name="canonical" value="network.proxy.http, network.proxy.https, network.proxy.noProxy" display="Author the global proxy block in global config" />
-      <Variable name="precedence" value="non-empty http, https, or noProxy" display="Make the selected config block supply all proxy values; HTTP_PROXY/HTTPS_PROXY/NO_PROXY and lowercase env are ignored entirely" />
-      <Variable name="disable" value="network.proxy.http=null" display="Disable that direction without environment fallback when another non-empty value selects config precedence; null alone still falls back to env" />
-      <Variable name="injectionDefault" value="network.proxy.injectIntoServices=false" display="Keep proxy injection off by default because proxy URLs may embed credentials, unlike network.ca.injectIntoServices=true" />
-      <Variable name="serviceEnv" value="HTTP_PROXY, HTTPS_PROXY, NO_PROXY" display="Write uppercase HTTP_PROXY/HTTPS_PROXY only when resolved and always write comma-joined NO_PROXY, including an empty string, when injection runs" />
-      <Variable name="serviceOverride" value="security.inheritNetworkProxy" display="Override injection for one service independently of security.inheritNetworkCa; true, false, or omitted each resolve on their own" />
-      <Variable name="diagnostics" value="proxyConfigured, proxyInjectIntoServices, noProxyCount" display="Expose doctor proxy state as safe booleans and counts, never the resolved URL or credentials; setup redacts proxy failures without publishing these fields" />
-    </Step>
-  </Scenario>
-</Guide>
+## Author service security
+
+Declare project CA certificate paths as a list (`security.ca`).
+
+Use a scalar or list; each form normalizes to security.ca.
+
+Override host network injection for this service only.
+
+Keep service leaf TLS separate from additional certificate authorities (`certs`).
+
+## Load service security CA
+
+Focused production Landofile discovery and AppPlanner tests cover load/import decoding, provenance, containment, PEM remediation, and referenced-file cache invalidation.
+
+Decode local PEM text for security.ca (`load('./certs/corporate-root.pem')`).
+
+Preserve the authored path, basename, checksum, and Landofile layer (`import('./certs/team-root.pem')`).
+
+Keep reads inside the app root unless the global policy explicitly opts out (`allowLoadOutsideRoot`).
+
+## Resolve corporate CA paths
+
+Read host-global CA files from global config (`network.ca.certs`).
+
+Append host-global CA files from a JSON path array.
+
+```sh
+LANDO_NETWORK_CA_CERTS
+```
+
+Keep project-local CA paths in the Landofile (`security.ca`).
+
+## Override service network injection
+
+Override network.ca.injectIntoServices with true or false.
+
+```sh
+LANDO_NETWORK_CA_INJECT_INTO_SERVICES
+```
+
+Override network.proxy.injectIntoServices with true or false.
+
+```sh
+LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES
+```
+
+Keep additional CA paths in the network-trust resolver as a JSON array.
+
+```sh
+LANDO_NETWORK_CA_CERTS
+```
+
+## Plan service network injection
+
+Focused AppPlanner tests cover global CA injection, per-service opt-out, project and inline PEM material, lando-base selection, and app-cache bundle creation without exposing private CA material.
+
+Inject configured host CAs into type: lando services by default (`network.ca.injectIntoServices=true`).
+
+Suppress global CAs for one service while preserving security.ca (`security.inheritNetworkCa=false`).
+
+Validate host trust and configured CA paths before service startup.
+
+```sh
+lando setup
+```
+
+## Runtime CA environment and rebuild
+
+Use the stable concatenated CA bundle path (`/etc/lando/certs/ca-bundle.pem`).
+
+Use the stable Lando CA directory (`/etc/lando/certs`).
+
+Point Python Requests, Node, and OpenSSL-family runtimes at injected CA material.
+
+Read the same paths through Lando's standard service environment.
+
+```sh
+LANDO_CA_CERT, LANDO_CA_BUNDLE, LANDO_CA_DIR
+```
+
+Rebuild services after CA material changes.
+
+```sh
+lando rebuild
+```
+
+## Confirm setup injection note
+
+Report that configured host certificate authorities are set to inject into eligible type: lando services.
+
+```sh
+lando setup
+```
+
+Omit the note when CA injection is disabled (`network.ca.injectIntoServices=false`).
+
+Read the boolean host-global injection condition from the setup result in --format json; false means no configured host CAs or disabled injection, and setup publishes no certificate count (`networkCaInjectionConfigured`).
+
+## Resolve global proxy
+
+Author the global proxy block in global config.
+
+Make the selected config block supply all proxy values; HTTP_PROXY/HTTPS_PROXY/NO_PROXY and lowercase env are ignored entirely.
+
+Disable that direction without environment fallback when another non-empty value selects config precedence; null alone still falls back to env (`network.proxy.http=null`).
+
+Keep proxy injection off by default because proxy URLs may embed credentials, unlike network.ca.injectIntoServices=true (`network.proxy.injectIntoServices=false`).
+
+Write uppercase HTTP_PROXY/HTTPS_PROXY only when resolved and always write comma-joined NO_PROXY, including an empty string, when injection runs.
+
+Override injection for one service independently of security.inheritNetworkCa; true, false, or omitted each resolve on their own (`security.inheritNetworkProxy`).
+
+Expose doctor proxy state as safe booleans and counts, never the resolved URL or credentials; setup redacts proxy failures without publishing these fields.
