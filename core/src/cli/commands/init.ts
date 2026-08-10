@@ -15,7 +15,6 @@ import type {
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
-import { makeDiskBackend, makeManagedFileService } from "@lando/engine/managed-file/service";
 import {
   type ProgressEmitter,
   publishTaskCompleteAsync,
@@ -24,6 +23,7 @@ import {
   publishTreeCompleteAsync,
   publishTreeStartAsync,
 } from "@lando/engine/operations/progress";
+import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";

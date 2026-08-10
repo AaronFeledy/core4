@@ -37,6 +37,7 @@
         "@lando/engine": "workspace:*",
         "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
+        "@lando/managed-file": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
@@ -86,6 +87,17 @@
       },
       "devDependencies": {
         "@types/semver": "^7.7.1",
+      },
+    },
+    "managed-file": {
+      "name": "@lando/managed-file",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+        "effect": "^3.21.2",
       },
     },
     "paths": {
@@ -280,6 +292,8 @@
     "@lando/landofile": ["@lando/landofile@workspace:landofile"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
+
+    "@lando/managed-file": ["@lando/managed-file@workspace:managed-file"],
 
     "@lando/notify-lando": ["@lando/notify-lando@workspace:plugins/notify-lando"],
 

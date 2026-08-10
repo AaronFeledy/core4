@@ -24,28 +24,29 @@
       "description": "As a maintainer, a private @lando/managed-file package holds the moved implementation and is wired into workspace/tsconfig/npm-dev/shards without an engine package edge.",
       "acceptanceCriteria": [
         "Package scaffolded (state-store shape); engine/src/managed-file/ gone; resolveUserDataRoot replaced with resolveLandoRoots().userDataRoot.",
+        "To keep root typecheck green at the source-move boundary, repoint the root-typechecked production seams in this story: bootstrap-layer-renderers plus regenerated minimal layer, core init, core testing helper, and the core package dependency. Test-only consumer migration and the final import sweep remain US-553.",
         "Root workspaces + root/core tsconfig references updated; engine/package.json and engine/tsconfig have no managed-file edge.",
         "prepare-npm-dev-packages lists package before engine; test-shards INCLUDE_GLOBS includes managed-file/test; engine-closure drops managed-file brain dir.",
         "bun install run; package typecheck green.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
       "id": "US-553",
-      "title": "Repoint consumers and bootstrap-layer generator",
-      "description": "As a maintainer, every real @lando/engine/managed-file importer moves to @lando/managed-file and generated layers are regenerated from the generator.",
+      "title": "Finish managed-file consumer migration and sweep",
+      "description": "As a maintainer, the remaining test-only @lando/engine/managed-file consumers move to @lando/managed-file and the completed migration is proven clean.",
       "acceptanceCriteria": [
-        "bootstrap-layer-renderers updated; codegen:bootstrap-layers regenerates minimal layer import.",
-        "init, testing helper, and core managed-file tests updated; grep engine/managed-file clean under first-party trees.",
+        "Core managed-file unit, library, and contract tests updated to import @lando/managed-file; no phantom files invented.",
+        "Grep for engine/managed-file is clean under core/engine/plugins/scripts, excluding .local/.",
         "Focused managed-file tests pass with positive counts; typecheck green.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 3,
       "passes": false,
-      "notes": "PRD-02"
+      "notes": "PRD-02; adjudicated: root-typechecked production repointing moved into US-552, leaving test consumers and final sweep here"
     },
     {
       "id": "US-554",

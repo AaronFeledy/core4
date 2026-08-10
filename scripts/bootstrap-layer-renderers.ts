@@ -10,7 +10,7 @@ export const renderMinimal = (): string =>
     'import { HttpClientLive } from "@lando/http-client/live";',
     'import { InteractionServiceLive } from "../../../interaction/service.ts";',
     'import { LoggerLive } from "@lando/engine/logging/service";',
-    'import { ManagedFileServiceLive } from "@lando/engine/managed-file/service";',
+    'import { ManagedFileServiceLive } from "@lando/managed-file/service";',
     'import { PluginTrustStoreLive } from "@lando/engine/plugins/trust-store";',
     'import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";',
     'import { ConfigServiceLive } from "@lando/engine/services/config";',

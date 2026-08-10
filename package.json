@@ -17,6 +17,7 @@
     "landofile",
     "redaction",
     "http-client",
+    "managed-file",
     "engine",
     "plugins/*"
   ],

@@ -7,7 +7,7 @@ import {
   composeFileContent,
   hasFileMarker,
   stripFileMarker,
-} from "@lando/engine/managed-file/marker";
+} from "@lando/managed-file/marker";
 
 describe("managed-file marker — commentPrefix", () => {
   test.each([

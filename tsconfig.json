@@ -24,6 +24,9 @@
       "path": "./redaction"
     },
     {
+      "path": "./managed-file"
+    },
+    {
       "path": "./engine"
     },
     {

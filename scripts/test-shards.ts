@@ -29,6 +29,7 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
   "engine/test/**/*.test.ts",
   "http-client/test/**/*.test.ts",
   "landofile/test/**/*.test.ts",
+  "managed-file/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
 ];

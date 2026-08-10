@@ -38,6 +38,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/container-runtime": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/redaction": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/http-client": { dependencies: ["@lando/sdk"], devDependencies: [] },
+  "@lando/managed-file": {
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/redaction"],
+    devDependencies: [],
+  },
   "@lando/landofile": {
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
     devDependencies: [],

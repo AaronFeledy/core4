@@ -5,10 +5,9 @@
 //
 // The decision algorithm and marker handling are backend-agnostic: the service
 // is built over a `ManagedFileBackend` so the real disk-backed `Live` layer and
-// the in-memory `TestManagedFileStore` share one implementation. The ledger is
-// realized through a `StateStore` bucket (not a bespoke
-// registry/lock/quarantine); the ledger path is derived once by the paths
-// primitive for the ledger path; never re-spell managed-files/ledger.json here.
+// the in-memory `TestManagedFileStore` share one implementation. The ledger uses
+// a `StateStore` bucket (not a bespoke registry/lock/quarantine), and the paths
+// primitive owns the location of managed-files/ledger.json.
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
@@ -42,12 +41,11 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
+import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLock } from "@lando/state-store/lock";
 import { makeStateStore } from "@lando/state-store/service";
-import { resolveUserDataRoot } from "../config/roots.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   canCarryFileMarker,
@@ -993,7 +991,7 @@ export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.eff
   Effect.gen(function* () {
     const backend = yield* makeDiskBackend({
       defaultBase: () => process.cwd(),
-      ledgerRoot: () => resolveUserDataRoot(),
+      ledgerRoot: () => resolveLandoRoots().userDataRoot,
     });
     const eventService = yield* Effect.serviceOption(EventService);
     const redaction = yield* Effect.serviceOption(RedactionService);
