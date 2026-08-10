@@ -1,0 +1,132 @@
+---
+id: php-version-matrix
+provider: test
+timeout: 90000
+tags: [beta, docs, php, service, runtime]
+---
+
+# PHP version matrix
+
+`type: php:<version>` accepts exactly `8.1`, `8.2`, `8.3`, or `8.4`. Every
+other version — including `8.0` and `8.5` — fails Landofile validation
+before any build or container work happens. Each supported version
+resolves to the matching stock upstream image, `php:<version>-apache-bookworm`:
+
+```yaml
+name: php-version-matrix-demo
+services:
+  app:
+    type: "php:8.1"
+    primary: true
+```
+
+`lando app:cache:refresh` rebuilds the app plan without starting anything —
+a fast way to prove a `type:` resolves:
+
+<Guide>
+  <Scenario id="php-8-1-resolves" render>
+    <Step name="scaffold">
+      <UseFixture name="php-81" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-version-matrix-81" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php-8-2-resolves" render>
+    <Step name="scaffold">
+      <UseFixture name="php-82" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-version-matrix-82" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php-8-3-resolves" render>
+    <Step name="scaffold">
+      <UseFixture name="php-83" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-version-matrix-83" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php-8-4-resolves" render>
+    <Step name="scaffold">
+      <UseFixture name="php-84" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-version-matrix-84" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Unsupported versions fail honestly
+
+`php:8.0` and `php:8.5` are outside the supported catalog. Landofile
+validation rejects them immediately, before any build or container work
+starts, and names the supported alternatives:
+
+  <Scenario id="php-8-0-rejected" render>
+    <Step name="scaffold">
+      <UseFixture name="php-unsupported-8-0" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported service type php:8\\.0 for service app\\." }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php-8-5-rejected" render>
+    <Step name="scaffold">
+      <UseFixture name="php-unsupported-8-5" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported service type php:8\\.5 for service app\\." }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Pin a version
+
+Pin any of the four supported minors under `type:`. There is no bare
+`type: php` alias — always include the version:
+
+```yaml
+services:
+  app:
+    type: php:8.2
+```
+
+Set `image:` to override the stock `-apache-bookworm` image with a
+`php-fpm` or CLI base instead:
+
+```yaml
+services:
+  app:
+    type: "php:8.3"
+    image: php:8.3-fpm
+```
+
+</Guide>

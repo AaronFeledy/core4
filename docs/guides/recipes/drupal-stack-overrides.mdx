@@ -1,0 +1,154 @@
+---
+id: drupal-stack-overrides
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, drupal, php, database]
+---
+
+# Drupal stack overrides
+
+The `drupal` recipe's prompt surface is narrow: an app name, a PHP version
+prompt that only offers `8.3`, and a database prompt that only offers
+`mariadb` or `postgres`. These overrides below are not recipe prompts —
+they are ordinary Landofile edits you make to the generated `.lando.yml`
+after `lando init`, then apply with `lando rebuild -y`.
+
+## What the recipe actually generates
+
+`lando init --recipe drupal` writes a fixed shape: an Apache-backed
+`appserver` on `php:8.3`, webroot `/app/web`, `allowOverride: true`, a
+`database` service, and `drush`/`composer` tooling tasks that call
+project-local `vendor/bin/drush` and `composer`.
+
+<Guide>
+  <Scenario id="default-recipe-output" render>
+    <Step name="init">
+      <Variable name="appName" value="drupal-stack-overrides" display="my-drupal-app" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+    </Step>
+  </Scenario>
+
+## PHP 8.1-8.4 on the appserver
+
+The recipe only prompts for `8.3`, but the `php` service type itself
+supports `8.1`, `8.2`, `8.3`, and `8.4`. Edit `services.appserver.type` to
+any of those and rebuild:
+
+  <Scenario id="php-version-override" render>
+    <Step name="edit">
+      <UseFixture name="php-version-override" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.1\"" } }} />
+    </Step>
+  </Scenario>
+
+## Swapping the database engine and pinning its image
+
+The default `database` service is `type: mariadb`, unversioned. Swap
+`type:` to `mysql` or `postgres`, and pin an exact upstream tag with
+`image:` — for example `mysql:8.4` where the recipe prompt has no MySQL or
+version option at all:
+
+  <Scenario id="database-image-pin" render>
+    <Step name="edit">
+      <UseFixture name="database-image-pin" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"[^}]*\"image\":\\s*\"mysql:8\\.4\"" } }} />
+    </Step>
+  </Scenario>
+
+## Running two database services side by side
+
+Nothing pins the app to one database service name. Author a second,
+explicit database service — say a legacy `database-legacy` on `mysql`
+alongside the default `mariadb` `database` — and add it to the
+appserver's `dependsOn`. This is a manual second-service Landofile, not a
+recipe multi-database prompt:
+
+  <Scenario id="two-database-services" render>
+    <Step name="edit">
+      <UseFixture name="two-database-services" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":.*\"database-legacy\"" } }} />
+    </Step>
+  </Scenario>
+
+## Drush URI and a moved webroot
+
+The generated `drush` tooling task calls project-local `vendor/bin/drush`
+with no `DRUSH_OPTIONS_URI` set. Add it under
+`services.appserver.environment`, and if you also move the webroot away
+from the default `/app/web` (say to `/app/docroot`), Drush's project-local
+path in `tooling.drush.cmds` doesn't need to change — `vendor/bin/drush`
+lives at the Composer project root, not under the webroot:
+
+  <Scenario id="drush-uri-webroot" render>
+    <Step name="edit">
+      <UseFixture name="drush-uri-webroot" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/docroot\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DRUSH_OPTIONS_URI\":\\s*\"https://drupal-stack-overrides\\.lndo\\.site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"vendor/bin/drush\"" } }} />
+    </Step>
+  </Scenario>
+
+## Bind-mounting custom PHP and database config
+
+There's no recipe shorthand for a custom `php.ini` or database config
+file, and the default `provider-lando` can't realize Compose `configs:`.
+Bind-mount host config files with `volumes:` instead — one entry on
+`appserver` for PHP, one on `database` for MariaDB:
+
+  <Scenario id="bind-mounted-config" render>
+    <Step name="edit">
+      <UseFixture name="bind-mounted-config" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{.*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{.*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\"" } }} />
+    </Step>
+  </Scenario>
+
+Applying any of these edits to a running app still needs `lando rebuild -y`
+to recreate the affected containers — none of that requires live Drupal or
+database traffic to prove the Landofile is correct, so every scenario
+above stops at lint and inspect.
+
+</Guide>

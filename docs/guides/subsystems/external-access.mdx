@@ -1,0 +1,110 @@
+---
+id: external-access
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, subsystems, networking, ports, lan]
+---
+
+# External access and LAN binding
+
+By default, host-exposed ports bind to `127.0.0.1` — reachable only from this machine. A compose
+service that publishes a container port stays loopback-only unless the port entry names an explicit
+`host_ip`. This fixture publishes port 80 to `0.0.0.0:8080`, opting into binding on every interface,
+including the LAN one:
+
+```yaml
+name: external-access-demo
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    primary: true
+    ports:
+      - 0.0.0.0:8080:80
+```
+
+<Guide>
+  <Scenario id="bind-address-happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="external-access-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect-bound-address">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "0\\.0\\.0\\.0" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Only bind wide on purpose
+
+Binding a service to `0.0.0.0` exposes it to every device on your LAN, and on a shared or untrusted
+network, to anyone else on that network too. Only bind wide when you intend LAN or external
+reachability, and never for services holding real credentials or unreviewed dev tooling. Prefer a
+named interface IP over `0.0.0.0` when you can, to limit exposure to one network segment.
+
+Reverting a wide bind needs a rebuild, not just a restart: remove `host_ip` or set it back to
+`127.0.0.1`, then run `lando rebuild -y`.
+
+## Compose ports short-syntax reference
+
+| Form | Meaning |
+| --- | --- |
+| `80` | Container port only — the provider assigns the host port, bound to the default loopback address. |
+| `8080:80` | Explicit host port mapped to a container port, still bound to the default loopback address. |
+| `0.0.0.0:8080:80` | `host_ip:host_port:container_port` — the explicit `host_ip` is what opts the binding beyond loopback. |
+| `8080:80/udp` | Append `/protocol` to select `udp`; `tcp` is the default when omitted. |
+| `8080-8090:80-90` | Equal-length host and container ranges map port-for-port in order. |
+
+The long-form object accepts the same fields as `target`/`published`/`host_ip`/`protocol`; `host_ip`
+still controls bind scope:
+
+```yaml
+ports:
+  - target: 80
+    published: 8080
+    host_ip: 0.0.0.0
+    protocol: tcp
+```
+
+## The proxy doesn't widen LAN reach
+
+The proxy's Traefik router listens on the host and answers a hostname like
+`web.external-access-demo.lndo.site`, but that hostname only resolves on the host itself.
+`lando setup` writes `*.lndo.site` resolution into this machine's DNS mechanism (`etc-hosts`,
+`etc-resolver`, or the HOSTS file) only — it never touches other devices' DNS or hosts files. Proxy
+routing and published ports are independent: reaching a proxied hostname from the host doesn't need
+any `ports:` entry, and `ports:` only controls direct host-port publication of a service.
+
+Another device on the LAN has no `*.lndo.site` DNS entry, so it can't reach the proxy by hostname —
+only by an explicitly bound service `IP:port`, or by adding an equivalent host-file entry on that
+device. There are two ways to reach an app from another device: a manual DNS/hosts entry per device,
+or a direct bound port with no hostname involved.
+
+## Reaching the app from a second device
+
+Find this machine's LAN IP with the platform-native network command:
+
+```sh
+ip addr show     # Linux
+ifconfig         # macOS
+ipconfig         # Windows
+```
+
+From the other device, browse to the host's LAN IP and the published host port — not the container
+port, and not a `*.lndo.site` hostname:
+
+```text
+http://<host-lan-ip>:8080
+```
+
+A `0.0.0.0` bind opens the container port mapping, but the host OS firewall can still refuse the
+inbound connection and needs its own allow rule.

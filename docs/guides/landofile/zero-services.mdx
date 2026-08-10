@@ -1,0 +1,35 @@
+---
+id: zero-services
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile]
+---
+
+# Zero services
+
+A Landofile can declare only `name:` and no `services:` block at all.
+`services:` is independently optional alongside `tooling:` and `includes:`.
+A Landofile can skip `services:` entirely and only declare `tooling:`,
+useful for a pure CLI-wrapper app with no containers of its own. It can also
+declare only `includes:` to pull in services, tooling, or config fragments
+from elsewhere instead of defining them locally.
+
+<Guide>
+  <Scenario id="app-with-no-services" render>
+    <Step name="scaffold">
+      <UseFixture name="zero-services-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start --format=json" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

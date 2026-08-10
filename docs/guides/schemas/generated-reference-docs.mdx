@@ -6,20 +6,18 @@ timeout: 60000
 tags: [beta, docs, schemas]
 ---
 
-<Guide>
-  <Scenario id="generated-reference-pages" render={false} reason="The schema reference generator is locked by core/test/build/schema-snapshot.test.ts to avoid duplicating generated reference tables in guide prose">
-    <Step name="generate">
-      <Variable name="command" value="bun run scripts/build-schema-snapshot.ts" display="Regenerate public JSON Schema artifacts and the Starlight schema reference pages from the same public schema registry" />
-      <Variable name="output" value="docs/reference/schemas/*.mdx" display="Generated Starlight MDX pages live in the reference tree declared by publicSchemaMetadataIndex docsPath entries" />
-      <Variable name="source" value="Effect Schema AST traversal" display="Titles, descriptions, required fields, accepted values, examples, defaults, and deprecation callouts are derived from schema annotations and AST nodes" />
-    </Step>
-  </Scenario>
+# Generated schema reference docs
 
-  <Scenario id="reference-drift-gate" render={false} reason="The generated docs drift gate is the schema artifact-set generator idempotency test plus the path-scoped tracked-and-untracked CI gate">
-    <Step name="drift">
-      <Variable name="gate" value="core/test/build/schema-snapshot.test.ts" display="The generator test rewrites the artifact set and reference pages twice, proving deterministic idempotent output and complete index-to-file coverage" />
-      <Variable name="coverage" value="JSON_SCHEMA_NAMES" display="One reference page is emitted for every public SDK schema, and stale MDX files under docs/reference/schemas are removed" />
-      <Variable name="manualTables" value="not accepted" display="Public schema field tables come from renderPublicSchemaReferencePages, not hand-maintained guide tables" />
-    </Step>
-  </Scenario>
-</Guide>
+Regenerate public JSON Schema artifacts and the Starlight schema reference
+pages from the same public schema registry:
+
+```sh
+bun run scripts/build-schema-snapshot.ts
+```
+
+Generated Starlight MDX pages live in the reference tree declared by
+`publicSchemaMetadataIndex` `docsPath` entries, under
+`docs/reference/schemas/*.mdx`. Titles, descriptions, required fields,
+accepted values, examples, defaults, and deprecation callouts are all
+derived from schema annotations and Effect Schema AST nodes, not hand-written.
+

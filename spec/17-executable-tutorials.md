@@ -24,6 +24,13 @@ A v4 guide has three audiences whose needs differ:
 
 v3 collapsed all three into bash blocks parsed by a markdown runner. v4 separates the concerns: user-facing docs are **Guides**, runnable behavior is **Scenarios**, and static input state is **Fixtures**. The same MDX source may define both visible reader scenarios and hidden test-only scenarios, but hidden coverage must not pollute the rendered page.
 
+**Prose-first authoring.** The reader surface of a guide is Markdown. The v3 Leia format stayed readable because prose was prose and commands were fenced code blocks; v4 must not lose that property. Components exist solely to make behavior executable — they are the *executable minority* of a guide, not its body. Concretely:
+
+- Markdown prose (headings, paragraphs, lists, non-shell fenced code) is first-class anywhere in a guide file, including between and around `<Scenario>` elements inside `<Guide>`. The scenario compiler ignores non-component nodes; the docs renderer renders them. Neither treats prose as an error.
+- Documentation content MUST be written as Markdown, never packed into component props. A component attribute (`display`, `reason`, `value`) is a machine hint, not a paragraph.
+- Content that never executes is not a scenario. Illustrative commands the harness does not run are ordinary fenced code blocks in prose, outside any `<Scenario>`.
+- A guide whose Markdown-stripped body is mostly component markup is misauthored, even if every gate passes.
+
 The mechanism applies to authored guide sources:
 
 - `docs/src/content/docs/guides/**/*.mdx` — Lando's public guide surface.
@@ -51,6 +58,10 @@ import { Guide, Scenario, Step, Run, Verify, Cleanup, Variable }
   from "@lando/core/docs/components";
 
 <Guide>
+
+WordPress on Lando is one recipe away. The walkthrough below scaffolds the
+recipe, starts the app, and tears it back down; everything you see run here
+runs in CI against every supported platform.
 
 <Variable name="siteName" value="mysite" display="mysite" />
 
@@ -131,7 +142,7 @@ The component set is intentionally small. Prop schemas are published in `@lando/
 | `<Run>` | Code block + optional captured output | Calls `runCli`, `shell`, `runTooling`, or a runtime method | one of `command`, `shell`, `tooling`, `runtime` |
 | `<Verify>` | Optional reader-facing validation annotation | `expect(...)` against captured artifacts | one of `event`, `command`, `file`, `tooling`, `runtime`, `errorTag` |
 | `<Inspect>` | Pretty-rendered captured file/JSON/log for visible scenarios | Snapshot/assertion against file, JSON, events, or output | one of `file`, `json`, `events`, `output` |
-| `<Variable>` | Nothing, or its `display` value inline | Adds a variable to `ScenarioContext.vars` | `name`, `value` |
+| `<Variable>` | Nothing, or its `display` value inline | Adds a variable to `ScenarioContext.vars` | `name`, `value`; every `<Variable>` MUST be referenced by at least one `{{name}}` interpolation (§19.10) |
 | `<Hidden>` | Nothing | Invisible support code inside the current scenario | `reason` (≥ 8 chars) |
 | `<Cleanup>` | Collapsed cleanup block when useful to readers | `Effect.addFinalizer` registered before scenario steps run | (none) |
 | `<Skip>` | Children with a skipped badge for rendered scenarios | `test.skip(...)` for contained steps/scenarios | `reason`, optional `until` |
@@ -166,6 +177,8 @@ Every generated scenario opens an Effect `Scope` and binds a `ScenarioContext` f
 Every executable component has up to two views: what the reader sees and what the test does. They are bound by default — `<Run command="lando start" />` shows `lando start` and runs `lando start`. They diverge only when the component carries an explicit override prop (`displayCommand`, `displayShell`, `display` on `<Variable>`). Inferred display rewriting is forbidden.
 
 Path substitution is the most common legitimate divergence. The recommended idiom is to declare a `<Variable display="~/projects/mysite" value={ctx.testDir} />` at the top of the guide and reference it through interpolation. The renderer resolves to `display`; the generator resolves to `value`. The lint gate (§19.10) caps display:execute divergence at 25% of executable components per rendered scenario.
+
+`display` is a **display substitution**, not documentation. It is the short literal a reader should see in place of the executed value — a path, a name, a masked credential. It is never a sentence. Explanatory text about what a value means, why it exists, or how to obtain it belongs in Markdown prose next to the component. The lint gate rejects `display` values that read as prose (§19.10). This rule exists because the first generation of v4 guides degenerated into `<Variable display="…">` lists carrying whole paragraphs inside attributes — a format neither humans nor diff reviews could read. A `<Variable>` that is never interpolated into a `<Run>`/`<Verify>` is dead weight and a lint error; the information it carried belongs in prose.
 
 ### 19.6 Transcripts
 
@@ -226,7 +239,7 @@ Two mechanisms cooperate: source headers emitted by codegen (§19.7) and the **s
 Executable guides can contain hidden coverage, but hidden coverage is constrained:
 
 - `<Hidden>` supports the current scenario only. It may not define a distinct behavior.
-- A `<Scenario render={false}>` is the colocated form for related edge cases and regressions.
+- A `<Scenario render={false}>` is the colocated form for related edge cases and regressions. It exists to *execute* something invisible — it MUST contain at least one action or assertion component (`<Run>`, `<Verify>`, `<Inspect>`, or `<UseFixture>` feeding one of those). A `<Scenario>` of any render mode whose steps contain only `<Variable>` declarations is a **documentation-only scenario**: it runs nothing, asserts nothing, and is a lint error (§19.10). That content is prose and belongs in Markdown outside the scenario.
 - Standalone fixture scenarios under `test/scenarios/` are the form for non-documentary behavior coverage.
 
 A test-only scenario MUST declare `reason`, `tags`, and an owner/domain once ownership metadata exists. It renders nothing, contributes no public transcript frames, and is excluded from scaffolded recipe READMEs. Its failures still map to source coordinates.
@@ -255,7 +268,11 @@ Fixtures are immutable. The harness copies fixture directories into `ScenarioCon
 - `<Hidden>` `reason`, `<Inline>` `justification`, and hidden:visible / inline-density / display:execute caps hold.
 - `<Hidden>` does not contain a distinct product behavior assertion; those must be test-only scenarios.
 - Every `<Scenario layer="e2e">` carries at least one `<Cleanup>` applicable to every variant.
-- No raw fenced bash/sh/zsh code blocks appear inside `<Guide>`; shell snippets MUST go through `<Run>` or `<Inline>`.
+- No raw fenced bash/sh/zsh code blocks appear inside a `<Scenario>`; inside a scenario every shell snippet is executable and MUST go through `<Run>` or `<Inline>`. Outside scenarios — in guide prose, whether inside or outside `<Guide>` — fenced shell blocks are ordinary illustrative Markdown and are allowed.
+- Every `<Variable>` is referenced by at least one `{{name}}` interpolation in a `<Run>`/`<Verify>` of the same guide. An unreferenced `<Variable>` is a lint error: it is documentation masquerading as a binding.
+- No `display` value reads as prose. A `display` longer than 40 characters or containing sentence punctuation is a lint error; move the explanation into Markdown.
+- No documentation-only scenarios (§19.9): every `<Scenario>` contains at least one `<Run>`, `<Verify>`, or `<Inspect>`.
+- Prose-to-markup balance: a guide whose rendered scenarios contain more component elements than the file has Markdown prose blocks is flagged; executable machinery must not dominate the reader surface.
 - Every `<Verify>` `expect` value parses against `MatcherSchema`.
 - Every `<Verify event="...">` name is a member of the canonical event registry.
 - `<Tabs>` blocks do not nest; every `<Tab name>` matches a declared axis value; every `variants:` key resolves to a real Cartesian cell.

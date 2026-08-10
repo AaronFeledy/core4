@@ -1,0 +1,8 @@
+name: xdebug-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    environment:
+      XDEBUG_MODE: debug
+      XDEBUG_CONFIG: "client_host=host.docker.internal"

@@ -1,0 +1,13 @@
+name: php-command-resolution-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+tooling:
+  composer:
+    service: appserver
+    cmd: composer
+  phpunit:
+    service: appserver
+    description: Run the project-local PHPUnit binary, pinned by relative path so it never depends on PATH order.
+    cmd: vendor/bin/phpunit

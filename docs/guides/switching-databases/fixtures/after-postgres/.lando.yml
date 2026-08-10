@@ -1,0 +1,4 @@
+name: switching-databases-demo
+services:
+  db:
+    type: postgres

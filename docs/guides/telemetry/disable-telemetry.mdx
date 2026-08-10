@@ -6,25 +6,42 @@ timeout: 60000
 tags: [beta, docs, telemetry, config]
 ---
 
+# Disable telemetry
+
+Turn telemetry off from the config file:
+
+```sh
+lando config telemetry off
+```
+
+This writes `telemetry.enabled=false` to the global config file. Future CLI runs resolve telemetry
+from config when no higher-precedence env or flag override is present.
+
+## Disable it for one process
+
+To disable telemetry only for the current process, set an env override instead of touching the
+config file:
+
+```sh
+LANDO_CONFIG__TELEMETRY__ENABLED=0
+```
+
+The env overlay wins over `telemetry.enabled` in `config.yml` — env beats config.
+
+## Check the current status
+
+```sh
+lando config telemetry status
+```
+
+Reports whether telemetry is currently enabled, and which source selected the effective state:
+`flag`, `env`, `config`, or `default`.
+
 <Guide>
-  <Scenario id="config-opt-out" render={false} reason="The config-writing surface is covered by meta:config command tests and CLI smoke verification">
-    <Step name="disable">
-      <Variable name="command" value="lando config telemetry off" display="Writes telemetry.enabled=false to the global config file" />
-      <Variable name="futureRuns" value="disabled" display="Future CLI runs resolve telemetry from config when no higher-precedence env or flag override is present" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="env-opt-out" render={false} reason="The env precedence path is covered by CLI runtime telemetry tests">
-    <Step name="current-process">
-      <Variable name="env" value="LANDO_CONFIG__TELEMETRY__ENABLED=0" display="Disables telemetry for the current process" />
-      <Variable name="precedence" value="env > config" display="The env overlay wins over telemetry.enabled in config.yml" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="status-source" render={false} reason="Source reporting is covered by command and runtime tests">
-    <Step name="report">
-      <Variable name="command" value="lando config telemetry status" display="Reports whether telemetry is currently enabled" />
-      <Variable name="source" value="flag|env|config|default" display="Reports which source selected the effective telemetry state" />
+  <Scenario id="telemetry-disable-config-check" render={false} reason="The config-writing surface, env precedence path, and status reporting above are covered by meta:config command tests, CLI runtime telemetry tests, and CLI smoke verification. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

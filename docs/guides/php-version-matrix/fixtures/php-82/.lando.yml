@@ -1,0 +1,5 @@
+name: php-version-matrix-82
+services:
+  app:
+    type: "php:8.2"
+    primary: true

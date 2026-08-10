@@ -1,0 +1,5 @@
+name: php-version-matrix-81
+services:
+  app:
+    type: "php:8.1"
+    primary: true

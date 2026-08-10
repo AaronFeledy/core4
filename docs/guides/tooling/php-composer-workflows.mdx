@@ -1,0 +1,94 @@
+---
+id: php-composer-workflows
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, php, composer]
+---
+
+# PHP Composer workflows
+
+[Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task through the fast,
+cache-backed tooling path. This guide covers the layer above that: making project or global
+Composer dependency installation a repeatable part of the build, not a manual step a developer
+runs by hand after `lando start`.
+
+Declare a `composer install` step under a service's `build.app` and it runs every time the app
+starts or rebuilds, after the project code is mounted:
+
+```yaml
+name: php-composer-workflows-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    build:
+      app:
+        - "composer install --no-interaction --no-progress --no-dev"
+tooling:
+  composer:
+    service: appserver
+    cmd:
+      - sh
+      - -c
+      - composer "$@"
+      - composer
+```
+
+A `build.app` step runs after the app's code is mounted, so `composer install` sees
+`composer.json` and writes `vendor/` into the project — the right place for project dependencies.
+The flags above keep the install non-interactive, quiet, and production-mode — safe to run
+unattended on every start/rebuild.
+
+## Global dependencies via build.artifact
+
+A `build.artifact` step runs while the image is baked, before the project code is mounted — use it
+for tools the whole image needs, not project code:
+
+```sh
+composer global require squizlabs/php_codesniffer
+```
+
+Composer's `--working-dir` or global mode installs a tool into the image once, independent of any
+single project's `composer.json`. A global Composer binary lands under the Composer home's
+`vendor/bin`, so add that directory to `PATH` in the same `build.artifact` step if the tool must
+be callable by name.
+
+## Live install downloads packages
+
+The first `lando start` (and every `lando rebuild`) re-runs the `build.app` composer install
+step, downloading any packages not already cached in the Composer cache volume. Use
+`lando rebuild -y` after changing `composer.json` to force the `build.app` step to run again and
+resolve the new dependency set.
+
+## Composer version is fixed
+
+Every stock PHP service installs Composer `2.10.2`, checksum-verified against a pinned SHA-256
+during the image build. Unlike Lando 3, the PHP service exposes no `composer_version`, channel, or
+way to skip the Composer install. Upgrading Composer per-project means running
+`composer self-update` inside a build step or shelling out with `lando ssh`:
+
+```sh
+composer self-update 2.x
+```
+
+A project-local override is possible as its own `build.app` step run before `composer install`,
+but it re-downloads Composer on every build since the base pin is unaffected.
+
+## Executable coverage
+
+<Guide>
+  <Scenario id="project-dependency-install" render>
+    <Step name="scaffold">
+      <UseFixture name="php-composer-workflows-demo" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\[\\s*\"composer install --no-interaction --no-progress --no-dev\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\"" } }} />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>

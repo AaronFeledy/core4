@@ -1,0 +1,29 @@
+name: drupal-stack-overrides
+runtime: 4
+recipe: drupal
+services:
+  appserver:
+    type: php:8.3
+    framework: drupal
+    webroot: /app/web
+    allowOverride: true
+    port: 80
+    volumes:
+      - ./config/custom-php.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:ro
+    dependsOn:
+      - database
+  database:
+    type: mariadb
+    volumes:
+      - ./config/custom-mariadb.cnf:/etc/mysql/conf.d/zzz-custom.cnf:ro
+tooling:
+  drush:
+    service: appserver
+    description: Run Drush inside the appserver service.
+    cmds:
+      - vendor/bin/drush
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer

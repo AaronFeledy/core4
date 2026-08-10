@@ -1,0 +1,29 @@
+name: drupal-stack-overrides
+runtime: 4
+recipe: drupal
+services:
+  appserver:
+    type: php:8.3
+    framework: drupal
+    webroot: /app/web
+    allowOverride: true
+    port: 80
+    dependsOn:
+      - database
+      - database-legacy
+  database:
+    type: mariadb
+  database-legacy:
+    type: mysql
+    image: mysql:8.0
+tooling:
+  drush:
+    service: appserver
+    description: Run Drush inside the appserver service.
+    cmds:
+      - vendor/bin/drush
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer

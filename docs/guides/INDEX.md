@@ -169,3 +169,34 @@ outside `docs/guides/` so they are not gate-validated here.
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
 | `drupal-cms` | Drupal CMS / Starshot (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+
+## Lando 3 parity (capability guides — no PRD mapping)
+
+These guides close Lando 3 workflow gaps that have no Beta PRD owner yet, so they carry no User Story.
+They document everyday CLI, config, service, tooling, install, and Landofile capabilities on the same `provider: test` harness as the other capability sections.
+
+| PRD | User Story | Feature | Guide Path | Status |
+|---|---|---|---|---|
+| — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
+| — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
+| — | — | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
+| — | — | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
+| — | — | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
+| — | — | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |
+| — | — | switching database service types | `docs/guides/services/switching-databases.mdx` | Shipped |
+| — | — | Xdebug with PhpStorm | `docs/guides/tooling/xdebug-phpstorm.mdx` | Shipped |
+| — | — | VS Code integration | `docs/guides/tooling/vscode.mdx` | Shipped |
+| — | — | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
+| — | — | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
+| — | — | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
+| — | — | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
+| — | — | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
+| — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
+| — | — | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
+| — | — | Drupal multisite configuration | `docs/guides/recipes/drupal-multisite.mdx` | Shipped |
+| — | — | PHP version selection matrix | `docs/guides/services/php-version-matrix.mdx` | Shipped |
+| — | — | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |
+| — | — | PHP service customization | `docs/guides/services/php-customization.mdx` | Shipped |
+| — | — | PHP tooling command resolution | `docs/guides/tooling/php-command-resolution.mdx` | Shipped |
+| — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
+| — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |

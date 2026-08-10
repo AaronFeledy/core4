@@ -1,0 +1,102 @@
+---
+id: exec
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, exec]
+---
+
+# Run commands inside a service
+
+`lando exec` runs a one-off command inside a running service, or opens a
+shell in one with `lando ssh`. Everything after `--` is the exact argv
+handed to the service; the command spec is non-strict, so it parses no
+flags of its own past that point.
+
+<Guide>
+  <Scenario id="scaffold-and-start" render>
+    <Step name="scaffold">
+      <UseFixture name="exec-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="exec-primary-service">
+      <Run command="lando exec -- echo hello world" />
+      <Verify command="lando exec -- echo hello world" expect={{ stdout: "echo hello world\n", stderr: "" }} />
+    </Step>
+    <Step name="exec-named-service">
+      <Run command="lando exec --service app -- echo hello world" />
+      <Verify command="lando exec --service app -- echo hello world" expect={{ stdout: "echo hello world\n", stderr: "" }} />
+    </Step>
+    <Step name="exec-as-user">
+      <Run command="lando exec --user www-data -- whoami" />
+      <Verify command="lando exec --user www-data -- whoami" expect={{ stdout: "whoami\n", stderr: "" }} />
+    </Step>
+    <Step name="exec-from-directory">
+      <Run command="lando exec --cwd /srv/app -- pwd" />
+      <Verify command="lando exec --cwd /srv/app -- pwd" expect={{ stdout: "pwd\n", stderr: "" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+The fixture's `app` service is `node:22` and marked `primary: true`, so it's
+the default target when `--service` is omitted.
+
+## Run a one-off command
+
+Run a command in the app's primary service by default:
+
+Name the target service explicitly with `--service` instead of relying on
+the primary service default. The executable example uses the fixture's `app`
+service; use your own service name in a real app.
+
+## User and working directory
+
+Run the command as a specific user inside the service instead of the
+service's default user:
+
+Run the command from a specific working directory inside the service:
+
+## Exit codes
+
+`app:exec` sets its own command exit code to the executed command's
+`exitCode`, not a fixed success value. A non-zero result exit code is
+mirrored onto the CLI process exit code (`process.exitCode = result.exitCode`),
+so `lando exec` propagates the target command's failure to the shell.
+
+## Machine-readable output
+
+`app:exec` is a streaming command: `--format json` emits one NDJSON
+`StreamFrame` per stdout/stderr chunk, terminated by exactly one result
+frame:
+
+```sh
+lando exec --format json -- <command>
+```
+
+Each non-empty stdout chunk from the executed command becomes one stdout
+`StreamFrame` tagged with the target service:
+
+```json
+{ "_tag": "stdout", "service": "app", "chunk": "..." }
+```
+
+A non-empty stderr chunk becomes one stderr `StreamFrame` the same way; an
+empty stream emits no frame for that stream:
+
+```json
+{ "_tag": "stderr", "service": "app", "chunk": "..." }
+```
+
+The stream always terminates with exactly one result frame carrying the
+app, service, command, exit code, stdout, and stderr:
+
+```json
+{ "ok": true, "result": { "exitCode": 0, "stdout": "...", "stderr": "..." } }
+```

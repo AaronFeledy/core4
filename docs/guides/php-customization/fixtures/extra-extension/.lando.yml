@@ -1,0 +1,9 @@
+name: php-customization-extra-extension
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    build:
+      artifact:
+        - "pecl install imagick"
+        - "docker-php-ext-enable imagick"

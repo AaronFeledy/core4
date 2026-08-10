@@ -5,16 +5,36 @@ timeout: 90000
 tags: [beta, docs, elasticsearch, service]
 ---
 
+# Elasticsearch
+
+Add Elasticsearch to your app by declaring `type: elasticsearch` in your
+services block. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0`
+by default and listens on port `9200`:
+
+```yaml
+name: elasticsearch-demo
+services:
+  search:
+    type: elasticsearch
+tooling:
+  es-cli:
+    service: search
+    cmd:
+      - sh
+      - -c
+      - 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"'
+      - es-cli
+```
+
+The default config sets `discovery.type: single-node` for local dev and
+disables `xpack.security.enabled` — that's convenient locally but not
+production-suitable. The default image is licensed under the Elastic License
+v2; reach for OpenSearch instead when you need Apache 2.0 licensing.
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="elasticsearch-demo" />
-      <Variable name="serviceType" value="elasticsearch" display="Declare type: elasticsearch in your services block" />
-      <Variable name="defaultImage" value="docker.elastic.co/elasticsearch/elasticsearch:8.17.0" display="Default Docker image" />
-      <Variable name="defaultPort" value="9200" display="Default HTTP port" />
-      <Variable name="discoveryType" value="single-node" display="Default discovery.type for local dev" />
-      <Variable name="securityDisabled" value="false" display="Default xpack.security.enabled — disabled for local dev only, not production-suitable" />
-      <Variable name="license" value="Elastic License v2" display="Default image uses Elastic License v2; use OpenSearch when you need Apache 2.0 licensing" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -26,28 +46,38 @@ tags: [beta, docs, elasticsearch, service]
     </Step>
   </Scenario>
 
-  <Scenario id="cluster-health" render={false} reason="The fixture defines es-cli as an app tooling alias; query /_cluster/health after start to verify the service reports green or yellow">
-    <Step name="health">
-      <Variable name="healthCommand" value="lando es-cli /_cluster/health" display="Query cluster health via the es-cli tooling alias" />
-      <Variable name="expectedStatus" value="green or yellow" display="A healthy single-node Elasticsearch reports green or yellow" />
-    </Step>
-  </Scenario>
+## Check cluster health
 
-  <Scenario id="cat-indices" render={false} reason="The fixture defines es-cli as an app tooling alias; list indices via /_cat/indices to confirm the HTTP surface is reachable">
-    <Step name="indices">
-      <Variable name="indicesCommand" value="lando es-cli /_cat/indices" display="List indices via the es-cli tooling alias" />
-    </Step>
-  </Scenario>
+The fixture above declares `es-cli` as an app tooling alias. Query cluster
+health once the service is up:
 
-  <Scenario id="version-override" render={false} reason="Use image to pin a specific Elasticsearch version when the default Elasticsearch 8 image is not desired">
-    <Step name="note">
-      <Variable name="es7Image" value="docker.elastic.co/elasticsearch/elasticsearch:7.17.0" display="Pin Elasticsearch 7 via image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0 under services.search" />
-    </Step>
-  </Scenario>
+```sh
+lando es-cli /_cluster/health
+```
 
-  <Scenario id="security-warning" render={false} reason="Defaults disable xpack security so local dev works without certificates; this is documented as not production-suitable">
-    <Step name="note">
-      <Variable name="warning" value="xpack.security.enabled=false is for local development only; production deployments must enable security and configure TLS. The default image is Elastic License v2; use OpenSearch when Apache 2.0 licensing is required." display="Security defaults warning" />
-    </Step>
-  </Scenario>
+A healthy single-node Elasticsearch reports `green` or `yellow`.
+
+## List indices
+
+```sh
+lando es-cli /_cat/indices
+```
+
+## Pin a version
+
+Use `image:` to pin a specific Elasticsearch version when the default
+Elasticsearch 8 image isn't what you want:
+
+```yaml
+services:
+  search:
+    type: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+```
+
+## Security defaults are for local dev only
+
+`xpack.security.enabled=false` is meant for local development. Production
+deployments must enable security and configure TLS.
+
 </Guide>

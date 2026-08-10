@@ -6,42 +6,57 @@ timeout: 60000
 tags: [beta, docs, landofile, config, translate]
 ---
 
-<Guide>
-  <Scenario id="translator-contract" render={false} reason="The framework contract is covered by the config-translator SDK surface tests and landofile-config-translate unit tests; this documents the plugin-author surface the command consumes.">
-    <Step name="register">
-      <Variable name="service" value="ConfigTranslator" display="SDK service tag plugin authors register to contribute a config translator" />
-      <Variable name="shape" value="id, summary, inputKinds, detect(input), translate(input)" display="Every translator declares a stable id, user-facing summary, supported input kinds, and Effect-powered detect/translate hooks" />
-      <Variable name="detectInput" value="{ appRoot, files? }" display="detect receives the app root plus optional candidate file paths and returns translator matches with confidence" />
-    </Step>
-    <Step name="translate">
-      <Variable name="runner" value="runConfigTranslators" display="Core runs resolved translators in declared order" />
-      <Variable name="translateInput" value="{ appRoot, files, current, options }" display="translate receives the app root, selected files, current Landofile, and command/plugin options" />
-      <Variable name="result" value="{ fragment, diagnostics }" display="Each translator returns a partial canonical Landofile fragment plus generated/unsupported/non-portable/needs-review diagnostics" />
-    </Step>
-  </Scenario>
+# Translate a foreign config into a Landofile
 
-  <Scenario id="deterministic-resolution" render={false} reason="Conflict handling and deterministic ordering are covered by landofile-config-translate unit tests; this scenario records the user-facing rules.">
-    <Step name="order">
-      <Variable name="order" value="declared plugin order" display="Distinct translator ids keep their declared order during detect and translate" />
-      <Variable name="merge" value="later fragment keys override earlier fragment keys" display="runConfigTranslators merges partial Landofile fragments in execution order while appending diagnostics" />
-      <Variable name="conflict" value="ConfigTranslatorConflictError" display="Duplicate translator ids fail before any translator runs" />
-    </Step>
-  </Scenario>
+Plugin authors contribute a config translator through the `ConfigTranslator`
+SDK service tag. Every translator declares a stable `id`, a user-facing
+`summary`, supported input kinds, and Effect-powered `detect`/`translate`
+hooks. `detect` receives the app root plus optional candidate file paths
+(`{ appRoot, files? }`) and returns translator matches with confidence.
 
-  <Scenario id="command-surface" render={false} reason="app:config:translate writes files next to the user's Landofile and the canonical-write path needs at least one registered translator; the file IO, --write backup, and zero-translator remediation are covered by app-config-translate unit tests, so this scenario records the user-facing command behavior.">
-    <Step name="run">
-      <Variable name="command" value="lando app:config:translate" display="Run from an app directory to translate the discovered .lando.yml into a canonical v4 Landofile via registered translators" />
-      <Variable name="output" value=".lando.yml.canonical" display="By default the canonical Landofile is written next to the input as .lando.yml.canonical, leaving the original untouched" />
-      <Variable name="format" value="--format text|json" display="--format json prints the structured result (paths + diagnostics); text is the default human-readable summary" />
-      <Variable name="serializer" value="@lando/core/landofile" display="Library and embedding consumers can use the same canonical Landofile parse/emit helpers through @lando/core/landofile when they need this command's serializer behavior without invoking the CLI" />
-    </Step>
-    <Step name="write">
-      <Variable name="write" value="lando app:config:translate --write" display="--write overwrites the input Landofile in place" />
-      <Variable name="backup" value=".lando.yml.bak" display="The original Landofile is preserved as .lando.yml.bak before the input is overwritten" />
-    </Step>
-    <Step name="no-translators">
-      <Variable name="error" value="ConfigTranslateNoTranslatorsError" display="With zero translators registered the command exits non-zero before touching any file" />
-      <Variable name="remediation" value="lando plugin:add <translator-plugin>" display="The remediation points at the plugin install path; concrete translators ship as plugins" />
-    </Step>
-  </Scenario>
-</Guide>
+Core runs resolved translators in declared order through
+`runConfigTranslators`. `translate` receives the app root, selected files,
+current Landofile, and command/plugin options
+(`{ appRoot, files, current, options }`). Each translator returns a partial
+canonical Landofile fragment plus generated/unsupported/non-portable/
+needs-review diagnostics (`{ fragment, diagnostics }`).
+
+## Deterministic resolution
+
+Distinct translator ids keep their declared order during detect and
+translate. `runConfigTranslators` merges partial Landofile fragments in
+execution order while appending diagnostics — later fragment keys override
+earlier fragment keys. Duplicate translator ids fail with
+`ConfigTranslatorConflictError` before any translator runs.
+
+## Running the command
+
+Run from an app directory to translate the discovered `.lando.yml` into a
+canonical v4 Landofile via registered translators:
+
+```sh
+lando app:config:translate
+```
+
+By default the canonical Landofile is written next to the input as
+`.lando.yml.canonical`, leaving the original untouched. `--format json`
+prints the structured result (paths + diagnostics); `text` is the default
+human-readable summary. Library and embedding consumers can use the same
+canonical Landofile parse/emit helpers through `@lando/core/landofile` when
+they need this command's serializer behavior without invoking the CLI.
+
+`--write` overwrites the input Landofile in place, after preserving the
+original as `.lando.yml.bak`:
+
+```sh
+lando app:config:translate --write
+```
+
+With zero translators registered the command exits non-zero before touching
+any file, with a `ConfigTranslateNoTranslatorsError` pointing at the
+install path — concrete translators ship as plugins:
+
+```sh
+lando plugin:add <translator-plugin>
+```
+

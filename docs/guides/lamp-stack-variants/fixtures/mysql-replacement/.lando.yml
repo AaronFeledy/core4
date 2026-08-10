@@ -1,0 +1,24 @@
+name: lamp-stack-variants
+runtime: 4
+recipe: lamp
+services:
+  appserver:
+    type: php:8.3
+    framework: none
+    port: 80
+    dependsOn:
+      - database
+  database:
+    type: mysql
+    image: mysql:8.4
+tooling:
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer
+  php:
+    service: appserver
+    description: Run the PHP CLI inside the appserver service.
+    cmds:
+      - php

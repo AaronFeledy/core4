@@ -84,9 +84,10 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Guides and Docs-as-Tests
 
-- Before writing or editing docs, guides, recipe READMEs, or other user-facing prose, read `docs/STYLE.md` and follow it.
-- Executable guides are MDX sources that generate tests and public transcripts. Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass, or omit `--once` for the watch loop.
-- If a guide, recipe README, or guide-owned CLI surface changes, run the relevant guide codegen/lint/drift gates; `docs/ci-runbook.md` mirrors the CI sequence.
+- Before writing or editing docs, guides, recipe READMEs, or other user-facing prose, load the `lando-write-docs` skill (`.agents/skills/lando-write-docs/SKILL.md`). It owns voice, page shape, and prose-first executable-guide rules.
+- Executable guides are prose-first MDX: Markdown is the reader surface; `<Run>`/`<Verify>` wrap real harness execution only. No documentation-only `<Variable>` scenarios.
+- Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass (require success and a positive test count). Full sequence: `docs/ci-runbook.md`.
+- If a guide, recipe README, or guide-owned CLI surface changes, run `bun run lint:guides` and any relevant coverage/transcript/drift gates.
 - `recipes/<id>/README.mdx` feeds both guide-scenario generation and committed scaffold README generation, so it must remain executable-guide-valid, not just readable prose.
 
 ## Working Tree Discipline

@@ -1,0 +1,72 @@
+---
+id: timezone
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, services, environment, timezone]
+---
+
+# Timezone
+
+Landofiles have no dedicated `timezone:` key. Set a service's clock the same
+way you set any other container environment variable, using the map form
+under the service's `environment` key. This is a different mechanism from
+`LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which
+overlay Lando's own config instead:
+
+```yaml
+name: timezone-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      TZ: "Europe/Berlin"
+```
+
+<Guide>
+  <Scenario id="set-timezone" render>
+    <Step name="scaffold">
+      <UseFixture name="timezone-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="confirm-tz">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{[^}]*\"TZ\":\\s*\"Europe/Berlin\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+## Host environment interpolation is rejected
+
+A Landofile can't reach into your host shell's environment with
+`${HOST_VAR}` syntax — Lando rejects configuration expressions in Alpha
+Landofiles:
+
+  <Scenario id="rejected-host-env-interpolation" render>
+    <Step name="scaffold">
+      <UseFixture name="timezone-rejected-interpolation" />
+    </Step>
+    <Step name="inspect-rejected-form">
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="NotImplementedError" expect={{ regex: "Configuration expressions \\(\\$\\{\\.\\.\\.\\}\\) are not supported in Alpha Landofiles" }} />
+    </Step>
+  </Scenario>
+
+## Apply a changed timezone
+
+After editing `environment:` in `.lando.yml`, run `lando rebuild -y` to
+recreate the container — a restart alone does not pick up a changed `TZ`
+value:
+
+```sh
+lando rebuild -y
+```
+
+</Guide>

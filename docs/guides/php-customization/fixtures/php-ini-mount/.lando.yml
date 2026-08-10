@@ -1,0 +1,9 @@
+name: php-customization-ini-mount
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    mounts:
+      - source: "./php.ini"
+        target: "/usr/local/etc/php/conf.d/zz-custom.ini"
+        readOnly: true

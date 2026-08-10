@@ -431,11 +431,11 @@ describe("lint:guides", () => {
     ).toEqual([]);
   });
 
-  test("forbids raw fenced shell blocks inside <Guide> but allows them in prose", async () => {
+  test("forbids raw fenced shell blocks inside <Scenario> but allows them in prose", async () => {
     const diagnostics = await lintFixture("shell-fence");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/shell-fence.mdx:19:1: guide.shell-fence: Raw fenced `bash` code block is not allowed inside <Guide>; use <Run> or <Inline>.",
+      "core/test/lint/guides/shell-fence.mdx:26:1: guide.shell-fence: Raw fenced `bash` code block is not allowed inside <Scenario>; use <Run> or <Inline>.",
     ]);
   });
 

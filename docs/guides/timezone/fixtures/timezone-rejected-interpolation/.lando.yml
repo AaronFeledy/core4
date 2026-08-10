@@ -1,0 +1,7 @@
+name: timezone-rejected-interpolation
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      TZ: "${HOST_VAR}"

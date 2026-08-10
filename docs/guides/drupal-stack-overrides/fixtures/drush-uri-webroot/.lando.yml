@@ -1,0 +1,27 @@
+name: drupal-stack-overrides
+runtime: 4
+recipe: drupal
+services:
+  appserver:
+    type: php:8.3
+    framework: drupal
+    webroot: /app/docroot
+    allowOverride: true
+    port: 80
+    environment:
+      DRUSH_OPTIONS_URI: https://drupal-stack-overrides.lndo.site
+    dependsOn:
+      - database
+  database:
+    type: mariadb
+tooling:
+  drush:
+    service: appserver
+    description: Run Drush inside the appserver service.
+    cmds:
+      - vendor/bin/drush
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer

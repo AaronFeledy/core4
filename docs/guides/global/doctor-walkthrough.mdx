@@ -6,46 +6,53 @@ timeout: 60000
 tags: [beta, docs, global, doctor, diagnostics]
 ---
 
-<Guide>
-  <Scenario id="global-app-doctor-section" render={false} reason="The global-app doctor check runs against files on disk (no provider needed); the default layer reads the dist file path from GlobalAppService, which depends on userDataRoot in the config">
-    <Step name="global-app-section">
-      <Variable name="command" value="lando doctor" display="Includes a global-app section in the combined doctor report without requiring app bootstrap" />
-      <Variable name="checkName" value="global-app" display="The check name reported by the global-app diagnostics section" />
-      <Variable name="bootstrapLevel" value="none" display="meta:doctor starts at bootstrap none and safely builds the provider runtime inside its own scoped program" />
-      <Variable name="providerIndependence" value="global-app still runs" display="A provider bootstrap failure leaves the disk-backed global-app section available while the provider section degrades" />
-      <Variable name="requiredServices" value="GlobalAppService, PluginRegistry, FileSystem" display="Services consumed by globalAppDoctor; provided by DefaultGlobalAppDoctorLayer which only requires ConfigService" />
-    </Step>
-  </Scenario>
+# The global-app doctor check
 
-  <Scenario id="global-app-doctor-not-installed" render={false} reason="When no dist file exists under the userDataRoot the global-app check warns and suggests the install command">
-    <Step name="not-installed">
-      <Variable name="status" value="warn" display="global-app check status when meta:global:install has not been run" />
-      <Variable name="context.installed" value="false" display="Context field reporting installation state" />
-      <Variable name="solution.command" value="lando global:install" display="Remediation command surfaced when the global app is not installed" />
-      <Variable name="solution.kind" value="manual" display="Not-installed remediation is always manual (requires running the install command)" />
-    </Step>
-  </Scenario>
+`lando doctor` includes a `global-app` section in its combined report
+without requiring app bootstrap. `meta:doctor` starts at bootstrap level
+`none` and safely builds the provider runtime inside its own scoped program,
+so a provider bootstrap failure leaves this disk-backed section available
+while the provider section degrades. The check is backed by
+`DefaultGlobalAppDoctorLayer`, which only requires `ConfigService` and reads
+from `GlobalAppService`, `PluginRegistry`, and `FileSystem`.
 
-  <Scenario id="global-app-doctor-installed" render={false} reason="When the dist file exists the global-app check passes and reports paths, timestamp, services, and contributing plugins">
-    <Step name="installed">
-      <Variable name="status" value="pass" display="global-app check status when meta:global:install has been run and the dist file exists" />
-      <Variable name="context.installed" value="true" display="Context field reporting installation state" />
-      <Variable name="context.distLandofilePath" value="&lt;userDataRoot&gt;/global/.lando.dist.yml" display="Absolute path to the generated dist Landofile" />
-      <Variable name="context.userLandofilePath" value="&lt;userDataRoot&gt;/global/.lando.yml" display="Absolute path to the hand-editable overlay Landofile" />
-      <Variable name="context.lastInstallTimestamp" value="ISO 8601 mtime of .lando.dist.yml" display="Timestamp derived from the dist file mtime — updated on every meta:global:install run" />
-      <Variable name="context.services" value="mailpit, traefik" display="Comma-separated list of service ids materialized in the dist Landofile" />
-      <Variable name="context.contributingPlugins" value="@lando/proxy-traefik (example)" display="Comma-separated plugin names whose manifests declare globalServices: contributions" />
-    </Step>
-  </Scenario>
+## Not installed
 
-  <Scenario id="global-app-doctor-ndjson" render={false} reason="The JSON renderer (lando doctor --renderer=json) emits the global-app check as a standard doctor.check event in the ndjson stream; network-trust is the final subsystem check, added after host-proxy">
-    <Step name="ndjson-stream">
-      <Variable name="eventTag" value="doctor.check" display="The ndjson event tag for every check, including global-app" />
-      <Variable name="streamOrder" value="selected-provider, runtime-service, proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust, global-app, mcp" display="Doctor checks appear in this order in the ndjson stream" />
-      <Variable name="totalChecks" value="11" display="Combined check count across 2 provider checks + 7 subsystems (proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust) + global-app + mcp when no provider-conflict check fires" />
-      <Variable name="certsRemediation" value="The local certificate authority is not installed. Run `lando setup` to install and trust the dev CA." display="The certs warning remediation when no certificate-authority plugin is available" />
-      <Variable name="unreadableCaRemediation" value="Point network.ca.certs or LANDO_NETWORK_CA_CERTS at readable host CA files, or fix the Landofile security.ca path. Then rerun `lando setup`." display="The stable network-trust remediation for an unreadable configured CA path; the rendered diagnostic also appends a platform-specific configuration hint" />
-      <Variable name="malformedCaRemediation" value={'Set LANDO_NETWORK_CA_CERTS to a JSON array such as `["/path/to/corp-root.pem"]`, or configure network.ca.certs in the global config.'} display="The network-trust remediation when LANDO_NETWORK_CA_CERTS is malformed; the warning solution command is lando setup" />
-    </Step>
-  </Scenario>
-</Guide>
+If `meta:global:install` hasn't run yet, the check `warn`s: `context.installed`
+is `false`, and the solution surfaces `lando global:install` as a manual
+remediation command.
+
+## Installed
+
+Once the dist file exists, the check `pass`es and reports:
+
+| Field | Meaning |
+| --- | --- |
+| `context.installed` | `true` |
+| `context.distLandofilePath` | Absolute path to the generated dist Landofile, `<userDataRoot>/global/.lando.dist.yml` |
+| `context.userLandofilePath` | Absolute path to the hand-editable overlay Landofile, `<userDataRoot>/global/.lando.yml` |
+| `context.lastInstallTimestamp` | ISO 8601 mtime of `.lando.dist.yml`, updated on every `meta:global:install` run |
+| `context.services` | Comma-separated list of service ids materialized in the dist Landofile, e.g. `mailpit, traefik` |
+| `context.contributingPlugins` | Comma-separated plugin names whose manifests declare `globalServices:` contributions, e.g. `@lando/proxy-traefik` |
+
+## In the ndjson stream
+
+`lando doctor --renderer=json` emits `global-app` as a standard
+`doctor.check` event, alongside every other check, in this order:
+`selected-provider`, `runtime-service`, `proxy`, `certs`, `ssh`,
+`healthcheck`, `scanner`, `host-proxy`, `network-trust`, `global-app`,
+`mcp`. That's 11 checks total when no provider-conflict check fires — 2
+provider checks plus 7 subsystem checks plus `global-app` and `mcp`.
+
+Two related subsystem remediations worth knowing:
+
+- **certs warning** (no certificate-authority plugin available): "The local
+  certificate authority is not installed. Run `lando setup` to install and
+  trust the dev CA."
+- **network-trust warning** (unreadable configured CA path): "Point
+  `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` at readable host CA files,
+  or fix the Landofile `security.ca` path. Then rerun `lando setup`." A
+  malformed `LANDO_NETWORK_CA_CERTS` gets a more specific remediation: "Set
+  `LANDO_NETWORK_CA_CERTS` to a JSON array such as
+  `[\"/path/to/corp-root.pem\"]`, or configure `network.ca.certs` in the
+  global config."

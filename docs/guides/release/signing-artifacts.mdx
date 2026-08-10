@@ -6,51 +6,11 @@ timeout: 60000
 tags: [beta, docs, release, signing]
 ---
 
-<Guide>
-  <Scenario id="platform-signing-contract" render={false} reason="Platform signing is asserted by release-orchestrator unit tests with stubbed runners so this guide never touches real signing credentials">
-    <Step name="platform-responsibilities">
-      <Variable name="macos" value="Developer ID + notarytool + stapler" display="macOS artifacts are signed and notarized by the platform signing contract" />
-      <Variable name="windows" value="Authenticode signtool + keyless cosign" display="Windows artifacts are Authenticode-signed, cosign-signed, and verified before manifest generation" />
-      <Variable name="linux" value="GPG/cosign checksum manifests" display="Linux artifact authenticity is carried by signed checksum manifests rather than native binary signing" />
-    </Step>
-  </Scenario>
+# Signing release artifacts
 
-  <Scenario id="macos-signing" render={false} reason="Release signing uses stubbed runners in core/test/scripts/release.test.ts so docs never invoke live Apple tooling">
-    <Step name="developer-id">
-      <Variable name="identity" value="LANDO_RELEASE_SIGNING_IDENTITY" display="Stage 9 signs both darwin-x64 and darwin-arm64 binaries with the configured Developer ID Application identity" />
-      <Variable name="entitlements" value="scripts/lando.entitlements" display="The checked-in entitlements file is passed to codesign with hardened runtime enabled" />
-    </Step>
-  </Scenario>
+Platform signing breaks down like this:
 
-  <Scenario id="macos-notarization" render={false} reason="Notarization command construction is asserted with an injected release runner instead of live Apple credentials">
-    <Step name="notarytool">
-      <Variable name="profile" value="LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="Stage 10 authenticates notarytool through a keychain profile so passwords are not placed in process argv" />
-      <Variable name="sequence" value="submit,staple,validate" display="Each signed Darwin artifact is submitted, stapled, and validated before the release can proceed" />
-    </Step>
-  </Scenario>
+- **macOS** — Developer ID, `notarytool`, and `stapler`.
+- **Windows** — Authenticode `signtool` plus keyless `cosign`.
+- **Linux** — GPG/cosign checksum manifests.
 
-  <Scenario id="windows-signing-stage" render={false} reason="The exact signtool and cosign argv are covered by core/test/scripts/release.test.ts without requiring live Windows signing tools">
-    <Step name="signing-order">
-      <Variable name="authenticode" value="signtool sign /tr <timestamp> /td sha256 /fd sha256 /f <certificate> ./dist/lando-windows-x64.exe" display="Stage 9 embeds the Authenticode signature first" />
-      <Variable name="cosign" value="cosign sign-blob --output-signature ./dist/lando-windows-x64.exe.sig --output-certificate ./dist/lando-windows-x64.exe.crt ./dist/lando-windows-x64.exe" display="The cosign signature covers the final Authenticode-signed bytes" />
-      <Variable name="verify" value="signtool verify + cosign verify-blob" display="Both verification commands run before Stage 11 writes release manifests" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="linux-checksum-signing" render={false} reason="core/test/scripts/release.test.ts covers checksum manifest signing without live GPG or cosign credentials">
-    <Step name="checksum-manifests">
-      <Variable name="coverage" value="linux-x64 + linux-arm64" display="Stage 11 writes SHA256SUMS and SHA512SUMS for Linux release binaries" />
-      <Variable name="gpg" value="gpg --armor --detach-sign + gpg --verify" display="Stage 11 GPG-signs and verifies both checksum manifests when credentials are present" />
-      <Variable name="cosign" value="cosign sign-blob + cosign verify-blob dist/SHA256SUMS" display="Stage 12 keyless cosign signs and verifies SHA256SUMS" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="credential-gating" render={false} reason="Credential skip/fail behavior is covered by release-orchestrator tests with injected env and stubbed runners">
-    <Step name="platform-credentials">
-      <Variable name="macos" value="LANDO_RELEASE_SIGNING_IDENTITY + LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="macOS signing and notarization require Developer ID and keychain-profile credentials outside local rehearsal" />
-      <Variable name="windows" value="LANDO_RELEASE_WINDOWS_CERTIFICATE + ACTIONS_ID_TOKEN_REQUEST_TOKEN + ACTIONS_ID_TOKEN_REQUEST_URL" display="Windows signing requires configured certificate material plus GitHub OIDC availability for keyless cosign" />
-      <Variable name="secretArgv" value="LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE + redacted signtool /p" display="Password-shaped Apple credentials are rejected before argv; the Windows PFX password is redacted from release command failures" />
-      <Variable name="localRehearsal" value="LOCAL_REHEARSAL=1" display="Missing platform signing credentials warning-skip only in local rehearsal; CI release mode fails closed" />
-    </Step>
-  </Scenario>
-</Guide>
