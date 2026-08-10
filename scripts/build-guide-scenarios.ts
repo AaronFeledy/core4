@@ -607,7 +607,7 @@ export const renderScenarioTest = (
       ? "test.skip"
       : "(e2eGateEnabled ? test : test.skip)"
     : testFn;
-  const testTimeoutArg = usesE2eRuntime ? `, ${guide.frontmatter.timeout}` : "";
+  const testTimeoutArg = `, ${guide.frontmatter.timeout}`;
   const contextRunner = usesE2eRuntime
     ? "ScenarioContextFactory.e2e"
     : usesLibraryRuntime

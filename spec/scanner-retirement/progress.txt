@@ -59,3 +59,25 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - Adding a package to the release inventory requires regenerating every committed workflow derived from that inventory in the same story.
 ---
+
+## 2026-08-10 16:48 CDT - Babysit
+- PR: #728 https://github.com/AaronFeledy/core4/pull/728
+- CI outcome: pass
+- Review feedback: fixed (registered managed-file package DAG + workspace roots; repointed stale engine managed-file test imports)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-10 16:54 CDT - US-553
+- Verified the prior managed-file review completed the remaining test-consumer migration: core unit, library, and contract coverage resolves through `@lando/managed-file`, and the legacy engine import sweep is clean. No new code was required.
+- Verification: typecheck and lint passed; 61 focused managed-file tests passed across six files with a positive count.
+- **Learnings for future iterations:**
+  - Review fixes can complete the next explicitly bounded story; verify the merged tree before inventing duplicate migration work.
+---
+
+## 2026-08-10 17:13 CDT - US-553 Review
+- Reviewed the consumer migration against the source PRD; no in-scope blocker or code fix was found.
+- Review notes (deferred/rejected): rejected the isolated review-worktree QA failure because that detached worktree lacked generated bootstrap sources; the prepared story worktree passed the same six-file suite with 62 tests. US-554 owns the remaining `engine/src/managed-file` boundary-rule, fixture, and inventory strings, which do not match US-553's exact legacy import sweep.
+- Guide-Coverage-Skip: Internal test-import migration changes no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, and lint passed; focused managed-file spot checks passed 62/62 across six files and 104/104 across the seven-file adjacent blast radius; Bugbot found no bugs.
+---
