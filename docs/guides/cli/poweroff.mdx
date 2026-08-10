@@ -1,0 +1,48 @@
+---
+id: poweroff
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, lifecycle]
+---
+
+# Power off every Lando app
+
+`lando poweroff` stops every Lando-managed app on the host, not just this
+one.
+
+Warning: this command reaches beyond the current app — run it only when you
+mean to stop everything.
+
+<Guide>
+  <Scenario id="stop-every-app" render>
+    <Step name="scaffold">
+      <UseFixture name="poweroff-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="poweroff">
+      <Run command="lando poweroff -y" />
+      <Verify command="lando poweroff -y" expect={{ stdout: { regex: "Powered off|No Lando apps to power off" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scope flags
+
+Skip the shared global app with `--keep-global`, so host-wide services such
+as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
+disposable throwaway apps stay up while every other app stops.
+
+`-y`/`--yes` skips the confirmation prompt — required for non-interactive
+and scripted invocations.
+
+`lando poweroff` is a top-level alias for `lando apps:poweroff` — both
+invoke the same command. It bootstraps minimally, so it works from any
+directory; you don't need to be inside an app root to run it.

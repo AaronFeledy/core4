@@ -1,0 +1,5 @@
+name: in-container-context-demo
+services:
+  app:
+    type: "node:22"
+    primary: true

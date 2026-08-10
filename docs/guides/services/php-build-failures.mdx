@@ -1,0 +1,107 @@
+---
+id: php-build-failures
+provider: test
+timeout: 90000
+tags: [beta, docs, php, service, build]
+---
+
+# When a PHP build step fails
+
+`build.app` runs a list of shell commands against the service's build
+layer every time the app builds — each entry executes as `sh -lc "<command>"`,
+in order, after Lando's own PHP prerequisite steps. A `composer install`
+that fails on a bad `composer.json`, a missing PHP extension a package
+requires, or a stray `exit 1` all fail a build step the same way: the step
+exits non-zero, and Lando stops instead of starting a half-built app.
+
+## The build plan captures the exact failing command
+
+Every `build.app` entry reaches the app's build plan verbatim, whether or
+not it will actually succeed — planning never runs a build step, it just
+records the command to run later. A fixture with an earlier
+`composer install --no-dev` step and a deterministic `exit 1` proves both
+commands land in the resolved plan.
+
+## What a failing build step looks like
+
+On a real provider (not the in-memory test double), a failing app-phase
+step becomes a tagged `BuildStepFailedError` carrying the step, its exit
+code, and its transcript path. Every step failure in the app build phase
+is collected into one tagged `BuildPhaseFailedError` with a `failures`
+array, not just the first one. A step that depends on a failed step is
+marked blocked and reported as its own failure, so Lando never silently
+skips work downstream of a broken step.
+
+Every app-phase step writes its stdout/stderr to a per-step transcript
+file under the user data root, named by the step's content-hash build key:
+
+```text
+<userDataRoot>/builds/<appId>/app/<service>/<buildKey>.log
+```
+
+Scratch apps get the same layout under an extra `scratch/` segment. While
+the step runs, its stdout/stderr lines also stream live as `task-detail`
+events, so `lando start` shows the failing command's own output, not just
+its exit code.
+
+On a `BuildPhaseFailedError`, `lando start` tears down what it already
+applied — including removing proxy routes — before returning the failure,
+so a failed build never leaves a half-running app behind. The CLI exits
+non-zero and reports the tagged error, including its list of
+`BuildStepFailedError` entries, the same way any other tagged failure
+surfaces.
+
+## Recover from a failing build step
+
+Fix the failing command in `build.app` — most often that means fixing the
+underlying script itself, not the Landofile — and rerun `lando start`.
+Editing a `build.app` entry changes that step's content-hash build key, so
+the next build always reruns it; you don't need `lando rebuild -y` the way
+you do for `build.artifact` image-layer changes.
+
+## Executable coverage
+
+The happy-build fixture runs a successful `build.app` entry through start
+and destroy. The failing-build fixture proves the broken command reaches
+the resolved plan without executing it on the test provider:
+
+<Guide>
+  <Scenario id="app-build-step-succeeds" render>
+    <Step name="scaffold">
+      <UseFixture name="happy-build" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failing-build-reaches-plan" render>
+    <Step name="scaffold">
+      <UseFixture name="failing-build" />
+    </Step>
+    <Step name="confirm-plan">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "composer install --no-dev" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "exit 1" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="fixed-build-step-succeeds" render>
+    <Step name="scaffold-fixed">
+      <UseFixture name="happy-build" />
+    </Step>
+    <Step name="start-after-fix">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

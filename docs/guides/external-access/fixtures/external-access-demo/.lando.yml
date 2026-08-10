@@ -1,0 +1,8 @@
+name: external-access-demo
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    primary: true
+    ports:
+      - 0.0.0.0:8080:80

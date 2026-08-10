@@ -1,0 +1,5 @@
+name: php-version-matrix-84
+services:
+  app:
+    type: "php:8.4"
+    primary: true

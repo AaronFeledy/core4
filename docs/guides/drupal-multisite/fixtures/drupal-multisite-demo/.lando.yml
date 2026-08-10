@@ -1,0 +1,32 @@
+name: drupal-multisite-demo
+services:
+  appserver:
+    type: php:8.3
+    webroot: /app/web
+    allowOverride: true
+    port: 80
+    dependsOn:
+      - database
+    routes:
+      - hostname: site1.lndo.site
+      - hostname: site2.lndo.site
+  database:
+    type: mariadb
+tooling:
+  drush:
+    service: appserver
+    description: Run Drush inside the appserver service without a site URI.
+    cmd:
+      - vendor/bin/drush
+  drush-site1:
+    service: appserver
+    description: Run Drush scoped to site1 via --uri.
+    cmd:
+      - vendor/bin/drush
+      - --uri=https://site1.lndo.site
+  drush-site2:
+    service: appserver
+    description: Run Drush scoped to site2 via --uri.
+    cmd:
+      - vendor/bin/drush
+      - --uri=https://site2.lndo.site
