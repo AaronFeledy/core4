@@ -53,7 +53,7 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 
 ## 2026-08-10 15:44 CDT - US-552 Review
 - Fixed the generated release workflow so `@lando/managed-file` is built, dry-run published, published, and readiness-checked before its dependents; synchronized the source PRD with the recorded US-552/US-553 adjudication.
-- Review notes (deferred/rejected): remaining test-only legacy imports remain US-553 work; the untouched nightly CI-codegen guide-scenario count assertion fails at 15 expected versus 19 generated and is outside this story.
+- Review notes (deferred/rejected): remaining test-only legacy imports remain US-553 work; package-DAG registration and shared scan-tier roots are explicitly owned by US-554; the untouched nightly CI-codegen guide-scenario count assertion fails at 15 expected versus 19 generated and is outside this story.
 - Guide-Coverage-Skip: Internal package-seam extraction changes no user-visible behavior or public contract.
 - Verification: typecheck and lint passed; explicit-base guide drift, release-workflow tests 2/2, npm-dev plus engine-closure tests 14/14, package import smoke, generated-output boundary, and managed-file boundary passed. The unrelated nightly CI-codegen suite had 15 passes and the one baseline failure noted above.
 - **Learnings for future iterations:**
