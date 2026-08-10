@@ -382,6 +382,18 @@ export const FILE_SYNC_DEFAULT_EXCLUDES: ReadonlyArray<string> = ["node_modules"
 
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 
+export const APP_SLUG_MAX_LENGTH = 57;
+
+export const normalizeAppSlug = (name: string, appRoot: string): string => {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, APP_SLUG_MAX_LENGTH)
+    .replace(/-+$/g, "");
+  return normalized.length > 0 ? normalized : shortHash(appRoot);
+};
+
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return servicePlan;
@@ -1052,7 +1064,8 @@ const planApp = (
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const appName = landofile.name ?? "app";
-  const appId = AppId.make(appName);
+  const appSlug = normalizeAppSlug(appName, appRoot);
+  const appId = AppId.make(appSlug);
   const host = resolveHostFacts();
   const resolvedAt = new Date().toISOString();
   const encodedMetadata = {
@@ -1262,7 +1275,7 @@ const planApp = (
       const securityFeature =
         resolution.base === "lando"
           ? yield* resolveSecurityFeature({
-              appName,
+              appName: appSlug,
               appRoot,
               serviceName: name,
               security: pinnedService.security,
@@ -1280,14 +1293,14 @@ const planApp = (
       const certsFeature =
         resolution.base === "lando"
           ? yield* resolveCertsFeature({
-              appName,
+              appName: appSlug,
               appRoot,
               serviceName: name,
               certs: pinnedService.certs,
               hostnames: pinnedService.hostnames ?? [],
               routes: authoredRoutes,
               defaultRouteHostname:
-                authoredRoutes.length === 0 ? `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+                authoredRoutes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
               resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
               fileSystem,
             })
@@ -1365,7 +1378,7 @@ const planApp = (
       },
     });
     if (cacheService !== undefined) {
-      const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
+      const cached = yield* readCachedAppPlan({ cacheRoot, appName: appSlug, appRoot, key: cacheKey }).pipe(
         Effect.catchAll(() => Effect.succeed(null)),
       );
       if (cached !== null) {
@@ -1590,7 +1603,7 @@ const planApp = (
       }
 
       const realization = bindRealization(providerCapabilities);
-      const shadowResult = expandExcludesToShadows(appName, name, withArtifact);
+      const shadowResult = expandExcludesToShadows(appSlug, name, withArtifact);
       const planWithShadows = shadowResult.servicePlan;
 
       const appMount = planWithShadows.appMount;
@@ -1625,7 +1638,7 @@ const planApp = (
         if (endpoint !== undefined) {
           routeRefs.push({
             index: pushRoute({
-              hostname: `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}`,
+              hostname: `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}`,
               scheme: "https",
               service: ServiceName.make(name),
               ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
@@ -1705,7 +1718,7 @@ const planApp = (
           ...collectFileSyncEntries({
             appId,
             appRoot,
-            appName,
+            appName: appSlug,
             serviceName: name,
             servicePlan: servicePlanWithRoutes,
             engineId: fileSyncEngineId,
@@ -1733,7 +1746,7 @@ const planApp = (
     const networks: ReadonlyArray<NetworkPlan> = hasServices
       ? [
           {
-            name: appNetworkName(appName),
+            name: appNetworkName(appSlug),
             shared: false,
             driver: "bridge",
           },
@@ -1741,7 +1754,7 @@ const planApp = (
       : [];
     const networking: NetworkingPlan | undefined = hasServices
       ? landoNetworkingPlan({
-          slug: appName,
+          slug: appSlug,
           serviceNames,
           sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
           serviceHostnames,
@@ -1763,7 +1776,7 @@ const planApp = (
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
-      slug: appName,
+      slug: appSlug,
       root: AbsolutePath.make(appRoot),
       provider,
       services,
@@ -1796,7 +1809,7 @@ const planApp = (
     ) {
       yield* writeCachedAppPlan({
         cacheRoot,
-        appName,
+        appName: appSlug,
         appRoot,
         key: cacheKey,
         plan,
