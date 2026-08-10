@@ -45,7 +45,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02; adjudicated: root-typechecked production repointing moved into US-552, leaving test consumers and final sweep here"
     },
     {
