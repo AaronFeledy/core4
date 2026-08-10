@@ -16,15 +16,8 @@ const legacyModulePaths = new Set(legacyModules.map((path) => resolve(repository
 const typeScriptExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const skippedDirectories = new Set([".codegraph", ".git", ".omo", "coverage", "dist", "node_modules"]);
 
-// These five dynamic imports are the intentional identity checks for the temporary
-// legacy shims. No other importer, edge kind, or specifier is exempt.
-const legacyIdentityAllowlist = new Set([
-  "core/test/state-store/package-seam.test.ts|dynamic-import|../../src/state/service.ts",
-  "core/test/state-store/package-seam.test.ts|dynamic-import|../../src/state/codec.ts",
-  "core/test/state-store/package-seam.test.ts|dynamic-import|../../src/state/lock.ts",
-  "core/test/state-store/package-seam.test.ts|dynamic-import|../../src/state/paths.ts",
-  "core/test/state-store/package-seam.test.ts|dynamic-import|../../src/state-store/atomic.ts",
-]);
+// The legacy shims are deleted; no importer, edge kind, or specifier is exempt.
+const legacyIdentityAllowlist = new Set<string>([]);
 
 const repoRelative = (path: string): string => relative(repositoryRoot, path).replaceAll("\\", "/");
 
