@@ -5,10 +5,9 @@
 //
 // The decision algorithm and marker handling are backend-agnostic: the service
 // is built over a `ManagedFileBackend` so the real disk-backed `Live` layer and
-// the in-memory `TestManagedFileStore` share one implementation. The ledger is
-// realized through a `StateStore` bucket (not a bespoke
-// registry/lock/quarantine); the ledger path is derived once by the paths
-// primitive for the ledger path; never re-spell managed-files/ledger.json here.
+// the in-memory `TestManagedFileStore` share one implementation. The ledger uses
+// a `StateStore` bucket (not a bespoke registry/lock/quarantine), and the paths
+// primitive owns the location of managed-files/ledger.json.
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
