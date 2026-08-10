@@ -9,11 +9,12 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
 const engineSrc = resolve(repoRoot, "engine/src");
+const managedFileSrc = resolve(repoRoot, "managed-file/src");
 const pathsSrc = resolve(repoRoot, "paths/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 
-const codecEntry = resolve(engineSrc, "managed-file/codecs.ts");
+const codecEntry = resolve(managedFileSrc, "codecs.ts");
 
 /** Modules whose construction would mean the codec drags in a `LandoRuntime`. */
 const runtimeCodePathDir = `${resolve(coreSrc, "runtime")}/`;
@@ -26,6 +27,7 @@ const oclifCodePathDirs = [
 const firstPartySourceRoots = [
   `${coreSrc}/`,
   `${engineSrc}/`,
+  `${managedFileSrc}/`,
   `${pathsSrc}/`,
   `${sdkSrc}/`,
   `${pluginsRoot}/`,
@@ -136,7 +138,7 @@ describe("managed-file codec import boundary (constructs no LandoRuntime)", () =
             `${violation.reason} via:\n      ${violation.chain.map(repoRelative).join("\n      → ")}`,
         )
         .join("\n\n");
-      throw new Error(`engine/src/managed-file/codecs.ts must construct no LandoRuntime:\n\n${report}`);
+      throw new Error(`managed-file/src/codecs.ts must construct no LandoRuntime:\n\n${report}`);
     }
     expect(violations.length).toBe(0);
   });
@@ -160,7 +162,7 @@ describe("managed-file codec import boundary (constructs no LandoRuntime)", () =
   });
 
   test("importing the codec module has no construction side effects", async () => {
-    const mod = await import("@lando/engine/managed-file/codecs");
+    const mod = await import("@lando/managed-file/codecs");
     expect(mod.encode).toBeFunction();
     expect(mod.decode).toBeFunction();
     expect(mod.mergeManaged).toBeFunction();
