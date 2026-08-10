@@ -7,15 +7,15 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import {
-  RedactionService,
-  type RedactionServiceShape,
-  createStandaloneRedactor,
-} from "@lando/engine/redaction/service";
-import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };

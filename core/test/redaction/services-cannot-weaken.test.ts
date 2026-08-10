@@ -9,15 +9,15 @@ import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import {
   type DownloaderEvents,
   makeDownloaderService,
   makeLiveDownloaderEvents,
-} from "@lando/engine/downloader/service";
-import type { HttpClientShape } from "@lando/engine/http-client/service";
-import { RedactionServiceLive } from "@lando/engine/redaction/service";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
-import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
+} from "@lando/http-client/downloader";
+import type { HttpClientShape } from "@lando/http-client/service";
+import { RedactionServiceLive } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 

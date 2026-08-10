@@ -19,7 +19,7 @@ import {
 import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
 
-import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
+import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import {

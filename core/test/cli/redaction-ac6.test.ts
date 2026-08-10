@@ -1,8 +1,8 @@
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { RedactionServiceLive } from "@lando/engine/redaction/service";
 import { makeEnvSecretStoreLive } from "@lando/engine/services/secret-store";
+import { RedactionServiceLive } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";

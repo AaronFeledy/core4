@@ -12,8 +12,8 @@ import {
   makeDiskBackend,
   makeManagedFileService,
 } from "@lando/engine/managed-file/service";
-import { RedactionServiceLive } from "@lando/engine/redaction/service";
 import { EventServiceLive } from "@lando/engine/services/event-service";
+import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 

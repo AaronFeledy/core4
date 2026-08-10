@@ -23,18 +23,13 @@ const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
 ]);
 
 const OWNER_EXCLUDING_RULES: ReadonlyMap<string, string> = new Map([
+  ["network", "http-client/src"],
   ["paths", "paths/src"],
+  ["redaction", "redaction/src"],
   ["state-store", "state-store/src"],
 ]);
 
-const CORE_AND_PLUGIN_RULE_IDS = [
-  "machine-output",
-  "managed-file",
-  "network",
-  "probe",
-  "redaction",
-  "renderer",
-] as const;
+const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "managed-file", "probe", "renderer"] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 

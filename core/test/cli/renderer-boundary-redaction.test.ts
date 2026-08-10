@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

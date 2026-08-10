@@ -3,11 +3,7 @@ import { type Context, Effect, Layer } from "effect";
 
 import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
-import {
-  RedactionService,
-  RedactionServiceLive,
-  createStandaloneRedactor,
-} from "@lando/engine/redaction/service";
+import { RedactionService, RedactionServiceLive, createStandaloneRedactor } from "@lando/redaction/service";
 import type { Redactor } from "@lando/sdk/secrets";
 
 const secretStoreLayer = (values: Record<string, string>) =>

@@ -8,8 +8,8 @@ import { Effect, Layer } from "effect";
 import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "@lando/engine/downloader/service";
-import { HttpClientLive } from "@lando/engine/http-client/live";
+import { DownloaderLive } from "@lando/http-client/downloader";
+import { HttpClientLive } from "@lando/http-client/live";
 import {
   LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
   RUNTIME_BUNDLE_TARGETS,

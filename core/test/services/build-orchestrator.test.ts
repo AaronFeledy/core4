@@ -15,12 +15,12 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/core/services";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { openScratchBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,

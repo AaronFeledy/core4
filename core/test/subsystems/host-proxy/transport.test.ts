@@ -18,7 +18,6 @@ import {
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
@@ -36,6 +35,7 @@ import {
   resolveHostProxyShimArtifactPath,
 } from "@lando/engine/subsystems/host-proxy/transport-shim";
 import { CORE_VERSION } from "@lando/engine/version";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 const tempDirs: string[] = [];
 
