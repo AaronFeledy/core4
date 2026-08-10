@@ -57,7 +57,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: managedFileRule,
-    seamJustification: "Marker and write-pattern use cannot be represented by a workspace dependency edge.",
+    seamJustification:
+      "The @lando/managed-file seam owns marker and overwrite logic; the rule is now owner-excluding and retains only the consumer-side re-spelling ban a package edge cannot express.",
   },
   {
     rule: networkRule,
