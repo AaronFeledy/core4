@@ -16,6 +16,23 @@ amber for warning, red for blocked, green for online. Frames use quiet panel
 separators, cockpit-style section headers, and dimmed detail tails rather
 than dense ASCII art.
 
+
+## Design tokens (spaceship-console)
+
+The spaceship-console visual language is defined by these durable tokens:
+
+- deep-space base with cyan/teal telemetry accents
+- Status chips: [RUNNING], [ONLINE], [CACHED], [SKIPPED], [BLOCKED], [WAIT]
+- 80 columns is the minimum proven width (also 100 and 120)
+- plain, json, non-TTY, and CI output stay undecorated
+- LANDO OPS headings for cockpit phase identity
+- two-space row rhythm for dense scannable rows
+- glyph plus text status on every state
+- dimmed detail tails behind status rows
+- progress rails stay semantic (live RUNNING only)
+- Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients,
+  no dense ASCII art, no decorative motion
+
 ## Status chips
 
 Active tasks and parent frames use a scanner/progress state with a
@@ -108,8 +125,7 @@ always eligible before user additions. The default duration threshold is
 15000ms; `notify.thresholdMs 0` qualifies every eligible completed command.
 
 `notify.commands` adds canonical command ids; entries are ordered and
-deduplicated, and validated against the cwd-independent global built-
-in/global-plugin command registry, so Landofile-derived tooling and
+deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry, so Landofile-derived tooling and
 app-local plugin ids fail with `ConfigError` regardless of the current
 working directory. Configured `none`, `minimal`, and `plugins` commands
 acquire subscribers without changing their declared bootstrap metadata.

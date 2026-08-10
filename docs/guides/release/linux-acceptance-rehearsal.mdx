@@ -8,21 +8,83 @@ tags: [beta, docs, release, acceptance]
 
 # Linux acceptance rehearsal
 
-`core/test/build/linux-acceptance-criteria-1-9.test.ts` runs focused
-release and update spot checks that prove criteria 1-9 pass on the
-reference `linux-x64` platform:
+This guide is the proof map for linux-x64 release acceptance. It does not run
+host-mutating release work during guide generation — each criterion points at
+the focused test, CI job, or command that already owns the check.
+
+## Criteria 1-9 — release pipeline and supply chain
+
+`core/test/build/linux-acceptance-criteria-1-9.test.ts` runs focused release
+and update spot checks that prove criteria 1-9 pass on the reference
+`linux-x64` platform:
 
 - **Criterion 1** — checksum-manifested release outputs, and a compiled
-  `linux-x64` binary that launches and reports its version, proven by
-  local rehearsal `SHA256SUMS` plus a nightly distribution-rehearsal
+  `linux-x64` binary that launches and reports its version, proven by local
+  rehearsal `SHA256SUMS` plus a nightly distribution-rehearsal
   `linux-x64 --version` run.
 - **Criterion 2** — gated timing evidence for single-platform and matrix
   release budgets, from CI timeouts plus release compile budget logging.
-- **Criteria 3-5** — linux-x64 signing policy, supply-chain artifacts, and
-  cosign verification, proven in `release.test.ts` (`SHA256SUMS`, SBOM,
-  SLSA, `cosign verify-blob`).
+- **Criteria 3-5** — linux-x64 signing policy, supply-chain artifacts, and cosign verification, proven in `release.test.ts` (SHA256SUMS, SBOM, SLSA, cosign verify-blob).
 - **Criteria 6-9** — signed manifest trust, `lando update` replacement,
   launch-probe rollback, and `EACCES` without silent elevation, proven in
   `update-manifest.test.ts` (signature verify, self-update,
   `UpdateLaunchProbeError` rollback, `UpdatePermissionError`).
 
+## Criteria 15-17 — runtime, bytecode, and AOT layers
+
+- **Criterion 15** — FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply, and repeat app:start invocations reuse existing file-sync sessions instead of re-creating them (`core/test/cli/start.scenario.test.ts`).
+- **Criterion 16** — the canonical release and CI wrapper builds the
+  compiled binary with Bun bytecode enabled:
+
+  ```sh
+  bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando
+  ```
+
+  The release compile stamps the real release version into the binary;
+  unstamped builds report the `@lando/core` workspace package version.
+- **Criterion 17** — AOT bootstrap layers are committed as generated
+  per-level modules at `core/src/runtime/generated/layers/<level>.ts` and
+  consumed by the runtime layer factory. The factory is guarded against
+  hand-written `Layer.mergeAll` or `Layer.provide` composition
+  (`core/test/runtime/generated-bootstrap-layers.test.ts`).
+
+## Criteria 18-19 — performance and level-none
+
+- **Criterion 18** — the `guide-scenarios-linux-x64` job runs the compiled-binary e2e `@smoke` subset with provider diagnostics. The `perf-budget-linux-x64` job downloads the built binary and runs the release-blocking benchmark surface:
+
+  ```sh
+  bun run bench:tooling-hot-path -- --binary dist/lando
+  ```
+
+- **Criterion 19** — level-none invocations do not import `@oclif/core`; source and compiled entries share the native fast path (`core/test/cli/fast-path.test.ts`). The fast-path canary fails if Effect `Context.Service` construction enters the level-none import path (`core/test/cli/fast-path-canary-preload.ts`).
+
+## Criteria 20-24 — external plugin loading
+
+- External ESM plugins load from an absolute file URL under the managed plugin store.
+- External TypeScript plugin entries load through Bun's native TypeScript importer.
+- External plugin entries resolve dependencies from their own package root.
+- Contribution module paths that escape the package root are rejected
+  before use.
+- A failed external import marks that plugin unhealthy while unrelated
+  plugins still load (`PluginLoadError`).
+
+## Criterion 25 — codegen clean check
+
+```sh
+bun run codegen:check
+```
+
+Regenerate codegen outputs, run the deprecation release gate, then
+typecheck the clean checkout. Acceptance requires no uncommitted generated
+drift after the gate.
+
+## Criteria 26-27 — bundled artifact codegen
+
+- **Criterion 26** — removing a bundled plugin from
+  `core/build.config.ts#bundledPlugins` regenerates bundled plugin and
+  manifest outputs without hand-editing `src`. The rebuilt binary omits
+  removed bundled plugin metadata from the generated bundled tables.
+- **Criterion 27** — adding a canonical recipe to the ship list
+  (`recipes/<id>/recipe.yml` + `core/build.config.ts#bundledRecipes`) is
+  picked up by bundled-recipe codegen. The next built binary reaches the
+  generated recipe through `lando init --recipe <id>`.

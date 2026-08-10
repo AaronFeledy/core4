@@ -30,3 +30,17 @@ The generated project includes:
 | `test/plugin.test.ts` | A starter test that verifies the exported manifest and core compatibility declaration |
 | `README.md`, `tsconfig.json` (strict) | Ready to author without hand-creating boilerplate |
 
+## Renderer plugins
+
+Use the bundled `@lando/renderer-lando` plugin as the maintained first-party
+example for renderer authors. Renderer plugins declare their renderer ids
+through the manifest contribution surface:
+
+```json
+{ "contributes": { "renderers": ["lando"] } }
+```
+
+The contribution key is `contributes.renderers`. The plugin owns and exports
+the renderer contribution, while core preserves plain, JSON, and verbose
+fallback modes.
+

@@ -33,7 +33,7 @@ const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/serv
 const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
 const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
-const { RedactionService } = yield* Effect.promise(() => import("../../../../../engine/src/redaction/service.ts"));
+const { RedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const frames = [
   { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
@@ -46,8 +46,8 @@ const frames = [
     params: { name: "app:config:get", arguments: { args: { key: "name" } } },
   },
 ];
-let inputController: ReadableStreamDefaultController`<Uint8Array>` | undefined;
-const input = new ReadableStream`<Uint8Array>`({
+let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
+const input = new ReadableStream<Uint8Array>({
   start: (controller) => {
     inputController = controller;
   },
@@ -66,7 +66,7 @@ const serviceLayer = McpServiceLive.pipe(Layer.provide(Layer.mergeAll(
   }),
 )));
 const responses = yield* Effect.gen(function* () {
-  const output = yield* Queue.unbounded`<string>`();
+  const output = yield* Queue.unbounded<string>();
   const service = yield* McpService;
   const catalog = yield* service.catalog();
   const transport = yield* makeStdioMcpTransport({
@@ -246,7 +246,7 @@ outbound queue, queued bytes, and blocked-write duration are bounded too
 (1024 messages / 8 MiB / 5 seconds).
 
   <Scenario id="bounded-read-only-regressions" render>
-    <Step name="enforce-bounded-stdio">
+    <Step name="verify-read-only-tools">
       <Run
         runtime="library"
         code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
@@ -272,7 +272,7 @@ const frames = Array.from({ length: MAX_OUTSTANDING_REQUESTS + 1 }, (_, index) =
   method: "tools/call",
   params: { name: "app:config:get", arguments: { args: { key: "name" } } },
 }));
-const input = new ReadableStream`<Uint8Array>`({
+const input = new ReadableStream<Uint8Array>({
   start: (controller) => {
     controller.enqueue(new TextEncoder().encode(frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n"));
     controller.close();
