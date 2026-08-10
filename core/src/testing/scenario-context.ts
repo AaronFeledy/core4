@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Cause, Chunk, Console, Context, Effect, Exit, Schema, type Scope, Stream } from "effect";
+import { type Cause, Chunk, Console, Context, Effect, Exit, Layer, Schema, type Scope, Stream } from "effect";
 
 import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
@@ -12,12 +12,20 @@ import {
   GuideFixtureSymlinkError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
+import { ProviderId } from "@lando/sdk/schema";
+import {
+  FileSystem,
+  type FileSystemError,
+  type LandoEvent,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
+import { withRuntimeProviderRegistryOverride } from "../runtime/layer";
 import { makeTestInteractionService } from "./interaction";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
@@ -618,6 +626,14 @@ const runInitDispatchWithSeededAnswers = (
   return withInteractionServiceOverride(interaction.service, runDispatch);
 };
 
+const testRuntimeProviderRegistry = {
+  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+  select: () => Effect.succeed(TestRuntimeProvider),
+} satisfies Context.Tag.Service<typeof RuntimeProviderRegistry>;
+
+const testRuntimeProviderRegistryLayer = Layer.succeed(RuntimeProviderRegistry, testRuntimeProviderRegistry);
+
 const invokeRealCli = async (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
@@ -638,7 +654,9 @@ const invokeRealCli = async (
     const cli = await import("../cli/index");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
-    await runInitDispatchWithSeededAnswers(args, options, runDispatch);
+    await withRuntimeProviderRegistryOverride(testRuntimeProviderRegistryLayer, () =>
+      runInitDispatchWithSeededAnswers(args, options, runDispatch),
+    );
     const stdoutText = stdout.content();
     const stderrText = stderr.content();
     const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
