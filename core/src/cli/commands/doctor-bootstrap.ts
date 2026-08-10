@@ -13,9 +13,9 @@
  */
 import { Effect, Layer, Option } from "effect";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { ConfigServiceLive } from "@lando/engine/services/config";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";

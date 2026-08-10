@@ -24,10 +24,10 @@ import { Effect, Layer } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { ConfigService, Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "@lando/engine/downloader/service";
-import { HttpClientLive } from "@lando/engine/http-client/live";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
+import { DownloaderLive } from "@lando/http-client/downloader";
+import { HttpClientLive } from "@lando/http-client/live";
 import { publish } from "./git-source";
 import type { ResolvedRecipe } from "./source";
 

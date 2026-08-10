@@ -14,7 +14,7 @@ import { Data, Effect, Layer, Option } from "effect";
 
 import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
 
-import { NetworkTrust } from "@lando/engine/http-client/network-trust";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import {
   type SetupReadinessRuntimeService,

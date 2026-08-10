@@ -12,10 +12,10 @@
 
 import { Effect, Layer, Stream } from "effect";
 
-import { ConfigServiceLive } from "../services/config.ts";
-import { EventServiceLive } from "../services/event-service.ts";
-import { HttpClientLive } from "./live.ts";
-import { HttpClient } from "./service.ts";
+import { HttpClientLive } from "@lando/http-client/live";
+import { HttpClient } from "@lando/http-client/service";
+import { ConfigServiceLive } from "./config.ts";
+import { EventServiceLive } from "./event-service.ts";
 
 export interface HttpJsonResult {
   readonly status: number;

@@ -41,7 +41,7 @@ import type {
 import { HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 
-import type { HttpClientShape } from "@lando/engine/http-client/service";
+import type { HttpClientShape } from "@lando/http-client/service";
 
 const REMOTE_HTTP_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],

@@ -16,13 +16,13 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { NetworkTrust } from "@lando/engine/http-client/network-trust";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext } from "../../renderer-boundary";

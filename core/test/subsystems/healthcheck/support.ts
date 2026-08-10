@@ -23,7 +23,7 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { RedactionService, type RedactionServiceShape } from "@lando/engine/redaction/service";
+import { RedactionService, type RedactionServiceShape } from "@lando/redaction/service";
 
 export type HealthcheckExec = {
   readonly exec: (

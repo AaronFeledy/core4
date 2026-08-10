@@ -4,12 +4,12 @@ import { Effect, Schema } from "effect";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/engine/redaction/service";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import type { RootOverrides } from "@lando/paths";
+import type { RedactionService } from "@lando/redaction/service";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
 import { runOpenForHostProxy } from "./dispatch";

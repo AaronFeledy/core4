@@ -9,8 +9,8 @@ import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
 import type { StringImportRef } from "@lando/sdk/schema";
 import type { FileSystem, LandoPaths } from "@lando/sdk/services";
 
+import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "@lando/http-client/network-trust";
 import { assertUnderRoot } from "@lando/landofile/include-guard";
-import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "../http-client/network-trust.ts";
 
 const CERTIFICATE_PEM_PATTERN = /^(?:\s*-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----\s*)+$/u;
 const SECURITY_FEATURE_ID = "lando.security" as const;

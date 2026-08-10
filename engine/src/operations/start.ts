@@ -22,11 +22,11 @@ import {
   type ShellRunner,
 } from "@lando/sdk/services";
 
+import type { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
-import type { RedactionService } from "../redaction/service.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";

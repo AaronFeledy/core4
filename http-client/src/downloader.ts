@@ -37,7 +37,7 @@ import {
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
 
-import { HttpClient } from "../http-client/service.ts";
+import { HttpClient } from "./service.ts";
 
 const CAPABILITIES: DownloaderCapabilities = {
   schemes: ["https", "file"],

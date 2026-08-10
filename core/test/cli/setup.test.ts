@@ -19,11 +19,11 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { makeHttpClientLive } from "@lando/engine/http-client/live";
-import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
-import type { HttpClient } from "@lando/engine/http-client/service";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { makeHttpClientLive } from "@lando/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import type { HttpClient } from "@lando/http-client/service";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { InteractionCancelledError, InteractionUnavailableError } from "@lando/sdk/errors";

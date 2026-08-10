@@ -12,8 +12,8 @@ import {
   __testOnlyEncodeTarOctal,
   __testOnlyUnarchivePayloadWithCap,
 } from "@lando/engine/data-mover/service";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,

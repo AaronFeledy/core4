@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter, LandofileShape, RecipeManifest } from "@lando/sdk/schema";
 
-import { decodeOrFail } from "@lando/engine/schema/decode";
+import { decodeOrFail } from "@lando/landofile/decode";
 
 const issuesWithMessages = (cause: unknown, fallback: string): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {

@@ -12,7 +12,7 @@ import { Effect, Option } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { DeprecationService, Renderer } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { encodeStreamEventFrame } from "./result-encode";
 
 export interface ResolveCliDeprecationWarningsOptions {

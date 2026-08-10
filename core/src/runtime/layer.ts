@@ -59,7 +59,6 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import type { LoggerMode } from "@lando/engine/logging/service";
 import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import type { RedactionService } from "@lando/engine/redaction/service";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import {
   type BootstrapLifecycleTracker,
@@ -79,6 +78,7 @@ import {
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";

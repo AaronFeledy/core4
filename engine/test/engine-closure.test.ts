@@ -18,10 +18,8 @@ const runtimeBrainDirectories = [
   "config",
   "data-mover",
   "deprecation",
-  "downloader",
   "errors",
   "global-app",
-  "http-client",
   "landofile",
   "lifecycle",
   "logging",
@@ -30,13 +28,9 @@ const runtimeBrainDirectories = [
   "platform",
   "plugins",
   "providers",
-  "redaction",
   "runtime",
-  "schema",
   "scratch-app",
   "services",
-  "state",
-  "state-store",
   "subsystems",
   "telemetry",
   "tooling",
@@ -191,7 +185,7 @@ describe("Engine closure", () => {
     // Given
     const [{ EventServiceLive }, { RedactionServiceLive }] = await Promise.all([
       import("@lando/engine/services/event-service"),
-      import("@lando/engine/redaction/service"),
+      import("@lando/redaction/service"),
     ]);
     const secretStore = Layer.succeed(SecretStore, {
       id: "engine-closure",

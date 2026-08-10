@@ -20,7 +20,7 @@ import type { McpConfig } from "@lando/sdk/schema";
 import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
 import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
-import type { RedactionService } from "@lando/engine/redaction/service";
+import type { RedactionService } from "@lando/redaction/service";
 import type { McpCommandEntry } from "../../../mcp/registry";
 import {
   McpRuntimeConfig,

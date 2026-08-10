@@ -32,7 +32,7 @@ const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/serv
 const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
 const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
-const { RedactionService } = yield* Effect.promise(() => import("../../../../../engine/src/redaction/service.ts"));
+const { RedactionService } = yield* Effect.promise(() => import("../../../../../redaction/src/service.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const frames = [
   { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },

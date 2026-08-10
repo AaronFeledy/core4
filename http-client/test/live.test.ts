@@ -11,9 +11,9 @@ import type { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { HttpClientLive, makeHttpClientLive } from "../../src/http-client/live.ts";
-import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
-import { HttpClient } from "../../src/http-client/service.ts";
+import { HttpClientLive, makeHttpClientLive } from "../src/live.ts";
+import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
+import { HttpClient } from "../src/service.ts";
 
 const tempDirs: string[] = [];
 

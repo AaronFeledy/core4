@@ -20,7 +20,6 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { DataMoverLive } from "@lando/engine/data-mover/service";
 import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { type RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import {
   type ScratchRegistryEntry,
   ScratchRegistryLive,
@@ -35,6 +34,7 @@ import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
+import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";

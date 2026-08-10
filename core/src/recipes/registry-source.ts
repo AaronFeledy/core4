@@ -12,7 +12,7 @@ import { RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeRegistryResponse } from "@lando/sdk/schema";
 import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
 
-import { httpJsonFetch } from "@lando/engine/http-client/json-fetch";
+import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 
 import { type GitRecipeCloner, resolveGitRecipeSource } from "./git-source";
 import type { ResolvedRecipe } from "./source";

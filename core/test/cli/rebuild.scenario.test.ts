@@ -29,12 +29,12 @@ import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/s
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { StateStoreLive } from "@lando/state-store/service";
 import "../../src/runtime/engine-composition.ts";
 

@@ -13,8 +13,10 @@
 export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "core/src",
   "engine/src",
+  "http-client/src",
   "landofile/src",
   "paths/src",
+  "redaction/src",
   "state-store/src",
   "plugins",
 ] as const;
@@ -27,8 +29,10 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
   "engine/src",
+  "http-client/src",
   "landofile/src",
   "paths/src",
+  "redaction/src",
   "sdk/src",
   "state-store/src",
   "plugins/*/src",
@@ -44,8 +48,10 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
   "engine/src",
+  "http-client/src",
   "landofile/src",
   "paths/src",
+  "redaction/src",
   "sdk/src",
   "state-store/src",
   "plugins",
@@ -59,8 +65,10 @@ export const NON_PLUGIN_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
   "engine/src",
+  "http-client/src",
   "landofile/src",
   "paths/src",
+  "redaction/src",
   "sdk/src",
   "state-store/src",
 ] as const;

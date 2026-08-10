@@ -12,8 +12,8 @@ import { Downloader } from "@lando/sdk/services";
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
+import { DownloaderLive } from "../src/downloader.ts";
+import { HttpClient, type HttpClientShape } from "../src/service.ts";
 
 const FAKE_HTTP_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],

@@ -6,9 +6,9 @@ import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { type HttpClientContractHarness, runHttpClientContract } from "@lando/sdk/test";
 
-import { makeHttpClientLive } from "@lando/engine/http-client/live";
-import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
-import { HttpClient, type HttpClientShape } from "@lando/engine/http-client/service";
+import { makeHttpClientLive } from "@lando/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import { HttpClient, type HttpClientShape } from "@lando/http-client/service";
 import { makeTestHttpClient } from "../../src/testing/http-client.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);

@@ -4,7 +4,7 @@ import { Effect, Fiber, Layer, Queue, Schema } from "effect";
 import type { McpCatalog } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {

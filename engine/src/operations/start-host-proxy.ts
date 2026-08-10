@@ -5,7 +5,7 @@ import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan }
 import { type EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
-import type { RedactionService } from "../redaction/service.ts";
+import type { RedactionService } from "@lando/redaction/service";
 import {
   type HostProxyShimTarget,
   defaultHostProxyShimArtifactPath,

@@ -4,7 +4,7 @@ import type { Context, Effect, Fiber } from "effect";
 import type { AppRef } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
-import type { RedactionService } from "../../redaction/service.ts";
+import type { RedactionService } from "@lando/redaction/service";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
 import type { HostProxyTransportKind } from "./transport.ts";

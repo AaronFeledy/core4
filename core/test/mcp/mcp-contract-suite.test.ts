@@ -24,7 +24,7 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { assertMcpAllowlistSafe } from "../../src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";

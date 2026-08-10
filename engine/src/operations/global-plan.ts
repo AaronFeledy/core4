@@ -21,8 +21,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
-import { decodeOrFail } from "../schema/decode.ts";
 
 export interface MissingGlobalPlanResult {
   readonly materialized: false;

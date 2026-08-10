@@ -25,9 +25,9 @@ import { LogSourceId, ServiceName } from "@lando/sdk/schema";
 import type { BuildOrchestrator, LogChunk, ProxyService, ShellRunner } from "@lando/sdk/services";
 import { EventService, Renderer } from "@lando/sdk/services";
 
+import type { RedactionService } from "@lando/redaction/service";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
-import type { RedactionService } from "../redaction/service.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
 import { confirmRemoteSyncWithInteraction } from "./remote-confirmation.ts";

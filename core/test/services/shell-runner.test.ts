@@ -6,8 +6,8 @@ import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect"
 
 import { ShellExecError } from "@lando/core/errors";
 import { EventService, ShellRunner } from "@lando/core/services";
-import { RedactionService } from "@lando/engine/redaction/service";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
 

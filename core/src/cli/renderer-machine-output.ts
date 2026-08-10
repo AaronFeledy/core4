@@ -11,7 +11,7 @@ import { Effect, Option } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/engine/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import type { CommandWarningsShape } from "./command-warnings";
 import { writeResultLine } from "./renderer-output";
 import {

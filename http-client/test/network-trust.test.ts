@@ -8,7 +8,7 @@ import { Effect, Schema } from "effect";
 
 import { GlobalConfig } from "@lando/sdk/schema";
 
-import { loadCaPems, resolveServiceNetworkInject } from "../../src/http-client/network-trust.ts";
+import { loadCaPems, resolveServiceNetworkInject } from "../src/network-trust.ts";
 
 describe("core network trust", () => {
   test("loads PEM files with stable UTF-8 SHA-256 digests", async () => {

@@ -21,8 +21,8 @@
  */
 import { Effect, Layer, Schema } from "effect";
 
-import { RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { buildCatalog, computeEffectiveAllowlist } from "../../mcp/catalog";
 import type { McpDispatchDeps, McpRunInput } from "../../mcp/dispatch";
 import { dispatchTool } from "../../mcp/dispatch";
