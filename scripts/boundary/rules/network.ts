@@ -62,13 +62,13 @@ const onNode = (node: ts.Node, context: FileContext): void => {
 export const networkRule = {
   id: "network",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "http-client/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: ["engine/src/http-client/live.ts"], prefixes: [] },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Network boundary check passed.",
   failureHeadline:
-    "Network boundary check failed. Lando-owned outbound HTTP must route through the HttpClient adapter (@lando/core HttpClient), not direct global fetch. Carve-outs are limited to BunSelfRunner package-manager ops and the standalone installer scripts.",
+    "Network boundary check failed. Lando-owned outbound HTTP must route through the HttpClient adapter (@lando/http-client), not direct global fetch. The owning @lando/http-client package is the only direct-fetch site.",
   onNode,
 } satisfies BoundaryRule;

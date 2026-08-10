@@ -61,7 +61,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: networkRule,
-    seamJustification: "An allowed package dependency cannot require every egress call to use one adapter.",
+    seamJustification:
+      "The @lando/http-client seam owns the only direct-fetch site, deleting the former live.ts file carve-out; the rule is now owner-excluding and retains only the consumer-side direct-fetch ban a package edge cannot express.",
   },
   {
     rule: packageDagRule,
@@ -78,7 +79,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: redactionRule,
-    seamJustification: "A dependency on the SDK cannot prove the canonical redactor was used.",
+    seamJustification:
+      "The @lando/redaction seam owns the canonical redactor; the rule is now owner-excluding and retains only the consumer-side ad-hoc sentinel/regex ban a package edge cannot express.",
   },
   {
     rule: rendererRule,
