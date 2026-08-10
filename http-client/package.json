@@ -1,6 +1,6 @@
 {
-  "name": "@lando/engine",
-  "description": "Private runtime engine implementation for Lando runtimes.",
+  "name": "@lando/http-client",
+  "description": "Private HTTP egress adapter (HttpClient, network trust, downloader) for Lando runtimes.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lando-community/core4.git",
-    "directory": "engine"
+    "directory": "http-client"
   },
   "type": "module",
   "private": true,
@@ -19,24 +19,17 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts",
-    "./package.json": "./package.json"
+    "./service": "./src/service.ts",
+    "./live": "./src/live.ts",
+    "./network-trust": "./src/network-trust.ts",
+    "./timeout": "./src/timeout.ts",
+    "./downloader": "./src/downloader.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
-  "keywords": ["lando", "engine", "runtime"],
+  "keywords": ["lando", "http-client", "downloader"],
   "dependencies": {
-    "@lando/container-runtime": "workspace:*",
-    "@lando/http-client": "workspace:*",
-    "@lando/landofile": "workspace:*",
-    "@lando/paths": "workspace:*",
-    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "@lando/state-store": "workspace:*",
-    "effect": "^3.21.2",
-    "semver": "^7.8.5"
-  },
-  "devDependencies": {
-    "@types/semver": "^7.7.1"
+    "effect": "^3.21.2"
   },
   "scripts": {
     "build": "tsc -b",

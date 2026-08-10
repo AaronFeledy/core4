@@ -35,8 +35,10 @@
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
         "@lando/engine": "workspace:*",
+        "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
         "effect": "^3.21.2",
@@ -51,8 +53,10 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
         "effect": "^3.21.2",
@@ -60,6 +64,14 @@
       },
       "devDependencies": {
         "@types/semver": "^7.7.1",
+      },
+    },
+    "http-client": {
+      "name": "@lando/http-client",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
       },
     },
     "landofile": {
@@ -205,6 +217,14 @@
         "@types/mustache": "^4.2.6",
       },
     },
+    "redaction": {
+      "name": "@lando/redaction",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "sdk": {
       "name": "@lando/sdk",
       "version": "0.0.0",
@@ -255,6 +275,8 @@
 
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
 
+    "@lando/http-client": ["@lando/http-client@workspace:http-client"],
+
     "@lando/landofile": ["@lando/landofile@workspace:landofile"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
@@ -270,6 +292,8 @@
     "@lando/provider-podman": ["@lando/provider-podman@workspace:plugins/provider-podman"],
 
     "@lando/proxy-traefik": ["@lando/proxy-traefik@workspace:plugins/proxy-traefik"],
+
+    "@lando/redaction": ["@lando/redaction@workspace:redaction"],
 
     "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
 

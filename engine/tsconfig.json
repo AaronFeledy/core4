@@ -10,10 +10,26 @@
   "include": ["./src/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules"],
   "references": [
-    { "path": "../sdk" },
-    { "path": "../paths" },
-    { "path": "../state-store" },
-    { "path": "../container-runtime" },
-    { "path": "../landofile" }
+    {
+      "path": "../sdk"
+    },
+    {
+      "path": "../paths"
+    },
+    {
+      "path": "../state-store"
+    },
+    {
+      "path": "../container-runtime"
+    },
+    {
+      "path": "../landofile"
+    },
+    {
+      "path": "../redaction"
+    },
+    {
+      "path": "../http-client"
+    }
   ]
 }
