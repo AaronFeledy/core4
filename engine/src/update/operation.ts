@@ -2,7 +2,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import type { LandoCommandError } from "@lando/sdk/errors";
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
@@ -84,11 +84,6 @@ export interface UpdateResult {
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
 }
-
-export const UpdateResultSchema = Schema.Struct({
-  updatedCore: Schema.Boolean,
-  updatedPlugins: Schema.Array(Schema.String),
-});
 
 const probeCommandSummary = (path: string): string => `${scrubTelemetryValue(path)} --version`;
 

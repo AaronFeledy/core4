@@ -14,10 +14,11 @@ export type { UpdateError } from "../update/errors.ts";
 export {
   defaultFetchManifestBytes,
   resolveUpdateManifestUrl,
+  UpdateResultSchema,
   updateChannelForVersion,
 } from "../update/manifest.ts";
 export type { UpdateManifestFetcher } from "../update/manifest.ts";
-export { UpdateResultSchema, update } from "../update/operation.ts";
+export { update } from "../update/operation.ts";
 export type { UpdateOptions, UpdateResult } from "../update/operation.ts";
 export type {
   UpdateExecve,

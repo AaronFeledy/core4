@@ -28,6 +28,11 @@ import {
 
 export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 
+export const UpdateResultSchema = Schema.Struct({
+  updatedCore: Schema.Boolean,
+  updatedPlugins: Schema.Array(Schema.String),
+});
+
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";
 export const updateManifestStatePath = (): string =>
   join(resolveUserCacheRoot(), "update-manifest-state.json");
