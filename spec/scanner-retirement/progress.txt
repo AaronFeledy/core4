@@ -123,3 +123,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - When a reviewed story returns to Build before Push, revalidate the existing branch and record completion without inventing implementation work.
 ---
+
+## 2026-08-10 22:57 CDT - US-556
+- Split self-update into focused error, manifest, verification, Windows replacement, staging, and orchestration modules while preserving the exact operation export surface and existing CLI import path.
+- Verification: typecheck and lint passed; 40 focused update tests, 30 adjacent library export tests, and the Linux criteria 6-9 acceptance wrapper passed; import-cycle, telemetry inventory, and all story-relevant boundary rules passed. The aggregate boundary run retained only the pre-recorded unchanged `.omo/**` spec-reference baseline.
+- **Learnings for future iterations:**
+  - For behavior-preserving module decomposition, lock runtime exports before moving code and keep type-only exports explicit in the stable barrel; this makes both leaked internals and missing public symbols observable.
+---
