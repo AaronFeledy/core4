@@ -81,3 +81,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Guide-Coverage-Skip: Internal test-import migration changes no user-visible behavior or public contract.
 - Verification: explicit-base guide drift, typecheck, and lint passed; focused managed-file spot checks passed 62/62 across six files and 104/104 across the seven-file adjacent blast radius; Bugbot found no bugs.
 ---
+
+## 2026-08-10 18:59 CDT - US-554
+- Added `@lando/managed-file` to the shared runtime scan tier and converted the managed-file boundary into an owner-excluding residual rule with no carve-outs; package direction, fixtures, inventory, and durable ownership guidance now agree on the private seam.
+- Verification: typecheck and lint passed; 141 relevant tests across 12 files passed; managed-file, package-dag, and import-cycle boundary gates passed.
+- **Learnings for future iterations:**
+  - When review work pre-lands part of a later story, preserve it and lock the exact policy with focused tests rather than recreating the implementation.
+---
