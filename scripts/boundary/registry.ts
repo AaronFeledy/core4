@@ -58,7 +58,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: managedFileRule,
     seamJustification:
-      "The @lando/managed-file seam owns marker and overwrite logic; the rule is now owner-excluding and retains only the consumer-side re-spelling ban a package edge cannot express.",
+      "The @lando/managed-file seam owns marker and overwrite logic; a package edge cannot prevent consumers from re-spelling that logic.",
   },
   {
     rule: networkRule,
