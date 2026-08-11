@@ -1,0 +1,151 @@
+---
+id: drupal-multisite
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, drupal, multisite]
+---
+
+# Drupal multisite
+
+Drupal multisite runs several site instances off one shared codebase. The
+`drupal` recipe scaffolds one PHP appserver and one database service — there
+is no recipe knob for multisite, so you add routes, per-site
+`settings.php` files, and Drush URI aliases yourself on top of the
+generated Landofile. Every site still shares the same appserver, PHP
+version, webroot, and database service; multisite only splits the Drupal
+document root and config, not the containers underneath it.
+
+## Route one hostname per site
+
+Add one `routes:` entry per multisite hostname under the appserver service.
+Every hostname resolves to the same backend, because one appserver serves
+every site:
+
+```yaml
+services:
+  appserver:
+    type: php:8.3
+    webroot: /app/web
+    allowOverride: true
+    routes:
+      - hostname: site1.lndo.site
+      - hostname: site2.lndo.site
+```
+
+`lando app:config --format=json` prints the resolved Landofile, including
+each authored route's `hostname`, so you can confirm the route list before
+starting the app.
+
+## Per-site settings.php layout
+
+Drupal's own `sites/sites.php` maps each hostname to a directory under
+`sites/`, and each directory carries its own `settings.php`. Point
+`sites/sites.php` at your Lando hostnames:
+
+```php
+<?php
+$sites['site1.lndo.site'] = 'site1';
+$sites['site2.lndo.site'] = 'site2';
+```
+
+Then `web/sites/site1/settings.php` connects to the shared `database`
+service the same way the default site does — only the database name
+usually changes per site:
+
+```php
+<?php
+$databases['default']['default'] = [
+  'driver' => 'mysql',
+  'host' => 'database',
+  'database' => 'site1',
+  'username' => 'drupal',
+  'password' => 'drupal',
+  'prefix' => '',
+];
+```
+
+The stock `mariadb` service provisions one schema named after the app, so a
+second schema like `site1` above needs to exist before Drupal can connect
+to it — create it with a one-off `lando mysql -e "CREATE DATABASE site1"`
+(or the matching client for your database engine) before running each
+site's installer.
+
+## Drush URI aliases
+
+Drush needs `--uri` to know which site it is operating on, since every
+site's Drupal bootstrap shares the same appserver. Declare one tooling
+task per site with the URI baked into the command instead of a recipe
+option:
+
+```yaml
+tooling:
+  drush-site1:
+    service: appserver
+    cmd:
+      - vendor/bin/drush
+      - --uri=https://site1.lndo.site
+  drush-site2:
+    service: appserver
+    cmd:
+      - vendor/bin/drush
+      - --uri=https://site2.lndo.site
+```
+
+`lando drush-site1 status` and `lando drush-site2 status` then run Drush
+against the matching site without you retyping `--uri` on every
+invocation.
+
+## Install each site
+
+Once the app is started and the proxy has issued certificates for each
+route, install Drupal into each site's database with the site-scoped Drush
+alias:
+
+```sh
+lando drush-site1 site-install standard --db-url=mysql://drupal:drupal@database/site1 -y
+lando drush-site2 site-install standard --db-url=mysql://drupal:drupal@database/site2 -y
+```
+
+Then open each hostname in a browser:
+
+- `https://site1.lndo.site`
+- `https://site2.lndo.site`
+
+## Limits of one shared appserver
+
+Every multisite hostname above routes to the same appserver container, so
+every site shares one PHP version, one `webroot`, one `allowOverride`
+setting, and one set of installed PHP extensions — you cannot run one site
+on a different PHP version than its neighbors. The database service is
+shared too: separate per-site schemas live on the same `mariadb` instance,
+not on isolated database containers, so a schema-level backup or restore
+against one site touches the same server every other site depends on.
+
+## Verify the resolved config
+
+The fixture below declares both hostnames and Drush URI aliases. Lint and
+inspect the resolved Landofile to confirm the routes and tooling land
+correctly:
+
+<Guide>
+  <Scenario id="multisite-route-plan" render>
+    <Step name="scaffold">
+      <UseFixture name="drupal-multisite-demo" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-routes">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "site1\\.lndo\\.site" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "site2\\.lndo\\.site" } }} />
+    </Step>
+    <Step name="inspect-drush-uri-tooling">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "drush-site1" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "drush-site2" } }} />
+    </Step>
+  </Scenario>
+</Guide>

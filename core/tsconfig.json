@@ -29,6 +29,9 @@
       "path": "../state-store"
     },
     {
+      "path": "../managed-file"
+    },
+    {
       "path": "../landofile"
     },
     {

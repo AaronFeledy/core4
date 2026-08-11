@@ -6,17 +6,21 @@ timeout: 60000
 tags: [beta, docs, install, release]
 ---
 
-<Guide>
-  <Scenario id="manual-release-download" render={false} reason="GitHub Release asset completeness is exercised by core/test/scripts/release.test.ts with fixture manifests, so guide generation never downloads live release artifacts">
-    <Step name="select-artifact">
-      <Variable name="platforms" value="linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64" display="Each Beta 1 platform target publishes a signed compiled binary asset" />
-      <Variable name="binaryOnly" value="compiled Lando binary embeds Bun" display="Manual binary installs do not require a separate Bun, Node, npm, yarn, or pnpm runtime" />
-      <Variable name="fileSync" value="Mutagen is acquired by lando setup" display="Mutagen host tools and agents are not embedded in the release binary" />
-    </Step>
-    <Step name="verify-artifact">
-      <Variable name="checksums" value="SHA256SUMS + SHA512SUMS + detached signatures" display="Checksum manifests and their GPG/cosign signatures publish beside the binaries" />
-      <Variable name="supplyChain" value="SBOM + SLSA provenance + signature/certificate sidecars" display="Each binary and library archive has linked CycloneDX SBOM and SLSA provenance assets" />
-      <Variable name="instructions" value="release-notes.md" display="Verification instructions are published with the release assets" />
-    </Step>
-  </Scenario>
-</Guide>
+# Install from a GitHub release
+
+Every Beta 1 platform target — `linux-x64`, `linux-arm64`, `darwin-x64`,
+`darwin-arm64`, and `windows-x64` — publishes a signed, compiled binary
+asset. Download the one for your platform and you're done: the binary embeds
+Bun, so manual installs don't need a separate Bun, Node, npm, yarn, or pnpm
+runtime.
+
+File sync is the one thing that isn't embedded. Mutagen's host tools and
+agents get pulled in when you run `lando setup`.
+
+## Verify what you downloaded
+
+Checksum manifests (`SHA256SUMS` and `SHA512SUMS`) and their GPG/cosign
+signatures publish beside every binary. Each binary and library archive also
+ships a linked CycloneDX SBOM and SLSA provenance asset, so you can trace
+supply-chain provenance end to end. Verification instructions are published
+alongside the release assets in `release-notes.md`.

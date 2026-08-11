@@ -6,26 +6,35 @@ timeout: 60000
 tags: [beta, docs, deprecations, cli]
 ---
 
+# CLI deprecation warnings and suppression
+
+The first use of a deprecated warn-level surface renders a human warning through the active
+renderer. Later uses of the same `kind/id` don't spam more warnings; the end-of-run summary retains
+the total use count.
+
+Suppress human renderer warning output for the current invocation with `--no-deprecation-warnings`,
+or for scripts and CI with `LANDO_DEPRECATION_WARNINGS=0`. Machine-readable summaries and JSON
+`deprecation-used` diagnostics remain available to commands that report them.
+
+In JSON mode, deprecation use is written as structured stderr with the canonical payload shape:
+
+```json
+{
+  "_tag": "deprecation-used",
+  "use": {
+    "kind": "…",
+    "id": "…",
+    "notice": "…",
+    "timestamp": "…"
+  }
+}
+```
+
 <Guide>
-  <Scenario id="cli-deprecation-warning-dedupe" render={false} reason="Focused renderer-boundary tests exercise repeated DeprecationService.use calls without requiring a deprecated public command fixture">
-    <Step name="first-warning-only">
-      <Variable name="surface" value="command app:old" display="The first use of a deprecated warn-level surface renders a human warning through the active renderer" />
-      <Variable name="repeat" value="summary count increments" display="Later uses of the same kind/id do not spam more warnings; the end-of-run summary retains the total use count" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="cli-deprecation-suppression" render={false} reason="Suppression is parser-level behavior covered in source and compiled command-boundary tests">
-    <Step name="human-output-only">
-      <Variable name="flag" value="--no-deprecation-warnings" display="Suppress human renderer warning output for the current command invocation" />
-      <Variable name="env" value="LANDO_DEPRECATION_WARNINGS=0" display="Suppress human renderer warning output for scripts and CI" />
-      <Variable name="diagnostics" value="not suppressed" display="Machine-readable summaries and JSON deprecation-used diagnostics remain available to commands that report them" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="cli-deprecation-json-events" render={false} reason="JSON renderer stderr shape is locked by core/test/cli/renderer-boundary.test.ts">
-    <Step name="structured-stderr">
-      <Variable name="renderer" value="--renderer=json" display="JSON renderer writes structured deprecation-used events to stderr" />
-      <Variable name="payload" value="{ _tag: 'deprecation-used', use: { kind, id, notice, timestamp } }" display="The payload is the canonical deprecation use record, without human warning formatting" />
+  <Scenario id="cli-deprecation-warning-dedupe" render={false} reason="Repeated DeprecationService.use calls, suppression, and JSON renderer shape above are covered by renderer-boundary and source/compiled command tests without needing a deprecated public command fixture. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

@@ -5,10 +5,38 @@ timeout: 60000
 tags: [beta, docs, tooling, includes]
 ---
 
+# Tooling includes
+
 Tooling fragments load through the canonical `includes:` surface with `kind: tooling`. The
 `toolingIncludes:` shorthand resolves through the same machinery, so both spellings produce the
 same commands wherever both are accepted. Inside a tooling fragment only the `toolingIncludes:`
-spelling nests further fragments; a bare `includes:` key in a fragment fails closed with a tagged `LandofileIncludeError`.
+spelling nests further fragments; a bare `includes:` key in a fragment fails closed with a tagged
+`LandofileIncludeError`.
+
+```yaml
+name: tooling-includes-demo
+runtime: 4
+includes:
+  - source: ./docs/.lando.tasks.yml
+    kind: tooling
+    namespace: docs
+    aliases: [documentation]
+    excludes: [publish]
+    vars:
+      DOCS_PORT: 4321
+toolingIncludes:
+  api:
+    file: ./api/.lando.tasks.yml
+    internal: true
+services:
+  web:
+    type: node
+    primary: true
+tooling:
+  build:
+    service: web
+    cmd: bun run build
+```
 
 <Guide>
   <Scenario id="namespaced-tooling-fragments" render>
@@ -26,17 +54,17 @@ spelling nests further fragments; a bare `includes:` key in a fragment fails clo
       <Cleanup />
     </Step>
   </Scenario>
-
-  <Scenario id="tooling-include-contract" render={false} reason="Documents the resolution contract proven by landofile/test/tooling-includes.test.ts">
-    <Step name="contract">
-      <Variable name="namespace" value="app:&lt;namespace&gt;:&lt;task&gt;" display="Included tasks register beneath the include namespace inside the task's command namespace" />
-      <Variable name="flatten" value="flatten: true" display="Registers included tasks without the namespace prefix" />
-      <Variable name="internal" value="internal: true" display="Marks every task the include contributes as internal, so it stays out of command listings while remaining callable" />
-      <Variable name="aliases" value="aliases: [documentation]" display="Aliases the include namespace at the same command-namespace level" />
-      <Variable name="excludes" value="excludes: [publish]" display="Removes tasks from the include before flattening or namespace registration" />
-      <Variable name="vars" value="vars: { DOCS_PORT: 4321 }" display="Include-level vars apply to every included task unless the task defines the same var" />
-      <Variable name="optional" value="optional: true" display="Suppresses missing-fragment errors instead of failing the load" />
-      <Variable name="cycles" value="ToolingIncludeCycleError" display="Fragments that include each other fail closed with a tagged cycle error" />
-    </Step>
-  </Scenario>
 </Guide>
+
+## The resolution contract
+
+Included tasks register beneath the include namespace inside the task's command namespace:
+`app:<namespace>:<task>`. `flatten: true` registers included tasks without the namespace prefix.
+`internal: true` marks every task the include contributes as internal, so it stays out of command
+listings while remaining callable. `aliases: [documentation]` aliases the include namespace at the
+same command-namespace level, and `excludes: [publish]` removes tasks from the include before
+flattening or namespace registration.
+
+Include-level `vars: { DOCS_PORT: 4321 }` apply to every included task unless the task defines the
+same var. `optional: true` suppresses missing-fragment errors instead of failing the load. Fragments
+that include each other fail closed with a tagged `ToolingIncludeCycleError`.

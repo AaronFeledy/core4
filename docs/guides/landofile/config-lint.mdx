@@ -6,48 +6,55 @@ timeout: 60000
 tags: [beta, docs, landofile, config, lint]
 ---
 
+# Lint a Landofile
+
+`lando app:config:lint` validates the current app's Landofile against the
+canonical schema. It runs the canonical JSON Schema only — no translators,
+no doctor checks, no provider probes. On a Landofile that passes, it prints:
+
+```
+<file>: no canonical-schema violations.
+```
+
+and exits `0`.
+
+## JSON output
+
+`lando app:config:lint --format=json` emits a stable JSON `ConfigLintResult`
+for editor/LSP integrations:
+
+```
+{ app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }
+```
+
+This shape is frozen by the schema artifact-set gate. `--format` defaults
+to `text` (human-readable); pass `--format=json` for machine output.
+
+## Schema violations
+
+A schema violation exits non-zero, so editors and CI can gate on it. Each
+violation carries a dot-joined `path`, a `message`, and an optional
+`suggestedFix`. Unknown keys surface as excess-property violations
+(schema-only, never a `NotImplementedError`).
+
+## Rejected Compose keys
+
+A rejected Compose key keeps its full authored path, for example
+`services.web.deploy.replicas`. The `suggestedFix` comes from the pinned
+Compose disposition matrix instead of a generic unknown-key message.
+
+## Doctor integration
+
+`lando doctor --app` runs the same canonical-schema lint as part of the
+combined doctor report, under the `app-config-lint` check name. Both
+`lando app:config:lint` and `lando doctor --app` call the same
+`lintLandofile` pass — there's no forked logic.
+
 <Guide>
-  <Scenario id="clean-landofile" render={false} reason="app:config:lint reads the Landofile from disk and validates it against the canonical schema; the happy path and exit codes are covered by the app-config-lint scenario tests">
-    <Step name="scaffold">
+  <Scenario id="clean-landofile" render>
+    <Step name="lint">
       <UseFixture name="config-lint-demo" />
-      <Variable name="command" value="lando app:config:lint" display="Validate the current app's Landofile against the canonical schema" />
-      <Variable name="scope" value="canonical JSON Schema only" display="No translators, no doctor checks, no provider probes are run" />
-      <Variable name="cleanOutput" value="<file>: no canonical-schema violations." display="Output on a Landofile that passes the canonical schema" />
-      <Variable name="cleanExit" value="0" display="Exit code when the Landofile is valid" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="json-output" render={false} reason="The --format=json shape is a stable LSP contract covered by the published schema artifact set (dist/schemas, dist/command-schemas) and the app-config-lint scenario tests">
-    <Step name="json">
-      <Variable name="command" value="lando app:config:lint --format=json" display="Emit a stable JSON ConfigLintResult for editor / LSP integrations" />
-      <Variable name="shape" value="{ app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }" display="The ConfigLintResult JSON shape (frozen by the schema artifact-set gate)" />
-      <Variable name="defaultFormat" value="text" display="--format defaults to text (human-readable); pass --format=json for machine output" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="schema-violation" render={false} reason="Failure modes are covered by the lintLandofile unit tests and the app-config-lint scenario tests; this documents the user-facing behavior">
-    <Step name="violation">
-      <Variable name="exitCode" value="non-zero" display="A schema violation exits non-zero so editors and CI can gate on it" />
-      <Variable name="violationFields" value="path, message, suggestedFix" display="Each violation carries a dot-joined path, a message, and an optional suggested fix" />
-      <Variable name="unknownKey" value='Remove the unknown key "…"; it is not part of the canonical Landofile schema.' display="Unknown keys surface as excess-property violations (schema-only — never a NotImplementedError)" />
-    </Step>
-
-    `sshAgent.sidecar: false` is also a schema violation: the direct host SSH-agent socket mount is reserved, so `app:config:lint` points users to the supported sidecar path (`sshAgent.sidecar: true`, or omit the field to use the default).
-  </Scenario>
-
-  <Scenario id="compose-rejection" render={false} reason="Rejected Compose keys and their matrix remediation are covered by the app-config-lint scenario tests; this documents the stable editor-facing result">
-    <Step name="rejection">
-      <Variable name="example" value="services.web.deploy.replicas" display="A rejected Compose key keeps its full authored path" />
-      <Variable name="valid" value="false" display="The ConfigLintResult is invalid without changing the JSON result envelope" />
-      <Variable name="suggestedFix" value="matrix remediation" display="suggestedFix comes from the pinned Compose disposition matrix instead of a generic unknown-key message" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="doctor-app" render={false} reason="lando doctor --app reuses the same lintLandofile pass; the shared-source-of-truth wiring is covered by the doctor-report tests">
-    <Step name="doctor">
-      <Variable name="command" value="lando doctor --app" display="Run the same canonical-schema lint as part of the combined doctor report" />
-      <Variable name="checkName" value="app-config-lint" display="The doctor check name carrying the lint result (text section and ndjson stream)" />
-      <Variable name="singleSource" value="lintLandofile" display="Both lando app:config:lint and lando doctor --app call the same lintLandofile pass — no forked logic" />
+      <Run command="lando app:config:lint" />
     </Step>
   </Scenario>
 </Guide>

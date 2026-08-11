@@ -1,0 +1,119 @@
+---
+id: init-from-remote
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, init, recipes]
+---
+
+# Init from a remote recipe source
+
+`lando init` can scaffold an app from a recipe hosted somewhere other than
+the bundled set: a git repository, a tarball, an npm package, or the recipe
+registry. Each source requires the flag that tells Lando where to find
+`recipe.yml`, and each fails fast, before any clone or download, when that
+flag is missing:
+
+<Guide>
+  <Scenario id="missing-url-fails-fast" render>
+    <Step name="git-without-url">
+      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-package-fails-fast" render>
+    <Step name="npm-without-package">
+      <Run command="lando init --source=npm --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --package" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-id-fails-fast" render>
+    <Step name="registry-without-id">
+      <Run command="lando init --source=registry --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --id" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unsupported-source-fails-fast" render>
+    <Step name="unknown-source-value">
+      <Run command="lando init --source=bogus --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "Unsupported init source" }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+`--source` only accepts `git`, `tarball`, `npm`, and `registry`; any other
+value is rejected outright.
+
+## git
+
+```sh
+lando init --source=git --url=<git-url>
+```
+
+Clones the repository, then reads `recipe.yml` from the clone root. Add
+`--path` when `recipe.yml` lives in a subdirectory of a monorepo:
+
+```sh
+lando init --source=git --url=<git-url> --path=packages/my-recipe
+```
+
+## tarball
+
+```sh
+lando init --source=tarball --url=<tarball-url> --checksum=<sha256>
+```
+
+Downloads a tar/tar.gz archive, verifies it against the 64-hex `--checksum`,
+then reads `recipe.yml` from the extracted root. `--checksum` is optional;
+without it Lando warns with the computed digest and, when interactive,
+prompts once before continuing. Add `--path` when `recipe.yml` lives in a
+subdirectory of the archive:
+
+```sh
+lando init --source=tarball --url=<tarball-url> --path=packages/my-recipe
+```
+
+## npm
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo
+```
+
+Resolves the package's metadata, downloads the published tarball, and reads
+`recipe.yml` from the extracted `package/` root. An `@version` suffix pins an
+exact published version or dist-tag; without it Lando uses the registry
+latest dist-tag:
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo@1.2.3
+```
+
+Add `--path` when `recipe.yml` lives in a subdirectory of the published
+package:
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo --path=recipes/my-recipe
+```
+
+## registry
+
+```sh
+lando init --source=registry --id=<recipe-id>
+```
+
+Resolves a recipe id through the configured registry, then reads
+`recipe.yml` from the resolved git clone or tarball extract. With no
+override, Lando queries the default recipe registry URL,
+`https://registry.lando.dev/recipes/`. Override the registry base URL for
+private or test registries:
+
+```sh
+lando init --source=registry --id=<recipe-id> --registry-url=<url>
+```
+
+See the [recipe-source guide](../recipes/remote-sources.mdx) for cache
+location, verification behavior, and every `RecipeSourceError` kind each
+source can raise.

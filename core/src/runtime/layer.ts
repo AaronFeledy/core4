@@ -15,6 +15,8 @@
  * - Runs the requested bootstrap sequence.
  * - Keeps resource ownership in the layer's outer scope.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { Effect, Either, Layer, Schema } from "effect";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -86,6 +88,18 @@ import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./gener
 import "./engine-composition";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
+
+type RuntimeProviderRegistryLayer = Layer.Layer<RuntimeProviderRegistry, never, never>;
+
+const runtimeProviderRegistryOverrideStorage = new AsyncLocalStorage<RuntimeProviderRegistryLayer>();
+
+export const getRuntimeProviderRegistryOverride = (): RuntimeProviderRegistryLayer | undefined =>
+  runtimeProviderRegistryOverrideStorage.getStore();
+
+export const withRuntimeProviderRegistryOverride = <A>(
+  layer: RuntimeProviderRegistryLayer,
+  thunk: () => Promise<A>,
+): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
 type MinimalRuntimeServices =
   | Logger
@@ -240,7 +254,12 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   }
   const capturedCwd = decoded.right.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
-  const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
+  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
+  const hostLayersResult = collectEmbeddingPluginLayers(
+    runtimeProviderRegistryOverride === undefined
+      ? pluginPolicy.layers
+      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
+  );
 
   if (Either.isLeft(hostLayersResult)) {
     return Layer.fail(hostLayersResult.left);

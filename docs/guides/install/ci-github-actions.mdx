@@ -1,0 +1,156 @@
+---
+id: ci-github-actions
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 90000
+tags: [beta, docs, install, ci, github-actions]
+---
+
+# Run Lando in GitHub Actions
+
+CI runs Lando the same way a script would: non-interactive, with `-y` on
+every prompt, and JSON output for assertions. This app proves the flag
+discipline a CI job needs before you copy the workflow below:
+
+```yaml
+name: ci-github-actions-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+```
+
+<Guide>
+  <Scenario id="non-interactive-ci-discipline" render>
+    <Step name="scaffold">
+      <UseFixture name="ci-github-actions-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start --no-interactive" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="json-assertion">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="teardown">
+      <Run command="lando poweroff -y" />
+      <Verify command="lando poweroff -y" expect={{ stdout: { regex: "Powered off|No Lando apps to power off" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+## A complete workflow
+
+Copy this into `.github/workflows/lando-ci.yml`. It runs on every push and
+pull request so a broken Landofile fails fast in review, and it caches the
+managed provider's runtime bundle so repeat runs don't re-download it:
+
+```yaml
+name: lando-ci
+on: [push, pull_request]
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Lando runtime and package caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/lando
+            ~/.local/share/lando
+          key: lando-${{ runner.os }}-${{ hashFiles('.lando.yml') }}
+          restore-keys: lando-${{ runner.os }}-
+
+      - name: Install lando
+        run: |
+          curl -fsSL -o lando \
+            https://github.com/lando/core/releases/latest/download/lando-linux-x64
+          chmod +x lando
+          sudo mv lando /usr/local/bin/lando
+          lando --version
+
+      - name: Set up the managed provider
+        run: lando setup --provider=lando --yes --no-interactive
+
+      - name: Start the app
+        run: lando start --no-interactive
+
+      - name: Assert the resolved config is valid
+        run: |
+          lando app:config --format=json | \
+            jq -e '.ok == true' > /dev/null
+
+      - name: Power off every Lando-managed app
+        if: always()
+        run: lando poweroff -y
+```
+
+A hosted Linux runner is the simplest target — the managed `lando` provider
+needs no pre-installed Docker or Podman.
+
+## Why each flag is there
+
+- `--provider=lando` pins the bundled managed provider explicitly instead of
+  relying on precedence, matching the Beta 1 guided opt-in default for
+  scripted use.
+- `--yes` confirms the setup prompts. It doesn't change provider precedence
+  or make lifecycle commands provision a provider on their own — a workflow
+  step must call `lando setup` itself. A bare `lando start` never provisions
+  a provider behind the job's back.
+- `--no-interactive` fails fast with remediation instead of asking follow-up
+  questions if a required input is still missing.
+
+## Assert on JSON, not text
+
+Every non-interactive command emits one envelope on stdout. Pipe it through
+`jq` instead of scraping human-readable text in CI:
+
+```
+{ "ok": true, "result": <typed-result> }
+```
+
+A successful command's envelope always carries `ok: true`, so
+`jq -e '.ok == true'` is a stable pass/fail gate for a workflow step. A
+failing command keeps its non-zero exit code and carries a tagged error
+under `error`, so the step still fails the job even if you also inspect the
+JSON:
+
+```
+{ "ok": false, "error": <tagged-error> }
+```
+
+## Tear down with poweroff
+
+`lando poweroff -y` stops every Lando-managed app and the shared services on
+the runner in one step. `-y` is required because a CI job has no TTY to
+confirm the prompt. Guard the teardown step with `if: always()` so it still
+runs and frees the runner's containers when an earlier step fails.
+
+## What to cache
+
+Cache `~/.cache/lando` and `~/.local/share/lando` (the user cache root and
+user data root) so a repeat job reuses the downloaded managed-provider
+runtime bundle instead of pulling it again. Key the cache on the OS and the
+Landofile hash — `lando-<runner.os>-<hashFiles('.lando.yml')>` — so a
+Landofile change that adds a new service still gets a fresh cache instead of
+stale bundle state.
+
+If a runner image blocks writes to the default home-relative locations,
+point the roots at a workspace-relative path instead:
+
+| Env var | Purpose |
+| --- | --- |
+| `LANDO_USER_CACHE_ROOT` | Override the cache root |
+| `LANDO_USER_DATA_ROOT` | Override the data root |
+
+Set the same override on every job that shares the cache key, or the
+restored cache lands in a directory Lando isn't configured to read.
+
+</Guide>

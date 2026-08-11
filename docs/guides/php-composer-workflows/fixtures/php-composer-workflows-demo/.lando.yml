@@ -1,0 +1,16 @@
+name: php-composer-workflows-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    build:
+      app:
+        - "composer install --no-interaction --no-progress --no-dev"
+tooling:
+  composer:
+    service: appserver
+    cmd:
+      - sh
+      - -c
+      - composer "$@"
+      - composer

@@ -23,7 +23,6 @@ const runtimeBrainDirectories = [
   "landofile",
   "lifecycle",
   "logging",
-  "managed-file",
   "operations",
   "platform",
   "plugins",

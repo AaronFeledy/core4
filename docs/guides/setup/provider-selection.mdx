@@ -6,106 +6,82 @@ timeout: 120000
 tags: [beta, docs, providers, setup, selection]
 ---
 
-<Guide>
-  <Scenario id="precedence-flag-overrides-all" render={false} reason="Keeps the user-visible provider precedence examples covered without rendering a separate walkthrough">
-    <Step name="precedence-order">
-      <Variable
-        name="precedence"
-        value="--provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)"
-        display="Highest → lowest precedence input"
-      />
-      <Variable
-        name="flagExample"
-        value="lando setup --provider=podman"
-        display="Force a specific provider for the current command"
-      />
-      <Variable
-        name="envExample"
-        value="LANDO_PROVIDER=docker lando start"
-        display="Override the active provider for a single shell"
-      />
-    </Step>
-  </Scenario>
+# Provider selection
 
-  <Scenario id="doctor-reports-resolution" render={false} reason="Keeps the selected-provider doctor output fields covered without rendering a separate walkthrough">
-    <Step name="doctor-fields">
-      <Variable
-        name="textFields"
-        value="selectionSource, selectionInputFlag, selectionInputLandofile, selectionInputEnv, selectionInputConfig, selectionInputDefault"
-        display="Plain-text fields surfaced by `lando doctor`"
-      />
-      <Variable
-        name="ndjsonField"
-        value=".selection = { providerId, source, inputs }"
-        display="NDJSON shape on every selected-provider check"
-      />
-    </Step>
-  </Scenario>
+## Provider selection precedence
 
-  <Scenario id="ci-managed-lando-default" render={false} reason="linux-x64 provider-integration CI selects the lando capability default through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET">
-    <Step name="setup-driven-ci">
-      <Variable name="defaultProvider" value="lando" display="CI provider-integration-linux-x64 runs dist/lando setup --yes --provider=lando and resolves the managed socket from Paths for contract and integration suites" />
-      <Variable name="rehearsalOverride" value="LANDO_TEST_PODMAN_SOCKET" display="Local rehearsal may still point live tests at a manual socket when the managed runtime is unavailable" />
-    </Step>
-  </Scenario>
+Lando picks a provider from the highest-priority input available, in this order:
 
-  <Scenario id="lando-podman-socket-conflict" render={false} reason="Keeps the lando and podman socket-conflict remediation covered without rendering a separate walkthrough">
-    <Step name="conflict-detection">
-      <Variable
-        name="conflictKind"
-        value="provider-lando-podman-socket"
-        display="Reported in the provider-conflict check context"
-      />
-      <Variable
-        name="conflictStatePath"
-        value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json"
-        display="provider-lando records its bound Podman socket here when set up"
-      />
-      <Variable
-        name="conflictRemediation"
-        value="lando setup --provider=podman or lando setup --provider=lando"
-        display="Pick one provider explicitly to resolve the ambiguity"
-      />
-    </Step>
-  </Scenario>
+```
+--provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)
+```
 
-  <Scenario id="lando-managed-runtime-paths" render={false} reason="Runtime bundle extraction is exercised by provider-lando setup and runtime-extract tests; this guide keeps the user-visible provider-lando setup contract covered">
-    <Step name="managed-runtime-state">
-      <Variable
-        name="runtimeBinDir"
-        value="$LANDO_DATA_DIR/runtime/bin"
-        display="provider-lando installs verified runtime bundle binaries in Lando's private runtime bin directory"
-      />
-      <Variable
-        name="providerSocketPath"
-        value="$LANDO_DATA_DIR/runtime/run/podman.sock"
-        display="provider-lando resolves the managed Podman socket from Paths instead of a system Podman location"
-      />
-      <Variable
-        name="setupStatePath"
-        value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json"
-        display="Setup state records the installed runtime version and runtimeBinDir for doctor and later provider resolution"
-      />
-      <Variable
-        name="runtimeBundleDecompressionCap"
-        value="LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES"
-        display="Runtime bundle extraction fails closed before install when gzip or zip inflation exceeds the default decompressed-size cap; tests may override the cap with this environment variable"
-      />
-      <Variable
-        name="runtimeBundleHosts"
-        value="darwin-arm64, linux-x64, linux-arm64, win32-x64"
-        display="provider-lando ships managed runtime bundles only for hosts supported by Podman 6; Intel macOS (darwin-x64) fails setup with remediation instead of downloading a bundle"
-      />
-    </Step>
-  </Scenario>
+Force a specific provider for the current command:
 
-  <Scenario id="provider-data-plane-capabilities" render={false} reason="Provider data-plane behavior is contract-tested; this guide keeps the provider capability matrix user-visible without requiring a live runtime">
-    <Step name="data-plane-capabilities">
-      <Variable name="landoSnapshot" value="native" display="provider-lando advertises native volume snapshots through the managed runtime data plane" />
-      <Variable name="dockerPodmanSnapshot" value="copy" display="provider-docker and provider-podman advertise copy-mode volume snapshots over their Docker-compatible APIs" />
-      <Variable name="serviceCopy" value="native" display="All bundled providers advertise native service file copy for host↔container byte movement" />
-      <Variable name="artifactImportExport" value="enabled" display="All bundled providers advertise image artifact import and export when their runtime API is available" />
-      <Variable name="serviceLogSources" value="requires log-file access" display="Bundled providers only advertise service log source following when the host injects log-file access; generic provider contracts still use runtime logs when that capability is false" />
-    </Step>
-  </Scenario>
-</Guide>
+```sh
+lando setup --provider=podman
+```
+
+Or override the active provider for a single shell:
+
+```sh
+LANDO_PROVIDER=docker lando start
+```
+
+## Doctor reports resolution
+
+Plain-text fields surfaced by `lando doctor`
+
+NDJSON shape on every selected-provider check.
+
+## CI managed lando default
+
+linux-x64 provider-integration CI selects the lando capability default through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET.
+
+CI provider-integration-linux-x64 runs dist/lando setup --yes --provider=lando and resolves the managed socket from Paths for contract and integration suites.
+
+Local rehearsal may still point live tests at a manual socket when the managed runtime is unavailable.
+
+```sh
+LANDO_TEST_PODMAN_SOCKET
+```
+
+## Lando podman socket conflict
+
+Reported in the provider-conflict check context (`provider-lando-podman-socket`).
+
+provider-lando records its bound Podman socket here when set up (`$LANDO_DATA_DIR/providers/provider-lando/setup-state.json`).
+
+Pick one provider explicitly to resolve the ambiguity.
+
+```sh
+lando setup --provider=podman or lando setup --provider=lando
+```
+
+## Lando managed runtime paths
+
+provider-lando installs verified runtime bundle binaries in Lando's private runtime bin directory (`$LANDO_DATA_DIR/runtime/bin`).
+
+provider-lando resolves the managed Podman socket from Paths instead of a system Podman location (`$LANDO_DATA_DIR/runtime/run/podman.sock`).
+
+Setup state records the installed runtime version and runtimeBinDir for doctor and later provider resolution (`$LANDO_DATA_DIR/providers/provider-lando/setup-state.json`).
+
+Runtime bundle extraction fails closed before install when gzip or zip inflation exceeds the default decompressed-size cap; tests may override the cap with this environment variable.
+
+```sh
+LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES
+```
+
+provider-lando ships managed runtime bundles only for hosts supported by Podman 6; Intel macOS (darwin-x64) fails setup with remediation instead of downloading a bundle.
+
+## Provider data plane capabilities
+
+provider-lando advertises native volume snapshots through the managed runtime data plane.
+
+provider-docker and provider-podman advertise copy-mode volume snapshots over their Docker-compatible APIs.
+
+All bundled providers advertise native service file copy for host↔container byte movement.
+
+All bundled providers advertise image artifact import and export when their runtime API is available (`enabled`).
+
+Bundled providers only advertise service log source following when the host injects log-file access; generic provider contracts still use runtime logs when that capability is false.

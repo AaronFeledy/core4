@@ -872,7 +872,12 @@ const ComposeConfigConfig = Schema.Struct({
  * commandAliases:, events:, env_file:, keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
-  name: Schema.optional(Schema.String),
+  name: Schema.optional(
+    Schema.String.annotations({
+      description:
+        "User-facing app name. Runtime identity is a lowercase ASCII slug: non-alphanumeric runs become one hyphen, edge hyphens are removed, and the result is capped at 57 characters so the lando-<slug> network label stays within DNS's 63-character limit. Names with no ASCII alphanumeric characters use a stable app-root hash.",
+    }),
+  ),
   runtime: Schema.optional(Schema.Literal(4)),
   lando: Schema.optional(
     Schema.String.pipe(

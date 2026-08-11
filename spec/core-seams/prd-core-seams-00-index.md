@@ -68,3 +68,7 @@ All US-535..US-548 `passes: true` with green verification; `@lando/landofile` an
 ## Spec parts that remain authoritative
 
 §1, §2.7 (package surface; private-seam allowance), §3.1–§3.4 (four layers, bootstrap, source layout, service catalog), §7 (Landofile and config), §13.8 (package-dag primacy), §16.2 (public API surface), §17.2 (codegen catalog).
+
+## Follow-on wave
+
+Residual engine grab-bag debt after this wave (managed-file still inside `@lando/engine`, planner/update god-modules, package.json boundary alias sprawl, composite `codegen:check`) is sequenced in **`spec/scanner-retirement/`** (US-551..US-560).

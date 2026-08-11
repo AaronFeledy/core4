@@ -5,16 +5,26 @@ timeout: 90000
 tags: [beta, docs, apache, service, webserver]
 ---
 
+# Apache
+
+Add an Apache web server to your app by declaring `type: apache` in your
+services block. Lando pulls `httpd:2.4-alpine` by default and listens on the
+standard HTTP port `80`:
+
+```yaml
+name: apache-demo
+services:
+  web:
+    type: apache
+```
+
+Your repository is mounted at `/app`, which is also set as
+`APACHE_DOCUMENT_ROOT`. Start it and Lando wires the service into the proxy:
+
 <Guide>
   <Scenario id="happy-path" render>
-    <Step name="scaffold">
-      <UseFixture name="apache-demo" />
-      <Variable name="serviceType" value="apache" display="Declare type: apache in your services block" />
-      <Variable name="defaultImage" value="httpd:2.4-alpine" display="Default Docker image" />
-      <Variable name="defaultPort" value="80" display="Default HTTP port" />
-      <Variable name="documentRoot" value="/app" display="Your repository is mounted at /app and set as APACHE_DOCUMENT_ROOT" />
-    </Step>
     <Step name="start">
+      <UseFixture name="apache-demo" />
       <Run command="lando start" />
       <Verify event="post-start" />
     </Step>
@@ -24,16 +34,32 @@ tags: [beta, docs, apache, service, webserver]
     </Step>
   </Scenario>
 
-  <Scenario id="routing" render={false} reason="Documents how the service is published; the proxy derives a hostname from the HTTP endpoint without a proxy: block">
-    <Step name="urls">
-      <Variable name="autoUrl" value="web.<app>.lndo.site" display="The proxy auto-derives an HTTPS hostname from the apache service's HTTP endpoint" />
-      <Variable name="documentRootEnv" value="APACHE_DOCUMENT_ROOT=/app" display="Override the served directory by setting APACHE_DOCUMENT_ROOT under services.web.environment" />
-    </Step>
-  </Scenario>
+## Routing
 
-  <Scenario id="version-override" render={false} reason="Use image to pin a specific Apache httpd version when the default httpd:2.4-alpine image is not desired">
-    <Step name="note">
-      <Variable name="pinImage" value="image: httpd:2.4" display="Pin a Debian-based Apache httpd 2.4 via image: httpd:2.4 under services.web" />
-    </Step>
-  </Scenario>
+The proxy derives an HTTPS hostname from the service's HTTP endpoint without
+needing a `proxy:` block — you'll get something like `web.<app>.lndo.site`.
+
+Override the served directory by setting `APACHE_DOCUMENT_ROOT` under
+`services.web.environment`:
+
+```yaml
+services:
+  web:
+    type: apache
+    environment:
+      APACHE_DOCUMENT_ROOT: /app/public
+```
+
+## Pin a version
+
+Use `image:` to pin a specific Apache httpd version when the default
+`httpd:2.4-alpine` isn't what you want. For example, a Debian-based image:
+
+```yaml
+services:
+  web:
+    type: apache
+    image: httpd:2.4
+```
+
 </Guide>

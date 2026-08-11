@@ -7,12 +7,8 @@ import { Chunk, Effect, Layer, Queue } from "effect";
 import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
-import {
-  ManagedFileServiceLive,
-  makeDiskBackend,
-  makeManagedFileService,
-} from "@lando/engine/managed-file/service";
 import { EventServiceLive } from "@lando/engine/services/event-service";
+import { ManagedFileServiceLive, makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";

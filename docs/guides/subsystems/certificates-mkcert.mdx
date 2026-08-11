@@ -6,6 +6,11 @@ timeout: 60000
 tags: [beta, docs, subsystems, certs, mkcert, ca]
 ---
 
+# Certificates and mkcert
+
+Lando issues TLS certificates for your services using the platform's active certificate
+authority. On macOS, Linux, and Windows the bundled default is `@lando/ca-mkcert`.
+
 ## Author service leaf certificates
 
 A service's own leaf TLS certificate is configured with `certs:`. It is a separate surface from
@@ -116,70 +121,26 @@ Installing the root CA into the host trust store is also what makes browsers tru
 browser shows a certificate warning even though the proxy is issuing valid certificates from the
 same authority.
 
+## The CertificateAuthority contract
+
+`CertificateAuthority` is an Effect Service tag published in `@lando/sdk`; plugins implement
+`CertificateAuthorityShape`. The `runCaContract` runner from `@lando/sdk/test` validates a plugin's
+`id`, `setup`, and `issueCert`. `TestCertificateAuthority` (built with `makeTestCertificateAuthority`)
+is the in-memory test double: it records calls and returns fake certificate paths, so contract-level
+tests don't need an installed mkcert binary.
+
+Issuing a wildcard certificate produces a `CertificateResult` shaped as
+`{ certPath, keyPath, caPath }`. Leaf files land in the Lando certs directory, and `caPath` comes
+from `mkcert -CAROOT`. For example, requesting `{ cn: 'myapp.lndo.site', sans: ['*.myapp.lndo.site'] }`
+returns paths to the issued cert, key, and CA cert. The issued chain validates with
+`openssl verify -CAfile <caPath> <certPath>` once `lando setup` has installed the local root; a live
+chain-validation test is gated behind `LANDO_TEST_CA_LIVE=1` and skipped by default.
+
 <Guide>
-  <Scenario id="author-service-certs" render={false} reason="Focused ServiceConfig schema tests cover every certs shape, invalid-shape rejection, and independence from security.ca without requiring an installed certificate authority">
-    <Step name="declare-certs">
-      <Variable name="generated" value="certs: true" display="Issue a leaf certificate from the active certificate authority" />
-      <Variable name="disabled" value="certs: false" display="Disable leaf certificate issuance for this service" />
-      <Variable name="customPath" value="certs: ./certs/appserver.crt" display="Supply a custom certificate path" />
-      <Variable name="explicitPair" value="certs.cert / certs.key" display="Supply an explicit certificate and key pair; both paths are required" />
-      <Variable name="additionalCas" value="security.ca" display="Keep additional certificate authorities separate from leaf TLS" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="service-leaf-cert-plan" render={false} reason="Leaf certificate planning is covered by core/test/services/app-planner-certs.test.ts and plugins/service-lando/test/certs-feature.test.ts against a test certificate authority; issuing real material requires an installed mkcert root">
-    <Step name="plan-service-certs">
-      <Variable name="feature" value="lando.certs" display="Service feature that mounts the resolved certificate material and publishes its paths" />
-      <Variable name="certEnv" value="LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt" display="In-container path of the service leaf certificate" />
-      <Variable name="keyEnv" value="LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key" display="In-container path of the leaf key; unset when no key material is available" />
-      <Variable name="sanCoverage" value="<service>, <service>.<app>.internal, hostnames, route hosts, localhost, 127.0.0.1" display="Subject alternative names requested for certs: true" />
-      <Variable name="customContainment" value="services.<name>.certs" display="Custom cert and key paths must stay inside the app root and be readable" />
-      <Variable name="l337" value="type: compose" display="l337-base services never compose lando.certs, so certs: is inert there" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="ca-sdk-contract" render={false} reason="CertificateAuthority SDK contract is exercised by sdk/test/contract/certificate-authority.test.ts against TestCertificateAuthority; the mkcert Live Layer requires the mkcert binary and host trust-store access">
-    <Step name="ca-contract">
-      <Variable name="sdkTag" value="CertificateAuthority" display="Effect Service tag published in @lando/sdk; plugins implement CertificateAuthorityShape" />
-      <Variable name="contractRunner" value="runCaContract" display="Contract runner from @lando/sdk/test validates id, setup, issueCert" />
-      <Variable name="testDouble" value="TestCertificateAuthority / makeTestCertificateAuthority" display="In-memory test double for CertificateAuthority; records calls and returns fake cert paths" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="ca-mkcert-download" render={false} reason="mkcert binary provisioning and trust-store install are exercised by plugins/ca-mkcert/test/ca.test.ts against a fake downloader, process runner, and privilege service; a live run downloads the pinned upstream binary and writes to host trust stores">
-    <Step name="mkcert-download">
-      <Variable name="pluginName" value="@lando/ca-mkcert" display="Plugin that provides the mkcert-backed CertificateAuthority Live Layer" />
-      <Variable name="setupCommand" value="lando setup" display="Provisions the pinned mkcert binary and runs mkcert -install to install the local CA" />
-      <Variable name="downloadPath" value="Downloader / HttpClient" display="The pinned binary is fetched through Downloader, so network.ca and network.proxy settings are honored" />
-      <Variable name="privilegeFallback" value="PrivilegeService" display="If the unelevated trust-store install fails, the install is retried elevated with the same CAROOT" />
-      <Variable name="optOut" value="lando setup --skip-install-ca" display="Provisions mkcert but skips host trust-store installation" />
-      <Variable name="skipTrustInstall" value="setup({ skipTrustInstall: true })" display="Programmatic opt-out for tests or headless environments" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="ca-selection" render={false} reason="The complete contribution graph, source policy, platform-default selection, disable-last behavior, and tagged ambiguity/absence failures are covered by core/test/plugins/certificate-authority-selection.test.ts, core/test/plugins/contribution-graph-sources.test.ts, and core/test/runtime/certificate-authority-runtime.test.ts">
-    <Step name="select-authority">
-      <Variable name="cliDefault" value="@lando/ca-mkcert" display="Bundled platform default used by the CLI when no higher selection tier replaces it" />
-      <Variable name="embedding" value="plugins.layers / plugins.manifests / plugins.discovery" display="Library hosts explicitly choose which contribution sources participate" />
-      <Variable name="replacement" value="plugins.disable: ['@lando/ca-mkcert']" display="Disable bundled mkcert after merging sources when another authority should be the sole platform default" />
-      <Variable name="noSelection" value="NoCertificateAuthorityError" display="Tagged failure with enable-or-install remediation when no authority remains" />
-      <Variable name="ambiguousSelection" value="AmbiguousCertificateAuthoritiesError" display="Tagged failure with candidate context when more than one authority is a platform default" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="ca-wildcard-certs" render={false} reason="Wildcard cert issuance requires a running mkcert installation; the issued cert chain test requires the locally-installed root CA to be trusted">
-    <Step name="wildcard-certs">
-      <Variable name="certSpec" value="{ cn: 'myapp.lndo.site', sans: ['*.myapp.lndo.site'] }" display="CertificateSpec for a per-app wildcard cert" />
-      <Variable name="certResult" value="{ certPath, keyPath, caPath }" display="CertificateResult with paths to the issued cert, key, and CA cert; leaf files land in the Lando certs directory and caPath comes from mkcert -CAROOT" />
-      <Variable name="verificationRef" value="sdk/test/contract/certificate-authority.test.ts" display="Unit tests verify the CA contract against TestCertificateAuthority" />
-      <Variable name="liveVerificationRef" value="plugins/ca-mkcert/test/ca.test.ts" display="Unit tests run the same contract against the mkcert Live implementation with fake host services" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="ca-cert-chain-validation" render={false} reason="Cert chain validation against the locally-installed root requires lando setup to have run; the live test is gated behind LANDO_TEST_CA_LIVE=1 and skipped by default">
-    <Step name="cert-chain">
-      <Variable name="validationApproach" value="openssl verify -CAfile <caPath> <certPath>" display="The issued cert chain must validate against the locally-installed root" />
-      <Variable name="liveGate" value="LANDO_TEST_CA_LIVE=1" display="Live cert chain test gate (reserved for when mkcert binary is available in CI)" />
+  <Scenario id="global-config-sanity" render={false} reason="This guide documents the certs Landofile surface, CA selection, and mkcert install flow; those paths are covered by ServiceConfig schema tests, the CertificateAuthority SDK contract, and plugins/ca-mkcert tests, none of which need a live app. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

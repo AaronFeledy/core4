@@ -6,27 +6,33 @@ timeout: 60000
 tags: [beta, docs, telemetry, update, deprecation]
 ---
 
+# Update and deprecation telemetry events
+
+## Update outcome
+
+The update command records its outcome through the Telemetry service as an `update-outcome` event.
+Only the canonical inventory fields are emitted: `version`, `targetVersion`, `channel`, `platform`,
+`outcome`. Every update result maps to one approved outcome category: `success`,
+`signature_failure`, `launch_probe_failure`, `permission_failure`, `network_failure`.
+
+## Deprecation usage
+
+`DeprecationService` publishes a `deprecation-used` runtime event after recording usage; `Telemetry`
+observes that shared event stream instead of running a parallel deprecation reporter. Deprecation
+telemetry carries only `kind`, `id`, `since`, `severity` — it omits callsites, app ids, plugin ids,
+and timestamps.
+
+## When telemetry is disabled
+
+Disabled telemetry (`telemetry.enabled=false`) suppresses both update outcome and deprecation
+telemetry records. Deprecation recording, renderer behavior, and doctor summaries are unaffected —
+they continue to use the normal deprecation path regardless of the telemetry setting.
+
 <Guide>
-  <Scenario id="update-outcome" render={false} reason="Update telemetry is covered by focused command tests without downloading or replacing a binary">
-    <Step name="allowed-fields">
-      <Variable name="event" value="update-outcome" display="The update command records its outcome through the Telemetry service" />
-      <Variable name="fields" value="version,targetVersion,channel,platform,outcome" display="Only the canonical inventory fields are emitted" />
-      <Variable name="outcomes" value="success,signature_failure,launch_probe_failure,permission_failure,network_failure" display="Every update result maps to one approved category" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="deprecation-used" render={false} reason="Deprecation event consumption is covered by DeprecationService telemetry tests">
-    <Step name="event-bus">
-      <Variable name="source" value="deprecation-used" display="DeprecationService publishes the runtime event after recording usage" />
-      <Variable name="sink" value="Telemetry.record" display="Telemetry observes the shared event stream instead of a parallel deprecation reporter" />
-      <Variable name="fields" value="kind,id,since,severity" display="Deprecation telemetry omits callsites, app ids, plugin ids, and timestamps" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="disabled" render={false} reason="Disablement is covered by telemetry-off update and deprecation tests">
-    <Step name="no-recording">
-      <Variable name="disabled" value="telemetry.enabled=false" display="Disabled telemetry suppresses update outcome and deprecation telemetry records" />
-      <Variable name="deprecationBehavior" value="unchanged" display="Deprecation recording, renderer behavior, and doctor summaries continue to use the normal deprecation path" />
+  <Scenario id="telemetry-events-config-check" render={false} reason="Update outcome telemetry, deprecation event consumption, and disablement above are covered by focused command tests, DeprecationService telemetry tests, and telemetry-off update/deprecation tests, without downloading or replacing a binary or contacting a sink. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

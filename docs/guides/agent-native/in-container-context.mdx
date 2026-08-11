@@ -1,0 +1,87 @@
+---
+id: in-container-context
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 90000
+tags: [beta, docs, agent-native, info, json]
+---
+
+# Inspect a running app from outside its containers
+
+Agents and scripts don't need a shell inside a service to learn what's running.
+`lando app:info --format=json` reports every service, its status, and its
+reachable endpoints as structured JSON:
+
+<Guide>
+  <Scenario id="read-info-as-json" render>
+    <Step name="scaffold">
+      <UseFixture name="in-container-context-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info-as-json">
+      <Run command="lando app:info --format=json" />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"in-container-context-demo\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"services\":\\s*\\[" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## The result shape
+
+`app:info --format=json` wraps its result in the same `CommandResultEnvelope`
+every non-interactive command emits: `{ "ok": true, "result": <InfoAppResult> }`.
+The result carries `app` (the app name, matching the Landofile) and `services`,
+an array with one entry per service defined in the Landofile.
+
+Each `services[]` entry names the service and its type and provider, whether
+it's primary, its current status, and its reachable endpoints:
+
+```
+{ app, service, api, type, provider, primary, status, endpoints, logSources? }
+```
+
+`status` is one of a fixed set of values, safe to branch on directly instead of
+parsing prose: `unknown | stopped | starting | running | healthy | unhealthy | error`.
+`endpoints` lists the URLs this service answers on; an empty array means no
+endpoints, not a missing field.
+
+An optional `agentEnv` block reports whether agent-context env forwarding is
+active for this app. `agentEnv.enabled` is `true` when Lando forwards
+agent-context markers into service exec/shell sessions for this app, and
+`agentEnv.forwarded` lists the names actually forwarded, e.g.
+`["CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "OPENCODE", "COPILOT_CLI", "GEMINI_CLI", "AGENT", "CI"]`
+— a subset of the fixed allowlist documented on the lando-shell guide.
+
+## How context reaches a container
+
+A host script or agent can ask the CLI for structured app state from outside
+any container with `lando app:info --format=json` — no shell inside a service
+required.
+
+Only the provider-exec surfaces forward host agent-context markers into a
+service: `lando exec <service> -- <command>` or `lando shell --service <service>`.
+A plain `lando start`'d container gets no such injection. See
+[the lando-shell guide](../tooling/lando-shell.mdx) for the exact allowlist
+and precedence rules for the forwarded markers; this guide doesn't repeat
+them. For the general envelope contract every machine-output command shares
+(apiVersion, redaction, and the failure shape), see the
+[scripting-with-json guide](../scripting-with-json.mdx); this guide only
+covers the `app:info`-specific result fields.
+
+## What changed since Lando 3
+
+In Lando 3, a service process read its own app context from a baked-in
+`$LANDO_INFO` environment variable, which could drift from the actual running
+state. Lando 4 has no equivalent baked-in env var — `app:info --format=json`
+is the supported, authoritative source of app state instead. The upstream
+issue tracking `$LANDO_INFO` drift, [lando/lando#2565](https://github.com/lando/lando/issues/2565),
+is why v4 makes the CLI itself authoritative for app state rather than a
+value frozen into the container at boot.

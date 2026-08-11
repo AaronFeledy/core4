@@ -5,14 +5,26 @@ timeout: 90000
 tags: [beta, docs, ruby, service, runtime]
 ---
 
+# Ruby
+
+Add a Ruby service to your app by declaring `type: ruby:3.3` for the
+primary service — Ruby has no bare `type: ruby` alias, so pin a version.
+Lando currently supports `ruby:3.3`, and the default image is
+`ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app`,
+which is also the working directory:
+
+```yaml
+name: ruby-demo
+services:
+  app:
+    type: "ruby:3.3"
+    primary: true
+```
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="ruby-demo" />
-      <Variable name="serviceType" value="ruby:3.3" display="Declare type: ruby:3.3 for the primary service (Ruby has no bare type: ruby alias — pin a version)" />
-      <Variable name="supportedVersions" value="ruby:3.3" display="Supported Ruby service versions" />
-      <Variable name="defaultImage" value="ruby:3.3-slim" display="Default Docker image, derived from the pinned version" />
-      <Variable name="appMount" value="/app" display="Your repository is bind-mounted read-write at /app, the working directory" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -24,18 +36,30 @@ tags: [beta, docs, ruby, service, runtime]
     </Step>
   </Scenario>
 
-  <Scenario id="run-the-app" render={false} reason="The default keep-alive command holds the container open so you install gems and run your app via tooling">
-    <Step name="install">
-      <Variable name="bundleInstall" value="lando bundle install" display="Declare a bundle tooling alias to install gems inside the service" />
-    </Step>
-    <Step name="start-server">
-      <Variable name="runApp" value="lando exec app -- bundle exec rails server -b 0.0.0.0" display="Run a Rails server with lando exec; bind to 0.0.0.0 so the proxy can reach it" />
-    </Step>
-  </Scenario>
+## Run the app
 
-  <Scenario id="version-override" render={false} reason="Set image to use a full (non-slim) or alternate Ruby base image when the default ruby:3.3-slim image is not desired">
-    <Step name="note">
-      <Variable name="customImage" value="image: ruby:3.3" display="Use the full image via image: ruby:3.3 under services.app when slim lacks build tools" />
-    </Step>
-  </Scenario>
+The default keep-alive command holds the container open so you can install
+gems and run your app via tooling:
+
+```sh
+# Declare a bundle tooling alias to install gems inside the service
+lando bundle install
+
+# Run a Rails server with lando exec; bind to 0.0.0.0 so the proxy can reach it
+lando exec app -- bundle exec rails server -b 0.0.0.0
+```
+
+## Pin a version
+
+Set `image:` to use the full (non-slim) or an alternate Ruby base image when
+the default `ruby:3.3-slim` isn't what you want — slim lacks build tools
+that some gems need:
+
+```yaml
+services:
+  app:
+    type: "ruby:3.3"
+    image: ruby:3.3
+```
+
 </Guide>

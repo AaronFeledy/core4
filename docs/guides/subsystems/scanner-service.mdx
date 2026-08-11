@@ -6,35 +6,41 @@ timeout: 60000
 tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
 ---
 
+# Scanner service
+
+`UrlScanner` is the Effect Service tag published in `@lando/sdk`; plugins implement
+`UrlScannerShape`. The `runScannerContract` runner from `@lando/sdk/test` validates a plugin's `id`,
+`scan()`, and `detectCollisions()`. `TestUrlScanner` (built with `makeTestUrlScanner`) is the
+in-memory test double — it records calls and returns empty endpoints with no collisions.
+
+## Endpoint discovery
+
+`scan(appId: AppId): Effect<ScanResult, ScannerError>` scans all host-facing endpoints for an app and
+returns reachable URLs and status codes. `lando info --json` includes the scanner output verbatim via
+`ScanResult.endpoints`. Discovery combines provider inspect output with proxy routing rules, so live
+scanning needs running containers and a provider socket.
+
+## Port collisions
+
+`detectCollisions(appIds): Effect<PortCollision[], ScannerError | PortCollisionError>` detects host
+port conflicts across multiple apps. `PortCollisionError` is raised when two apps conflict on the same
+host port; it includes the port number and every conflicting app and service id. Detection compares
+host ports across multiple apps, so it needs running containers to observe real bindings. Unit tests
+verify the `UrlScanner` contract against `TestUrlScanner` in `sdk/test/contract/url-scanner.test.ts`.
+
+## Retry primitive
+
+The default scanner maps retry/delay/timeout onto `runProbe` from `@lando/sdk/probe` instead of a
+hand-rolled `Effect.retry` or `Schedule` loop. Probe-backed scans return green/yellow/red verdicts
+plus redacted detail for non-green results (`ScanEndpoint.outcome`/`detail`). `UrlScannerLive` (in
+`engine/src/subsystems/scanner/live.ts`) is the default runtime scanner; `UrlScannerUnavailableLive`
+remains only for explicit degraded/test wiring.
+
 <Guide>
-  <Scenario id="scanner-sdk-contract" render={false} reason="UrlScanner SDK contract is exercised by sdk/test/contract/url-scanner.test.ts against TestUrlScanner; the provider-inspect Live Layer requires a running provider and containers">
-    <Step name="scanner-contract">
-      <Variable name="sdkTag" value="UrlScanner" display="Effect Service tag published in @lando/sdk; plugins implement UrlScannerShape" />
-      <Variable name="contractRunner" value="runScannerContract" display="Contract runner from @lando/sdk/test validates id, scan(), and detectCollisions()" />
-      <Variable name="testDouble" value="TestUrlScanner / makeTestUrlScanner" display="In-memory test double; records calls and returns empty endpoints / no collisions" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="scanner-endpoint-discovery" render={false} reason="Endpoint discovery combines provider inspect output with proxy routing rules; live scanning requires running containers and a provider socket">
-    <Step name="endpoint-discovery">
-      <Variable name="scanMethod" value="scan(appId: AppId): Effect<ScanResult, ScannerError>" display="Scans all host-facing endpoints for an app; returns reachable URLs and status codes" />
-      <Variable name="landoInfoField" value="ScanResult.endpoints" display="lando info --json includes the scanner output verbatim via ScanResult" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="scanner-port-collision" render={false} reason="Port-collision detection compares host ports across multiple apps; live detection requires running containers">
-    <Step name="port-collision">
-      <Variable name="detectMethod" value="detectCollisions(appIds): Effect<PortCollision[], ScannerError | PortCollisionError>" display="Detects host port conflicts across multiple apps" />
-      <Variable name="portCollisionError" value="PortCollisionError" display="Raised when two apps conflict on the same host port — includes port number and all conflicting apps + service ids" />
-      <Variable name="verificationRef" value="sdk/test/contract/url-scanner.test.ts" display="Unit tests verify the UrlScanner contract against TestUrlScanner" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="scanner-probe-primitive" render={false} reason="Live UrlScanner requires a running provider and host-reachable endpoints; unit coverage verifies the probe-backed implementation deterministically">
-    <Step name="probe-primitive">
-      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="The default scanner maps retry/delay/timeout onto runProbe instead of a hand-rolled Effect.retry or Schedule loop" />
-      <Variable name="verdict" value="ScanEndpoint.outcome/detail" display="Probe-backed scans return green/yellow/red verdicts plus redacted detail for non-green results" />
-<Variable name="apiRef" value="engine/src/subsystems/scanner/live.ts" display="UrlScannerLive is the default runtime scanner; UrlScannerUnavailableLive remains only for explicit degraded/test wiring" />
+  <Scenario id="scanner-config-check" render={false} reason="The contract, endpoint discovery, and port-collision behavior above are covered by sdk/test/contract/url-scanner.test.ts against TestUrlScanner and the probe-backed live implementation; live scanning needs running containers and a provider socket. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

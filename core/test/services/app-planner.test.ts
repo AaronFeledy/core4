@@ -2704,6 +2704,38 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  for (const { label, name, slug } of [
+    { label: "spaces", name: "My App", slug: "my-app" },
+    { label: "commas", name: "c,o,m,m,a", slug: "c-o-m-m-a" },
+    { label: "uppercase letters", name: "UPPER", slug: "upper" },
+    { label: "punctuation", name: "bad name!", slug: "bad-name" },
+    { label: "an over-length value", name: "a".repeat(100), slug: "a".repeat(57) },
+    { label: "digits and hyphens", name: "lando-4-app", slug: "lando-4-app" },
+    { label: "the DNS-safe boundary", name: "b".repeat(57), slug: "b".repeat(57) },
+  ]) {
+    test(`normalizes ${label} into DNS-safe runtime app identity`, async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name,
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node:22" } },
+      };
+
+      // When
+      const appPlan = await withTempCwd(() => plan(landofile));
+
+      // Then
+      expect(appPlan.name).toBe(name);
+      expect(appPlan.id).toBe(slug);
+      expect(appPlan.slug).toBe(slug);
+      expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
+        `web.${slug}.internal`,
+      );
+      expect(appPlan.routes[0]?.hostname).toBe(`web.${slug}.lndo.site`);
+    });
+  }
+
   test("omits networks when the app declares no services", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan({

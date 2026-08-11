@@ -13,11 +13,7 @@ import type { FileFormat } from "@lando/sdk/schema";
 const MARKER_TAG = "lando-generated";
 const JSON_MARKER_KEY = "x-lando-generated";
 
-/**
- * The line-comment prefix for a format, or `null` for formats without line
- * comments (JSON). `javascript`/`typescript` use `//`, `ini` uses `;`, and
- * `text`/`env`/`yaml`/`landofile` use `#`.
- */
+/** The line-comment prefix for a format, or `null` when it has none. */
 export const commentPrefix = (format: FileFormat): string | null => {
   switch (format) {
     case "json":
@@ -53,7 +49,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 export const composeFileContent = (format: FileFormat, marker: string, body: string): string => {
   const prefix = commentPrefix(format);
   if (prefix === null) {
-    // JSON: inject the marker key when possible, else write the body verbatim.
     try {
       const parsed = JSON.parse(body) as unknown;
       if (isPlainObject(parsed)) {

@@ -6,6 +6,16 @@ timeout: 300000
 tags: [beta, docs, recipes, transcripts]
 ---
 
+# Canonical public transcript
+
+This guide is the canonical fixture for the three transcript-producing
+guide shapes: a rendered scenario CLI walkthrough, a hidden library-runtime
+example, and an e2e smoke scenario against a real provider. It exercises
+`lando init` with the `node-postgres` recipe, validates the resolved
+Landofile, reads through the core `FileSystem` service via the library
+runtime API, then repeats the scaffold against a real provider and tears it
+down.
+
 <Guide>
   <Scenario id="public-transcript-docs-render" render>
     <Step name="scaffold-recipe">
@@ -21,7 +31,32 @@ tags: [beta, docs, recipes, transcripts]
     </Step>
   </Scenario>
 
-  <Scenario id="library-runtime-api">
+## Reading through the library runtime API
+
+Embedding hosts can read app files through the core `FileSystem` service
+under a test runtime, without shelling out to the CLI:
+
+```ts
+import { Effect } from "effect";
+import { FileSystem } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({
+  files: {
+    "/app/.lando.yml": "name: canonical-library\nservices:\n  appserver:\n    type: node\n",
+  },
+});
+
+const landofile = await Effect.runPromise(
+  Effect.gen(function* () {
+    const files = yield* FileSystem;
+    return yield* files.readText("/app/.lando.yml");
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(landofile);
+```
+
+<Scenario id="library-runtime-api">
     <Step name="read-through-core-api">
       <Run
         runtime="library"
@@ -51,7 +86,12 @@ console.log(landofile);`}
     </Step>
   </Scenario>
 
-  <Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
+## Real-provider smoke test
+
+The same recipe scaffold runs against a real provider as an e2e smoke
+scenario: start it, inspect it, then destroy it.
+
+<Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
     <Step name="scaffold-real-provider-app">
       <Variable name="appName" value="canonical-guide-e2e" display="Canonical guide e2e app" />
       <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />

@@ -183,6 +183,7 @@ describe("build-guide-scenarios MDX walker", () => {
       );
       expect(firstContent).toContain('test("alpha2 docs node-postgres:start-app"');
       expect(firstContent).not.toContain('test("alpha2 docs node-postgres:start-app (');
+      expect(firstContent).toContain("}, 60000);");
       expect(firstContent).toContain("// @display: appName = Node/Postgres");
       expect(firstContent).toContain(
         'context.vars.set("appName", { value: "node-postgres", display: "Node/Postgres" });',

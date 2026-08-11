@@ -48,7 +48,7 @@ Every story ends with tests/typecheck/lint. Wave closure additionally requires:
 
 - New end-user commands or Landofile keys.
 - Splitting public `@lando/core` into separate runtime and CLI **publish** packages (§2.7 rejection stands for the public surface).
-- Extracting network/managed-file packages (deferred).
+- Extracting network/managed-file packages (deferred in this wave). **Managed-file extraction later authorized by `spec/scanner-retirement/`.**
 - Re-introducing OCLIF as a second shipping engine.
 
 ## Exit criteria

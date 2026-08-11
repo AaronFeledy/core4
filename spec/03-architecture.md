@@ -144,8 +144,10 @@ core/
 engine/
 ├── src/
 │   ├── app/                         # App handles and lifecycle orchestration
-│   ├── operations/                  # Shell-independent app operations
-│   ├── services/                    # Runtime services and service planner
+│   ├── operations/                  # Shell-independent app operations (thin re-export façades where split)
+│   ├── services/                    # Runtime service Live façades (e.g. AppPlannerLive orchestrator)
+│   ├── planner/                     # App planner concern modules + assemble (planApp)
+│   ├── update/                      # Self-update subsystem (errors, manifest, verify, operation)
 │   ├── subsystems/                  # Proxy, health, SSH, networking, and related runtime logic
 │   ├── lifecycle/                   # Event runtime and subscribers
 │   ├── cache/                       # Runtime cache implementations
@@ -156,9 +158,14 @@ engine/
 landofile/
 ├── src/                             # Discovery, merge, includes, expressions, and serialization
 └── package.json                     # Private @lando/landofile seam
+managed-file/
+├── src/                             # ManagedFileService Live, markers, codecs (§10.13)
+└── package.json                     # Private @lando/managed-file seam
 sdk/                                 # Public @lando/sdk contracts
 paths/                               # Private @lando/paths seam
 state-store/                         # Private @lando/state-store seam
+redaction/                           # Private @lando/redaction seam
+http-client/                         # Private @lando/http-client seam
 container-runtime/                   # Private provider-neutral runtime helpers
 plugins/                             # Bundled plugin workspace packages
 scripts/                             # Codegen and repository gates
@@ -180,12 +187,12 @@ The following services are provided by the Lando runtime. Their `Live` Layers li
 | `TemplateRenderer` | Front-door for whole-file and string template rendering. Resolves engine via the registry, builds the canonical `TemplateRenderContext`, calls the engine, and writes the content-addressed render cache (§12.1 `template-render`). Used by the mount materializer, the recipe scaffold, and `ConfigService` for string-value interpolation | `TemplateRendererLive` |
 | `FileSyncEngineRegistry` | Discovery and selection of `FileSyncEngine` implementations (§4.2, §10.6). Built-in `passthrough` engine (no-op; the active provider's native bind mount realizes the `MountPlan` directly) registered eagerly; plugin engines (e.g., the bundled `@lando/file-sync-mutagen`) register when the plugin contribution graph loads. The selected engine's Live Layer is `Layer.suspend`-wrapped and constructed only when the active app plan contains at least one mount the planner has marked `realization: "accelerated"` per §6.4 | `FileSyncEngineRegistryLive` |
 | `RuntimeProviderRegistry` | Provider discovery, selection | `RuntimeProviderRegistryLive` |
-| `AppPlanner` | Service plan, route plan | `AppPlannerLive` |
+| `AppPlanner` | Service plan, route plan. Implementation is decomposed under `engine/src/planner/` with `AppPlannerLive` as the thin orchestrator façade at `engine/src/services/planner.ts` (scanner-retirement US-557) | `AppPlannerLive` |
 | `BuildOrchestrator` | Compiles the resolved `AppPlan` into a `BuildPlan` DAG (artifact-build phase + per-service app-build phase, with cross-service `depends_on:` edges), runs siblings concurrently per the §6.13 caps, drives the build lifecycle (`pre-build`, `build-step-*`, `post-build`) through `EventService`, owns the per-step transcript writer (`<userDataRoot>/builds/<app-id>/<buildKey>.log`; §12.4), and surfaces task-tree progress to the active `Renderer` via the §8.9.2 events. Up-to-date checks consult the planner-stamped `buildKey` against the `build-results` cache (§12.1) so unchanged steps short-circuit to `build-step-skip { reason: "up-to-date" }`. | `BuildOrchestratorLive` (constructed at level `app`; `Layer.suspend`-wrapped — `lando info`, `lando logs`, and most tooling commands never construct it) |
 | `EventService` | Pub/sub over typed lifecycle events | `EventServiceLive` |
 | `CacheService` | Atomic cache reads/writes, invalidation | `CacheServiceLive` |
 | `StateStore` | Durable, atomic, schema-validated, versioned, optionally cross-process-locked on-disk document store (§12.7) — the durable peer of `CacheService`'s in-memory memo. Mints `StateBucket` handles (one file each) with `json`/`binary`/custom codecs, advisory file locking, corruption quarantine, and version migration. The single owner of every Lando-owned durable write (scratch registry §21.11, include lockfile §7.7.4, plugin/host/translator state). **Not a §4.2 plugin abstraction — a state-integrity invariant** (like `EmbeddedAssetService`); host/test-overridable, never plugin-replaceable | `StateStoreLive` (constructed eagerly at level `minimal`; root resolution via the §7.5.1 Paths primitive; touches no network/provider/plugin module) |
-| `ManagedFileService` | The single chokepoint for Lando-owned writes into the user's working tree (§10.13): renders file/block managed content, applies ownership markers, records drift/adoption in a `StateStore` ledger resolved by `PathsService.managedFileLedger(appId)`, rejects path escapes via the shared containment helper, writes atomically via the shared streaming-hash helper, and publishes redacted `ManagedFile` lifecycle events. **Not a §4.2 plugin abstraction — a working-tree-integrity invariant**; host/test-overridable, never plugin-replaceable | `ManagedFileServiceLive` (constructed at level `minimal`; `Layer.suspend`-wrapped; composes `StateStore`, `PathsService`, `TemplateRenderer`, `RedactionService`, and `EventService`; touches no provider/network/plugin module) |
+| `ManagedFileService` | The single chokepoint for Lando-owned writes into the user's working tree (§10.13): renders file/block managed content, applies ownership markers, records drift/adoption in a `StateStore` ledger resolved by `PathsService.managedFileLedger(appId)`, rejects path escapes via the shared containment helper, writes atomically via the shared streaming-hash helper, and publishes redacted `ManagedFile` lifecycle events. **Not a §4.2 plugin abstraction — a working-tree-integrity invariant**; host/test-overridable, never plugin-replaceable. **Live implementation owns the private `@lando/managed-file` seam** (scanner-retirement US-552+); core bootstrap layers provide it; engine consumes only the SDK service tag | `ManagedFileServiceLive` from `@lando/managed-file` (constructed at level `minimal`; `Layer.suspend`-wrapped; composes `StateStore`, `PathsService`, `TemplateRenderer`, `RedactionService`, and `EventService`; touches no provider/network/plugin module) |
 | `FileSystem` | `Bun.file` / `Bun.write` wrapper | `FileSystemBunLive` |
 | `ProcessRunner` | Argv-precise subprocess spawn (`Bun.spawn`) | `ProcessRunnerBunLive` |
 | `ShellRunner` | Cross-platform shell-shaped execution (pipes, redirection, globs, built-ins) via `Bun.$` (Bun Shell) | `ShellRunnerBunLive` |

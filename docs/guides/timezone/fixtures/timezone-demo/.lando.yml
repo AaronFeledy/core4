@@ -1,0 +1,7 @@
+name: timezone-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      TZ: "Europe/Berlin"

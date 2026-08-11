@@ -1,13 +1,5 @@
-// Shared file-format codec module. One pure place to encode/decode structured
-// project-file formats for `ManagedFileService` and mount materialization, so
-// Landofile round-trip and other structured formats exist exactly once.
-//
-// This module is deliberately PURE and dependency-light: it constructs no
-// `LandoRuntime`, touches no filesystem, and imports neither an Effect runtime
-// service nor `@oclif/core`. Its only edges are `effect` (for the `Effect`
-// description type), the pure `@lando/sdk/landofile` serializer, and the
-// `@lando/sdk` error/schema contracts. File I/O and atomic writes belong to the
-// codec's consumers, never here.
+// Keep codecs pure and dependency-light; filesystem access and atomic writes
+// belong to callers.
 
 import { Effect } from "effect";
 
@@ -116,7 +108,7 @@ const decodeEnv = (text: string): Record<string, string> => {
  * `typescript` are written verbatim, `json` is pretty-printed, `env` becomes
  * `KEY=value` lines, and `yaml`/`landofile` delegate to the canonical
  * `@lando/sdk/landofile` serializer. `toml`/`ini` are reserved and fail with
- * `reason: "format"` until 4.x.
+ * `reason: "format"` because they are not implemented yet.
  */
 export const encode = (
   format: FileFormat,
@@ -168,7 +160,7 @@ export const encode = (
  * structured value. `text`/`javascript`/`typescript` are returned verbatim,
  * `json` is parsed, `env` is read into a string map, and `yaml`/`landofile`
  * delegate to the canonical `@lando/sdk/landofile` parser. `toml`/`ini` are
- * reserved until 4.x.
+ * reserved and not implemented yet.
  */
 export const decode = (
   format: FileFormat,
@@ -203,8 +195,8 @@ export const decode = (
 
 /**
  * Merge an owned structured subtree into existing content (keys mode).
- * Not implemented yet: every format fails with `reason: "format"` and a
- * deferred-to-4.x remediation so callers get a clear error instead of a no-op.
+ * Not implemented yet: every format fails with `reason: "format"` and the
+ * established remediation so callers get a clear error instead of a no-op.
  */
 export const mergeManaged = (
   _format: FileFormat,

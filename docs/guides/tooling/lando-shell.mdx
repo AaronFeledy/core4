@@ -6,82 +6,93 @@ timeout: 60000
 tags: [beta, docs, tooling, shell]
 ---
 
+# The lando shell
+
+## Host mode is the default
+
+```sh
+lando shell
+```
+
+With no `--service` flag, `lando shell` opens the host shell scoped to the app root, running on the
+host through `ShellRunner`. The host shell receives the app-scoped Lando environment
+(`LANDO_APP_NAME`, `LANDO_APP_ROOT`). `--host` is deprecated: host mode is already the default, so
+`lando shell --host` is redundant.
+
+## Open a shell in a service
+
+```sh
+lando shell --service appserver
+```
+
+`--service` selects service mode explicitly via provider exec, starting a login shell (`sh -l`) in
+the selected container. `lando shell` takes no positional arguments — `lando shell appserver` is
+rejected with `Unexpected argument: appserver` instead of silently opening a host shell; use
+`--service appserver`.
+
+## Agent-context env forwarding
+
+`lando exec` and `lando shell --service` forward host agent-context markers into the target service.
+Only the built-in agent marker allowlist is copied from the host environment:
+
+```text
+CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI
+```
+
+Forwarded markers are the lowest-precedence layer, so configured service env and explicit command env
+always win.
+
+## Terminal forwarding
+
+While a service shell is interactive: stdin is attached and forwarded to the provider exec stream,
+stdout/stderr stream back to the CLI renderer, terminal resize (`SIGWINCH`) updates the running
+service shell via provider exec resize, and Ctrl-C cancels the exec stream through an `AbortSignal`.
+
+## Host-mode REPL semantics
+
+Host mode reads one line at a time from the REPL prompt and evaluates it as a single Bun Shell
+(`Bun.$`) template through `ShellRunner`, rather than spawning a raw `$SHELL` process. Each accepted
+line composes with Bun Shell's pipes, redirection, globs, command substitution, and built-ins
+(`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank or
+whitespace-only line re-prompts without evaluating or recording anything.
+
+A `${secret:<id>}` reference in a typed line resolves through `SecretStore` only at the moment that
+line runs — the REPL never preloads or injects secret values into the shell environment ahead of
+time. Once a secret value is resolved, it's redacted through `RedactionService` before it reaches
+stdout, stderr, lifecycle events, or history.
+
+Host-mode history persists per accepted line to a per-app history file under the user cache root.
+`--no-history` disables history persistence for the whole session — no history file is read or
+written. History is bounded to a fixed number of most-recent lines, so the file can't grow without
+limit across long-lived sessions, and every line is redacted through `RedactionService` before it's
+appended, so a line that resolved a secret never lands on disk in raw form.
+
+Every accepted line publishes a `pre-shell-exec` event before it runs and a `post-shell-exec` event
+with its exit code after it completes; subscribers receive the redacted command text, cwd, and
+output, not the raw line typed at the prompt.
+
+Ctrl+C aborts only the currently running line via `AbortSignal` — the REPL prompt returns and accepts
+the next line, and the session isn't corrupted or torn down. An interrupted line reports exit status
+130, matching a SIGINT-terminated shell command.
+
+Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit`
+does the same; `exit <code>` ends it with that explicit numeric status instead. On both paths, the
+REPL restores the terminal (raw mode, stdin pause state) before the `ShellRunner` Scope closes and
+`lando shell` returns.
+
+`lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected/CI invocation never opens the
+REPL — the command fails fast with the tagged `ShellRequiresTtyError` instead of hanging on a REPL
+nobody can drive. The error's remediation points at the non-interactive, scriptable equivalent:
+
+```sh
+app:exec --interactive --tty -- <command>
+```
+
 <Guide>
-  <Scenario id="host-shell-default" render={false} reason="Documents host-mode shell behavior without opening an interactive TTY in guide tests">
-    <Step name="default-host-mode">
-      <Variable name="command" value="lando shell" display="Open the host shell scoped to the app root" />
-      <Variable name="defaultMode" value="host" display="With no --service flag, the shell runs on the host through ShellRunner" />
-      <Variable name="env" value="LANDO_APP_NAME and LANDO_APP_ROOT" display="The host shell receives the app-scoped Lando environment" />
-    </Step>
-    <Step name="host-flag-deprecated">
-      <Variable name="command" value="lando shell --host" display="Deprecated: host mode is already the default, so --host is redundant" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="service-shell-opt-in" render={false} reason="Documents service-mode shell behavior without opening an interactive TTY in guide tests">
-    <Step name="service-mode">
-      <Variable name="command" value="lando shell --service appserver" display="Open an interactive shell inside the appserver service" />
-      <Variable name="mode" value="service" display="--service selects service mode explicitly via provider exec" />
-      <Variable name="shell" value="sh -l" display="The service shell starts as a login shell in the selected container" />
-    </Step>
-    <Step name="positional-rejected">
-      <Variable name="command" value="lando shell appserver" display="Rejected: lando shell takes no positional arguments; use --service appserver" />
-      <Variable name="error" value="Unexpected argument: appserver" display="A bare service name fails fast instead of silently opening a host shell" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="agent-context-env-forwarding" render={false} reason="Documents env forwarding behavior covered by shell and exec scenario tests without depending on a live agent process">
-    <Step name="allowlisted-markers">
-      <Variable name="surface" value="lando exec and lando shell --service" display="Provider exec surfaces forward host agent-context markers into the target service" />
-      <Variable name="allowlist" value="CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI" display="Only the built-in agent marker allowlist is copied from the host environment" />
-      <Variable name="precedence" value="service env and explicit command env win" display="Forwarded markers are the lowest-precedence layer, so configured service env is preserved" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="interactive-contract">
-    <Step name="terminal-forwarding">
-      <Variable name="stdin" value="attached" display="stdin is forwarded to the provider exec stream" />
-      <Variable name="stdoutStderr" value="streamed" display="stdout and stderr stream back to the CLI renderer" />
-      <Variable name="resize" value="SIGWINCH -> provider exec resize" display="terminal resize events update the running service shell" />
-      <Variable name="cancel" value="Ctrl-C -> AbortSignal" display="parent CLI cancellation aborts the provider exec stream" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="host-shell-repl-semantics" render={false} reason="Documents the Bun.$ host REPL semantics (per-line evaluation, redaction, history, interruption, exit) without opening an interactive TTY in guide tests">
-    <Step name="per-line-evaluation">
-      <Variable name="loop" value="one Bun Shell line at a time" display="Host mode reads one line from the REPL prompt and evaluates it as a single Bun.$ template through ShellRunner rather than spawning a raw $SHELL process" />
-      <Variable name="syntax" value="pipes, redirection, globs, built-ins" display="Each accepted line composes with Bun Shell's pipes, redirection, globs, command substitution, and built-in rm/mkdir/cat/mv/which the same way on Linux, macOS, and Windows" />
-      <Variable name="blank" value="blank lines are skipped" display="An empty or whitespace-only line re-prompts without evaluating or recording anything" />
-    </Step>
-    <Step name="secret-resolution">
-      <Variable name="reference" value="${secret:<id>}" display="A ${secret:...} reference in a typed line resolves through SecretStore only at the moment that line runs" />
-      <Variable name="noPreload" value="never preloaded into env" display="The REPL does not resolve or inject secret values into the shell environment ahead of time; only a reference actually typed at the prompt triggers a lookup" />
-      <Variable name="redactedEverywhere" value="redacted after resolution" display="Once a secret value is resolved for a line, that value is redacted through RedactionService before it reaches stdout, stderr, lifecycle events, or history" />
-    </Step>
-    <Step name="history">
-      <Variable name="location" value="per-app history file" display="Host-mode history persists per accepted line to a per-app history file under the user cache root" />
-      <Variable name="optOut" value="--no-history" display="--no-history disables history persistence for the whole session; no history file is read or written" />
-      <Variable name="bounded" value="bounded to the most recent lines" display="History is bounded to a fixed number of most-recent lines, so the file cannot grow without limit across long-lived sessions" />
-      <Variable name="redactedWrite" value="redacted before write" display="Every line is redacted through RedactionService before it is appended to history, so a line that resolved a secret never lands on disk in raw form" />
-    </Step>
-    <Step name="lifecycle-events">
-      <Variable name="prePost" value="pre-shell-exec / post-shell-exec" display="Every accepted line publishes a pre-shell-exec event before it runs and a post-shell-exec event with its exit code after it completes" />
-      <Variable name="redactedShape" value="redacted command shape" display="Subscribers receive the redacted command text, cwd, and output, not the raw line typed at the prompt" />
-    </Step>
-    <Step name="ctrl-c-interruption">
-      <Variable name="signal" value="Ctrl+C during a running line" display="Ctrl+C aborts only the currently running line's execution via AbortSignal" />
-      <Variable name="survives" value="REPL keeps running" display="After an interrupted line, the REPL prompt returns and accepts the next line; the session itself is not corrupted or torn down" />
-      <Variable name="exitStatus" value="130 for the interrupted line" display="An interrupted line reports exit status 130, matching a SIGINT-terminated shell command" />
-    </Step>
-    <Step name="ctrl-d-and-exit">
-      <Variable name="eof" value="Ctrl+D at an empty prompt" display="Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line" />
-      <Variable name="exitCommand" value="exit / exit <code>" display="Typing exit ends the REPL with the last line's status; exit <code> ends it with that explicit numeric status instead" />
-      <Variable name="restoration" value="terminal state restored" display="On both Ctrl+D and exit, the REPL restores the terminal (raw mode, stdin pause state) before the ShellRunner Scope closes and lando shell returns" />
-    </Step>
-    <Step name="no-interactive-refusal">
-      <Variable name="flag" value="lando shell --no-interactive" display="Host mode with --no-interactive, a non-TTY stdin/stdout, or a redirected/CI invocation never opens the REPL" />
-      <Variable name="taggedError" value="ShellRequiresTtyError" display="The command fails fast with the tagged ShellRequiresTtyError instead of hanging on a REPL nobody can drive" />
-      <Variable name="remediation" value="app:exec --interactive --tty -- <command>" display="The error's remediation points at app:exec --interactive --tty -- <command> for the equivalent non-interactive, scriptable invocation" />
+  <Scenario id="lando-shell-config-check" render={false} reason="Host mode, service mode, agent-context forwarding, terminal forwarding, and REPL semantics above are covered by shell and exec scenario tests without opening an interactive TTY in guide tests. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

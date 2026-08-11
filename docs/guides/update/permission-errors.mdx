@@ -6,27 +6,34 @@ timeout: 60000
 tags: [beta, docs, update, permissions, telemetry]
 ---
 
+# Update permission errors
+
+## Manual remediation on POSIX
+
+`UpdatePermissionError` surfaces when there is `EACCES` or `EPERM` while staging, backing up,
+replacing, rolling back, or re-executing the binary. POSIX remediation names the install path and
+shows the manual `sudo` install command, but it doesn't run `sudo` for the user. The update path does
+not invoke `PrivilegeService`, `sudo`, UAC prompts, or any other silent elevation mechanism.
+
+## Windows fallback
+
+When Windows replacement fails because the executable is locked, remediation tells the user to close
+Lando processes and run the same file moves manually from an elevated shell if UAC is required. The
+manual steps preserve the backup path `lando.exe.bak` so the user can restore the previous executable
+if replacement fails.
+
+## Telemetry categories
+
+Update records only the categorized success or failure outcome through the `update-outcome` event.
+The canonical telemetry fields are `version`, `targetVersion`, `channel`, `platform`, `outcome`.
+`UpdatePermissionError` maps to the `permission_failure` telemetry category, and telemetry omits
+install paths, hostnames, user ids, URLs with tokens, and raw command output.
+
 <Guide>
-  <Scenario id="manual-remediation" render={false} reason="Update permission failures are covered by focused self-update command tests without modifying the host install path">
-    <Step name="posix-install-path">
-      <Variable name="error" value="UpdatePermissionError" display="EACCES or EPERM while staging, backing up, replacing, rolling back, or re-executing the binary surfaces UpdatePermissionError" />
-      <Variable name="sudo" value="manual only" display="POSIX remediation names the install path and shows the manual sudo install command without running sudo for the user" />
-      <Variable name="noElevation" value="no PrivilegeService" display="The update path does not invoke PrivilegeService, sudo, UAC prompts, or any other silent elevation mechanism" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="windows-uac" render={false} reason="Windows locked-exe and replacement scheduling failures are covered by focused command tests">
-    <Step name="administrator-fallback">
-      <Variable name="fallback" value="PowerShell as Administrator" display="Windows remediation tells the user to close Lando processes and run the same file moves manually from an elevated shell if UAC is required" />
-      <Variable name="rollback" value="lando.exe.bak" display="The manual steps preserve the backup path so the user can restore the previous executable if replacement fails" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="telemetry-categories" render={false} reason="Update telemetry payloads are covered by focused telemetry tests without contacting a sink">
-    <Step name="safe-fields">
-      <Variable name="event" value="update-outcome" display="Update records only the categorized success or failure outcome" />
-      <Variable name="fields" value="version,targetVersion,channel,platform,outcome" display="Telemetry omits install paths, hostnames, user ids, URLs with tokens, and raw command output" />
-      <Variable name="permission" value="permission_failure" display="UpdatePermissionError maps to the permission_failure telemetry category" />
+  <Scenario id="permission-errors-config-check" render={false} reason="Permission failures and telemetry categories above are covered by command tests and telemetry tests without modifying the host install path. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

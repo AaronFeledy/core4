@@ -6,6 +6,8 @@ timeout: 60000
 tags: [beta, docs, subsystems, proxy, traefik]
 ---
 
+# Proxy (Traefik)
+
 ## HTTPS routes require an active certificate authority
 
 Traefik only terminates TLS for a route when a certificate authority has issued the cert. Run
@@ -24,48 +26,54 @@ readiness through the `proxy-tls` check documented in the
 [doctor walkthrough](./doctor-walkthrough.mdx). SSH agent forwarding uses sockets and agent
 identity, not TLS certificates, so it is unrelated to proxy TLS or CA trust state.
 
+## The ProxyService contract
+
+`ProxyService` is the Effect Service tag published in `@lando/sdk`; plugins implement
+`ProxyServiceShape`. The contract suite `runProxyServiceContractSuite` from `@lando/sdk/test` (alias
+`makeProxyServiceContractSuite`) validates `capabilities`, `setup`, `applyRoutes`, `removeRoutes`,
+`status`, and `stop`. `TestProxyService` (built with `makeTestProxyService`) is the in-memory test
+double, tracking routes by `appId`.
+
+When zero `ProxyService` plugins are registered, `ProxyServiceRegistry` falls back to
+`ProxyServiceUnavailableLive`, which fails closed with remediation to install/select a plugin and
+rerun setup. Otherwise `SelectedProxyServiceLive` is resolved from `ProxyServiceRegistry`, built from
+each installed plugin's `proxyServices:` manifest contribution using explicit-selection / default /
+sole-installed-implementation precedence. Core supplies the selected proxy with a deferred active
+`CertificateAuthority`, while bundled Traefik also depends on `GlobalAppService.ensureRunning` for
+ingress.
+
+## Route derivation
+
+The default proxy domain is `lndo.site`, producing hostnames like `web.myapp.lndo.site`. The planner
+auto-derives one canonical route per service from its published HTTP/HTTPS endpoints — no `routes:`
+Landofile block is required. Authored `routes:` entries resolve against named endpoints only when
+disambiguation is needed. Each derived route becomes a `RoutePlan` with `hostname=service.app.lndo.site`,
+`scheme=https`, and `backend={service,protocol,port}`; the planner populates `AppPlan.routes:
+RoutePlan[]` with derived or authored route plans, each carrying a plan-time-resolved backend.
+
+Two apps with overlapping default ports never conflict, because Traefik routes by hostname: app1's
+`web.app1.lndo.site` and app2's `web.app2.lndo.site` are distinct hostnames pointing at each app's own
+web service port, with no host-port collision.
+
+## Certificate material
+
+The default wildcard certificate covers the wildcard, apex, and Traefik dashboard hostname
+(`*.lndo.site`, `lndo.site`, `traefik.lndo.site`). Each app's certificate filename is keyed by its
+encoded `AppId`, and the certificate is reissued whenever the app's HTTPS route hostname coverage
+changes. Issued certificate and key PEMs are copied into the existing dynamic file-provider mount at
+`<globalAppRoot>/proxy-traefik/dynamic/certs` before the app route YAML is replaced. The dynamic YAML
+references `/etc/traefik/dynamic/certs` paths using Traefik v3 file-provider TLS configuration
+(`tls.certificates` + `tls.stores.default.defaultCertificate`); an empty `tls: {}` on a router remains
+the HTTPS activation marker.
+
+HTTPS route application resolves the active CA lazily through `CertificateAuthorityResolver`;
+HTTP-only routes never resolve, set up, or issue through a CA.
+
 <Guide>
-  <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
-    <Step name="proxy-contract">
-      <Variable name="sdkTag" value="ProxyService" display="Effect Service tag published in @lando/sdk; plugins implement ProxyServiceShape" />
-      <Variable name="contractRunner" value="runProxyServiceContractSuite" display="Contract suite from @lando/sdk/test (alias: makeProxyServiceContractSuite) validates capabilities, setup, applyRoutes, removeRoutes, status, stop" />
-      <Variable name="testDouble" value="TestProxyService / makeTestProxyService" display="In-memory test double for ProxyService; tracks routes by appId" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="proxy-route-derivation" render={false} reason="Route auto-derivation from service endpoints is exercised by core/test/services/app-planner.test.ts; live Traefik routing requires the global app">
-    <Step name="route-derivation">
-      <Variable name="defaultDomain" value="lndo.site" display="Default proxy domain; produces hostnames like web.myapp.lndo.site" />
-      <Variable name="derivationRule" value="HTTP/HTTPS service endpoints → RoutePlan (hostname=service.app.lndo.site, scheme=https, backend={service,protocol,port})" display="Planner auto-derives one canonical route per service from its published HTTP/HTTPS endpoints — no routes: Landofile block required; authored routes: entries resolve against named endpoints when disambiguation is needed" />
-      <Variable name="appPlanField" value="AppPlan.routes: RoutePlan[]" display="Planner populates AppPlan.routes with derived or authored route plans, each carrying a plan-time-resolved backend" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="proxy-unavailable-layer" render={false} reason="The fail-closed ProxyServiceUnavailableLive stub is exercised by unit tests; the Traefik Live Layer requires the global app and running containers">
-    <Step name="unavailable-layer">
-      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="ProxyServiceRegistry's fallback layer when zero ProxyService plugins are registered; fails closed with remediation to install/select a plugin and rerun setup" />
-      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, using explicit-selection / default / sole-installed-implementation precedence); core supplies the selected proxy with a deferred active CertificateAuthority, while bundled Traefik also depends on GlobalAppService.ensureRunning for ingress" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="proxy-traefik-https-certificates" render={false} reason="Certificate issuance and Traefik file-provider configuration are covered by focused plugin and core tests; live issuance requires the configured CA tool and global Traefik container">
-    <Step name="https-prerequisites">
-      <Variable name="setup" value="lando setup" display="Prepare the selected CertificateAuthority before HTTPS routes are started; the bundled default is the mkcert plugin and therefore requires the mkcert dependency to be installable" />
-      <Variable name="selection" value="CertificateAuthorityResolver" display="HTTPS route application resolves the active CA lazily; HTTP-only routes do not resolve, set up, or issue through a CA" />
-    </Step>
-    <Step name="certificate-material">
-      <Variable name="defaultCertificate" value="*.lndo.site, lndo.site, traefik.lndo.site" display="The default wildcard certificate covers the wildcard, apex, and Traefik dashboard hostname" />
-      <Variable name="appCertificate" value="unique sorted HTTPS/both route hostnames" display="Each app's certificate filename is keyed by its encoded AppId, and the certificate is reissued whenever the app's HTTPS route hostname coverage changes" />
-      <Variable name="hostDirectory" value="&lt;globalAppRoot&gt;/proxy-traefik/dynamic/certs" display="Issued certificate and key PEMs are copied into the existing dynamic file-provider mount before the app route YAML is replaced" />
-      <Variable name="traefikConfig" value="tls.certificates + tls.stores.default.defaultCertificate" display="Dynamic YAML references /etc/traefik/dynamic/certs paths using Traefik v3 file-provider TLS configuration; router tls: {} remains the HTTPS activation marker" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="proxy-no-port-conflict" render={false} reason="Two apps with overlapping default ports resolve via Traefik hostname routing — verified at the AppPlan level by planner unit tests; live Traefik routing requires the global app and running containers">
-    <Step name="no-port-conflict">
-      <Variable name="app1Route" value="web.app1.lndo.site → app1 web service port 3000" display="App1 Traefik route auto-derived from its HTTP endpoint" />
-      <Variable name="app2Route" value="web.app2.lndo.site → app2 web service port 3000" display="App2 Traefik route auto-derived from its HTTP endpoint; distinct hostname, no host-port conflict" />
-      <Variable name="verificationRef" value="core/test/services/app-planner.test.ts" display="Planner tests verify two apps produce distinct non-conflicting RoutePlans" />
+  <Scenario id="proxy-config-check" render={false} reason="The contract, route derivation, and certificate wiring above are covered by unit tests against an in-memory test double and core/test/services/app-planner.test.ts; the Traefik Live Layer needs the global app and running containers. This scenario keeps one real CLI check in the guide harness.">
+    <Step name="config-check">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
     </Step>
   </Scenario>
 </Guide>

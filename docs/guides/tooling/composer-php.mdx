@@ -5,27 +5,57 @@ timeout: 60000
 tags: [beta, docs, tooling, php, composer]
 ---
 
+# Composer on PHP
+
+Declare a `composer` tooling task targeting a PHP service and Lando routes it through the fast,
+cache-backed tooling path — no provider bootstrap needed just to discover the command:
+
+```yaml
+name: composer-php-demo
+services:
+  appserver:
+    type: php:8.3
+tooling:
+  composer:
+    service: appserver
+    cmd:
+      - sh
+      - -c
+      - composer "$@"
+      - composer
+```
+
 <Guide>
-  <Scenario id="tooling-bootstrap" render={false} reason="Documents cache-backed tooling routing without running provider-backed commands">
+  <Scenario id="tooling-bootstrap" render>
     <Step name="scaffold">
       <UseFixture name="composer-php-demo" />
-      <Variable name="serviceType" value="php:8.3" display="Use a PHP service as the command target" />
-      <Variable name="toolingTask" value="composer" display="Declare a tooling task named composer" />
-      <Variable name="bootstrap" value="tooling" display="Command discovery reads the lightweight tooling runtime" />
     </Step>
     <Step name="route-task">
-      <Variable name="bareCommand" value="lando composer --version" display="Run the task by its bare command from the app root" />
-      <Variable name="canonicalCommand" value="lando app:composer --version" display="Run the same task by its canonical app command id" />
-      <Variable name="hotPath" value="The router reads only a fresh app command cache before provider-backed execution starts" display="Both command forms use the same cache-only route" />
-      <Variable name="staleCache" value="lando app:cache:refresh, lando start, or lando rebuild" display="A stale or missing command cache fails with commands that refresh it" />
-      <Variable name="execution" value="runTooling" display="After routing, the normal tooling path still enforces version, provider, environment, and runtime policies" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="no-provider-discovery" render={false} reason="Documents which services are available before provider-backed execution starts">
-    <Step name="contract">
-      <Variable name="providedServices" value="LandofileService, CommandRegistry" display="Services available at the tooling bootstrap level" />
-      <Variable name="omittedServices" value="RuntimeProvider, RuntimeProviderRegistry, AppPlanner, ToolingEngine" display="Services intentionally unavailable until a later app/provider path needs them" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\"" } }} />
     </Step>
   </Scenario>
 </Guide>
+
+## Bare command and canonical id both work
+
+```sh
+lando composer --version
+```
+
+```sh
+lando app:composer --version
+```
+
+Both forms use the same route: the router reads only a fresh app command cache before
+provider-backed execution starts. If the cache is stale or missing, the command fails with a message
+naming the fix — `lando app:cache:refresh`, `lando start`, or `lando rebuild`. After routing, the
+normal tooling path still enforces version, provider, environment, and runtime policies through
+`runTooling`.
+
+## What's available before provider bootstrap
+
+At the tooling bootstrap level, only `LandofileService` and `CommandRegistry` are available.
+`RuntimeProvider`, `RuntimeProviderRegistry`, `AppPlanner`, and `ToolingEngine` are intentionally
+unavailable until a later app/provider path actually needs them — command discovery and routing
+don't.

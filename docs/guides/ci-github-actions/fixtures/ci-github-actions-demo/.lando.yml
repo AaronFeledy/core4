@@ -1,0 +1,5 @@
+name: ci-github-actions-demo
+services:
+  app:
+    type: "node:22"
+    primary: true

@@ -1,0 +1,87 @@
+---
+id: php-command-resolution
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, php, path]
+---
+
+# PHP command resolution
+
+A tooling command's bare name resolves through the target service's container `PATH`, not through
+any Lando-injected preference for project-local binaries. `runTooling` compiles every `cmd`/`cmds`
+entry into `sh -c '<command> "$@"'` and hands that shell command straight to the provider. The
+provider-exec tooling engine layers on only a working directory and an environment map before
+running it — there is no `PATH` prepend for `vendor/bin` anywhere in that path.
+
+The working directory defaults to the service's app mount target, `/app` unless a service
+overrides it, so a relative `cmd` like `vendor/bin/phpunit` resolves against the project root the
+app code is mounted into. That is project-scoped path resolution, not `PATH` search order.
+
+Composer is the one PHP tool that is actually preinstalled on `PATH`: the stock PHP build installs
+it to `/usr/local/bin/composer` at image build time, checksum-verified against a pinned release. A
+bare `composer` tooling command always resolves to that binary. Nothing else PHP-specific ships on
+`PATH` — a project's own Drush, PHPUnit, PHP-CS-Fixer, or any other Composer-installed dependency
+under `vendor/bin` is reachable only by referencing its path.
+
+The bundled Drupal recipe proves the pattern in a real, shipped tooling task: its generated `drush`
+command pins the exact relative path `vendor/bin/drush` as the `cmd`, instead of trusting a bare
+`drush` to resolve on `PATH`. Do the same for any other project-local binary a tooling task needs.
+
+```yaml
+name: php-command-resolution-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+tooling:
+  composer:
+    service: appserver
+    cmd: composer
+  phpunit:
+    service: appserver
+    cmd: vendor/bin/phpunit
+```
+
+## How the command is composed
+
+A bare `cmd` like `phpunit` is wrapped in `sh -c` and executed as-is; only the container's own
+`PATH` decides what `phpunit` resolves to. The tooling engine sets only a cwd (the app mount
+target, `/app` by default) and an environment map before exec — no `PATH` prepend for `vendor/bin`
+is added. The environment layered onto the command forwards agent-context markers and service env;
+it does not add or reorder `PATH` entries.
+
+## When a bare name is safe
+
+Composer is installed once, at build time, to a fixed global path
+(`/usr/local/bin/composer`) — a bare `composer` command is never ambiguous. Everything else that
+lives under a project's `vendor/bin` needs a pinned path. The Drupal recipe's generated `drush`
+tooling task pins `vendor/bin/drush` rather than a bare `drush`, because Drush is a project
+dependency with no global install and no reserved `PATH` entry. Apply the same fix to any other
+`vendor/bin` tool: write the relative (or absolute) path in `cmd` instead of relying on the name
+alone.
+
+## Live PATH order
+
+Every tooling command ultimately runs through the selected `RuntimeProvider`'s `exec`, which
+inherits the container image's own `PATH` unchanged. The authoritative source for the cwd/env
+composition documented above is `engine/src/services/tooling-engine.ts` — read it directly rather
+than trusting an inferred `PATH` order.
+
+## Executable coverage
+
+<Guide>
+  <Scenario id="pin-project-local-binary" render>
+    <Step name="scaffold">
+      <UseFixture name="php-command-resolution-demo" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\"vendor/bin/phpunit\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\"composer\"" } }} />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>

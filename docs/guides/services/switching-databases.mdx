@@ -1,0 +1,103 @@
+---
+id: switching-databases
+provider: test
+timeout: 90000
+tags: [beta, docs, services, database, mysql, postgres]
+---
+
+# Switching databases
+
+Changing a service's `type:` from one database engine to another is a
+Landofile edit plus a rebuild — but it doesn't move your data. This guide
+walks the switch and then explains what you still have to do by hand.
+
+## Before the switch
+
+Start from a Landofile where `db` is declared as `type: mysql`:
+
+```yaml
+name: switching-databases-demo
+services:
+  db:
+    type: mysql
+```
+
+<Guide>
+  <Scenario id="before-the-switch" render>
+    <Step name="scaffold">
+      <UseFixture name="before-mysql" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="confirm-mysql">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+## After the switch
+
+Edit the Landofile: change `services.db.type` from `mysql` to `postgres`,
+then run `lando rebuild -y` to recreate the container against the new
+engine:
+
+```yaml
+name: switching-databases-demo
+services:
+  db:
+    type: postgres
+```
+
+  <Scenario id="after-the-switch" render>
+    <Step name="scaffold">
+      <UseFixture name="after-postgres" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="confirm-postgres">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+## Your data does not move on its own
+
+`rebuild` recreates the container; it does not convert your data. Swapping
+`type: mysql` for `type: postgres` and rebuilding gets you a fresh, empty
+Postgres volume. Your old MySQL data stays in the old MySQL volume and is
+not converted or copied — Lando 4 ships no `db-import` or `db-export`
+command to bridge engines for you.
+
+Always export your data from the old engine before you change `type:` and
+rebuild, or you'll be staring at an empty database.
+
+Dump from MySQL using the native client inside the `db` service:
+
+```sh
+lando exec db -- mysqldump -u lando -plando switching-databases-demo > dump.sql
+```
+
+MySQL and PostgreSQL speak different SQL dialects. A raw `mysqldump` file
+isn't valid input for `psql` or `pg_restore` — schema types, quoting, and
+dialect-specific syntax need conversion (tools like `pgloader` exist for
+this) before you load it into Postgres.
+
+Once converted, restore into Postgres using the native client:
+
+```sh
+lando exec db -- psql -U lando -d switching-databases-demo -f converted-dump.sql
+```
+
+</Guide>

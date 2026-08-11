@@ -1,0 +1,139 @@
+Branch: docs/scanner-retirement-prd
+Source PRDs: spec/scanner-retirement/prd-scanner-retirement-*.md
+Spec source of truth: spec/02,03,13 (§2.7, §3.3–§3.4, §13.4, §13.8) + ROADMAP Phase 5 concurrent-meta supersession
+Execution checklist: .omo/plans/finish-scanner-retirement.md (dual high-accuracy review approved, digest 8386f05f4c1b3fd3532393f01c4774c80ca40ac3585f6a141e08d91c1ac35abf)
+Origin: architecture review (2026-08-09/10) — architecture-by-scanner after core-seams; engine still hosts managed-file + planner/update god-modules; codegen:check still conflates drift with typecheck/deprecations; ~14 boundary package.json aliases
+
+## Conventions
+
+- Story IDs US-551..US-560; priority order is execution order.
+- Internal/infra only — Guide Coverage None on every PRD.
+- Behavior-preserving moves only; no ManagedFile/update/planner semantics changes; no SDK churn.
+- Full-suite lock is always `bun test` (or explicit shard --run commands). Never `bun run test` alone.
+- US-559 alias collapse + CI regen + PR-tier test rewrites = one commit.
+- Engine MUST NOT depend on @lando/managed-file (SDK tag only); core is the Live consumer.
+- Keep per-rule scripts/check-*.ts files; collapse package.json aliases only.
+- Do not add typecheck to portable static-checks-platform.
+- Preserve runLaunchProbe as single ProcessRunner.run (no runProbe migration in US-556).
+- Do not touch unrelated dirty working-tree files from other waves.
+
+## Codebase Patterns (carry forward)
+
+- Package-local tests need scripts/test-shards.ts INCLUDE_GLOBS entry.
+- New release packages need prepare-npm-dev-packages.ts before engine.
+- Owner-excluding rules use scope.roots filter (redaction/network), not carveOuts.prefixes.
+- OWNER_EXCLUDING_RULES / CORE_AND_PLUGIN_RULE_IDS in workspace-roots.test.ts must move with the rule.
+- NIGHTLY_TIER_TESTS excludes some generator suites from PR shards; ci-workflow.test.ts is PR-tier and must be updated when CI steps change.
+- Mid-wave alias deletion without CI regen breaks main.
+
+## Status
+
+- US-551: **passes** — PRD set authored; normative contract applied to §2.7, §3.3–§3.4, §13.4/§13.8, ROADMAP Phase 5, architecture-simplicity deferral notes, core-seams follow-on pointer.
+- US-552: **passes** — `@lando/managed-file` owns the moved implementation; root-typechecked production consumers and package wiring now resolve through the private seam.
+- US-553..US-560: not started (implementation via `.omo/plans/finish-scanner-retirement.md`).
+
+## 2026-08-10 - US-551
+- Authorized `@lando/managed-file` private seam; engine `planner/` + `update/` module trees; drift-only `codegen:check`; `check:boundaries` package.json surface with stable rule IDs and retained shim scripts.
+- Superseded managed-file / gate-surface deferrals from architecture-simplicity and ROADMAP Phase 5 concurrent-meta note.
+- No product code changed; implementation stories remain US-552+.
+---
+
+## 2026-08-10 13:23 CDT - US-552 Adjudication
+- Contradiction: SR-02 US-552 requires `engine/src/managed-file/` to be "gone" and also requires "Tests pass; typecheck passes; lint passes", while SR-02 US-553 reserves "bootstrap-layer-renderers updated" and "init, testing helper" consumer repointing. Deleting the engine source first therefore leaves root-typechecked core importers unresolved. Normative §3.4 requires the final Live implementation to come from `@lando/managed-file`, but does not require this intermediate broken ordering.
+- Decision: narrowed the boundary in `prd.json` so US-552 now includes only the root-typechecked production repointing needed by the source move (generator and regenerated minimal layer, init, testing helper, and core dependency). US-553 now owns the remaining test-only consumers, focused proof, and final first-party import sweep.
+- Follow-up story: US-553 — finish managed-file test-consumer migration and prove the legacy import path is clean.
+---
+
+## 2026-08-10 15:18 CDT - US-552
+- Extracted the managed-file ownership implementation into the private `@lando/managed-file` package, wired it into workspace, release, TypeScript, and bootstrap composition, and kept the engine dependent only on the SDK service tag.
+- Verification: typecheck and lint passed; package typecheck and generated-output boundary passed; npm-dev ordering plus engine-closure spot checks passed 14/14; root and service package imports resolved successfully.
+- **Learnings for future iterations:**
+  - A package source move must repoint generators, generated bootstrap imports, and every root-typechecked production consumer in the same increment; test-only import sweeps may follow only across an explicit adjudicated boundary.
+---
+
+## 2026-08-10 15:44 CDT - US-552 Review
+- Fixed the generated release workflow so `@lando/managed-file` is built, dry-run published, published, and readiness-checked before its dependents; synchronized the source PRD with the recorded US-552/US-553 adjudication.
+- Review notes (deferred/rejected): remaining test-only legacy imports remain US-553 work; package-DAG registration and shared scan-tier roots are explicitly owned by US-554; the untouched nightly CI-codegen guide-scenario count assertion fails at 15 expected versus 19 generated and is outside this story.
+- Guide-Coverage-Skip: Internal package-seam extraction changes no user-visible behavior or public contract.
+- Verification: typecheck and lint passed; explicit-base guide drift, release-workflow tests 2/2, npm-dev plus engine-closure tests 14/14, package import smoke, generated-output boundary, and managed-file boundary passed. The unrelated nightly CI-codegen suite had 15 passes and the one baseline failure noted above.
+- **Learnings for future iterations:**
+  - Adding a package to the release inventory requires regenerating every committed workflow derived from that inventory in the same story.
+---
+
+## 2026-08-10 16:48 CDT - Babysit
+- PR: #728 https://github.com/AaronFeledy/core4/pull/728
+- CI outcome: pass
+- Review feedback: fixed (registered managed-file package DAG + workspace roots; repointed stale engine managed-file test imports)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-10 16:54 CDT - US-553
+- Verified the prior managed-file review completed the remaining test-consumer migration: core unit, library, and contract coverage resolves through `@lando/managed-file`, and the legacy engine import sweep is clean. No new code was required.
+- Verification: typecheck and lint passed; 61 focused managed-file tests passed across six files with a positive count.
+- **Learnings for future iterations:**
+  - Review fixes can complete the next explicitly bounded story; verify the merged tree before inventing duplicate migration work.
+---
+
+## 2026-08-10 17:13 CDT - US-553 Review
+- Reviewed the consumer migration against the source PRD; no in-scope blocker or code fix was found.
+- Review notes (deferred/rejected): rejected the isolated review-worktree QA failure because that detached worktree lacked generated bootstrap sources; the prepared story worktree passed the same six-file suite with 62 tests. US-554 owns the remaining `engine/src/managed-file` boundary-rule, fixture, and inventory strings, which do not match US-553's exact legacy import sweep.
+- Guide-Coverage-Skip: Internal test-import migration changes no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, and lint passed; focused managed-file spot checks passed 62/62 across six files and 104/104 across the seven-file adjacent blast radius; Bugbot found no bugs.
+---
+
+## 2026-08-10 18:59 CDT - US-554
+- Added `@lando/managed-file` to the shared runtime scan tier and converted the managed-file boundary into an owner-excluding residual rule with no carve-outs; package direction, fixtures, inventory, and durable ownership guidance now agree on the private seam.
+- Verification: typecheck and lint passed; 141 relevant tests across 12 files passed; managed-file, package-dag, and import-cycle boundary gates passed.
+- **Learnings for future iterations:**
+  - When review work pre-lands part of a later story, preserve it and lock the exact policy with focused tests rather than recreating the implementation.
+---
+
+## 2026-08-10 19:16 CDT - US-554 Review
+- Corrected the managed-file contract wording so it no longer implies named-consumer exemptions that conflict with the owner-excluding rule's empty carve-outs.
+- Review notes (deferred/rejected): rejected no findings; all five review-work lanes and Bugbot otherwise passed without in-scope blockers.
+- Guide-Coverage-Skip: Internal boundary-policy and specification wording changes have no user-visible behavior or public contract impact.
+- Verification: explicit-base guide drift, typecheck, and lint passed; focused boundary-policy tests passed 20/20; managed-file, package-dag, and import-cycle gates passed.
+---
+
+## 2026-08-10 20:09 CDT - US-555
+- Added package-local characterization coverage for ownership marker round-trips, every codec format including canonical Landofile YAML, and the in-memory service decision algorithm across create, update, skip, adoption, drift, and refuse-clobber outcomes.
+- Verification: typecheck and lint passed; the package script passed 11/11 and the focused package-plus-core managed-file lock passed 111/111; managed-file, package-dag, and import-cycle boundaries passed. The aggregate boundary run retained only the pre-existing spec-reference findings in unchanged ignored `.omo/**` planning files.
+- **Learnings for future iterations:**
+  - Package-local service tests can bind `makeManagedFileService` to a narrow in-memory `ManagedFileBackend`, preserving core integration coverage while locking the owning package's decision behavior directly.
+---
+
+## 2026-08-10 20:32 CDT - US-555 Review
+- Reviewed the package-local marker, codec, and service-decision characterization lock; no in-scope code blocker or review fix was found.
+- Review notes (deferred/rejected): rejected the missing root `bun test` transcript as a Review blocker because the loop contract reserves the full suite for CI and forbids running it locally; rejected the stale top-level status summary as pre-existing wave bookkeeping outside US-555's acceptance criteria.
+- Guide-Coverage-Skip: Package-local characterization tests and a package test script change no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, and lint passed; the package script passed 11/11 and the focused package-plus-core managed-file lock passed 120/120; all branch-relevant boundary rules passed, with only the pre-recorded ignored `.omo/**` spec-reference baseline remaining; Bugbot found no bugs. The root full-suite lock remains CI-owned per the Review host-safety policy.
+---
+
+## 2026-08-10 21:08 CDT - Babysit
+- PR: none (no PR for branch us-555-managed-file-seam-tests; branch has no upstream)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR; push step should create/refresh the PR)
+---
+
+## 2026-08-10 21:13 CDT - US-555
+- Verified the package-local managed-file seam lock complete on the existing branch; no new code was required.
+- Verification: typecheck and lint passed; the package script passed 11/11, the focused package-plus-core lock passed 116/116, and the story-owned boundary rules passed. The aggregate boundary run retained only the pre-recorded unchanged `.omo/**` spec-reference baseline.
+- **Learnings for future iterations:**
+  - When a reviewed story returns to Build before Push, revalidate the existing branch and record completion without inventing implementation work.
+---
+
+## 2026-08-10 22:57 CDT - US-556
+- Split self-update into focused error, manifest, verification, Windows replacement, staging, and orchestration modules while preserving the exact operation export surface and existing CLI import path.
+- Verification: typecheck and lint passed; 40 focused update tests, 30 adjacent library export tests, and the Linux criteria 6-9 acceptance wrapper passed; import-cycle, telemetry inventory, and all story-relevant boundary rules passed. The aggregate boundary run retained only the pre-recorded unchanged `.omo/**` spec-reference baseline.
+- **Learnings for future iterations:**
+  - For behavior-preserving module decomposition, lock runtime exports before moving code and keep type-only exports explicit in the stable barrel; this makes both leaked internals and missing public symbols observable.
+---
+
+## 2026-08-10 23:21 CDT - US-556 Review
+- Corrected result-schema ownership to match the manifest concern, added the required concern header, and extended the stable barrel lock to cover the exact type-only export set as well as runtime values.
+- Review notes (deferred/rejected): rejected the unrun full local suite as a blocker because the Review host-safety contract reserves it for CI; Bugbot, security, QA, and code-quality review found no other in-scope defects.
+- Guide-Coverage-Skip: Internal module ownership and export-lock corrections change no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, lint, and import-cycle passed; focused update tests passed 41/41 and adjacent export tests passed 30/30.
+---
