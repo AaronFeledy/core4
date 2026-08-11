@@ -977,7 +977,7 @@ type ManagedFileError = {
 
 #### 10.13.5 Contract suite
 
-The §13.1 managed-file contract suite is StateStore-style: it protects a core integrity invariant rather than a §4.2 plugin abstraction. It runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and host/test overrides. It asserts create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace leaves no torn file under `Effect.interrupt`; path escapes are rejected; markers round-trip per format; `block` mode is idempotent; ledger corruption uses `StateStore` quarantine semantics; and a known secret never appears in emitted events/history/transcripts. The §13.4 `check:managed-file-boundary` gate forbids parallel host-project-file writers with their own marker/overwrite logic outside `@lando/managed-file` and named consumers.
+The §13.1 managed-file contract suite is StateStore-style: it protects a core integrity invariant rather than a §4.2 plugin abstraction. It runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and host/test overrides. It asserts create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace leaves no torn file under `Effect.interrupt`; path escapes are rejected; markers round-trip per format; `block` mode is idempotent; ledger corruption uses `StateStore` quarantine semantics; and a known secret never appears in emitted events/history/transcripts. The §13.4 `check:managed-file-boundary` gate forbids parallel host-project-file writers with their own marker/overwrite logic outside `@lando/managed-file`.
 
 ### 10.14 MCP server (`McpService`)
 

@@ -88,3 +88,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - When review work pre-lands part of a later story, preserve it and lock the exact policy with focused tests rather than recreating the implementation.
 ---
+
+## 2026-08-10 19:16 CDT - US-554 Review
+- Corrected the managed-file contract wording so it no longer implies named-consumer exemptions that conflict with the owner-excluding rule's empty carve-outs.
+- Review notes (deferred/rejected): rejected no findings; all five review-work lanes and Bugbot otherwise passed without in-scope blockers.
+- Guide-Coverage-Skip: Internal boundary-policy and specification wording changes have no user-visible behavior or public contract impact.
+- Verification: explicit-base guide drift, typecheck, and lint passed; focused boundary-policy tests passed 20/20; managed-file, package-dag, and import-cycle gates passed.
+---
