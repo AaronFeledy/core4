@@ -119,7 +119,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04; lands US-505 target"
     },
     {
@@ -134,7 +134,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04; one commit with CI"
     },
     {
@@ -144,11 +144,11 @@
       "acceptanceCriteria": [
         "US-551..US-559 passes true; full index verification contract green including bun test full suite.",
         "Progress notes record alias delta, rule verdict, planner/update fa\u00e7ade sizes, no engine\u2192managed-file edge, no static typecheck step.",
-        "Plan F1\u2013F4 compliance/quality/QA/scope checks recorded.",
+        "Plan F1\u2013F3 checks and the F4 scope check recorded. F4 requires every scanner-retirement-owned path to map to a plan todo; paths first introduced by unrelated merged work are excluded only when closure evidence names their PR/commit and exact paths. For this wave, the recorded exclusion is PR #729 / 54211a9c guide-runner work in core/test/codegen/guide-scenarios.test.ts, scripts/build-guide-scenarios.ts, scripts/test-reporters/run-guide-scenarios.test.ts, and scripts/test-reporters/run-guide-scenarios.ts.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04 closure"
     }
   ]
