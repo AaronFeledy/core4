@@ -57,6 +57,6 @@ Review checklist:
 - New seam: name the boundary rule it retires or shrinks.
 - New rule: name why a package seam is impossible or premature.
 
-## Retired rule aliases
+## Package script surface
 
-- `core-layering`: `check:core-layering-boundary` → `check:package-dag`. The workspace DAG now rejects every named, subpath, relative, type-only, re-export, and dynamic `@lando/engine` to `@lando/core` source edge; the stable command remains an alias for existing local callers.
+`check:boundaries` is the only package script for this inventory. Use `bun run scripts/check-boundaries.ts package-dag` to debug the workspace-DAG rule directly. The workspace DAG rejects every named, subpath, relative, type-only, re-export, and dynamic `@lando/engine` to `@lando/core` source edge.

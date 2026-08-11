@@ -35,7 +35,7 @@ such as provider-exec being unavailable. Unit tests verify the `HealthcheckRunne
 
 The provider-exec `HealthcheckRunner` uses `runProbe` from `@lando/sdk/probe` for its
 retry/delay/timeout loops, not a hand-rolled `Effect.retry` or `Schedule` (enforced by
-`check:probe-boundary`). `ProbeResult.lastError` is redacted via `RedactionService` before it reaches
+`bun run scripts/check-boundaries.ts probe`). `ProbeResult.lastError` is redacted via `RedactionService` before it reaches
 events or transcripts. `HealthcheckRunnerLive` (in `engine/src/subsystems/healthcheck/live.ts`) wires
 provider-exec to `RuntimeProvider.exec` and redacts the final provider status.
 
