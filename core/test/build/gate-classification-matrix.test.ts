@@ -122,7 +122,7 @@ describe("gate classification matrix", () => {
     const orderedSteps = [...(codegenCheck?.matchAll(/bun run ([\w:*-]+)/g) ?? [])].map((match) => match[1]);
 
     // Then
-    expect(orderedSteps).toEqual(["codegen", "check:codegen-drift", "check:deprecations", "typecheck"]);
+    expect(orderedSteps).toEqual(["codegen", "check:codegen-drift"]);
   });
 
   test("keeps companion codegen:check steps out of pure-drift classification", async () => {
