@@ -30,7 +30,13 @@ bun run check:machine-output
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog, checks catalog-owned outputs (including committed workflows) for drift, checks deprecations, and finishes by executing `bun run typecheck`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+
+Run typecheck separately:
+
+```bash
+bun run typecheck
+```
 
 Local fast path: `bun run scripts/check-boundaries.ts --all` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Individual `bun run check:<gate>` commands remain the CI contract; each is a thin shim over the declarative rules in `scripts/boundary/rules/`.
 

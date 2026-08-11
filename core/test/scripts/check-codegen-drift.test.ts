@@ -284,24 +284,20 @@ describe("check:codegen-drift package wiring", () => {
     expect(scripts["check:codegen-drift"]).toBe("bun run scripts/check-codegen-drift.ts");
   });
 
-  test("wires check:codegen-drift into codegen:check after codegen and before check:deprecations", async () => {
+  test("keeps codegen:check limited to codegen and the drift gate", async () => {
     // Given: the monorepo package.json scripts table.
     const scripts = await readPackageJsonScripts(repoRoot);
     const codegenCheck = scripts["codegen:check"];
     if (codegenCheck === undefined) throw new TypeError("package.json is missing codegen:check");
 
     // When: the codegen:check pipeline is inspected.
-    // Then: the exact pipeline runs codegen, then the drift gate, then deprecations, then typecheck.
-    expect(codegenCheck).toBe(
-      "bun run codegen && bun run check:codegen-drift && bun run check:deprecations && bun run typecheck",
-    );
+    // Then: the exact pipeline runs codegen followed only by the drift gate.
+    expect(codegenCheck).toBe("bun run codegen && bun run check:codegen-drift");
 
     // Then: the ordering holds independent of the exact command wording.
     const codegenIndex = codegenCheck.indexOf("bun run codegen");
     const driftIndex = codegenCheck.indexOf("bun run check:codegen-drift");
-    const deprecationsIndex = codegenCheck.indexOf("bun run check:deprecations");
     expect(codegenIndex).toBeGreaterThanOrEqual(0);
     expect(driftIndex).toBeGreaterThan(codegenIndex);
-    expect(deprecationsIndex).toBeGreaterThan(driftIndex);
   });
 });

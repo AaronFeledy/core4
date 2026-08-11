@@ -399,12 +399,11 @@ describe("deprecation TSDoc lint gate", () => {
 });
 
 describe("deprecation release gate", () => {
-  test("is wired into codegen:check after codegen and before typecheck", async () => {
+  test("stays in lint and outside codegen:check", async () => {
     const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json();
 
-    expect(packageJson.scripts["codegen:check"]).toBe(
-      "bun run codegen && bun run check:codegen-drift && bun run check:deprecations && bun run typecheck",
-    );
+    expect(packageJson.scripts.lint).toBe("biome check . && bun run check:deprecations");
+    expect(packageJson.scripts["codegen:check"]).not.toContain("check:deprecations");
   });
 
   test("passes current notices with released or pending since versions", async () => {
