@@ -137,3 +137,19 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Guide-Coverage-Skip: Internal module ownership and export-lock corrections change no user-visible behavior or public contract.
 - Verification: explicit-base guide drift, typecheck, lint, and import-cycle passed; focused update tests passed 41/41 and adjacent export tests passed 30/30.
 ---
+
+## 2026-08-11 00:35 CDT - US-557
+- Decomposed app planning into bounded service-type, capability, file-sync, storage, authored-config, endpoint, extension, naming, and assembly modules while preserving the exact planner facade and generated consumer paths.
+- Verification: typecheck, lint, and import-cycle passed; 148 focused planner and adjacent behavior tests passed across eight files; the 55-line facade and all planner modules stayed within their required limits. The root full-suite lock remains CI-owned under the loop host-safety policy.
+- **Learnings for future iterations:**
+  - Run scoped Biome formatting after a pure module move and before the gate wave so import ordering and type-only imports are normalized without touching unrelated files.
+---
+
+## 2026-08-11 00:55 CDT - US-557 Review
+- Reviewed the planner decomposition against the source PRD and the approved execution checklist; no in-scope blocker was found and no code change was required.
+- Review notes (deferred/rejected): rejected restoring `normalizeAppSlug` and `APP_SLUG_MAX_LENGTH` to the facade because both the acceptance criterion and the dual-reviewed plan fix that surface at exactly eight symbols, the two symbols have zero consumers repo-wide, and re-exporting them would add dead seams the pre-ship tenets forbid. Rejected restoring the pre-move accumulator lifetime because every call site invokes `plan()` freshly — including the `Effect.suspend` resolver, which re-invokes it per execution — so the difference is unobservable, and threading shared mutable state back across the execution boundary would reintroduce cross-execution leakage.
+- Guide-Coverage-Skip: Internal engine module decomposition changes no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, lint plus deprecations, and import-cycle passed; focused planner tests passed 148/148 across eleven files and all changed-file diagnostics were clean. Bugbot found no bugs, and the security and QA lanes reported no defects. The root full-suite lock remains CI-owned under the loop host-safety policy.
+- **Learnings for future iterations:**
+  - When a general export-stability requirement collides with an enumerated export list, the enumerated surface plus real consumer evidence governs; confirm a removed export has consumers before treating it as a regression.
+---
