@@ -109,3 +109,17 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Guide-Coverage-Skip: Package-local characterization tests and a package test script change no user-visible behavior or public contract.
 - Verification: explicit-base guide drift, typecheck, and lint passed; the package script passed 11/11 and the focused package-plus-core managed-file lock passed 120/120; all branch-relevant boundary rules passed, with only the pre-recorded ignored `.omo/**` spec-reference baseline remaining; Bugbot found no bugs. The root full-suite lock remains CI-owned per the Review host-safety policy.
 ---
+
+## 2026-08-10 21:08 CDT - Babysit
+- PR: none (no PR for branch us-555-managed-file-seam-tests; branch has no upstream)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR; push step should create/refresh the PR)
+---
+
+## 2026-08-10 21:13 CDT - US-555
+- Verified the package-local managed-file seam lock complete on the existing branch; no new code was required.
+- Verification: typecheck and lint passed; the package script passed 11/11, the focused package-plus-core lock passed 116/116, and the story-owned boundary rules passed. The aggregate boundary run retained only the pre-recorded unchanged `.omo/**` spec-reference baseline.
+- **Learnings for future iterations:**
+  - When a reviewed story returns to Build before Push, revalidate the existing branch and record completion without inventing implementation work.
+---
