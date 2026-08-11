@@ -41,7 +41,7 @@ const EXPECTED_TYPE_EXPORTS = [
 
 describe("@lando/engine/operations/update barrel export surface", () => {
   test("exposes the locked runtime value-export names", async () => {
-    // Given: the authoritative pre-refactor runtime export surface
+    // Given: the locked runtime export surface
     const expected = [...EXPECTED_RUNTIME_EXPORTS].sort();
 
     // When: the update operations barrel is loaded dynamically
@@ -53,7 +53,7 @@ describe("@lando/engine/operations/update barrel export surface", () => {
   });
 
   test("exposes the locked type-only export names", async () => {
-    // Given: the authoritative pre-refactor type-only export surface
+    // Given: the locked type-only export surface
     const expected = [...EXPECTED_TYPE_EXPORTS].sort();
 
     // When: type-only export declarations are read from the source barrel

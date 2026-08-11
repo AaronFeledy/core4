@@ -41,23 +41,32 @@ export type UpdateChecksumSignatureVerifier = (
 const UPDATE_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
   "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
 
-export const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = ({
+const verifyCosignBlob = ({
+  blobBytes,
+  blobFilename,
   certificateBytes,
-  manifestBytes,
-  manifestUrl,
+  failureLabel,
   signatureBytes,
-}) =>
+  workDirPrefix,
+}: {
+  readonly blobBytes: Uint8Array;
+  readonly blobFilename: string;
+  readonly certificateBytes: Uint8Array;
+  readonly failureLabel: string;
+  readonly signatureBytes: Uint8Array;
+  readonly workDirPrefix: string;
+}): Effect.Effect<void, Error, ProcessRunner> =>
   Effect.acquireUseRelease(
-    Effect.tryPromise(() => mkdtemp(join(tmpdir(), "lando-update-manifest-"))),
+    Effect.tryPromise(() => mkdtemp(join(tmpdir(), workDirPrefix))),
     (root) =>
       Effect.gen(function* () {
         const processRunner = yield* ProcessRunner;
-        const manifestPath = join(root, "manifest.json");
-        const signaturePath = join(root, "manifest.sig");
-        const certificatePath = join(root, "manifest.crt");
+        const blobPath = join(root, blobFilename);
+        const signaturePath = join(root, `${blobFilename}.sig`);
+        const certificatePath = join(root, `${blobFilename}.crt`);
         yield* Effect.tryPromise(() =>
           Promise.all([
-            writeFile(manifestPath, manifestBytes),
+            writeFile(blobPath, blobBytes),
             writeFile(signaturePath, signatureBytes),
             writeFile(certificatePath, certificateBytes),
           ]),
@@ -74,14 +83,14 @@ export const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = (
             signaturePath,
             "--certificate",
             certificatePath,
-            manifestPath,
+            blobPath,
           ],
         });
         if (result.exitCode !== 0) {
           const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 500);
           return yield* Effect.fail(
             new Error(
-              `cosign verify-blob failed for ${manifestUrl}${output.length === 0 ? "" : `: ${output}`}`,
+              `cosign verify-blob failed for ${failureLabel}${output.length === 0 ? "" : `: ${output}`}`,
             ),
           );
         }
@@ -92,56 +101,35 @@ export const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = (
       ),
   );
 
+export const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = ({
+  certificateBytes,
+  manifestBytes,
+  manifestUrl,
+  signatureBytes,
+}) =>
+  verifyCosignBlob({
+    workDirPrefix: "lando-update-manifest-",
+    blobFilename: "manifest.json",
+    blobBytes: manifestBytes,
+    signatureBytes,
+    certificateBytes,
+    failureLabel: manifestUrl,
+  });
+
 export const defaultVerifyChecksumSignature: UpdateChecksumSignatureVerifier = ({
   certificateBytes,
   checksumsBytes,
   checksumsUrl,
   signatureBytes,
 }) =>
-  Effect.acquireUseRelease(
-    Effect.tryPromise(() => mkdtemp(join(tmpdir(), "lando-update-checksums-"))),
-    (root) =>
-      Effect.gen(function* () {
-        const processRunner = yield* ProcessRunner;
-        const checksumsPath = join(root, "SHA256SUMS");
-        const signaturePath = join(root, "SHA256SUMS.sig");
-        const certificatePath = join(root, "SHA256SUMS.crt");
-        yield* Effect.tryPromise(() =>
-          Promise.all([
-            writeFile(checksumsPath, checksumsBytes),
-            writeFile(signaturePath, signatureBytes),
-            writeFile(certificatePath, certificateBytes),
-          ]),
-        );
-        const result = yield* processRunner.run({
-          cmd: "cosign",
-          args: [
-            "verify-blob",
-            "--certificate-identity-regexp",
-            UPDATE_COSIGN_CERTIFICATE_IDENTITY_REGEXP,
-            "--certificate-oidc-issuer",
-            "https://token.actions.githubusercontent.com",
-            "--signature",
-            signaturePath,
-            "--certificate",
-            certificatePath,
-            checksumsPath,
-          ],
-        });
-        if (result.exitCode !== 0) {
-          const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 500);
-          return yield* Effect.fail(
-            new Error(
-              `cosign verify-blob failed for ${checksumsUrl}${output.length === 0 ? "" : `: ${output}`}`,
-            ),
-          );
-        }
-      }),
-    (root) =>
-      Effect.promise(() => rm(root, { recursive: true, force: true })).pipe(
-        Effect.catchAll(() => Effect.void),
-      ),
-  );
+  verifyCosignBlob({
+    workDirPrefix: "lando-update-checksums-",
+    blobFilename: "SHA256SUMS",
+    blobBytes: checksumsBytes,
+    signatureBytes,
+    certificateBytes,
+    failureLabel: checksumsUrl,
+  });
 
 export const verifyManifestSignature = (
   verifier: UpdateManifestSignatureVerifier,
