@@ -95,3 +95,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Guide-Coverage-Skip: Internal boundary-policy and specification wording changes have no user-visible behavior or public contract impact.
 - Verification: explicit-base guide drift, typecheck, and lint passed; focused boundary-policy tests passed 20/20; managed-file, package-dag, and import-cycle gates passed.
 ---
+
+## 2026-08-10 20:09 CDT - US-555
+- Added package-local characterization coverage for ownership marker round-trips, every codec format including canonical Landofile YAML, and the in-memory service decision algorithm across create, update, skip, adoption, drift, and refuse-clobber outcomes.
+- Verification: typecheck and lint passed; the package script passed 11/11 and the focused package-plus-core managed-file lock passed 111/111; managed-file, package-dag, and import-cycle boundaries passed. The aggregate boundary run retained only the pre-existing spec-reference findings in unchanged ignored `.omo/**` planning files.
+- **Learnings for future iterations:**
+  - Package-local service tests can bind `makeManagedFileService` to a narrow in-memory `ManagedFileBackend`, preserving core integration coverage while locking the owning package's decision behavior directly.
+---
