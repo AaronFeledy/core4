@@ -145,7 +145,7 @@ bun test
 | `bun run codegen` | Run all code generators |
 | `bun run dev:guides` | TDD driver for executable guides (regenerate + typecheck + re-run affected scenarios on change) |
 | `bun run lint:guides` | Lint executable-guide MDX |
-| `bun run check:renderer-boundary` | Renderer-boundary gate — no direct `console.*` / `process.std*.write` under `core/src/**`, `plugins/**` |
+| `bun run check:boundaries` | Run every boundary rule in one shared scan |
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
 | `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
 

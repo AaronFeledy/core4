@@ -344,22 +344,10 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).not.toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
-    expect(staticChecksPlatform).toContain("      - name: Import cycle lint");
-    expect(staticChecksPlatform).toContain("        run: bun run check:import-cycle");
-    expect(staticChecksPlatform).toContain("      - name: Package DAG lint");
-    expect(staticChecksPlatform).toContain("        run: bun run check:package-dag");
-    expect(staticChecksPlatform).toContain("        run: bun run check:renderer-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:managed-file-boundary");
+    expect(staticChecksPlatform.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
+    expect(staticChecksPlatform.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
-    expect(staticChecksPlatform).toContain("        run: bun run check:redaction-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:env-helper-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:generated-output");
-    expect(staticChecksPlatform).toContain("        run: bun run check:paths-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:state-store-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:probe-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:network-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:libpod-prefix");
-    expect(staticChecksPlatform).toContain("        run: bun run check:machine-output");
+    expect(staticChecksPlatform).toContain("        run: bun run check:compose-coverage");
     expect(staticChecksPlatform).toContain("        run: bun run check:runtime-bundle-manifest");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(

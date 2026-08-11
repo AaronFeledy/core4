@@ -71,8 +71,7 @@ describe("gate classification matrix", () => {
       "check:guide-coverage": "semantic",
       "check:schema-compatibility": "semantic",
       "check:public-transcripts": "semantic",
-      "check:package-dag": "semantic",
-      "check:*-boundary": "semantic",
+      "check:boundaries": "semantic",
     });
   });
 
