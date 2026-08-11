@@ -137,3 +137,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Guide-Coverage-Skip: Internal module ownership and export-lock corrections change no user-visible behavior or public contract.
 - Verification: explicit-base guide drift, typecheck, lint, and import-cycle passed; focused update tests passed 41/41 and adjacent export tests passed 30/30.
 ---
+
+## 2026-08-11 00:35 CDT - US-557
+- Decomposed app planning into bounded service-type, capability, file-sync, storage, authored-config, endpoint, extension, naming, and assembly modules while preserving the exact planner facade and generated consumer paths.
+- Verification: typecheck, lint, and import-cycle passed; 148 focused planner and adjacent behavior tests passed across eight files; the 55-line facade and all planner modules stayed within their required limits. The root full-suite lock remains CI-owned under the loop host-safety policy.
+- **Learnings for future iterations:**
+  - Run scoped Biome formatting after a pure module move and before the gate wave so import ordering and type-only imports are normalized without touching unrelated files.
+---
