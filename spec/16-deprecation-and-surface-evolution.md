@@ -317,7 +317,7 @@ The release pipeline (§17) treats `removeIn` as a hard gate.
 - If any notice's `removeIn` equals the version being released AND the corresponding surface is still present in the source tree, the build fails with `DeprecationStaleError` and prints the offending `(kind, id, removeIn)` triplets.
 - If any notice's `removeIn` is *less than* the version being released, the build fails with `DeprecationOverdueError`. This catches forgotten removals from prior majors.
 - A surface is "still present" if its registry walk still returns it. Removing the surface MUST also remove the `DeprecationNotice` (the notice is dead-weight after removal).
-- The check is also wired into `bun run codegen:check` so CI catches the issue before tagging the release.
+- The check remains an independent release-orchestrator step after codegen. On PRs, `bun run lint` enforces deprecations so CI catches the issue before tagging the release.
 
 **Surface change checklist (extension to the README's existing list):**
 

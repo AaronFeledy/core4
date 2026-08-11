@@ -74,9 +74,9 @@ and update spot checks that prove criteria 1-9 pass on the reference
 bun run codegen:check
 ```
 
-Regenerate codegen outputs, run the deprecation release gate, then
-typecheck the clean checkout. Acceptance requires no uncommitted generated
-drift after the gate.
+Regenerate codegen outputs and fail on pure generated drift.
+Typecheck stays a separate gate. Acceptance requires no uncommitted
+generated drift after the gate.
 
 ## Criteria 26-27 — bundled artifact codegen
 
