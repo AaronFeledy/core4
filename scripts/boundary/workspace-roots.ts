@@ -7,14 +7,14 @@
  */
 
 /**
- * Rules policing runtime behaviour in shipped code: core, the `@lando/paths`
- * and `@lando/state-store` primitive packages, and every plugin.
+ * Rules policing the shared shipped-runtime tier, including bundled plugins.
  */
 export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "core/src",
   "engine/src",
   "http-client/src",
   "landofile/src",
+  "managed-file/src",
   "paths/src",
   "redaction/src",
   "state-store/src",

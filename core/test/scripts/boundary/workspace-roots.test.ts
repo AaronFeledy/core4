@@ -23,13 +23,14 @@ const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
 ]);
 
 const OWNER_EXCLUDING_RULES: ReadonlyMap<string, string> = new Map([
+  ["managed-file", "managed-file/src"],
   ["network", "http-client/src"],
   ["paths", "paths/src"],
   ["redaction", "redaction/src"],
   ["state-store", "state-store/src"],
 ]);
 
-const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "managed-file", "probe", "renderer"] as const;
+const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "probe", "renderer"] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
@@ -71,7 +72,7 @@ describe("workspace source-root drift gate", () => {
 
     // Then: known package families and every discovered source tree are covered
     expect(packagesWithSource).toEqual(
-      expect.arrayContaining(["core", "sdk", "container-runtime", "paths", "state-store"]),
+      expect.arrayContaining(["core", "sdk", "container-runtime", "managed-file", "paths", "state-store"]),
     );
     expect(packagesWithSource.some((dir) => dir.startsWith("plugins/"))).toBe(true);
     for (const dir of packagesWithSource) {
@@ -97,6 +98,14 @@ describe("workspace source-root drift gate", () => {
     // Given / When / Then
     expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("engine/src");
     expect(ALL_PACKAGE_WALK_ROOTS).toContain("engine/src");
+  });
+
+  test("covers managed-file implementation code in every primitive source tier", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("managed-file/src");
+    expect(ALL_PACKAGE_SOURCE_ROOTS).toContain("managed-file/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("managed-file/src");
+    expect(NON_PLUGIN_SOURCE_ROOTS).toContain("managed-file/src");
   });
 
   test("classifies narrow-by-design rules with their exact current roots", () => {
@@ -132,6 +141,7 @@ describe("workspace source-root drift gate", () => {
       // Then: every shared runtime consumer remains covered except the owning implementation
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== ownerRoot));
+      expect(rule?.carveOuts).toEqual({ files: [], prefixes: [] });
     }
   });
 

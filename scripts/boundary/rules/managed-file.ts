@@ -52,13 +52,13 @@ const onProgram: NonNullable<BoundaryRule["onProgram"]> = async (context) => {
 export const managedFileRule = {
   id: "managed-file",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "managed-file/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: [], prefixes: ["engine/src/managed-file/"] },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Managed-file boundary check passed.",
   failureHeadline:
-    "Managed-file boundary check failed. Host project-file ownership-marker/overwrite logic must route through ManagedFileService (engine/src/managed-file/).",
+    "Managed-file boundary check failed. Host project-file ownership-marker/overwrite logic must route through @lando/managed-file.",
   onProgram,
 } satisfies BoundaryRule;
