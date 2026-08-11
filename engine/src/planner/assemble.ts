@@ -1,4 +1,3 @@
-/** App-plan orchestration over planner concern modules. */
 import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "effect";
 
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
@@ -124,15 +123,16 @@ export const planApp = (
   LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
+  const landofilePath = `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
   const appSlug = normalizeAppSlug(appName, appRoot);
   const appId = AppId.make(appSlug);
   const host = resolveHostFacts();
   const resolvedAt = new Date().toISOString();
-  const encodedMetadata = { resolvedAt, source: `${appRoot}/.lando.yml`, runtime: 4 as const };
+  const encodedMetadata = { resolvedAt, source: landofilePath, runtime: 4 as const };
   const metadata: ServicePlan["metadata"] = {
     resolvedAt: DateTime.unsafeMake(resolvedAt),
-    source: `${appRoot}/.lando.yml`,
+    source: landofilePath,
     runtime: 4 as const,
   };
 
@@ -145,7 +145,7 @@ export const planApp = (
               (cause) =>
                 new LandofileValidationError({
                   message: `Global configuration could not be loaded for service network injection: ${cause.message}`,
-                  file: `${appRoot}/.lando.yml`,
+                  file: landofilePath,
                   issues: ["network"],
                 }),
             ),
@@ -156,7 +156,7 @@ export const planApp = (
       catch: (cause) =>
         new LandofileValidationError({
           message: `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
-          file: `${appRoot}/.lando.yml`,
+          file: landofilePath,
           issues: ["network"],
         }),
     });
@@ -173,7 +173,7 @@ export const planApp = (
         (error) =>
           new LandofileValidationError({
             message: `Failed to enumerate plugin contributions: ${error instanceof Error ? error.message : String(error)}.`,
-            file: `${appRoot}/.lando.yml`,
+            file: landofilePath,
             issues: [],
           }),
       ),
@@ -205,7 +205,7 @@ export const planApp = (
           (error) =>
             new LandofileValidationError({
               message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
-              file: `${appRoot}/.lando.yml`,
+              file: landofilePath,
               issues: [`plugins.${ref.pluginId}.appFeatures.${ref.id}`],
             }),
         ),
@@ -228,7 +228,7 @@ export const planApp = (
         yield* Effect.fail(
           new LandofileValidationError({
             message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
-            file: `${appRoot}/.lando.yml`,
+            file: landofilePath,
             issues: [`services.${name}.build`],
           }),
         );
@@ -337,7 +337,7 @@ export const planApp = (
       });
     }
 
-    const versionConstraints = getVersionConstraintEntries(landofile, `${appRoot}/.lando.yml`);
+    const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },

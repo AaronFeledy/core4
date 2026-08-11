@@ -1,4 +1,3 @@
-/** Provider capability checks for authored Compose intent. */
 import { Effect } from "effect";
 
 import { CapabilityError } from "@lando/sdk/errors";

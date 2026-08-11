@@ -1,5 +1,4 @@
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
-/** Planner-owned service extension and draft conversion helpers. */
 import type { ServiceBuildStepIntent, ServiceTypeResolution } from "@lando/sdk/services";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
@@ -83,12 +82,6 @@ export const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]):
   return Array.isArray(buildSteps) ? buildSteps.map((step) => ({ ...(step as ServiceBuildStepIntent) })) : [];
 };
 
-const draftFeatureIds = (draft: DraftServicePlan): ReadonlyArray<string> => {
-  if (!("featureIds" in draft)) return [];
-  const { featureIds } = draft;
-  return Array.isArray(featureIds) ? featureIds.filter((id): id is string => typeof id === "string") : [];
-};
-
 export const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
@@ -168,7 +161,7 @@ const servicePlanExtensionsFromDraft = (
   draft: DraftServicePlan,
   extensions: ServicePlan["extensions"],
 ): ServicePlan["extensions"] => {
-  const featureIds = draftFeatureIds(draft);
+  const featureIds = draft.featureIds ?? [];
   if (draft.buildSteps.length === 0 && featureIds.length === 0) return extensions;
   return {
     ...extensions,

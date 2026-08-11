@@ -1,4 +1,3 @@
-/** Service-type resolution contracts and boundary helpers. */
 import { createHash } from "node:crypto";
 import * as os from "node:os";
 import { resolve } from "node:path";
@@ -63,7 +62,7 @@ export const loadServiceTypeWithVersion = (
   reference: string,
 ): Effect.Effect<LoadedServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError> =>
   pluginRegistry.loadServiceType(reference).pipe(
-    Effect.map((serviceType) => ({ serviceType, version: undefined as string | undefined })),
+    Effect.map((serviceType) => ({ serviceType, version: undefined })),
     Effect.catchAll((error) => {
       if (error instanceof ServiceTypeCollisionError) return Effect.fail(error);
       const lastColon = reference.lastIndexOf(":");
@@ -73,7 +72,7 @@ export const loadServiceTypeWithVersion = (
       if (version.length === 0) return Effect.fail(error);
       return pluginRegistry
         .loadServiceType(typeName)
-        .pipe(Effect.map((serviceType) => ({ serviceType, version: version as string | undefined })));
+        .pipe(Effect.map((serviceType) => ({ serviceType, version })));
     }),
   );
 

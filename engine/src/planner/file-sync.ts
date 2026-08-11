@@ -1,4 +1,3 @@
-/** File-sync defaults, engine selection, and session planning. */
 import type { AppId } from "@lando/sdk/schema";
 import {
   AbsolutePath,
@@ -12,7 +11,6 @@ import {
 
 import { type ContributionRef, contributionId } from "./service-types.ts";
 
-/** Universal default excludes merged into every service's `appMount.excludes`. */
 export const FILE_SYNC_DEFAULT_EXCLUDES: ReadonlyArray<string> = ["node_modules", "vendor", ".git", "tmp"];
 
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {

@@ -1,4 +1,3 @@
-/** Endpoint, route, and finalized per-service plan assembly. */
 import { Effect, Schema } from "effect";
 
 import {
@@ -61,11 +60,10 @@ export const resolveRoute = (
   const endpoint =
     route.endpoint === undefined
       ? candidates[0]
-      : candidates.find((candidate) =>
-          typeof route.endpoint === "number"
-            ? candidate.port === route.endpoint
-            : candidate.name === route.endpoint,
-        );
+      : candidates.find((candidate) => {
+          if (typeof route.endpoint === "number") return candidate.port === route.endpoint;
+          return candidate.name === route.endpoint;
+        });
   if (endpoint === undefined) {
     return Effect.fail(
       new LandofileValidationError({

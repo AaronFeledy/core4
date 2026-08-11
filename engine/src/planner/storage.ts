@@ -1,4 +1,3 @@
-/** Authored storage normalization and shadow-volume planning. */
 import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
   type DataStoreMountPlan,
@@ -71,12 +70,14 @@ export const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceC
     const targetKey = storageMountTargetKey(mountTarget);
     if (occupiedTargets.has(targetKey)) continue;
     occupiedTargets.add(targetKey);
-    const store =
-      typeof entry === "string"
-        ? kebab(target)
-        : entry.kind === "cache"
-          ? cacheStoreName(target, entry.key)
-          : entry.store;
+    let store: string;
+    if (typeof entry === "string") {
+      store = kebab(target);
+    } else if (entry.kind === "cache") {
+      store = cacheStoreName(target, entry.key);
+    } else {
+      store = entry.store;
+    }
     additions.push({
       store,
       target: mountTarget,
@@ -120,6 +121,7 @@ export const expandExcludesToShadows = (
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
+  const shadowStoreNames = new Set<string>();
   const shadowMounts: Array<{
     readonly store: string;
     readonly target: PortablePath;
@@ -129,7 +131,8 @@ export const expandExcludesToShadows = (
   for (const excludePath of effectiveExcludes) {
     const destination = joinPathSegments(appMount.target, excludePath);
     const storeName = `${appName}-${serviceName}-${kebab(destination)}-${shortHash(destination)}`;
-    if (!shadowStores.some((entry) => entry.name === storeName)) {
+    if (!shadowStoreNames.has(storeName)) {
+      shadowStoreNames.add(storeName);
       shadowStores.push({ name: storeName, scope: "service" });
     }
     shadowMounts.push({ store: storeName, target: PortablePath.make(destination), readOnly: false });

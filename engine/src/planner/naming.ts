@@ -1,4 +1,3 @@
-/** Planner naming and stable identity helpers. */
 import { createHash } from "node:crypto";
 
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";

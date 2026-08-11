@@ -1,4 +1,3 @@
-/** Authored service overrides and service-draft assembly. */
 import { type Context, Effect } from "effect";
 
 import type { LandofileValidationError } from "@lando/sdk/errors";
