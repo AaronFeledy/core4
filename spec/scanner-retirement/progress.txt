@@ -102,3 +102,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - Package-local service tests can bind `makeManagedFileService` to a narrow in-memory `ManagedFileBackend`, preserving core integration coverage while locking the owning package's decision behavior directly.
 ---
+
+## 2026-08-10 20:32 CDT - US-555 Review
+- Reviewed the package-local marker, codec, and service-decision characterization lock; no in-scope code blocker or review fix was found.
+- Review notes (deferred/rejected): rejected the missing root `bun test` transcript as a Review blocker because the loop contract reserves the full suite for CI and forbids running it locally; rejected the stale top-level status summary as pre-existing wave bookkeeping outside US-555's acceptance criteria.
+- Guide-Coverage-Skip: Package-local characterization tests and a package test script change no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, and lint passed; the package script passed 11/11 and the focused package-plus-core managed-file lock passed 120/120; all branch-relevant boundary rules passed, with only the pre-recorded ignored `.omo/**` spec-reference baseline remaining; Bugbot found no bugs. The root full-suite lock remains CI-owned per the Review host-safety policy.
+---
