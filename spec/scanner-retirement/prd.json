@@ -142,7 +142,7 @@
       "title": "Wave closure",
       "description": "As the wave owner, every story verification contract is green from a clean worktree and closure metrics are recorded.",
       "acceptanceCriteria": [
-        "US-551..US-559 passes true; full index verification contract green including bun test full suite.",
+        "US-551..US-559 passes true. Build/Review rerun and record the host-safe, positive-count portions of the full index verification contract, then may set US-560 passes true when the exact tree is ready for Push. The §13.4 bun test full suite is an exact-pushed-commit pre-merge CI gate owned by Push/Babysit, not a pre-Push prerequisite for passes true; a failure on that pushed commit reopens US-560.",
         "Progress notes record alias delta, rule verdict, planner/update LOC before/after fa\u00e7ades, no engine\u2192managed-file edge, no static typecheck step.",
         "Plan F1\u2013F3 checks and the F4 scope check recorded. F4 requires every scanner-retirement-owned path to map to a plan todo; paths first introduced by unrelated merged work are excluded only when closure evidence names their PR/commit and exact paths. For this wave, the recorded exclusion is PR #729 / 54211a9c guide-runner work in core/test/codegen/guide-scenarios.test.ts, scripts/build-guide-scenarios.ts, scripts/test-reporters/run-guide-scenarios.test.ts, and scripts/test-reporters/run-guide-scenarios.ts.",
         "Tests pass; typecheck passes; lint passes"

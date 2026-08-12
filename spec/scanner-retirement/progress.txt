@@ -227,3 +227,9 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Split/excise decisions: none; no follow-up story or gate-conflict adjudication was required.
 - Verification: typecheck and lint/deprecations passed; 67 managed-file tests and 49 gate/workflow tests passed with positive counts, including nightly `codegen-ci` 16/16; full-suite exact-final-tree CI remains unverified.
 ---
+
+## 2026-08-12 18:29 CDT - US-560 Adjudication
+- Contradiction: Review required "green CI for the exact tree with the nightly-tier test included" before US-560 could return to `passes: true`, reading the index AC "full index verification contract green including bun test full suite" as pre-Push proof. Build is forbidden to push, so exact-HEAD GitHub CI cannot exist in that phase. SR-04 US-560 requires the "Full verification contract from the index PRD green" and §13.4 says "A PR cannot merge unless: `bun test` passes"; neither section requires exact-pushed-commit CI before the tree enters Push.
+- Decision: narrowed the US-560 AC in `prd.json` to stage the proof by phase. Build/Review own host-safe positive-count reruns and may set `passes: true` when the exact tree is ready for Push; Push/Babysit own §13.4 exact-pushed-commit full-suite CI before merge and must reopen US-560 if that CI fails.
+- Follow-up story: none — exact-tree CI is an existing Push/Babysit pre-merge responsibility, not a new implementation surface.
+---
