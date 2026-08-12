@@ -46,7 +46,6 @@ export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> 
       readMaybe: (abs) => Effect.succeed(files.get(abs) ?? null),
       writeAtomic: (abs, content) => Effect.sync(() => void files.set(abs, content)),
       removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
-      readLedger: () => Effect.succeed(entries),
       peekLedger: () => Effect.succeed(entries),
       mutateLedger: (_operation, mutate) =>
         mutate(entries).pipe(
@@ -55,10 +54,6 @@ export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> 
             return result;
           }),
         ),
-      writeLedger: (next) =>
-        Effect.sync(() => {
-          entries = next;
-        }),
     };
 
     const service = yield* makeManagedFileService(backend);
