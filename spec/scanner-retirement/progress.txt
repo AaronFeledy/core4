@@ -233,3 +233,11 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Decision: narrowed the US-560 AC in `prd.json` to stage the proof by phase. Build/Review own host-safe positive-count reruns and may set `passes: true` when the exact tree is ready for Push; Push/Babysit own §13.4 exact-pushed-commit full-suite CI before merge and must reopen US-560 if that CI fails.
 - Follow-up story: none — exact-tree CI is an existing Push/Babysit pre-merge responsibility, not a new implementation surface.
 ---
+
+## 2026-08-12 18:45 CDT - US-560
+- Verified the exact closure tree is ready for Push with the adjudicated Build-owned contract: all prior stories remain complete, pure-drift codegen is clean, and the managed-file seam plus planner, update, boundary, and workflow locks remain intact.
+- Closure metrics remain: boundary aliases `15 -> 1`; managed-file rule kept as owner-excluding; planner façade `1849 -> 55` LOC; update façade `1421 -> 41` LOC; no engine dependency on `@lando/managed-file`; no typecheck step in the portable static-check matrix. Plan F1-F3 and the recorded F4 scope audit remain satisfied, including the PR #729 / `54211a9c` guide-runner exclusion.
+- Verification: typecheck and lint/deprecations passed; `codegen:check` passed; managed-file package typecheck passed; 115 managed-file, 41 update/planner, and 92 gate/workflow tests passed with positive counts, including nightly `codegen-ci`; all 14 boundary rules passed from a clean detached worktree. Exact-pushed-commit full-suite CI remains the Push/Babysit pre-merge gate.
+- **Learnings for future iterations:**
+  - Keep pre-Push closure proof limited to host-safe exact-tree checks when the phase contract explicitly assigns full-suite CI to Push/Babysit; reopen the story only if that pushed-commit gate fails.
+---
