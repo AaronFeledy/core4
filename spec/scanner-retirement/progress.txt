@@ -202,3 +202,10 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - When a closure branch has no code commits beyond `main` and only metadata edits, record the tree-identity argument and use the merged PR's green CI as the full-suite artifact instead of violating the local full-suite prohibition.
 ---
+
+## 2026-08-12 17:23 CDT - US-560
+- Verified the completed wave closure on the existing story branch; no new code was required and every story remains marked complete.
+- Verification: typecheck and lint/deprecations passed; codegen drift and managed-file package typecheck passed; 79 focused managed-file, update, planner, and gate-lock tests passed; all 14 boundary rules passed from a clean detached worktree. The full-suite artifact remains the already-recorded green CI run for the identical merged code tree because local full-suite execution is prohibited.
+- **Learnings for future iterations:**
+  - When ignored planning files trip the aggregate spec-reference rule, retain the dirty-checkout evidence and prove the shipped tree from a clean detached worktree rather than changing unrelated local artifacts.
+---
