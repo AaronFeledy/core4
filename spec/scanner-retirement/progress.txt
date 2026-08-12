@@ -209,3 +209,9 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - When ignored planning files trip the aggregate spec-reference rule, retain the dirty-checkout evidence and prove the shipped tree from a clean detached worktree rather than changing unrelated local artifacts.
 ---
+
+## 2026-08-12 17:39 CDT - US-560 Review
+- Returned closure to Build because the cited PR #735 CI artifact is not tree-identical to this branch's PR #736 base and omitted the nightly `codegen-ci` test that PR #736 fixed; US-560 therefore lacks the required positive-count full-suite artifact for the exact code tree. Also identified that the recorded façade metrics need the required before/after form: planner `1849 -> 55` LOC and update `1421 -> 41` LOC.
+- Review notes (deferred/rejected): rejected the hands-on QA PASS because it accepted the incorrect PR #735 tree-identity premise; rejected no Bugbot findings because Bugbot reported no bugs. Guide-Coverage-Skip: Internal closure metadata changes no user-visible behavior or public contract.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and 53 focused tests across six adjacent files passed; Bugbot found no bugs. Full-suite proof remains blocked pending green CI for the exact tree with the nightly-tier test included.
+---
