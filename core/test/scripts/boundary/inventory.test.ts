@@ -148,7 +148,7 @@ describe("boundary rule inventory", () => {
     expect(registered).toEqual(new Map(rows.map((row) => [row.id, row.justification])));
   });
 
-  test("marks behavioral survivors and records the retired engine-owned layering alias", async () => {
+  test("marks behavioral survivors and documents the aggregate package script surface", async () => {
     // Given: the survivor classes named by the boundary inventory contract.
     const behavioralIds = [
       "renderer",
@@ -166,8 +166,8 @@ describe("boundary rule inventory", () => {
     expect(byId.has("core-layering")).toBe(false);
 
     const text = await inventoryFile.text();
-    expect(text).toContain("## Retired rule aliases");
-    expect(text).toContain("`core-layering`");
-    expect(text).toContain("`check:core-layering-boundary` → `check:package-dag`");
+    expect(text).toContain("## Package script surface");
+    expect(text).toContain("`check:boundaries`");
+    expect(text).toContain("`bun run scripts/check-boundaries.ts package-dag`");
   });
 });
