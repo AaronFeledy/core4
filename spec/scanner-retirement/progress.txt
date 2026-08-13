@@ -31,7 +31,7 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 
 - US-551: **passes** — PRD set authored; normative contract applied to §2.7, §3.3–§3.4, §13.4/§13.8, ROADMAP Phase 5, architecture-simplicity deferral notes, core-seams follow-on pointer.
 - US-552: **passes** — `@lando/managed-file` owns the moved implementation; root-typechecked production consumers and package wiring now resolve through the private seam.
-- US-553..US-559: **passes**; US-560: **pending** exact-tree full-suite evidence.
+- US-553..US-560: **passes**; exact-pushed-commit full-suite CI remains the Push/Babysit pre-merge gate for US-560.
 
 ## 2026-08-10 - US-551
 - Authorized `@lando/managed-file` private seam; engine `planner/` + `update/` module trees; drift-only `codegen:check`; `check:boundaries` package.json surface with stable rule IDs and retained shim scripts.
@@ -240,4 +240,12 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - Verification: typecheck and lint/deprecations passed; `codegen:check` passed; managed-file package typecheck passed; 115 managed-file, 41 update/planner, and 92 gate/workflow tests passed with positive counts, including nightly `codegen-ci`; all 14 boundary rules passed from a clean detached worktree. Exact-pushed-commit full-suite CI remains the Push/Babysit pre-merge gate.
 - **Learnings for future iterations:**
   - Keep pre-Push closure proof limited to host-safe exact-tree checks when the phase contract explicitly assigns full-suite CI to Push/Babysit; reopen the story only if that pushed-commit gate fails.
+---
+
+## 2026-08-12 19:06 CDT - US-560 Review
+- Synchronized the adjudicated phase split across the normative source PRD, PRD-set verification and exit criteria, and current status summary; the full `bun test` lock remains mandatory on the exact pushed commit before merge.
+- Review notes (deferred/rejected): rejected treating the missing pre-Push full-suite artifact as a blocker because the adjudication assigns it to Push/Babysit; rejected Bugbot and security findings because both reported no bugs or gate weakening. Guide-Coverage-Skip: Internal closure-contract synchronization changes no user-visible behavior or public contract.
+- Verification: explicit-base guide drift passed; focused QA passed 221/221 tests, typecheck, lint/deprecations, codegen drift, and all 14 boundary rules before the contract synchronization; affected gates were rerun after the review fix.
+- **Learnings for future iterations:**
+  - Apply adjudications to every normative source and current status summary in the same commit; changing only `prd.json` leaves contradictory review gates.
 ---
