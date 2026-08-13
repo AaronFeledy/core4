@@ -119,10 +119,6 @@ export interface ManagedFileBackend {
     abs: string,
     operation: ManagedFileOperation,
   ) => Effect.Effect<void, ManagedFileError>;
-  /** Ledger read with corruption quarantine (apply paths). */
-  readonly readLedger: (
-    operation: ManagedFileOperation,
-  ) => Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError>;
   /** Side-effect-free ledger read (plan paths; never quarantines). */
   readonly peekLedger: (
     operation: ManagedFileOperation,
@@ -134,11 +130,6 @@ export interface ManagedFileBackend {
       entries: ReadonlyArray<LedgerEntry>,
     ) => Effect.Effect<readonly [A, ReadonlyArray<LedgerEntry>], ManagedFileError>,
   ) => Effect.Effect<A, ManagedFileError>;
-  /** Replace the ledger contents. */
-  readonly writeLedger: (
-    entries: ReadonlyArray<LedgerEntry>,
-    operation: ManagedFileOperation,
-  ) => Effect.Effect<void, ManagedFileError>;
 }
 
 // ----- Event seam (redact -> publish) -------------------------------------
@@ -882,16 +873,6 @@ export const makeDiskBackend = (options: {
       );
     };
 
-    const ledgerEntries = (
-      onCorrupt: "quarantine" | "discard",
-      operation: ManagedFileOperation,
-    ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> =>
-      ledgerBucketFor(options.defaultBase(), onCorrupt).pipe(
-        Effect.flatMap((bucket) => bucket.get),
-        Effect.map((state) => state?.entries ?? []),
-        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
-      );
-
     return {
       resolveBase: (base) => Effect.succeed(base ?? options.defaultBase()),
       resolveTarget: (base, relPath, operation) =>
@@ -933,7 +914,6 @@ export const makeDiskBackend = (options: {
           },
           catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
         }),
-      readLedger: (operation) => ledgerEntries("quarantine", operation),
       peekLedger: (operation) => readonlyLedgerEntries(operation),
       mutateLedger: (operation, f) =>
         ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
@@ -950,11 +930,6 @@ export const makeDiskBackend = (options: {
           Effect.mapError((cause) =>
             isManagedFileError(cause) ? cause : new ManagedFileError({ reason: "io", operation, cause }),
           ),
-        ),
-      writeLedger: (entries, operation) =>
-        ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
-          Effect.flatMap((bucket) => bucket.set({ entries })),
-          Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
         ),
     } satisfies ManagedFileBackend;
   });
