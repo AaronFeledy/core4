@@ -57,9 +57,9 @@ Finish the contributor-facing half of architecture-by-scanner debt: make `codege
 **Acceptance Criteria:**
 
 - [ ] All US-551..US-559 `passes: true`.
-- [ ] Full verification contract from the index PRD green: drift-only `codegen:check`, typecheck, lint/deprecations, `check:boundaries`, package-dag, **`bun test`** full suite with positive counts, guide coverage (None), library/schema unchanged.
+- [ ] Build/Review rerun and record the host-safe, positive-count portions of the index verification contract: drift-only `codegen:check`, typecheck, lint/deprecations, `check:boundaries`, package-dag, focused tests, guide coverage (None), and library/schema unchanged. They may mark US-560 passing when the exact tree is ready for Push. The **`bun test`** full suite with positive counts remains an exact-pushed-commit pre-merge CI gate owned by Push/Babysit; a failure reopens US-560.
 - [ ] Progress notes record: scanner alias count delta, managed-file rule verdict, planner/update LOC before/after façades, confirmation that engine has no managed-file package edge, confirmation that static-checks-platform still has no typecheck step.
-- [ ] Final verification wave (plan F1–F4): plan compliance, code quality (no new `as any`/ts-ignore), real manual QA of the new gates/package, scope fidelity.
+- [ ] Plan F1–F3 checks and the F4 scope check recorded. F4 requires every scanner-retirement-owned path to map to a plan todo; paths first introduced by unrelated merged work are excluded only when closure evidence names their PR/commit and exact paths. For this wave, the recorded exclusion is PR #729 / 54211a9c guide-runner work in core/test/codegen/guide-scenarios.test.ts, scripts/build-guide-scenarios.ts, scripts/test-reporters/run-guide-scenarios.test.ts, and scripts/test-reporters/run-guide-scenarios.ts.
 - [ ] Tests pass; typecheck passes; lint passes
 
 ## Functional Requirements

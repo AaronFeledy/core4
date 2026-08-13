@@ -48,12 +48,12 @@ US-556 (update) MAY start in parallel with US-552..555 after US-551. US-557 (pla
 
 ## Verification contract
 
-Every story ends with tests/typecheck/lint. Wave closure additionally requires:
+Every story ends with tests/typecheck/lint. Build/Review rerun the host-safe, positive-count portions below and may mark US-560 passing when the exact tree is ready for Push. Push/Babysit own the exact-pushed-commit full-suite CI gate before merge; a failure reopens US-560.
 
 - `bun run codegen:check` (pure drift only — equals `bun run codegen && bun run check:codegen-drift`)
 - `bun run check:boundaries` (all registry rules in one pass) and single-rule debug via `bun run scripts/check-boundaries.ts <rule-id>`
 - `bun run typecheck`, `bun run lint` (lint still owns `check:deprecations`)
-- Full-suite lock via **`bun test`** with positive test counts (never inferred passes)
+- Exact-pushed-commit full-suite lock via **`bun test`** with positive test counts (never inferred passes; Push/Babysit pre-merge)
 - Portable `static-checks-platform` still MUST NOT gain a typecheck step (existing CI locks)
 - Per-rule `scripts/check-*.ts` files remain on disk as programmatic test APIs
 - `bun run check:guide-coverage` (all PRDs internal/None)
@@ -72,7 +72,7 @@ Every story ends with tests/typecheck/lint. Wave closure additionally requires:
 
 ## Exit criteria
 
-All US-551..US-560 `passes: true` with green verification; `@lando/managed-file` exists as a private workspace package; `engine/src/managed-file/` is gone; the `managed-file` boundary rule is owner-excluding; `engine/src/operations/update.ts` and `engine/src/services/planner.ts` are thin re-export/orchestrator surfaces over `engine/src/update/` and `engine/src/planner/`; package.json exposes `check:boundaries` instead of fourteen per-rule aliases; `codegen:check` fails only on drift; full `bun test` lock matches the pre-wave baseline.
+All US-551..US-560 `passes: true` with green host-safe Build/Review verification and an exact tree ready for Push; `@lando/managed-file` exists as a private workspace package; `engine/src/managed-file/` is gone; the `managed-file` boundary rule is owner-excluding; `engine/src/operations/update.ts` and `engine/src/services/planner.ts` are thin re-export/orchestrator surfaces over `engine/src/update/` and `engine/src/planner/`; package.json exposes `check:boundaries` instead of fourteen per-rule aliases; `codegen:check` fails only on drift. Before merge, exact-pushed-commit `bun test` must match the pre-wave baseline or Push/Babysit reopens US-560.
 
 ## Spec parts that remain authoritative
 
