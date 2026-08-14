@@ -14,6 +14,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
   type ArtifactBuildStep,
@@ -117,7 +118,10 @@ const buildService = (input: {
     const redaction = yield* Effect.serviceOption(RedactionService);
     const redactor =
       redaction._tag === "Some"
-        ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+        ? yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens: collectAppPlanRedactionTokens(plan),
+          })
         : identityRedactor;
     const context = redactedBuildContext(redactor, plan, service);
     const step = yield* buildStepFor(provider, service);
@@ -269,7 +273,10 @@ export const BuildOrchestratorLive = Layer.effect(
                 const redaction = yield* Effect.serviceOption(RedactionService);
                 const redactor =
                   redaction._tag === "Some"
-                    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+                    ? yield* redaction.value.forProfile("secrets", {
+                        sourceEnv: process.env,
+                        redactionTokens: collectAppPlanRedactionTokens(plan),
+                      })
                     : identityRedactor;
                 for (const service of progress.unsettledServices()) {
                   const step = yield* buildStepFor(provider, service);
@@ -298,7 +305,10 @@ export const BuildOrchestratorLive = Layer.effect(
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"
-              ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+              ? yield* redaction.value.forProfile("secrets", {
+                  sourceEnv: process.env,
+                  redactionTokens: collectAppPlanRedactionTokens(plan),
+                })
               : identityRedactor;
           yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore }, options);
         }),
