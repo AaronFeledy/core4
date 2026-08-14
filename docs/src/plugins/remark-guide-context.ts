@@ -17,9 +17,18 @@ type GuideContext = {
   readonly guideId: string;
   readonly scenarioId: string | undefined;
   readonly tabsAxis: string | undefined;
-  readonly variant: readonly string[];
+  /** Encounter-order pairs when no axes declaration exists (legacy single-axis prop path). */
+  readonly selectedPairs: readonly string[];
+  /** Axis → selected tab value for the current nesting path. */
+  readonly axisSelections: Readonly<Record<string, string>>;
   readonly sourceFile: string | undefined;
   readonly source: string | undefined;
+  /** Frontmatter `tabs:` present — axisless Tabs resolve to the default axis. */
+  readonly hasTabsDeclaration: boolean;
+  /** Declared axis names in frontmatter order (`tabs` → `["default"]`). */
+  readonly axisOrder: readonly string[];
+  /** First declared value per axis for Cartesian completion of unresolved axes. */
+  readonly axisDefaults: Readonly<Record<string, string>>;
 };
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -69,13 +78,79 @@ const setStringAttribute = (element: MdxElement, name: string, value: string): v
   attribute.value = value;
 };
 
-const guideIdFrom = (file: VFile): string | undefined => {
+const frontmatterFrom = (file: VFile): Readonly<Record<string, unknown>> | undefined => {
   const astroData: unknown = file.data.astro;
   if (!isRecord(astroData)) return undefined;
   const frontmatter = astroData.frontmatter;
-  if (!isRecord(frontmatter)) return undefined;
-  const guideId = frontmatter.id;
+  return isRecord(frontmatter) ? frontmatter : undefined;
+};
+
+const guideIdFrom = (file: VFile): string | undefined => {
+  const guideId = frontmatterFrom(file)?.id;
   return typeof guideId === "string" ? guideId : undefined;
+};
+
+const DEFAULT_TABS_AXIS = "default";
+
+const stringList = (input: unknown): readonly string[] | undefined =>
+  Array.isArray(input) ? input.filter((value): value is string => typeof value === "string") : undefined;
+
+type AxisDeclaration = {
+  readonly axisOrder: readonly string[];
+  readonly axisDefaults: Readonly<Record<string, string>>;
+  readonly hasTabsDeclaration: boolean;
+};
+
+/** Mirror build-guide-scenarios `axisEntriesOf`: tabs → [[default, tabs]]; else axes entries. */
+const axisDeclarationFrom = (frontmatter: Readonly<Record<string, unknown>>): AxisDeclaration => {
+  const hasTabsDeclaration = Object.hasOwn(frontmatter, "tabs");
+  if (hasTabsDeclaration) {
+    const tabs = stringList(frontmatter.tabs) ?? [];
+    const first = tabs[0];
+    return {
+      hasTabsDeclaration: true,
+      axisOrder: [DEFAULT_TABS_AXIS],
+      axisDefaults: first === undefined ? {} : { [DEFAULT_TABS_AXIS]: first },
+    };
+  }
+  const axes = frontmatter.axes;
+  if (!isRecord(axes)) {
+    return { hasTabsDeclaration: false, axisOrder: [], axisDefaults: {} };
+  }
+  const axisOrder = Object.keys(axes);
+  const axisDefaults: Record<string, string> = {};
+  for (const axis of axisOrder) {
+    const values = stringList(axes[axis]);
+    const first = values?.[0];
+    if (first !== undefined) axisDefaults[axis] = first;
+  }
+  return { hasTabsDeclaration: false, axisOrder, axisDefaults };
+};
+
+/** Mirror lint-guides / build-guide-scenarios default-axis rules for axisless Tabs. */
+const resolveTabsAxis = (element: MdxElement, context: GuideContext): string | undefined => {
+  if (context.hasTabsDeclaration) return DEFAULT_TABS_AXIS;
+  const axisProp = stringAttribute(element, "axis");
+  if (axisProp !== undefined) return axisProp;
+  if (context.axisOrder.length === 1) return context.axisOrder[0];
+  return undefined;
+};
+
+/**
+ * Complete the current tab path to a full Cartesian variant string.
+ * Declared axes: fill unresolved axes with first declared value; pairs follow declaration order.
+ * Undeclared: emit encounter-order selected pairs only.
+ */
+const variantStringOf = (context: GuideContext): string | undefined => {
+  if (context.axisOrder.length > 0) {
+    if (Object.keys(context.axisSelections).length === 0) return undefined;
+    const pairs = context.axisOrder.flatMap((axis) => {
+      const value = context.axisSelections[axis] ?? context.axisDefaults[axis];
+      return value === undefined ? [] : [encodeVariantPair(axis, value)];
+    });
+    return pairs.length === 0 ? undefined : encodeVariantString(pairs);
+  }
+  return context.selectedPairs.length === 0 ? undefined : encodeVariantString(context.selectedPairs);
 };
 
 const sourceFileFrom = (file: VFile): string | undefined => {
@@ -103,12 +178,16 @@ const contextInside = (element: MdxElement, context: GuideContext): GuideContext
     return { ...context, scenarioId: stringAttribute(element, "id") };
   }
   if (element.name === "Tabs") {
-    return { ...context, tabsAxis: stringAttribute(element, "axis") };
+    return { ...context, tabsAxis: resolveTabsAxis(element, context) };
   }
   if (element.name === "Tab") {
     const tabName = stringAttribute(element, "name");
     if (context.tabsAxis !== undefined && tabName !== undefined) {
-      return { ...context, variant: [...context.variant, `${context.tabsAxis}=${tabName}`] };
+      return {
+        ...context,
+        axisSelections: { ...context.axisSelections, [context.tabsAxis]: tabName },
+        selectedPairs: [...context.selectedPairs, encodeVariantPair(context.tabsAxis, tabName)],
+      };
     }
   }
   return context;
@@ -124,7 +203,8 @@ const injectContext = (element: MdxElement, context: GuideContext): void => {
   if (context.scenarioId !== undefined) {
     setStringAttribute(element, "data-scenario-id", context.scenarioId);
   }
-  if (context.variant.length > 0) setStringAttribute(element, "data-variant", context.variant.join(" "));
+  const variant = variantStringOf(context);
+  if (variant !== undefined) setStringAttribute(element, "data-variant", variant);
   if (element.name !== "Tab") return;
   if (context.tabsAxis !== undefined) setStringAttribute(element, "data-axis", context.tabsAxis);
   const tabName = stringAttribute(element, "name");
@@ -187,12 +267,18 @@ export const remarkGuideContext =
   (tree: Root, file: VFile): void => {
     const guideId = guideIdFrom(file);
     if (guideId === undefined) return;
+    const frontmatter = frontmatterFrom(file) ?? {};
+    const axes = axisDeclarationFrom(frontmatter);
     transformChildren(tree, {
       guideId,
       scenarioId: undefined,
       tabsAxis: undefined,
-      variant: [],
+      selectedPairs: [],
+      axisSelections: {},
       sourceFile: sourceFileFrom(file),
       source: typeof file.value === "string" ? file.value : undefined,
+      hasTabsDeclaration: axes.hasTabsDeclaration,
+      axisOrder: axes.axisOrder,
+      axisDefaults: axes.axisDefaults,
     });
   };

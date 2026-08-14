@@ -11,8 +11,11 @@ import {
   discoverGuideMdxFiles,
   emitGuideScenarioTests,
   parseGuideScenarioAst,
+  publicTranscriptVariantSuffix,
   resolveHostGuidePlatform,
+  variantsOf,
 } from "../../../scripts/build-guide-scenarios.ts";
+import { encodeVariantPair, encodeVariantString, variantFileSuffix } from "../../src/docs/variant.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/codegen/fixtures/guides");
@@ -308,8 +311,8 @@ describe("build-guide-scenarios MDX walker", () => {
       const asts = await buildGuideScenarioAst(root);
       await emitGuideScenarioTests(asts, root);
       const dir = join(root, "test/scenarios/generated/guides/e2e-variant");
-      const skipped = await Bun.file(join(dir, "provider-path.alpha.test.ts")).text();
-      const gated = await Bun.file(join(dir, "provider-path.beta.test.ts")).text();
+      const skipped = await Bun.file(join(dir, "provider-path.default=alpha.test.ts")).text();
+      const gated = await Bun.file(join(dir, "provider-path.default=beta.test.ts")).text();
 
       expect(skipped).toContain("test.skip(");
       expect(skipped).not.toContain("e2eGateEnabled ? test : test.skip");
@@ -350,7 +353,7 @@ describe("build-guide-scenarios MDX walker", () => {
       const asts = await buildGuideScenarioAst(root);
       await emitGuideScenarioTests(asts, root);
       const content = await Bun.file(
-        join(root, "test/scenarios/generated/guides/e2e-variant-title/provider-path.linux.test.ts"),
+        join(root, "test/scenarios/generated/guides/e2e-variant-title/provider-path.default=linux.test.ts"),
       ).text();
       const labeledTitle = "@smoke e2e-variant-title:provider-path (default=linux) [e2e]";
 
@@ -555,10 +558,10 @@ describe("build-guide-scenarios MDX walker", () => {
       });
 
       const alpha = await Bun.file(
-        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.alpha.test.ts"),
+        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.default=alpha.test.ts"),
       ).text();
       const beta = await Bun.file(
-        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.beta.test.ts"),
+        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.default=beta.test.ts"),
       ).text();
       expect(alpha).toContain(
         'test.skip("variant-platform-guide:main (default=alpha) (skipped on win32: requires platform [linux])"',
@@ -1037,15 +1040,15 @@ describe("build-guide-scenarios MDX walker", () => {
 
       const written = await buildGuideScenarioTests(root);
       expect(written).toEqual([
-        "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts",
-        "test/scenarios/generated/guides/tabs-guide/main.macos.test.ts",
+        "test/scenarios/generated/guides/tabs-guide/main.default=linux.test.ts",
+        "test/scenarios/generated/guides/tabs-guide/main.default=macos.test.ts",
       ]);
 
       const linux = await Bun.file(
-        join(root, "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts"),
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.default=linux.test.ts"),
       ).text();
       const macos = await Bun.file(
-        join(root, "test/scenarios/generated/guides/tabs-guide/main.macos.test.ts"),
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.default=macos.test.ts"),
       ).text();
 
       expect(linux).toContain("// @variant: default=linux");
@@ -1063,7 +1066,7 @@ describe("build-guide-scenarios MDX walker", () => {
       const second = await buildGuideScenarioTests(root);
       expect(second).toEqual(written);
       const linuxAgain = await Bun.file(
-        join(root, "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts"),
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.default=linux.test.ts"),
       ).text();
       expect(linuxAgain).toBe(linux);
 
@@ -1142,10 +1145,10 @@ describe("build-guide-scenarios MDX walker", () => {
 
       const written = await buildGuideScenarioTests(root);
       expect(written).toEqual([
-        "test/scenarios/generated/guides/matrix-guide/main.linux.composer.test.ts",
-        "test/scenarios/generated/guides/matrix-guide/main.linux.npm.test.ts",
-        "test/scenarios/generated/guides/matrix-guide/main.macos.composer.test.ts",
-        "test/scenarios/generated/guides/matrix-guide/main.macos.npm.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.os=linux.package-manager=composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.os=linux.package-manager=npm.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.os=macos.package-manager=composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.os=macos.package-manager=npm.test.ts",
       ]);
 
       const read = (relative: string): Promise<string> => Bun.file(join(root, relative)).text();
@@ -1191,6 +1194,76 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("generated test filenames equal scenarioId + variantFileSuffix (no trailing dot for zero-pair)", async () => {
+    // Given: a multi-axis guide and a zero-pair (no axes) guide.
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-variant-suffix-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      const matrixSource = [
+        "---",
+        "id: suffix-matrix",
+        "provider: test",
+        "axes:",
+        "  os: [linux, macos]",
+        "  pm: [npm]",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="main">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      const plainSource = [
+        "---",
+        "id: suffix-plain",
+        "provider: test",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="solo">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      const matrixAst = parseGuideScenarioAst("docs/guides/suffix-matrix.mdx", matrixSource);
+      const plainAst = parseGuideScenarioAst("docs/guides/suffix-plain.mdx", plainSource);
+
+      // When: scenario tests are emitted.
+      const written = await emitGuideScenarioTests([matrixAst, plainAst], root);
+
+      // Then: each path is scenarioId + variantFileSuffix(variantStringOf(variant)) + ".test.ts".
+      const expected: string[] = [];
+      for (const guide of [matrixAst, plainAst]) {
+        for (const scenario of guide.scenarios) {
+          for (const variant of variantsOf(guide)) {
+            const variantString =
+              variant === undefined
+                ? ""
+                : encodeVariantString(variant.pairs.map((pair) => encodeVariantPair(pair.axis, pair.value)));
+            const fileName = `${scenario.id}${variantFileSuffix(variantString)}.test.ts`;
+            expected.push(`test/scenarios/generated/guides/${guide.frontmatter.id}/${fileName}`);
+            expect(publicTranscriptVariantSuffix(variant)).toBe(variantFileSuffix(variantString));
+          }
+        }
+      }
+      expected.sort((left, right) => left.localeCompare(right));
+      expect(written).toEqual(expected);
+
+      // Zero-pair must not introduce a trailing dot before .test.ts.
+      expect(written).toContain("test/scenarios/generated/guides/suffix-plain/solo.test.ts");
+      expect(written.some((path) => path.includes("solo..test.ts"))).toBe(false);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("sorts variant title labels by axis name deterministically", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-title-sort-"));
     try {
@@ -1218,7 +1291,7 @@ describe("build-guide-scenarios MDX walker", () => {
       await emitGuideScenarioTests(asts, root);
       const generatedPath = join(
         root,
-        "test/scenarios/generated/guides/sorted-title-guide/main.npm.linux.test.ts",
+        "test/scenarios/generated/guides/sorted-title-guide/main.package-manager=npm.os=linux.test.ts",
       );
       const first = await Bun.file(generatedPath).text();
       await emitGuideScenarioTests(asts, root);
@@ -1258,8 +1331,8 @@ describe("build-guide-scenarios MDX walker", () => {
 
       const written = await buildGuideScenarioTests(root);
       expect(written).toEqual([
-        "test/scenarios/generated/guides/notabs-guide/shared.linux.test.ts",
-        "test/scenarios/generated/guides/notabs-guide/shared.macos.test.ts",
+        "test/scenarios/generated/guides/notabs-guide/shared.default=linux.test.ts",
+        "test/scenarios/generated/guides/notabs-guide/shared.default=macos.test.ts",
       ]);
 
       const linux = await Bun.file(join(root, written[0] ?? "")).text();

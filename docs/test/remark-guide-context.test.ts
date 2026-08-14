@@ -23,7 +23,11 @@ const isMdxElement = (node: Node): node is MdxElement =>
 
 const isText = (node: Node): node is Text => node.type === "text";
 
-const parseAndTransform = (source: string, guideId = "guide-one"): Root => {
+const parseAndTransform = (
+  source: string,
+  guideId = "guide-one",
+  frontmatter: Readonly<Record<string, unknown>> = {},
+): Root => {
   const tree = fromMarkdown(source, {
     extensions: [mdxjs()],
     mdastExtensions: [mdxFromMarkdown()],
@@ -31,7 +35,7 @@ const parseAndTransform = (source: string, guideId = "guide-one"): Root => {
   const file = new VFile({
     value: source,
     path: join(process.cwd(), "docs", "guides", "fixture.mdx"),
-    data: { astro: { frontmatter: { id: guideId } } },
+    data: { astro: { frontmatter: { id: guideId, ...frontmatter } } },
   });
 
   remarkGuideContext()(tree, file);
@@ -244,6 +248,202 @@ flow secret
     expect(attributeNamed(elementNamed(tree, "Scenario"), "render")?.value).toMatchObject({
       type: "mdxJsxAttributeValueExpression",
       value: "true",
+    });
+  });
+
+  test("derives default axis from frontmatter tabs for axisless Tabs", () => {
+    // Given: frontmatter tabs declaration and Tabs without an axis attribute.
+    const source = `<Scenario id="pick">
+  <Tabs>
+    <Tab name="Postgres"><Run /></Tab>
+    <Tab name="MySQL"><Verify /></Tab>
+  </Tabs>
+</Scenario>`;
+
+    // When: the guide context transformer processes the MDX tree.
+    const tree = parseAndTransform(source, "tabs-default-guide", {
+      tabs: ["Postgres", "MySQL"],
+    });
+
+    // Then: Tab and descendant Run receive default-axis data-axis and data-variant.
+    const postgresTab = elementsNamed(tree, "Tab").find(
+      (element) => stringAttribute(element, "name") === "Postgres",
+    );
+    if (postgresTab === undefined) throw new RangeError("Expected Postgres Tab.");
+    expect({
+      tabAxis: stringAttribute(postgresTab, "data-axis"),
+      tabVariant: stringAttribute(postgresTab, "data-variant"),
+      tabName: stringAttribute(postgresTab, "data-tab-name"),
+      run: {
+        axis: stringAttribute(elementNamed(tree, "Run"), "data-axis"),
+        variant: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
+        scenarioId: stringAttribute(elementNamed(tree, "Run"), "data-scenario-id"),
+      },
+      mysql: (() => {
+        const mysqlTab = elementsNamed(tree, "Tab").find(
+          (element) => stringAttribute(element, "name") === "MySQL",
+        );
+        if (mysqlTab === undefined) throw new RangeError("Expected MySQL Tab.");
+        return {
+          axis: stringAttribute(mysqlTab, "data-axis"),
+          variant: stringAttribute(mysqlTab, "data-variant"),
+        };
+      })(),
+    }).toEqual({
+      tabAxis: "default",
+      tabVariant: "default=Postgres",
+      tabName: "Postgres",
+      run: {
+        axis: undefined,
+        variant: "default=Postgres",
+        scenarioId: "pick",
+      },
+      mysql: {
+        axis: "default",
+        variant: "default=MySQL",
+      },
+    });
+  });
+
+  test("infers the sole declared axes key when Tabs omits axis", () => {
+    // Given: a single axes entry and axisless Tabs under a scenario.
+    const source = `<Scenario id="database-choice">
+  <Tabs>
+    <Tab name="Postgres"><Run /></Tab>
+  </Tabs>
+</Scenario>`;
+
+    // When: the guide context transformer processes the MDX tree.
+    const tree = parseAndTransform(source, "single-axis-guide", {
+      axes: { database: ["Postgres", "MySQL"] },
+    });
+
+    // Then: Tab and descendant Run use the inferred axis token in data attributes.
+    expect({
+      tabs: elementsNamed(tree, "Tab").map((element) => ({
+        dataAxis: stringAttribute(element, "data-axis"),
+        tabName: stringAttribute(element, "data-tab-name"),
+        variant: stringAttribute(element, "data-variant"),
+      })),
+      run: {
+        variant: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
+        guideId: stringAttribute(elementNamed(tree, "Run"), "data-guide-id"),
+        scenarioId: stringAttribute(elementNamed(tree, "Run"), "data-scenario-id"),
+      },
+    }).toEqual({
+      tabs: [
+        {
+          dataAxis: "database",
+          tabName: "Postgres",
+          variant: "database=Postgres",
+        },
+      ],
+      run: {
+        variant: "database=Postgres",
+        guideId: "single-axis-guide",
+        scenarioId: "database-choice",
+      },
+    });
+  });
+
+  test("completes sibling multi-axis Tabs with first declared values in declaration order", () => {
+    // Given: two sibling Tabs axes and multi-axis frontmatter in declaration order.
+    const source = `<Scenario id="matrix">
+  <Tabs axis="os">
+    <Tab name="macos"><Run /></Tab>
+    <Tab name="linux"><Verify /></Tab>
+  </Tabs>
+  <Tabs axis="package-manager">
+    <Tab name="npm"><Run /></Tab>
+    <Tab name="composer"><Inspect /></Tab>
+  </Tabs>
+</Scenario>`;
+
+    // When: the guide context transformer processes the MDX tree.
+    const tree = parseAndTransform(source, "matrix-guide", {
+      axes: {
+        os: ["linux", "macos"],
+        "package-manager": ["composer", "npm"],
+      },
+    });
+
+    // Then: each tab fills unresolved axes with first declared values; pairs stay declaration-ordered.
+    const tabByName = (name: string): MdxElement => {
+      const tab = elementsNamed(tree, "Tab").find((element) => stringAttribute(element, "name") === name);
+      if (tab === undefined) throw new RangeError(`Expected Tab name=${name}.`);
+      return tab;
+    };
+    const runUnder = (tabName: string): MdxElement => {
+      const tab = tabByName(tabName);
+      const run = tab.children.find(
+        (child): child is MdxElement => isMdxElement(child) && child.name === "Run",
+      );
+      if (run === undefined) throw new RangeError(`Expected Run under Tab ${tabName}.`);
+      return run;
+    };
+    expect({
+      macos: {
+        tab: stringAttribute(tabByName("macos"), "data-variant"),
+        run: stringAttribute(runUnder("macos"), "data-variant"),
+        axis: stringAttribute(tabByName("macos"), "data-axis"),
+      },
+      npm: {
+        tab: stringAttribute(tabByName("npm"), "data-variant"),
+        run: stringAttribute(runUnder("npm"), "data-variant"),
+        axis: stringAttribute(tabByName("npm"), "data-axis"),
+      },
+      linux: stringAttribute(tabByName("linux"), "data-variant"),
+      composer: stringAttribute(tabByName("composer"), "data-variant"),
+    }).toEqual({
+      macos: {
+        tab: "os=macos package-manager=composer",
+        run: "os=macos package-manager=composer",
+        axis: "os",
+      },
+      npm: {
+        tab: "os=linux package-manager=npm",
+        run: "os=linux package-manager=npm",
+        axis: "package-manager",
+      },
+      linux: "os=linux package-manager=composer",
+      composer: "os=linux package-manager=composer",
+    });
+  });
+
+  test("nested multi-axis Tabs emit declaration-ordered complete variants", () => {
+    // Given: nested Tabs whose DOM axis order differs from frontmatter declaration order.
+    const source = `<Scenario id="nested">
+  <Tabs axis="package-manager">
+    <Tab name="npm">
+      <Tabs axis="os">
+        <Tab name="macos"><Run /></Tab>
+      </Tabs>
+    </Tab>
+  </Tabs>
+</Scenario>`;
+
+    // When: the guide context transformer processes the MDX tree.
+    const tree = parseAndTransform(source, "nested-guide", {
+      axes: {
+        os: ["linux", "macos"],
+        "package-manager": ["composer", "npm"],
+      },
+    });
+
+    // Then: data-variant uses declaration order even though package-manager wraps os in the DOM.
+    const tabNamed = (name: string): MdxElement => {
+      const tab = elementsNamed(tree, "Tab").find((element) => stringAttribute(element, "name") === name);
+      if (tab === undefined) throw new RangeError(`Expected Tab name=${name}.`);
+      return tab;
+    };
+    expect({
+      outer: stringAttribute(tabNamed("npm"), "data-variant"),
+      inner: stringAttribute(tabNamed("macos"), "data-variant"),
+      run: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
+    }).toEqual({
+      outer: "os=linux package-manager=npm",
+      inner: "os=macos package-manager=npm",
+      run: "os=macos package-manager=npm",
     });
   });
 
