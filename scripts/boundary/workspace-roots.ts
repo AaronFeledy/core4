@@ -45,7 +45,9 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  * `check-deprecations.ts`) that predate the boundary substrate and walk
  * directories without glob expansion. Deliberately omits
  * `container-runtime/src`: neither gate has ever covered it, and extending
- * coverage here would silently broaden both gates.
+ * coverage here would silently broaden both gates. Deliberately omits
+ * `docs/src`: it is a build-time-only docs site that neither gate has ever
+ * walked, and adding it would silently broaden both gates.
  */
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
