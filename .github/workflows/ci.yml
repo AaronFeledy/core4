@@ -164,6 +164,9 @@ jobs:
       - name: Build docs
         run: bun run docs:build
 
+      - name: Confirm generated schema reference is published
+        run: test -f docs/dist/reference/schemas/app-plan/index.html
+
       - name: Report job timing
         if: always()
         run: |

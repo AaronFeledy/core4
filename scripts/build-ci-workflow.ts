@@ -262,6 +262,9 @@ ${setupBunSteps}
       - name: Build docs
         run: bun run docs:build
 
+      - name: Confirm generated schema reference is published
+        run: test -f docs/dist/reference/schemas/app-plan/index.html
+
 ${timingNoticeStep("docs-build", 15)}
 `;
 

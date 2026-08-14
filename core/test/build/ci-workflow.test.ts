@@ -407,11 +407,15 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run docs:check");
     expect(docsBuild).toContain("        run: bun run docs:test");
     expect(docsBuild).toContain("        run: bun run docs:build");
+    expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
       docsBuild.indexOf("bun run docs:check"),
     );
     expect(docsBuild.indexOf("bun run docs:check")).toBeLessThan(docsBuild.indexOf("bun run docs:test"));
     expect(docsBuild.indexOf("bun run docs:test")).toBeLessThan(docsBuild.indexOf("bun run docs:build"));
+    expect(docsBuild.indexOf("bun run docs:build")).toBeLessThan(
+      docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
+    );
     expect(docsBuild.indexOf("bun run docs:build")).toBeLessThan(
       docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
     );
