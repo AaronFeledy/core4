@@ -12,7 +12,10 @@ import {
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
-const workflowPaths = [".github/workflows/nightly.yml", ".github/workflows/provider-matrix.yml"] as const;
+const hostPodmanWorkflowPaths = [
+  ".github/workflows/nightly.yml",
+  ".github/workflows/provider-matrix.yml",
+] as const;
 
 const installPodman6Script = renderInstallPodman6Step()
   .split("\n")
@@ -147,7 +150,14 @@ describe("Podman user container configuration", () => {
 });
 
 describe("generated workflows carry the Podman 6 host contract", () => {
-  for (const path of workflowPaths) {
+  test("ci.yml keeps managed-runtime setup independent of host Podman", async () => {
+    const contents = await Bun.file(join(REPO_ROOT, ".github/workflows/ci.yml")).text();
+    expect(contents).toContain("lando setup");
+    expect(contents).not.toContain("Install Podman 6 toolchain");
+    expect(contents).not.toContain("Assert Podman 6 host contract");
+  });
+
+  for (const path of hostPodmanWorkflowPaths) {
     test(`${path} installs Podman 6 and asserts the floor before Podman-backed steps`, async () => {
       const contents = await Bun.file(join(REPO_ROOT, path)).text();
       expect(contents).not.toContain("apt-get install -y podman");
@@ -166,7 +176,7 @@ describe("generated workflows carry the Podman 6 host contract", () => {
     });
   }
 
-  for (const path of workflowPaths) {
+  for (const path of hostPodmanWorkflowPaths) {
     test(`${path} pins the user-level cgroup manager`, async () => {
       const contents = await Bun.file(join(REPO_ROOT, path)).text();
       expect(contents).toContain('if ! test -f "$HOME/.config/containers/containers.conf"; then');
