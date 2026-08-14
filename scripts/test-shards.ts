@@ -32,6 +32,7 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
   "managed-file/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
+  "docs/test/**/*.test.ts",
 ];
 
 const INTEGRATION_SUFFIX = ".integration.test.ts";

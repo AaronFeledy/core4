@@ -10,6 +10,7 @@ const requiredChecks = [
   "unit-tests-linux-x64",
   "schema-snapshot",
   "bundled-codegen",
+  "docs-build",
   "library-api-tests",
   "recipe-tests",
   "guide-scenarios-darwin-arm64",

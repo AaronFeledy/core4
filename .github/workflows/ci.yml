@@ -138,6 +138,37 @@ jobs:
           fi
           echo "unit test shard matrix passed on ubuntu-24.04, ubuntu-26.04"
 
+  docs-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check docs
+        run: bun run docs:check
+
+      - name: Test docs
+        run: bun run docs:test
+
+      - name: Build docs
+        run: bun run docs:build
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::docs-build completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+
   schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

@@ -4,6 +4,7 @@ include = [
   "core/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
+  "docs/test/**/*.test.ts",
 ]
 pathIgnorePatterns = [
   "dist/**",
