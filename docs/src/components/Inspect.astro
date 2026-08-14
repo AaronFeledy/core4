@@ -1,6 +1,5 @@
 ---
-import { resolveComponentFrame } from "../lib/frames.ts";
-import { dataAttributesOf } from "./data-attributes.ts";
+import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly file?: string;
@@ -19,9 +18,7 @@ const [kind, target] =
       : events === true
         ? ["events", "event stream"]
         : ["output", "command output"];
-const dataAttributes = dataAttributesOf(Astro.props);
-const resolution = await resolveComponentFrame(Astro.props, "inspect", target);
-const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inspect");
 ---
 
 <figure class="lando-inspect" {...dataAttributes}>

@@ -1,6 +1,5 @@
 ---
-import { resolveComponentFrame } from "../lib/frames.ts";
-import { dataAttributesOf } from "./data-attributes.ts";
+import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly command?: string;
@@ -16,9 +15,7 @@ interface Props {
 const { command, shell, runtime, code, displayCode } = Astro.props;
 const displayedCode = displayCode ?? command ?? shell ?? code ?? "";
 const language = runtime === "library" ? "ts" : "sh";
-const dataAttributes = dataAttributesOf(Astro.props);
-const resolution = await resolveComponentFrame(Astro.props, "run", displayedCode);
-const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "run");
 const renderedCommand = frame?.commandDisplay ?? displayedCode;
 ---
 

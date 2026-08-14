@@ -1,6 +1,5 @@
 ---
-import { resolveComponentFrame } from "../lib/frames.ts";
-import { dataAttributesOf } from "./data-attributes.ts";
+import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly event?: string;
@@ -20,9 +19,7 @@ const [kind, target] = [
 ].find((entry) => entry[1] !== undefined) ?? ["check", ""];
 const expectation =
   expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
-const dataAttributes = dataAttributesOf(Astro.props);
-const resolution = await resolveComponentFrame(Astro.props, "verify", command ?? "");
-const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "verify");
 ---
 
 <div class="lando-verify" {...dataAttributes}>

@@ -1,6 +1,5 @@
 ---
-import { resolveComponentFrame } from "../lib/frames.ts";
-import { dataAttributesOf } from "./data-attributes.ts";
+import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly code: string;
@@ -10,9 +9,7 @@ interface Props {
 }
 
 const { code, lang = "ts" } = Astro.props;
-const dataAttributes = dataAttributesOf(Astro.props);
-const resolution = await resolveComponentFrame(Astro.props, "inline", code);
-const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inline");
 ---
 
 <div class="lando-inline" {...dataAttributes}>
