@@ -1,14 +1,11 @@
 ---
-import { resolveComponentFrame } from "../lib/frames.ts";
-import { dataAttributesOf } from "./data-attributes.ts";
+import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly [key: string]: unknown;
 }
 
-const dataAttributes = dataAttributesOf(Astro.props);
-const resolution = await resolveComponentFrame(Astro.props, "cleanup");
-const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "cleanup");
 ---
 
 <section class="lando-cleanup" {...dataAttributes}>
