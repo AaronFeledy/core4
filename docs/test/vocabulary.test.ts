@@ -54,4 +54,15 @@ describe("guide component vocabulary", () => {
       usesVocabulary: true,
     });
   });
+
+  test("imports Starlight tab primitives in the tab wrappers", async () => {
+    // Given: the Tabs and Tab wrapper sources.
+    const tabs = await Bun.file(join(docsRoot, "src", "components", "Tabs.astro")).text();
+    const tab = await Bun.file(join(docsRoot, "src", "components", "Tab.astro")).text();
+
+    // When: their Starlight imports are inspected.
+    // Then: the wrappers import the real Starlight components instead of relying on auto-import.
+    expect(tabs).toContain('import { Tabs as StarlightTabs } from "@astrojs/starlight/components"');
+    expect(tab).toContain('import { TabItem } from "@astrojs/starlight/components"');
+  });
 });
