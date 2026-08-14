@@ -14,4 +14,4 @@ const { id, render = true } = Astro.props;
 const dataAttributes = dataAttributesOf(Astro.props);
 ---
 
-{render && <section class="lando-scenario" data-scenario={id} {...dataAttributes}><slot /></section>}
+{render && <section class="lando-scenario" data-scenario-id={id} {...dataAttributes}><slot /></section>}
