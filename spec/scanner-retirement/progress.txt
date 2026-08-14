@@ -249,3 +249,11 @@ Origin: architecture review (2026-08-09/10) — architecture-by-scanner after co
 - **Learnings for future iterations:**
   - Apply adjudications to every normative source and current status summary in the same commit; changing only `prd.json` leaves contradictory review gates.
 ---
+
+## 2026-08-12 19:22 CDT - US-560 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, and proved the wave-closure tree still runs a real default-provider journey: lamp init, start (appserver + database running), HTTPS 200 phpinfo via Traefik, `exec`/`php` tooling PHP 8.3.33, `info`/`config`/`update --help`/`doctor`/`global:status`. Destroy + global:stop cleaned up.
+- **Out-of-scope finding:** `lando list` (text and `--json`) reported no applied apps while `lando info` showed `us560verify` running on the default provider. Suspected apps:list discovery/registry, not this closure diff.
+- **Out-of-scope finding:** `lando doctor --json` warned setup-readiness failed (`proxy`/`shell` unavailable) and proxy subsystem not running, while Traefik was up on 38443 and served HTTP 200. Suspected stale doctor evidence; orphan pid 2090 also reported.
+- **Learnings for future iterations:**
+  - A fresh lamp init has no `index.php`; write one before treating an HTTP 403/502 as a start failure. With a phpinfo file the compiled-binary URL returned 200.
+---
