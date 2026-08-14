@@ -8,7 +8,7 @@ export const RUNTIME_BUNDLE_ACTION_PINS = {
   uploadArtifact: "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
 } as const;
 
-export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260801T000000Z";
+export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260812T000000Z";
 
 export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
   "set -euo pipefail",
