@@ -14,7 +14,7 @@ describe("docs workspace", () => {
     expect(rootPackage).toMatchObject({
       workspaces: expect.arrayContaining(["docs"]),
       scripts: {
-        "docs:build": "bun run codegen:guide-scenarios && bun run --filter='@lando/docs' build",
+        "docs:build": "bun run codegen && bun run --filter='@lando/docs' build",
       },
     });
   });
