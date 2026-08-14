@@ -1,6 +1,33 @@
 import { describe, expect, test } from "bun:test";
 
-import { deriveDescription, deriveTitle } from "../src/lib/titles.ts";
+import {
+  type NormalizedContentMetadata,
+  authoredText,
+  deriveDescription,
+  deriveTitle,
+  normalizeContentMetadata,
+} from "../src/lib/titles.ts";
+
+// Compile-time contract: title is required and result stays a Record.
+type _TitleIsRequired = NormalizedContentMetadata<{ id: string }> extends { readonly title: unknown }
+  ? true
+  : false;
+type _ResultIsRecord = NormalizedContentMetadata<{ id: string }> extends Record<string, unknown>
+  ? true
+  : false;
+type _OptionalTitleWouldPass = Partial<Pick<NormalizedContentMetadata<{ id: string }>, "title">> extends Pick<
+  NormalizedContentMetadata<{ id: string }>,
+  "title"
+>
+  ? true
+  : false;
+const _titleRequired = true satisfies _TitleIsRequired;
+const _assignableToRecord = true satisfies _ResultIsRecord;
+// If title were optional, Partial<Pick> would extend Pick — require false.
+const _titleNotOptional = false satisfies _OptionalTitleWouldPass;
+void _titleRequired;
+void _assignableToRecord;
+void _titleNotOptional;
 
 describe("derived content titles", () => {
   test("uses the first visible H1 when frontmatter has no title", () => {
@@ -89,5 +116,93 @@ describe("derived content descriptions", () => {
     // Then: the description is bounded and visibly truncated.
     expect(description?.length).toBeLessThanOrEqual(160);
     expect(description?.endsWith("…")).toBe(true);
+  });
+});
+
+describe("authoredText", () => {
+  test("rejects blank and whitespace-only strings", () => {
+    // Given / When / Then: empty and whitespace authored strings are absent.
+    expect(authoredText("")).toBeUndefined();
+    expect(authoredText("   ")).toBeUndefined();
+    expect(authoredText(undefined)).toBeUndefined();
+  });
+
+  test("trims non-empty authored strings", () => {
+    expect(authoredText(" Title ")).toBe("Title");
+  });
+});
+
+describe("normalizeContentMetadata", () => {
+  test("derives a title from a blank authored title string", () => {
+    // Given: blank title frontmatter and a visible H1.
+    const source = "# Visible title\n\nBody paragraph.";
+    const data = { title: "   ", id: "blank-title" };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/blank-title");
+
+    // Then: blank title is treated as absent and derived from the H1.
+    expect(normalized.title).toBe("Visible title");
+  });
+
+  test("preserves non-string title values for schema rejection", () => {
+    // Given: malformed numeric title that docsSchema must reject.
+    const source = "# Heading\n\nBody.";
+    const data = { title: 42, id: "bad-title" };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/bad-title");
+
+    // Then: the invalid title remains unchanged so schema validation can fail.
+    expect(normalized.title).toBe(42);
+  });
+
+  test("preserves non-string description values for schema rejection", () => {
+    // Given: malformed numeric description.
+    const source = "# Heading\n\nBody.";
+    const data = { title: "Heading", description: 42 };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/bad-description");
+
+    // Then: the invalid description remains rejectable.
+    expect(normalized.description).toBe(42);
+  });
+
+  test("omits blank description when no derived description exists", () => {
+    // Given: blank description and source with no prose paragraph.
+    const source = "# Only a heading\n";
+    const data = { title: "Only a heading", description: "   " };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/blank-description");
+
+    // Then: blank description is omitted rather than retained.
+    expect("description" in normalized).toBe(false);
+    expect(normalized.title).toBe("Only a heading");
+  });
+
+  test("derives description when authored description is blank", () => {
+    // Given: blank description and prose that can supply one.
+    const source = "# Guide\n\nReadable first paragraph for SEO.\n";
+    const data = { title: "Guide", description: "" };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/derive-description");
+
+    // Then: blank description is replaced by derived prose.
+    expect(normalized.description).toBe("Readable first paragraph for SEO.");
+  });
+
+  test("keeps a trimmed non-empty authored description", () => {
+    // Given: authored description that should win over body prose.
+    const source = "# Guide\n\nBody prose that must not win.\n";
+    const data = { title: "Guide", description: "  Authored description  " };
+
+    // When: the loader normalizes metadata.
+    const normalized = normalizeContentMetadata(data, source, "guides/authored-description");
+
+    // Then: authored description is trimmed and preserved.
+    expect(normalized.description).toBe("Authored description");
   });
 });

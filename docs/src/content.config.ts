@@ -5,7 +5,7 @@ import { docsSchema } from "@astrojs/starlight/schema";
 import { type DataStore, type Loader, type LoaderContext, type ParseDataOptions, glob } from "astro/loaders";
 import { z } from "astro/zod";
 
-import { deriveDescription, deriveTitle } from "./lib/titles.ts";
+import { normalizeContentMetadata } from "./lib/titles.ts";
 
 export const docsPatterns = [
   "reference/**/*.mdx",
@@ -65,14 +65,7 @@ const withDerivedMetadata = (loader: Loader): Loader => ({
       props: ParseDataOptions<TData>,
     ): Promise<TData> => {
       const source = props.filePath === undefined ? "" : await readFile(props.filePath, "utf8");
-      const authoredTitle = props.data.title;
-      const authoredDescription = props.data.description;
-      const description = authoredDescription === undefined ? deriveDescription(source) : authoredDescription;
-      const data = {
-        ...props.data,
-        title: authoredTitle === undefined ? deriveTitle(source, props.data, props.id) : authoredTitle,
-        ...(description === undefined ? {} : { description }),
-      };
+      const data = normalizeContentMetadata(props.data, source, props.id);
       return context.parseData({ ...props, data });
     };
 
