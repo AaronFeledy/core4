@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -16,8 +17,24 @@ const { command, shell, runtime, code, displayCode } = Astro.props;
 const displayedCode = displayCode ?? command ?? shell ?? code ?? "";
 const language = runtime === "library" ? "ts" : "sh";
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "run", displayedCode);
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
+const renderedCommand = frame?.commandDisplay ?? displayedCode;
 ---
 
-<div class="lando-run" {...dataAttributes}>
-  <pre><code class={`language-${language}`}>{displayedCode}</code></pre>
+<div
+  class="lando-run"
+  data-transcript-status={resolution.status}
+  data-transcript-reason={resolution.status === "missing" ? resolution.reason : undefined}
+  {...dataAttributes}
+>
+  <pre><code class={`language-${language}`}>{renderedCommand}</code></pre>
+  {frame?.resultSummary && (
+    <figure class="lando-frame-output">
+      <figcaption>Captured output</figcaption>
+      <pre><code>{frame.resultSummary}</code></pre>
+    </figure>
+  )}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
 </div>

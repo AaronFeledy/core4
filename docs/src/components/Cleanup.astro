@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -6,9 +7,14 @@ interface Props {
 }
 
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "cleanup");
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
 ---
 
 <section class="lando-cleanup" {...dataAttributes}>
   <h3>Cleanup</h3>
+  {frame?.resultSummary && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
   <slot />
 </section>

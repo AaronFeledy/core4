@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -10,8 +11,13 @@ interface Props {
 
 const { code, lang = "ts" } = Astro.props;
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "inline", code);
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
 ---
 
 <div class="lando-inline" {...dataAttributes}>
   <pre><code class={`language-${lang}`}>{code}</code></pre>
+  {frame?.resultSummary && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
 </div>

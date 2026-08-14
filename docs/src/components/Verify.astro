@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -20,10 +21,23 @@ const [kind, target] = [
 const expectation =
   expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "verify", command ?? "");
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
 ---
 
-<p class="lando-verify" {...dataAttributes}>
-  <strong>Verify {kind}:</strong>
-  <code>{target}</code>
-  {expectation && <span>expects <code>{expectation}</code></span>}
-</p>
+<div class="lando-verify" {...dataAttributes}>
+  <p>
+    <strong>Verify {kind}:</strong>
+    <code>{target}</code>
+    {expectation && <span>expects <code>{expectation}</code></span>}
+  </p>
+  {frame?.commandDisplay && <pre><code class="language-sh">{frame.commandDisplay}</code></pre>}
+  {frame?.resultSummary && (
+    <figure class="lando-frame-output">
+      <figcaption>Captured output</figcaption>
+      <pre><code>{frame.resultSummary}</code></pre>
+    </figure>
+  )}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
+</div>

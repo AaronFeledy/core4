@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -8,9 +9,12 @@ interface Props {
 
 const { name } = Astro.props;
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "step");
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
 ---
 
 <section class="lando-step" {...dataAttributes}>
-  <h3>{name}</h3>
+  <h3>{frame?.displayText ?? name}</h3>
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
   <slot />
 </section>

@@ -1,3 +1,5 @@
+import { relative } from "node:path";
+
 import type { Paragraph, Root, Text } from "mdast";
 import type {
   MdxFlowExpression,
@@ -15,6 +17,8 @@ type GuideContext = {
   readonly guideId: string;
   readonly scenarioId: string | undefined;
   readonly tabsAxis: string | undefined;
+  readonly variant: readonly string[];
+  readonly sourceFile: string | undefined;
   readonly source: string | undefined;
 };
 
@@ -74,6 +78,16 @@ const guideIdFrom = (file: VFile): string | undefined => {
   return typeof guideId === "string" ? guideId : undefined;
 };
 
+const sourceFileFrom = (file: VFile): string | undefined => {
+  if (file.path === undefined || file.path === "") return undefined;
+  const normalized = file.path.replaceAll("\\", "/");
+  for (const marker of ["/docs/", "/recipes/"] as const) {
+    const index = normalized.lastIndexOf(marker);
+    if (index >= 0) return normalized.slice(index + 1);
+  }
+  return relative(process.cwd(), file.path).replaceAll("\\", "/");
+};
+
 const hasFalseRenderExpression = (element: MdxElement): boolean => {
   const value = attributeNamed(element, "render")?.value;
   return (
@@ -91,15 +105,26 @@ const contextInside = (element: MdxElement, context: GuideContext): GuideContext
   if (element.name === "Tabs") {
     return { ...context, tabsAxis: stringAttribute(element, "axis") };
   }
+  if (element.name === "Tab") {
+    const tabName = stringAttribute(element, "name");
+    if (context.tabsAxis !== undefined && tabName !== undefined) {
+      return { ...context, variant: [...context.variant, `${context.tabsAxis}=${tabName}`] };
+    }
+  }
   return context;
 };
 
 const injectContext = (element: MdxElement, context: GuideContext): void => {
   if (!isContextElement(element)) return;
   setStringAttribute(element, "data-guide-id", context.guideId);
+  if (context.sourceFile !== undefined) setStringAttribute(element, "data-source-file", context.sourceFile);
+  if (element.position?.start.line !== undefined) {
+    setStringAttribute(element, "data-source-line", String(element.position.start.line));
+  }
   if (context.scenarioId !== undefined) {
     setStringAttribute(element, "data-scenario-id", context.scenarioId);
   }
+  if (context.variant.length > 0) setStringAttribute(element, "data-variant", context.variant.join(" "));
   if (element.name !== "Tab") return;
   if (context.tabsAxis !== undefined) setStringAttribute(element, "data-axis", context.tabsAxis);
   const tabName = stringAttribute(element, "name");
@@ -166,6 +191,8 @@ export const remarkGuideContext =
       guideId,
       scenarioId: undefined,
       tabsAxis: undefined,
+      variant: [],
+      sourceFile: sourceFileFrom(file),
       source: typeof file.value === "string" ? file.value : undefined,
     });
   };

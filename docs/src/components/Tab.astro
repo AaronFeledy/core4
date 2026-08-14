@@ -1,4 +1,5 @@
 ---
+import { resolveComponentFrame } from "../lib/frames.ts";
 import { dataAttributesOf } from "./data-attributes.ts";
 
 interface Props {
@@ -8,8 +9,13 @@ interface Props {
 
 const { name } = Astro.props;
 const dataAttributes = dataAttributesOf(Astro.props);
+const resolution = await resolveComponentFrame(Astro.props, "tab");
+const frame = resolution.status === "captured" ? resolution.frame : undefined;
 ---
 
 <TabItem label={name}>
-  <div class="lando-tab" {...dataAttributes}><slot /></div>
+  <div class="lando-tab" {...dataAttributes}>
+    {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+    <slot />
+  </div>
 </TabItem>

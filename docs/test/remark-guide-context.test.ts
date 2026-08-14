@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import type { Root, Text } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import {
@@ -27,7 +28,11 @@ const parseAndTransform = (source: string, guideId = "guide-one"): Root => {
     extensions: [mdxjs()],
     mdastExtensions: [mdxFromMarkdown()],
   });
-  const file = new VFile({ value: source, data: { astro: { frontmatter: { id: guideId } } } });
+  const file = new VFile({
+    value: source,
+    path: join(process.cwd(), "docs", "guides", "fixture.mdx"),
+    data: { astro: { frontmatter: { id: guideId } } },
+  });
 
   remarkGuideContext()(tree, file);
 
@@ -93,15 +98,17 @@ describe("remark guide context", () => {
           name,
           stringAttribute(element, "data-guide-id"),
           stringAttribute(element, "data-scenario-id"),
+          stringAttribute(element, "data-source-file"),
+          stringAttribute(element, "data-source-line"),
         ];
       }),
     ).toEqual([
-      ["Step", "context-guide", "first"],
-      ["Run", "context-guide", "first"],
-      ["Verify", "context-guide", "first"],
-      ["Inspect", "context-guide", "second"],
-      ["Cleanup", "context-guide", "second"],
-      ["Inline", "context-guide", "second"],
+      ["Step", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
+      ["Run", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
+      ["Verify", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
+      ["Inspect", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
+      ["Cleanup", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
+      ["Inline", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
     ]);
   });
 
@@ -185,6 +192,7 @@ flow secret
         scenarioId: stringAttribute(element, "data-scenario-id"),
         dataAxis: stringAttribute(element, "data-axis"),
         tabName: stringAttribute(element, "data-tab-name"),
+        variant: stringAttribute(element, "data-variant"),
       })),
     }).toEqual({
       axis: "database",
@@ -195,6 +203,7 @@ flow secret
           scenarioId: "database-choice",
           dataAxis: "database",
           tabName: "Postgres",
+          variant: "database=Postgres",
         },
         {
           name: "MySQL",
@@ -202,6 +211,7 @@ flow secret
           scenarioId: "database-choice",
           dataAxis: "database",
           tabName: "MySQL",
+          variant: "database=MySQL",
         },
       ],
     });
