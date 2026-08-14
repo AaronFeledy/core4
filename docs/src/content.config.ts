@@ -21,7 +21,6 @@ export const docsPatterns = [
 
 const RECIPE_PATTERN = "*/README.mdx";
 const RECIPE_ID_PREFIX = "recipes/";
-const GUIDES_ENABLED = process.env.LANDO_DOCS_GUIDES_ENABLED !== "0";
 
 type AssetDataStore = DataStore & {
   readonly addAssetImport: (assetImport: string, filePath?: string) => void;
@@ -84,7 +83,7 @@ const withDerivedMetadata = (loader: Loader): Loader => ({
 const docsLoader = withDerivedMetadata(
   glob({
     base: ".",
-    pattern: docsPatterns.filter((pattern) => GUIDES_ENABLED || pattern !== "guides/**/*.mdx"),
+    pattern: [...docsPatterns],
   }),
 );
 
