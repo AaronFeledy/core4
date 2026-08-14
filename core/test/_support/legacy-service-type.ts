@@ -1,4 +1,3 @@
-// Test helper assembling a `ServiceType` whose plan body still lives under the
 import { Effect, Schema } from "effect";
 
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";

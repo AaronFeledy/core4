@@ -110,17 +110,18 @@ const buildService = (input: {
   readonly provider: RuntimeProviderShape;
   readonly progress: BuildTaskProgress;
   readonly plan: AppPlan;
+  readonly redactionTokens: ReadonlyArray<string>;
   readonly service: ServicePlan;
   readonly stateStore: Context.Tag.Service<typeof StateStore>;
 }) =>
   Effect.gen(function* () {
-    const { events, paths, progress, provider, plan, service, stateStore } = input;
+    const { events, paths, progress, provider, plan, redactionTokens, service, stateStore } = input;
     const redaction = yield* Effect.serviceOption(RedactionService);
     const redactor =
       redaction._tag === "Some"
         ? yield* redaction.value.forProfile("secrets", {
             sourceEnv: process.env,
-            redactionTokens: collectAppPlanRedactionTokens(plan),
+            redactionTokens,
           })
         : identityRedactor;
     const context = redactedBuildContext(redactor, plan, service);
@@ -259,12 +260,14 @@ export const BuildOrchestratorLive = Layer.effect(
         Effect.gen(function* () {
           const provider = (yield* FiberRef.get(selectedProvider)) ?? (yield* registry.select(plan));
           const servicePlans = Object.values(plan.services);
+          const redactionTokens = collectAppPlanRedactionTokens(plan);
           const progress = makeBuildTaskProgress(events, plan);
           const started = performance.now();
           yield* progress.startTree;
           const services = yield* Effect.forEach(
             servicePlans,
-            (service) => buildService({ events, paths, progress, provider, plan, service, stateStore }),
+            (service) =>
+              buildService({ events, paths, progress, provider, plan, redactionTokens, service, stateStore }),
             { concurrency: 2 },
           ).pipe(
             Effect.tapError(() => {
@@ -275,7 +278,7 @@ export const BuildOrchestratorLive = Layer.effect(
                   redaction._tag === "Some"
                     ? yield* redaction.value.forProfile("secrets", {
                         sourceEnv: process.env,
-                        redactionTokens: collectAppPlanRedactionTokens(plan),
+                        redactionTokens,
                       })
                     : identityRedactor;
                 for (const service of progress.unsettledServices()) {

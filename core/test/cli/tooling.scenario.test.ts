@@ -256,14 +256,10 @@ const cacheAwareLayer = (options: {
 
 const configLayer = (defaultProviderId: string | null) =>
   Layer.succeed(ConfigService, {
-    get: (key: string) =>
-      Effect.succeed(
-        key === "defaultProviderId"
-          ? defaultProviderId === null
-            ? null
-            : ProviderId.make(defaultProviderId)
-          : undefined,
-      ),
+    get: (key: string) => {
+      if (key !== "defaultProviderId") return Effect.succeed(undefined);
+      return Effect.succeed(defaultProviderId === null ? null : ProviderId.make(defaultProviderId));
+    },
   });
 
 const recordingEventLayer = (events: LandoEvent[]) =>
