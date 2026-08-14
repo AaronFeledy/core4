@@ -5,6 +5,7 @@ import AutoImport from "astro-auto-import";
 import { defineConfig } from "astro/config";
 
 import { guideComponentVocabulary } from "./src/components/vocabulary.ts";
+import { remarkDropLeadingHeading } from "./src/plugins/remark-drop-leading-heading.ts";
 import { remarkGuideContext } from "./src/plugins/remark-guide-context.ts";
 import { escapeReferenceMdxPlaceholders } from "./src/reference-mdx.ts";
 import { sidebar } from "./src/sidebar.ts";
@@ -13,7 +14,7 @@ const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
 export default defineConfig({
   markdown: {
-    processor: unified({ remarkPlugins: [remarkGuideContext] }),
+    processor: unified({ remarkPlugins: [remarkGuideContext, remarkDropLeadingHeading] }),
   },
   integrations: [
     starlight({
