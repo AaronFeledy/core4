@@ -1,0 +1,13 @@
+---
+interface Props {
+  readonly reason: string;
+  readonly until?: string;
+}
+
+const { reason, until } = Astro.props;
+---
+
+<aside class="lando-skip">
+  <span class="lando-skip__badge">Skipped: {reason}{until && ` (until ${until})`}</span>
+  <slot />
+</aside>

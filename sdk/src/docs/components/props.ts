@@ -3,7 +3,9 @@ import { Either, type ParseResult, Schema } from "effect";
 import { NotImplementedError } from "../../errors/index.ts";
 import { GuideId } from "../guide-frontmatter.ts";
 
-const ComponentId = GuideId.annotations({ identifier: "ComponentId" });
+/** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
+export const ComponentId = GuideId.annotations({ identifier: "ComponentId" });
+export type ComponentId = typeof ComponentId.Type;
 
 const betaComponentPropsError = (component: string, key: string): NotImplementedError =>
   new NotImplementedError({
@@ -247,11 +249,13 @@ export const InspectProps = Schema.Struct({
   });
 export type InspectProps = typeof InspectProps.Type;
 
-const AxisToken = Schema.String.pipe(
+/** Tab axis names and values — lowercase kebab-case (a-z, 0-9, hyphen). */
+export const AxisToken = Schema.String.pipe(
   Schema.pattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
     message: () => "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
   }),
-);
+).annotations({ identifier: "AxisToken" });
+export type AxisToken = typeof AxisToken.Type;
 
 export const TabsProps = Schema.Struct({
   axis: Schema.optional(AxisToken),

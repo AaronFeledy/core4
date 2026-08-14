@@ -1,0 +1,17 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly id: string;
+  readonly render?: boolean;
+  readonly reason?: string;
+  readonly tags?: readonly string[];
+  readonly layer?: "scenario" | "e2e";
+  readonly [key: string]: unknown;
+}
+
+const { id, render = true } = Astro.props;
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+{render && <section class="lando-scenario" data-scenario={id} {...dataAttributes}><slot /></section>}

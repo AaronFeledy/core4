@@ -1,0 +1,17 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly code: string;
+  readonly lang?: string;
+  readonly justification: string;
+  readonly [key: string]: unknown;
+}
+
+const { code, lang = "ts" } = Astro.props;
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<div class="lando-inline" {...dataAttributes}>
+  <pre><code class={`language-${lang}`}>{code}</code></pre>
+</div>

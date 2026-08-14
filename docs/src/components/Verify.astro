@@ -1,0 +1,29 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly event?: string;
+  readonly command?: string;
+  readonly file?: string;
+  readonly errorTag?: string;
+  readonly expect?: unknown;
+  readonly [key: string]: unknown;
+}
+
+const { event, command, file, errorTag, expect } = Astro.props;
+const [kind, target] = [
+  ["event", event],
+  ["command", command],
+  ["file", file],
+  ["error", errorTag],
+].find((entry) => entry[1] !== undefined) ?? ["check", ""];
+const expectation =
+  expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<p class="lando-verify" {...dataAttributes}>
+  <strong>Verify {kind}:</strong>
+  <code>{target}</code>
+  {expectation && <span>expects <code>{expectation}</code></span>}
+</p>

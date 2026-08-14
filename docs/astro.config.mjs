@@ -1,17 +1,26 @@
+import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
 import starlight from "@astrojs/starlight";
+import AutoImport from "astro-auto-import";
 import { defineConfig } from "astro/config";
 
+import { guideComponentVocabulary } from "./src/components/vocabulary.ts";
 import { escapeReferenceMdxPlaceholders } from "./src/reference-mdx.ts";
 import { sidebar } from "./src/sidebar.ts";
 
 const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
 export default defineConfig({
+  markdown: {
+    processor: unified(),
+  },
   integrations: [
     starlight({
       title: "Lando",
       sidebar: [...sidebar],
+    }),
+    AutoImport({
+      imports: Object.values(guideComponentVocabulary),
     }),
     mdx(),
   ],

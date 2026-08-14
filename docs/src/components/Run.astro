@@ -1,0 +1,23 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly command?: string;
+  readonly shell?: string;
+  readonly runtime?: "library";
+  readonly code?: string;
+  readonly displayCode?: string;
+  readonly answers?: Readonly<Record<string, string>>;
+  readonly expectExit?: number;
+  readonly [key: string]: unknown;
+}
+
+const { command, shell, runtime, code, displayCode } = Astro.props;
+const displayedCode = displayCode ?? command ?? shell ?? code ?? "";
+const language = runtime === "library" ? "ts" : "sh";
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<div class="lando-run" {...dataAttributes}>
+  <pre><code class={`language-${language}`}>{displayedCode}</code></pre>
+</div>

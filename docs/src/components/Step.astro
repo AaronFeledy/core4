@@ -1,0 +1,16 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly name: string;
+  readonly [key: string]: unknown;
+}
+
+const { name } = Astro.props;
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<section class="lando-step" {...dataAttributes}>
+  <h3>{name}</h3>
+  <slot />
+</section>

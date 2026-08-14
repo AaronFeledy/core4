@@ -1,0 +1,11 @@
+---
+interface Props {
+  readonly axis?: string;
+}
+
+const { axis } = Astro.props;
+---
+
+<StarlightTabs syncKey={axis}>
+  <slot />
+</StarlightTabs>

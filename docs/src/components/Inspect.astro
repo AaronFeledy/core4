@@ -1,0 +1,27 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly file?: string;
+  readonly json?: string;
+  readonly events?: true;
+  readonly output?: true;
+  readonly [key: string]: unknown;
+}
+
+const { file, json, events } = Astro.props;
+const [kind, target] =
+  file !== undefined
+    ? ["file", file]
+    : json !== undefined
+      ? ["JSON", json]
+      : events === true
+        ? ["events", "event stream"]
+        : ["output", "command output"];
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<figure class="lando-inspect" {...dataAttributes}>
+  <figcaption>Inspect {kind}</figcaption>
+  <pre><code>{target}</code></pre>
+</figure>

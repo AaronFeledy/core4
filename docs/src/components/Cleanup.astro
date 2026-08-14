@@ -1,0 +1,14 @@
+---
+import { dataAttributesOf } from "./data-attributes.ts";
+
+interface Props {
+  readonly [key: string]: unknown;
+}
+
+const dataAttributes = dataAttributesOf(Astro.props);
+---
+
+<section class="lando-cleanup" {...dataAttributes}>
+  <h3>Cleanup</h3>
+  <slot />
+</section>

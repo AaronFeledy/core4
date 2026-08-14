@@ -646,5 +646,17 @@
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.tooling.additionalProperties",
     "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "schema:TabProps",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "AxisToken is now a named public schema, so TabProps hoists the identical lowercase kebab-case string constraint behind a local reference; accepted values are unchanged."
+  },
+  {
+    "surface": "schema:TabsProps",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "AxisToken is now a named public schema, so TabsProps hoists the identical lowercase kebab-case string constraint behind a local reference; accepted values are unchanged."
   }
 ]

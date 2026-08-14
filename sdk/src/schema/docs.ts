@@ -7,7 +7,9 @@ export {
 export { DeprecationNotice, DeprecationSeverity, structuralDeprecationKey } from "./deprecation.ts";
 export type { StructuralDeprecationKey } from "./deprecation.ts";
 export {
+  AxisToken,
   CleanupProps,
+  ComponentId,
   GuideProps,
   HiddenProps,
   InlineProps,

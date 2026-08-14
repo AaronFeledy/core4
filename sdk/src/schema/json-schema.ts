@@ -2,7 +2,9 @@ import { Either, JSONSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import {
+  AxisToken,
   CleanupProps,
+  ComponentId,
   GuideProps,
   HiddenProps,
   InlineProps,
@@ -375,6 +377,8 @@ const rawPublicSchemaRegistry = {
   StringImportRef,
   SubscriberLevelMismatchError,
   GuideFrontmatter,
+  AxisToken,
+  ComponentId,
   GuideProps,
   ScenarioProps,
   StepProps,
@@ -696,6 +700,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   StringImportRef: "Public Lando schema contract for imported string values and provenance.",
   SubscriberLevelMismatchError: "Public Lando schema contract for Subscriber Level Mismatch Error.",
   GuideFrontmatter: "Public Lando schema contract for Guide Frontmatter.",
+  AxisToken: "Lowercase kebab-case token for tab axis names and values.",
+  ComponentId: "Kebab-case scenario/step id token (same alphabet as GuideId).",
   GuideProps: "Public Lando schema contract for Guide Props.",
   ScenarioProps: "Public Lando schema contract for Scenario Props.",
   StepProps: "Public Lando schema contract for Step Props.",
