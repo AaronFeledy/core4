@@ -6,7 +6,12 @@ import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
 import {
+  InvalidSourceFileError,
+  InvalidSourceLinkBaseError,
+  assertHttpsSourceLinkBase,
+  assertRepositoryRelativeSourceFile,
   decodePublicTranscriptEither,
+  frameSourceHref,
   loadPublicTranscript,
   renderPublicTranscriptHtml,
   toPublicTranscriptView,
@@ -73,16 +78,16 @@ describe("public transcript rendering", () => {
     const transcript = Schema.decodeUnknownSync(PublicTranscript)({
       guideId: "x",
       scenarioId: "happy-path",
-      variant: "php=8.3",
+      variant: "php=v8-3",
       runtime: "cli",
       render: true,
-      frames: [{ kind: "tab", sourceFile: "docs/guides/x.mdx", sourceLine: 5, displayText: "php=8.3" }],
+      frames: [{ kind: "tab", sourceFile: "docs/guides/x.mdx", sourceLine: 5, displayText: "php=v8-3" }],
     });
 
     const html = renderPublicTranscriptHtml(transcript);
 
     expect(html).toContain("lando-frame--tab");
-    expect(html).toContain("php=8.3");
+    expect(html).toContain("php=v8-3");
   });
 
   test("escapes interpolated HTML", () => {
@@ -160,6 +165,93 @@ describe("public transcript rendering", () => {
 
     expect(view.frames[2]?.sourceHref).toBe("docs/guides/services/php.mdx#L19");
     expect(view.frames[2]?.kind).toBe("run");
+  });
+
+  test("hard-fails non-https sourceLinkBase protocols", () => {
+    // Given: a valid frame and unsafe non-https bases.
+    const frame = phpTranscript.frames[2];
+    if (frame === undefined) throw new Error("expected php transcript run frame");
+    const cases = [
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "http://github.com/x/y/blob/main",
+      "//github.com/x/y/blob/main",
+      "vbscript:msgbox(1)",
+    ] as const;
+
+    // When/Then: each base is rejected with the tagged source-link error.
+    for (const sourceLinkBase of cases) {
+      expect(() => frameSourceHref(frame, { sourceLinkBase })).toThrow(InvalidSourceLinkBaseError);
+      expect(() => assertHttpsSourceLinkBase(sourceLinkBase)).toThrow(InvalidSourceLinkBaseError);
+    }
+  });
+
+  test("accepts an exact https sourceLinkBase", () => {
+    // Given: a lowercase https repository blob base.
+    const base = "https://github.com/x/y/blob/main/";
+    const frame = phpTranscript.frames[2];
+    if (frame === undefined) throw new Error("expected php transcript run frame");
+
+    // When: the base is normalized and a frame href is built.
+    expect(assertHttpsSourceLinkBase(base)).toBe("https://github.com/x/y/blob/main");
+    expect(frameSourceHref(frame, { sourceLinkBase: base })).toBe(
+      "https://github.com/x/y/blob/main/docs/guides/services/php.mdx#L19",
+    );
+  });
+
+  test("accepts mixed-case https sourceLinkBase after URL normalization", () => {
+    // Given: mixed-case HTTPS schemes that WHATWG URL normalizes to https:.
+    const frame = phpTranscript.frames[2];
+    if (frame === undefined) throw new Error("expected php transcript run frame");
+    const cases = [
+      "HTTPS://github.com/x/y/blob/main",
+      "Https://github.com/x/y/blob/main",
+      "hTtPs://github.com/x/y/blob/main/",
+    ] as const;
+
+    // When/Then: each base normalizes to lowercase https without a trailing slash.
+    for (const sourceLinkBase of cases) {
+      expect(assertHttpsSourceLinkBase(sourceLinkBase)).toBe("https://github.com/x/y/blob/main");
+      expect(frameSourceHref(frame, { sourceLinkBase })).toBe(
+        "https://github.com/x/y/blob/main/docs/guides/services/php.mdx#L19",
+      );
+    }
+  });
+
+  test("hard-fails non-repository-relative sourceFile values", () => {
+    // Given: path shapes that are absolute, traversable, schemed, or control-bearing.
+    const cases = [
+      "/etc/passwd",
+      "\\\\server\\share",
+      "docs/guides/../../../etc/passwd",
+      "docs\\guides\\demo.mdx",
+      "C:\\Users\\a\\demo.mdx",
+      "javascript:alert(1)",
+      "docs/guides/demo.mdx?raw=1",
+      "docs/guides/demo.mdx#L1",
+      "docs/guides/demo.mdx\0",
+      "",
+      "docs//guides/demo.mdx",
+    ] as const;
+
+    // When/Then: each sourceFile is rejected with the tagged source-file error.
+    for (const sourceFile of cases) {
+      expect(() => assertRepositoryRelativeSourceFile(sourceFile)).toThrow(InvalidSourceFileError);
+      expect(() =>
+        frameSourceHref(
+          { kind: "run", sourceFile, sourceLine: 11 },
+          { sourceLinkBase: "https://github.com/x/y/blob/main" },
+        ),
+      ).toThrow(InvalidSourceFileError);
+    }
+  });
+
+  test("keeps valid repository-relative source files", () => {
+    // Given: the default authored guide path shape.
+    const sourceFile = "docs/guides/services/php.mdx";
+
+    // When/Then: validation is a pure identity for legal paths.
+    expect(assertRepositoryRelativeSourceFile(sourceFile)).toBe(sourceFile);
   });
 
   test("redacts machine-specific data in toPublicTranscriptView and rendered HTML (US-249)", () => {

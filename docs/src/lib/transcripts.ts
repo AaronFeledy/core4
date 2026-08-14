@@ -147,6 +147,7 @@ const loadTranscript = async (
 
     return { kind: "ok", transcript: decoded.right };
   } catch (error) {
+    if (isAbsent(error)) return { kind: "absent" };
     if (error instanceof SyntaxError) {
       return {
         kind: "invalid",

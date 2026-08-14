@@ -1,10 +1,13 @@
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { DEFAULT_SOURCE_LINK_BASE } from "../src/lib/frames.ts";
+
 const ROOT = join(import.meta.dir, "..", "..");
 const DOCS_DIST = join(ROOT, "docs", "dist");
+const DOCS_CACHE = join(ROOT, "docs", ".astro");
 const MISSING_TRANSCRIPT = join(
   ROOT,
   "dist",
@@ -33,6 +36,8 @@ beforeAll(async () => {
   expect(codegen.exitCode).toBe(0);
   transcriptBytes = await Bun.file(MISSING_TRANSCRIPT).bytes();
   await unlink(MISSING_TRANSCRIPT);
+  await rm(DOCS_DIST, { recursive: true, force: true });
+  await rm(DOCS_CACHE, { recursive: true, force: true });
 
   // When: Astro builds the production site from the remaining real transcript artifacts.
   const build = Bun.spawnSync(["bun", "run", "--filter=@lando/docs", "build"], {
@@ -87,6 +92,8 @@ describe("rendered guide transcripts", () => {
 
   test("links captured frames to their authored guide source line", () => {
     // Then: readers can inspect the exact source that produced a captured frame.
-    expect(capturedHtml).toContain('href="docs/guides/recipes/canonical-public-transcript.mdx#L23"');
+    expect(capturedHtml).toContain(
+      `href="${DEFAULT_SOURCE_LINK_BASE}/docs/guides/recipes/canonical-public-transcript.mdx#L23"`,
+    );
   });
 });
