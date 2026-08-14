@@ -54,8 +54,17 @@ describe("workspace package DAG policy", () => {
     expect(WORKSPACE_EDGE_TABLE["@lando/docs"]).toEqual({
       dependencies: [],
       devDependencies: ["@lando/core", "@lando/sdk"],
+      sourceTargets: ["@lando/core", "@lando/sdk"],
     });
     expect(isWorkspaceRuntimeTargetAllowed("@lando/docs", "@lando/core")).toBe(true);
     expect(isWorkspaceRuntimeTargetAllowed("@lando/docs", "@lando/sdk")).toBe(true);
+  });
+
+  test("isWorkspaceRuntimeTargetAllowed matches table-driven source allowance", () => {
+    // Given / When / Then: engine may import sdk but not core; docs may not import engine; unknown packages deny.
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/engine", "@lando/sdk")).toBe(true);
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/engine", "@lando/core")).toBe(false);
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/docs", "@lando/engine")).toBe(false);
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/unknown", "@lando/sdk")).toBe(false);
   });
 });

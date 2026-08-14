@@ -5,6 +5,8 @@ export type AllowedWorkspaceTargets = readonly string[] | "workspace";
 export type WorkspaceEdgePolicy = {
   readonly dependencies: AllowedWorkspaceTargets;
   readonly devDependencies: AllowedWorkspaceTargets;
+  /** Source-import allowance; defaults to dependencies. */
+  readonly sourceTargets?: AllowedWorkspaceTargets;
 };
 
 export type WorkspaceManifest = {
@@ -35,6 +37,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/docs": {
     dependencies: [],
     devDependencies: [...DOCS_BUILD_SOURCE_TARGETS],
+    sourceTargets: [...DOCS_BUILD_SOURCE_TARGETS],
   },
   "@lando/sdk": { dependencies: [], devDependencies: [] },
   "@lando/paths": { dependencies: ["@lando/sdk"], devDependencies: [] },
@@ -97,11 +100,10 @@ export const isWorkspaceTargetAllowed = (targets: AllowedWorkspaceTargets, targe
   targets === "workspace" || targets.includes(target);
 
 export const isWorkspaceRuntimeTargetAllowed = (source: string, target: string): boolean => {
-  if (source === "@lando/docs") {
-    return isWorkspaceTargetAllowed(DOCS_BUILD_SOURCE_TARGETS, target);
-  }
   const policy = WORKSPACE_EDGE_TABLE[source];
-  return policy !== undefined && isWorkspaceTargetAllowed(policy.dependencies, target);
+  return (
+    policy !== undefined && isWorkspaceTargetAllowed(policy.sourceTargets ?? policy.dependencies, target)
+  );
 };
 
 export const packageMatches = (specifier: string, packageName: string): boolean => {
