@@ -41,7 +41,9 @@ describe("contributing docs", () => {
     );
 
     // When: their opening frontmatter is inspected.
-    const frontmatter = docs.map((doc) => doc.match(/^---\ntitle: [^\n]*\S[^\n]*\ndescription: [^\n]*\S[^\n]*\n---\n/));
+    const frontmatter = docs.map((doc) =>
+      doc.match(/^---\ntitle: [^\n]*\S[^\n]*\ndescription: [^\n]*\S[^\n]*\n---\n/),
+    );
 
     // Then: every document declares a non-empty title and description.
     expect(frontmatter.every((match) => match !== null)).toBe(true);
@@ -83,7 +85,9 @@ describe("contributing docs", () => {
 
     // When: consumers are scanned for legacy references.
     const staleReferences = consumers.flatMap(({ path, text }) =>
-      legacyReferences.filter((reference) => text.includes(reference)).map((reference) => `${path}: ${reference}`),
+      legacyReferences
+        .filter((reference) => text.includes(reference))
+        .map((reference) => `${path}: ${reference}`),
     );
 
     // Then: no known consumer points at a former path.
