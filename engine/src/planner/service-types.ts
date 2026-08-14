@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
 import * as os from "node:os";
-import { resolve } from "node:path";
 
 import { type Context, Effect } from "effect";
 
@@ -12,14 +10,12 @@ import {
 } from "@lando/sdk/errors";
 import type { LogSource, RouteInput, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
 import type {
-  FileSystem,
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
-import { parseEnvFile } from "@lando/landofile/env-file";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
@@ -181,61 +177,6 @@ export type PlannedServiceDraft = {
   readonly routes: ReadonlyArray<RouteInput>;
   readonly extensions: ServicePlan["extensions"];
 };
-
-export const loadServiceEnvFiles = (input: {
-  readonly appRoot: string;
-  readonly serviceName: string;
-  readonly service: ServiceConfig;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
-}): Effect.Effect<
-  {
-    readonly environment: Readonly<Record<string, string>> | undefined;
-    readonly inputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
-  },
-  LandofileValidationError
-> =>
-  Effect.gen(function* () {
-    const envFiles = input.service.envFile ?? [];
-    if (envFiles.length === 0) return { environment: input.service.environment, inputs: [] };
-    if (input.fileSystem === undefined) {
-      return yield* Effect.fail(
-        new LandofileValidationError({
-          message: `Service ${input.serviceName} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
-          file: `${input.appRoot}/.lando.yml`,
-          issues: [`services.${input.serviceName}.envFile`],
-        }),
-      );
-    }
-
-    const environment: Record<string, string> = {};
-    const inputs: Array<{ readonly source: string; readonly hash: string }> = [];
-    for (const [index, authoredPath] of envFiles.entries()) {
-      const source = resolve(input.appRoot, authoredPath);
-      const content = yield* input.fileSystem.readText(source).pipe(
-        Effect.mapError(
-          (cause) =>
-            new LandofileValidationError({
-              message: `Unable to read env file ${source} for service ${input.serviceName}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
-              file: source,
-              issues: [`services.${input.serviceName}.envFile[${index}]`],
-            }),
-        ),
-      );
-      const parsed = parseEnvFile(content, source);
-      if (!parsed.ok) {
-        return yield* Effect.fail(
-          new LandofileValidationError({
-            message: `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
-            file: parsed.issue.source,
-            issues: [`line ${parsed.issue.line}`],
-          }),
-        );
-      }
-      Object.assign(environment, parsed.environment);
-      inputs.push({ source, hash: createHash("sha256").update(content).digest("hex") });
-    }
-    return { environment: { ...environment, ...(input.service.environment ?? {}) }, inputs };
-  });
 
 export const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArray<string> =>
   base === "lando" ? LANDO_BASE_DEFAULT_FEATURE_IDS : L337_BASE_DEFAULT_FEATURE_IDS;

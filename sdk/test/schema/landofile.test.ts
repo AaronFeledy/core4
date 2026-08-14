@@ -105,6 +105,34 @@ describe("LandofileShape — schema gate", () => {
     expect(Either.isRight(result)).toBe(true);
   });
 
+  test.each([
+    ["scalar", "shared.env", ["shared.env"]],
+    ["list", ["base.env", "local.env"], ["base.env", "local.env"]],
+  ] as const)("LandofileShape decodes top-level env_file from %s input", (_form, envFile, expected) => {
+    // Given
+    const input = { name: "myapp", env_file: envFile };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
+
+    // Then
+    expect(decoded.env_file).toEqual(expected);
+  });
+
+  test("LandofileShape accepts its canonical top-level env_file output on merged-layer decode", () => {
+    // Given
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({ name: "myapp", env_file: "shared.env" });
+
+    // When
+    const decodedAgain = Schema.decodeUnknownSync(LandofileShape)(decoded, {
+      onExcessProperty: "error",
+    });
+
+    // Then
+    expect(decodedAgain.env_file).toEqual(["shared.env"]);
+    expect(Schema.encodeUnknownSync(LandofileShape)(decodedAgain).env_file).toEqual(["shared.env"]);
+  });
+
   test("IncludeEntry still decodes the bare string form", () => {
     // Given
     const input = "./f.yml";
@@ -137,6 +165,7 @@ describe("LandofileShape — schema gate", () => {
 
     for (const key of [
       "configs",
+      "env_file",
       "include",
       "includes",
       "networks",
@@ -165,6 +194,7 @@ describe("LandofileShape — schema gate", () => {
         volumes: { data: { name: "myapp-data" } },
         networks: { frontend: { name: "myapp-frontend" } },
         configs: { app_config: { file: "./config.json" } },
+        env_file: ["./shared.env"],
         secrets: {
           db_password: { file: "./.secrets/db-password" },
           api_token: { environment: "LANDO_SECRET_API_TOKEN" },

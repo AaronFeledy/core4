@@ -69,6 +69,7 @@ import {
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { finalizeServices } from "./endpoints.ts";
+import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
 import {
@@ -76,7 +77,6 @@ import {
   appFeatureError,
   baseDefaultFeatureIds,
   contributionId,
-  loadServiceEnvFiles,
   loadServiceTypeWithVersion,
   resolveHostFacts,
   resolvePinnedArtifactTag,
@@ -213,13 +213,24 @@ export const planApp = (
       appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
     }
 
+    const topLevelEnvFiles = yield* loadTopLevelEnvFiles({
+      appRoot,
+      envFiles: landofile.env_file ?? [],
+      fileSystem,
+    });
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
       const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
-      const serviceWithEnvironment: ServiceConfig =
-        loadedEnvFiles.inputs.length === 0
-          ? service
-          : { ...service, environment: loadedEnvFiles.environment };
+      const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
+      const serviceWithEnvironment: ServiceConfig = !hasEnvFiles
+        ? service
+        : {
+            ...service,
+            environment: {
+              ...topLevelEnvFiles.environment,
+              ...(loadedEnvFiles.environment ?? {}),
+            },
+          };
       if (
         serviceWithEnvironment.image !== undefined &&
         serviceWithEnvironment.build !== undefined &&
@@ -348,6 +359,7 @@ export const planApp = (
       serviceInputs: {
         landofile: landofile.services ?? {},
         composition: {
+          topLevelEnvFileInputs: topLevelEnvFiles.inputs,
           services: resolvedServices.map((entry) => ({
             name: entry.name,
             serviceType: entry.serviceType.id,

@@ -23,6 +23,7 @@ export interface MakeLegacyServiceTypeFakeOptions {
   readonly id: string;
   readonly name?: string;
   readonly base?: "l337" | "lando";
+  readonly normalizeConfig?: (service: ServiceConfig) => ServiceConfig;
   readonly toServicePlan: (input: ServicePlanInput) => ServicePlan;
 }
 
@@ -75,7 +76,11 @@ export const makeLegacyServiceTypeFake = (options: MakeLegacyServiceTypeFakeOpti
     base,
     schema: Schema.Unknown,
     resolve: (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
-      Effect.succeed({ base, normalizedConfig: input.service, features: [{ id: featureId }] }),
+      Effect.succeed({
+        base,
+        normalizedConfig: options.normalizeConfig?.(input.service) ?? input.service,
+        features: [{ id: featureId }],
+      }),
     testFeature,
   };
 };

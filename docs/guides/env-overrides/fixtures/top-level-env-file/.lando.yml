@@ -1,0 +1,11 @@
+name: env-overrides-shared
+runtime: 4
+env_file:
+  - shared.env
+services:
+  web:
+    type: node:lts
+  worker:
+    type: node:lts
+    environment:
+      APP_STAGE: worker
