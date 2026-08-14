@@ -1,3 +1,8 @@
+---
+title: PHP base images
+description: How Lando's generated PHP base image Dockerfiles are built and why stock PHP service plans still use upstream images.
+---
+
 # PHP base images
 
 `images/php/<line>/Dockerfile` is generated from the same exact Composer checksum, Debian package pins, and extension inventory used by stock PHP service plans. The publishing workflow makes these definitions available for later adoption but runtime manifests intentionally continue to use upstream PHP images in this change.

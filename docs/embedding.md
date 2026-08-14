@@ -1,3 +1,8 @@
+---
+title: Embedding `@lando/core`
+description: How to embed the Effect-native @lando/core library API in a host application.
+---
+
 # Embedding `@lando/core`
 
 The `@lando/core` library API is Effect-native. Embedding hosts compose Effect programs with the exported service tags and runtime Layer, then run those programs at the host boundary with Effect.
