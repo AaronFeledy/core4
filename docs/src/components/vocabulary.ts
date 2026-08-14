@@ -14,3 +14,13 @@ export const guideComponentVocabulary = {
   Tabs: "./src/components/Tabs.astro",
   Tab: "./src/components/Tab.astro",
 } as const;
+
+export const CONTEXT_COMPONENT_NAMES = [
+  "Step",
+  "Run",
+  "Verify",
+  "Inspect",
+  "Cleanup",
+  "Inline",
+  "Tab",
+] as const satisfies readonly (keyof typeof guideComponentVocabulary)[];

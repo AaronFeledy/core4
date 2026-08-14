@@ -11,6 +11,10 @@ import type {
 import type { Node, Parent } from "unist";
 import type { VFile } from "vfile";
 
+import { encodeVariantPair, encodeVariantString } from "@lando/core/docs/variant";
+
+import { CONTEXT_COMPONENT_NAMES } from "../components/vocabulary.ts";
+
 type MdxElement = MdxJsxFlowElement | MdxJsxTextElement;
 
 type GuideContext = {
@@ -43,20 +47,10 @@ const isMdxTextExpression = (node: Node): node is MdxTextExpression => node.type
 
 const isMdxFlowExpression = (node: Node): node is MdxFlowExpression => node.type === "mdxFlowExpression";
 
-const isContextElement = (element: MdxElement): boolean => {
-  switch (element.name) {
-    case "Step":
-    case "Run":
-    case "Verify":
-    case "Inspect":
-    case "Cleanup":
-    case "Inline":
-    case "Tab":
-      return true;
-    default:
-      return false;
-  }
-};
+const CONTEXT_ELEMENT_NAME_SET: ReadonlySet<string> = new Set(CONTEXT_COMPONENT_NAMES);
+
+const isContextElement = (element: MdxElement): boolean =>
+  element.name !== null && CONTEXT_ELEMENT_NAME_SET.has(element.name);
 
 const attributeNamed = (element: MdxElement, name: string): MdxJsxAttribute | undefined =>
   element.attributes.find(
