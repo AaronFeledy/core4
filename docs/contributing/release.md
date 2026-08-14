@@ -1,6 +1,11 @@
+---
+title: Release runbook
+description: Run and verify the manual signed release pipeline.
+---
+
 # Release runbook
 
-Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `docs/beta-1-decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) is scoped to dev prereleases only: it republishes the ci-built `linux-x64` binary as a `v4.0.0-dev.N` GitHub prerelease and publishes npm `dev`-tag packages. It never signs, notarizes, or publishes a stable release.
+Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) is scoped to dev prereleases only: it republishes the ci-built `linux-x64` binary as a `v4.0.0-dev.N` GitHub prerelease and publishes npm `dev`-tag packages. It never signs, notarizes, or publishes a stable release.
 
 Use this runbook to drive the 13-stage orchestrator (`scripts/release.ts`) by hand when cutting `4.0.0-beta.N`.
 

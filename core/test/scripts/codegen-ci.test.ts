@@ -596,7 +596,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("Scope: dev prerelease only");
       expect(workflow).toContain("scripts/release.ts");
       expect(workflow).toContain("invoked manually, not by this workflow");
-      expect(workflow).toContain("docs/release-runbook.md");
+      expect(workflow).toContain("docs/contributing/release.md");
       expect(workflow).not.toContain("beta-1-decisions");
 
       expect(workflow.startsWith(`${generatedReleaseHeader}\n`)).toBe(true);

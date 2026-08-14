@@ -1,3 +1,8 @@
+---
+title: CI runbook
+description: Reproduce CI checks locally and inspect their failure artifacts.
+---
+
 # CI runbook
 
 Use these commands to reproduce the CI jobs locally.

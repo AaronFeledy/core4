@@ -163,7 +163,7 @@ broken*. Coverage that validates a user-visible workflow belongs in a guide
 scenario; boundary checks and regressions with no docs home belong in
 integration or standalone fixture-scenario tests, not in a rendered page.
 
-CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
+CI failures can be reproduced locally with the [CI runbook](./docs/contributing/ci.md).
 Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
 Installing an alpha build or filing bug reports? See [alpha install and bug
 reports](./docs/alpha-install-and-bug-reports.md).
