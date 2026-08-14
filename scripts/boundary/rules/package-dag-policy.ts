@@ -29,6 +29,11 @@ const PLUGIN_RUNTIME_TARGETS = [
 
 export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>> = {
   "@lando/core": { dependencies: "workspace", devDependencies: "workspace" },
+  // The private docs site is an embedding-host-shaped build consumer; a runtime core dependency stays forbidden.
+  "@lando/docs": {
+    dependencies: ["@lando/core", "@lando/sdk"],
+    devDependencies: ["@lando/core", "@lando/sdk"],
+  },
   "@lando/sdk": { dependencies: [], devDependencies: [] },
   "@lando/paths": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/state-store": {

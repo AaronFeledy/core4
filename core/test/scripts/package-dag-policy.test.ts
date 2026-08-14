@@ -32,19 +32,25 @@ describe("workspace package DAG policy", () => {
     }
   });
 
-  test("prevents non-core runtime policies from depending on core", () => {
+  test("limits non-core source imports of core to the private docs build host", () => {
     // Given
     const policies = Object.entries(WORKSPACE_EDGE_TABLE);
 
     // When
-    const nonCoreRuntimeTargets = policies
-      .filter(([packageName]) => packageName !== "@lando/core")
-      .map(([, policy]) => policy.dependencies);
+    const nonCoreSourceConsumers = policies
+      .filter(
+        ([packageName, policy]) =>
+          packageName !== "@lando/core" &&
+          policy.dependencies !== "workspace" &&
+          policy.dependencies.includes("@lando/core"),
+      )
+      .map(([packageName]) => packageName);
 
     // Then
-    for (const targets of nonCoreRuntimeTargets) {
-      expect(targets).not.toBe("workspace");
-      expect(targets).not.toContain("@lando/core");
-    }
+    expect(nonCoreSourceConsumers).toEqual(["@lando/docs"]);
+    expect(WORKSPACE_EDGE_TABLE["@lando/docs"]).toEqual({
+      dependencies: ["@lando/core", "@lando/sdk"],
+      devDependencies: ["@lando/core", "@lando/sdk"],
+    });
   });
 });
