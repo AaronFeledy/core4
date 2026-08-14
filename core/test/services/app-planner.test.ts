@@ -1321,8 +1321,7 @@ describe("AppPlannerLive", () => {
       );
       const cachedLandofile: LandofileShape = {
         name: "cached-app",
-        env_file: ["cache.env"],
-        services: { [ServiceName.make("web")]: { type: "cached-type" } },
+        services: { [ServiceName.make("web")]: { type: "cached-type", envFile: ["cache.env"] } },
       };
 
       try {
