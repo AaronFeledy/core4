@@ -8,6 +8,7 @@ import {
   decodePublicTranscriptEither,
   toPublicTranscriptView,
 } from "@lando/core/docs/render";
+import { variantFileSuffix } from "@lando/core/docs/variant";
 import type { PublicTranscript } from "@lando/core/schema";
 import { AxisToken, ComponentId, GuideId } from "@lando/sdk/docs/components";
 import { Either, Schema } from "effect";
@@ -60,15 +61,6 @@ export type TranscriptResolution = ResolvedTranscript | MissingTranscript;
 
 export type TranscriptFrameKey = Pick<PublicTranscriptViewFrame, "kind" | "sourceFile" | "sourceLine">;
 
-export type TranscriptPlaceholderRequest = {
-  readonly commandText: string;
-};
-
-export type TranscriptPlaceholder = {
-  readonly commandText: string;
-  readonly label: string;
-};
-
 type CachedTranscript =
   | { readonly kind: "ok"; readonly transcript: PublicTranscript }
   | { readonly kind: "absent" }
@@ -78,7 +70,7 @@ export const DEFAULT_PUBLIC_TRANSCRIPT_ROOT = fileURLToPath(
   new URL("../../../dist/transcripts/public/guides", import.meta.url),
 );
 
-const MISSING_TRANSCRIPT_LABEL = "No captured output yet" as const;
+export const MISSING_TRANSCRIPT_LABEL = "No captured output yet" as const;
 const transcriptCache = new Map<string, Promise<CachedTranscript>>();
 
 const isPathInsideRoot = (root: string, candidate: string): boolean => {
@@ -247,8 +239,3 @@ export const findTranscriptFrame = (
     (frame) =>
       frame.kind === key.kind && frame.sourceFile === key.sourceFile && frame.sourceLine === key.sourceLine,
   );
-
-export const placeholderFor = (request: TranscriptPlaceholderRequest): TranscriptPlaceholder => ({
-  commandText: request.commandText,
-  label: MISSING_TRANSCRIPT_LABEL,
-});

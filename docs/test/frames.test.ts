@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -22,11 +24,56 @@ const CAPTURED_PROPS = {
 
 const previousRoot = process.env.LANDO_DOCS_TRANSCRIPT_ROOT;
 const previousBase = process.env.LANDO_DOCS_SOURCE_LINK_BASE;
+const previousCwd = process.cwd();
 
 afterEach(() => {
   process.env.LANDO_DOCS_TRANSCRIPT_ROOT = previousRoot ?? "";
   process.env.LANDO_DOCS_SOURCE_LINK_BASE = previousBase ?? "";
+  process.chdir(previousCwd);
 });
+
+const CAPTURED_TRANSCRIPT = {
+  guideId: "demo",
+  scenarioId: "happy-path",
+  variant: "",
+  runtime: "cli",
+  render: true,
+  frames: [
+    {
+      kind: "step",
+      sourceFile: "docs/guides/demo.mdx",
+      sourceLine: 10,
+      displayText: "Start",
+    },
+    {
+      kind: "run",
+      sourceFile: "docs/guides/demo.mdx",
+      sourceLine: 11,
+      commandDisplay: "lando start",
+      resultSummary: "expected exit 0",
+    },
+  ],
+} as const;
+
+const guidesRootUnder = (base: string): string => join(base, "dist", "transcripts", "public", "guides");
+
+const writeCapturedTranscript = async (guidesRoot: string, guideId: string): Promise<void> => {
+  const guideDir = join(guidesRoot, guideId);
+  await mkdir(guideDir, { recursive: true });
+  await writeFile(
+    join(guideDir, "happy-path.json"),
+    JSON.stringify({ ...CAPTURED_TRANSCRIPT, guideId }, null, 2),
+    "utf8",
+  );
+};
+
+const framePropsFor = (guideId: string) =>
+  ({
+    "data-guide-id": guideId,
+    "data-scenario-id": "happy-path",
+    "data-source-file": "docs/guides/demo.mdx",
+    "data-source-line": "11",
+  }) as const;
 
 describe("docs component frame resolution", () => {
   test("links a captured frame to the repository source base", async () => {
@@ -35,7 +82,7 @@ describe("docs component frame resolution", () => {
     process.env.LANDO_DOCS_SOURCE_LINK_BASE = "https://github.com/x/y/blob/main";
 
     // When: a Run component resolves its captured frame.
-    const resolution = await resolveComponentFrame(CAPTURED_PROPS, "run", "lando start");
+    const resolution = await resolveComponentFrame(CAPTURED_PROPS, "run");
 
     // Then: the source href is absolute and points at the authored guide line.
     expect(resolution.status).toBe("captured");
@@ -49,7 +96,7 @@ describe("docs component frame resolution", () => {
     process.env.LANDO_DOCS_SOURCE_LINK_BASE = "";
 
     // When: a Run component resolves its captured frame.
-    const resolution = await resolveComponentFrame(CAPTURED_PROPS, "run", "lando start");
+    const resolution = await resolveComponentFrame(CAPTURED_PROPS, "run");
 
     // Then: the default repository blob URL is used.
     expect(resolution.status).toBe("captured");
@@ -113,7 +160,6 @@ describe("docs component frame resolution", () => {
         "data-source-line": "11",
       },
       "run",
-      "lando start",
     );
 
     // Then: the build-safe missing placeholder is returned.

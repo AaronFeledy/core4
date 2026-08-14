@@ -4,11 +4,10 @@ import { resolve } from "node:path";
 import { type PublicTranscriptViewFrame, assertHttpsSourceLinkBase } from "@lando/core/docs/render";
 
 import {
-  DEFAULT_PUBLIC_TRANSCRIPT_ROOT,
+  MISSING_TRANSCRIPT_LABEL,
   type TranscriptFrameKey,
   type TranscriptRequest,
   findTranscriptFrame,
-  placeholderFor,
   resolveTranscript,
 } from "./transcripts.ts";
 
@@ -42,7 +41,6 @@ const resolvedSourceLinkBase = (): string => {
   validatedSourceLinkBaseOverride = { raw: override, value };
   return value;
 };
-
 const transcriptRootIn = (base: string) => resolve(base, "dist", "transcripts", "public", "guides");
 
 /** Successful discoveries only, keyed by cwd + guideId. Misses are never stored. */
@@ -50,16 +48,27 @@ const transcriptRootCache = new Map<string, string>();
 
 const transcriptRootCacheKey = (cwd: string, guideId: string): string => `${cwd}\0${guideId}`;
 const discoverTranscriptRoot = (guideId: string): string => {
+  // Env override is checked before the cache and never memoized — tests mutate
+  // LANDO_DOCS_TRANSCRIPT_ROOT per case with afterEach restore.
   const override = envValue("LANDO_DOCS_TRANSCRIPT_ROOT");
   if (override !== undefined) return override;
 
-  const candidates = [process.cwd(), resolve(process.cwd(), ".."), resolve(process.cwd(), "../..")].map(
-    (root) => resolve(root, "dist", "transcripts", "public", "guides"),
-  );
-  for (const candidate of candidates) {
-    if (existsSync(resolve(candidate, guideId))) return candidate;
+  const cwd = process.cwd();
+  const cacheKey = transcriptRootCacheKey(cwd, guideId);
+  const cached = transcriptRootCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const primary = transcriptRootIn(cwd);
+  const fallbacks = [transcriptRootIn(resolve(cwd, "..")), transcriptRootIn(resolve(cwd, "../.."))];
+  for (const candidate of [primary, ...fallbacks]) {
+    if (existsSync(resolve(candidate, guideId))) {
+      transcriptRootCache.set(cacheKey, candidate);
+      return candidate;
+    }
   }
-  return candidates[0] ?? DEFAULT_PUBLIC_TRANSCRIPT_ROOT;
+  // Do not cache misses: a later codegen pass may create the guide under a
+  // fallback root while this long-lived docs process is still running.
+  return primary;
 };
 
 const stringProp = (props: ComponentProps, name: string): string | undefined => {
@@ -93,11 +102,10 @@ export const frameKeyFor = (props: ComponentProps, kind: FrameKind): TranscriptF
 export const resolveComponentFrame = async (
   props: ComponentProps,
   kind: FrameKind,
-  commandText = "",
 ): Promise<ComponentFrameResolution> => {
   const request = transcriptRequestFor(props);
   const key = frameKeyFor(props, kind);
-  const label = placeholderFor({ commandText }).label;
+  const label = MISSING_TRANSCRIPT_LABEL;
   if (request === undefined || key === undefined) return { status: "missing", reason: "context", label };
 
   const resolved = await resolveTranscript(request, {

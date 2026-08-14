@@ -11,7 +11,6 @@ import {
   type TranscriptRequest,
   findTranscriptFrame,
   isSafeTranscriptRequest,
-  placeholderFor,
   resolveTranscript,
   transcriptPathFor,
 } from "../src/lib/transcripts.ts";
@@ -145,20 +144,6 @@ describe("docs public transcript resolver", () => {
     expect(result.warning).toMatchObject({
       code: "transcript.invalid-schema",
       path: join(TRANSCRIPT_ROOT, "corrupt", "invalid-schema.json"),
-    });
-  });
-
-  test("builds a placeholder from authored command text", () => {
-    // Given: the static command authored in a guide component.
-    const request = { commandText: "lando start" };
-
-    // When: a missing-transcript placeholder is requested.
-    const placeholder = placeholderFor(request);
-
-    // Then: the authored command remains visible with a capture-status label.
-    expect(placeholder).toEqual({
-      commandText: "lando start",
-      label: "No captured output yet",
     });
   });
 });
