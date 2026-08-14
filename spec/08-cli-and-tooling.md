@@ -1261,31 +1261,25 @@ Lifecycle events publish at canonical command id `apps:init` per §11. Init itse
 
 #### 8.8.10 Canonical recipes shipped in core
 
-The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each ships its own `recipe.yml`, templates, and README:
+The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each ships its own `recipe.yml` (or `recipe.ts`), templates, and README:
 
 | Recipe id | Stack |
 |---|---|
 | `wordpress` | WordPress with PHP, MariaDB, optional Redis |
+| `drupal` | Drupal with PHP, MariaDB or PostgreSQL, Drush; version/webserver/DB/composer options per §8.8.16 |
+| `drupal-cms` | Drupal CMS starter on the `drupal` stack with scaffold + Drush wired |
 | `laravel` | Laravel with PHP, MariaDB or PostgreSQL, Redis, optional queue worker |
 | `symfony` | Symfony with PHP, PostgreSQL or MariaDB, Redis |
-| `lamp` | Generic LAMP starter: Apache, PHP, MariaDB |
-| `lemp` | Generic LEMP starter: nginx, PHP, MariaDB |
-| `node-api` | Node API with Express / Fastify / Hono framework picker, optional PostgreSQL or MongoDB |
-| `astro` | Astro frontend with optional content-source and DB picker |
-| `sveltekit` | SvelteKit frontend with optional adapter and DB picker |
-| `nextjs` | Next.js frontend with optional DB and Auth helper picker |
-| `django` | Django with PostgreSQL, Redis, optional Celery worker |
-| `fastapi` | FastAPI with PostgreSQL, Redis |
-| `rails` | Ruby on Rails with PostgreSQL, Redis |
-| `jekyll` | Jekyll static site |
-| `hugo` | Hugo static site |
-| `eleventy` | Eleventy static site |
-| `empty` | Blank Landofile starter: service catalog selection only, no opinion |
+| `backdrop` | Backdrop CMS with Apache PHP, MariaDB (extends `lamp` per §8.8.15) |
+| `joomla` | Joomla with Apache PHP, MariaDB (extends `lamp` per §8.8.15) |
+| `mean` | MEAN-style Node API: Node with MongoDB, optional Redis |
+| `lamp` | Generic LAMP starter: Apache, PHP, MariaDB; DB/PHP/composer/webroot options per §8.8.16 |
+| `lemp` | Generic LEMP starter: nginx, PHP-FPM (`via: fpm`, §6.12.5), MariaDB |
 | `toolbox` | Disposable tool-runner default (§21.10.3): one `type: lando` service with a version-pinned general-purpose CLI image; every prompt has a non-interactive default |
 
 Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts`, which generates `core/src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
-The v4.0 set covers common PHP, Node, Python, Ruby, and static-site stacks plus an `empty` starter. Out of scope for the v4.0 bundle: Drupal (community can publish via npm/git/registry) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
+Staged catalog growth (planned 4.x additions; not part of the v4.0 bundle): `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `rails`, `jekyll`, `hugo`, `eleventy`, and `empty`, prioritized by adoption signal per the ROADMAP. Out of scope for the v4.0 bundle: hoster recipes (`acquia`, `lagoon`, `pantheon`, `platformsh` — these are 4.1 `RemoteSource` connector work, §10.12) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
 
 #### 8.8.11 Recipe authoring surface
 
@@ -1341,6 +1335,38 @@ The TS form's contract:
 - Bundled-recipe codegen (§17.2 "Bundled recipes index") handles `recipe.ts` recipes by including the file in the recipe's tar and running `BunSelfRunner.buildLib` against it at build time, embedding the bundled JS output alongside the source. The runtime loader prefers the prebuilt JS so the binary's recipe-init path does not pay TS-load cost.
 
 A `recipe.ts` recipe is otherwise indistinguishable from a YAML recipe at runtime: the same source schemes (§8.8.4), the same destination semantics (§8.8.7), the same post-init action set (§8.8.8), and the same constraints (§8.8.12). A user invoking `lando init --recipe foo` has no way to tell whether `foo` was authored as `recipe.ts` or `recipe.yml` from the prompt experience alone.
+
+#### 8.8.15 Recipe composition (`extends:`)
+
+A recipe MAY declare `extends: <recipe-ref>` in its `recipe.yml` to build on another recipe instead of duplicating it:
+
+```yaml
+name: backdrop
+extends: lamp
+prompts:
+  # appended after (or overriding, by id) the parent's prompts
+files:
+  # merged over the parent's file manifest; child wins on path conflict
+```
+
+Rules:
+
+- `extends:` accepts the same `<recipe-ref>` forms as `lando init --recipe` (bundled id, path, git, tarball, npm, registry). Non-bundled parents resolve through the standard source registry and are lockfile-pinned like any other remote recipe material.
+- Resolution is single-inheritance and acyclic; a cycle or a chain deeper than 3 is rejected with a tagged error naming the chain.
+- Merge semantics: prompts merge by prompt id (child overrides or appends, and a child MAY drop a parent prompt by id with `drop: true`); `files:` merge by destination path (child wins); `postInit:` actions concatenate parent-then-child; scalar manifest fields (name, description, next-steps) come from the child.
+- The merged result MUST validate as a plain `RecipeManifest` — `lando meta recipes describe` shows the flattened result, and consumers downstream of resolution never see the inheritance.
+- `recipe.ts` recipes MAY also declare `extends:` in their returned manifest; the merge happens after the factory runs.
+- Constraints in §8.8.12 apply to the flattened result, and `extends:` resolution counts as source resolution for the network rules there.
+
+#### 8.8.16 Recipe option parity (normative for `drupal`, `drupal-cms`, `lamp`)
+
+The bundled CMS/stack recipes MUST expose real stack choices, not fixed pins:
+
+- `drupal`: Drupal major version choice (with a supported-versions default), PHP version choice across the §6.12.1 supported range, webserver choice (`apache` | `nginx` + FPM per §6.12.5), database choice (MariaDB, MySQL, PostgreSQL) with version prompt, `webroot:` selection, and Composer version option (§6.12.5). Drush installs via the scaffolded project's Composer manifest, and the generated Landofile's tooling targets the project-local Drush.
+- `drupal-cms`: inherits the `drupal` surface; the generated app serves the scaffold's real docroot (e.g. `/app/web`) and its README/guide scenarios exercise scaffold + Drush end-to-end.
+- `lamp`: database choice (MariaDB or MySQL, with versions), PHP version choice, Composer version option, and `webroot:` selection.
+
+Every prompt has a non-interactive default so `--yes` initializes without input, and each recipe's README.mdx (§19.13) exercises at least one non-default variant.
 
 ### 8.9 Renderers and messages
 

@@ -518,7 +518,7 @@ Plugin implementations MUST pass the same contract suite as the default and MUST
 
 ### 10.7 SQL helpers
 
-SQL helper behavior is plugin-provided.
+SQL helper behavior is plugin-provided. Core does not ship SQL helpers; the bundled **`@lando/sql`** plugin is the reference implementation (pulled forward from the 4.1 roadmap by `spec/lando3-parity/`).
 
 **Required behaviors for database plugins:**
 
@@ -527,7 +527,7 @@ SQL helper behavior is plugin-provided.
 - Gzipped import/export is supported when the service type declares it.
 - Replacement imports require explicit confirmation by default.
 
-Core does not ship SQL helpers.
+**The bundled `@lando/sql` plugin** contributes `db:import`, `db:export`, `db:snapshot`, `db:restore`, and `db:reset` commands for the §6.12.4 creds-bearing database types (MySQL-family, PostgreSQL, MongoDB, and `mssql`). It is built entirely on the `DataMover` primitive (§10.11) and the provider data plane — no bespoke byte movement — with gzip support, progress frames through the renderer, machine output per §8.11, `RedactionService`-routed credentials, and explicit confirmation before replacement imports. Target-service selection defaults to the app's single database service and requires `--service` when ambiguous.
 
 ### 10.8 Setup and host integration
 
