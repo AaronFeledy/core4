@@ -98,7 +98,7 @@ export const isWorkspaceTargetAllowed = (targets: AllowedWorkspaceTargets, targe
 
 export const isWorkspaceRuntimeTargetAllowed = (source: string, target: string): boolean => {
   if (source === "@lando/docs") {
-    return (DOCS_BUILD_SOURCE_TARGETS as readonly string[]).includes(target);
+    return isWorkspaceTargetAllowed(DOCS_BUILD_SOURCE_TARGETS, target);
   }
   const policy = WORKSPACE_EDGE_TABLE[source];
   return policy !== undefined && isWorkspaceTargetAllowed(policy.dependencies, target);
