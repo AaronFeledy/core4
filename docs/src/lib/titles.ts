@@ -24,7 +24,7 @@ const ACRONYMS: Readonly<Record<string, string>> = {
   tls: "TLS",
   url: "URL",
   yaml: "YAML",
-} as const;
+};
 
 const visibleSource = (source: string): string => source.replace(FRONTMATTER, "").replace(HIDDEN_BLOCK, "");
 
@@ -50,8 +50,7 @@ const humanize = (value: string): string => {
     .split(/[-_\s]+/)
     .map((word) => word.toLowerCase())
     .filter((word) => word.length > 0);
-  const first = words[0];
-  if (first === undefined) return "Untitled";
+  if (words.length === 0) return "Untitled";
 
   return words
     .map((word, index) => {
