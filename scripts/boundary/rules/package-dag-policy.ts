@@ -27,12 +27,14 @@ const PLUGIN_RUNTIME_TARGETS = [
   "@lando/landofile",
 ] as const;
 
+const DOCS_BUILD_SOURCE_TARGETS = ["@lando/core", "@lando/sdk"] as const;
+
 export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>> = {
   "@lando/core": { dependencies: "workspace", devDependencies: "workspace" },
   // The private docs site is an embedding-host-shaped build consumer; a runtime core dependency stays forbidden.
   "@lando/docs": {
-    dependencies: ["@lando/core", "@lando/sdk"],
-    devDependencies: ["@lando/core", "@lando/sdk"],
+    dependencies: [],
+    devDependencies: [...DOCS_BUILD_SOURCE_TARGETS],
   },
   "@lando/sdk": { dependencies: [], devDependencies: [] },
   "@lando/paths": { dependencies: ["@lando/sdk"], devDependencies: [] },
@@ -95,6 +97,9 @@ export const isWorkspaceTargetAllowed = (targets: AllowedWorkspaceTargets, targe
   targets === "workspace" || targets.includes(target);
 
 export const isWorkspaceRuntimeTargetAllowed = (source: string, target: string): boolean => {
+  if (source === "@lando/docs") {
+    return (DOCS_BUILD_SOURCE_TARGETS as readonly string[]).includes(target);
+  }
   const policy = WORKSPACE_EDGE_TABLE[source];
   return policy !== undefined && isWorkspaceTargetAllowed(policy.dependencies, target);
 };

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { WORKSPACE_EDGE_TABLE } from "../../../scripts/boundary/rules/package-dag-policy.ts";
+import {
+  WORKSPACE_EDGE_TABLE,
+  isWorkspaceRuntimeTargetAllowed,
+} from "../../../scripts/boundary/rules/package-dag-policy.ts";
 
 describe("workspace package DAG policy", () => {
   test("allows the managed-file package to depend only on its primitive inputs", () => {
@@ -37,7 +40,7 @@ describe("workspace package DAG policy", () => {
     const policies = Object.entries(WORKSPACE_EDGE_TABLE);
 
     // When
-    const nonCoreSourceConsumers = policies
+    const runtimeCoreConsumers = policies
       .filter(
         ([packageName, policy]) =>
           packageName !== "@lando/core" &&
@@ -46,11 +49,13 @@ describe("workspace package DAG policy", () => {
       )
       .map(([packageName]) => packageName);
 
-    // Then
-    expect(nonCoreSourceConsumers).toEqual(["@lando/docs"]);
+    // Then: docs may import core at build time, but must not declare a runtime dependency
+    expect(runtimeCoreConsumers).toEqual([]);
     expect(WORKSPACE_EDGE_TABLE["@lando/docs"]).toEqual({
-      dependencies: ["@lando/core", "@lando/sdk"],
+      dependencies: [],
       devDependencies: ["@lando/core", "@lando/sdk"],
     });
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/docs", "@lando/core")).toBe(true);
+    expect(isWorkspaceRuntimeTargetAllowed("@lando/docs", "@lando/sdk")).toBe(true);
   });
 });
