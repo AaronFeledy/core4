@@ -289,22 +289,31 @@ const runtimeFor = (layer: Layer.Layer<never, never, never>) => Effect.provide(l
 
 describe("runTooling — CLI rendering", () => {
   test("publishes task-tree events for successful provider-exec tooling output", async () => {
+    // Given
     const events: LandoEvent[] = [];
-    const { provider } = makeProvider([{ exitCode: 0, stdout: "installing\ndone\n" }]);
+    const { provider } = makeProvider([{ exitCode: 0, stdout: "DB=bare-db-password\nREGION=us-east-1\n" }]);
     const landofile: LandofileShape = {
       name: "scenario",
       tooling: { composer: { service: "appserver", cmd: "composer install" } },
     };
+    const service = {
+      ...makeService("appserver", true),
+      environment: { DB_PASSWORD: "bare-db-password", APP_REGION: "us-east-1" },
+    };
     const layer = Layer.mergeAll(
-      makeLayer({ landofile, plan: makePlan([makeService("appserver", true)]), provider }),
+      makeLayer({ landofile, plan: makePlan([service]), provider }),
       recordingEventLayer(events),
     );
 
+    // When
     const result = await Effect.runPromise(
       runTooling({ name: "composer", renderProgress: true }).pipe(runtimeFor(layer)),
     );
 
+    // Then
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("bare-db-password");
+    expect(result.stdout).toContain("us-east-1");
     expect(events.map((event) => event._tag)).toEqual([
       "task.tree.start",
       "task.start",
@@ -319,8 +328,16 @@ describe("runTooling — CLI rendering", () => {
       children: ["tooling:composer:appserver"],
     });
     expect(events.filter((event) => event._tag === "task.detail")).toEqual([
-      expect.objectContaining({ taskId: "tooling:composer:appserver", stream: "stdout", line: "installing" }),
-      expect.objectContaining({ taskId: "tooling:composer:appserver", stream: "stdout", line: "done" }),
+      expect.objectContaining({
+        taskId: "tooling:composer:appserver",
+        stream: "stdout",
+        line: "DB=[redacted]",
+      }),
+      expect.objectContaining({
+        taskId: "tooling:composer:appserver",
+        stream: "stdout",
+        line: "REGION=us-east-1",
+      }),
     ]);
     expect(events.find((event) => event._tag === "task.complete")).toMatchObject({
       taskId: "tooling:composer:appserver",
