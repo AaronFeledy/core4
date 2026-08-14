@@ -62,8 +62,6 @@ const discoverTranscriptRoot = (guideId: string): string => {
   return candidates[0] ?? DEFAULT_PUBLIC_TRANSCRIPT_ROOT;
 };
 
-const sourceLinkBase = (): string => envValue("LANDO_DOCS_SOURCE_LINK_BASE") ?? DEFAULT_SOURCE_LINK_BASE;
-
 const stringProp = (props: ComponentProps, name: string): string | undefined => {
   const value = props[name];
   return typeof value === "string" ? value : undefined;
@@ -80,12 +78,14 @@ export const frameKeyFor = (props: ComponentProps, kind: FrameKind): TranscriptF
   const sourceFile = stringProp(props, "data-source-file");
   const sourceLineValue = props["data-source-line"];
   if (sourceFile === undefined) return undefined;
-  const sourceLine =
-    typeof sourceLineValue === "number"
-      ? sourceLineValue
-      : typeof sourceLineValue === "string"
-        ? Number(sourceLineValue)
-        : Number.NaN;
+  let sourceLine: number;
+  if (typeof sourceLineValue === "number") {
+    sourceLine = sourceLineValue;
+  } else if (typeof sourceLineValue === "string") {
+    sourceLine = Number(sourceLineValue);
+  } else {
+    sourceLine = Number.NaN;
+  }
   if (!Number.isInteger(sourceLine) || sourceLine < 1) return undefined;
   return { kind, sourceFile, sourceLine };
 };
