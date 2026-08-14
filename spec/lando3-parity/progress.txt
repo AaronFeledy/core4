@@ -1,0 +1,26 @@
+Branch: feat/lando3-parity
+Source PRDs: spec/lando3-parity/prd-lando3-parity-*.md
+Spec source of truth: spec/06 (§6.12.1, §6.12.5), spec/07 (§7.5–§7.6, unchanged), spec/08 (§8.1, §8.5, §8.8.10, §8.8.15, §8.8.16), spec/11 (§10.7, §10.11), spec/16 (§18.4), ROADMAP Phase 5 concurrent-wave note
+Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot) + plugin-parity scout; spec-coverage audit 2026-08-13
+
+## Conventions
+
+- Story IDs US-561..US-581; prd.json priority order is execution order (strict). Ordering guarantees no story depends on a later story.
+- PRD-02 (keys), PRD-03 (services), PRD-04 (php) are mutually independent after US-561 and may run in parallel; PRD-05 requires PRD-04 + its own US-575 first; US-579 requires US-569 only for mssql coverage; US-580..581 last.
+- Feature wave, not infra: every user-visible surface ships its executable guide/README in the same story. Load `lando-write-docs` before authoring guides; guides are prose-first MDX with real `<Run>`/`<Verify>`.
+- New service types must satisfy the full §6.12.1 per-service-type implementation checklist (resolution, contract suites, tooling, creds, schema publication) in the same change.
+- SDK schema changes follow sdk/AGENTS.md: API_COMPATIBILITY.md where required + `bun run codegen:schema-snapshot`.
+- Landofile un-gating removes keys from BETA_TOP_LEVEL_KEYS in landofile/src/service.ts one story at a time; never remove the whole gate in one story.
+- Plugins may not depend on @lando/core; @lando/sql contributes through the generated composition root; all byte movement rides DataMover (§10.11); probe/paths/state-store boundary rules apply.
+- Full-suite lock is always `bun test` (or explicit shard --run commands) with positive test counts. Never `bun run test` alone.
+- After adding plugins/sql, run `bun install` and include the package in test shards.
+- Run touched semantic gates per story: check:boundaries, check:guide-coverage, check:guide-drift, lint:guides, codegen:check when generated outputs move.
+- Do not touch unrelated dirty working-tree files from other waves.
+- Out of scope (do not implement): hoster connectors/RemoteSource impls, custom SSH-key mounts (sshAgent.sidecar:false stays rejected), staged §8.8.10 recipes (node-api, astro, sveltekit, nextjs, django, fastapi, rails, jekyll, hugo, eleventy, empty), image save/load.
+
+## Codebase Patterns (carry forward)
+
+- Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
+- Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
+- Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
+- Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.

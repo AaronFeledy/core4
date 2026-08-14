@@ -833,7 +833,7 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 
 | `type:` | Versions | Default base | What you get out of the box |
 |---|---|---|---|
-| `php:<version>` | 8.1, 8.2, 8.3, 8.4 | `lando` | Apache PHP, Composer 2, common extensions (gd, intl, opcache, pdo_*, mbstring, zip), explicit absolute-container `webroot:` selection, and opt-in Apache `allowOverride:` policy |
+| `php:<version>` | 8.1, 8.2, 8.3, 8.4, 8.5 | `lando` | PHP with selectable serving mode (`via: apache` default, `fpm`, `cli` — §6.12.5), Composer with version selection (§6.12.5), common extensions (gd, intl, opcache, pdo_*, mbstring, zip), opt-in Xdebug (§6.12.5), database-client auto-detection (`db_client:` — §6.12.5), explicit absolute-container `webroot:` selection, and opt-in Apache `allowOverride:` policy |
 | `node:<version>` | 18, 20, 22, 24, lts | `lando` | Node + npm + yarn + pnpm + bun installers; `command:` for the dev server; `script:` for npm scripts; node_modules cache mount |
 | `python:<version>` | 3.10, 3.11, 3.12, 3.13 | `lando` | Python + pip + `uv` + venv; `framework: <id>` (`django`, `fastapi`, `flask`, `none`); requirements/pyproject install |
 | `ruby:<version>` | 3.1, 3.2, 3.3 | `lando` | Ruby + Bundler + rbenv; `framework: <id>` (`rails`, `sinatra`, `none`); bundle install hooks |
@@ -856,6 +856,11 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 | `rabbitmq[:<version>]` | 3, 4 | `lando` | RabbitMQ + management UI route, persistent volume |
 | `minio` | latest | `lando` | MinIO S3-compatible object store + console route, bucket init |
 | `localstack` | latest | `lando` | LocalStack AWS emulator |
+| `tomcat[:<version>]` | 9, 10, 11 | `lando` | Apache Tomcat servlet container; `webroot:`-style webapp deployment mount, TLS via `lando.certs` |
+| `varnish[:<version>]` | 6, 7 | `lando` | Varnish HTTP cache fronting a named backend service; VCL override mount, backend healthcheck |
+| `dotnet[:<version>]` | 8.0, 9.0 | `lando` | .NET SDK + ASP.NET runtime; `command:` for the dev server; NuGet cache mount |
+| `mssql[:<version>]` | 2019, 2022 | `lando` | SQL Server + `creds:` (§6.12.4 uniform contract; `SA_PASSWORD` mapped from `rootPassword`), healthcheck, persistent volume, `sqlcmd` tooling. amd64-only upstream images; on arm64 hosts the type requires provider emulation capability and fails closed with remediation when absent |
+| `phpmyadmin[:<version>]` | 5, latest | `lando` | phpMyAdmin web UI auto-wired to the app's MySQL-family services via the §6.12.4 creds contract and cross-service expression scope; proxy route |
 | `static[:<server>]` | nginx, caddy | `lando` | Plain web server for static content; `webroot:`, optional build hook |
 | `compose` | n/a | `l337` | Raw Compose-spec passthrough; the escape hatch for anything not in the catalog. Validates the `image:` / `build:` block and routes everything else through provider-specific extensions. |
 
@@ -930,6 +935,57 @@ Resolution rules:
 - Creds are **not secrets** in the §7.3.1 sense — they are dev-environment defaults, not user secrets. A service-type MAY declare a creds field as `secret: true` to opt that field into `${secret:…}` redaction; `password` and `rootPassword` are secret by default.
 
 This schema is the spec's commitment that the §6.12.1 catalog promise of "MariaDB + creds:" is uniform across types, addressable from anywhere via the cross-service expression scope, and never reinvented per-plugin.
+
+#### 6.12.5 PHP service depth (serving modes, Composer, Xdebug, `db_client`)
+
+The `php` service type carries more configuration surface than the other language types because it is the highest-traffic v3 migration path. Four option families are normative:
+
+**Serving mode (`via:`).**
+
+```yaml
+services:
+  appserver:
+    type: php:8.4
+    via: apache        # default; also: fpm | cli
+```
+
+- `via: apache` (default) — Apache with mod_php, the v3-familiar single-container shape. `webroot:` and `allowOverride:` apply.
+- `via: fpm` — PHP-FPM only, listening on port 9000, intended to be fronted by an `nginx` service in the same app. The `nginx` type's shared PHP framework presets (§6.12.1) target FPM upstreams by service name. `webroot:` applies (FPM chroot/docroot); `allowOverride:` is rejected with remediation.
+- `via: cli` — no long-running web server; the container idles for tooling, `command:`, and worker/queue use. `webroot:` optional; HTTP-only keys (`allowOverride:`, HTTP `routes:` defaults) are rejected with remediation.
+
+The serving mode selects the base image variant (`-apache-bookworm`, `-fpm-bookworm`, `-cli-bookworm`); every mode passes the same service-composition contract, and mode-invalid keys fail closed at plan time, never at provider time.
+
+**Composer (`composer:`).**
+
+```yaml
+    composer: "2"          # major channel (default; tracks the pinned bundled release)
+    composer: "2.7.7"      # exact version
+    composer: false        # skip Composer install entirely
+```
+
+The bundled default remains a checksum-pinned Composer 2 release; `composer:` selects a different pinned version (fetched with checksum verification through the standard build-step downloader path) or disables the install. Version selection participates in `buildKey` so changing it rebuilds the artifact layer.
+
+**Xdebug (`xdebug:`).**
+
+```yaml
+    xdebug: false          # default — extension not installed
+    xdebug: true           # install + enable with mode "debug"
+    xdebug: "debug,develop" # install + enable with an explicit XDEBUG_MODE string
+```
+
+`xdebug: true | <modes>` installs the Xdebug extension as a build step (PECL or distro package, checksum-pinned per PHP version) and enables it with `XDEBUG_MODE` set from the option, `client_host` pointed at the host gateway, and port 9003. The service contributes `lando xdebug on|off|status` tooling that toggles the extension without a rebuild (config toggle + FPM/Apache reload). When `xdebug: false`, setting `XDEBUG_*` env vars alone MUST NOT be documented as enabling debugging; guides show the real option.
+
+**Database client auto-detection (`db_client:`).**
+
+```yaml
+    db_client: auto        # default — detect MySQL-family/postgres/mongodb services and install the matching client CLI
+    db_client: false       # install no database client
+    db_client: "mariadb:11.4"  # force a specific client family/version
+```
+
+At plan time, `auto` inspects the app's database services (§6.12.4 opt-ins) and installs the matching client package(s) in the PHP container so `mysql`, `psql`, or `mongosh` invoked via tooling against `services.<db>.creds.*` works out of the box. Explicit values force or disable the client. Detection is deterministic from the resolved plan (no provider probing) and participates in `buildKey`.
+
+All four families are plan-time options on the `php` `ServiceTypeResolution` — no bespoke plan mutation — and each invalid combination is a tagged plan-time error with remediation.
 
 ### 6.13 Build orchestration
 

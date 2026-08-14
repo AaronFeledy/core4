@@ -120,7 +120,7 @@ export const specReferenceRule = {
   scope: {
     roots: [""],
     extensions: [".md", ".mdx", ".ts", ".tsx", ".json", ".yml", ".yaml"],
-    excludeDirNames: ["node_modules", "dist", ".git", ".local", "coverage", "generated"],
+    excludeDirNames: ["node_modules", "dist", ".git", ".local", ".omo", "coverage", "generated"],
     excludePrefixes: [`${SPEC_ROOT}/`],
     // The detector and its fixtures must spell the patterns they detect.
     excludeFiles: [
