@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { PublicTranscript, type PublicTranscriptFrame } from "@lando/core/schema";
 import { Either, type ParseResult, Schema } from "effect";
 
+import { variantFileSuffix } from "../variant";
 import { type RedactionEnvironment, redactPublicTranscript } from "./redaction";
 
 export {
@@ -142,13 +143,7 @@ const transcriptPathFor = (args: {
   readonly scenarioId: string;
   readonly variant: string;
 }): string => {
-  const suffix =
-    args.variant === ""
-      ? ""
-      : `.${args.variant
-          .split(" ")
-          .map((pair) => pair.split("=")[1] ?? "")
-          .join(".")}`;
+  const suffix = variantFileSuffix(args.variant);
   return join("dist", "transcripts", "public", "guides", args.guideId, `${args.scenarioId}${suffix}.json`);
 };
 
