@@ -19,6 +19,7 @@
     "http-client",
     "managed-file",
     "engine",
+    "docs",
     "plugins/*"
   ],
   "engines": {
@@ -47,6 +48,9 @@
     "codegen:check": "bun run codegen && bun run check:codegen-drift",
     "codegen:guide-scenarios": "bun run scripts/build-guide-scenarios.ts",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
+    "docs:build": "bun run codegen:guide-scenarios && bun run --filter='@lando/docs' build",
+    "docs:dev": "bun run --filter='@lando/docs' dev",
+    "docs:preview": "bun run --filter='@lando/docs' preview",
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
     "check:boundaries": "bun run scripts/check-boundaries.ts --all",
