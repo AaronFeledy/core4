@@ -1,0 +1,334 @@
+{
+  "project": "Lando v4 — Lando 3 Parity",
+  "branchName": "feat/lando3-parity",
+  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-581): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
+  "userStories": [
+    {
+      "id": "US-561",
+      "title": "Spec contract for the Lando 3 parity wave",
+      "description": "As a maintainer, the spec authorizes every implementation story in this wave: amended service catalog, PHP depth, recipe composition/option parity, reconciled recipe bundle, and the pulled-forward @lando/sql plugin, without weakening any recorded rejection.",
+      "acceptanceCriteria": [
+        "§6.12.1 php row lists 8.5 and references §6.12.5; catalog gains tomcat, varnish, dotnet, mssql, phpmyadmin rows.",
+        "§6.12.5 normatively defines via:, composer:, xdebug:, db_client: with defaults, fail-closed invalid combos, buildKey participation.",
+        "§8.8.10 bundled table matches the target bundle; staged additions and hoster exclusions explicit; stale Drupal out-of-scope sentence gone.",
+        "§8.8.15 defines extends: (single inheritance, depth <= 3, id-keyed prompt merge, path-keyed file merge, concatenated postInit, flattened validation).",
+        "§8.8.16 defines option-parity floors for drupal, drupal-cms, lamp.",
+        "§10.7 names bundled @lando/sql as the reference SQL-helper plugin on DataMover with its command surface.",
+        "ROADMAP Phase 5 concurrent-wave note added; Phase 9 @lando/sql and recipe lines marked superseded.",
+        "No change to §10.4 SSH rejection, §10.12 RemoteSource freeze, or §7.4 Compose rejected-key list.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PRD-01 contract — normative §6.12.1/§6.12.5/§8.8.10/§8.8.15/§8.8.16/§10.7 + ROADMAP supersession landed with PRD set"
+    },
+    {
+      "id": "US-562",
+      "title": "Top-level env_file",
+      "description": "As a user, I can declare top-level env_file: in my Landofile and have those files apply to every service, matching v3 semantics and §7.6 override order.",
+      "acceptanceCriteria": [
+        "env_file removed from BETA_TOP_LEVEL_KEYS; schema accepts string | string[] at top level; SDK schema + snapshots updated.",
+        "Entries resolve app-root-relative, apply to every service, merge below service-level envFile/environment per §7.6; missing files fail with tagged error + remediation.",
+        "Values pass standard redaction before events/transcripts/info.",
+        "Plan cache invalidates on referenced env-file content change.",
+        "docs/guides/landofile/env-overrides.mdx gains a rendered top-level env_file scenario; guide gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-563",
+      "title": "toolingDefaults",
+      "description": "As a user, I can set app-wide tooling defaults (vars/env/service/dir) that every tooling task inherits unless overridden, per §8.5.",
+      "acceptanceCriteria": [
+        "toolingDefaults removed from BETA_TOP_LEVEL_KEYS; schema per §8.5; SDK snapshots updated.",
+        "Tooling compiler applies spec precedence (task > recipe > defaults) for vars, env, service, dir; hot-path cache key includes defaults; compiled output byte-stable.",
+        "Precedence vs service-type-contributed tooling (§6.11.3) deterministic with tests.",
+        "docs/guides/tooling/defaults-and-aliases.mdx shows defaults applied and overridden; guide gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-564",
+      "title": "commandAliases",
+      "description": "As a user, I can define per-app command aliases (remap + disable) resolved by the CLI dispatcher per §8.1 without canonical-id collisions.",
+      "acceptanceCriteria": [
+        "commandAliases removed from BETA_TOP_LEVEL_KEYS; schema per §8.1; SDK snapshots updated.",
+        "Native dispatcher resolves app aliases after canonical ids and registered aliases; shadowing a canonical id rejected with CommandAliasConflictError; disablement works.",
+        "Identical resolution in source and compiled dispatch and on the tooling hot path (cached app plan, no full bootstrap).",
+        "--format json reports resolved canonical id; help lists active app aliases in app context.",
+        "Guide coverage in docs/guides/tooling/defaults-and-aliases.mdx; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-565",
+      "title": "events: (events-as-tasks)",
+      "description": "As a user, I can declare events: entries (pre-start, post-start, post-rebuild, ...) whose steps run as tooling-style tasks at matching lifecycle points — the v4 analog of v3 hooks.",
+      "acceptanceCriteria": [
+        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the §8.5 events map (same step types as cmds:, service targeting, canonical-command calls).",
+        "Event names validate against the §3/§11 app-scoped lifecycle taxonomy; unknown names fail closed at plan time listing valid names.",
+        "Subscribers execute at correct points of the §3 standard sequences in declaration order through the tooling engine; no new execution path.",
+        "Failing pre-* subscriber aborts the operation with tagged error (step identity + output tail); post-* failures surface as warnings per spec.",
+        "Step output routes through Renderer as task detail; event-bus publication with redaction.",
+        "Recipe- and service-type-contributed event tasks merge below user entries per §6.11.3 precedence.",
+        "New docs/guides/landofile/events.mdx with failure-path hidden scenario; coverage/INDEX updated; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-566",
+      "title": "rabbitmq, minio, localstack service types",
+      "description": "As a user, I can declare type: rabbitmq | minio | localstack exactly as the §6.12.1 catalog promises.",
+      "acceptanceCriteria": [
+        "Three service types registered per their catalog rows (rabbitmq 3/4 + management route + volume; minio + console route + bucket init; localstack).",
+        "Each passes runServiceCompositionContract, declares base: lando, ships row-appropriate tooling/healthchecks, publishes @lando/sdk/schema/services/<type> with snapshots.",
+        "docs/guides/services/{rabbitmq,minio,localstack}.mdx executable guides; INDEX + coverage gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-567",
+      "title": "App-scoped mailpit + deprecated mailhog types",
+      "description": "As a user, I can declare an app-scoped type: mailpit service, and legacy type: mailhog still validates while emitting the §18.4 deprecation event.",
+      "acceptanceCriteria": [
+        "mailpit ships as app-scoped service type per catalog row without disturbing the global-app Mailpit contribution; both coexist.",
+        "mailhog registers as working compat type; use emits deprecation-used with the §18 notice (since 4.2.0, removal 5.0.0, replacement mailpit); renderer dedupes; doctor reports it.",
+        "Both pass composition contract; schemas + snapshots published.",
+        "docs/guides/services/mailpit.mdx guide with hidden mailhog-deprecation scenario asserting the warning; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-568",
+      "title": "tomcat + varnish service types",
+      "description": "As a user, I can run a Tomcat servlet container and a Varnish HTTP cache fronting a named backend per the amended catalog rows.",
+      "acceptanceCriteria": [
+        "tomcat (9/10/11): webapp deployment mount, TLS via lando.certs, default route; composition contract + schema snapshot.",
+        "varnish (6/7): required backend: <service> validated at plan time (unknown backend fails closed with remediation), VCL override mount, backend healthcheck.",
+        "Proxy/route integration works for both (varnish routable in front of its backend).",
+        "docs/guides/services/{tomcat,varnish}.mdx executable guides; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-569",
+      "title": "dotnet, mssql, phpmyadmin service types",
+      "description": "As a user, I can run .NET apps, SQL Server, and phpMyAdmin per the amended catalog rows, completing the L3 service set.",
+      "acceptanceCriteria": [
+        "dotnet (8.0/9.0): SDK + ASP.NET runtime, command: dev-server support, NuGet cache mount; contract + snapshot.",
+        "mssql (2019/2022): §6.12.4 creds opt-in with rootPassword -> SA_PASSWORD, healthcheck, persistent volume, sqlcmd tooling; non-amd64 without emulation capability fails closed at plan time with spec'd remediation.",
+        "phpmyadmin (5/latest): auto-wires to all MySQL-family services via §6.12.4 cross-service creds scope; proxy route; zero-config single-DB; hosts: override supported.",
+        "docs/guides/services/{dotnet,mssql,phpmyadmin}.mdx guides (mssql notes platform constraint); gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-570",
+      "title": "PHP 8.5 + Composer selection",
+      "description": "As a user, I can run php:8.5 and choose my Composer version (or disable it) per §6.12.5.",
+      "acceptanceCriteria": [
+        "SUPPORTED_PHP_VERSIONS gains 8.5 with registered php85ServiceType; extension-set parity verified for 8.5 images.",
+        "composer: \"<major>\" | \"<exact>\" | false implemented; explicit versions fetched checksum-verified via standard build-step path; false skips; participates in buildKey.",
+        "Schema published + snapshots; invalid values fail at plan time with remediation.",
+        "php-version-matrix.mdx + php-composer-workflows.mdx exercise 8.5 and Composer selection; services/php.mdx version text updated; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-571",
+      "title": "PHP serving modes (via:)",
+      "description": "As a user, I can choose via: apache (default), fpm (fronted by nginx), or cli (workers/tooling) per §6.12.5.",
+      "acceptanceCriteria": [
+        "via: selects image variant + service shape per §6.12.5; mode-invalid keys fail closed at plan time with remediation.",
+        "via: fpm exposes port 9000; nginx type's shared PHP presets front a named FPM service end-to-end.",
+        "via: cli produces an idling container for tooling/command: workers with no web server or HTTP route.",
+        "All modes pass composition contract; schemas + snapshots updated.",
+        "services/php.mdx documents via: with a rendered fpm+nginx scenario replacing the no-fpm caveat; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-572",
+      "title": "Xdebug (xdebug:)",
+      "description": "As a user, I can enable Xdebug with xdebug: true (or a mode string) and toggle it with lando xdebug on|off|status — no manual image surgery.",
+      "acceptanceCriteria": [
+        "xdebug: true | \"<modes>\" installs the extension as a checksum-pinned build step per PHP version (8.1–8.5), enables XDEBUG_MODE from the option, client_host at host gateway, port 9003; false default installs nothing.",
+        "lando xdebug on|off|status service tooling toggles without rebuild across all via: modes.",
+        "Participates in buildKey; nothing sensitive emitted to events/transcripts.",
+        "xdebug-phpstorm.mdx + vscode.mdx rewritten to real end-to-end flows (hidden scenario asserts extension loads via php -m); php-customization.mdx updated; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-573",
+      "title": "Database client auto-detection (db_client:)",
+      "description": "As a user, my PHP container automatically gets the right database client CLI for the databases in my app (auto default), or exactly what I ask for.",
+      "acceptanceCriteria": [
+        "auto inspects resolved plan services with §6.12.4 creds opt-in and installs matching clients (mysql/mariadb client, postgresql-client, mongosh) as build steps; false installs none; explicit \"<family>:<version>\" forces; deterministic from the plan; participates in buildKey.",
+        "Tooling invocations from DB service types work from the PHP service against services.<db>.creds.*.",
+        "Schema + snapshots updated; invalid values fail at plan time.",
+        "Rendered db_client scenario in switching-databases.mdx or php-customization.mdx; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-574",
+      "title": "Compose configs: provider realization",
+      "description": "As a user, configs: entries in my Landofile are actually materialized into containers by the bundled providers, so custom php.ini needs no bind-mount workaround.",
+      "acceptanceCriteria": [
+        "Top-level configs: + service-level short/long forms realize as read-only file materializations in all three bundled providers and TestRuntimeProvider, gated by a provider capability with fail-closed remediation.",
+        "Realization honors source/target/mode; content participates in plan identity so changes re-apply.",
+        "Provider contract suite gains configs: realization assertions; all bundled providers pass.",
+        "compose-service-block.mdx + php-customization.mdx show configs:-based php.ini overrides; gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-575",
+      "title": "Recipe composition (extends:)",
+      "description": "As a recipe author, I can declare extends: <recipe-ref> and ship only my deltas, per §8.8.15.",
+      "acceptanceCriteria": [
+        "RecipeManifest schema gains extends: (+ prompt drop: true); SDK snapshots updated.",
+        "Resolution flattens single-inheritance chains (depth <= 3, acyclic; violations tagged errors naming the chain) before validation; downstream sees only flattened manifests.",
+        "Merge semantics per §8.8.15: prompts by id (override/append/drop), files: by path (child wins), postInit: concatenated parent-then-child, scalars from child.",
+        "Non-bundled parents resolve through the source registry with lockfile pinning; meta recipes describe shows flattened result; validate works with resolvable parent.",
+        "recipe.ts manifests may return extends:; merge runs post-factory.",
+        "docs/guides/recipes/extending-recipes.mdx guide; coverage/INDEX gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-576",
+      "title": "Option parity for drupal, drupal-cms, lamp",
+      "description": "As a user initializing drupal/drupal-cms/lamp, I get real stack choices (PHP version, webserver, DB engine+version, Composer version, webroot) per §8.8.16.",
+      "acceptanceCriteria": [
+        "drupal: Drupal major choice, PHP 8.1–8.5 choice, apache | nginx+FPM webserver choice (§6.12.5 via:), MariaDB/MySQL/PostgreSQL choice with versions, webroot: prompt, Composer option; non-interactive defaults everywhere.",
+        "drupal-cms: inherits drupal surface; generated app serves the scaffold's real docroot (/app/web); README exercises scaffold + project-local Drush end-to-end.",
+        "lamp: MariaDB/MySQL choice with versions, PHP version choice, Composer option, webroot: prompt.",
+        "Each README.mdx exercises at least one non-default variant; recipe test layer + guide gates green; bundled-recipe codegen clean.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-577",
+      "title": "laravel + symfony recipes",
+      "description": "As a user, I can lando init --recipe laravel or --recipe symfony and get the §8.8.10 promised stacks.",
+      "acceptanceCriteria": [
+        "laravel: PHP with Composer, MariaDB-or-PostgreSQL choice, Redis, optional queue-worker service (via: cli PHP worker); artisan/composer tooling wired.",
+        "symfony: PHP with Composer, PostgreSQL-or-MariaDB choice, Redis; console/composer tooling wired.",
+        "Both use §6.12.5 options where prompts call for them, non-interactive defaults everywhere, bundled-recipe codegen registration, executable README.mdx with a non-default variant.",
+        "Recipe test layer + guide gates green; meta recipes list/describe/validate pass through machine output.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-578",
+      "title": "backdrop, joomla, mean recipes",
+      "description": "As a user, I can initialize Backdrop, Joomla, and MEAN-style stacks, completing the L3 recipe parity set.",
+      "acceptanceCriteria": [
+        "backdrop and joomla extend lamp per §8.8.15, overriding prompts/files for CMS-specific scaffolding and tooling.",
+        "mean: Node service with MongoDB and optional Redis; npm-script tooling; framework-agnostic Express-style default scaffold.",
+        "All three: non-interactive defaults, bundled-recipe codegen registration, executable README.mdx with a non-default variant, recipe test layer + guide gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-579",
+      "title": "@lando/sql plugin (db:import/export/snapshot/restore/reset)",
+      "description": "As a user, I can import and export databases and snapshot/restore/reset them against any creds-bearing bundled database type.",
+      "acceptanceCriteria": [
+        "New bundled plugins/sql package contributing the five commands; wired through bundled-plugin codegen + composition root; bun install run; test shards include it.",
+        "Engine support per family: MySQL-family, PostgreSQL, MongoDB, mssql (sqlcmd); family resolved from target service type + §6.12.4 creds; single-DB apps need no flag; ambiguity is a tagged error listing candidates (--service).",
+        "All byte movement rides DataMover/provider data plane; no bespoke tar/stream code; gzip both directions; snapshots in the DataMover snapshot store indexed via StateStore.",
+        "db:import into non-empty DB and db:reset require confirmation (--yes bypass); destructive steps enumerated before execution.",
+        "Credentials via RedactionService everywhere; renderer progress frames; --format json emits §8.11 envelope/stream frames with machine-output conformance coverage.",
+        "docs/guides/tooling/db-import-export.mdx guide; coverage/INDEX gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-580",
+      "title": "Residual guides (cache refresh, verbosity, DNS rebind)",
+      "description": "As a user, I can find executable guidance for app:cache:refresh, CLI verbosity/debug output, and the DNS-rebinding caveat for custom domains.",
+      "acceptanceCriteria": [
+        "docs/guides/cli/cache-refresh.mdx: stale plan caches, lando cache:refresh walkthrough with rendered before/after scenario.",
+        "docs/guides/cli/verbosity-and-debug.mdx: renderer modes (--renderer=verbose|plain|json), debug env/log guidance — the v3 lando --debug analog.",
+        "DNS-rebinding note added to the external-access or proxy guide with remediation; cross-linked.",
+        "INDEX + check:guide-coverage, check:guide-drift, lint:guides green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-581",
+      "title": "Parity refresh + wave closure",
+      "description": "As a maintainer, the parity audit reflects reality after this wave and the whole wave's verification contract is green on one tree.",
+      "acceptanceCriteria": [
+        ".local/LANDO3-PARITY.md refreshed: every previously-❌ row now ✅ or carries a recorded decision citation (hosters -> 4.1 RemoteSource; SSH mounts -> rejected; staged recipes -> §8.8.10 staged list); stale 2026-08-09 rows corrected.",
+        "core/src/cli/deferred-commands.ts reviewed: implemented entries removed; remaining entries carry accurate phase notes.",
+        "Full gate sweep on the closure tree: bun test (positive counts), typecheck, lint, codegen:check, check:boundaries, check:guide-coverage, check:guide-drift, check:public-transcripts, lint:guides.",
+        "§8.8.10 table verified against recipes/ contents; §6.12.1 rows verified against the runtime registry (every row registered, every registration in a row).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
