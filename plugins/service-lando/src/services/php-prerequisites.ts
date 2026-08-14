@@ -12,7 +12,7 @@ export const PHP_APT_PACKAGE_PINS = {
   "libicu-dev": "72.1-3+deb12u1",
   "libjpeg62-turbo-dev": "1:2.1.5-2",
   "libpng-dev": "1.6.39-2+deb12u5",
-  "libpq-dev": "15.18-0+deb12u1",
+  "libpq-dev": "15.19-0+deb12u1",
   "libzip-dev": "1.7.3-1+b1",
 } as const;
 

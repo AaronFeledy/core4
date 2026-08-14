@@ -702,28 +702,21 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     });
   });
 
-  test("rejects top-level `env_file:` env overrides with NotImplementedError + remediation", async () => {
+  test.each([
+    ["scalar", ["env_file: ./.env.local"], ["./.env.local"]],
+    ["list", ["env_file:", "  - ./.env", "  - ./.env.local"], ["./.env", "./.env.local"]],
+  ] as const)("accepts top-level env_file from %s input", async (_form, envFileLines, expected) => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
-        [
-          "name: myapp",
-          "env_file:",
-          "  - ./.env.local",
-          "services:",
-          "  web:",
-          "    image: node:lts",
-          "",
-        ].join("\n"),
+        ["name: myapp", ...envFileLines, "services:", "  web:", "    image: node:lts", ""].join("\n"),
       );
       process.chdir(dir);
 
       const exit = await discoverExit();
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "not supported yet");
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.env_file).toEqual(expected);
       }
     });
   });

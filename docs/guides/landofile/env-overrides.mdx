@@ -52,6 +52,44 @@ lando <cmd> --provider=docker beats LANDO_PROVIDER=podman
 
 A local Landofile overrides the main Landofile during merge.
 
+## Share env files across services
+
+Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win,
+then a service's own `env_file` and `environment` values override the shared values.
+
+```yaml
+name: env-overrides-shared
+env_file:
+  - shared.env
+services:
+  web:
+    type: node:lts
+  worker:
+    type: node:lts
+    environment:
+      APP_STAGE: worker
+```
+
+Lando fails with the resolved path and a fix when a declared file is missing instead of quietly
+starting services with incomplete environment values.
+
+<Guide>
+  <Scenario id="top-level-env-file" render>
+    <Step name="scaffold">
+      <UseFixture name="top-level-env-file" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: env-overrides-shared" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"env_file\":\\s*\\[\\s*\"shared\\.env\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_STAGE\":\\s*\"worker\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
 ## Inspect
 
 Print the resolved global config (env overlay already applied)

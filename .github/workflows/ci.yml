@@ -1117,7 +1117,7 @@ jobs:
       - name: Install Linux Podman source-build prerequisites
         run: |
           set -euo pipefail
-          UBUNTU_SNAPSHOT=20260801T000000Z
+          UBUNTU_SNAPSHOT=20260812T000000Z
           printf 'APT::Snapshot "%s";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
           sudo apt-get update
           PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)

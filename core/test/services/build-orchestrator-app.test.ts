@@ -36,7 +36,7 @@ const service = (name: string, milliseconds: number) => ({
   provider: providerId,
   primary: name === "appserver",
   artifact: { kind: "ref" as const, ref: `test/${name}:latest` },
-  environment: {},
+  environment: name === "node" ? { DB_PASSWORD: "bare-db-password", APP_REGION: "us-east-1" } : {},
   mounts: [],
   storage: [],
   endpoints: [],
@@ -96,16 +96,22 @@ const makeLayer = (provider: RuntimeProviderShape) => {
     select: () => Effect.succeed(provider),
   });
   const redaction = Layer.succeed(RedactionService, {
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+    forProfile: (profile, options) =>
+      Effect.succeed(
+        createRedactor(profile, {
+          values: ["topsecret", ...(options?.redactionTokens ?? [])],
+        }),
+      ),
   });
   const dependencies = Layer.mergeAll(EventServiceLive, paths, registry, StateStoreLive, redaction);
   return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
 };
 
 const outputStream = (name: string, delay: number, exitCode: number) =>
-  Stream.make({ kind: "stdout" as const, chunk: new TextEncoder().encode(`${name} topsecret\n`) }).pipe(
-    Stream.concat(Stream.fromEffect(Effect.sleep(`${delay} millis`).pipe(Effect.as({ exitCode })))),
-  );
+  Stream.make({
+    kind: "stdout" as const,
+    chunk: new TextEncoder().encode(`${name} topsecret bare-db-password us-east-1\n`),
+  }).pipe(Stream.concat(Stream.fromEffect(Effect.sleep(`${delay} millis`).pipe(Effect.as({ exitCode })))));
 
 describe("BuildOrchestrator app phase", () => {
   test("runs three services concurrently, streams redacted detail, writes raw transcripts, and caches", async () => {
@@ -167,11 +173,15 @@ describe("BuildOrchestrator app phase", () => {
       const details = result.events.filter((event) => event._tag === "task.detail");
       expect(details).toHaveLength(3);
       expect(JSON.stringify(details)).not.toContain("topsecret");
+      expect(JSON.stringify(details)).not.toContain("bare-db-password");
+      expect(JSON.stringify(details)).toContain("us-east-1");
       const starts = result.events.filter((event) => event._tag === "task.start");
       expect(starts).toHaveLength(6);
       for (const start of starts) {
         expect(start.transcriptPath).toContain(`/builds/${String(plan.id)}/app/`);
         expect(await readFile(String(start.transcriptPath), "utf8")).toContain("topsecret");
+        expect(await readFile(String(start.transcriptPath), "utf8")).toContain("bare-db-password");
+        expect(await readFile(String(start.transcriptPath), "utf8")).toContain("us-east-1");
       }
       expect(result.events.filter((event) => event._tag === "task.complete")).toHaveLength(6);
       const skips = result.events.filter((event) => event._tag === "build-step-skip");
