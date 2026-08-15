@@ -201,6 +201,44 @@ test("shipping entry aliases honor app disablement before fast paths", async () 
   }
 }, 30_000);
 
+test("registered scratch alias honors an app custom remap while its canonical command remains callable", async () => {
+  const fixture = await makeEntryFixture({ custom: { scratch: "app:greet" } });
+  try {
+    // Given / When
+    const [aliasResult, canonicalResult] = await Promise.all([
+      run([process.execPath, sourceCli, "scratch", "--format=json"], fixture.appRoot, fixture.env),
+      run([process.execPath, sourceCli, "apps:scratch:start", "--help"], fixture.appRoot, fixture.env),
+    ]);
+
+    // Then
+    expect(aliasResult.exitCode).toBe(0);
+    expect(envelope(aliasResult.stdout)).toMatchObject({ command: "app:greet", ok: true });
+    expect(canonicalResult.exitCode).toBe(0);
+    expect(canonicalResult.stdout).toContain("apps:scratch:start");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+test("registered scratch alias honors app disablement while its canonical command remains callable", async () => {
+  const fixture = await makeEntryFixture({ disabled: ["scratch"] });
+  try {
+    // Given / When
+    const [aliasResult, canonicalResult] = await Promise.all([
+      run([process.execPath, sourceCli, "scratch"], fixture.appRoot, fixture.env),
+      run([process.execPath, sourceCli, "apps:scratch:start", "--help"], fixture.appRoot, fixture.env),
+    ]);
+
+    // Then
+    expect(aliasResult.exitCode).toBe(1);
+    expect(aliasResult.stderr).toContain("UnknownCommandError");
+    expect(canonicalResult.exitCode).toBe(0);
+    expect(canonicalResult.stdout).toContain("apps:scratch:start");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
 test("shipping entry classifies passthrough from the app alias target", async () => {
   const fixture = await makeEntryFixture({
     custom: { runtime: "meta:bun", execute: "meta:x" },

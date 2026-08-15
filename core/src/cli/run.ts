@@ -59,7 +59,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     rawHead !== undefined &&
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
-    !isReservedNamespaceHead(rawHead)
+    (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
       ? await Effect.runPromise(Effect.either(resolveToolingRoute(rawHead)))
       : undefined;
   const passthroughAliasRoute =
@@ -125,7 +125,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
-  if (builtInCommand === undefined && !isReservedNamespaceHead(argv[0])) {
+  if (
+    builtInCommand === undefined &&
+    (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
+  ) {
     const argvTail = argv.slice(1);
     const aliasResolution =
       passthroughAliasResolution ?? (await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0]))));
