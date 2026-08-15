@@ -32,13 +32,13 @@ import {
 import { dispatchAppCommand } from "./dispatch-app";
 import { dispatchAppsCommand } from "./dispatch-apps";
 import { dispatchMetaCommand } from "./dispatch-meta";
-import { routeDynamicTooling, routeResolvedTooling, runDynamicToolingFailure } from "./dynamic-tooling";
+import { routeDynamicTooling, routeResolvedTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveAppCommandHelpAliases, resolveToolingRoute, toolingName } from "./tooling-router";
+import { type ToolingRoute, resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -47,6 +47,17 @@ export { compiledCommandInputFromArgv } from "./compiled-input";
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export { parseScratchStartArgv } from "./dispatch-apps";
 
+const renderAliasResolutionFailure = async (error: unknown): Promise<void> => {
+  const commandId = "cli:alias-resolution";
+  setActiveCommandId(commandId);
+  await renderPreCommandFailure({
+    commandId,
+    error,
+    rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+  });
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
     await runHostProxyWorkerProcess();
@@ -54,8 +65,27 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   const rawHead = rawArgv[0];
+  const rawEntry = resolveBuiltInCommand(rawHead);
+  const passthroughAliasResolution =
+    rawHead !== undefined &&
+    rawEntry?.spec.id !== rawHead &&
+    !rawHead.startsWith("-") &&
+    !isReservedNamespaceHead(rawHead)
+      ? await Effect.runPromise(Effect.either(resolveToolingRoute({ argv: rawArgv })))
+      : undefined;
+  const passthroughAliasRoute =
+    passthroughAliasResolution?._tag === "Right" &&
+    passthroughAliasResolution.right._tag === "built-in" &&
+    (passthroughAliasResolution.right.commandId === "meta:bun" ||
+      passthroughAliasResolution.right.commandId === "meta:x")
+      ? passthroughAliasResolution.right
+      : undefined;
   const isBunOrXPassthrough =
-    rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
+    rawHead === "bun" ||
+    rawHead === "meta:bun" ||
+    rawHead === "x" ||
+    rawHead === "meta:x" ||
+    passthroughAliasRoute !== undefined;
 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
@@ -106,13 +136,17 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
   if (builtInCommand === undefined && !isReservedNamespaceHead(argv[0])) {
-    const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
-    if (aliasResolution._tag === "Left") {
-      const token = argv[0] ?? "";
-      await runDynamicToolingFailure(toolingName(token) ?? token, argv.slice(1), aliasResolution.left);
-      return;
+    let route: ToolingRoute;
+    if (passthroughAliasRoute !== undefined) {
+      route = passthroughAliasRoute;
+    } else {
+      const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
+      if (aliasResolution._tag === "Left") {
+        await renderAliasResolutionFailure(aliasResolution.left);
+        return;
+      }
+      route = aliasResolution.right;
     }
-    const route = aliasResolution.right;
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
       argv = [route.commandId, ...route.argv];
@@ -162,7 +196,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     if (commandArg === undefined) {
       const helpAliases = await Effect.runPromise(Effect.either(resolveAppCommandHelpAliases()));
       if (helpAliases._tag === "Left") {
-        await runDynamicToolingFailure("help", [], helpAliases.left);
+        await renderAliasResolutionFailure(helpAliases.left);
         return;
       }
       printRootHelp(helpAliases.right);

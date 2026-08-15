@@ -1,6 +1,7 @@
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
+import { escapeDiagnosticText } from "./diagnostic-text";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 
 type ColdCommandEntry = {
@@ -65,7 +66,7 @@ COMMANDS`,
   lines.push("", "ALIASES");
   for (const [alias, canonicalId] of activeAliases ??
     aliases.sort(([left], [right]) => left.localeCompare(right))) {
-    lines.push(`  ${alias} -> ${canonicalId}`);
+    lines.push(`  ${escapeDiagnosticText(alias)} -> ${escapeDiagnosticText(canonicalId)}`);
   }
   return lines.join("\n");
 };

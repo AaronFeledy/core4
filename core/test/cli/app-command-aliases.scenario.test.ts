@@ -182,3 +182,54 @@ test("shipping entry aliases honor app disablement before fast paths", async () 
     await fixture.cleanup();
   }
 }, 30_000);
+
+test("shipping entry classifies passthrough from the app alias target", async () => {
+  const fixture = await makeEntryFixture({
+    custom: { runtime: "meta:bun", execute: "meta:x" },
+  });
+  try {
+    // Given / When
+    const [bunResult, xResult, aliasRendererResult, canonicalRendererResult] = await Promise.all([
+      run([process.execPath, sourceCli, "runtime", "--version"], fixture.appRoot, fixture.env),
+      run([process.execPath, sourceCli, "execute", "--help"], fixture.appRoot, fixture.env),
+      run(
+        [process.execPath, sourceCli, "runtime", "--renderer=json", "--version"],
+        fixture.appRoot,
+        fixture.env,
+      ),
+      run(
+        [process.execPath, sourceCli, "meta:bun", "--renderer=json", "--version"],
+        fixture.appRoot,
+        fixture.env,
+      ),
+    ]);
+
+    // Then
+    expect(bunResult.exitCode).toBe(0);
+    expect(bunResult.stdout.trim()).toBe(Bun.version);
+    expect(xResult.exitCode).toBe(0);
+    expect(xResult.stdout).toContain("meta:x, x");
+    expect(aliasRendererResult.exitCode).toBe(canonicalRendererResult.exitCode);
+    expect(aliasRendererResult.stderr).toBe(canonicalRendererResult.stderr);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+test("alias policy failures use the pre-command identity", async () => {
+  const fixture = await makeEntryFixture({ custom: { broken: "app:missing" } });
+  try {
+    // Given / When
+    const result = await run(
+      [process.execPath, sourceCli, "broken", "--format=json"],
+      fixture.appRoot,
+      fixture.env,
+    );
+
+    // Then
+    expect(result.exitCode).toBe(1);
+    expect(envelope(result.stdout).command).toBe("cli:alias-resolution");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);

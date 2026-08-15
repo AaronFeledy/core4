@@ -8,22 +8,57 @@
  * from disk. The dispatcher owns signal handling and Effect interruption.
  */
 
+import { dirname, join } from "node:path";
+
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
 
 const argv = Bun.argv.slice(2);
+const LANDOFILE_BASENAMES = [
+  ".lando.base",
+  ".lando.dist",
+  ".lando.upstream",
+  ".lando",
+  ".lando.local",
+  ".lando.user",
+] as const;
+
+const hasAppContext = async (cwd: string): Promise<boolean> => {
+  let current = cwd;
+  for (;;) {
+    const candidates = LANDOFILE_BASENAMES.flatMap((basename) => [
+      join(current, `${basename}.yml`),
+      join(current, `${basename}.ts`),
+    ]);
+    if ((await Promise.all(candidates.map((path) => Bun.file(path).exists()))).some(Boolean)) return true;
+    const parent = dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+};
 
 const main = async (): Promise<void> => {
-  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-V" || argv[0] === "-v")) {
+  const appSensitiveAlias =
+    (argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "")) ||
+    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list");
+  const appAliasContext = appSensitiveAlias && (await hasAppContext(process.cwd()));
+
+  if (
+    argv.length === 1 &&
+    (argv[0] === "--version" ||
+      argv[0] === "-V" ||
+      argv[0] === "-v" ||
+      (argv[0] === "version" && !appAliasContext))
+  ) {
     const { CORE_VERSION } = await import("@lando/engine/version");
     console.log(CORE_VERSION);
     return;
   }
 
   if (
-    (argv.length === 1 && argv[0] === "meta:shellenv") ||
+    (argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
     (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv")
   ) {
     const { renderShellenv } = await import("../src/cli/commands/shellenv");
@@ -32,16 +67,23 @@ const main = async (): Promise<void> => {
   }
 
   if (
-    (argv.length === 1 && argv[0] === "meta:version") ||
+    (argv.length === 1 &&
+      (argv[0] === "meta:version" || ((argv[0] === "--help" || argv[0] === "-h") && !appAliasContext))) ||
     (argv.length === 2 && argv[0] === "meta" && argv[1] === "version")
   ) {
+    if (argv[0] === "--help" || argv[0] === "-h") {
+      const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
+      console.log(renderColdRootHelp());
+      return;
+    }
     const { CORE_VERSION, renderMetaVersion } = await import("@lando/engine/version");
     console.log(renderMetaVersion({ core: CORE_VERSION, bun: Bun.version, platform: process.platform }));
     return;
   }
 
   if (
-    (argv.length === 1 && argv[0] === "meta:recipes:list") ||
+    (argv.length === 1 && (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
+    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list" && !appAliasContext) ||
     (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list")
   ) {
     const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
