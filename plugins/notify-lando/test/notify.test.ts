@@ -11,7 +11,10 @@ import notify from "../src/notify.ts";
 const context = (published: Array<RenderEvent>): LandoPluginContext => ({
   id: "@lando/notify-lando",
   managedFiles: { pluginId: "@lando/notify-lando" },
-  stateStore: { open: () => Effect.die("unused") },
+  stateStore: {
+    open: () => Effect.die("unused"),
+    withLock: (_key, body) => body,
+  },
   events: {
     publishRender: (event) =>
       Effect.sync(() => {

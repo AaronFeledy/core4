@@ -73,6 +73,7 @@ describe("stock PHP prerequisites — live provider", () => {
         RuntimeProvider.pipe(
           Effect.provide(
             makeProviderLayer({
+              platform: "linux",
               podmanApi: makePodmanApiClient(socket.socketPath),
               sanitizeAppliedPlan: stripHostProxyRunLando,
             }),
@@ -91,7 +92,7 @@ describe("stock PHP prerequisites — live provider", () => {
         appRoot,
         appName: String(appId),
         serviceName: String(serviceName),
-        metadata,
+        metadata: { ...metadata, resolvedAt: DateTime.formatIso(metadata.resolvedAt) },
         featureOverrides: new Map([[phpServiceFeature.id, phpServiceFeature]]),
       });
       const plan: AppPlan = {

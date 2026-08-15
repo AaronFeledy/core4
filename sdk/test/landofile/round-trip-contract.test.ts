@@ -15,7 +15,7 @@ import {
   emitLandofileYamlEither,
   parseLandofile,
 } from "@lando/sdk/landofile";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 const roundTrip = async (value: Record<string, unknown>): Promise<unknown> => {
   const yaml = emitLandofileYaml(value);
@@ -74,7 +74,9 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
     const parsed = await roundTrip(value);
     expect(parsed).toEqual(value);
     const decoded = Schema.decodeUnknownSync(LandofileShape)(parsed, { onExcessProperty: "error" });
-    expect(decoded.services?.web?.logs?.[0]?.strategy).toBe("follow");
+    const web = decoded.services?.[ServiceName.make("web")];
+    if (web === undefined) throw new Error("web service missing");
+    expect(web.logs?.[0]?.strategy).toBe("follow");
     expect(decoded.tooling?.test?.cmd).toBe("echo ok");
   });
 
@@ -168,7 +170,9 @@ describe("@lando/sdk/landofile — merged fragment preview re-decodes after emit
     );
     const decoded = Schema.decodeUnknownSync(LandofileShape)(parsed, { onExcessProperty: "error" });
     expect(decoded.name).toBe("translated-app");
-    expect(decoded.services?.db?.type).toBe("mysql:8.0");
+    const db = decoded.services?.[ServiceName.make("db")];
+    if (db === undefined) throw new Error("db service missing");
+    expect(db.type).toBe("mysql:8.0");
     expect(decoded.tooling?.migrate?.cmd).toBe("echo migrate");
   });
 

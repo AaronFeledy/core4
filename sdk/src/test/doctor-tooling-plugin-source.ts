@@ -522,7 +522,7 @@ export const makeToolingEngineContractSuite = runToolingEngineContractSuite;
 export interface PluginSourceTaggedError {
   readonly _tag: string;
   readonly message: string;
-  readonly remediation?: string;
+  readonly remediation?: string | undefined;
 }
 
 const pluginSourceContractFailure = (assertion: string, details?: unknown): ContractFailure =>

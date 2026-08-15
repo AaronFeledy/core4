@@ -12,10 +12,14 @@ interface ServiceConfigJsonSchema {
   readonly properties?: Readonly<Record<string, JsonSchemaProperty | boolean>>;
 }
 
+const isServiceConfigJsonSchema = (value: unknown): value is ServiceConfigJsonSchema =>
+  typeof value === "object" && value !== null && "properties" in value;
+
 const COMPOSE_WAVE_FIELDS = ["build", "dependsOn", "environment", "healthcheck"] as const;
 
 const publishedDescription = (field: string): unknown => {
-  const schema: ServiceConfigJsonSchema = getJsonSchema("ServiceConfig");
+  const schema = getJsonSchema("ServiceConfig");
+  if (!isServiceConfigJsonSchema(schema)) return undefined;
   const property = schema.properties?.[field];
   return typeof property === "object" ? property.description : undefined;
 };

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -78,7 +79,7 @@ describe("lando init git source native CLI dispatch", () => {
         argv: ["init", "--source=git", "--no-interactive"],
         rootUrl: "file:///$bunfs/lando.ts",
       });
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode as number | undefined).toBe(1);
       expect(writes.join("")).toContain("lando init --source=git requires --url=<git-url>.");
     } finally {
       (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;

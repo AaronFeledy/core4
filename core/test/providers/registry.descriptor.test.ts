@@ -4,7 +4,14 @@ import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import { PluginDescriptorMismatchError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type AppPlan, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  GlobalConfig,
+  PluginManifest,
+  ProviderId,
+} from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -43,9 +50,11 @@ const notRegistered = (id: string): PluginLoadError =>
   new PluginLoadError({ message: `not registered in descriptor registry test: ${id}`, pluginName: id });
 
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
+  const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
+  const load = Effect.succeed(config);
   const configService: Context.Tag.Service<typeof ConfigService> = {
-    load: Effect.succeed({ telemetry: { enabled: false } }),
-    get: () => Effect.succeed(undefined),
+    load,
+    get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
   const pluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
     list: Effect.succeed(manifests),

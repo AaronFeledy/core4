@@ -57,7 +57,6 @@ type RunToolingError = ToolingError | ComposeKeyRejectedError | LandofileLoadExp
 type RunToolingServices =
   | AppPlanner
   | ConfigService
-  | EventService
   | LandofileService
   | RuntimeProviderRegistry
   | ToolingEngine;

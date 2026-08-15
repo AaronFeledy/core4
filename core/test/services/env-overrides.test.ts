@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { ConfigError } from "@lando/core/errors";
+import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { ConfigService } from "@lando/core/services";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { ConfigServiceLive } from "@lando/engine/services/config";
@@ -65,7 +66,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({ LANDO_CONFIG__default_provider_id: "podman" }, async (dir) => {
       await writeConfig(dir, ["defaultProviderId: docker"]);
       const config = await loadConfig();
-      expect(config.defaultProviderId).toBe("podman");
+      expect(config.defaultProviderId).toBe(ProviderId.make("podman"));
     });
   });
 
@@ -73,7 +74,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({ LANDO_CONFIG__DEFAULT_PROVIDER_ID: "podman" }, async (dir) => {
       await writeConfig(dir, ["defaultProviderId: docker"]);
       const config = await loadConfig();
-      expect(config.defaultProviderId).toBe("podman");
+      expect(config.defaultProviderId).toBe(ProviderId.make("podman"));
     });
   });
 
@@ -124,7 +125,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
   test("non-JSON values are kept as raw strings", async () => {
     await withEnv({ LANDO_CONFIG__default_provider_id: "podman" }, async () => {
       const config = await loadConfig();
-      expect(config.defaultProviderId).toBe("podman");
+      expect(config.defaultProviderId).toBe(ProviderId.make("podman"));
     });
   });
 
@@ -132,7 +133,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({}, async (dir) => {
       await writeConfig(dir, ["defaultProviderId: docker"]);
       const config = await loadConfig();
-      expect(config.defaultProviderId).toBe("docker");
+      expect(config.defaultProviderId).toBe(ProviderId.make("docker"));
     });
   });
 
@@ -141,7 +142,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
       const config = await loadConfig();
       expect(config.userConfRoot === dir).toBe(true);
       expect(config.telemetry.enabled).toBe(true);
-      expect(config.defaultProviderId).toBe("lando");
+      expect(config.defaultProviderId).toBe(ProviderId.make("lando"));
     });
   });
 
@@ -156,8 +157,8 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({ LANDO_USER_DATA_ROOT: "/tmp/lando-env-data" }, async (dir) => {
       await writeConfig(dir, ["userDataRoot: /tmp/lando-file-data", "userConfRoot: /tmp/lando-file-conf"]);
       const config = await loadConfig();
-      expect(config.userDataRoot).toBe("/tmp/lando-env-data");
-      expect(config.userConfRoot).toBe(dir);
+      expect(config.userDataRoot).toBe(AbsolutePath.make("/tmp/lando-env-data"));
+      expect(config.userConfRoot).toBe(AbsolutePath.make(dir));
     });
   });
 
@@ -171,8 +172,8 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
 
         const config = await loadConfig();
 
-        expect(config.userConfRoot).toBe(overlayRoot);
-        expect(config.defaultProviderId).toBe("podman");
+        expect(config.userConfRoot).toBe(AbsolutePath.make(overlayRoot));
+        expect(config.defaultProviderId).toBe(ProviderId.make("podman"));
       } finally {
         await rm(overlayRoot, { recursive: true, force: true });
       }
@@ -349,22 +350,22 @@ describe("network inject environment overrides", () => {
 describe("precedence chain: command flag > env", () => {
   test("a command flag wins over an env-resolved provider", () => {
     const resolution = resolveProviderSelection({
-      flag: "docker",
-      env: "podman",
-      config: "lando",
-      capabilityDefault: "lando",
+      flag: ProviderId.make("docker"),
+      env: ProviderId.make("podman"),
+      config: ProviderId.make("lando"),
+      capabilityDefault: ProviderId.make("lando"),
     });
-    expect(resolution.providerId).toBe("docker");
+    expect(resolution.providerId).toBe(ProviderId.make("docker"));
     expect(resolution.source).toBe("flag");
   });
 
   test("env wins over config when no flag is present", () => {
     const resolution = resolveProviderSelection({
-      env: "podman",
-      config: "lando",
-      capabilityDefault: "lando",
+      env: ProviderId.make("podman"),
+      config: ProviderId.make("lando"),
+      capabilityDefault: ProviderId.make("lando"),
     });
-    expect(resolution.providerId).toBe("podman");
+    expect(resolution.providerId).toBe(ProviderId.make("podman"));
     expect(resolution.source).toBe("env");
   });
 

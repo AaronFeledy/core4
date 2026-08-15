@@ -15,7 +15,7 @@ import {
 // surface their own tagged error with the same shape.
 class TestPluginSourceError extends Error implements PluginSourceTaggedError {
   readonly _tag = "TestPluginSourceError" as const;
-  readonly remediation?: string;
+  readonly remediation: string | undefined;
   constructor(message: string, remediation?: string) {
     super(message);
     this.remediation = remediation;

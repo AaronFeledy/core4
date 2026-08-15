@@ -11,6 +11,7 @@ import {
   solrServiceType,
 } from "../src/services/solr.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -69,14 +70,14 @@ describe("solr ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "solr:8" });
     expect(plan.command).toEqual(["solr-foreground", "-p", "18983"]);
-    expect(plan.endpoints[0]?.port).toBe(18983);
+    expect(firstEndpointPort(plan)).toBe(18983);
   });
 
   test("default command tracks the overridden port", async () => {
     const plan = await planSolrService({ type: "solr", port: 18983 });
 
     expect(plan.command).toEqual(["solr-foreground", "-p", "18983"]);
-    expect(plan.endpoints[0]?.port).toBe(18983);
+    expect(firstEndpointPort(plan)).toBe(18983);
   });
 
   test("includes a curl-based command healthcheck on the system info endpoint", async () => {

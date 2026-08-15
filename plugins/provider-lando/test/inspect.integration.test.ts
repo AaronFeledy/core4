@@ -81,6 +81,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -147,7 +148,11 @@ describe("provider-lando inspect", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
+            podmanApi: fake.api,
+          }),
         ),
       ),
     );

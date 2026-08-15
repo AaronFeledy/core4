@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { ProxySetupError } from "@lando/sdk/errors";
 import {
   CertificateAuthority,
   HealthcheckRunner,
@@ -9,6 +9,7 @@ import {
   SshService,
   UrlScanner,
 } from "@lando/sdk/services";
+import { TestProxyService } from "@lando/sdk/test";
 
 import { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
 import { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";
@@ -114,7 +115,11 @@ describe("each subsystem failure path produces a tagged error with severity + so
 
   test("each bundled subsystem failure path fails with its tagged error and maps to a diagnostic", async () => {
     const proxy = await Effect.runPromiseExit(
-      Effect.flatMap(ProxyService, (s) => s.setup()).pipe(Effect.provide(ProxyServiceUnavailableLive)),
+      Effect.scoped(
+        Effect.flatMap(ProxyService, (s) => s.setup({ defaultDomain: "lndo.site" })).pipe(
+          Effect.provide(ProxyServiceUnavailableLive),
+        ),
+      ),
     );
     expectTaggedDiagnosticForFailure("proxy", proxy);
 
@@ -189,9 +194,10 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
     const recoverableProxy = Layer.succeed(ProxyService, {
+      ...TestProxyService,
       id: "unavailable",
       setup: () => Effect.void,
-      applyRoutes: () => Effect.void,
+      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
       removeRoutes: () => Effect.void,
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableProxy);
@@ -208,15 +214,17 @@ describe("doctor --fix recovery", () => {
 
   test("--fix redacts secret-like environment values from failed setup errors", async () => {
     const secretErrorProxy = Layer.succeed(ProxyService, {
+      ...TestProxyService,
       id: "unavailable",
       setup: () =>
         Effect.fail(
-          new ProxyError({
+          new ProxySetupError({
             proxyId: "unavailable",
             message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
+            remediation: "Retry setup.",
           }),
         ),
-      applyRoutes: () => Effect.void,
+      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
       removeRoutes: () => Effect.void,
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);

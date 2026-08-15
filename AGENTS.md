@@ -24,7 +24,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Commands
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
-- Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
+- Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` typechecks non-docs test trees through the referenced aggregate test project. The Astro-owned `docs/**` tree stays outside that aggregate and uses `docs:check` plus `docs:test`.
 - Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:boundaries`, `check:guide-coverage`, `check:guide-drift`, `check:public-transcripts`, `check:telemetry-inventory`, or `lint:guides`. Debug one boundary rule with `bun run scripts/check-boundaries.ts <rule-id>`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.

@@ -5,6 +5,7 @@ import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { REDIS_FEATURE_ID, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -65,6 +66,6 @@ describe("redis ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "redis:6-alpine" });
     expect(plan.command).toEqual(["redis-server", "--maxmemory", "256mb"]);
-    expect(plan.endpoints[0]?.port).toBe(16379);
+    expect(firstEndpointPort(plan)).toBe(16379);
   });
 });

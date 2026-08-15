@@ -5,8 +5,7 @@ import { type Context, Effect, Schema } from "effect";
 
 import { DownloadChecksumError, ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
-import { AbsolutePath } from "@lando/sdk/schema";
-import type { Downloader, PathsService, StateBucket } from "@lando/sdk/services";
+import type { Downloader, StateBucket } from "@lando/sdk/services";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import {
@@ -72,8 +71,6 @@ export const makePluginArtifactDownload =
 
 export const makePluginRuntimeState = (
   ctx: LandoPluginContext,
-  paths: Context.Tag.Service<typeof PathsService>,
-  pluginName: string,
 ): Effect.Effect<
   {
     readonly runtimeLock: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
@@ -82,14 +79,10 @@ export const makePluginRuntimeState = (
   ProviderUnavailableError
 > =>
   Effect.gen(function* () {
-    const stateRoot = yield* Schema.decodeUnknown(AbsolutePath)(paths.pluginStateDir(pluginName)).pipe(
-      Effect.mapError((cause) => providerStateError("Provider state path is invalid.", cause)),
-    );
     const generationBucketSpec = {
       id: "runtime-generation.json",
       key: "runtime-generation.json",
       schema: Schema.String,
-      root: { path: stateRoot },
       version: 1,
       lock: "advisory",
       onCorrupt: "fail",

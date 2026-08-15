@@ -10,6 +10,7 @@ import {
   flushChunkedBufferAtEnd,
   namedPipeInfoFailure,
 } from "../src/named-pipe.ts";
+import { withPing } from "./podman-api-fixtures.ts";
 
 describe("provider-podman named-pipe chunk flush", () => {
   test("keeps the final chunk even when the trailing CRLF is missing at end-of-stream", () => {
@@ -74,7 +75,7 @@ describe("provider-podman named-pipe chunk flush", () => {
       makeRuntimeProvider({
         platform: "win32",
         socketPath: "npipe://./pipe/lando-missing-podman-machine",
-        podmanApi: { info: Effect.fail(namedPipeInfoFailure(connectFailure)) },
+        podmanApi: withPing({ info: Effect.fail(namedPipeInfoFailure(connectFailure)) }),
       }),
     );
 

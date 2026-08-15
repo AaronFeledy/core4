@@ -11,6 +11,7 @@ import {
   elasticsearchServiceType,
 } from "../src/services/elasticsearch.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -88,7 +89,7 @@ describe("elasticsearch ServiceType", () => {
         kind: "ref",
         ref: "docker.elastic.co/elasticsearch/elasticsearch:7.17.0",
       });
-      expect(plan.endpoints[0]?.port).toBe(19200);
+      expect(firstEndpointPort(plan)).toBe(19200);
       expect(plan.environment["http.port"]).toBe("19200");
     });
 

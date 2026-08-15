@@ -23,7 +23,7 @@ describe("@lando/template-mustache plugin exports", () => {
   });
 
   test("manifest declares the mustache templateEngines contribution", () => {
-    expect(manifest.name).toBe("@lando/template-mustache");
+    expect(String(manifest.name)).toBe("@lando/template-mustache");
     expect(manifest.api).toBe(4);
     expect(manifest.contributes?.templateEngines).toEqual(["mustache"]);
   });

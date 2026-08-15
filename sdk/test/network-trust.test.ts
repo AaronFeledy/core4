@@ -132,7 +132,16 @@ describe("fetchInitForNetwork trustHost CA merge", () => {
 describe("resolveNetworkTrustPlan", () => {
   test("config proxy takes precedence over env proxy", () => {
     const plan = resolveNetworkTrustPlan(
-      { network: { proxy: { http: "http://cfg:1", https: "http://cfg:2", noProxy: ["a.com"] } } },
+      {
+        network: {
+          proxy: {
+            http: "http://cfg:1",
+            https: "http://cfg:2",
+            noProxy: ["a.com"],
+            injectIntoServices: false,
+          },
+        },
+      },
       { HTTP_PROXY: "http://env:9", HTTPS_PROXY: "http://env:8", NO_PROXY: "z.com" },
     );
     expect(plan.proxy).toEqual({ http: "http://cfg:1", https: "http://cfg:2", noProxy: ["a.com"] });
@@ -153,7 +162,11 @@ describe("resolveNetworkTrustPlan", () => {
 
   test("config null proxy value disables that proxy without falling back to env", () => {
     const plan = resolveNetworkTrustPlan(
-      { network: { proxy: { http: null, https: "http://cfg:2", noProxy: [] } } },
+      {
+        network: {
+          proxy: { http: null, https: "http://cfg:2", noProxy: [], injectIntoServices: false },
+        },
+      },
       { HTTP_PROXY: "http://env:9" },
     );
     expect(plan.proxy.http).toBeUndefined();
@@ -162,7 +175,7 @@ describe("resolveNetworkTrustPlan", () => {
 
   test("collects CA cert paths from config and env, config first", () => {
     const plan = resolveNetworkTrustPlan(
-      { network: { ca: { certs: ["/cfg/a.pem"], trustHost: false } } },
+      { network: { ca: { certs: ["/cfg/a.pem"], trustHost: false, injectIntoServices: true } } },
       { LANDO_NETWORK_CA_CERTS: JSON.stringify(["/env/b.pem"]) },
     );
     expect(plan.caCertPaths).toEqual(["/cfg/a.pem", "/env/b.pem"]);

@@ -70,8 +70,7 @@ const liveHarness: InteractionContractHarness = {
 
 const testDoubleHarness: InteractionContractHarness = {
   name: "TestInteractionService",
-  makeService: (spec) =>
-    makeTestInteractionService({ stdin: spec.neverStdin ? undefined : undefined }).service,
+  makeService: () => makeTestInteractionService().service,
   capabilities: {
     interactive: false,
     promptTypes: ["text", "select", "number", "secret"],

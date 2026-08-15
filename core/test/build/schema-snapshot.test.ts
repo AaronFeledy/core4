@@ -31,6 +31,8 @@ const deprecationNoticeReferencePath = resolve(repoRoot, "docs/reference/schemas
 const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
   resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
 
+const mutable = <T>(values: ReadonlyArray<T>): T[] => [...values];
+
 const DESCRIBED = "A described field used to prove annotation resolution.";
 
 // Generate once because the output is deterministic, every derived family is
@@ -96,9 +98,9 @@ describe("schema snapshot artifact-set gate", () => {
         await readFile(metadataIndexPath, "utf8"),
       ) as typeof publicSchemaMetadataIndex;
 
-      expect(Object.keys(publicSchemaRegistry)).toEqual(JSON_SCHEMA_NAMES);
-      expect(generated).toEqual(publicSchemaMetadataIndex);
-      expect(generated.map((entry) => entry.id)).toEqual(JSON_SCHEMA_NAMES);
+      expect(Object.keys(publicSchemaRegistry)).toEqual(mutable(JSON_SCHEMA_NAMES));
+      expect(generated).toEqual(mutable(publicSchemaMetadataIndex));
+      expect(generated.map((entry) => entry.id)).toEqual(mutable(JSON_SCHEMA_NAMES));
       expect(generated.find((entry) => entry.id === "DeprecationNotice")).toMatchObject({
         title: "Deprecation Notice",
         packageExport: "@lando/sdk/schema#DeprecationNotice",
@@ -113,7 +115,7 @@ describe("schema snapshot artifact-set gate", () => {
   test("public registry drives generated reference page inputs", () => {
     const pages = renderPublicSchemaReferencePages();
 
-    expect(pages.map((page) => page.id)).toEqual(JSON_SCHEMA_NAMES);
+    expect(pages.map((page) => page.id)).toEqual(mutable(JSON_SCHEMA_NAMES));
     expect(pages.map((page) => page.docsPath)).toEqual(
       publicSchemaMetadataIndex.map((entry) => entry.docsPath),
     );
@@ -222,7 +224,7 @@ describe("schema snapshot artifact-set gate", () => {
     const fieldRendered = renderSchemaReferenceMarkdown(
       "ExampleShape",
       Schema.Struct({
-        value: Schema.String.annotations({
+        value: Schema.Unknown.annotations({
           description: "Documented value.",
           examples: ["alpha", { nested: true }],
         }),
@@ -236,7 +238,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
     const rootRendered = renderSchemaReferenceMarkdown(
       "RootExample",
-      Schema.String.annotations({ examples: ["root", { nested: true }] }),
+      Schema.Unknown.annotations({ examples: ["root", { nested: true }] }),
       { jsonSchema: { type: "string" } },
     );
 
@@ -442,6 +444,7 @@ describe("schema snapshot artifact-set gate", () => {
     const expected = renderPublicSchemaReferencePages().find(
       (entry) => entry.id === "DeprecationNotice",
     )?.content;
+    if (expected === undefined) throw new Error("DeprecationNotice reference page missing");
     expect(generated).toBe(expected);
   });
 
@@ -537,7 +540,9 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate validates attached examples", () => {
     const InvalidExample = Schema.Struct({
-      mode: Schema.Literal("valid").annotations({ description: "Allowed mode literal." }),
+      mode: Schema.String.pipe(Schema.pattern(/^valid$/u)).annotations({
+        description: "Allowed mode literal.",
+      }),
     }).annotations({
       identifier: "InvalidExample",
       title: "Invalid Example",
@@ -552,7 +557,7 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate validates attached field examples", () => {
     const InvalidFieldExample = Schema.Struct({
-      mode: Schema.Literal("valid").annotations({
+      mode: Schema.String.pipe(Schema.pattern(/^valid$/u)).annotations({
         description: "Allowed mode literal.",
         examples: ["invalid"],
       }),

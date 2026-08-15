@@ -9,7 +9,13 @@ import {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
 } from "@lando/core/errors";
-import { LandofileShape, ProviderId, type ServiceConfig } from "@lando/core/schema";
+import {
+  AbsolutePath,
+  LandofileShape,
+  ProviderId,
+  type ServiceConfig,
+  ServiceName,
+} from "@lando/core/schema";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
@@ -65,14 +71,18 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-const runWithGlobalApp = <A, E>(effect: Effect.Effect<A, E, GlobalAppService>): Promise<A> =>
+type GlobalAppHarnessServices = GlobalAppService | PluginRegistry | RuntimeProviderRegistry;
+
+const runWithGlobalApp = <A, E>(effect: Effect.Effect<A, E, GlobalAppHarnessServices>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(globalAppLayer)));
 
-const runWithGlobalAppExit = <A, E>(effect: Effect.Effect<A, E, GlobalAppService>) =>
+const runWithGlobalAppExit = <A, E>(effect: Effect.Effect<A, E, GlobalAppHarnessServices>) =>
   Effect.runPromiseExit(effect.pipe(Effect.provide(globalAppLayer)));
 
 const materializeDist = (services?: Record<string, ServiceConfig>) =>
-  Effect.flatMap(GlobalAppService, (service) => service.regenerateDist({ services }));
+  Effect.flatMap(GlobalAppService, (service) =>
+    service.regenerateDist(services === undefined ? {} : { services }),
+  );
 
 const ensureOverlay = () => Effect.flatMap(GlobalAppService, (service) => service.ensureUserLandofile);
 
@@ -118,8 +128,8 @@ describe("GlobalAppService Landofile materialization", () => {
       const secondContent = await readFile(distPath, "utf8");
       const secondStat = await stat(distPath);
 
-      expect(created).toEqual({ path: distPath, status: "created", serviceIds: [] });
-      expect(unchanged).toEqual({ path: distPath, status: "unchanged", serviceIds: [] });
+      expect(created).toEqual({ path: AbsolutePath.make(distPath), status: "created", serviceIds: [] });
+      expect(unchanged).toEqual({ path: AbsolutePath.make(distPath), status: "unchanged", serviceIds: [] });
       expect(secondContent).toBe(firstContent);
       expect(secondStat.mtimeMs).toBe(firstStat.mtimeMs);
       expect(parsed).toEqual({ name: "global", runtime: 4, services: {} });
@@ -141,7 +151,7 @@ describe("GlobalAppService Landofile materialization", () => {
         name: "global",
         runtime: 4,
         services: {
-          web: { type: "node", image: "node:lts", primary: true },
+          [ServiceName.make("web")]: { type: "node", image: "node:lts", primary: true },
         },
       });
     });
@@ -203,7 +213,9 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(content).toContain(
         ["    mounts:", "      - excludes:", "          - node_modules", "        target: /app"].join("\n"),
       );
-      expect(parsed.services?.web?.mounts).toEqual([{ excludes: ["node_modules"], target: "/app" }]);
+      expect(parsed.services?.[ServiceName.make("web")]?.mounts).toEqual([
+        { excludes: ["node_modules"], target: "/app" },
+      ]);
     });
   });
 
@@ -227,7 +239,7 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(content).toContain('      MULTILINE: "line one\\nline two"');
       expect(content).toContain('      RETURN: "left\\rright"');
       expect(content).toContain('      TAB: "left\\tright"');
-      expect(parsed.services?.web?.environment).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.environment).toEqual({
         MULTILINE: "line one\nline two",
         RETURN: "left\rright",
         TAB: "left\tright",
@@ -253,7 +265,7 @@ describe("GlobalAppService Landofile materialization", () => {
 
       expect(content).toContain(`      DOUBLE_WRAPPED: '"hello"'`);
       expect(content).toContain("      SINGLE_WRAPPED: \"'hello'\"");
-      expect(parsed.services?.web?.environment).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.environment).toEqual({
         DOUBLE_WRAPPED: '"hello"',
         SINGLE_WRAPPED: "'hello'",
       });
@@ -276,7 +288,7 @@ describe("GlobalAppService Landofile materialization", () => {
       const parsed = await parseAndValidate(content);
 
       expect(content).toContain('        - ["hello, world","foo"]');
-      expect(parsed.services?.web?.providers).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.providers).toEqual({
         docker: { matrix: [["hello, world", "foo"]] },
       });
     });
@@ -298,7 +310,7 @@ describe("GlobalAppService Landofile materialization", () => {
       const parsed = await parseAndValidate(content);
 
       expect(content).toContain("          - {}");
-      expect(parsed.services?.web?.providers).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.providers).toEqual({
         docker: { entries: [{}, { target: "/app" }] },
       });
     });
@@ -320,7 +332,7 @@ describe("GlobalAppService Landofile materialization", () => {
       const parsed = await parseAndValidate(content);
 
       expect(content).toContain("- {}");
-      expect(parsed.services?.web?.providers).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.providers).toEqual({
         docker: { matrix: [{}] },
       });
     });
@@ -342,7 +354,7 @@ describe("GlobalAppService Landofile materialization", () => {
       const parsed = await parseAndValidate(content);
 
       expect(content).toContain("- [{}]");
-      expect(parsed.services?.web?.providers).toEqual({
+      expect(parsed.services?.[ServiceName.make("web")]?.providers).toEqual({
         docker: { matrix: [[{}]] },
       });
     });
@@ -366,8 +378,8 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(content).toContain("      - 'source: target'");
       expect(content).toContain("      - 'app:'");
       expect(content).toContain("      - 'cache:'");
-      expect(parsed.services?.web?.cores).toEqual(["type: node", "app:"]);
-      expect(parsed.services?.web?.hostnames).toEqual(["source: target", "cache:"]);
+      expect(parsed.services?.[ServiceName.make("web")]?.cores).toEqual(["type: node", "app:"]);
+      expect(parsed.services?.[ServiceName.make("web")]?.hostnames).toEqual(["source: target", "cache:"]);
     });
   });
 
@@ -433,14 +445,14 @@ describe("GlobalAppService Landofile materialization", () => {
       const userPath = join(dataRoot, "global", ".lando.yml");
 
       const created = await runWithGlobalApp(ensureOverlay());
-      expect(created).toEqual({ path: userPath, created: true });
+      expect(created).toEqual({ path: AbsolutePath.make(userPath), created: true });
       expect(await readFile(userPath, "utf8")).toBe(overlayContent);
 
       await writeFile(userPath, "name: custom-global\n");
       await runWithGlobalApp(materializeDist({}));
       const preserved = await runWithGlobalApp(ensureOverlay());
 
-      expect(preserved).toEqual({ path: userPath, created: false });
+      expect(preserved).toEqual({ path: AbsolutePath.make(userPath), created: false });
       expect(await readFile(userPath, "utf8")).toBe("name: custom-global\n");
     });
   });
@@ -470,12 +482,12 @@ describe("globalInstall command operation", () => {
 
       expect(result).toEqual({
         paths: {
-          root: join(dataRoot, "global"),
-          distLandofile: join(dataRoot, "global", ".lando.dist.yml"),
-          userLandofile: join(dataRoot, "global", ".lando.yml"),
+          root: AbsolutePath.make(join(dataRoot, "global")),
+          distLandofile: AbsolutePath.make(join(dataRoot, "global", ".lando.dist.yml")),
+          userLandofile: AbsolutePath.make(join(dataRoot, "global", ".lando.yml")),
         },
         dist: {
-          path: join(dataRoot, "global", ".lando.dist.yml"),
+          path: AbsolutePath.make(join(dataRoot, "global", ".lando.dist.yml")),
           status: "created",
           serviceIds: [],
         },

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import { type LandofileShape, PortablePath } from "@lando/sdk/schema";
 
 import {
   APP_COMMAND_MAGIC,
@@ -153,7 +153,7 @@ describe("deriveAppCommandToolingFingerprint", () => {
     const withoutDefaults = baseLandofile;
     const withDefaults = {
       ...baseLandofile,
-      toolingDefaults: { service: "appserver", dir: "/app" },
+      toolingDefaults: { service: "appserver", dir: PortablePath.make("/app") },
     } satisfies LandofileShape;
 
     // When
@@ -170,11 +170,19 @@ describe("deriveAppCommandToolingFingerprint", () => {
     // Given
     const first: LandofileShape = {
       ...baseLandofile,
-      toolingDefaults: { service: "appserver", env: { A: "1", B: "2" }, dir: "/app" },
+      toolingDefaults: {
+        service: "appserver",
+        env: { A: "1", B: "2" },
+        dir: PortablePath.make("/app"),
+      },
     };
     const second: LandofileShape = {
       ...baseLandofile,
-      toolingDefaults: { dir: "/app", env: { B: "2", A: "1" }, service: "appserver" },
+      toolingDefaults: {
+        dir: PortablePath.make("/app"),
+        env: { B: "2", A: "1" },
+        service: "appserver",
+      },
     };
 
     // When / Then

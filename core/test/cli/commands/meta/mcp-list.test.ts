@@ -95,7 +95,8 @@ describe("buildMcpListResult", () => {
   test("emits schema-valid results and supports arbitrary generation", () => {
     // Given: a generated result and a built result.
     const arbitrary = Arbitrary.make(McpListResultSchema);
-    const [sample] = FastCheck.sample(arbitrary, { numRuns: 1, seed: 398 });
+    const sample = FastCheck.sample(arbitrary, { numRuns: 1, seed: 398 })[0];
+    if (sample === undefined) throw new Error("expected sample");
     const result = buildMcpListResult({
       defaultAllowlist: ["app:info"],
       commandEntries: [{ spec: { id: "app:info", summary: "Show app info" } }],

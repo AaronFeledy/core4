@@ -2157,7 +2157,11 @@ describe("release orchestrator", () => {
           runner: {
             spawn: async () => {},
             shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
-              shellStages.push({ stageId, script, prepareNpmAlphaPackages });
+              shellStages.push({
+                stageId,
+                script,
+                ...(prepareNpmAlphaPackages === undefined ? {} : { prepareNpmAlphaPackages }),
+              });
             },
           },
           logger: (line) => logs.push(line),
@@ -2263,7 +2267,11 @@ describe("release orchestrator", () => {
           runner: {
             spawn: async () => {},
             shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
-              shellStages.push({ stageId, script, prepareNpmAlphaPackages });
+              shellStages.push({
+                stageId,
+                script,
+                ...(prepareNpmAlphaPackages === undefined ? {} : { prepareNpmAlphaPackages }),
+              });
             },
           },
           logger: () => {},

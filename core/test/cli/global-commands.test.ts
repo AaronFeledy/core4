@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -339,7 +340,7 @@ describe("meta:global command effects", () => {
       expect(harness.calls.actions).toEqual(["build", "apply"]);
       expect(String(harness.calls.apply[0]?.plan.id)).toBe("global");
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
-      expect(harness.calls.apply[0]?.plan.root).toBe(join(harness.dataRoot, "global"));
+      expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
       expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan)).sort()).toEqual([
@@ -670,6 +671,8 @@ describe("meta:global command effects", () => {
       expect(result.app).toBe("global");
       expect(result.distLandofile).toBe(distPath(harness.dataRoot));
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
+      if (result.landofile === undefined) throw new Error("expected landofile");
+      if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
     });
   });
@@ -689,7 +692,8 @@ describe("meta:global command effects", () => {
   test("CLI wiring forwards a mistyped subcommand instead of dropping it to the view default", () => {
     const options = globalConfigOptionsFromInput({ args: { subcommand: "bogus" }, flags: {} });
 
-    expect(options.subcommand).toBe("bogus");
+    if (options.subcommand === undefined) throw new Error("expected subcommand");
+    expect(`${options.subcommand}`).toBe("bogus");
   });
 
   test("list enumerates every contributed global service from the plugin registry", async () => {
@@ -808,7 +812,11 @@ describe("meta:global command effects", () => {
       expect(harness.calls.build).toHaveLength(1);
       expect(harness.calls.apply).toHaveLength(1);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
-      expect(harness.calls.apply[0]?.plan.services.proxy?.artifact).toEqual({
+      expect(
+        Object.values(harness.calls.apply[0]?.plan.services ?? {}).find(
+          (service) => String(service.name) === "proxy",
+        )?.artifact,
+      ).toEqual({
         kind: "ref",
         ref: "built:proxy",
       });
@@ -958,7 +966,10 @@ describe("meta:global command effects", () => {
       const sinkLayer = Layer.succeed(StreamFrameSink, {
         emit: (frame) =>
           Effect.sync(() => {
-            emitted.push({ service: frame.service, chunk: frame.chunk });
+            emitted.push({
+              chunk: frame.chunk,
+              ...(frame.service === undefined ? {} : { service: frame.service }),
+            });
           }),
       });
 

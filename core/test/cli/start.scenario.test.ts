@@ -13,14 +13,16 @@ import {
   GlobalServiceMissingError,
   HostProxyTransportUnavailableError,
   ProviderUnavailableError,
+  ProxyApplyError,
   ProxyError,
+  ProxySetupError,
 } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   type FileSyncSessionInfo,
-  type FileSyncSessionRef,
+  FileSyncSessionRef,
   type FileSyncSessionSpec,
   PluginManifest,
   PortablePath,
@@ -43,15 +45,17 @@ import {
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -273,7 +277,13 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
+  Layer.succeed(RedactionService, {
+    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+  }),
   Layer.succeed(ProxyService, TestProxyService),
+  makeShellRunnerLive(() => {
+    throw new TypeError("Interactive shell IO is not used by start scenarios.");
+  }),
   Layer.succeed(BuildOrchestrator, {
     build: (appPlan) => Effect.succeed(appPlan),
     buildApp: () => Effect.void,
@@ -304,8 +314,8 @@ const makeStartLayer = (
     readonly buildAppEffect?: Effect.Effect<void, BuildPhaseFailedError>;
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly postStartFailure?: EventError;
-    readonly proxySetupEffect?: Effect.Effect<void, ProxyError>;
-    readonly proxyApplyEffect?: Effect.Effect<void, ProxyError>;
+    readonly proxySetupEffect?: Effect.Effect<void, ProxySetupError>;
+    readonly proxyApplyEffect?: Effect.Effect<void, ProxyApplyError>;
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly recordReadiness?: boolean;
   } = {},
@@ -322,6 +332,7 @@ const makeStartLayer = (
     readonly removeState: boolean;
   }> = [];
   const proxy = {
+    ...TestProxyService,
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () =>
@@ -351,6 +362,7 @@ const makeStartLayer = (
     stop: Effect.void,
   };
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
@@ -495,7 +507,7 @@ const globalServiceType = makeLegacyServiceTypeFake({
         publication: { hostPort: 8080 },
       },
     ],
-    metadata,
+    metadata: { ...metadata, resolvedAt: DateTime.unsafeMake(metadata.resolvedAt) },
   }),
 });
 
@@ -575,6 +587,7 @@ const makeAutoStartLayer = async (options: {
   const events: Array<LandoEvent> = [];
   const applyPlans: AppPlan[] = [];
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
@@ -693,6 +706,13 @@ const makeAutoStartLayer = async (options: {
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(ProxyService, TestProxyService),
+    Layer.succeed(RedactionService, {
+      forProfile: (profile, redactionOptions) =>
+        Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
+    }),
+    makeShellRunnerLive(() => {
+      throw new TypeError("Interactive shell IO is not used by global start scenarios.");
+    }),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.succeed(appPlan),
       buildApp: () => Effect.void,
@@ -859,7 +879,11 @@ describe("lando start", () => {
   });
 
   test("safely tears down the provider when proxy setup fails", async () => {
-    const failure = new ProxyError({ message: "proxy setup failed", proxyId: "recording" });
+    const failure = new ProxySetupError({
+      message: "proxy setup failed",
+      proxyId: "recording",
+      remediation: "Retry setup.",
+    });
     const harness = makeStartLayer({ proxySetupEffect: Effect.fail(failure) });
 
     const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
@@ -870,7 +894,12 @@ describe("lando start", () => {
   });
 
   test("removes partial routes and safely tears down when route apply fails", async () => {
-    const failure = new ProxyError({ message: "route apply failed", proxyId: "recording" });
+    const failure = new ProxyApplyError({
+      message: "route apply failed",
+      proxyId: "recording",
+      app: String(plan.id),
+      remediation: "Retry route application.",
+    });
     const harness = makeStartLayer({ proxyApplyEffect: Effect.fail(failure) });
 
     const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
@@ -1596,6 +1625,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -1682,7 +1712,7 @@ describe("lando start", () => {
         },
       ],
     };
-    const existingRef = "session-web-app-mount" as unknown as FileSyncSessionRef;
+    const existingRef = FileSyncSessionRef.make("session-web-app-mount");
     const existingSession: FileSyncSessionInfo = {
       ref: existingRef,
       app: { kind: "user", id: plan.id, root: plan.root },
@@ -1723,6 +1753,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -1843,6 +1874,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -1965,6 +1997,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -2086,6 +2119,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -2222,6 +2256,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -2356,10 +2391,11 @@ describe("lando start", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: (spec: FileSyncSessionSpec) =>
-        Effect.gen(function* () {
-          callLog.push(`create:${spec.mountKey}`);
-          yield* Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "sync failed" }));
-        }),
+        Effect.sync(() => callLog.push(`create:${spec.mountKey}`)).pipe(
+          Effect.zipRight(
+            Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "sync failed" })),
+          ),
+        ),
       pauseSession: (ref) => Effect.sync(() => callLog.push(`pause:${String(ref)}`)),
       resumeSession: (ref) => Effect.sync(() => callLog.push(`resume:${String(ref)}`)),
       terminateSession: (ref) => Effect.sync(() => callLog.push(`terminate:${String(ref)}`)),
@@ -2371,6 +2407,7 @@ describe("lando start", () => {
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",

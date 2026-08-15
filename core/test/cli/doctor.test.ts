@@ -10,6 +10,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeLandoPaths } from "@lando/paths";
 import { plugin as podmanPlugin } from "@lando/provider-podman";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
   type GlobalConfig,

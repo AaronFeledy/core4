@@ -1,16 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Schema } from "effect";
 
 import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "../../src/events/host-proxy.ts";
 import { LandoEvent } from "../../src/events/union.ts";
 
 const timestamp = DateTime.unsafeMake("2026-07-06T00:00:00.000Z");
-const appRef = { kind: "user" as const, id: "demo", root: "/home/u/demo" };
+const appRef = {
+  kind: "user" as const,
+  id: AppId.make("demo"),
+  root: AbsolutePath.make("/home/u/demo"),
+};
+const callerService = ServiceName.make("web");
 const redactedRequest = {
   kind: "runLando",
   commandId: "app:open",
   argvSummary: ["open", "--print"],
-  cwd: "/home/u/demo",
+  cwd: AbsolutePath.make("/home/u/demo"),
 };
 
 describe("host-proxy call events", () => {
@@ -19,7 +25,7 @@ describe("host-proxy call events", () => {
       app: appRef,
       callId: "call-1",
       request: redactedRequest,
-      callerService: "web",
+      callerService,
       depth: 0,
       timestamp,
     });
@@ -32,7 +38,7 @@ describe("host-proxy call events", () => {
       app: appRef,
       callId: "call-1",
       request: redactedRequest,
-      callerService: "web",
+      callerService,
       depth: 0,
       outcome: "success",
       durationMs: 12,
@@ -49,7 +55,7 @@ describe("host-proxy call events", () => {
       app: appRef,
       callId: "call-2",
       request: { kind: "runLando" },
-      callerService: "web",
+      callerService,
       depth: 0,
       outcome: "failure",
       failureDetail: "HostProxyCommandNotAllowedError",

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
@@ -15,7 +16,7 @@ describe("@lando/service-lando plugin exports", () => {
   });
 
   test("manifest declares the mailpit globalServices contribution", () => {
-    expect(manifest.name).toBe("@lando/service-lando");
+    expect(String(manifest.name)).toBe("@lando/service-lando");
     expect(manifest.api).toBe(4);
     const contributions = manifest.contributes?.globalServices ?? [];
     expect(contributions).toHaveLength(1);

@@ -85,8 +85,16 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   storage: [],
   endpoints:
     name === "web"
-      ? [{ port: 3000, protocol: "http", name: "http" }]
-      : [{ port: 5432, protocol: "tcp", name: "database" }],
+      ? [{ _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]
+      : [
+          {
+            _tag: "published",
+            port: 5432,
+            protocol: "tcp",
+            name: "database",
+            publication: { hostPort: 5432 },
+          },
+        ],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -166,6 +174,7 @@ const makeLogsLayer = (
     platform: "linux",
     capabilities: effectiveCapabilities,
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -368,7 +377,7 @@ describe("lando logs", () => {
     );
 
     expect(harness.logCalls[0]?.options.sources).toEqual([appFile]);
-    expect(harness.logCalls[0]?.options.source).toBe("app-file");
+    expect(harness.logCalls[0]?.options.source).toBe(LogSourceId.make("app-file"));
   });
 
   test("--source console restricts to the implicit console stream with no file sources", async () => {

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { runScoped, runScopedExit } from "./scope-helpers.ts";
 
 const fastReadinessPolicy: RetryPolicy = {
   maxAttempts: 5,
@@ -77,6 +79,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -230,7 +233,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
   test("apply triggers ensureRuntime launch before bringUp", async () => {
     const events: string[] = [];
     await withRuntimeProvider(events, async (provider) => {
-      await Effect.runPromise(provider.apply(plan, {}));
+      await runScoped(provider.apply(plan, { reconcile: true }));
     });
 
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
@@ -242,7 +245,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
   test("two provider operations launch the runtime at most once", async () => {
     const events: string[] = [];
     await withRuntimeProvider(events, async (provider) => {
-      await Effect.runPromise(provider.apply(plan, {}));
+      await runScoped(provider.apply(plan, { reconcile: true }));
       await Effect.runPromise(
         provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
       );
@@ -256,8 +259,8 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     await withRuntimeProvider(
       events,
       async (provider) => {
-        await Effect.runPromiseExit(provider.apply(plan, {}));
-        await Effect.runPromise(provider.apply(plan, {}));
+        await runScopedExit(provider.apply(plan, { reconcile: true }));
+        await runScoped(provider.apply(plan, { reconcile: true }));
       },
       1,
       2,
@@ -286,8 +289,8 @@ describe("provider-lando ensureRuntime factory wiring", () => {
       events,
       async (provider) => {
         const setupPlan = await Effect.runPromise(provider.planSetup({ force: false }));
-        await Effect.runPromise(Effect.scoped(provider.setup(setupPlan, { force: false })));
-        await Effect.runPromise(provider.apply(plan, {}));
+        await runScoped(provider.setup(setupPlan, { force: false }));
+        await runScoped(provider.apply(plan, { reconcile: true }));
       },
       2,
     );
@@ -320,6 +323,8 @@ describe("provider-lando ensureRuntime factory wiring", () => {
           rootlessProbes: {
             probe: () => ({
               subidConfigured: true,
+              subidRangeSufficient: true,
+              subidRangesDisjoint: true,
               hasUidmapTools: true,
               cgroupsV2Delegated: true,
               hasXdgRuntimeDir: true,
@@ -328,9 +333,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         }),
       );
 
-      await Effect.runPromiseExit(
-        provider.exec({ app: appId, service: serviceName }, { command: ["echo", "hi"] }),
-      );
+      await runScopedExit(provider.exec({ app: appId, service: serviceName }, { command: ["echo", "hi"] }));
 
       expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
       expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");
@@ -359,7 +362,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         }),
       );
 
-      await Effect.runPromise(provider.apply(plan, {}));
+      await runScoped(provider.apply(plan, { reconcile: true }));
 
       expect(events).not.toContain("service.launch");
       expect(events.some((event) => event.startsWith("api.request"))).toBe(true);

@@ -278,9 +278,15 @@ export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant 
           ? undefined
           : guideTags
         : [...new Set([...guideTags, ...override.tags])];
+    const normalizedSkip =
+      skip === undefined
+        ? undefined
+        : skip.until === undefined
+          ? { reason: skip.reason }
+          : { reason: skip.reason, until: skip.until };
     return {
       pairs,
-      ...(skip === undefined ? {} : { skip }),
+      ...(normalizedSkip === undefined ? {} : { skip: normalizedSkip }),
       ...(tags === undefined ? {} : { tags }),
       ...(platforms === undefined ? {} : { platforms }),
     };
@@ -1076,12 +1082,19 @@ const redactPublicText = (text: string | undefined): string | undefined => {
   return redactPublicTranscriptText(text, PUBLIC_TRANSCRIPT_REDACTION_ENV);
 };
 
-const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => ({
-  ...frame,
-  displayText: redactPublicText(frame.displayText),
-  commandDisplay: redactPublicText(frame.commandDisplay),
-  resultSummary: redactPublicText(frame.resultSummary),
-});
+const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => {
+  const displayText = redactPublicText(frame.displayText);
+  const commandDisplay = redactPublicText(frame.commandDisplay);
+  const resultSummary = redactPublicText(frame.resultSummary);
+  return {
+    kind: frame.kind,
+    sourceFile: frame.sourceFile,
+    sourceLine: frame.sourceLine,
+    ...(displayText === undefined ? {} : { displayText }),
+    ...(commandDisplay === undefined ? {} : { commandDisplay }),
+    ...(resultSummary === undefined ? {} : { resultSummary }),
+  };
+};
 
 const publicFrameForComponent = (
   component: GuideStepComponent,

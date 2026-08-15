@@ -94,7 +94,7 @@ const parseDoc = (markdown: string): ReadonlyArray<ParsedEvent> => {
       current.fields.push({
         name,
         type: (typeCell ?? "").trim(),
-        allowedValues: allowed,
+        ...(allowed === undefined ? {} : { allowedValues: allowed }),
         description: (descriptionCell ?? "").trim(),
       });
     }
@@ -126,7 +126,7 @@ describe("telemetry inventory doc consistency", () => {
         expect(docField, `events.md must document field "${name}.${field.name}"`).toBeDefined();
         if (docField === undefined) continue;
         expect(docField.type).toBe(field.type);
-        expect(docField.allowedValues).toEqual(field.allowedValues);
+        expect(docField.allowedValues).toEqual("allowedValues" in field ? field.allowedValues : undefined);
         expect(docField.description).toBe(field.description);
       }
     }

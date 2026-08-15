@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { ProviderError } from "@lando/sdk/services";
 
 import type { PodmanApiClient } from "../src/capabilities.ts";
 import {
@@ -25,7 +26,7 @@ const podmanApi = (version: string): PodmanApiClient => ({
 const runSetup = (options: SetupOptions) => Effect.runPromiseExit(setupProviderLando(options));
 
 const expectVersionRejection = (
-  exit: Exit.Exit<unknown, ProviderUnavailableError>,
+  exit: Exit.Exit<unknown, ProviderError>,
   expected: { readonly version: string; readonly source: string },
 ) => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -35,6 +36,7 @@ const expectVersionRejection = (
   if (failure._tag === "None") return;
   const error = failure.value;
   expect(error).toBeInstanceOf(ProviderUnavailableError);
+  if (!(error instanceof ProviderUnavailableError)) return;
   expect(error._tag).toBe("ProviderUnavailableError");
   expect(error.providerId).toBe("lando");
   expect(error.operation).toBe("setup");

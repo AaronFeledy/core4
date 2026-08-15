@@ -1,5 +1,5 @@
 export class ComposeFixtureContainerStateError extends Error {
-  readonly name = "ComposeFixtureContainerStateError";
+  override readonly name = "ComposeFixtureContainerStateError";
 
   constructor(
     readonly containerName: string,

@@ -10,7 +10,11 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type ExecResult, type RuntimeProviderShape, ToolingEngine } from "@lando/sdk/services";
-import { type ToolingEngineContractHarness, runToolingEngineContractSuite } from "@lando/sdk/test";
+import {
+  TestRuntimeProvider,
+  type ToolingEngineContractHarness,
+  runToolingEngineContractSuite,
+} from "@lando/sdk/test";
 
 import { HostToolingEngineLive } from "@lando/engine/services/host-tooling-engine";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
@@ -81,6 +85,7 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     services: map as AppPlan["services"],
     routes: [],
     networks: [],
+    fileSync: [],
     stores: [],
     metadata,
     extensions: {},
@@ -101,6 +106,7 @@ const makeRecordingProvider = (
       ? responses(index)
       : (responses[index] ?? { exitCode: 0, stdout: "", stderr: "" });
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: providerId,
     displayName: "Recording provider",
     version: "0.0.0",

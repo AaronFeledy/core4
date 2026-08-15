@@ -126,8 +126,14 @@ describe("ServicePlan", () => {
     expect(decoded.mounts[0]?.target).toBe(PortablePath.make("/app"));
     expect(decoded.mounts[0]?.realization).toBe("passthrough");
     expect(decoded.endpoints).toHaveLength(1);
-    expect(decoded.endpoints[0]?.port).toBe(3000);
-    expect(decoded.endpoints[0]?.protocol).toBe("http");
+    const endpoint = decoded.endpoints[0];
+    if (endpoint === undefined) throw new Error("endpoint missing");
+    expect(endpoint._tag).toBe("internal");
+    if (endpoint._tag !== "internal" || endpoint.protocol === "unix") {
+      throw new Error("expected an internal TCP endpoint");
+    }
+    expect(endpoint.port).toBe(3000);
+    expect(endpoint.protocol).toBe("http");
     expect(decoded.metadata.runtime).toBe(4);
   });
 

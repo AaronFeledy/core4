@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
-import type { DeprecationNotice } from "@lando/sdk/schema";
+import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
 import {
   DeprecationService,
   EventService,
@@ -27,6 +27,12 @@ const errorNotice: DeprecationNotice = {
   since: "4.1.0",
   severity: "error",
   note: "This surface is no longer available.",
+};
+
+const eventUseId = (event: unknown): unknown => {
+  if (typeof event !== "object" || event === null || !("use" in event)) return undefined;
+  const use = event.use;
+  return typeof use === "object" && use !== null && "id" in use ? use.id : undefined;
 };
 
 const timestamp = DateTime.unsafeMake("2026-06-11T16:00:00.000Z");
@@ -87,7 +93,7 @@ describe("DeprecationServiceLive", () => {
     );
 
     expect(result.event._tag).toBe("deprecation-used");
-    expect(result.event.use.id).toBe("app:start");
+    expect(eventUseId(result.event)).toBe("app:start");
     expect(result.summary[0]?.id).toBe("app:start");
     expect(result.summary[0]?.count).toBe(1);
   });
@@ -114,7 +120,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(result.exit)).toBe(true);
     expect(result.events[0]?._tag).toBe("deprecation-used");
-    expect(result.events[0]?.use.id).toBe("app:legacy");
+    expect(eventUseId(result.events[0])).toBe("app:legacy");
     expect(result.summary[0]?.id).toBe("app:legacy");
     expect(result.summary[0]?.count).toBe(1);
   });
@@ -141,7 +147,7 @@ describe("DeprecationServiceLive", () => {
 
   test("telemetry consumes deprecation-used through the event bus", async () => {
     const recorded: Array<{ readonly event: string; readonly data: Readonly<Record<string, unknown>> }> = [];
-    const recordedOnce = Deferred.unsafeMake<void>();
+    const recordedOnce = Effect.runSync(Deferred.make<void>());
     const telemetry = {
       enabled: true,
       record: (event: string, data: Readonly<Record<string, unknown>>) =>
@@ -276,7 +282,7 @@ describe("DeprecationServiceLive", () => {
 
     const pluginRegistry = {
       list: Effect.succeed([
-        {
+        Schema.decodeUnknownSync(PluginManifest)({
           name: "@lando/legacy-plugin",
           version: "1.0.0",
           api: 4,
@@ -289,7 +295,7 @@ describe("DeprecationServiceLive", () => {
               flags: [{ name: "legacy-setup", type: "boolean", deprecated: pluginNotice }],
             },
           },
-        },
+        }),
       ]),
       load: () => Effect.die("not used"),
       loadServiceType: () => Effect.die("not used"),
@@ -324,14 +330,14 @@ describe("DeprecationServiceLive", () => {
   test("plugins bootstrap layer fails when a discovered plugin setup flag collides with a built-in", async () => {
     const pluginRegistry = {
       list: Effect.succeed([
-        {
+        Schema.decodeUnknownSync(PluginManifest)({
           name: "@lando/rogue-plugin",
           version: "1.0.0",
           api: 4,
           contributes: {
             setup: { flags: [{ name: "provider", type: "option" }] },
           },
-        },
+        }),
       ]),
       load: () => Effect.die("not used"),
       loadServiceType: () => Effect.die("not used"),

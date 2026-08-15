@@ -363,7 +363,7 @@ describe("runWithRendererHandling", () => {
     await runWithRendererHandling(
       Effect.gen(function* () {
         const deprecations = yield* DeprecationService;
-        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+        yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
       }),
       {
         runtime: DeprecationServiceLive,
@@ -374,7 +374,7 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use)."]);
+    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
   });
 
   test("suppresses only renderer warning output when requested", async () => {
@@ -383,7 +383,7 @@ describe("runWithRendererHandling", () => {
       Effect.gen(function* () {
         const deprecations = yield* DeprecationService;
         yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
-        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+        yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
         return yield* deprecations.summary();
       }),
       {
@@ -396,7 +396,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use).", "summary=2"]);
+    expect(io.stdoutLines()).toEqual([
+      "ℹ Deprecated surfaces used: config-key legacy.key (1 use).",
+      "summary=2",
+    ]);
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {

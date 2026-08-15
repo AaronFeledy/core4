@@ -70,7 +70,10 @@ const patchedSource = upstreamSource
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
 const executePatch = async (command: ReadonlyArray<string>, cwd?: string): Promise<void> => {
-  const process = Bun.spawn([...command], { cwd, stdout: "pipe", stderr: "pipe" });
+  const process =
+    cwd === undefined
+      ? Bun.spawn([...command], { stdout: "pipe", stderr: "pipe" })
+      : Bun.spawn([...command], { cwd, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stderr] = await Promise.all([process.exited, new Response(process.stderr).text()]);
   if (exitCode !== 0) throw new Error(`patch failed with exit ${exitCode}: ${stderr}`);
 };

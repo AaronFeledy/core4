@@ -1424,7 +1424,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         }
         return request(req);
       },
-      stream: inner.api.stream,
+      ...(inner.api.stream === undefined ? {} : { stream: inner.api.stream }),
     };
 
     const provider = await Effect.runPromise(

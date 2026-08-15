@@ -11,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { runScoped } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("lando-build-app");
@@ -74,7 +75,7 @@ test("provider-lando buildArtifact uses the managed Podman build API seam", asyn
     makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi, platform: "linux" }),
   );
 
-  const artifact = await Effect.runPromise(
+  const artifact = await runScoped(
     provider.buildArtifact({ app: appId, service: serviceName, plan, buildKey: "lando-key" }),
   );
 

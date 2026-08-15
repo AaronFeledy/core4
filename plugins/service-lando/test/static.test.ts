@@ -12,6 +12,7 @@ import {
 } from "../src/services/static.ts";
 
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -146,7 +147,7 @@ describe("static ServiceType", () => {
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(plan.command).toEqual(["sh", "-c", expect.stringContaining('root "/app/dist";')]);
     expect(plan.appMount?.readOnly).toBe(true);
-    expect(plan.endpoints[0]?.port).toBe(80);
+    expect(firstEndpointPort(plan)).toBe(80);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: "dist" });
   });
 

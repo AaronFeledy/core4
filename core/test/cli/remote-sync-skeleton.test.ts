@@ -2,6 +2,8 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { AbsolutePath } from "@lando/core/schema";
+
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Redacted, Schema } from "effect";
 
@@ -302,7 +304,7 @@ describe("remote sync command skeleton", () => {
       const pullProgram = operations
         .appPull(
           { cwd: dir, remote: "test", env: TestRemoteSource.supportedEnv, only: [TestDataset.dataset.kind] },
-          { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+          { plan, root: AbsolutePath.make(dir), app: { kind: "user", id: plan.id, root: plan.root } },
           confirm,
         )
         .pipe(
@@ -384,7 +386,7 @@ describe("remote sync command skeleton", () => {
                   }),
                 ),
               ),
-            ),
+            ) as Effect.Effect<unknown, unknown, never>,
         );
       } finally {
         process.chdir(original);
@@ -401,7 +403,11 @@ describe("remote sync command skeleton", () => {
         operations.appRemoteAdd({ cwd: dir, name: "default-env", config: { source: "default-env" } }),
       );
       const plan = TestDataset.context.plan;
-      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const target = {
+        plan,
+        root: AbsolutePath.make(dir),
+        app: { kind: "user" as const, id: plan.id, root: plan.root },
+      };
       let fetches = 0;
       const defaultEnvSource: RemoteSourceShape = {
         ...TestRemoteSource.source,
@@ -475,7 +481,11 @@ describe("remote sync command skeleton", () => {
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
       const plan = TestDataset.context.plan;
-      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const target = {
+        plan,
+        root: AbsolutePath.make(dir),
+        app: { kind: "user" as const, id: plan.id, root: plan.root },
+      };
       const layer = Layer.mergeAll(
         Layer.succeed(RemoteSource, TestRemoteSource.source),
         Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
@@ -520,7 +530,11 @@ describe("remote sync command skeleton", () => {
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
       const plan = TestDataset.context.plan;
-      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const target = {
+        plan,
+        root: AbsolutePath.make(dir),
+        app: { kind: "user" as const, id: plan.id, root: plan.root },
+      };
       const layer = Layer.mergeAll(
         Layer.succeed(RemoteSource, TestRemoteSource.source),
         Layer.succeed(Dataset, TestDataset.dataset),
@@ -562,7 +576,11 @@ describe("remote sync command skeleton", () => {
         operations.appRemoteAdd({ cwd: dir, name: "multi", config: { source: "multi" } }),
       );
       const plan = TestDataset.context.plan;
-      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const target = {
+        plan,
+        root: AbsolutePath.make(dir),
+        app: { kind: "user" as const, id: plan.id, root: plan.root },
+      };
       let fetches = 0;
       let sends = 0;
       const multiKindSource = {
@@ -636,7 +654,7 @@ describe("remote sync command skeleton", () => {
               env: TestRemoteSource.supportedEnv,
               only: [TestDataset.dataset.kind],
             },
-            { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+            { plan, root: AbsolutePath.make(dir), app: { kind: "user", id: plan.id, root: plan.root } },
           )
           .pipe(
             Effect.provide(
@@ -705,7 +723,11 @@ describe("remote sync command skeleton", () => {
           select: () => Effect.die("target supplies the plan"),
         }),
       );
-      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const target = {
+        plan,
+        root: AbsolutePath.make(dir),
+        app: { kind: "user" as const, id: plan.id, root: plan.root },
+      };
 
       const noPushExit = await Effect.runPromiseExit(
         operations
@@ -799,7 +821,7 @@ describe("remote sync command skeleton", () => {
               noSnapshot: true,
               yes: true,
             },
-            { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+            { plan, root: AbsolutePath.make(dir), app: { kind: "user", id: plan.id, root: plan.root } },
           )
           .pipe(
             Effect.provide(

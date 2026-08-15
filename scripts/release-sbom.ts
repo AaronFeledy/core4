@@ -222,6 +222,9 @@ const parseCliArgs = (args: ReadonlyArray<string>): GenerateReleaseSbomsInput =>
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) {
+      throw new Error("Unexpected empty release-sbom argument.");
+    }
     const readValue = (label: string): string => {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`${label} expects a value`);

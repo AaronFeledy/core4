@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -352,7 +353,7 @@ export const stripRecipeReadme = (sourcePath: string, content: string): Readonly
 
 export const discoverRecipeReadmeMdxFiles = async (root = REPO_ROOT): Promise<ReadonlyArray<string>> => {
   const recipesRoot = resolve(root, RECIPES_ROOT);
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: ReadonlyArray<Dirent<string>>;
   try {
     entries = await readdir(recipesRoot, { withFileTypes: true });
   } catch (cause) {

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/core/errors";
-import { LandofileShape } from "@lando/core/schema";
+import { AbsolutePath, LandofileShape } from "@lando/core/schema";
 import { GlobalAppService } from "@lando/core/services";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
@@ -56,7 +56,7 @@ describe("GlobalAppServiceLive", () => {
         Effect.flatMap(GlobalAppService, (service) => service.root).pipe(Effect.provide(globalAppLayer)),
       );
 
-      expect(root).toBe(join(dataRoot, "global"));
+      expect(root).toBe(AbsolutePath.make(join(dataRoot, "global")));
     });
   });
 
@@ -172,7 +172,10 @@ describe("GlobalAppServiceLive", () => {
             services: {
               traefik: {
                 image: "traefik:v3",
-                ports: ["80:80", "443:443"],
+                ports: [
+                  { target: 80, published: 80, protocol: "tcp" },
+                  { target: 443, published: 443, protocol: "tcp" },
+                ],
                 environment: { LANDO_GLOBAL: "true" },
               },
             },
@@ -185,12 +188,22 @@ describe("GlobalAppServiceLive", () => {
       >;
       const services = parsed.services as Record<
         string,
-        { readonly image?: string; readonly ports?: ReadonlyArray<string> }
+        {
+          readonly image?: string;
+          readonly ports?: ReadonlyArray<{
+            readonly target: number;
+            readonly published?: number;
+            readonly protocol?: "tcp" | "udp";
+          }>;
+        }
       >;
 
       expect(result.serviceIds).toEqual(["traefik"]);
       expect(services.traefik?.image).toBe("traefik:v3");
-      expect(services.traefik?.ports).toEqual(["80:80", "443:443"]);
+      expect(services.traefik?.ports).toEqual([
+        { target: 80, published: 80, protocol: "tcp" },
+        { target: 443, published: 443, protocol: "tcp" },
+      ]);
       expect(Schema.decodeUnknownSync(LandofileShape)(parsed).runtime).toBe(4);
     });
   });

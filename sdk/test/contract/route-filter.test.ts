@@ -57,13 +57,15 @@ const addPrefix: Filter<{ prefix: string }> = {
   invalidOptions: {},
   input: { ...baseRoute, pathPrefix: "/api" },
   // Idempotent: only adds the prefix when it is not already present.
-  apply: (route, options) =>
-    Effect.succeed({
+  apply: (route, options) => {
+    const pathPrefix = (route.pathPrefix ?? "/").startsWith(options.prefix)
+      ? route.pathPrefix
+      : `${options.prefix}${route.pathPrefix ?? ""}`;
+    return Effect.succeed({
       ...route,
-      pathPrefix: (route.pathPrefix ?? "/").startsWith(options.prefix)
-        ? route.pathPrefix
-        : `${options.prefix}${route.pathPrefix ?? ""}`,
-    }),
+      ...(pathPrefix === undefined ? {} : { pathPrefix }),
+    });
+  },
   expected: { ...baseRoute, pathPrefix: "/api" },
 };
 
@@ -103,12 +105,19 @@ const redirect: Filter<{ to: string; permanent: boolean }> = {
   expected: { ...baseRoute, redirect: { to: "https://app.example.test", permanent: true } },
 };
 
-const allFilters = [rewritePath, stripPrefix, addPrefix, requestHeader, responseHeader, redirect];
+const allFilters = [
+  { id: rewritePath.id, run: () => runRouteFilterContractSuite(rewritePath) },
+  { id: stripPrefix.id, run: () => runRouteFilterContractSuite(stripPrefix) },
+  { id: addPrefix.id, run: () => runRouteFilterContractSuite(addPrefix) },
+  { id: requestHeader.id, run: () => runRouteFilterContractSuite(requestHeader) },
+  { id: responseHeader.id, run: () => runRouteFilterContractSuite(responseHeader) },
+  { id: redirect.id, run: () => runRouteFilterContractSuite(redirect) },
+] as const;
 
 describe("RouteFilter contract", () => {
   for (const filter of allFilters) {
     test(`the built-in ${filter.id} filter passes the contract`, async () => {
-      const exit = await Effect.runPromiseExit(runRouteFilterContractSuite(filter));
+      const exit = await Effect.runPromiseExit(filter.run());
       if (exit._tag === "Failure") {
         throw new Error(`Contract failure (${filter.id}): ${JSON.stringify(exit.cause, null, 2)}`);
       }

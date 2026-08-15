@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
 
 import { NoProviderInstalledError } from "@lando/core/errors";
 import {
@@ -15,7 +15,7 @@ import { RuntimeProviderRegistryLive } from "@lando/engine/providers/registry";
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { HttpClientLive } from "@lando/http-client/live";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { StateStoreLive } from "@lando/state-store/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
@@ -49,11 +49,11 @@ const registryLayer = (
 ) => {
   const userDataRoot =
     options.userDataRoot === undefined ? undefined : AbsolutePath.make(options.userDataRoot);
-  const config: GlobalConfig = {
-    defaultProviderId: ProviderId.make(defaultProviderId),
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
+    defaultProviderId,
     telemetry: { enabled: false },
     ...(userDataRoot === undefined ? {} : { userDataRoot }),
-  };
+  });
   const load = Effect.succeed(config);
   const configService: Context.Tag.Service<typeof ConfigService> = {
     load,

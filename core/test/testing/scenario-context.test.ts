@@ -335,7 +335,7 @@ describe("withScenarioContext", () => {
           guideId: "node-postgres",
           scenarioId: "override-options",
           runCli: async (command, options) => {
-            captured = { command, options };
+            captured = { command, ...(options === undefined ? {} : { options }) };
             return {
               command,
               stdout: "",
@@ -384,6 +384,7 @@ describe("withScenarioContext", () => {
       ),
     );
     expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new TypeError("shell runner unexpectedly succeeded");
     const failure = Cause.failureOption(exit.cause);
     expect(failure._tag).toBe("Some");
     const error = failure._tag === "Some" ? failure.value : undefined;
@@ -499,11 +500,12 @@ describe("withScenarioContext", () => {
     expect(failure?._tag).toBe("Some");
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(GuideFixtureSymlinkError);
+    if (!(error instanceof GuideFixtureSymlinkError)) {
+      throw new TypeError("expected GuideFixtureSymlinkError");
+    }
     expect(error.name).toBe("GuideFixtureSymlinkError");
     expect(error.fixtureName).toBe("symlinked");
-    expect(
-      error instanceof GuideFixtureSymlinkError ? error.path.endsWith(join("symlinked", "link.txt")) : false,
-    ).toBe(true);
+    expect(error.path.endsWith(join("symlinked", "link.txt"))).toBe(true);
   });
 });
 

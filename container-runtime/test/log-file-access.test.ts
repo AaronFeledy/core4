@@ -327,6 +327,7 @@ describe("Docker-compatible log file access", () => {
       fake.requests.some((request) => request.method === "GET" && request.path.includes("/archive")),
     ).toBe(false);
     const command = fake.execs[0]?.command[0];
+    if (command === undefined) throw new Error("expected helper command");
     expect(command).toMatch(/^\/tmp\/lando-log-file-helper-[0-9a-f]{32}\/lando-log-file-helper$/);
     expect(fake.execs[0]?.user).toBeUndefined();
     expect(fake.execs[1]?.user).toBe("0");
@@ -354,6 +355,8 @@ describe("Docker-compatible log file access", () => {
       .map((exec) => exec.command[0])
       .filter((command): command is string => command !== undefined);
     expect(commands).toHaveLength(2);
+    const secondCommand = commands[1];
+    if (secondCommand === undefined) throw new Error("expected second helper command");
     expect(commands[0]).not.toBe(commands[1]);
     expect(
       commands.every((command) =>
@@ -362,8 +365,8 @@ describe("Docker-compatible log file access", () => {
     ).toBe(true);
     const names = tarEntryNames(fake.state().uploaded);
     expect(names).toEqual([
-      `${commands[1]?.slice("/tmp/".length, -"/lando-log-file-helper".length)}/`,
-      commands[1]?.slice("/tmp/".length),
+      `${secondCommand.slice("/tmp/".length, -"/lando-log-file-helper".length)}/`,
+      secondCommand.slice("/tmp/".length),
     ]);
     const cleanupCommands = fake.execs.filter((exec) => exec.user === "0").map((exec) => exec.command);
     expect(cleanupCommands[0]?.[0]).not.toBe(cleanupCommands[1]?.[0]);

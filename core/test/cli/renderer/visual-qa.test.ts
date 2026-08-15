@@ -218,6 +218,7 @@ describe("provider-free injected-event pipeline", () => {
               makeLandoEventConsumer(io, {
                 createLiveRegion: async () => ({
                   commitScrollback: (line) => io.writeStdout(`${line}\n`),
+                  rememberScrollback: () => {},
                   setFooter: (lines) => io.writeStdout(`${lines.join("\n")}\n`),
                   requestLive: () => {},
                   dropLive: () => {},

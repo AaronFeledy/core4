@@ -90,6 +90,7 @@ describe("meilisearch service type — live integration: index create + document
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata: search.metadata,
           extensions: {},
         };

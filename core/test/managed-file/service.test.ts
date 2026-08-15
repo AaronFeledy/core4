@@ -1,25 +1,34 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Exit } from "effect";
+import { Effect, Exit, type Scope } from "effect";
 
-import type { ManagedFile } from "@lando/sdk/schema";
+import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
 import { managedFileLedger } from "@lando/engine/config/roots";
 import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
-const runScoped = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));
 
-const file = (overrides: Partial<ManagedFile> & Pick<ManagedFile, "id" | "path">): ManagedFile => ({
+type FileOverrides = Omit<Partial<ManagedFile>, "base" | "path"> & {
+  readonly id: ManagedFile["id"];
+  readonly path: string;
+  readonly base?: string;
+};
+
+const file = ({ base, path, ...overrides }: FileOverrides): ManagedFile => ({
   owner: "test",
   mode: "file",
   format: "text",
   content: { kind: "text", value: "hello world\n" },
   ...overrides,
+  ...(base === undefined ? {} : { base: AbsolutePath.make(base) }),
+  path: PortablePath.make(path),
 });
 
 describe("ManagedFileService (in-memory)", () => {
@@ -253,7 +262,7 @@ describe("ManagedFileService (in-memory)", () => {
     const mf = file({ id: "a:adopt", path: "adopt.txt" });
     await runScoped(store.service.apply([mf]));
 
-    await run(store.service.adopt("adopt.txt"));
+    await run(store.service.adopt(PortablePath.make("adopt.txt")));
     expect(store.read("adopt.txt")).not.toContain("lando-generated");
     expect(store.read("adopt.txt")).toContain("hello world");
 
@@ -268,7 +277,7 @@ describe("ManagedFileService (in-memory)", () => {
     const local = file({ id: "a:local", path: "shared.txt" });
     await runScoped(store.service.apply([custom, local]));
 
-    await run(store.service.adopt("shared.txt"));
+    await run(store.service.adopt(PortablePath.make("shared.txt")));
 
     const entries = store.ledger();
     expect(entries.find((entry) => entry.base === customBase)?.state).toBe("managed");
@@ -281,7 +290,7 @@ describe("ManagedFileService (in-memory)", () => {
     await runScoped(store.service.apply([mf]));
     const before = store.read("rel.txt");
 
-    await run(store.service.release("rel.txt"));
+    await run(store.service.release(PortablePath.make("rel.txt")));
     expect(store.ledger()[0]?.state).toBe("adopted");
     expect(store.read("rel.txt")).toBe(before);
   });
@@ -293,7 +302,7 @@ describe("ManagedFileService (in-memory)", () => {
     const local = file({ id: "a:local-release", path: "release.txt" });
     await runScoped(store.service.apply([custom, local]));
 
-    await run(store.service.release("release.txt"));
+    await run(store.service.release(PortablePath.make("release.txt")));
 
     const entries = store.ledger();
     expect(entries.find((entry) => entry.base === customBase)?.state).toBe("managed");
@@ -321,7 +330,7 @@ describe("ManagedFileService (in-memory)", () => {
       ]),
     );
 
-    const result = await run(store.service.remove({ path: "same.txt" }));
+    const result = await run(store.service.remove({ path: PortablePath.make("same.txt") }));
 
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]?.id).toBe("a:local-remove");
@@ -335,7 +344,7 @@ describe("ManagedFileService (in-memory)", () => {
       store.service.apply([file({ id: "a:custom-remove", path: "same.txt", base: customBase })]),
     );
 
-    const result = await run(store.service.remove({ path: "same.txt", base: customBase }));
+    const result = await run(store.service.remove({ path: PortablePath.make("same.txt"), base: customBase }));
 
     expect(result.entries).toHaveLength(1);
     expect(store.ledger()).toHaveLength(0);
@@ -406,7 +415,7 @@ describe("ManagedFileService (in-memory)", () => {
 });
 
 describe("ManagedFileService block mode", () => {
-  const blockFile = (value: string, overrides: Partial<ManagedFile> = {}): ManagedFile =>
+  const blockFile = (value: string, overrides: Partial<FileOverrides> = {}): ManagedFile =>
     file({
       id: "b:settings",
       path: "settings.conf",
@@ -516,7 +525,7 @@ describe("ManagedFileService (disk backend)", () => {
 
       await expect(run(service.status)).resolves.toEqual([]);
       await expect(run(service.plan([file({ id: "d:readonly", path: "readonly.txt" })]))).resolves.toEqual({
-        entries: [{ id: "d:readonly", path: "readonly.txt", action: "create" }],
+        entries: [{ id: "d:readonly", path: PortablePath.make("readonly.txt"), action: "create" }],
       });
 
       expect(await readdir(dirs.dataRoot)).not.toContain("managed-files");
@@ -576,7 +585,7 @@ describe("ManagedFileService (disk backend)", () => {
 
       const infos = await run(service.status);
       expect(infos).toHaveLength(1);
-      expect(infos[0]?.path).toBe("legacy.txt");
+      expect(infos[0]?.path).toBe(PortablePath.make("legacy.txt"));
       expect(infos[0]?.state).toBe("missing");
     });
   });
@@ -651,7 +660,7 @@ describe("ManagedFileService (disk backend)", () => {
         const info = await run(service.status);
         expect(info[0]?.state).toBe("managed");
 
-        await run(service.remove({ path: "custom.txt", base: customBase }));
+        await run(service.remove({ path: PortablePath.make("custom.txt"), base: customBase }));
         const stillExists = await readFile(join(customBase, "custom.txt"), "utf8").then(
           () => true,
           () => false,
@@ -678,7 +687,7 @@ describe("ManagedFileService (disk backend)", () => {
 
       const adopted = file({ id: "d:block-adopted", path: "block-adopted.conf", mode: "block" });
       await runScoped(service.apply([adopted]));
-      await run(service.adopt("block-adopted.conf"));
+      await run(service.adopt(PortablePath.make("block-adopted.conf")));
       await rm(join(dirs.base, "block-adopted.conf"), { force: true });
 
       const skipped = await runScoped(service.apply([adopted]));
@@ -692,7 +701,7 @@ describe("ManagedFileService (disk backend)", () => {
       const service = await run(makeService(dirs));
       const mf = file({ id: "d:adopt-missing", path: "adopt-missing.txt" });
       await runScoped(service.apply([mf]));
-      await run(service.adopt("adopt-missing.txt"));
+      await run(service.adopt(PortablePath.make("adopt-missing.txt")));
       await rm(join(dirs.base, "adopt-missing.txt"), { force: true });
 
       const result = await runScoped(service.apply([mf]));

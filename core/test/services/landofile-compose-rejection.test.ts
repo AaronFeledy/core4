@@ -43,7 +43,8 @@ const expectRejection = (error: unknown, expected: ExpectedRejection): void => {
   expect(error.keyPath).toBe(expected.keyPath);
   expect(error.service).toBe(expected.service);
   expect(error.source).toBe(expected.source);
-  expect(error.remediation).toBe(expected.remediation);
+  if (expected.remediation === undefined) expect(error.remediation).toBeUndefined();
+  else expect(error.remediation).toBe(expected.remediation);
 };
 
 const yamlService = (...lines: readonly string[]): string =>

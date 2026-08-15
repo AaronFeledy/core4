@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
+import { AbsolutePath } from "@lando/core/schema";
 import { ConfigService, PathsService } from "@lando/core/services";
 
 describe("library makeLandoRuntime paths surface", () => {
@@ -21,7 +22,10 @@ describe("library makeLandoRuntime paths surface", () => {
         Effect.provide(
           makeLandoRuntime({
             bootstrap: "minimal",
-            config: { userDataRoot: dataRoot, userCacheRoot: cacheRoot },
+            config: {
+              userDataRoot: AbsolutePath.make(dataRoot),
+              userCacheRoot: AbsolutePath.make(cacheRoot),
+            },
           }),
         ),
       ),
@@ -55,10 +59,10 @@ describe("library makeLandoRuntime paths surface", () => {
           makeLandoRuntime({
             bootstrap: "minimal",
             config: {
-              userConfRoot: confRoot,
-              userDataRoot: dataRoot,
-              userCacheRoot: cacheRoot,
-              systemPluginRoot: systemRoot,
+              userConfRoot: AbsolutePath.make(confRoot),
+              userDataRoot: AbsolutePath.make(dataRoot),
+              userCacheRoot: AbsolutePath.make(cacheRoot),
+              systemPluginRoot: AbsolutePath.make(systemRoot),
             },
           }),
         ),
@@ -119,9 +123,9 @@ describe("library makeLandoRuntime paths surface", () => {
         }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
       );
 
-      expect(result.userCacheRoot).toBe(cacheRoot);
-      expect(result.systemPluginRoot).toBe(systemRoot);
-      expect(result.userDataRoot).toBe(dataRoot);
+      expect(result.userCacheRoot).toBe(AbsolutePath.make(cacheRoot));
+      expect(result.systemPluginRoot).toBe(AbsolutePath.make(systemRoot));
+      expect(result.userDataRoot).toBe(AbsolutePath.make(dataRoot));
     } finally {
       const restore = (key: keyof typeof previous, envKey: string): void => {
         const value = previous[key];

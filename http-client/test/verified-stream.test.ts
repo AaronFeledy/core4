@@ -64,7 +64,7 @@ describe("persistVerifiedStream", () => {
 
       expect(result.sha256).toBe(sha256Hex(all));
       expect(result.sizeBytes).toBe(all.length);
-      expect(new Uint8Array(await readFile(target))).toEqual(all);
+      expect(Array.from(await readFile(target))).toEqual(Array.from(all));
       expect(await tempFiles(dirname(target), target)).toEqual([]);
     });
   });
@@ -97,7 +97,7 @@ describe("persistVerifiedStream", () => {
       expect(error).toBeInstanceOf(VerifiedStreamError);
       expect(error.reason).toBe("checksum");
       // existing file untouched
-      expect(new Uint8Array(await readFile(target))).toEqual(bytes("original-bytes"));
+      expect(Array.from(await readFile(target))).toEqual(Array.from(bytes("original-bytes")));
       expect(await tempFiles(dirname(target), target)).toEqual([]);
     });
   });

@@ -92,7 +92,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     };
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       recipe: "fixture",
     });
 
@@ -110,7 +110,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     };
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       recipe: "fixture",
     });
 
@@ -141,7 +141,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     };
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     const response = await ctx.fetch("https://api.example.com/old");
@@ -161,7 +161,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     };
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       recipe: "fixture",
     });
 
@@ -190,7 +190,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     };
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     const response = await ctx.fetch("https://api.example.com/a/old");
@@ -203,7 +203,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     const fetchImpl = async () => new Response("ok", { status: 200 });
     const ctx = createRecipeFetchContext({
       allowlist: undefined,
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       onWarn: (msg) => warnings.push(msg),
     });
 
@@ -217,7 +217,7 @@ describe("recipe fetch allowlist — ctx.fetch", () => {
     const fetchImpl = async (url: string | URL) => redirectResponse(url.toString());
     const ctx = createRecipeFetchContext({
       allowlist: ["https://api.example.com/**"],
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       maxRedirects: 3,
     });
 

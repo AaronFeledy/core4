@@ -8,11 +8,6 @@ import { EventService, SecretStore } from "@lando/sdk/services";
 import { EventServiceLive, makeEventServiceLive } from "@lando/engine/services/event-service";
 import { RedactionServiceLive } from "@lando/redaction/service";
 
-const progressEvent = (bytes: number): { readonly _tag: "download-progress"; readonly bytes: number } => ({
-  _tag: "download-progress",
-  bytes,
-});
-
 const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({
     _tag: "download-progress",
@@ -21,6 +16,8 @@ const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
     bytesDownloaded,
     timestamp: "2026-05-11T07:30:00Z",
   });
+
+const progressEvent = canonicalProgress;
 
 const secretEvent = (token: string) => ({
   _tag: "pre-download",
@@ -143,12 +140,12 @@ describe("EventService history buffer and query", () => {
           yield* events.publish(progressEvent(1));
           yield* events.publish(progressEvent(2));
           yield* events.publish(progressEvent(3));
-          return yield* events.query("download-progress", (event) => event.bytes >= 2);
+          return yield* events.query("download-progress", (event) => event.bytesDownloaded >= 2);
         }),
       ).pipe(Effect.provide(EventServiceLive)),
     );
 
-    expect(found.map((event) => event.bytes)).toEqual([2, 3]);
+    expect(found.map((event) => event.bytesDownloaded)).toEqual([2, 3]);
   });
 
   test("evicts oldest-first once the cap is exceeded", async () => {
@@ -163,7 +160,11 @@ describe("EventService history buffer and query", () => {
       ).pipe(Effect.provide(makeEventServiceLive(3))),
     );
 
-    expect(found.map((event) => (event as { bytes: number }).bytes)).toEqual([2, 3, 4]);
+    expect(
+      found
+        .filter((event): event is DownloadProgressEvent => event._tag === "download-progress")
+        .map((event) => event.bytesDownloaded),
+    ).toEqual([2, 3, 4]);
   });
 
   test("redacts payloads before buffering so query never observes a raw secret", async () => {

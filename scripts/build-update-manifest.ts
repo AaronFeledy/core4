@@ -124,6 +124,9 @@ const parseCliArgs = (args: ReadonlyArray<string>): WriteUpdateManifestInput => 
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) {
+      throw new Error("Unexpected empty build-update-manifest argument.");
+    }
     const readValue = (label: string): string => {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`${label} expects a value`);
@@ -188,7 +191,15 @@ const parseCliArgs = (args: ReadonlyArray<string>): WriteUpdateManifestInput => 
 
   if (version === undefined || version === "") throw new Error("--version is required");
   if (released === "") throw new Error("--released must not be empty");
-  return { version, released, minimum, distDir, outputPath, repository, allowMissingBinaries };
+  return {
+    version,
+    released,
+    ...(minimum === undefined ? {} : { minimum }),
+    distDir,
+    outputPath,
+    repository,
+    allowMissingBinaries,
+  };
 };
 
 if (import.meta.main) {

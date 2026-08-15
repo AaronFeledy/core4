@@ -324,6 +324,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         Effect.provide(
           makeProviderLayer({
             sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
             podmanApi: makeDataPlaneFakeApi().api,
           }),
         ),

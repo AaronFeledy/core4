@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
-import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
+import { AbsolutePath, AppId, type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
@@ -88,8 +88,8 @@ describe("resolveApp", () => {
       expect(result.id).toBe("embedded-app");
       expect(result.ref.kind).toBe("user");
       expect(result.ref.id).toBe("embedded-app");
-      expect(result.root).toBe(dir);
-      expect(result.plan.id).toBe("embedded-app");
+      expect(result.root).toBe(AbsolutePath.make(dir));
+      expect(result.plan.id).toBe(AppId.make("embedded-app"));
     });
   });
 
@@ -167,14 +167,14 @@ describe("resolveApp", () => {
       };
 
       const plan = await Effect.runPromise(
-        resolveApp({ landofile, root: dir as never }).pipe(
+        resolveApp({ landofile, root: AbsolutePath.make(dir) }).pipe(
           Effect.flatMap((app) => app.plan),
           Effect.scoped,
           Effect.provide(appLayer()),
         ),
       );
 
-      expect(plan.id).toBe("embedded-app");
+      expect(plan.id).toBe(AppId.make("embedded-app"));
       expect(plan.services[service]?.name).toBe(service);
     });
   });
@@ -217,7 +217,7 @@ describe("resolveApp", () => {
       );
 
       expect(app.id).toBe("custom-app");
-      expect(app.root).toBe(dir);
+      expect(app.root).toBe(AbsolutePath.make(dir));
     });
   });
 
@@ -443,11 +443,14 @@ describe("resolveApp", () => {
   test("an id selector validates a compatible cwd selector", async () => {
     await withTempApp(async (dir) => {
       const app = await Effect.runPromise(
-        resolveApp({ id: "embedded-app", cwd: dir as never }).pipe(Effect.scoped, Effect.provide(appLayer())),
+        resolveApp({ id: "embedded-app", cwd: AbsolutePath.make(dir) }).pipe(
+          Effect.scoped,
+          Effect.provide(appLayer()),
+        ),
       );
 
       expect(app.id).toBe("embedded-app");
-      expect(app.root).toBe(dir);
+      expect(app.root).toBe(AbsolutePath.make(dir));
     });
   });
 

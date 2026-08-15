@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { CapabilityError } from "@lando/core/errors";
-import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
+import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -135,7 +135,9 @@ describe("Compose service field capabilities", () => {
 
       expect(Exit.isSuccess(exit)).toBe(true);
       if (Exit.isSuccess(exit)) {
-        expect(exit.value.services.web?.extensions.compose).toEqual({ "x-foo": extension });
+        expect(exit.value.services[ServiceName.make("web")]?.extensions.compose).toEqual({
+          "x-foo": extension,
+        });
       }
     });
   });

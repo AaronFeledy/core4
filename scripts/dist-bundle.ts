@@ -45,7 +45,12 @@ export const parseSha256Sums = (content: string): ReadonlyArray<Sha256Entry> =>
       if (match === null) {
         throw new Error(`Malformed SHA256SUMS line: ${line}`);
       }
-      return { hash: match[1], name: match[2] } satisfies Sha256Entry;
+      const hash = match[1];
+      const name = match[2];
+      if (hash === undefined || name === undefined) {
+        throw new Error(`Malformed SHA256SUMS line: ${line}`);
+      }
+      return { hash, name } satisfies Sha256Entry;
     });
 
 const readBytes = async (path: string): Promise<Uint8Array> =>

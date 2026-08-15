@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { makeLandoRuntime, resolveApp } from "@lando/core";
-import { ProviderId } from "@lando/core/schema";
+import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { Renderer, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
@@ -52,7 +52,7 @@ test("App handle exec passes provider stderr through the captured library Render
   try {
     // When
     const result = await Effect.runPromise(
-      resolveApp({ root: dir }).pipe(
+      resolveApp({ root: AbsolutePath.make(dir) }).pipe(
         Effect.flatMap((app) => app.exec({ command: ["false"] })),
         Effect.scoped,
         Effect.provide(runtime),
