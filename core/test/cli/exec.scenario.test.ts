@@ -128,6 +128,7 @@ const makeProvider = (
     platform: "linux",
     capabilities,
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -183,8 +184,12 @@ const makeLayer = (options: {
   readonly provider: RuntimeProviderShape;
 }) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed(options.landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(options.plan) }),
+    Layer.succeed(LandofileService, { discover: Effect.succeed(options.landofile) }).pipe(
+      Layer.provide(emptyConfigServiceLayer),
+    ),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(options.plan) }).pipe(
+      Layer.provide(emptyConfigServiceLayer),
+    ),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -368,13 +373,20 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
         Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
     });
     const layer = Layer.mergeAll(
-      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "scenario" }) }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "scenario" }) }).pipe(
+        Layer.provide(emptyConfigServiceLayer),
+      ),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }).pipe(
+        Layer.provide(emptyConfigServiceLayer),
+      ),
       failingRegistry,
     );
 
     const exit = await Effect.runPromiseExit(
-      execApp({ service: "missing", command: ["ls"] }).pipe(Effect.provide(layer)),
+      execApp({ service: "missing", command: ["ls"] }).pipe(
+        Effect.provide(emptyConfigServiceLayer),
+        Effect.provide(layer),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -533,7 +545,7 @@ describe("execApp — host agent-context env forwarding", () => {
           { service: "appserver", command: ["env"] },
           {
             plan,
-            root: process.cwd(),
+            root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: plan.id, root: plan.root },
             landofile: { name: "scenario" },
           },

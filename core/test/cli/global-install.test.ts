@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { GlobalAppError } from "@lando/core/errors";
-import { LandofileShape, PluginManifest, ProviderId } from "@lando/core/schema";
+import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName } from "@lando/core/schema";
 import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
@@ -83,10 +83,10 @@ describe("global:install command operation", () => {
       );
       const output = renderGlobalInstallResult(result);
 
-      expect(result.paths.root).toBe(join(dataRoot, "global"));
-      expect(result.dist.path).toBe(join(dataRoot, "global", ".lando.dist.yml"));
+      expect(result.paths.root).toBe(AbsolutePath.make(join(dataRoot, "global")));
+      expect(result.dist.path).toBe(AbsolutePath.make(join(dataRoot, "global", ".lando.dist.yml")));
       expect(result.dist.status).toBe("created");
-      expect(result.paths.userLandofile).toBe(join(dataRoot, "global", ".lando.yml"));
+      expect(result.paths.userLandofile).toBe(AbsolutePath.make(join(dataRoot, "global", ".lando.yml")));
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
@@ -125,7 +125,7 @@ describe("global:install command operation", () => {
           name: "global",
           runtime: 4,
           services: {
-            fakegs: { api: 4, type: "lando" },
+            [ServiceName.make("fakegs")]: { api: 4, type: "lando" },
           },
         });
       } finally {
