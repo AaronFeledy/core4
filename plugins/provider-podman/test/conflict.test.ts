@@ -12,6 +12,7 @@ import {
   makeRuntimeProvider,
 } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { withPing } from "./podman-api-fixtures.ts";
 
 const writeProviderLandoState = async (
   stateDir: string,
@@ -151,7 +152,7 @@ describe("provider-podman provider-lando conflict detection", () => {
         platform: "linux",
         env: { LANDO_TEST_PODMAN_SOCKET: "/run/test/podman.sock" },
         stateDir,
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: withPing({ info: Effect.succeed({ version: { Version: "6.0.2" } }) }),
       }),
     );
 
@@ -169,7 +170,7 @@ describe("provider-podman provider-lando conflict detection", () => {
         platform: "linux",
         env: { LANDO_TEST_PODMAN_SOCKET: "/run/test/podman.sock" },
         stateDir,
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: withPing({ info: Effect.succeed({ version: { Version: "6.0.2" } }) }),
       }),
     );
     expect(provider.id).toBe("podman");
@@ -185,7 +186,7 @@ describe("provider-podman provider-lando conflict detection", () => {
         env: { LANDO_TEST_PODMAN_SOCKET: "/run/test/podman.sock" },
         stateDir,
         conflictDetector: () => Effect.void,
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: withPing({ info: Effect.succeed({ version: { Version: "6.0.2" } }) }),
       }),
     );
     expect(provider.id).toBe("podman");

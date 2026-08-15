@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { withPing } from "./podman-api-fixtures.ts";
 
 describe("provider-podman isAvailable", () => {
   test("reports available when the Podman API responds to /info", async () => {
@@ -12,7 +13,7 @@ describe("provider-podman isAvailable", () => {
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
-            podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+            podmanApi: withPing({ info: Effect.succeed({ version: { Version: "6.0.2" } }) }),
           }),
         ),
       ),
@@ -27,7 +28,7 @@ describe("provider-podman isAvailable", () => {
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
-            podmanApi: {
+            podmanApi: withPing({
               info: Effect.sync(() => {
                 infoCalls += 1;
                 return infoCalls;
@@ -45,7 +46,7 @@ describe("provider-podman isAvailable", () => {
                       ),
                 ),
               ),
-            },
+            }),
           }),
         ),
       ),
