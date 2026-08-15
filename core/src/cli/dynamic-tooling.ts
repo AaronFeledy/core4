@@ -2,7 +2,11 @@ import { Effect, Layer, Schema } from "effect";
 
 import { type CacheError, ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 
-import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
+import {
+  type RunToolingResult,
+  runTooling,
+  runToolingRedactionTokens,
+} from "@lando/engine/operations/tooling";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
@@ -24,6 +28,7 @@ const dynamicToolingOptions = {
   renderEvents: true,
   plainTaskEvents: "detail-only",
   resultSchema: ToolingResultSchema,
+  redactionTokens: runToolingRedactionTokens,
   successExitCode: (result: RunToolingResult) => result.exitCode,
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
 } as const;

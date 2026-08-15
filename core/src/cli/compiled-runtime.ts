@@ -85,6 +85,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly successExitCode?: (value: A) => number | undefined;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Schema.AnyNoContext;
+    readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;
     readonly io?: RendererIO;
@@ -96,7 +97,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     spec?.bootstrap === undefined
       ? runtime
       : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
-  const redactionTokens = spec?.redactionTokens;
+  const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
   const successExitCode =
     options.successExitCode ??
     (spec?.successExitCode === undefined

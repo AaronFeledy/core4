@@ -51,9 +51,9 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         });
       return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
     });
-  const emitJsonResult = (outcome: CommandResultOutcome) =>
+  const emitJsonResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
-      const redactor = yield* jsonRedactor();
+      const redactor = yield* jsonRedactor(redactionTokens);
       const warnings = yield* commandWarnings.list;
       const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor, warnings });
       yield* writeResultLine(line);

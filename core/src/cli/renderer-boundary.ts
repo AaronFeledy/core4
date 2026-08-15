@@ -240,11 +240,24 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       return;
     }
     if (renderContext.format === "json") {
-      yield* emitJsonResult({ _tag: "success", value: commandOutcome.value.value });
+      yield* emitJsonResult(
+        { _tag: "success", value: commandOutcome.value.value },
+        options.redactionTokens?.(commandOutcome.value.value) ?? [],
+      );
       return;
     }
     const rendered = options.render?.(commandOutcome.value.value, renderContext);
-    if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
+    if (rendered !== undefined && rendered.length > 0) {
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactor =
+        redaction._tag === "Some"
+          ? yield* redaction.value.forProfile("secrets", {
+              sourceEnv: process.env,
+              redactionTokens: options.redactionTokens?.(commandOutcome.value.value) ?? [],
+            })
+          : undefined;
+      yield* writeResultLine(redactor?.redactString(rendered) ?? rendered);
+    }
   });
   await Effect.runPromise(program.pipe(Effect.provide(failureDiagnosticsLayer)));
 };
