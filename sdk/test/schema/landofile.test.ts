@@ -39,6 +39,39 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test("LandofileShape strictly decodes and round-trips per-app command aliases", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      commandAliases: {
+        enabled: true,
+        disabled: ["stop", "scratch:gc"],
+        custom: { hi: "app:greet", start: "app:wrapped-start" },
+      },
+    };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
+    const encoded = Schema.encodeUnknownSync(LandofileShape)(decoded);
+
+    // Then
+    expect(encoded.commandAliases).toEqual(input.commandAliases);
+  });
+
+  test("LandofileShape rejects unknown command alias policy keys", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      commandAliases: { enabled: true, unknown: "nope" },
+    };
+
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
   test('IncludeEntry decodes kind: "compose"', () => {
     // Given
     const input = { source: "./f.yml", kind: "compose" };

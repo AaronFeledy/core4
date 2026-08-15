@@ -28,6 +28,24 @@ export interface CommandIndexEntry {
   readonly source?: "bun-script";
 }
 
+export interface CommandAliasPolicy {
+  readonly enabled: boolean;
+  readonly disabled: ReadonlyArray<string>;
+  readonly custom: Readonly<Record<string, string>>;
+}
+
+export const normalizeAppCommandAliasPolicy = (landofile: LandofileShape): CommandAliasPolicy | undefined => {
+  const policy = landofile.commandAliases;
+  if (policy === undefined) return undefined;
+  return {
+    enabled: policy.enabled ?? true,
+    disabled: [...new Set(policy.disabled ?? [])].sort((left, right) => left.localeCompare(right)),
+    custom: Object.fromEntries(
+      Object.entries(policy.custom ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  };
+};
+
 export interface AppCommandIndexPayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
@@ -40,6 +58,7 @@ export interface AppCommandIndexPayload {
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly toolingFingerprint?: string;
   readonly entriesFingerprint?: string;
+  readonly aliasPolicy?: CommandAliasPolicy;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
@@ -117,6 +136,7 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
     services: landofile.services ?? null,
     tooling: landofile.tooling ?? null,
     toolingDefaults: landofile.toolingDefaults ?? null,
+    commandAliases: landofile.commandAliases ?? null,
     includes: landofile.includes ?? null,
     versionConstraints: getVersionConstraintEntries(landofile, ".lando.yml"),
   });

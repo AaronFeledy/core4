@@ -32,12 +32,13 @@ import {
 import { dispatchAppCommand } from "./dispatch-app";
 import { dispatchAppsCommand } from "./dispatch-apps";
 import { dispatchMetaCommand } from "./dispatch-meta";
-import { routeDynamicTooling } from "./dynamic-tooling";
+import { routeDynamicTooling, routeResolvedTooling, runDynamicToolingFailure } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
+import { resolveAppCommandHelpAliases, resolveToolingRoute, toolingName } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -102,7 +103,33 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   argv = normalizeCompiledCommandArgv(argv);
 
-  const builtInCommand = resolveBuiltInCommand(argv[0]);
+  let builtInCommand = resolveBuiltInCommand(argv[0]);
+  if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
+  if (builtInCommand === undefined && !isReservedNamespaceHead(argv[0])) {
+    const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
+    if (aliasResolution._tag === "Left") {
+      const token = argv[0] ?? "";
+      await runDynamicToolingFailure(toolingName(token) ?? token, argv.slice(1), aliasResolution.left);
+      return;
+    }
+    const route = aliasResolution.right;
+    if (route._tag === "built-in") {
+      builtInCommand = route.entry;
+      argv = [route.commandId, ...route.argv];
+    } else if (route._tag === "alias-disabled") {
+      setActiveCommandId("cli:unknown-command");
+      await renderPreCommandFailure({
+        commandId: "cli:unknown-command",
+        error: unknownCommandError(route.token),
+        rendererMode: activeRendererMode,
+        resultFormat: activeResultFormat,
+      });
+      return;
+    } else if (await routeResolvedTooling(route)) {
+      return;
+    }
+    if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
+  }
   const canonicalCommandId = builtInCommand?.spec.id ?? argv[0] ?? "cli:unknown";
   if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
   if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
@@ -133,7 +160,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   ) {
     const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
     if (commandArg === undefined) {
-      printRootHelp();
+      const helpAliases = await Effect.runPromise(Effect.either(resolveAppCommandHelpAliases()));
+      if (helpAliases._tag === "Left") {
+        await runDynamicToolingFailure("help", [], helpAliases.left);
+        return;
+      }
+      printRootHelp(helpAliases.right);
       return;
     }
 

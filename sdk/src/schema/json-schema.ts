@@ -205,6 +205,7 @@ import {
 } from "./keymap.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
+  CommandAliasesShape,
   EndpointInput,
   HealthcheckInput,
   IncludeEntry,
@@ -433,6 +434,7 @@ const rawPublicSchemaRegistry = {
   NetworkingPlan,
   IsolateMode,
   ProviderCapabilities,
+  CommandAliasesShape,
   LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
@@ -753,6 +755,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   NetworkingPlan: "Public Lando schema contract for Networking Plan.",
   IsolateMode: "Public Lando schema contract for Isolate Mode.",
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
+  CommandAliasesShape: "Per-app top-level command alias policy.",
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:

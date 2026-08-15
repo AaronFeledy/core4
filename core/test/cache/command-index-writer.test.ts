@@ -6,7 +6,10 @@ import { Effect } from "effect";
 
 import { type PluginManifest, ServiceName } from "@lando/sdk/schema";
 
-import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
+import {
+  decodePluginCommandIndex,
+  deriveAppCommandToolingFingerprint,
+} from "@lando/engine/cache/command-index";
 import {
   invalidatePluginCommandCache,
   readFreshAppCommandCacheForCwd,
@@ -14,7 +17,7 @@ import {
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
+import { appToolingCompilationCachePath, pluginCommandCachePath } from "@lando/engine/cache/paths";
 import { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
@@ -228,6 +231,112 @@ describe("writePluginCommandCacheStrict modules default", () => {
 
       // Then
       expect(await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }))).toBeNull();
+    });
+  });
+});
+
+describe("writeAppCommandCacheStrict command alias policy", () => {
+  test("persists a normalized policy on a fresh app command cache", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "alias-app");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: alias-app\n");
+      const landofile = {
+        name: "alias-app",
+        commandAliases: {
+          disabled: ["stop", "stop"],
+          custom: { zed: "app:known", hi: "app:known" },
+        },
+      };
+
+      // When
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({
+          landofile,
+          entries: [{ id: "app:known", summary: "Known task", hidden: false }],
+          cwd: appRoot,
+          cacheRoot,
+        }),
+      );
+      const payload = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }));
+
+      // Then
+      expect(payload?.aliasPolicy).toEqual({
+        enabled: true,
+        disabled: ["stop"],
+        custom: { hi: "app:known", zed: "app:known" },
+      });
+    });
+  });
+
+  test("refreshes alias policy when reusing an otherwise fresh command cache", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "alias-reuse-app");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: alias-reuse-app\n");
+      const landofile = {
+        name: "alias-reuse-app",
+        commandAliases: { enabled: false, custom: { hi: "app:known" } },
+      };
+      const entries = [{ id: "app:known", summary: "Known task", hidden: false }] as const;
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({ landofile, entries, cwd: appRoot, cacheRoot, now: () => 41 }),
+      );
+      await rm(appToolingCompilationCachePath(cacheRoot, appRoot));
+
+      // When
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({ landofile, entries, cwd: appRoot, cacheRoot, now: () => 99 }),
+      );
+      const payload = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }));
+
+      // Then
+      expect(payload?.generatedAtMs).toBe(41);
+      expect(payload?.aliasPolicy).toEqual({
+        enabled: false,
+        disabled: [],
+        custom: { hi: "app:known" },
+      });
+    });
+  });
+
+  test("includes command aliases in the semantic tooling fingerprint", () => {
+    // Given
+    const base = { name: "alias-fingerprint" };
+
+    // When
+    const withoutAliases = deriveAppCommandToolingFingerprint(base);
+    const withAliases = deriveAppCommandToolingFingerprint({
+      ...base,
+      commandAliases: { custom: { hi: "app:known" } },
+    });
+
+    // Then
+    expect(withAliases).not.toBe(withoutAliases);
+  });
+
+  test("omits alias policy when the Landofile has no commandAliases section", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "no-alias-app");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: no-alias-app\n");
+
+      // When
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({
+          landofile: { name: "no-alias-app" },
+          entries: [],
+          cwd: appRoot,
+          cacheRoot,
+        }),
+      );
+      const payload = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }));
+
+      // Then
+      expect(payload).not.toHaveProperty("aliasPolicy");
     });
   });
 });

@@ -131,6 +131,7 @@
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`
+- `CommandAliasesShape`
 - `CommandSpec`
 - `CommandWarning`
 - `COMPOSE_DEPRECATED_TOP_LEVEL_KEYS`
@@ -595,6 +596,7 @@
 - `ArchiveFormatError`
 - `ArtifactTransferError`
 - `CommandAliasConflictError`
+- `CommandAliasTargetError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`

@@ -1,6 +1,12 @@
 import { Effect, Layer, Schema } from "effect";
 
-import { type CacheError, ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
+import {
+  type CacheError,
+  type CommandAliasConflictError,
+  type CommandAliasTargetError,
+  ToolingCompileError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 
 import {
   type RunToolingResult,
@@ -13,7 +19,7 @@ import { makeLandoRuntime } from "../runtime/layer";
 import { renderRunToolingResult } from "./commands/tooling";
 import { resetActiveCommandInvocation, runCompiledCommand, setActiveCommandId } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
+import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
 const ToolingResultSchema = Schema.Struct({
   tool: Schema.String,
@@ -92,7 +98,7 @@ export const runDynamicBunShellTooling = (
 export const runDynamicToolingFailure = (
   name: string,
   argv: ReadonlyArray<string>,
-  error: ToolingCompileError | CacheError,
+  error: ToolingCompileError | CacheError | CommandAliasConflictError | CommandAliasTargetError,
 ): Promise<void> => {
   prepareDynamicToolingInvocation(name, argv);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
@@ -110,9 +116,14 @@ export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<
     return true;
   }
 
-  const route = resolution.right;
+  return routeResolvedTooling(resolution.right);
+};
+
+export const routeResolvedTooling = async (route: ToolingRoute): Promise<boolean> => {
   switch (route._tag) {
     case "not-tooling":
+    case "built-in":
+    case "alias-disabled":
       return false;
     case "cache-miss":
     case "unknown-tooling":

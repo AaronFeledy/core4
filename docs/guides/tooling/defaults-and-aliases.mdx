@@ -5,7 +5,7 @@ timeout: 60000
 tags: [beta, docs, tooling, defaults]
 ---
 
-# Set defaults for tooling tasks
+# Set tooling defaults and command aliases
 
 Use `toolingDefaults` when most commands run in the same service, directory, or environment. Each
 task inherits those values, then its own `service`, `dir`, `env`, and `vars` win where they overlap.
@@ -52,10 +52,53 @@ service; Lando does not resolve it against the host app directory.
       <Cleanup />
     </Step>
   </Scenario>
-</Guide>
-
 ## Precedence
 
 Task-local values win first. Values supplied by included tooling fragments come next. App-wide
 `toolingDefaults` fill whatever remains. This keeps shared commands useful without making individual
 tasks surrender their sharper settings.
+
+## Remap a command
+
+Use `commandAliases.custom` to give a canonical command an app-specific shortcut. The canonical id
+doesn't move, so scripts can keep using it even when your team adds a friendlier alias.
+
+```yaml
+tooling:
+  greet:
+    service: web
+    cmd: echo hello
+
+commandAliases:
+  custom:
+    hi: app:greet
+```
+
+Run `lando app:cache:refresh` after changing aliases. Then both forms resolve to the same command:
+
+```sh
+lando hi
+lando app:greet
+```
+
+Set `enabled: false` to suppress every top-level alias in this app, or add tokens under `disabled`
+to remove only those shortcuts. Canonical ids remain available.
+
+  <Scenario id="remap-command-alias" render>
+    <Step name="scaffold">
+      <UseFixture name="command-aliases" />
+    </Step>
+    <Step name="refresh-command-cache">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-custom-alias">
+      <Verify command="lando hi --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:greet\"" } }} />
+    </Step>
+    <Step name="run-canonical-command">
+      <Verify command="lando app:greet --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:greet\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

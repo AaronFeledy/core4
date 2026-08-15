@@ -37,6 +37,7 @@ import {
   derivePluginCommandPluginListSha,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
+  normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
 import {
   appCommandCachePath,
@@ -295,6 +296,7 @@ const writeAppCommandCacheTask = async (
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
+  const aliasPolicy = normalizeAppCommandAliasPolicy(options.landofile);
   const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
@@ -318,6 +320,7 @@ const writeAppCommandCacheTask = async (
       versionConstraints,
       toolingFingerprint,
       entriesFingerprint,
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     };
     await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
     return cachePath;
@@ -335,6 +338,7 @@ const writeAppCommandCacheTask = async (
     versionConstraints,
     toolingFingerprint,
     entriesFingerprint,
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     generatedAtMs: (options.now ?? Date.now)(),
     entries: options.entries,
   };

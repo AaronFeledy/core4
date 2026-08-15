@@ -65,10 +65,17 @@ const makeAppFixture = async (): Promise<{
   };
 };
 
-const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
+const writeFreshCache = async (
+  fixture: Awaited<ReturnType<typeof makeAppFixture>>,
+  commandAliases?: {
+    readonly enabled?: boolean;
+    readonly disabled?: ReadonlyArray<string>;
+    readonly custom?: Readonly<Record<string, string>>;
+  },
+): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
-      landofile: { name: "native-help" },
+      landofile: { name: "native-help", ...(commandAliases === undefined ? {} : { commandAliases }) },
       entries: [{ id: "app:known", summary: "Known task", hidden: false, source: "bun-script" }],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
@@ -79,6 +86,27 @@ const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture
 const STACK_OR_SOURCE_PATH = /(^\s*at\s+\S+)|\/[A-Za-z0-9_.\-/]+\.(?:ts|js)(?:[:?]|\b)/m;
 
 describe("native registry help", () => {
+  test("Given app alias policy, when root help is requested, then active custom aliases replace disabled defaults", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    try {
+      await writeFreshCache(fixture, {
+        disabled: ["start"],
+        custom: { hi: "app:known" },
+      });
+
+      // When
+      const result = await runCli(["--help"], { cwd: fixture.root, env: fixture.env });
+
+      // Then
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("hi -> app:known");
+      expect(result.stdout).not.toContain("start -> app:start");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   test("Given the root registry, when help is requested, then registry summaries render without an OCLIF banner", async () => {
     // Given / When
     const result = await runCli(["--help"]);

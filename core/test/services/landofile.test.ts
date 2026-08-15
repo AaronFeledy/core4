@@ -905,11 +905,34 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
     );
   });
 
-  test("rejects top-level `commandAliases:` with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "commandAliases:", "  custom:", "    start: app-start", ""],
-      "not supported yet",
-    );
+  test("accepts top-level `commandAliases:` while leaving events gated", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "commandAliases:",
+          "  enabled: true",
+          "  disabled:",
+          "    - stop",
+          "  custom:",
+          "    hi: app:greet",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const landofile = await discover();
+
+      // Then
+      expect(landofile.commandAliases).toEqual({
+        enabled: true,
+        disabled: ["stop"],
+        custom: { hi: "app:greet" },
+      });
+    });
   });
 
   test("rejects per-task `deps:` field with remediation", async () => {
