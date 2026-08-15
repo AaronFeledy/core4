@@ -8,6 +8,7 @@ import type { CommandIndexEntry } from "./command-index.ts";
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
+const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 export const compileToolingCommands = (
   landofile: LandofileShape,
@@ -17,7 +18,7 @@ export const compileToolingCommands = (
   if (tooling === undefined) return [];
   const internal = new Set(getInternalToolingTasks(landofile));
   return Object.entries(tooling)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, task]) => ({
       id: `app:${name}`,
       summary: summaryForTask(task),
@@ -50,7 +51,7 @@ export const compileAppCommands = (
     seen.add(entry.id);
     merged.push(entry);
   }
-  return merged.sort((a, b) => a.id.localeCompare(b.id));
+  return merged.sort((a, b) => compareOrdinal(a.id, b.id));
 };
 
 export const compilePluginCommands = (
