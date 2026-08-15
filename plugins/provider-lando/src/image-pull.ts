@@ -11,6 +11,33 @@ const PROVIDER_ID = "lando";
 const PULL_REMEDIATION =
   "Run `lando doctor` to inspect the Lando runtime, then retry the pull. Run `lando setup` if the runtime is not installed or healthy.";
 
+// Podman falls back to Docker's credential store when containers auth.json is
+// absent, so a stale entry can invisibly break an otherwise anonymous pull.
+const REGISTRY_AUTH_REMEDIATION =
+  "Podman may be using stale registry credentials from ${XDG_RUNTIME_DIR}/containers/auth.json, $REGISTRY_AUTH_FILE, $DOCKER_CONFIG, or ~/.docker/config.json. Run `podman logout --all` or `docker logout`, or remove the stale `auths` entry for the affected registry, then retry the pull.";
+
+export type PullFailureKind = "registry-auth" | "generic";
+
+const REGISTRY_AUTH_FAILURE_SIGNATURES = [
+  "unauthorized",
+  "authentication required",
+  "401",
+  "unable to retrieve auth token",
+  "invalid username/password",
+] as const;
+
+export const classifyPullFailure = (message: string): PullFailureKind => {
+  const normalized = message.toLowerCase();
+  return REGISTRY_AUTH_FAILURE_SIGNATURES.some((signature) => normalized.includes(signature))
+    ? "registry-auth"
+    : "generic";
+};
+
+const PULL_REMEDIATIONS: Readonly<Record<PullFailureKind, string>> = {
+  "registry-auth": REGISTRY_AUTH_REMEDIATION,
+  generic: PULL_REMEDIATION,
+};
+
 /**
  * Build the Podman 6 Libpod image pull request. `pullProgress=true` asks the
  * endpoint to stream progress frames; the reference is URL-encoded so registry
@@ -88,14 +115,16 @@ const missingStream = (providerId: string): ProviderInternalError =>
     remediation: PULL_REMEDIATION,
   });
 
-const pullFailure = (providerId: string, reference: string, message: string): ProviderUnavailableError =>
-  new ProviderUnavailableError({
+const pullFailure = (providerId: string, reference: string, message: string): ProviderUnavailableError => {
+  const failureKind = classifyPullFailure(message);
+  return new ProviderUnavailableError({
     providerId,
     operation: "pullImage",
     message: redactString(`Podman image pull failed: ${message}`),
-    details: redactDetails({ reference, error: message }),
-    remediation: PULL_REMEDIATION,
+    details: redactDetails({ reference, error: message, failureKind }),
+    remediation: PULL_REMEDIATIONS[failureKind],
   });
+};
 
 /**
  * Pull an image through the Podman 6 Libpod endpoint, publishing redacted

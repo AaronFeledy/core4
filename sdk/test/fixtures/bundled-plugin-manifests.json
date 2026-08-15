@@ -127,6 +127,11 @@
               "description": "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
               "name": "runtime-bundle-sha256",
               "type": "option"
+            },
+            {
+              "description": "Verify container run, image build, and healthcheck operations during setup.",
+              "name": "smoke",
+              "type": "boolean"
             }
           ]
         }

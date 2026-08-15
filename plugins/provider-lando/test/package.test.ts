@@ -9,6 +9,8 @@ describe("@lando/provider-lando package", () => {
     const plugin = await import("@lando/provider-lando");
 
     expect(plugin.PLUGIN_NAME).toBe("@lando/provider-lando");
+    expect(plugin.makeWslMountPropagationCheck).toBeFunction();
+    expect(plugin.parseRootMountPropagation).toBeFunction();
     expect(Layer.isLayer(plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando }))).toBe(
       true,
     );

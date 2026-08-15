@@ -12,6 +12,8 @@ import {
 
 const allSatisfied: RootlessProbeResults = {
   subidConfigured: true,
+  subidRangeSufficient: true,
+  subidRangesDisjoint: true,
   hasUidmapTools: true,
   cgroupsV2Delegated: true,
   hasXdgRuntimeDir: true,
@@ -38,6 +40,24 @@ describe("rootless preflight", () => {
     expect(error?.remediation).toContain("uidmap");
   });
 
+  test("flags a subordinate ID range that is too small", () => {
+    const error = classify({ subidRangeSufficient: false });
+
+    expect(error).toBeInstanceOf(RootlessPrerequisiteError);
+    expect(error?.prerequisite).toBe("subid-range");
+    expect(error?.remediation).toContain("--add-subuids");
+    expect(error?.remediation).toContain("--add-subgids");
+  });
+
+  test("flags overlapping subordinate ID allocations", () => {
+    const error = classify({ subidRangesDisjoint: false });
+
+    expect(error).toBeInstanceOf(RootlessPrerequisiteError);
+    expect(error?.prerequisite).toBe("subid-overlap");
+    expect(error?.remediation).toContain("/etc/subuid");
+    expect(error?.remediation).toContain("/etc/subgid");
+  });
+
   test("flags missing cgroups v2 delegation", () => {
     const error = classify({ cgroupsV2Delegated: false });
 
@@ -59,10 +79,31 @@ describe("rootless preflight", () => {
   });
 
   test("prioritizes subid when multiple prerequisites are missing", () => {
-    const error = classify({ subidConfigured: false, hasUidmapTools: false });
+    const error = classify({
+      subidConfigured: false,
+      subidRangeSufficient: false,
+      subidRangesDisjoint: false,
+      hasUidmapTools: false,
+    });
 
     expect(error).toBeInstanceOf(RootlessPrerequisiteError);
     expect(error?.prerequisite).toBe("subid");
+  });
+
+  test("prioritizes range size before overlap and uidmap tools", () => {
+    const error = classify({
+      subidRangeSufficient: false,
+      subidRangesDisjoint: false,
+      hasUidmapTools: false,
+    });
+
+    expect(error?.prerequisite).toBe("subid-range");
+  });
+
+  test("prioritizes overlap before uidmap tools", () => {
+    const error = classify({ subidRangesDisjoint: false, hasUidmapTools: false });
+
+    expect(error?.prerequisite).toBe("subid-overlap");
   });
 
   test("RootlessPrerequisiteError remains a tagged provider error", () => {
