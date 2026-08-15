@@ -96,6 +96,7 @@ describe("meta:plugin:link command", () => {
       Record<
         string,
         {
+          readonly name: string;
           readonly path: string;
           readonly version: string;
           readonly source: string;
@@ -130,7 +131,7 @@ describe("meta:plugin:link command", () => {
     const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
       join(userDataRoot, "plugins", "registry.json"),
     );
-    expect(registry["lando-plugin-relative"].linkedPath).toBe(resolve(pluginRoot));
+    expect(registry["lando-plugin-relative"]?.linkedPath).toBe(resolve(pluginRoot));
   });
 
   test("refuses to replace an existing non-linked registry entry without touching the source tree", async () => {
@@ -330,7 +331,7 @@ describe("meta:plugin:link command", () => {
     const linkedState = await readJson<Record<string, { readonly linkedPath: string }>>(
       join(pluginsRoot, ".lando-linked.json"),
     );
-    expect(linkedState["lando-plugin-corrupt-linked-state"].linkedPath).toBe(resolve(pluginRoot));
+    expect(linkedState["lando-plugin-corrupt-linked-state"]?.linkedPath).toBe(resolve(pluginRoot));
   });
 
   test("treats a corrupt registry as empty when linking a fresh plugin", async () => {
@@ -346,7 +347,7 @@ describe("meta:plugin:link command", () => {
     const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
       join(pluginsRoot, "registry.json"),
     );
-    expect(registry["lando-plugin-corrupt-registry"].linkedPath).toBe(resolve(pluginRoot));
+    expect(registry["lando-plugin-corrupt-registry"]?.linkedPath).toBe(resolve(pluginRoot));
   });
 
   test("restores the previous symlink and linked state when relink metadata recording fails", async () => {
