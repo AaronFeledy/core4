@@ -25,7 +25,6 @@ const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
   api: 4,
   description: "Routes user-app HTTP services through the global Traefik proxy.",
   contributes: {
-    proxies: ["traefik"],
     globalServices: [
       {
         id: "traefik",
