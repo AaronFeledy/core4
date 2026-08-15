@@ -148,6 +148,16 @@ jobs:
           if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
             printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
           fi
+          # The runner image's system-level container config is outside our control and
+          # changes between image releases. Pin the cgroup manager at user level so this
+          # lane remains deterministic.
+          if ! test -f "$HOME/.config/containers/containers.conf"; then
+            if test -d /run/systemd/system; then
+              printf '[engine]\ncgroup_manager = "systemd"\n' > "$HOME/.config/containers/containers.conf"
+            else
+              printf '[engine]\ncgroup_manager = "cgroupfs"\n' > "$HOME/.config/containers/containers.conf"
+            fi
+          fi
           # A system-level storage.conf left behind by a distro podman install pins the
           # rootful runroot/graphroot, which Podman 6 honors literally for rootless
           # users. Seed a rootless-safe user-level storage.conf so the default service
