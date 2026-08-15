@@ -77,7 +77,11 @@ const CRC_TABLE = (() => {
 })();
 const crc32 = (bytes: Uint8Array): number => {
   let crc = 0xffffffff;
-  for (const b of bytes) crc = CRC_TABLE[(crc ^ b) & 0xff] ^ (crc >>> 8);
+  for (const b of bytes) {
+    const tableEntry = CRC_TABLE[(crc ^ b) & 0xff];
+    if (tableEntry === undefined) throw new Error("missing CRC table entry");
+    crc = tableEntry ^ (crc >>> 8);
+  }
   return ~crc >>> 0;
 };
 const u16 = (v: number): Uint8Array => {
