@@ -72,3 +72,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Result-scoped redaction tokens must cross every imperative shell, including MCP progress and result envelopes; event-only redaction is not enough.
   - Script fallbacks must preserve the same effective-tooling-over-script precedence as command-index compilation, even when planning fails.
 ---
+
+## 2026-08-14 21:48 CDT - US-563 Drift Audit
+- Trigger: 2 cycles, 1811 changed lines, 9 commits
+- Category 4: One internal planner type remained exported without a production or test consumer.
+- Category 5: Retained the US-562 pass-state carry-forward because `origin/main` already contains the merged US-562 implementation.
+- Category 6: The historical compiled-CLI claim was not rerun under this audit's host-safety constraints and remains unverified here.
+- Fixed: Removed the dead type export; retained the package seams, fail-closed cache-miss path, and boundary-specific redaction after importer and call-path review.
+- Split/excise decisions: None; every added public schema and effective-tooling surface traces to US-563 acceptance criteria.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 256 changed-test spot checks, the focused 4-test post-fix rerun, and the generated guide scenario passed.
+---
