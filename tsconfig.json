@@ -67,6 +67,9 @@
     },
     {
       "path": "./plugins/template-mustache"
+    },
+    {
+      "path": "./tsconfig.test.json"
     }
   ]
 }
