@@ -26,6 +26,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
 - Planner-read file content outside Landofile expression provenance must contribute source/hash metadata to `deriveAppPlanCacheKey`; embedding parsed values in a service type's normalized config is not a reliable cache identity.
 - App-scoped command-routing policy belongs in the fresh app-command cache; native dispatch and help consume that cache without bootstrapping, while canonical command ids bypass alias policy.
+- Dynamic Landofile command-cache freshness hashes sorted evaluation/render inputs without persisting raw values; exclude shell/Bun invocation controls (`_`, `SHLVL`, `BUN_BE_BUN`) so source, compiled, and command-substitution invocations share the same semantic context.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -174,4 +175,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Fixed: Deleted the fuzzy-match cutoff and restored the oversized-target proof to require close-match remediation.
 - Split/excise decisions: None; public surfaces remain within US-564, and the story stays false for the recorded dynamic-Landofile cache boundary.
 - Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint, public transcripts, and 180 baseline plus 93 post-fix spot checks passed; schema compatibility still fails only on unrelated pre-existing schema removals and reference drift.
+---
+
+## 2026-08-15 18:18 CDT - US-564 Build completion
+- Dynamic and templated Landofile command caches now carry a non-secret fingerprint of their permitted runtime inputs, allowing cache-only alias routing without a full bootstrap while invalidating when a real environment or render input changes. Static YAML and explicit `template: none` remain source-hash-only.
+- Source and compiled dispatch now tolerate shell/Bun invocation-control differences while preserving canonical JSON command identity, alias disablement/remapping, and fail-closed refresh remediation.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, the focused executable guide, 101 focused cache/router tests, 19 compiled-binary tests, compiled build, and persistent-sandbox source/compiled/template CLI checks passed; reviewer gate approved and QA resources were removed.
+- **Learnings for future iterations:**
+  - Hash dynamic configuration inputs at the cache boundary, but distinguish semantic user inputs from wrapper controls such as `_`, `SHLVL`, and `BUN_BE_BUN`; command substitution and source-mode self-exec legitimately change those controls.
 ---
