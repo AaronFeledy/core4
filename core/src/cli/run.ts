@@ -261,6 +261,4 @@ export interface RunCliOptions {
   readonly rootUrl: string;
 }
 
-export const runCli = async (options: RunCliOptions): Promise<void> => {
-  await runCompiledCli(options.argv);
-};
+export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);

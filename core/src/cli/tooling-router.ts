@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 
 import {
+  type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
-import type { CacheError } from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { findAppRoot } from "@lando/landofile/discovery";

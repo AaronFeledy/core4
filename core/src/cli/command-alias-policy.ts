@@ -61,12 +61,9 @@ export const commandAliasRegistrationError = (
     const namespaceHead = alias.split(":", 1)[0] ?? alias;
     const conflictsWithReservedNamespace =
       RESERVED_NAMESPACE_HEADS.has(namespaceHead) && !REGISTERED_ALIASES.has(alias);
-    if (
-      conflictsWithCanonicalId ||
-      alias.startsWith("-") ||
-      RESERVED_ALIAS_TOKENS.has(alias) ||
-      conflictsWithReservedNamespace
-    ) {
+    const conflictsWithReservedToken = alias.startsWith("-") || RESERVED_ALIAS_TOKENS.has(alias);
+    if (conflictsWithCanonicalId || conflictsWithReservedToken || conflictsWithReservedNamespace) {
+      // Canonical id collisions report the full alias; reserved-namespace heads report the head.
       const reservedFor = conflictsWithCanonicalId
         ? alias
         : conflictsWithReservedNamespace
