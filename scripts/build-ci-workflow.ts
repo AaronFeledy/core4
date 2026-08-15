@@ -253,6 +253,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+${codegenStep}
+
       - name: Check docs
         run: bun run docs:check
 
