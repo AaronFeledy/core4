@@ -4,7 +4,7 @@ import { manifest, plugin } from "../src/index.ts";
 
 const contributionIds = (
   entries: ReadonlyArray<string | { readonly id: string }> | undefined,
-): readonly string[] => (entries ?? []).map((entry) => (typeof entry === "string" ? entry : entry.id));
+): readonly string[] => (entries ?? []).map((entry) => String(typeof entry === "string" ? entry : entry.id));
 
 describe("@lando/provider-docker plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
@@ -21,6 +21,6 @@ describe("@lando/provider-docker plugin descriptor", () => {
     const runtimeProviderIds = [...(plugin.runtimeProviders?.keys() ?? [])].map(String);
 
     // Then
-    expect(runtimeProviderIds).toEqual(manifestProviderIds);
+    expect(runtimeProviderIds).toEqual([...manifestProviderIds]);
   });
 });
