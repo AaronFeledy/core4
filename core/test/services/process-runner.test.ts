@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
+import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/core/errors";
 import { EventService, ProcessRunner } from "@lando/core/services";
@@ -23,9 +23,9 @@ const captureEventsLayer = (events: LandoEvent[]) =>
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies EventService.Service);
+  } satisfies Context.Tag.Service<typeof EventService>);
 
-const runProcess = (input: Parameters<ProcessRunner.Service["run"]>[0]) =>
+const runProcess = (input: Parameters<Context.Tag.Service<typeof ProcessRunner>["run"]>[0]) =>
   Effect.runPromise(
     Effect.flatMap(ProcessRunner, (processRunner) => processRunner.run(input)).pipe(
       Effect.provide(ProcessRunnerLive),
@@ -59,6 +59,7 @@ describe("ProcessRunnerLive", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProcessExecError);
+        if (!(failure.value instanceof ProcessExecError)) throw new Error("expected ProcessExecError");
         expect(failure.value.cmd).toBe("definitely-not-a-binary");
         expect(failure.value.errno).toBeDefined();
       }
@@ -105,6 +106,7 @@ describe("ProcessRunnerLive", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProcessTimeoutError);
+        if (!(failure.value instanceof ProcessTimeoutError)) throw new Error("expected ProcessTimeoutError");
         expect(failure.value.elapsedMs).toBeGreaterThanOrEqual(50);
       }
     }
