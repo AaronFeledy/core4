@@ -15,7 +15,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
   });
 
   test("manifest declares the traefik globalServices contribution", () => {
-    expect(manifest.name).toBe("@lando/proxy-traefik");
+    expect(String(manifest.name)).toBe("@lando/proxy-traefik");
     expect(manifest.api).toBe(4);
     const contributions = manifest.contributes?.globalServices ?? [];
     expect(contributions).toHaveLength(1);
