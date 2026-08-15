@@ -195,9 +195,12 @@ describe("resolveRecipeRef — deferred remote sources", () => {
 describe("resolveRecipeRef — determinism (no network access)", () => {
   test("resolution does not perform any network IO (no spawned curl/wget/git/etc.)", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      throw new Error("network IO is not allowed during recipe source resolution");
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> => {
+        throw new Error("network IO is not allowed during recipe source resolution");
+      },
+      { preconnect: originalFetch.preconnect },
+    );
     try {
       const exit = await runResolve("node-postgres", process.cwd());
       expect(Exit.isSuccess(exit)).toBe(true);
