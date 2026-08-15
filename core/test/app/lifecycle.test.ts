@@ -28,6 +28,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestProxyService } from "@lando/sdk/test";
 
@@ -116,11 +117,7 @@ interface TrackingEngine {
 const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
   const sessions = new Map<string, FileSyncSessionSpec>();
   let activeCreates = 0;
-  const tracking: TrackingEngine = {
-    sessions,
-    maxConcurrentCreates: 0,
-    engine: {} as FileSyncEngineShape,
-  };
+  let maxConcurrentCreates = 0;
   const engine: FileSyncEngineShape = {
     id: "test",
     displayName: "Tracking File Sync",
@@ -136,7 +133,7 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
     createSession: (spec: FileSyncSessionSpec) =>
       Effect.gen(function* () {
         activeCreates += 1;
-        tracking.maxConcurrentCreates = Math.max(tracking.maxConcurrentCreates, activeCreates);
+        maxConcurrentCreates = Math.max(maxConcurrentCreates, activeCreates);
         if (createDelayMs > 0) yield* Effect.sleep(`${createDelayMs} millis`);
         const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
         sessions.set(ref, spec);
@@ -157,8 +154,13 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
     listSessions: () => Effect.succeed([]),
     streamEvents: () => Stream.empty,
   };
-  tracking.engine = engine;
-  return tracking;
+  return {
+    sessions,
+    get maxConcurrentCreates() {
+      return maxConcurrentCreates;
+    },
+    engine,
+  };
 };
 
 const appLayer = (
@@ -208,6 +210,7 @@ describe("App handle managed lifecycle scopes", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const app = yield* resolveApp();
+            if (app === undefined) throw new Error("expected app");
             yield* app.start();
             return tracking.sessions.size;
           }),
@@ -226,6 +229,7 @@ describe("App handle managed lifecycle scopes", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const app = yield* resolveApp();
+            if (app === undefined) throw new Error("expected app");
             yield* app.start({ detached: true });
             return tracking.sessions.size;
           }),
@@ -284,10 +288,12 @@ describe("App handle managed lifecycle scopes", () => {
           }),
         listSessions: ({ app, service, mountKey }) =>
           Effect.succeed(
-            Array.from(sessions.values()).filter(
-              (session) =>
-                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
-            ),
+            app === undefined || service === undefined || mountKey === undefined
+              ? []
+              : Array.from(sessions.values()).filter(
+                  (session) =>
+                    session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+                ),
           ),
         streamEvents: () => Stream.empty,
       };
@@ -504,7 +510,7 @@ describe("App handle managed lifecycle scopes", () => {
               createCalls,
               destroyCalls,
               finalizerCalls,
-              sessions: Array.from(sessions),
+              sessions: Array.from(sessions, String),
             };
           }),
         ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
@@ -584,10 +590,12 @@ describe("App handle managed lifecycle scopes", () => {
           }),
         listSessions: ({ app, service, mountKey }) =>
           Effect.succeed(
-            Array.from(sessions.values()).filter(
-              (session) =>
-                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
-            ),
+            app === undefined || service === undefined || mountKey === undefined
+              ? []
+              : Array.from(sessions.values()).filter(
+                  (session) =>
+                    session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+                ),
           ),
         streamEvents: () => Stream.empty,
       };
@@ -630,7 +638,9 @@ describe("App handle managed lifecycle scopes", () => {
         createSession: (spec: FileSyncSessionSpec) =>
           Effect.gen(function* () {
             createCalls += 1;
-            if (createCalls === 2) return yield* Effect.fail(new Error("sync failed"));
+            if (createCalls === 2) {
+              return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
+            }
             const ref = FileSyncSessionRef.make(
               `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
             );
@@ -744,10 +754,12 @@ describe("App handle managed lifecycle scopes", () => {
           }),
         listSessions: ({ app, service, mountKey }) =>
           Effect.succeed(
-            Array.from(sessions.values()).filter(
-              (session) =>
-                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
-            ),
+            app === undefined || service === undefined || mountKey === undefined
+              ? []
+              : Array.from(sessions.values()).filter(
+                  (session) =>
+                    session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+                ),
           ),
         streamEvents: () => Stream.empty,
       };
@@ -818,16 +830,11 @@ describe("App handle managed lifecycle scopes", () => {
           }),
         terminateSession: () => Effect.void,
         listSessions: ({ app, service, mountKey }) =>
-          Effect.succeed([
-            {
-              ref,
-              app,
-              service,
-              mountKey,
-              status,
-              lastUpdatedAt: fixedDateTime,
-            },
-          ]),
+          Effect.succeed(
+            app === undefined || service === undefined || mountKey === undefined
+              ? []
+              : [{ ref, app, service, mountKey, status, lastUpdatedAt: fixedDateTime }],
+          ),
         streamEvents: () => Stream.empty,
       };
 
@@ -865,7 +872,7 @@ describe("App handle managed lifecycle scopes", () => {
         setup: () => Effect.void,
         createSession: (spec: FileSyncSessionSpec) =>
           spec.mountKey === "second-mount"
-            ? Effect.fail(new Error("sync failed"))
+            ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }))
             : Effect.gen(function* () {
                 const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
                 yield* Effect.addFinalizer(() =>
