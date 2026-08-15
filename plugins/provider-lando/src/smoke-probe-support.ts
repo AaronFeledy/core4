@@ -103,7 +103,7 @@ export const expectSmokeSuccess = (
 export const smokeImageExists = (deps: SmokeProbeDeps, image: string, operation: SmokeOperation) =>
   smokeApiRequest(deps, operation, {
     method: "GET",
-    path: `/libpod/images/${encodeURIComponent(image)}/exists`,
+    path: `/images/${encodeURIComponent(image)}/json`,
   }).pipe(Effect.map((response) => response.status >= 200 && response.status < 300));
 
 export const ensureSmokeBaseImage = (
@@ -141,7 +141,7 @@ export const acquireSmokeContainer = (
   Effect.acquireRelease(
     smokeApiRequest(deps, input.operation, {
       method: "POST",
-      path: `/libpod/containers/create?name=${encodeURIComponent(input.name)}`,
+      path: `/containers/create?name=${encodeURIComponent(input.name)}`,
       body: input.body,
     }).pipe(
       Effect.flatMap((response) =>
@@ -154,17 +154,13 @@ export const acquireSmokeContainer = (
       Effect.as(input.name),
     ),
     (container) =>
-      removeSmokeResource(
-        deps,
-        input.operation,
-        `/libpod/containers/${encodeURIComponent(container)}?force=true`,
-      ),
+      removeSmokeResource(deps, input.operation, `/containers/${encodeURIComponent(container)}?force=true`),
   );
 
 export const startSmokeContainer = (deps: SmokeProbeDeps, operation: "run" | "health", name: string) =>
   smokeApiRequest(deps, operation, {
     method: "POST",
-    path: `/libpod/containers/${encodeURIComponent(name)}/start`,
+    path: `/containers/${encodeURIComponent(name)}/start`,
   }).pipe(
     Effect.flatMap((response) =>
       expectSmokeSuccess(operation, response, `Podman could not start the ${operation} smoke container.`),

@@ -31,7 +31,7 @@ const fakeApi = (requests: PodmanHttpRequest[], options: FakeOptions = {}): Podm
       Effect.gen(function* () {
         requests.push(request);
         const path = request.path;
-        if (path.includes("/images/") && path.endsWith("/exists")) {
+        if (path.startsWith("/images/") && path.endsWith("/json")) {
           return { status: imageExists ? 204 : 404, body: "" };
         }
         if (path.startsWith("/libpod/images/pull")) {
@@ -39,7 +39,7 @@ const fakeApi = (requests: PodmanHttpRequest[], options: FakeOptions = {}): Podm
           imageExists = true;
           return { status: 200, body: "{}" };
         }
-        if (path.startsWith("/libpod/build")) {
+        if (path.startsWith("/build?")) {
           if (options.failBuild !== undefined) return yield* Effect.fail(options.failBuild);
           return { status: 200, body: "{}" };
         }
@@ -76,10 +76,42 @@ describe("runSmokeReadinessProbe", () => {
     await Effect.runPromise(run(requests));
 
     expect(requests.some((request) => request.path.includes("/wait"))).toBe(true);
-    expect(requests.some((request) => request.path.startsWith("/libpod/build"))).toBe(true);
-    expect(requests.some((request) => request.path.endsWith("/exists"))).toBe(true);
+    expect(requests.some((request) => request.path.startsWith("/build?"))).toBe(true);
+    expect(
+      requests.some((request) => request.path.startsWith("/images/") && request.path.endsWith("/json")),
+    ).toBe(true);
     expect(requests.some((request) => request.path.endsWith("/json"))).toBe(true);
     expect(deletionPaths(requests)).toHaveLength(3);
+  });
+
+  test("uses Docker-compatible lifecycle endpoints with matching create bodies", async () => {
+    const requests: PodmanHttpRequest[] = [];
+
+    await Effect.runPromise(run(requests));
+
+    const creates = requests.filter(
+      (request) => request.method === "POST" && request.path.startsWith("/containers/create?name="),
+    );
+    expect(creates).toHaveLength(2);
+    expect(creates[0]?.body).toEqual({
+      Image: "docker.io/library/alpine:3.20.3",
+      Cmd: ["sh", "-c", "exit 0"],
+    });
+    expect(creates[1]?.body).toEqual({
+      Image: "docker.io/library/alpine:3.20.3",
+      Cmd: ["sh", "-c", "sleep 60"],
+      Healthcheck: {
+        Test: ["CMD-SHELL", "exit 0"],
+        Interval: 100_000_000,
+        Timeout: 1_000_000_000,
+        Retries: 1,
+      },
+    });
+    expect(requests.some((request) => request.path.startsWith("/libpod/containers/"))).toBe(false);
+    expect(requests.some((request) => /^\/containers\/[^/]+\/start$/u.test(request.path))).toBe(true);
+    expect(requests.some((request) => /^\/containers\/[^/]+\/wait$/u.test(request.path))).toBe(true);
+    expect(requests.some((request) => /^\/containers\/[^/]+\/json$/u.test(request.path))).toBe(true);
+    expect(requests.some((request) => /^\/containers\/[^/?]+\?force=true$/u.test(request.path))).toBe(true);
   });
 
   test("reports a non-zero run exit with a redacted operation discriminator", async () => {
@@ -98,12 +130,20 @@ describe("runSmokeReadinessProbe", () => {
 
     await Effect.runPromise(run(requests));
 
-    const build = requests.find((request) => request.path.startsWith("/libpod/build"));
-    expect(build?.headers?.["content-type"]).toBe("application/x-tar");
+    const build = requests.find((request) => request.path.startsWith("/build?"));
+    expect(build?.headers?.["Content-Type"]).toBe("application/x-tar");
     expect(build?.stdin).toBeDefined();
+    expect(build?.path).toContain("dockerfile=Dockerfile");
+    if (build?.stdin === undefined) throw new Error("expected smoke build context");
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of build.stdin) chunks.push(chunk);
+    const tar = new Uint8Array(Bun.concatArrayBuffers(chunks));
+    const dockerfile = "FROM docker.io/library/alpine:3.20.3\n";
+    expect(new TextDecoder().decode(tar.slice(512, 512 + dockerfile.length))).toBe(dockerfile);
+    expect(Array.from(tar.slice(-1024)).every((byte) => byte === 0)).toBe(true);
     expect(
       requests.some(
-        (request) => request.path.includes("provider-lando-smoke-build") && request.path.endsWith("/exists"),
+        (request) => request.path.includes("provider-lando-smoke-build") && request.path.endsWith("/json"),
       ),
     ).toBe(true);
   });
@@ -119,7 +159,9 @@ describe("runSmokeReadinessProbe", () => {
       }).pipe(Effect.provide(TestContext.TestContext)),
     );
 
-    expect(requests.filter((request) => request.path.endsWith("/json"))).toHaveLength(2);
+    expect(
+      requests.filter((request) => request.path.startsWith("/containers/") && request.path.endsWith("/json")),
+    ).toHaveLength(2);
   });
 
   test("reports unhealthy as a health operation failure", async () => {
@@ -138,6 +180,7 @@ describe("runSmokeReadinessProbe", () => {
     const failure = await Effect.runPromise(run(requests, { failBaseImage: true }).pipe(Effect.flip));
 
     expect(failure.smokeOperation).toBe("base-image" satisfies SmokeOperation);
+    expect(requests.some((request) => request.path.startsWith("/libpod/images/pull?reference="))).toBe(true);
     expect(JSON.stringify(failure.details)).not.toContain("s3cr3t");
     expect(failure.remediation).toContain("registry");
   });
@@ -148,7 +191,10 @@ describe("runSmokeReadinessProbe", () => {
     const api = fakeApi(requests, { blockHealthInspect: blocker });
     const program = Effect.scoped(runSmokeReadinessProbe({ podmanApi: api, retryPolicy }));
     const fiber = Effect.runFork(program);
-    while (!requests.some((request) => request.path.endsWith("/json"))) await Bun.sleep(1);
+    while (
+      !requests.some((request) => request.path.startsWith("/containers/") && request.path.endsWith("/json"))
+    )
+      await Bun.sleep(1);
 
     await Effect.runPromise(Fiber.interrupt(fiber));
 

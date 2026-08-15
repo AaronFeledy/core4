@@ -78,7 +78,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
         yield* startSmokeContainer(deps, "run", name);
         const response = yield* smokeApiRequest(deps, "run", {
           method: "POST",
-          path: `/libpod/containers/${encodeURIComponent(name)}/wait?condition=exited`,
+          path: `/containers/${encodeURIComponent(name)}/wait`,
         }).pipe(
           Effect.flatMap((value) =>
             expectSmokeSuccess("run", value, "Podman could not wait for the run smoke container."),
@@ -103,15 +103,12 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
 
 export const runBuildSmokeProbe = (deps: SmokeProbeDeps, baseImage: string) => {
   const image = `provider-lando-smoke-build:${randomUUID()}`;
-  const cleanup = removeSmokeResource(
-    deps,
-    "build",
-    `/libpod/images/${encodeURIComponent(image)}?force=true`,
-  );
+  const cleanup = removeSmokeResource(deps, "build", `/images/${encodeURIComponent(image)}?force=true`);
+  const buildParams = new URLSearchParams({ t: image, dockerfile: "Dockerfile" });
   const attempt = smokeApiRequest(deps, "build", {
     method: "POST",
-    path: `/libpod/build?t=${encodeURIComponent(image)}`,
-    headers: { "content-type": "application/x-tar" },
+    path: `/build?${buildParams.toString()}`,
+    headers: { "Content-Type": "application/x-tar" },
     stdin: smokeBuildContext(baseImage),
   }).pipe(
     Effect.flatMap((response) =>
@@ -177,7 +174,7 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
         },
         smokeApiRequest(deps, "health", {
           method: "GET",
-          path: `/libpod/containers/${encodeURIComponent(name)}/json`,
+          path: `/containers/${encodeURIComponent(name)}/json`,
         }).pipe(
           Effect.flatMap((response) =>
             expectSmokeSuccess("health", response, "Podman could not inspect the health smoke container."),
