@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -118,6 +119,7 @@ describe("memcached service type — live integration: text protocol set/get", (
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata: cache.metadata,
           extensions: {},
         };
