@@ -4,8 +4,27 @@ import { delimiter, join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 const PROVIDER_ID = "lando";
+const MINIMUM_SUBORDINATE_ID_COUNT = 65536;
 
-export type RootlessPrerequisite = "subid" | "uidmap-tools" | "cgroups-v2-delegation" | "xdg-runtime-dir";
+export type RootlessPrerequisite =
+  | "subid"
+  | "subid-range"
+  | "subid-overlap"
+  | "uidmap-tools"
+  | "cgroups-v2-delegation"
+  | "xdg-runtime-dir";
+
+export type SubordinateIdEntry = {
+  readonly user: string;
+  readonly start: number;
+  readonly count: number;
+};
+
+export type SubordinateIdRangeVerdict =
+  | { readonly kind: "ok" }
+  | { readonly kind: "missing" }
+  | { readonly kind: "too-small"; readonly available: number }
+  | { readonly kind: "overlap"; readonly withUser: string };
 
 interface RootlessPrerequisiteCopy {
   readonly message: string;
@@ -21,6 +40,17 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
     message: "Rootless Podman requires subordinate UID/GID ranges for your user.",
     remediation:
       "Add a range for your user to /etc/subuid and /etc/subgid, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`.",
+  },
+  "subid-range": {
+    message: "Rootless Podman requires one contiguous subordinate UID/GID range with at least 65536 IDs.",
+    remediation:
+      "Assign a single range of at least 65536 IDs, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`.",
+  },
+  "subid-overlap": {
+    message:
+      "Rootless Podman requires subordinate UID/GID ranges that do not overlap another user's allocation.",
+    remediation:
+      "Inspect /etc/subuid and /etc/subgid, reassign a non-conflicting range for your user, then rerun `lando setup`.",
   },
   "uidmap-tools": {
     message: "Rootless Podman requires the newuidmap/newgidmap helper binaries.",
@@ -59,6 +89,8 @@ export class RootlessPrerequisiteError extends ProviderUnavailableError {
 
 export interface RootlessProbeResults {
   readonly subidConfigured: boolean;
+  readonly subidRangeSufficient: boolean;
+  readonly subidRangesDisjoint: boolean;
   readonly hasUidmapTools: boolean;
   readonly cgroupsV2Delegated: boolean;
   readonly hasXdgRuntimeDir: boolean;
@@ -70,13 +102,83 @@ export interface RootlessProbes {
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-const hasSubordinateIdEntry = (path: string, user: string): boolean => {
+export const parseSubordinateIdFile = (text: string): readonly SubordinateIdEntry[] => {
+  const entries: SubordinateIdEntry[] = [];
+  for (const line of text.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+
+    const fields = trimmed.split(":");
+    if (fields.length !== 3) continue;
+    const [rawUser, rawStart, rawCount] = fields;
+    if (rawUser === undefined || rawStart === undefined || rawCount === undefined) continue;
+
+    const user = rawUser.trim();
+    const startText = rawStart.trim();
+    const countText = rawCount.trim();
+    if (user.length === 0 || !/^\d+$/u.test(startText) || !/^\d+$/u.test(countText)) continue;
+
+    const start = Number(startText);
+    const count = Number(countText);
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(count) ||
+      start + count > Number.MAX_SAFE_INTEGER
+    ) {
+      continue;
+    }
+    entries.push({ user, start, count });
+  }
+  return entries;
+};
+
+export const validateSubordinateIdRanges = (
+  entries: readonly SubordinateIdEntry[],
+  user: string,
+): SubordinateIdRangeVerdict => {
+  const userEntries = entries.filter((entry) => entry.user === user);
+  if (userEntries.length === 0) return { kind: "missing" };
+
+  const available = userEntries.reduce((largest, entry) => Math.max(largest, entry.count), 0);
+  if (available < MINIMUM_SUBORDINATE_ID_COUNT) return { kind: "too-small", available };
+
+  const conflicting = entries.find(
+    (other) =>
+      other.user !== user &&
+      userEntries.some(
+        (owned) => owned.start < other.start + other.count && other.start < owned.start + owned.count,
+      ),
+  );
+  return conflicting === undefined ? { kind: "ok" } : { kind: "overlap", withUser: conflicting.user };
+};
+
+type SubordinateIdFileProbe = {
+  readonly configured: boolean;
+  readonly sufficient: boolean;
+  readonly disjoint: boolean;
+};
+
+const failedSubordinateIdFileProbe: SubordinateIdFileProbe = {
+  configured: false,
+  sufficient: false,
+  disjoint: false,
+};
+
+const probeSubordinateIdFile = (path: string, user: string): SubordinateIdFileProbe => {
   try {
-    return readFileSync(path, "utf8")
-      .split(/\r?\n/u)
-      .some((line) => line.split(":", 1)[0] === user);
+    const verdict = validateSubordinateIdRanges(parseSubordinateIdFile(readFileSync(path, "utf8")), user);
+    switch (verdict.kind) {
+      case "missing":
+        return { configured: false, sufficient: false, disjoint: true };
+      case "too-small":
+        return { configured: true, sufficient: false, disjoint: true };
+      case "overlap":
+        return { configured: true, sufficient: true, disjoint: false };
+      case "ok":
+        return { configured: true, sufficient: true, disjoint: true };
+    }
   } catch {
-    return false;
+    return failedSubordinateIdFileProbe;
   }
 };
 
@@ -116,14 +218,19 @@ export const hasCgroupsV2Delegation = (
 export const makeSystemRootlessProbes = (env: Environment = process.env): RootlessProbes => ({
   probe: () => {
     const user = env.USER;
-    const subidConfigured =
-      typeof user === "string" &&
-      user.length > 0 &&
-      hasSubordinateIdEntry("/etc/subuid", user) &&
-      hasSubordinateIdEntry("/etc/subgid", user);
+    const subuid =
+      typeof user === "string" && user.length > 0
+        ? probeSubordinateIdFile("/etc/subuid", user)
+        : failedSubordinateIdFileProbe;
+    const subgid =
+      typeof user === "string" && user.length > 0
+        ? probeSubordinateIdFile("/etc/subgid", user)
+        : failedSubordinateIdFileProbe;
 
     return {
-      subidConfigured,
+      subidConfigured: subuid.configured && subgid.configured,
+      subidRangeSufficient: subuid.sufficient && subgid.sufficient,
+      subidRangesDisjoint: subuid.disjoint && subgid.disjoint,
       hasUidmapTools:
         hasExecutableOnPath("newuidmap", env.PATH) && hasExecutableOnPath("newgidmap", env.PATH),
       cgroupsV2Delegated: hasCgroupsV2Delegation("/sys/fs/cgroup", uidFromRuntimeDir(env.XDG_RUNTIME_DIR)),
@@ -138,6 +245,14 @@ export const classifyRootlessFailure = (
 ): RootlessPrerequisiteError | undefined => {
   if (!results.subidConfigured) {
     return new RootlessPrerequisiteError("subid");
+  }
+
+  if (!results.subidRangeSufficient) {
+    return new RootlessPrerequisiteError("subid-range");
+  }
+
+  if (!results.subidRangesDisjoint) {
+    return new RootlessPrerequisiteError("subid-overlap");
   }
 
   if (!results.hasUidmapTools) {
