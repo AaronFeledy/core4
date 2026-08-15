@@ -151,7 +151,9 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
           writeAppCommandCacheStrict({
             landofile: {
               name: "compiled-alias",
-              commandAliases: { custom: { start: "app:greet" } },
+              commandAliases: {
+                custom: { start: "app:greet", bun: "app:greet", x: "app:greet" },
+              },
             },
             entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
             cwd,
@@ -160,9 +162,11 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
         );
         const env = { ...process.env, LANDO_USER_CACHE_ROOT: cacheRoot };
 
-        const result = await runCommand([binaryPath, "start", "--format=json"], cwd, env);
+        const results = await Promise.all(
+          ["start", "bun", "x"].map((alias) => runCommand([binaryPath, alias, "--format=json"], cwd, env)),
+        );
 
-        expect(result.stdout).toContain('"command":"app:greet"');
+        for (const result of results) expect(result.stdout).toContain('"command":"app:greet"');
       } finally {
         await rm(cwd, { recursive: true, force: true });
       }

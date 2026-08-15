@@ -82,7 +82,25 @@ const makeEntryFixture = async (commandAliases: {
   };
 };
 
-test("custom aliases preserve resolved canonical JSON identity in source and compiled dispatch", async () => {
+test("shipping entry root help lists active app aliases", async () => {
+  const fixture = await makeEntryFixture({
+    disabled: ["start"],
+    custom: { hi: "app:greet" },
+  });
+  try {
+    // Given / When
+    const result = await run([process.execPath, sourceCli, "--help"], fixture.appRoot, fixture.env);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("hi -> app:greet");
+    expect(result.stdout).not.toContain("start -> app:start");
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+test("custom aliases preserve resolved canonical JSON identity in shipping and programmatic dispatch", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-command-alias-scenario-"));
   const appRoot = join(fixtureRoot, "app");
   const cacheRoot = join(fixtureRoot, "cache");
@@ -115,7 +133,7 @@ test("custom aliases preserve resolved canonical JSON identity in source and com
       LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
       LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
     };
-    const runner = join(fixtureRoot, "compiled-dispatch-runner.ts");
+    const runner = join(fixtureRoot, "programmatic-dispatch-runner.ts");
     await writeFile(
       runner,
       [
@@ -126,16 +144,16 @@ test("custom aliases preserve resolved canonical JSON identity in source and com
     );
 
     // When
-    const [source, compiled] = await Promise.all([
+    const [shipping, programmatic] = await Promise.all([
       run([process.execPath, sourceCli, "start", "--format=json"], appRoot, env),
       run([process.execPath, runner, "start", "--format=json"], appRoot, env),
     ]);
 
     // Then
-    expect(source.exitCode).toBe(0);
-    expect(compiled.exitCode).toBe(0);
-    expect(envelope(source.stdout)).toMatchObject({ command: "app:greet", ok: true });
-    expect(envelope(compiled.stdout)).toMatchObject({ command: "app:greet", ok: true });
+    expect(shipping.exitCode).toBe(0);
+    expect(programmatic.exitCode).toBe(0);
+    expect(envelope(shipping.stdout)).toMatchObject({ command: "app:greet", ok: true });
+    expect(envelope(programmatic.stdout)).toMatchObject({ command: "app:greet", ok: true });
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
@@ -211,6 +229,28 @@ test("shipping entry classifies passthrough from the app alias target", async ()
     expect(xResult.stdout).toContain("meta:x, x");
     expect(aliasRendererResult.exitCode).toBe(canonicalRendererResult.exitCode);
     expect(aliasRendererResult.stderr).toBe(canonicalRendererResult.stderr);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
+test("shipping entry parses universal flags after bun and x aliases are remapped", async () => {
+  const fixture = await makeEntryFixture({
+    custom: { bun: "app:greet", x: "app:greet" },
+  });
+  try {
+    // Given / When
+    const results = await Promise.all(
+      ["bun", "x"].map((token) =>
+        run([process.execPath, sourceCli, token, "--format=json"], fixture.appRoot, fixture.env),
+      ),
+    );
+
+    // Then
+    for (const result of results) {
+      expect(result.exitCode).toBe(0);
+      expect(envelope(result.stdout)).toMatchObject({ command: "app:greet", ok: true });
+    }
   } finally {
     await fixture.cleanup();
   }

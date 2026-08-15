@@ -12,18 +12,12 @@ import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
-type RunResult = {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-};
-
 type RunOptions = {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
 };
 
-const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}): Promise<RunResult> => {
+const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}) => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...argv],
     cwd: options.cwd ?? repoRoot,
@@ -86,27 +80,6 @@ const writeFreshCache = async (
 const STACK_OR_SOURCE_PATH = /(^\s*at\s+\S+)|\/[A-Za-z0-9_.\-/]+\.(?:ts|js)(?:[:?]|\b)/m;
 
 describe("native registry help", () => {
-  test("Given app alias policy, when root help is requested, then active custom aliases replace disabled defaults", async () => {
-    // Given
-    const fixture = await makeAppFixture();
-    try {
-      await writeFreshCache(fixture, {
-        disabled: ["start"],
-        custom: { hi: "app:known" },
-      });
-
-      // When
-      const result = await runCli(["--help"], { cwd: fixture.root, env: fixture.env });
-
-      // Then
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("hi -> app:known");
-      expect(result.stdout).not.toContain("start -> app:start");
-    } finally {
-      await fixture.cleanup();
-    }
-  });
-
   test("Given the root registry, when help is requested, then registry summaries render without an OCLIF banner", async () => {
     // Given / When
     const result = await runCli(["--help"]);
