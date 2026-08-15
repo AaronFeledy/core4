@@ -41,6 +41,9 @@ export const parseComposeVendorArgs = (argv: ReadonlyArray<string>): ComposeVend
   let tag: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === undefined) {
+      throw new ComposeVendorArgsError("Unrecognized argument: undefined");
+    }
     if (arg === "--tag") {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {

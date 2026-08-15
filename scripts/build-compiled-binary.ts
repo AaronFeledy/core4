@@ -18,7 +18,7 @@ export interface CompiledBinaryOptions {
 export type CompiledBinaryBuildRunner = (config: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
 
 export class CompiledBinaryBuildError extends Error {
-  readonly name = "CompiledBinaryBuildError";
+  override readonly name = "CompiledBinaryBuildError";
 
   constructor(readonly diagnostics: ReadonlyArray<Bun.BuildOutput["logs"][number]>) {
     const details = diagnostics.map((diagnostic) => diagnostic.message).join("\n");
@@ -106,6 +106,9 @@ export const parseCompiledBinaryArgs = (args: readonly string[]): CompiledBinary
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) {
+      throw new Error("Unexpected empty compiled binary argument.");
+    }
     if (arg === "--") continue;
     if (arg === "--minify") continue;
 
