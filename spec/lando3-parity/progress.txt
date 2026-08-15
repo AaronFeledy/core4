@@ -109,3 +109,14 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Alias-sensitive level-none forms need an Effect-free app-context probe; importing Landofile discovery violates the cold-path boundary even when behavior is correct.
   - Fresh app-command caches must fingerprint Landofile `load()`/`import()` provenance whenever policy or tooling can be expression-derived.
 ---
+
+## 2026-08-15 14:24 CDT - US-564 Drift Audit
+- Trigger: 2 cycles, 1555 changed lines, 6 commits
+- Category 2: Cache and help proofs were relocated without weakening, but the interrupted route-state simplification left resolver call sites uncompilable until the migration was completed.
+- Category 3: Native dispatch retained a duplicate late tooling retry and carried argv inside already-resolved route values.
+- Category 4: Internal alias-policy and tooling helpers remained exported beyond their production consumers; the pre-existing cache-writer size was retained after importer review.
+- Category 6: Historical compiled-binary, focused-guide, and sandbox claims were not rerun under this audit's host-safety constraints and remain unverified here.
+- Fixed: Removed the duplicate dispatch path and route-owned argv, narrowed internal exports, completed the resolver migration, and preserved relocated cache coverage in its focused suite.
+- Split/excise decisions: None; every added public schema, error, cache, dispatcher, help, and guide surface traces to US-564 acceptance criteria.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, and 186 changed-test spot checks passed; schema compatibility still fails on the unrelated pre-existing `HostPlatformFamily` removal while every US-564 addition is compatible.
+---
