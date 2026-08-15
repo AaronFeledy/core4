@@ -14,10 +14,9 @@ export const compileToolingCommands = (
   landofile: LandofileShape,
   effectiveTooling: EffectiveTooling | undefined = landofile.tooling,
 ): ReadonlyArray<CommandIndexEntry> => {
-  const tooling = effectiveTooling;
-  if (tooling === undefined) return [];
+  if (effectiveTooling === undefined) return [];
   const internal = new Set(getInternalToolingTasks(landofile));
-  return Object.entries(tooling)
+  return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, task]) => ({
       id: `app:${name}`,

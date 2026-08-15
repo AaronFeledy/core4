@@ -618,4 +618,4 @@ export const invalidatePluginCommandCache = (
       );
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.ignore);

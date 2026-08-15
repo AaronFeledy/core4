@@ -204,7 +204,7 @@ export const runTooling = (
       return yield* Effect.fail(planResult.left);
     }
     const plan = planResult.right;
-    const tooling = effectiveToolingForPlan(plan) ?? compileEffectiveTooling({ landofile, services: [] });
+    const tooling = effectiveToolingForPlan(plan) ?? authoredTooling;
     const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
 

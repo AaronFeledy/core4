@@ -50,7 +50,7 @@ describe("tooling fragment validation", () => {
   });
 
   test("a nested toolingIncludes entry names the unsupported field it declares", async () => {
-    // Given a fragment whose nested include authors the pre-Beta-1 dir: field
+    // Given a fragment whose nested include authors the unsupported dir: field
     await writeFile(join(appRoot, "tasks.yml"), "tooling:\n  build:\n    cmd: build\n", "utf8");
     await writeFile(
       join(appRoot, "parent.yml"),
