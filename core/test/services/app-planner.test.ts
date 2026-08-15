@@ -14,6 +14,7 @@ import {
 } from "@lando/core/errors";
 import {
   AbsolutePath,
+  AppId,
   AppPlan,
   LandofileShape,
   LogSource,
@@ -27,7 +28,7 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/core/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
-import type { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -132,7 +133,7 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   );
 
 const configLayer = (defaultProviderId: ProviderId | null) => {
-  const config: GlobalConfig = { defaultProviderId, telemetry: { enabled: false } };
+  const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId, telemetry: { enabled: false } });
   const load = Effect.succeed(config);
   return Layer.succeed(ConfigService, {
     load,
@@ -2917,7 +2918,7 @@ describe("AppPlannerLive", () => {
 
       // Then
       expect(appPlan.name).toBe(name);
-      expect(appPlan.id).toBe(slug);
+      expect(appPlan.id).toBe(AppId.make(slug));
       expect(appPlan.slug).toBe(slug);
       expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
       expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
@@ -4080,7 +4081,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
   services: { web: allKnobEncodedService },
 });
 
-const allKnobServiceConfig = allKnobLandofile.services[ServiceName.make("web")] as Record<string, unknown>;
+const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter((key) => key !== "image");
 

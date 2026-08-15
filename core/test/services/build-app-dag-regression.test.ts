@@ -173,6 +173,6 @@ test("labels scratch app build-step-skip events with the scratch identity namesp
     // Then
     const skip = events.find((event) => event._tag === "build-step-skip");
     if (skip?._tag !== "build-step-skip") throw new TypeError("scratch build-step-skip event is missing");
-    expect(skip.appRef.kind).toBe("scratch");
+    expect(skip.appRef).toMatchObject({ kind: "scratch" });
   });
 });
