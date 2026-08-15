@@ -18,7 +18,7 @@ describe("ProviderSetupPlan", () => {
           reason: "Rootless Podman needs uidmap helpers.",
         },
       ],
-    };
+    } satisfies typeof ProviderSetupPlan.Encoded;
 
     // When
     const decoded = Schema.decodeUnknownSync(ProviderSetupPlan)(encoded);
