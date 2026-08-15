@@ -276,7 +276,7 @@ const makeInfoLayer = (
         service: target.service,
         providerId,
         status: state,
-        state: "running" as const,
+        state,
         endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
       }),
     list: () => Effect.succeed([]),
