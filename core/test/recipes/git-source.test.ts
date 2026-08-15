@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,6 +78,7 @@ describe("resolveGitRecipeSource", () => {
       expect(calls[0]?.url).toBe("https://example.test/recipes.git");
       expect(calls[0]?.stagingDir).toContain(join(userDataRoot, "recipe-cache", "git", ".staging-"));
       expect(result.root).toBe(join(userDataRoot, "recipe-cache", "git", "feedface"));
+      if (result.root === undefined) throw new Error("expected a cached recipe root");
       expect(result.source).toBe(join(result.root, "recipe.yml"));
       expect(result.commitSha).toBe("feedface");
       expect(await Bun.file(result.source).exists()).toBe(true);

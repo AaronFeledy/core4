@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -176,6 +177,7 @@ describe("resolveNpmRecipeSource", () => {
       expect(result.version).toBe("1.2.3");
       // Reuses the tarball extractor → cached under recipe-cache/tarball/<sha256>/package
       expect(result.root).toBe(join(userDataRoot, "recipe-cache", "tarball", sha256(bytes), "package"));
+      if (result.root === undefined) throw new Error("expected a cached recipe root");
       expect(result.source).toBe(join(result.root, "recipe.yml"));
       expect(await Bun.file(result.source).exists()).toBe(true);
       const manifest = await Effect.runPromise(

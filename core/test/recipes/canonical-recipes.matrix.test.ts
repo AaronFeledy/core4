@@ -78,8 +78,8 @@ const providerCapabilities = {
   bindMountPerformance: "native" as const,
   copyMounts: true,
   copyOnWriteAppRoot: false,
-  volumeSnapshot: "none",
-  serviceFileCopy: "none",
+  volumeSnapshot: "none" as const,
+  serviceFileCopy: "none" as const,
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
@@ -167,14 +167,15 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
 
       const manifest = await Effect.runPromise(parseRecipe(recipe.source, recipe.manifestYaml));
       expect(manifest.id, `[${recipeId}] manifest.id mismatch`).toBe(recipeId);
-      expect(manifest.files.length, `[${recipeId}] manifest.files must be non-empty`).toBeGreaterThan(0);
+      const manifestFiles = manifest.files ?? [];
+      expect(manifestFiles.length, `[${recipeId}] manifest.files must be non-empty`).toBeGreaterThan(0);
 
       const renderer = BUILTIN_RECIPE_RENDERERS.get(recipeId);
       expect(renderer, `[${recipeId}] missing registered renderer`).toBeDefined();
       if (renderer === undefined) return;
 
       const rendered = renderer.render({ appName: answersEntry.name, answers });
-      for (const file of manifest.files) {
+      for (const file of manifestFiles) {
         expect(
           rendered.has(file.dest),
           `[${recipeId}] renderer did not emit manifest file ${file.dest}`,
@@ -197,7 +198,7 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
         });
         expect(result.appName, `[${recipeId}] initApp.appName`).toBe(answersEntry.name);
 
-        for (const file of manifest.files) {
+        for (const file of manifestFiles) {
           const path = join(result.directory, file.dest);
           const handle = Bun.file(path);
           const exists = await handle.exists();
