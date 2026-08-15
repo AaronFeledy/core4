@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -89,7 +90,7 @@ describe("lando init registry source direct dispatch", () => {
         argv: ["init", "--source=registry", "--no-interactive"],
         rootUrl: "file:///$bunfs/lando.ts",
       });
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode as number | undefined).toBe(1);
       expect(writes.join("")).toContain("lando init --source=registry requires --id=<recipe-id>.");
     } finally {
       (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
