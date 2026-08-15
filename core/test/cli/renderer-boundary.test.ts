@@ -374,7 +374,7 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use)."]);
+    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
   });
 
   test("suppresses only renderer warning output when requested", async () => {
@@ -396,7 +396,10 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use).", "summary=2"]);
+    expect(io.stdoutLines()).toEqual([
+      "ℹ Deprecated surfaces used: config-key legacy.key (1 use).",
+      "summary=2",
+    ]);
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {
