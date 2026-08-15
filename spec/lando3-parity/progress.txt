@@ -63,3 +63,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Resolve service-type tooling before applying app defaults; folding defaults into authored tasks earlier can accidentally outrank values contributed later.
   - Keep effective tooling as engine-private plan provenance until the compiled task graph needs its own persisted payload; public AppPlan remains provider-realization data.
 ---
+
+## 2026-08-14 21:16 CDT - US-563 Review
+- Fixed service-derived command-cache invalidation, fail-closed cache-miss discovery for service apps, locale-independent command compilation, and script fallback without changing effective-tooling precedence. Tooling env secrets now redact from task events, CLI plain/JSON results, and MCP envelopes, including numeric and boolean values after normalization.
+- Review notes (deferred/rejected): rejected requiring effective tooling on arbitrary externally constructed AppPlan objects because the canonical fresh/cache-hit planner path owns and restores the private sidecar; rejected fingerprinting live linked-plugin source edits because managed plugin mutations invalidate app tooling caches and direct edits already require `app:cache:refresh`; rejected expanding the guide to assert every inherited field because the executable scenario proves applied/overridden defaults while focused compiler/runtime tests cover `dir`, `env`, and `vars`.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, public transcripts, the focused executable guide, and 163 focused schema/Landofile/planner/cache/tooling/renderer/MCP tests passed.
+- **Learnings for future iterations:**
+  - Result-scoped redaction tokens must cross every imperative shell, including MCP progress and result envelopes; event-only redaction is not enough.
+  - Script fallbacks must preserve the same effective-tooling-over-script precedence as command-index compilation, even when planning fails.
+---
