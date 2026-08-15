@@ -120,3 +120,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Split/excise decisions: None; every added public schema, error, cache, dispatcher, help, and guide surface traces to US-564 acceptance criteria.
 - Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, and 186 changed-test spot checks passed; schema compatibility still fails on the unrelated pre-existing `HostPlatformFamily` removal while every US-564 addition is compatible.
 ---
+
+## 2026-08-15 15:12 CDT - US-564 Drift Audit (re-run)
+- Trigger: 2 cycles, 1736 changed lines, 12 commits
+- Category 3: Native dispatch still probed the app-command cache twice for the same alias head after the first audit's routing simplification.
+- Category 6: Historical compiled-binary and focused-guide claims were not rerun under host-safety constraints; guide drift skipped without pull-request context.
+- Fixed: Reused the preflight alias resolution during dispatch, removing the duplicate cache probe without adding another routing path.
+- Split/excise decisions: None; no deferred surface was absorbed and only US-564's pass state changed.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/lint/public transcripts, 177 changed-test spot checks, and 58 post-fix routing checks passed; schema compatibility still fails only on the pre-existing `HostPlatformFamily` removal.
+---
