@@ -1,8 +1,10 @@
+import { describe, expect, test } from "bun:test";
+
 import { mergeLandofiles } from "../src/merge.ts";
 
 describe("mergeLandofiles", () => {
   test("deep-merges maps with later scalar precedence", () => {
-    const result = mergeLandofiles([
+    const result = mergeLandofiles<Record<string, unknown>>([
       { services: { appserver: { type: "node", environment: { A: "1", B: "base" } } } },
       { services: { appserver: { environment: { B: "override", C: "2" } } } },
     ]);
@@ -13,7 +15,7 @@ describe("mergeLandofiles", () => {
   });
 
   test("replaces scalar arrays instead of concatenating", () => {
-    const result = mergeLandofiles([
+    const result = mergeLandofiles<Record<string, unknown>>([
       { services: { web: { ports: ["80", "443"] } } },
       { services: { web: { ports: ["3000"] } } },
     ]);
@@ -22,7 +24,7 @@ describe("mergeLandofiles", () => {
   });
 
   test("merges object arrays by the first recognized identity key", () => {
-    const result = mergeLandofiles([
+    const result = mergeLandofiles<Record<string, unknown>>([
       { services: { web: { routes: [{ hostname: "old.lndo.site", pathPrefix: "/" }] } } },
       {
         services: {
@@ -44,7 +46,7 @@ describe("mergeLandofiles", () => {
   });
 
   test("replaces arrays of objects that have no recognized identity key", () => {
-    const result = mergeLandofiles([
+    const result = mergeLandofiles<Record<string, unknown>>([
       { services: { web: { mounts: [{ source: "./one", target: "/one" }] } } },
       { services: { web: { mounts: [{ source: "./two", target: "/two" }] } } },
     ]);
@@ -53,7 +55,7 @@ describe("mergeLandofiles", () => {
   });
 
   test("folds files low to high precedence so the including file wins", () => {
-    const result = mergeLandofiles([
+    const result = mergeLandofiles<Record<string, unknown>>([
       { name: "base", services: { web: { type: "php" } } },
       { name: "final", services: { web: { type: "node" } } },
     ]);
