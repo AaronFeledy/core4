@@ -10,6 +10,8 @@ import type {
   AppIdReservedError,
   CacheError,
   CapabilityError,
+  CommandAliasConflictError,
+  CommandAliasTargetError,
   ComposeKeyRejectedError,
   LandoCommandError,
   LandofileFormConflictError,
@@ -39,6 +41,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution";
+import { commandAliasRegistrationError } from "../command-alias-policy";
 
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
 import {
@@ -86,6 +89,8 @@ type AppCacheRefreshError =
   | PluginManifestError
   | CapabilityError
   | PublicationUnsupportedError
+  | CommandAliasConflictError
+  | CommandAliasTargetError
   | CacheError
   | LandoCommandError
   | NoProviderInstalledError
@@ -123,6 +128,11 @@ export const refreshAppCache = (
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);
     const entries = compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan));
+    const aliasError = commandAliasRegistrationError(
+      landofile.commandAliases,
+      entries.map((entry) => entry.id),
+    );
+    if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
     const appCachePath = yield* writeAppCommandCacheStrict({
       landofile,
