@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
@@ -25,7 +26,7 @@ const landoEnvStubServiceType: ServiceType = {
   id: "stub",
   name: "Stub",
   base: "lando",
-  schema: LandofileShape,
+  schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({
       base: "lando" as const,
@@ -47,7 +48,7 @@ const extensionStubServiceType: ServiceType = {
   id: "stub-extension",
   name: "Stub Extension",
   base: "lando",
-  schema: LandofileShape,
+  schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({
       base: "lando" as const,
