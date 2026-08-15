@@ -9,6 +9,8 @@ import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
+import { normalizeHostPlatform } from "@lando/paths";
+
 import { parseLandofile } from "../landofile/src/parser.ts";
 import {
   type CleanupProps,
@@ -75,11 +77,7 @@ export const resolveHostGuidePlatform = (
     if (GUIDE_PLATFORMS.includes(override as GuidePlatform)) return override as GuidePlatform;
     throw new Error(`LANDO_GUIDE_SCENARIO_PLATFORM must be one of ${GUIDE_PLATFORMS.join("|")}: ${override}`);
   }
-  if (platform === "win32") return "win32";
-  if (platform === "darwin") return "darwin";
-  if (platform === "linux" && (env.WSL_DISTRO_NAME !== undefined || env.WSL_INTEROP !== undefined))
-    return "wsl";
-  return "linux";
+  return normalizeHostPlatform({ env, platform });
 };
 
 // A WSL host executes the same Linux build, so it also satisfies guides that allow-list `linux`.

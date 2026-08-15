@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer, Schema } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 
@@ -37,9 +38,10 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
 });
 
 const doctorLayer = (registry = buildRegistry()) =>
-  Layer.merge(
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
 describe("doctor() contributed checks", () => {

@@ -18,7 +18,6 @@ const candidate = (
   pluginName: `@example/${id}`,
   source,
   ...(platforms === undefined ? {} : { defaultFor: { platform: platforms } }),
-  acquire: undefined,
 });
 
 describe("selectCertificateAuthorityCandidate", () => {
@@ -58,6 +57,19 @@ describe("selectCertificateAuthorityCandidate", () => {
     // Then
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) expect(result.right).toBe(selected);
+  });
+
+  test("selects the Linux platform default for a WSL host", () => {
+    // Given
+    const linuxDefault = candidate("linux-default", "bundled", ["linux"]);
+    const other = candidate("other", "user", ["darwin"]);
+
+    // When
+    const result = selectCertificateAuthorityCandidate([other, linuxDefault], "wsl");
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) expect(result.right).toBe(linuxDefault);
   });
 
   test("returns tagged ambiguity for multiple platform defaults", () => {

@@ -5,8 +5,9 @@ import { join } from "node:path";
 
 import { type Context, Deferred, Effect, Fiber, Layer, TestClock, TestContext } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import type { RuntimeServiceStatus } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
@@ -51,10 +52,11 @@ const buildConfigService = (
 const buildLayers = (
   provider: RuntimeServiceTestProvider,
   configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<ConfigService | RuntimeProviderRegistry> =>
-  Layer.merge(
+): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry> =>
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService(configOverrides)),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
 const runtimeServiceCheck = async (

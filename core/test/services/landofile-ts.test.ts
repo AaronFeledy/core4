@@ -189,6 +189,32 @@ describe("LandofileServiceLive — TS form value export", () => {
       });
     });
   });
+
+  test("function form uses the canonical WSL detector for its host context", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          "export default (ctx: { host: { isWsl: boolean } }) => ({",
+          '  name: ctx.host.isWsl ? "wsl-app" : "linux-app",',
+          '  services: { web: { image: "node:lts" } },',
+          "});",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const landofile = await withEnv(
+        { WSL_DISTRO_NAME: undefined, WSL_INTEROP: "/run/WSL/1_interop" },
+        discover,
+      );
+
+      // Then
+      expect(landofile.name).toBe("wsl-app");
+    });
+  });
 });
 
 describe("LandofileServiceLive — TS form sandbox violations", () => {

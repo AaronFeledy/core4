@@ -9,6 +9,7 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { Duration, Effect } from "effect";
 
+import { normalizeHostPlatform } from "@lando/paths";
 import { LandofileParseError, LandofileSandboxError, LandofileTimeoutError } from "@lando/sdk/errors";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;
@@ -186,7 +187,7 @@ export interface LandofileContext {
 
 const buildContext = (filePath: string): LandofileContext => {
   const platform = process.platform;
-  const isWsl = platform === "linux" && (process.env.WSL_DISTRO_NAME ?? "") !== "";
+  const isWsl = normalizeHostPlatform() === "wsl";
   return {
     cwd: dirname(filePath),
     env: process.env,

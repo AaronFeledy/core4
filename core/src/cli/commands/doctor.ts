@@ -1,7 +1,7 @@
 import { Effect, Either, Option } from "effect";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { makeLandoPaths } from "@lando/paths";
@@ -36,7 +36,6 @@ import {
 import {
   buildSelectionRecord,
   gatherSelectionInputs,
-  platformFromProcess,
   resolveStateDir,
   selectionConfigFailureCheck,
 } from "./doctor-selection";
@@ -66,9 +65,10 @@ import type { DoctorOptions } from "./doctor-options";
 export const doctor = (
   options: DoctorOptions = {},
   modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
-): Effect.Effect<DoctorResult, never, ConfigService | RuntimeProviderRegistry> =>
+): Effect.Effect<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
+    const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
     const sourceEnv = { ...(options.env ?? process.env) };
     const redactionService = yield* Effect.serviceOption(RedactionService);
@@ -90,7 +90,6 @@ export const doctor = (
     const selection = buildSelectionRecord(resolution);
     const stateDirEither = yield* Effect.either(resolveStateDir(configService));
     if (Either.isLeft(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.left);
-    const stateDir = Either.isRight(stateDirEither) ? stateDirEither.right : undefined;
     const userDataRootEither = yield* Effect.either(configService.get("userDataRoot"));
     if (Either.isLeft(userDataRootEither)) {
       recordConfigFailure("provider-user-data-root", userDataRootEither.left);
@@ -109,13 +108,13 @@ export const doctor = (
       selfChecks.push(...metadataOutcome.value);
       if (metadataOutcome.self !== undefined) selfChecks.push(metadataOutcome.self);
     }
-    const platform = options.platform ?? platformFromProcess();
-    const pluginOutcome = yield* pluginDoctorReports(
+    const platform = options.platform ?? paths.platform;
+    const { reports, selfChecks: pluginSelfChecks } = yield* pluginDoctorReports(
       modules,
       {
         providerId: String(resolution.providerId),
         platform,
-        stateDir,
+        stateDir: Either.isRight(stateDirEither) ? stateDirEither.right : undefined,
         env: options.env ?? process.env,
         userDataRoot,
         binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
@@ -123,8 +122,7 @@ export const doctor = (
       redactor,
       probeBudget,
     );
-    const reports = pluginOutcome.reports;
-    selfChecks.push(...pluginOutcome.selfChecks);
+    selfChecks.push(...pluginSelfChecks);
     const withSelfChecks = (checks: ReadonlyArray<DoctorCheck>): DoctorResult => ({
       checks,
       ...(selfChecks.length === 0 ? {} : { selfChecks: [...selfChecks] }),

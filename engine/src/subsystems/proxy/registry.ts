@@ -2,12 +2,13 @@ import { Context, Effect, Either, Layer } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import {
   type CertificateAuthority,
   ConfigService,
   type FileSystem,
   type GlobalAppService,
-  type PathsService,
+  PathsService,
   type ProxyService,
 } from "@lando/sdk/services";
 
@@ -47,7 +48,7 @@ export class ProxyServiceRegistry extends Context.Tag("@lando/core/ProxyServiceR
 interface MakeProxyServiceRegistryOptions {
   readonly registrations: ReadonlyArray<ProxyServiceRegistration>;
   readonly configured: Effect.Effect<string | undefined, ProxyError>;
-  readonly platform: string;
+  readonly platform: HostPlatform;
 }
 
 const selectionError = (message: string, proxyId: string): ProxyError =>
@@ -78,7 +79,7 @@ export const makeProxyServiceRegistry = (
         if (configured !== undefined) return yield* selectId(configured);
 
         const defaults = options.registrations.filter((registration) =>
-          registration.defaultFor?.platform?.includes(options.platform),
+          registration.defaultFor?.platform?.includes(hostPlatformFamily(options.platform)),
         );
         const matchedDefault = defaults[0];
         if (defaults.length === 1 && matchedDefault !== undefined) return matchedDefault;
@@ -133,6 +134,7 @@ export const makeProxyServiceRegistryLive = (modules: ReadonlyArray<LandoPluginM
     ProxyServiceRegistry,
     Effect.gen(function* () {
       const config = yield* ConfigService;
+      const paths = yield* PathsService;
       const registrations = yield* registrationsFromModules(modules);
       const configured = config
         .get("defaultProxyService")
@@ -141,7 +143,7 @@ export const makeProxyServiceRegistryLive = (modules: ReadonlyArray<LandoPluginM
             selectionError(`Unable to read ProxyService selection: ${cause.message}`, "unknown"),
           ),
         );
-      return makeProxyServiceRegistry({ registrations, configured, platform: process.platform });
+      return makeProxyServiceRegistry({ registrations, configured, platform: paths.platform });
     }),
   );
 

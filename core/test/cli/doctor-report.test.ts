@@ -5,8 +5,9 @@ import { join } from "node:path";
 
 import { type Context, DateTime, Effect, Layer, Schema } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import {
   CommandResultEnvelope,
   type DeprecationNotice,
@@ -78,10 +79,11 @@ const buildConfigService = (
 
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
-): Layer.Layer<ConfigService | RuntimeProviderRegistry | DeprecationService> =>
+): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService> =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     DeprecationServiceLive,
   );
 
