@@ -3,7 +3,6 @@ import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/e
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 
-const MAX_FUZZY_TARGET_LENGTH = 256;
 const RESERVED_ALIAS_TOKENS = new Set(["help", "--help", "-h", "--version", "-V", "-v"]);
 const BUILT_IN_COMMANDS: ReadonlyArray<{
   readonly aliases: ReadonlyArray<string>;
@@ -82,17 +81,13 @@ export const commandAliasRegistrationError = (
       });
     }
     if (!canonicalIds.includes(target)) {
-      const closeMatches =
-        target.length > MAX_FUZZY_TARGET_LENGTH
-          ? []
-          : canonicalIds
-              .map((commandId) => ({ commandId, distance: editDistance(target, commandId) }))
-              .sort(
-                (left, right) =>
-                  left.distance - right.distance || left.commandId.localeCompare(right.commandId),
-              )
-              .slice(0, 3)
-              .map(({ commandId }) => commandId);
+      const closeMatches = canonicalIds
+        .map((commandId) => ({ commandId, distance: editDistance(target, commandId) }))
+        .sort(
+          (left, right) => left.distance - right.distance || left.commandId.localeCompare(right.commandId),
+        )
+        .slice(0, 3)
+        .map(({ commandId }) => commandId);
       return new CommandAliasTargetError({
         message: `Top-level alias ${safeAlias} targets unknown canonical command ${safeTarget}.`,
         alias,

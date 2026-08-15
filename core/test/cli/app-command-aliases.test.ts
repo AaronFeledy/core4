@@ -201,8 +201,8 @@ test("unknown custom targets fail with close matches and remediation", async () 
   });
 });
 
-test("oversized unknown targets skip fuzzy suggestions", async () => {
-  const target = `app:${"x".repeat(1_024)}`;
+test("oversized unknown targets still receive fuzzy suggestions", async () => {
+  const target = `app:greet${"x".repeat(1_024)}`;
   await withAliasCache({ custom: { hi: target } }, async ({ root, cacheRoot }) => {
     // Given / When
     const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
@@ -211,7 +211,7 @@ test("oversized unknown targets skip fuzzy suggestions", async () => {
     expect(error).toBeInstanceOf(CommandAliasTargetError);
     if (!(error instanceof CommandAliasTargetError)) throw error;
     expect(error.target).toBe(target);
-    expect(error.closeMatches).toEqual([]);
+    expect(error.closeMatches).toContain("app:greet");
   });
 });
 
