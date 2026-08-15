@@ -8,11 +8,13 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, ToolingEngine, type ToolingInvocation } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
   HostToolingEngineLive,
@@ -29,7 +31,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const stubCapabilities = {
+const stubCapabilities: ProviderCapabilities = {
   artifactBuild: false,
   artifactPull: false,
   buildSecrets: false,
@@ -89,12 +91,14 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     routes: [],
     networks: [],
     stores: [],
+    fileSync: [],
     metadata,
     extensions: {},
   };
 };
 
 const stubProvider: RuntimeProviderShape = {
+  ...TestRuntimeProvider,
   id: providerId,
   displayName: "Stub for host engine",
   version: "0.0.0",
@@ -225,8 +229,10 @@ describe("HostToolingEngineLive", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");
-        expect(failure.value.tool).toBe("empty");
-        expect(failure.value.message).toContain("no commands");
+        if (failure.value._tag === "ToolingExecError") {
+          expect(failure.value.tool).toBe("empty");
+          expect(failure.value.message).toContain("no commands");
+        }
       }
     }
   });
