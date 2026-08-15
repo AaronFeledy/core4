@@ -363,7 +363,7 @@ describe("runWithRendererHandling", () => {
     await runWithRendererHandling(
       Effect.gen(function* () {
         const deprecations = yield* DeprecationService;
-        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+        yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
       }),
       {
         runtime: DeprecationServiceLive,
@@ -383,7 +383,7 @@ describe("runWithRendererHandling", () => {
       Effect.gen(function* () {
         const deprecations = yield* DeprecationService;
         yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
-        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+        yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
         return yield* deprecations.summary();
       }),
       {
