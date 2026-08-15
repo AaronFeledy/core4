@@ -82,6 +82,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata: search.metadata,
           extensions: {},
         };
@@ -96,7 +97,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
           const healthResp = await fetch(`http://127.0.0.1:${OS_PORT}/_cluster/health`);
           expect(healthResp.ok).toBe(true);
           const healthBody = (await healthResp.json()) as Record<string, unknown>;
-          expect(["green", "yellow"]).toContain(healthBody.status);
+          expect(["green", "yellow"] as ReadonlyArray<unknown>).toContain(healthBody.status);
 
           const indicesResp = await fetch(`http://127.0.0.1:${OS_PORT}/_cat/indices`);
           expect(indicesResp.ok).toBe(true);
