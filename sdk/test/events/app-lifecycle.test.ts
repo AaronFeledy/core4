@@ -31,52 +31,52 @@ const basePayload = {
 };
 
 const appLifecycleEvents = [
-  ["pre-app-start", PreAppStartEvent],
-  ["post-app-start", PostAppStartEvent],
-  ["pre-app-stop", PreAppStopEvent],
-  ["post-app-stop", PostAppStopEvent],
-  ["pre-build", PreBuildEvent],
-  ["post-build", PostBuildEvent],
+  ["pre-app-start", Schema.decodeUnknownEither(PreAppStartEvent)],
+  ["post-app-start", Schema.decodeUnknownEither(PostAppStartEvent)],
+  ["pre-app-stop", Schema.decodeUnknownEither(PreAppStopEvent)],
+  ["post-app-stop", Schema.decodeUnknownEither(PostAppStopEvent)],
+  ["pre-build", Schema.decodeUnknownEither(PreBuildEvent)],
+  ["post-build", Schema.decodeUnknownEither(PostBuildEvent)],
 ] as const;
 
 const serviceLifecycleEvents = [
-  ["pre-service-start", PreServiceStartEvent],
-  ["post-service-start", PostServiceStartEvent],
-  ["pre-service-stop", PreServiceStopEvent],
-  ["post-service-stop", PostServiceStopEvent],
+  ["pre-service-start", Schema.decodeUnknownEither(PreServiceStartEvent)],
+  ["post-service-start", Schema.decodeUnknownEither(PostServiceStartEvent)],
+  ["pre-service-stop", Schema.decodeUnknownEither(PreServiceStopEvent)],
+  ["post-service-stop", Schema.decodeUnknownEither(PostServiceStopEvent)],
 ] as const;
 
 describe("app lifecycle event payload schemas", () => {
   test("decode app and build lifecycle payloads with pinned eventName literals", () => {
-    for (const [eventName, eventSchema] of appLifecycleEvents) {
-      const result = Schema.decodeUnknownEither(eventSchema)({
+    for (const [eventName, decode] of appLifecycleEvents) {
+      const result = decode({
         _tag: eventName,
         eventName,
         ...basePayload,
       });
 
-      expect(Either.isRight(result)).toBe(true);
-      if (Either.isRight(result)) {
-        expect(result.right.eventName).toBe(eventName);
-        expect(result.right.appRef.id).toBe("myapp");
-        expect(result.right.providerId).toBe("lando");
+      expect(result._tag).toBe("Right");
+      if (result._tag === "Right") {
+        expect(String(result.right.eventName)).toBe(eventName);
+        expect(String(result.right.appRef.id)).toBe("myapp");
+        expect(String(result.right.providerId)).toBe("lando");
       }
     }
   });
 
   test("decode service lifecycle payloads with serviceName", () => {
-    for (const [eventName, eventSchema] of serviceLifecycleEvents) {
-      const result = Schema.decodeUnknownEither(eventSchema)({
+    for (const [eventName, decode] of serviceLifecycleEvents) {
+      const result = decode({
         _tag: eventName,
         eventName,
         ...basePayload,
         serviceName: "web",
       });
 
-      expect(Either.isRight(result)).toBe(true);
-      if (Either.isRight(result)) {
-        expect(result.right.eventName).toBe(eventName);
-        expect(result.right.serviceName).toBe("web");
+      expect(result._tag).toBe("Right");
+      if (result._tag === "Right") {
+        expect(String(result.right.eventName)).toBe(eventName);
+        expect(String(result.right.serviceName)).toBe("web");
       }
     }
   });
