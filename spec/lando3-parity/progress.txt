@@ -165,3 +165,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Cache-only command routing for dynamic Landofile forms needs a non-secret fingerprint of every permitted evaluation and render input; source-byte hashes alone cannot prove the resolved alias policy is fresh.
 ---
+
+## 2026-08-15 17:18 CDT - US-564 Drift Audit
+- Trigger: 5 cycles, 1816 changed lines, 21 commits
+- Category 2: YAML-backed source, compiled, cache, JSON, and help proofs remain production-backed; dynamic and templated Landofile hot-path parity remains the recorded blocker.
+- Category 3: A defensive fuzzy-match cutoff and its test blessed empty close-match remediation for long unknown targets.
+- Category 6: Container-backed verification was not rerun under this audit's host-safety constraints and remains unverified here.
+- Fixed: Deleted the fuzzy-match cutoff and restored the oversized-target proof to require close-match remediation.
+- Split/excise decisions: None; public surfaces remain within US-564, and the story stays false for the recorded dynamic-Landofile cache boundary.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint, public transcripts, and 180 baseline plus 93 post-fix spot checks passed; schema compatibility still fails only on unrelated pre-existing schema removals and reference drift.
+---
