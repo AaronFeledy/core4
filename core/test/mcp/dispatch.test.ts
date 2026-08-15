@@ -5,7 +5,7 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
-import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
+import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
@@ -224,6 +224,69 @@ describe("dispatchTool", () => {
     const { deps } = harness([entry], { secrets: [secret] });
     const result = await Effect.runPromise(dispatchTool({ toolId: "app:info" }, deps));
     expect(JSON.stringify(result.envelope)).not.toContain(secret);
+  });
+
+  test("redacts a command result with tokens supplied by that result", async () => {
+    // Given
+    const secret = "baretoolingtoken";
+    const entry: McpCommandEntry = {
+      spec: spec("app:tooling", () => Effect.succeed({ output: secret, redactionTokens: [secret] }), {
+        resultSchema: Schema.Struct({
+          output: Schema.String,
+          redactionTokens: Schema.Array(Schema.String),
+        }),
+        redactionTokens: (value) =>
+          Schema.decodeUnknownSync(Schema.Struct({ redactionTokens: Schema.Array(Schema.String) }))(value)
+            .redactionTokens,
+      }),
+    };
+    const { deps } = harness([entry]);
+
+    // When
+    const result = await Effect.runPromise(dispatchTool({ toolId: "app:tooling" }, deps));
+
+    // Then
+    expect(JSON.stringify(result.envelope)).not.toContain(secret);
+    expect(result.envelope).toMatchObject({ result: { output: REDACTED } });
+  });
+
+  test("applies result tokens wired by the real MCP tooling projection", async () => {
+    // Given
+    const secret = "bareprojectedtoken";
+    const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
+      { id: "app:projected", summary: "Projected tooling", hidden: false },
+    ]);
+    const entry = projected.toolingEntries?.[0];
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    const { deps } = harness([entry]);
+
+    // When
+    const result = await Effect.runPromise(
+      dispatchTool(
+        { toolId: "app:projected" },
+        {
+          ...deps,
+          execute: () =>
+            Effect.succeed({
+              _tag: "success",
+              value: {
+                tool: "app:projected",
+                service: ":host",
+                exitCode: 0,
+                stdout: secret,
+                stderr: "",
+                redactionTokens: [secret],
+              },
+            }),
+        },
+      ),
+    );
+
+    // Then
+    expect(entry.spec.redactionTokens).toBeFunction();
+    expect(JSON.stringify(result.envelope)).not.toContain(secret);
+    expect(result.envelope).toMatchObject({ result: { stdout: REDACTED } });
   });
 
   test("rejects unsafe result traversal before the result schema can invoke it", async () => {

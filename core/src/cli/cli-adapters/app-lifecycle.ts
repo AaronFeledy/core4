@@ -108,7 +108,7 @@ interface RunDestroyOptions {
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      startApp({ signal }),
+      Effect.zipRight(refreshAppCache(), startApp({ signal })),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderStartAppResult,
     ),
@@ -210,7 +210,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
 export const runRestart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      restartApp({ signal }),
+      Effect.zipRight(refreshAppCache(), restartApp({ signal })),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRestartAppResult,
     ),
@@ -219,7 +219,7 @@ export const runRestart = (): Promise<void> =>
 export const runRebuild = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      rebuildApp({ signal }),
+      Effect.zipRight(refreshAppCache(), rebuildApp({ signal })),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRebuildAppResult,
     ),

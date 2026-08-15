@@ -116,6 +116,7 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
   stableFingerprint({
     services: landofile.services ?? null,
     tooling: landofile.tooling ?? null,
+    toolingDefaults: landofile.toolingDefaults ?? null,
     includes: landofile.includes ?? null,
     versionConstraints: getVersionConstraintEntries(landofile, ".lando.yml"),
   });

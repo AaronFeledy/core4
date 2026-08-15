@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildToolingInvocation, validateToolingArguments } from "@lando/engine/operations/tooling";
+import { PortablePath } from "@lando/sdk/schema";
 
 describe("buildToolingInvocation", () => {
   test("preserves pass-through argument boundaries for string tooling commands", () => {
@@ -38,6 +39,63 @@ describe("buildToolingInvocation", () => {
 
     // Then
     expect(invocation.commands).toEqual([["php", "-r", "echo $argv[1];", "two words", ""]]);
+  });
+
+  test("uses the folded task dir as the invocation cwd", () => {
+    // Given
+    const task = { cmd: "pwd", dir: PortablePath.make("/workspace/from-task") };
+
+    // When
+    const invocation = buildToolingInvocation("pwd", task);
+
+    // Then
+    expect(invocation.cwd).toBe("/workspace/from-task");
+  });
+
+  test("falls back to the caller cwd when the folded task has no dir", () => {
+    // Given
+    const task = { cmd: "pwd" };
+
+    // When
+    const invocation = buildToolingInvocation("pwd", task, { cwd: "/workspace/from-caller" });
+
+    // Then
+    expect(invocation.cwd).toBe("/workspace/from-caller");
+  });
+
+  test("prefers the folded task dir over a differing caller cwd", () => {
+    // Given
+    const task = { cmd: "pwd", dir: PortablePath.make("/workspace/from-task") };
+
+    // When
+    const invocation = buildToolingInvocation("pwd", task, { cwd: "/workspace/from-caller" });
+
+    // Then
+    expect(invocation.cwd).toBe("/workspace/from-task");
+  });
+
+  test("merges folded task env beneath explicit caller env", () => {
+    // Given
+    const task = { cmd: "env", env: { FROM_TASK: "task", SHARED: "task" } };
+
+    // When
+    const invocation = buildToolingInvocation("env", task, {
+      env: { FROM_CALLER: "caller", SHARED: "caller" },
+    });
+
+    // Then
+    expect(invocation.env).toEqual({ FROM_TASK: "task", FROM_CALLER: "caller", SHARED: "caller" });
+  });
+
+  test("omits env when neither the folded task nor the caller supplies it", () => {
+    // Given
+    const task = { cmd: "env" };
+
+    // When
+    const invocation = buildToolingInvocation("env", task);
+
+    // Then
+    expect(invocation).not.toHaveProperty("env");
   });
 
   test("does not append argv when a string command already references positional parameters", () => {

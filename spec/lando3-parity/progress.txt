@@ -24,3 +24,61 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
+- Planner-read file content outside Landofile expression provenance must contribute source/hash metadata to `deriveAppPlanCacheKey`; embedding parsed values in a service type's normalized config is not a reliable cache identity.
+
+## 2026-08-14 10:04 CDT - US-562
+- Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
+- The env-overrides guide now exercises the host-safe planner refresh path and renders the shared-file declaration plus service override without claiming that `app:config` exposes planner-derived values.
+- Verification: typecheck, lint, codegen, schema compatibility, boundaries, guide gates, focused planner/schema/Landofile/cache/redaction tests, and manual CLI spot checks passed.
+- **Learnings for future iterations:**
+  - `app:cache:refresh` is the host-safe CLI surface for planner-derived behavior; `app:config` reports the resolved authored Landofile and should only assert authored fields.
+---
+
+## 2026-08-14 10:43 CDT - US-562 Review
+- Fixed the confirmed redaction blocker by registering secret-shaped resolved service-environment values with the standard tooling/build event redactors; bare env-file secrets are now masked in task-detail output while ordinary values remain visible. Restored persisted-cache regression coverage for the refactored service-level env-file path.
+- Review notes (deferred/rejected): rejected the tooling-cache finding because dynamic tooling replans through the content-sensitive app-plan path; rejected redacting local per-step build transcripts or their TTY full-tail view because §6.13.6/§8.9.2 explicitly define that owner-only diagnostic surface as unredacted and excluded from telemetry, guide transcripts, and NDJSON; rejected extending the fix to tooling JSON/MCP results because machine envelopes are a separate §8.11 contract and the same pre-existing gap already applies to service-level env files; rejected a token guide assertion because the host-safe guide surface exposes authored config while focused planner tests prove derived environment precedence.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, the focused env-overrides guide, and focused planner/Landofile/schema/tooling/build/redaction test files passed with positive counts.
+- **Learnings for future iterations:**
+  - Event publishers that can expose provider output must seed the canonical redactor from secret-shaped values in the resolved app plan; process environment and SecretStore values alone do not cover Landofile env files.
+---
+
+## 2026-08-14 11:10 CDT - US-562 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a two-service app with top-level `env_file`, and confirmed shared values, service-level overrides, missing-file fail-closed remediation, plan-cache refresh after env-file edits, and no secret leak in `info`/`logs`/`config`. Adjacent service-level `env_file` still applied after start. Destroyed both apps.
+- **Out-of-scope finding:** `lando apps:list --format=json` returned `{"apps":[]}` while `lando info` in `/tmp/us562-verify` and `/tmp/us562-service-env` showed both apps running. Suspected apps-list/applied-app registry, not this story's planner/env_file path.
+---
+
+## 2026-08-14 17:18 CDT - Babysit
+- PR: #739 https://github.com/AaronFeledy/core4/pull/739
+- CI outcome: pass
+- Review feedback: fixed (bumped stock PHP libpq-dev pin to 15.19 after Debian security's libpq5=15.19 broke the image build and Drupal reader-path e2e)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-14 19:32 CDT - US-563
+- App-wide tooling defaults now fill service, working directory, environment, and variables beneath authored, included, recipe-materialized, and service-type-contributed tasks. Same-tier service contributions resolve deterministically, and the contributing service is the default target.
+- Effective tooling is attached privately to fresh and cached app plans, participates in cache identity, feeds command-index refresh, and drives runtime invocation without widening the public AppPlan contract. The executable guide shows inherited defaults and task-local overrides.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts passed; 606 focused and adjacent tests plus the generated guide scenario passed; compiled CLI verification passed in lando4-dev and its app-specific caches were removed.
+- **Learnings for future iterations:**
+  - Resolve service-type tooling before applying app defaults; folding defaults into authored tasks earlier can accidentally outrank values contributed later.
+  - Keep effective tooling as engine-private plan provenance until the compiled task graph needs its own persisted payload; public AppPlan remains provider-realization data.
+---
+
+## 2026-08-14 21:16 CDT - US-563 Review
+- Fixed service-derived command-cache invalidation, fail-closed cache-miss discovery for service apps, locale-independent command compilation, and script fallback without changing effective-tooling precedence. Tooling env secrets now redact from task events, CLI plain/JSON results, and MCP envelopes, including numeric and boolean values after normalization.
+- Review notes (deferred/rejected): rejected requiring effective tooling on arbitrary externally constructed AppPlan objects because the canonical fresh/cache-hit planner path owns and restores the private sidecar; rejected fingerprinting live linked-plugin source edits because managed plugin mutations invalidate app tooling caches and direct edits already require `app:cache:refresh`; rejected expanding the guide to assert every inherited field because the executable scenario proves applied/overridden defaults while focused compiler/runtime tests cover `dir`, `env`, and `vars`.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, public transcripts, the focused executable guide, and 163 focused schema/Landofile/planner/cache/tooling/renderer/MCP tests passed.
+- **Learnings for future iterations:**
+  - Result-scoped redaction tokens must cross every imperative shell, including MCP progress and result envelopes; event-only redaction is not enough.
+  - Script fallbacks must preserve the same effective-tooling-over-script precedence as command-index compilation, even when planning fails.
+---
+
+## 2026-08-14 21:48 CDT - US-563 Drift Audit
+- Trigger: 2 cycles, 1811 changed lines, 9 commits
+- Category 4: One internal planner type remained exported without a production or test consumer.
+- Category 5: Retained the US-562 pass-state carry-forward because `origin/main` already contains the merged US-562 implementation.
+- Category 6: The historical compiled-CLI claim was not rerun under this audit's host-safety constraints and remains unverified here.
+- Fixed: Removed the dead type export; retained the package seams, fail-closed cache-miss path, and boundary-specific redaction after importer and call-path review.
+- Split/excise decisions: None; every added public schema and effective-tooling surface traces to US-563 acceptance criteria.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 256 changed-test spot checks, the focused 4-test post-fix rerun, and the generated guide scenario passed.
+---

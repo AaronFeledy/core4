@@ -1,4 +1,5 @@
-import { Effect, Layer } from "effect";
+import { describe, expect, test } from "bun:test";
+import { Effect, Layer, Schema } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -75,5 +76,43 @@ describe("runWithRendererHandling redaction", () => {
 
     expect(io.stderr()).toContain("[redacted]");
     expect(io.stderr()).not.toContain("outersecret");
+  });
+
+  test("redacts exact result tokens from plain command output", async () => {
+    const io = createBufferedRendererIO();
+    const secret = "bare-tooling-password";
+
+    await runWithRendererHandling(Effect.succeed({ stdout: secret, redactionTokens: [secret] }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      redactionTokens: (result) => result.redactionTokens,
+      render: (result) => result.stdout,
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+
+    expect(io.stdout()).toContain("[redacted]");
+    expect(io.stdout()).not.toContain(secret);
+  });
+
+  test("redacts exact result tokens from JSON command output", async () => {
+    const io = createBufferedRendererIO();
+    const secret = "bare-tooling-token";
+
+    await runWithRendererHandling(Effect.succeed({ stdout: secret, redactionTokens: [secret] }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "json",
+      resultSchema: Schema.Struct({ stdout: Schema.String }),
+      io,
+      redactionTokens: (result) => result.redactionTokens,
+      render: (result) => result.stdout,
+      formatError: String,
+      setExitCode: () => undefined,
+    });
+
+    expect(io.stdout()).toContain("[redacted]");
+    expect(io.stdout()).not.toContain(secret);
   });
 });

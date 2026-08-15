@@ -46,6 +46,7 @@
     "./service": "./src/service.ts",
     "./template-render": "./src/template-render.ts",
     "./tooling-beta": "./src/tooling-beta.ts",
+    "./tooling-defaults": "./src/tooling-defaults.ts",
     "./tooling-fragment": "./src/tooling-fragment.ts",
     "./tooling-include-entries": "./src/tooling-include-entries.ts",
     "./tooling-include-provenance": "./src/tooling-include-provenance.ts",

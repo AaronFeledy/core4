@@ -10,6 +10,7 @@ import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry }
 import { CacheError } from "@lando/sdk/errors";
 
 import { appCommandCachePath } from "@lando/engine/cache/paths";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -94,20 +95,26 @@ describe("lando app:cache:refresh", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-cache-root-")));
 
       try {
-        const plan: AppPlan = {
-          id: AppId.make("test-app-cache"),
-          name: "test-app-cache",
-          slug: "test-app-cache",
-          root: AbsolutePath.make(dir),
-          provider: providerId,
-          services: {},
-          routes: [],
-          networks: [],
-          stores: [],
-          fileSync: [],
-          metadata,
-          extensions: {},
-        };
+        const plan: AppPlan = attachEffectiveTooling(
+          {
+            id: AppId.make("test-app-cache"),
+            name: "test-app-cache",
+            slug: "test-app-cache",
+            root: AbsolutePath.make(dir),
+            provider: providerId,
+            services: {},
+            routes: [],
+            networks: [],
+            stores: [],
+            fileSync: [],
+            metadata,
+            extensions: {},
+          },
+          {
+            hello: { cmds: ["echo hi"], description: "say hi" },
+            serviceOnly: { cmd: "service-command", service: "web", description: "from service type" },
+          },
+        );
 
         let selectCalls = 0;
         const layer = Layer.mergeAll(
@@ -115,7 +122,7 @@ describe("lando app:cache:refresh", () => {
             discover: Effect.succeed({
               name: "test-app-cache",
               services: {},
-              tooling: { hello: { cmds: "echo hi", description: "say hi" } },
+              tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
             }),
           }),
           Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
@@ -142,10 +149,10 @@ describe("lando app:cache:refresh", () => {
 
         expect(selectCalls).toBe(0);
         expect(result.app).toBe("test-app-cache");
-        expect(result.commandsCompiled).toBe(1);
+        expect(result.commandsCompiled).toBe(2);
         expect(result.appCommandCachePath).toMatch(/apps\/test-app-cache-[a-f0-9]{12}\/commands\.bin$/u);
         expect(result.pluginCommandCachePath).toContain("plugin-command-cache.bin");
-        expect(renderAppCacheRefreshResult(result)).toBe("refreshed: test-app-cache (1 command)");
+        expect(renderAppCacheRefreshResult(result)).toBe("refreshed: test-app-cache (2 commands)");
 
         const appStat = await stat(result.appCommandCachePath ?? "");
         expect(appStat.size).toBeGreaterThan(0);
@@ -185,7 +192,7 @@ describe("lando app:cache:refresh", () => {
             discover: Effect.succeed({
               name: "strict-app-cache",
               services: {},
-              tooling: { hello: { cmds: "echo hi" } },
+              tooling: { hello: { cmds: ["echo hi"] } },
             }),
           }),
           Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),

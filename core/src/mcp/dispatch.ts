@@ -16,7 +16,7 @@ import { Cause, DateTime, Effect, Option } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/events";
-import { REDACTED, type Redactor } from "@lando/sdk/secrets";
+import { REDACTED, type Redactor, createRedactor } from "@lando/sdk/secrets";
 
 import type { CommandResultOutcome } from "../cli/result-encode";
 import { buildCommandResultEnvelope } from "../cli/result-encode";
@@ -132,10 +132,7 @@ const envelopeTag = (envelope: unknown): string | undefined => {
   return typeof tag === "string" ? tag : undefined;
 };
 
-const encodeProgressFrame = (
-  frame: unknown,
-  deps: McpDispatchDeps,
-): Effect.Effect<unknown, McpTransportError> =>
+const encodeProgressFrame = (frame: unknown, redactor: Redactor): Effect.Effect<unknown, McpTransportError> =>
   Effect.try({
     try: () => projectMcpProgressFrame(frame),
     catch: (cause) =>
@@ -145,19 +142,37 @@ const encodeProgressFrame = (
             message: "MCP progress payload could not be safely inspected.",
             remediation: "Emit a plain stdout or stderr frame with string chunk and service fields.",
           }),
-  }).pipe(
-    Effect.flatMap((projected) => redactBoundedJsonValue(projected, deps.redactor, "MCP progress payload")),
-  );
+  }).pipe(Effect.flatMap((projected) => redactBoundedJsonValue(projected, redactor, "MCP progress payload")));
 
 const emitProgressFrame = (
   deps: McpDispatchDeps,
   frame: McpProgressFrame,
+  redactor: Redactor,
 ): Effect.Effect<void, McpTransportError> =>
   deps.notify === undefined
     ? Effect.void
-    : encodeProgressFrame(frame, deps).pipe(
+    : encodeProgressFrame(frame, redactor).pipe(
         Effect.flatMap((encoded) => deps.notify?.(encoded) ?? Effect.void),
       );
+
+const withResultTokens = (redactor: Redactor, tokens: ReadonlyArray<string>): Redactor => {
+  if (tokens.length === 0) return redactor;
+  const resultRedactor = createRedactor("secrets", { values: tokens });
+  const redactStringBounded = redactor.redactStringBounded;
+  const resultRedactStringBounded = resultRedactor.redactStringBounded;
+  return {
+    redactString: (text) => resultRedactor.redactString(redactor.redactString(text)),
+    ...(redactStringBounded === undefined || resultRedactStringBounded === undefined
+      ? {}
+      : {
+          redactStringBounded: (text: string, maxBytes: number) => {
+            const redacted = redactStringBounded(text, maxBytes);
+            return redacted === undefined ? undefined : resultRedactStringBounded(redacted, maxBytes);
+          },
+        }),
+    redactValue: (value) => resultRedactor.redactValue(redactor.redactValue(value)),
+  };
+};
 
 /**
  * Dispatch a single MCP tool call. Resolves to the redacted command envelope, or
@@ -246,18 +261,22 @@ export const dispatchTool = (
 
       const rawOutcome = yield* deps.execute(entry, runInput);
       const outcome = yield* inspectMcpCommandOutcome(rawOutcome);
+      const redactor = withResultTokens(
+        deps.redactor,
+        outcome._tag === "success" ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : [],
+      );
       if (outcome._tag === "success") {
         for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
-          yield* emitProgressFrame(deps, frame);
+          yield* emitProgressFrame(deps, frame, redactor);
         }
       }
       const encodedEnvelope = yield* buildCommandResultEnvelope({
         command: entry.spec.id,
         resultSchema: entry.spec.resultSchema,
         outcome,
-        redactor: deps.redactor,
+        redactor,
       });
-      const envelope = yield* redactBoundedJsonValue(encodedEnvelope, deps.redactor, "MCP tool result");
+      const envelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
       const ok = (envelope as { readonly ok?: unknown }).ok === true;
 
       yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));

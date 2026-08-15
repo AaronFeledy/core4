@@ -602,7 +602,20 @@ export const writePluginCommandCache = (
 export const invalidatePluginCommandCache = (
   options: { readonly cacheRoot?: string } = {},
 ): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-    await rm(pluginCommandCachePath(cacheRoot), { force: true });
-  }).pipe(Effect.catchAll(() => Effect.void));
+  Effect.tryPromise({
+    try: async () => {
+      const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+      await rm(pluginCommandCachePath(cacheRoot), { force: true });
+      const appsRoot = join(cacheRoot, "apps");
+      const entries = await readdir(appsRoot, { withFileTypes: true }).catch((cause) => {
+        if (isMissingFile(cause)) return [];
+        throw cause;
+      });
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isDirectory() && entry.name.startsWith("tooling-"))
+          .map((entry) => rm(join(appsRoot, entry.name), { recursive: true, force: true })),
+      );
+    },
+    catch: () => undefined,
+  }).pipe(Effect.ignore);

@@ -2,18 +2,22 @@ import type { LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sd
 
 import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import type { EffectiveTooling } from "../planner/effective-tooling.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
 
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
+const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
-export const compileToolingCommands = (landofile: LandofileShape): ReadonlyArray<CommandIndexEntry> => {
-  const tooling = landofile.tooling;
-  if (tooling === undefined) return [];
+export const compileToolingCommands = (
+  landofile: LandofileShape,
+  effectiveTooling: EffectiveTooling | undefined = landofile.tooling,
+): ReadonlyArray<CommandIndexEntry> => {
+  if (effectiveTooling === undefined) return [];
   const internal = new Set(getInternalToolingTasks(landofile));
-  return Object.entries(tooling)
-    .sort(([a], [b]) => a.localeCompare(b))
+  return Object.entries(effectiveTooling)
+    .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, task]) => ({
       id: `app:${name}`,
       summary: summaryForTask(task),
@@ -36,8 +40,9 @@ export const compileBunShellScriptCommands = (
 export const compileAppCommands = (
   landofile: LandofileShape,
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
+  effectiveTooling?: EffectiveTooling,
 ): ReadonlyArray<CommandIndexEntry> => {
-  const toolingEntries = compileToolingCommands(landofile);
+  const toolingEntries = compileToolingCommands(landofile, effectiveTooling);
   const seen = new Set(toolingEntries.map((entry) => entry.id));
   const merged: CommandIndexEntry[] = [...toolingEntries];
   for (const entry of compileBunShellScriptCommands(scripts)) {
@@ -45,7 +50,7 @@ export const compileAppCommands = (
     seen.add(entry.id);
     merged.push(entry);
   }
-  return merged.sort((a, b) => a.id.localeCompare(b.id));
+  return merged.sort((a, b) => compareOrdinal(a.id, b.id));
 };
 
 export const compilePluginCommands = (
