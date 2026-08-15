@@ -45,7 +45,9 @@ describe("ToolManifest", () => {
       "linux-x64/cli",
       "win32-x64/cli",
     ]);
-    expect(manifest.artifacts["linux-x64/cli"].installName).toBe("mutagen");
+    const cliArtifact = manifest.artifacts["linux-x64/cli"];
+    if (cliArtifact === undefined) throw new Error("missing linux-x64/cli artifact");
+    expect(cliArtifact.installName).toBe("mutagen");
   });
 
   test("rejects schemaVersion other than 1", () => {
