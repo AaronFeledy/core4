@@ -12,6 +12,8 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type LandofileShape,
+  LogSourceId,
   PluginName,
   PortablePath,
   type ProviderCapabilities,
@@ -21,6 +23,7 @@ import {
 import { CacheService } from "@lando/core/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
+  type AppPlanCacheKeyInput,
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
   readCachedAppPlan,
@@ -308,7 +311,7 @@ describe("CacheServiceLive", () => {
   });
 
   test("derives app-plan cache keys from Landofile, plugin, provider, and app-root inputs", () => {
-    const base = {
+    const base: AppPlanCacheKeyInput = {
       appRoot: "/workspace/cache-plan",
       landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
       providerCapabilities,
@@ -317,6 +320,7 @@ describe("CacheServiceLive", () => {
           name: PluginName.make("@lando/node"),
           version: "1.0.0",
           api: 4 as const,
+          bootstrap: "app",
           contributes: { serviceTypes: ["node"] },
         },
       ],
@@ -331,7 +335,7 @@ describe("CacheServiceLive", () => {
         landofile: {
           name: "cache-plan",
           services: { [ServiceName.make("web")]: { type: "node", environment: { NODE_ENV: "test" } } },
-        },
+        } satisfies LandofileShape,
       }),
     ).not.toBe(key);
     expect(
@@ -342,10 +346,19 @@ describe("CacheServiceLive", () => {
           services: {
             [ServiceName.make("web")]: {
               type: "node",
-              logs: [{ id: "app", path: "/app/var/log/app.log", stream: "stderr" }],
+              logs: [
+                {
+                  id: LogSourceId.make("app"),
+                  path: AbsolutePath.make("/app/var/log/app.log"),
+                  stream: "stderr",
+                  required: false,
+                  strategy: "follow",
+                  timestamps: false,
+                },
+              ],
             },
           },
-        },
+        } satisfies LandofileShape,
       }),
     ).not.toBe(key);
     expect(
@@ -356,6 +369,7 @@ describe("CacheServiceLive", () => {
             name: PluginName.make("@lando/node"),
             version: "1.0.1",
             api: 4 as const,
+            bootstrap: "app",
             contributes: { serviceTypes: ["node"] },
           },
         ],
