@@ -188,12 +188,22 @@ describe("GlobalAppServiceLive", () => {
       >;
       const services = parsed.services as Record<
         string,
-        { readonly image?: string; readonly ports?: ReadonlyArray<string> }
+        {
+          readonly image?: string;
+          readonly ports?: ReadonlyArray<{
+            readonly target: number;
+            readonly published?: number;
+            readonly protocol?: "tcp" | "udp";
+          }>;
+        }
       >;
 
       expect(result.serviceIds).toEqual(["traefik"]);
       expect(services.traefik?.image).toBe("traefik:v3");
-      expect(services.traefik?.ports).toEqual(["80:80", "443:443"]);
+      expect(services.traefik?.ports).toEqual([
+        { target: 80, published: 80, protocol: "tcp" },
+        { target: 443, published: 443, protocol: "tcp" },
+      ]);
       expect(Schema.decodeUnknownSync(LandofileShape)(parsed).runtime).toBe(4);
     });
   });
