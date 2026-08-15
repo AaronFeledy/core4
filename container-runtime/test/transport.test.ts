@@ -47,7 +47,7 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 };
 
 class WaitingConnection extends FakeConnection {
-  async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+  override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
     yield bytes("HTTP/1.1 200 OK\r\n\r\n");
     while (!this.destroyed) await sleep(1);
   }
