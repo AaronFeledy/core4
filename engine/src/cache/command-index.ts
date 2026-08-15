@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 
+import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import {
@@ -53,6 +54,7 @@ export interface AppCommandIndexPayload {
   readonly sourceFile: string;
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
+  readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;

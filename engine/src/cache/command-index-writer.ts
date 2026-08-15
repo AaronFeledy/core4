@@ -10,6 +10,10 @@ import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
+import {
+  type LandofileReferencedFile,
+  getLandofileReferencedFiles,
+} from "@lando/landofile/load-expression-provenance";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
 import {
   type VersionConstraintEntry,
@@ -59,6 +63,30 @@ const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
   return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+};
+
+const referencedFilesEqual = (
+  left: ReadonlyArray<LandofileReferencedFile> | undefined,
+  right: ReadonlyArray<LandofileReferencedFile>,
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const referencedFilesFresh = async (
+  files: ReadonlyArray<LandofileReferencedFile> | undefined,
+): Promise<boolean> => {
+  if (!Array.isArray(files)) return false;
+  const results = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const bytes = await readFile(file.absolutePath);
+        return (
+          bytes.byteLength === file.size && createHash("sha256").update(bytes).digest("hex") === file.sha256
+        );
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return results.every(Boolean);
 };
 
 const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
@@ -300,6 +328,7 @@ const writeAppCommandCacheTask = async (
   const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+  const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
   const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
 
   const cached = await readAppCommandCacheTask({
@@ -315,6 +344,7 @@ const writeAppCommandCacheTask = async (
       sourceFile: filePath,
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
+      sourceReferencedFiles,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
       versionConstraints,
@@ -333,6 +363,7 @@ const writeAppCommandCacheTask = async (
     sourceFile: filePath,
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
+    sourceReferencedFiles,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     versionConstraints,
@@ -434,6 +465,8 @@ const readAppCommandCacheTask = async (
     if (payload.sourceFile !== filePath) return null;
     const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
     if (!pathsEqual(payload.sourceLocalIncludePaths, sourceLocalIncludePaths)) return null;
+    if (!referencedFilesEqual(payload.sourceReferencedFiles, getLandofileReferencedFiles(options.landofile)))
+      return null;
     if (payload.sourceContentHash !== (await sourceContentHash(source, appRoot, sourceLocalIncludePaths)))
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
@@ -477,6 +510,7 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (payload.landoVersion !== CORE_VERSION) return null;
     if (payload.sourceFile !== source.filePath) return null;
     if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
+    if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
     if (
       payload.sourceContentHash !==
       (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths))

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -19,6 +20,7 @@ import {
 } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath, pluginCommandCachePath } from "@lando/engine/cache/paths";
 import { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
+import { rememberLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
@@ -236,6 +238,47 @@ describe("writePluginCommandCacheStrict modules default", () => {
 });
 
 describe("writeAppCommandCacheStrict command alias policy", () => {
+  test("invalidates cached aliases when a referenced file changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "referenced-alias-app");
+      const targetPath = join(appRoot, "alias-target.txt");
+      const initialTarget = "app:known";
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: referenced-alias-app\n");
+      await writeFile(targetPath, initialTarget);
+      const targetStats = await stat(targetPath);
+      const landofile = rememberLandofileReferencedFiles(
+        { name: "referenced-alias-app", commandAliases: { custom: { hi: initialTarget } } },
+        [
+          {
+            absolutePath: targetPath,
+            mtimeMs: targetStats.mtimeMs,
+            size: targetStats.size,
+            sha256: createHash("sha256").update(initialTarget).digest("hex"),
+          },
+        ],
+      );
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({
+          landofile,
+          entries: [{ id: "app:known", summary: "Known task", hidden: false }],
+          cwd: appRoot,
+          cacheRoot,
+        }),
+      );
+      expect(
+        await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot })),
+      ).not.toBeNull();
+
+      // When
+      await writeFile(targetPath, "app:other");
+
+      // Then
+      expect(await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }))).toBeNull();
+    });
+  });
+
   test("persists a normalized policy on a fresh app command cache", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
