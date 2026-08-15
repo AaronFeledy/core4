@@ -222,6 +222,8 @@ describe("public transcript redaction (US-249)", () => {
     const redacted = redactPublicTranscript(tx, posixEnv);
 
     const f = redacted.frames[0];
+    expect(f).toBeDefined();
+    if (f === undefined) throw new Error("expected a redacted frame");
     expect(f.displayText).toContain("<HOME>");
     expect(f.displayText).toContain("[redacted]");
     expect(f.resultSummary).toContain("<HOST>");
@@ -270,6 +272,8 @@ describe("public transcript redaction (US-249)", () => {
     const redacted = redactPublicTranscript(tx, posixEnv);
 
     const f = redacted.frames[0];
+    expect(f).toBeDefined();
+    if (f === undefined) throw new Error("expected a redacted frame");
     expect(f.displayText).toContain("<HOME>");
     expect(f.displayText).toContain("<PORT>");
     expect(f.displayText).toContain("[redacted]");
