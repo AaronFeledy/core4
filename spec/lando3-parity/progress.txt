@@ -155,3 +155,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Keep temporary test mutations out of the working tree after verification; equivalent fixture swaps can pass while leaving test names misleading and blocking publication.
 ---
+
+## 2026-08-15 16:56 CDT - US-564 Review
+- Fixed registered bare aliases such as `scratch` bypassing app remapping and disablement, and escaped terminal controls in unknown-target close-match remediation without changing the raw tagged-error data.
+- Blocking: returned the story to Build because `.lando.ts` and templated Landofiles are accepted alias sources but the cache-only router unconditionally rejects their command caches, violating "Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap)."
+- Review notes (deferred/rejected): rejected fuzzy-match limits and bounded referenced-file hashing as broader local-project cache hardening outside the command-alias acceptance criteria; rejected weakening cache freshness by trusting dynamic source bytes because environment- or template-derived output would become stale. Cursor Bugbot remained unavailable because the Cursor account has an unpaid invoice.
+- Guide-Coverage-Skip: The existing alias guide already documents registered-alias overrides; focused dispatch tests cover the `scratch` regression.
+- Verification: typecheck, lint, explicit-base guide drift, and 255 focused alias, cache, router, help, schema, and Landofile tests passed with positive counts.
+- **Learnings for future iterations:**
+  - Cache-only command routing for dynamic Landofile forms needs a non-secret fingerprint of every permitted evaluation and render input; source-byte hashes alone cannot prove the resolved alias policy is fresh.
+---
