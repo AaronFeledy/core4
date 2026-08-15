@@ -32,7 +32,7 @@ import {
 import { dispatchAppCommand } from "./dispatch-app";
 import { dispatchAppsCommand } from "./dispatch-apps";
 import { dispatchMetaCommand } from "./dispatch-meta";
-import { routeDynamicTooling, routeResolvedTooling } from "./dynamic-tooling";
+import { renderAliasResolutionFailure, routeResolvedTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
@@ -47,17 +47,6 @@ export { compiledCommandInputFromArgv } from "./compiled-input";
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export { parseScratchStartArgv } from "./dispatch-apps";
 
-const renderAliasResolutionFailure = async (error: unknown): Promise<void> => {
-  const commandId = "cli:alias-resolution";
-  setActiveCommandId(commandId);
-  await renderPreCommandFailure({
-    commandId,
-    error,
-    rendererMode: activeRendererMode,
-    resultFormat: activeResultFormat,
-  });
-};
-
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
     await runHostProxyWorkerProcess();
@@ -71,7 +60,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     !isReservedNamespaceHead(rawHead)
-      ? await Effect.runPromise(Effect.either(resolveToolingRoute({ argv: rawArgv })))
+      ? await Effect.runPromise(Effect.either(resolveToolingRoute(rawHead)))
       : undefined;
   const passthroughAliasRoute =
     passthroughAliasResolution?._tag === "Right" &&
@@ -81,11 +70,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       ? passthroughAliasResolution.right
       : undefined;
   const isBunOrXPassthrough =
-    rawHead === "bun" ||
     rawHead === "meta:bun" ||
-    rawHead === "x" ||
     rawHead === "meta:x" ||
-    passthroughAliasRoute !== undefined;
+    passthroughAliasRoute !== undefined ||
+    ((rawHead === "bun" || rawHead === "x") &&
+      passthroughAliasResolution?._tag === "Right" &&
+      passthroughAliasResolution.right._tag === "not-tooling");
 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
@@ -136,11 +126,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
   if (builtInCommand === undefined && !isReservedNamespaceHead(argv[0])) {
+    const argvTail = argv.slice(1);
     let route: ToolingRoute;
     if (passthroughAliasRoute !== undefined) {
       route = passthroughAliasRoute;
     } else {
-      const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
+      const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0])));
       if (aliasResolution._tag === "Left") {
         await renderAliasResolutionFailure(aliasResolution.left);
         return;
@@ -149,7 +140,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
-      argv = [route.commandId, ...route.argv];
+      argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
       await renderPreCommandFailure({
@@ -159,7 +150,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         resultFormat: activeResultFormat,
       });
       return;
-    } else if (await routeResolvedTooling(route)) {
+    } else if (await routeResolvedTooling(route, argvTail)) {
       return;
     }
     if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
@@ -184,8 +175,6 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     builtInCommand === undefined
       ? findCommand(argv[0] ?? "")
       : [builtInCommand.spec.id, builtInCommand.command];
-
-  if (found === undefined && !isReservedNamespaceHead(head) && (await routeDynamicTooling(argv))) return;
 
   if (
     !passthroughHasPayload &&

@@ -29,39 +29,33 @@ export type ToolingRoute =
       readonly _tag: "built-in";
       readonly commandId: string;
       readonly entry: BuiltInCommandEntry;
-      readonly argv: ReadonlyArray<string>;
     }
   | { readonly _tag: "alias-disabled"; readonly token: string }
   | {
       readonly _tag: "cache-miss";
       readonly commandId: string;
       readonly name: string;
-      readonly argv: ReadonlyArray<string>;
       readonly remediation: string;
     }
   | {
       readonly _tag: "unknown-tooling";
       readonly commandId: string;
       readonly name: string;
-      readonly argv: ReadonlyArray<string>;
       readonly remediation: string;
     }
   | {
       readonly _tag: "tooling";
       readonly commandId: string;
       readonly name: string;
-      readonly argv: ReadonlyArray<string>;
     }
   | {
       readonly _tag: "bun-script";
       readonly commandId: string;
       readonly name: string;
-      readonly argv: ReadonlyArray<string>;
       readonly appRoot: string;
     };
 
 export interface ResolveToolingRouteOptions {
-  readonly argv: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
 }
@@ -92,10 +86,10 @@ export const toolingName = (token: string): string | undefined => {
 };
 
 export const resolveToolingRoute = (
-  options: ResolveToolingRouteOptions,
+  token: string | undefined,
+  options: ResolveToolingRouteOptions = {},
 ): Effect.Effect<ToolingRoute, CacheError | CommandAliasConflictError | CommandAliasTargetError> =>
   Effect.gen(function* () {
-    const token = options.argv[0];
     if (token === undefined) return { _tag: "not-tooling" } as const;
     if (canonicalBuiltIn(token) !== undefined) return { _tag: "not-tooling" } as const;
     // Flags are never tooling tokens; bail before app-root/cache so enabled:false
@@ -110,7 +104,6 @@ export const resolveToolingRoute = (
       cwd: appRoot,
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
-    const commandArgv = options.argv.slice(1);
     if (cache === null) {
       const registeredAlias = resolveBuiltInCommand(token);
       if (registeredAlias !== undefined) {
@@ -118,7 +111,6 @@ export const resolveToolingRoute = (
           _tag: "built-in",
           commandId: registeredAlias.spec.id,
           entry: registeredAlias,
-          argv: commandArgv,
         } as const;
       }
       if (name === undefined) return { _tag: "not-tooling" } as const;
@@ -127,7 +119,6 @@ export const resolveToolingRoute = (
         _tag: "cache-miss",
         commandId,
         name,
-        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -140,11 +131,10 @@ export const resolveToolingRoute = (
           _tag: "bun-script",
           commandId: token,
           name: canonicalName,
-          argv: commandArgv,
           appRoot,
         } as const;
       }
-      return { _tag: "tooling", commandId: token, name: canonicalName, argv: commandArgv } as const;
+      return { _tag: "tooling", commandId: token, name: canonicalName } as const;
     }
 
     const policy = cache.aliasPolicy;
@@ -161,7 +151,6 @@ export const resolveToolingRoute = (
           _tag: "built-in",
           commandId: custom,
           entry: builtInTarget,
-          argv: commandArgv,
         } as const;
       }
       const customEntry = cache.entries.find((candidate) => candidate.id === custom);
@@ -171,7 +160,6 @@ export const resolveToolingRoute = (
           _tag: "unknown-tooling",
           commandId: custom,
           name: customName,
-          argv: commandArgv,
           remediation: CACHE_REMEDIATION,
         } as const;
       if (customEntry.source === "bun-script") {
@@ -179,7 +167,6 @@ export const resolveToolingRoute = (
           _tag: "bun-script",
           commandId: custom,
           name: customName,
-          argv: commandArgv,
           appRoot,
         } as const;
       }
@@ -187,7 +174,6 @@ export const resolveToolingRoute = (
         _tag: "tooling",
         commandId: custom,
         name: customName,
-        argv: commandArgv,
       } as const;
     }
 
@@ -199,7 +185,6 @@ export const resolveToolingRoute = (
         _tag: "built-in",
         commandId: registeredAlias.spec.id,
         entry: registeredAlias,
-        argv: commandArgv,
       } as const;
     }
 
@@ -211,7 +196,6 @@ export const resolveToolingRoute = (
         _tag: "unknown-tooling",
         commandId,
         name,
-        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -221,11 +205,10 @@ export const resolveToolingRoute = (
         _tag: "bun-script",
         commandId,
         name,
-        argv: commandArgv,
         appRoot,
       } as const;
     }
-    return { _tag: "tooling", commandId, name, argv: commandArgv } as const;
+    return { _tag: "tooling", commandId, name } as const;
   });
 
 export const toolingRouteError = (
