@@ -25,6 +25,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
 - Planner-read file content outside Landofile expression provenance must contribute source/hash metadata to `deriveAppPlanCacheKey`; embedding parsed values in a service type's normalized config is not a reliable cache identity.
+- App-scoped command-routing policy belongs in the fresh app-command cache; native dispatch and help consume that cache without bootstrapping, while canonical command ids bypass alias policy.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -81,4 +82,30 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Fixed: Removed the dead type export; retained the package seams, fail-closed cache-miss path, and boundary-specific redaction after importer and call-path review.
 - Split/excise decisions: None; every added public schema and effective-tooling surface traces to US-563 acceptance criteria.
 - Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 256 changed-test spot checks, the focused 4-test post-fix rerun, and the generated guide scenario passed.
+---
+
+## 2026-08-14 23:42 CDT - Babysit
+- PR: #741 https://github.com/AaronFeledy/core4/pull/741
+- CI outcome: pass
+- Review feedback: fixed (refresh tooling caches before start/restart/rebuild so planner-derived commands like drupal-scaffold exist after start; redact app-plan secrets from tooling results)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-15 01:10 CDT - US-564
+- Per-app `commandAliases` now remap or disable top-level aliases through the shared native dispatcher while preserving canonical command ids, canonical JSON identity, source/compiled parity, and active app-context help.
+- Alias policy is normalized into the fresh app-command cache and its semantic fingerprint; canonical/reserved collisions and unknown targets fail with tagged remediation. The executable defaults-and-aliases guide now exercises a custom alias and its canonical form.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 502 focused and adjacent tests, and both generated guide scenarios passed; automated source/compiled dispatch and relocated-binary CLI checks passed in `lando4-dev`, with QA resources removed.
+- **Learnings for future iterations:**
+  - Bare aliases handled by entry-point fast paths must flow through the shared dispatcher or app remapping and disablement are bypassed; keep fast paths only for reserved switches and canonical forms.
+  - Validate reserved namespace heads without blocking explicit app remaps of already-registered colon aliases such as `scratch:gc`.
+---
+
+## 2026-08-15 11:30 CDT - US-564 Review
+- Fixed import-time dispatcher crashes, refresh-time alias validation, app-aware preservation of level-none cold paths, target-aware Bun/x passthrough, pre-command alias failures, flag-shaped aliases, bounded fuzzy suggestions, terminal-control escaping, and load-expression provenance for fresh command caches. Added real compiled-binary coverage for app overrides.
+- Review notes (deferred/rejected): rejected graduating tooling-task top-level aliases and executable plugin-command aliases because prior Beta decisions defer those surfaces; rejected global-config alias behavior because US-564 is explicitly per-app. Cursor Bugbot was unavailable because the Cursor account has an unpaid invoice.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, the focused executable guide, 44 cache/router tests, and sandboxed source dispatch/cold-path checks passed. A host-built current compiled binary run inside `lando4-dev` resolved the custom `start` alias to canonical `app:greet` in its JSON envelope; the sandbox's Bun 1.3.14 test-runner path crashed before the compiled test body, so that runner invocation remains blocked by the runtime rather than deferred as product coverage.
+- **Learnings for future iterations:**
+  - Alias-sensitive level-none forms need an Effect-free app-context probe; importing Landofile discovery violates the cold-path boundary even when behavior is correct.
+  - Fresh app-command caches must fingerprint Landofile `load()`/`import()` provenance whenever policy or tooling can be expression-derived.
 ---
