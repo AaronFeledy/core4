@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import {
@@ -19,7 +20,7 @@ describe("HostProxyRequest", () => {
     expect(value._tag).toBe("runLando");
     if (value._tag === "runLando") {
       expect(value.argv).toEqual(["open", "--print"]);
-      expect(value.cwd).toBe("/app");
+      expect(value.cwd).toBe(AbsolutePath.make("/app"));
       expect(value.tty).toBe(false);
     }
   });
@@ -56,7 +57,9 @@ describe("HostProxyRequest", () => {
   });
 
   test("union membership is exactly openUrl, openPath, runLando, runBun", () => {
-    expect([...HOST_PROXY_REQUEST_TAGS].sort()).toEqual(["openPath", "openUrl", "runBun", "runLando"].sort());
+    expect([...HOST_PROXY_REQUEST_TAGS].sort().join(",")).toBe(
+      ["openPath", "openUrl", "runBun", "runLando"].sort().join(","),
+    );
   });
 
   test("rejects a runLando request missing cwd", () => {
@@ -97,7 +100,7 @@ describe("HostProxyResponse", () => {
 
 describe("HostProxyErrorCode", () => {
   test("accepts the documented codes", () => {
-    for (const code of ["command-not-allowed", "allowlist-conflict", "scheme-not-allowed"]) {
+    for (const code of ["command-not-allowed", "allowlist-conflict", "scheme-not-allowed"] as const) {
       expect(Schema.decodeUnknownSync(HostProxyErrorCode)(code)).toBe(code);
     }
   });
