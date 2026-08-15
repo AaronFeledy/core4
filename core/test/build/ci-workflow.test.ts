@@ -42,12 +42,23 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
+  test("runs deterministic cross-file isolation regressions in one Bun process", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const isolationJob = findIndentedBlock(jobs, "test-isolation-linux-x64", 2);
+
+    // Then
+    expect(isolationJob).toContain("      - name: Run cross-file isolation regressions");
+    expect(isolationJob).toContain("        run: bun run test:unit:isolation");
+  });
+
   test("regenerates derived sources before every source-consuming CI job", async () => {
     // Given / When
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(20);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(21);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
