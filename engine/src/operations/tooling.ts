@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   AppPlanner,
   type ConfigService,
@@ -44,8 +44,13 @@ export interface RunToolingOptions {
   readonly renderProgress?: boolean;
 }
 
-export type RunToolingResult = ToolingResult;
+export type RunToolingResult = ToolingResult & {
+  readonly redactionTokens?: ReadonlyArray<string>;
+};
 export type { ToolingResult };
+
+export const runToolingRedactionTokens = (result: RunToolingResult): ReadonlyArray<string> =>
+  result.redactionTokens ?? [];
 
 type RunToolingError = ToolingError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 
@@ -173,8 +178,32 @@ export const runTooling = (
         ? yield* loadUserLandofile(landofileService)
         : yield* loadUserLandofileAt(landofileService, target.root);
     const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
-    const plan = target?.plan ?? (yield* resolveToolingPlan({ landofile, appRoot }));
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
+    const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
+    const servicesCanContributeTooling = Object.keys(landofile.services ?? {}).length > 0;
+
+    if (
+      target === undefined &&
+      !servicesCanContributeTooling &&
+      authoredTooling[toolingLookupKey] === undefined &&
+      appRoot !== undefined
+    ) {
+      const scriptResult = yield* runBunShellTooling(options, appRoot);
+      if (scriptResult !== undefined) return scriptResult;
+    }
+
+    const planResult =
+      target === undefined
+        ? yield* Effect.either(resolveToolingPlan({ landofile, appRoot }))
+        : ({ _tag: "Right", right: target.plan } as const);
+    if (planResult._tag === "Left") {
+      if (appRoot !== undefined) {
+        const scriptResult = yield* runBunShellTooling(options, appRoot);
+        if (scriptResult !== undefined) return scriptResult;
+      }
+      return yield* Effect.fail(planResult.left);
+    }
+    const plan = planResult.right;
     const tooling = effectiveToolingForPlan(plan) ?? compileEffectiveTooling({ landofile, services: [] });
     const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
@@ -225,13 +254,14 @@ export const runTooling = (
       ...(options.env === undefined ? {} : { env: options.env }),
       agentEnvAllowlist,
     });
+    const toolingRedactionTokens = [...new Set(collectSecretEnvValues(invocation.env))];
 
     const startedAt = Date.now();
     const result = yield* engine.run(invocation, plan, provider);
     const progressEvents = events?._tag === "Some" ? events.value : undefined;
 
     if (progressEvents !== undefined) {
-      const redactionTokens = collectAppPlanRedactionTokens(plan);
+      const redactionTokens = [...collectAppPlanRedactionTokens(plan), ...toolingRedactionTokens];
       const redaction = yield* Effect.serviceOption(RedactionService);
       const redactor =
         redaction._tag === "Some"
@@ -254,6 +284,7 @@ export const runTooling = (
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
+      redactionTokens: toolingRedactionTokens,
       ...(progressEvents === undefined ? {} : { rendered: true }),
     };
   });

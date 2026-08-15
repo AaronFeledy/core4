@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer, Queue, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { ProviderUnavailableError } from "@lando/core/errors";
+import { LandofileValidationError, ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -34,6 +34,7 @@ import {
   writeCachedAppPlan,
 } from "@lando/engine/cache/app-plan";
 import { CacheServiceLive } from "@lando/engine/cache/service";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
@@ -193,6 +194,7 @@ const makeLayer = (options: {
   readonly landofile: LandofileShape;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly planError?: LandofileValidationError;
   readonly planCalls?: number[];
   readonly planCwds?: string[];
 }) => {
@@ -203,7 +205,7 @@ const makeLayer = (options: {
     plan: () => {
       options.planCalls?.push(1);
       options.planCwds?.push(process.cwd());
-      return Effect.succeed(options.plan);
+      return options.planError === undefined ? Effect.succeed(options.plan) : Effect.fail(options.planError);
     },
   });
   const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
@@ -296,10 +298,23 @@ describe("runTooling — CLI rendering", () => {
   test("publishes task-tree events for successful provider-exec tooling output", async () => {
     // Given
     const events: LandoEvent[] = [];
-    const { provider } = makeProvider([{ exitCode: 0, stdout: "DB=bare-db-password\nREGION=us-east-1\n" }]);
+    const { provider } = makeProvider([
+      {
+        exitCode: 0,
+        stdout:
+          "DB=bare-db-password\nDEFAULT=bare-default-token\nTASK=bare-task-password\nREGION=us-east-1\n",
+      },
+    ]);
     const landofile: LandofileShape = {
       name: "scenario",
-      tooling: { composer: { service: "appserver", cmd: "composer install" } },
+      toolingDefaults: { env: { DEFAULT_API_TOKEN: "bare-default-token" } },
+      tooling: {
+        composer: {
+          service: "appserver",
+          cmd: "composer install",
+          env: { TASK_PASSWORD: "bare-task-password" },
+        },
+      },
     };
     const service = {
       ...makeService("appserver", true),
@@ -318,10 +333,14 @@ describe("runTooling — CLI rendering", () => {
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("bare-db-password");
+    expect(result.stdout).toContain("bare-default-token");
+    expect(result.stdout).toContain("bare-task-password");
     expect(result.stdout).toContain("us-east-1");
     expect(events.map((event) => event._tag)).toEqual([
       "task.tree.start",
       "task.start",
+      "task.detail",
+      "task.detail",
       "task.detail",
       "task.detail",
       "task.complete",
@@ -337,6 +356,16 @@ describe("runTooling — CLI rendering", () => {
         taskId: "tooling:composer:appserver",
         stream: "stdout",
         line: "DB=[redacted]",
+      }),
+      expect.objectContaining({
+        taskId: "tooling:composer:appserver",
+        stream: "stdout",
+        line: "DEFAULT=[redacted]",
+      }),
+      expect.objectContaining({
+        taskId: "tooling:composer:appserver",
+        stream: "stdout",
+        line: "TASK=[redacted]",
       }),
       expect.objectContaining({
         taskId: "tooling:composer:appserver",
@@ -572,10 +601,21 @@ describe("runTooling — CLI rendering", () => {
 
   test("returns the verbatim exit code, stdout, and stderr from RuntimeProvider.exec", async () => {
     const plan = makePlan([makeService("appserver", true)]);
-    const { provider, calls } = makeProvider([{ exitCode: 5, stdout: "out-1\nout-2\n", stderr: "err-1\n" }]);
+    const { provider, calls } = makeProvider([
+      { exitCode: 5, stdout: "out-1\nbare-task-password\n", stderr: "bare-default-token\n" },
+    ]);
     const landofile: LandofileShape = {
       name: "scenario",
-      tooling: { composer: { service: "appserver", cmd: "composer" } },
+      toolingDefaults: {
+        env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 },
+      },
+      tooling: {
+        composer: {
+          service: "appserver",
+          cmd: "composer",
+          env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true },
+        },
+      },
     };
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -586,8 +626,9 @@ describe("runTooling — CLI rendering", () => {
     expect(result.tool).toBe("composer");
     expect(result.service).toBe("appserver");
     expect(result.exitCode).toBe(5);
-    expect(result.stdout).toBe("out-1\nout-2\n");
-    expect(result.stderr).toBe("err-1\n");
+    expect(result.stdout).toBe("out-1\nbare-task-password\n");
+    expect(result.stderr).toBe("bare-default-token\n");
+    expect(result.redactionTokens).toEqual(["bare-default-token", "12345678", "bare-task-password", "true"]);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("appserver");
     expect(calls[0]?.command).toEqual(["sh", "-c", 'composer "$@"', "lando-tooling", "install"]);
@@ -831,7 +872,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const plan = makePlan([makeService("appserver", true)]);
       const { provider, calls } = makeProvider([]);
       const landofile: LandofileShape = { name: "scenario" };
-      const layer = makeLayer({ landofile, plan, provider });
+      const planCalls: number[] = [];
+      const layer = makeLayer({ landofile, plan, provider, planCalls });
 
       const result = await Effect.runPromise(runTooling({ name: "greet" }).pipe(runtimeFor(layer)));
 
@@ -840,6 +882,96 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("hi-from-bun-sh");
       expect(calls).toHaveLength(0);
+      expect(planCalls).toHaveLength(0);
+    });
+  });
+
+  test("service-contributed tooling outranks a same-name script after planning", async () => {
+    await withAppRoot(async (root) => {
+      // Given
+      await writeBunShScript(
+        root,
+        "build.bun.sh",
+        ["# ---", "# desc: Script build", "# ---", "echo from-script", ""].join("\n"),
+      );
+      const service = makeService("appserver", true);
+      const plan = attachEffectiveTooling(makePlan([service]), {
+        build: { service: "appserver", cmd: "from-service" },
+      });
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "from-service\n" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        services: { [ServiceName.make("appserver")]: { type: "node" } },
+      };
+      const planCalls: number[] = [];
+      const layer = makeLayer({ landofile, plan, provider, planCalls });
+
+      // When
+      const result = await Effect.runPromise(runTooling({ name: "build" }).pipe(runtimeFor(layer)));
+
+      // Then
+      expect(result.stdout).toBe("from-service\n");
+      expect(calls[0]?.command).toEqual(["sh", "-c", 'from-service "$@"', "lando-tooling"]);
+      expect(planCalls).toHaveLength(1);
+    });
+  });
+
+  test("runs a matching script when service app planning fails", async () => {
+    await withAppRoot(async (root) => {
+      // Given
+      await writeBunShScript(
+        root,
+        "recover.bun.sh",
+        ["# ---", "# desc: Recovery script", "# ---", "echo -n recovered", ""].join("\n"),
+      );
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        services: { [ServiceName.make("appserver")]: { type: "node" } },
+      };
+      const planError = new LandofileValidationError({
+        message: "planned failure",
+        file: join(root, ".lando.yml"),
+        issues: ["service planning failed"],
+      });
+      const planCalls: number[] = [];
+      const layer = makeLayer({ landofile, plan, provider, planError, planCalls });
+
+      // When
+      const result = await Effect.runPromise(runTooling({ name: "recover" }).pipe(runtimeFor(layer)));
+
+      // Then
+      expect(result.stdout).toBe("recovered");
+      expect(calls).toHaveLength(0);
+      expect(planCalls).toHaveLength(1);
+    });
+  });
+
+  test("preserves the planning failure when no matching script exists", async () => {
+    await withAppRoot(async (root) => {
+      // Given
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider } = makeProvider([]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        services: { [ServiceName.make("appserver")]: { type: "node" } },
+      };
+      const planError = new LandofileValidationError({
+        message: "original planning failure",
+        file: join(root, ".lando.yml"),
+        issues: ["service planning failed"],
+      });
+      const layer = makeLayer({ landofile, plan, provider, planError });
+
+      // When
+      const exit = await Effect.runPromiseExit(runTooling({ name: "missing" }).pipe(runtimeFor(layer)));
+
+      // Then
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBe(planError);
+      }
     });
   });
 
