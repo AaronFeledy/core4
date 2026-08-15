@@ -642,7 +642,7 @@ describe("OCLIF-free default entry", () => {
     expect(tuiViolations.length).toBe(0);
   });
 
-  test.each(CRITICAL_ENTRY_POINTS)(
+  test.each([...CRITICAL_ENTRY_POINTS])(
     "%s static module graph is OCLIF-free (compile-time graph assertion)",
     (specifier) => {
       const entryAbs = resolveEntrySource(specifier);
@@ -904,7 +904,7 @@ describe("dynamic-import and re-export escape hatches", () => {
     }
   });
 
-  test.each(CRITICAL_ENTRY_POINTS)(
+  test.each([...CRITICAL_ENTRY_POINTS])(
     "%s lazy module closure has no non-allowlisted banned dynamic imports",
     (specifier) => {
       const entryAbs = resolveEntrySource(specifier);

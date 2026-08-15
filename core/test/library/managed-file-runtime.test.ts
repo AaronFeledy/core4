@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
-import type { ManagedFile } from "@lando/core/schema";
+import { type ManagedFile, PortablePath } from "@lando/core/schema";
 import { ManagedFileService } from "@lando/core/services";
 
 describe("library makeLandoRuntime managed-file surface", () => {
@@ -24,7 +24,7 @@ describe("library makeLandoRuntime managed-file surface", () => {
           const file: ManagedFile = {
             id: "host:settings",
             owner: "embedding-host",
-            path: "settings.txt",
+            path: PortablePath.make("settings.txt"),
             mode: "file",
             format: "text",
             content: { kind: "text", value: "managed by host\n" },
