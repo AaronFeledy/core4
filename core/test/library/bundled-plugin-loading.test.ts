@@ -89,9 +89,9 @@ const preparePackedConsumer = async (): Promise<{ readonly root: string; readonl
   }
 };
 
-const compositionProbe = (entrySpecifier: string): string =>
+const compositionProbe = (entrySpecifiers: ReadonlyArray<string>): string =>
   [
-    `await import(${JSON.stringify(entrySpecifier)});`,
+    ...entrySpecifiers.map((entrySpecifier) => `await import(${JSON.stringify(entrySpecifier)});`),
     "const composition = await import('@lando/engine/composition');",
     "const pluginNames = composition.bundledPluginModules().map((module) => module.manifest.name);",
     "const templateNames = composition.landofileRuntimeInputs().templates.modules.map((module) => module.manifest.name);",
@@ -151,6 +151,41 @@ describe("@lando/core bundled plugin loading", () => {
     }
   }, 60_000);
 
+  test("a late base composition evaluation does not replace the full bundled composition", async () => {
+    // Given: bundled composition is installed before a distinct evaluation of the base composition module.
+    const probe = compositionProbe([
+      "@lando/core/bundled-plugins",
+      "./core/src/runtime/engine-composition.ts?late-base-install",
+    ]);
+    const fullExpected = `${JSON.stringify({
+      pluginNames: fullBundledPluginNames,
+      templateNames: fullBundledPluginNames,
+    })}\n`;
+
+    // When: the isolated process evaluates the base installer after the authoritative bundled installer.
+    const result = await runProbe(probe);
+
+    // Then: the late fallback keeps both bundled plugin and template modules installed.
+    expectProbeSucceeded(result);
+    expect(result.stdout).toBe(fullExpected);
+  });
+
+  test("the authoritative bundled composition upgrades an installed base composition", async () => {
+    // Given: the library root installs the plugin-free base composition first.
+    const probe = compositionProbe(["@lando/core", "@lando/core/bundled-plugins"]);
+    const fullExpected = `${JSON.stringify({
+      pluginNames: fullBundledPluginNames,
+      templateNames: fullBundledPluginNames,
+    })}\n`;
+
+    // When: the isolated process imports the authoritative bundled composition afterward.
+    const result = await runProbe(probe);
+
+    // Then: the authoritative install upgrades both plugin and template modules to the full bundle.
+    expectProbeSucceeded(result);
+    expect(result.stdout).toBe(fullExpected);
+  });
+
   test("the root composition is empty while the compiled CLI static composition remains full", async () => {
     // Given: isolated root-library and source-runtime composition entry points.
     const emptyExpected = `${JSON.stringify({ pluginNames: [], templateNames: [] })}\n`;
@@ -161,8 +196,8 @@ describe("@lando/core bundled plugin loading", () => {
 
     // When: preload-free Bun processes import each composition independently.
     const [rootResult, compiledRuntimeResult] = await Promise.all([
-      runProbe(compositionProbe("@lando/core")),
-      runProbe(compositionProbe("./core/src/cli/compiled-runtime.ts")),
+      runProbe(compositionProbe(["@lando/core"])),
+      runProbe(compositionProbe(["./core/src/cli/compiled-runtime.ts"])),
     ]);
 
     // Then: library root mode stays plugin-free and the CLI's static runtime keeps the complete bundle.
