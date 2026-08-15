@@ -38,7 +38,7 @@ import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { type ToolingRoute, resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
+import { resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -127,17 +127,13 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
   if (builtInCommand === undefined && !isReservedNamespaceHead(argv[0])) {
     const argvTail = argv.slice(1);
-    let route: ToolingRoute;
-    if (passthroughAliasRoute !== undefined) {
-      route = passthroughAliasRoute;
-    } else {
-      const aliasResolution = await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0])));
-      if (aliasResolution._tag === "Left") {
-        await renderAliasResolutionFailure(aliasResolution.left);
-        return;
-      }
-      route = aliasResolution.right;
+    const aliasResolution =
+      passthroughAliasResolution ?? (await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0]))));
+    if (aliasResolution._tag === "Left") {
+      await renderAliasResolutionFailure(aliasResolution.left);
+      return;
     }
+    const route = aliasResolution.right;
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
       argv = [route.commandId, ...argvTail];
