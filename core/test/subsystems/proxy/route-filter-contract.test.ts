@@ -76,12 +76,11 @@ const addPrefix: Filter<{ prefix: string }> = {
   input: { ...baseRoute, pathPrefix: "/api" },
   // Idempotent: only adds the prefix when it is not already present.
   apply: (route, options) =>
-    Effect.succeed({
-      ...route,
-      pathPrefix: (route.pathPrefix ?? "/").startsWith(options.prefix)
-        ? route.pathPrefix
-        : `${options.prefix}${route.pathPrefix ?? ""}`,
-    }),
+    Effect.succeed(
+      (route.pathPrefix ?? "/").startsWith(options.prefix)
+        ? route
+        : { ...route, pathPrefix: `${options.prefix}${route.pathPrefix ?? ""}` },
+    ),
   expected: { ...baseRoute, pathPrefix: "/api" },
 };
 
@@ -122,12 +121,12 @@ const redirect: Filter<{ to: string; permanent: boolean }> = {
 };
 
 const builtInFilters = [
-  rewritePath,
-  stripPrefix,
-  addPrefix,
-  requestHeader,
-  responseHeader,
-  redirect,
+  { id: rewritePath.id, run: () => runRouteFilterContractSuite(rewritePath) },
+  { id: stripPrefix.id, run: () => runRouteFilterContractSuite(stripPrefix) },
+  { id: addPrefix.id, run: () => runRouteFilterContractSuite(addPrefix) },
+  { id: requestHeader.id, run: () => runRouteFilterContractSuite(requestHeader) },
+  { id: responseHeader.id, run: () => runRouteFilterContractSuite(responseHeader) },
+  { id: redirect.id, run: () => runRouteFilterContractSuite(redirect) },
 ] as const;
 
 describe("RouteFilter contract — built-in filters", () => {
@@ -147,7 +146,7 @@ describe("RouteFilter contract — built-in filters", () => {
 
   for (const filter of builtInFilters) {
     test(`the built-in ${filter.id} filter passes the contract`, async () => {
-      const exit = await Effect.runPromiseExit(runRouteFilterContractSuite(filter));
+      const exit = await Effect.runPromiseExit(filter.run());
       if (exit._tag === "Failure") {
         throw new Error(`Contract failure (${filter.id}): ${JSON.stringify(exit.cause, null, 2)}`);
       }
