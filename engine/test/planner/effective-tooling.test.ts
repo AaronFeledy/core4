@@ -48,6 +48,29 @@ describe("compileEffectiveTooling", () => {
     expect(tooling.inspect).toEqual({ cmd: "from-alpha", service: "alpha" });
   });
 
+  test("uses ordinal ordering for non-ASCII service conflicts and output across permutations", () => {
+    // Given
+    const services = [
+      {
+        name: "zeta",
+        tooling: { inspect: { cmd: "from-zeta" }, "z-task": { cmd: "z" } },
+      },
+      {
+        name: "äther",
+        tooling: { inspect: { cmd: "from-ather" }, "ä-task": { cmd: "a" } },
+      },
+    ] as const;
+
+    for (const permutation of [services, [...services].reverse()]) {
+      // When
+      const tooling = compileEffectiveTooling({ landofile: {}, services: permutation });
+
+      // Then
+      expect(tooling.inspect).toEqual({ cmd: "from-zeta", service: "zeta" });
+      expect(Object.keys(tooling)).toEqual(["inspect", "z-task", "ä-task"]);
+    }
+  });
+
   test("defaults fill only after service contribution merge", () => {
     // Given / When
     const tooling = compileEffectiveTooling({

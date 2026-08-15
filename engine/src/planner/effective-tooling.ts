@@ -11,17 +11,19 @@ export interface ToolingServiceContribution {
 
 const effectiveToolingByPlan = new WeakMap<AppPlan, EffectiveTooling>();
 
+const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
+
 const sortedTooling = (tooling: EffectiveTooling): EffectiveTooling =>
-  Object.fromEntries(Object.entries(tooling).sort(([left], [right]) => left.localeCompare(right)));
+  Object.fromEntries(Object.entries(tooling).sort(([left], [right]) => compareOrdinal(left, right)));
 
 export const compileEffectiveTooling = (input: {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
   readonly services: ReadonlyArray<ToolingServiceContribution>;
 }): EffectiveTooling => {
   const contributed: Record<string, ToolingTaskShape> = {};
-  for (const service of [...input.services].sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const service of [...input.services].sort((left, right) => compareOrdinal(left.name, right.name))) {
     for (const [name, task] of Object.entries(service.tooling ?? {}).sort(([left], [right]) =>
-      left.localeCompare(right),
+      compareOrdinal(left, right),
     )) {
       if (contributed[name] !== undefined) continue;
       contributed[name] = { service: service.name, ...task };
