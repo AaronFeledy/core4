@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import { commandAliasRegistrationError } from "../../src/cli/command-alias-policy.ts";
 import { resolveAppCommandHelpAliases, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
 const withAliasCache = async <T>(
@@ -225,6 +226,23 @@ test("alias diagnostics escape terminal control characters", async () => {
     expect(error.message).toContain("bad\\u001b[2J");
     expect(error.message).not.toContain("\u001b");
   });
+});
+
+test("CommandAliasTargetError remediation escapes close-match terminal controls", () => {
+  // Given: a canonical app command id with terminal controls, and an unknown target that
+  // selects it as a close match
+  const poisonedId = "app:greet\u001b[2J";
+  const target = "app:greet\u001b[2K";
+
+  // When
+  const error = commandAliasRegistrationError({ custom: { hi: target } }, [poisonedId]);
+
+  // Then
+  expect(error).toBeInstanceOf(CommandAliasTargetError);
+  if (!(error instanceof CommandAliasTargetError)) throw error;
+  expect(error.closeMatches).toContain(poisonedId);
+  expect(error.remediation).toContain("app:greet\\u001b[2J");
+  expect(error.remediation).not.toContain("\u001b");
 });
 
 test.each(["--help", "-h", "--version", "-V", "-v"] as const)(

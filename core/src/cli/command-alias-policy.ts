@@ -98,7 +98,7 @@ export const commandAliasRegistrationError = (
         alias,
         target,
         closeMatches,
-        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.join(", ")}`} or run \`lando app:cache:refresh\` after adding the target.`,
+        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.map(escapeDiagnosticText).join(", ")}`} or run \`lando app:cache:refresh\` after adding the target.`,
       });
     }
   }
