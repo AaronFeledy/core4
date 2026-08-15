@@ -91,6 +91,7 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     routes: [],
     networks: [],
     stores: [],
+    fileSync: [],
     metadata,
     extensions: {},
   };
@@ -116,6 +117,7 @@ const makeRecordingProvider = (
     platform: "linux",
     capabilities: stubCapabilities,
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.die("not used"),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -135,9 +137,18 @@ const makeRecordingProvider = (
     },
     execStream: () => Stream.empty,
     run: () => Effect.die("not used"),
+    runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.empty,
+    exportArtifact: () => Stream.empty,
+    importArtifact: () => Effect.die("not used"),
   };
   return { provider, record: () => calls };
 };
