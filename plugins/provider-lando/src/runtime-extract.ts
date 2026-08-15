@@ -4,7 +4,7 @@ import { gunzipSync, inflateRawSync } from "node:zlib";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
 const OPERATION = "setup";
@@ -342,7 +342,7 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
   );
 
 const runtimeEntrypointNames = (platform: HostPlatform): readonly string[] =>
-  platform === "win32" ? ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"] : ["podman"];
+  hostPlatformFamily(platform) === "win32" ? ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"] : ["podman"];
 
 const hasInstalledRuntimeEntrypoint = (runtimeBinDir: string, platform: HostPlatform): Promise<boolean> =>
   Promise.all(
@@ -397,6 +397,7 @@ export const installRuntimeBundle = (
   options: InstallRuntimeBundleOptions,
 ): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
   Effect.gen(function* () {
+    const family = hostPlatformFamily(options.platform);
     const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
     const entrypointReady =
       installedVersion === options.version
@@ -431,7 +432,7 @@ export const installRuntimeBundle = (
             const target = stringJoin(tempDir, safePath);
             await mkdir(stringParentDir(target), { recursive: true });
             await writeFile(target, entry.bytes);
-            if (options.platform !== "win32") {
+            if (family !== "win32") {
               await chmod(target, 0o755);
             }
             fileCount += 1;

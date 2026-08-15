@@ -821,7 +821,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("covers apply, inspect, exec, logs, and destroy with a fake client", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
 
@@ -892,7 +892,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("passes TTY and inherited stdin settings into exec create/start", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan(makeService());
 
@@ -927,7 +927,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       return Stream.empty;
     };
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan(makeService());
 
@@ -975,7 +975,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       return Stream.empty;
     };
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan(makeService());
 
@@ -1005,7 +1005,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("forwards the since cursor to the Docker logs query", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan();
 
@@ -1032,7 +1032,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     };
 
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan();
 
@@ -1068,7 +1068,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     };
 
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makePlan();
 
@@ -1115,7 +1115,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("creates and mounts cache volumes with storage-kind labels", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const service = {
       ...makeService(),
@@ -1188,7 +1188,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
       const provider = await Effect.runPromise(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ dockerApi: makeDockerApiClient(dockerHost ?? "") })),
+          Effect.provide(
+            makeProviderLayer({ platform: "linux", dockerApi: makeDockerApiClient(dockerHost ?? "") }),
+          ),
         ),
       );
 
@@ -1329,8 +1331,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     120_000,
   );
 
-  test("matrix: covers linux / darwin / win32 via fake Docker API", async () => {
-    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+  test("matrix: covers every host identity via fake Docker API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl") =>
       RuntimeProvider.pipe(
         Effect.provide(makeProviderLayer({ platform, env: {}, dockerApi: makeFakeApi().api })),
       );
@@ -1342,11 +1344,7 @@ describe("provider-docker RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
-          {
-            platform: "wsl",
-            supported: false,
-            skipReason: "provider-docker targets native Windows, not WSL",
-          },
+          { platform: "wsl", supported: true, factory: () => buildProvider("wsl") },
         ],
       }),
     );
@@ -1356,7 +1354,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
-      "wsl:skipped",
+      "wsl:passed",
     ]);
   });
 

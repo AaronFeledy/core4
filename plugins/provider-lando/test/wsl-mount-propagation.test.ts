@@ -105,31 +105,18 @@ describe("makeWslMountPropagationCheck", () => {
     });
   }
 
-  test("returns no reports on linux without injected WSL markers", async () => {
-    // Given: Linux without injected WSL environment markers.
+  test("returns no reports on linux even with WSL environment markers", async () => {
+    // Given: Linux identity with legacy WSL environment markers.
 
     // When: the doctor contribution runs.
-    const reports = await runCheck("linux", privateRootMount);
+    const reports = await runCheck("linux", privateRootMount, {
+      WSL_DISTRO_NAME: "Ubuntu",
+      WSL_INTEROP: "/run/WSL/1_interop",
+    });
 
-    // Then: the injected inputs do not identify WSL.
+    // Then: only the authoritative platform identity can identify WSL.
     expect(reports).toEqual([]);
   });
-
-  for (const [marker, env] of [
-    ["WSL_DISTRO_NAME", { WSL_DISTRO_NAME: "Ubuntu" }],
-    ["WSL_INTEROP", { WSL_INTEROP: "/run/WSL/1_interop" }],
-  ] as const) {
-    test(`detects WSL on linux from the injected ${marker} marker`, async () => {
-      // Given: Linux with one injected WSL environment marker and private root propagation.
-
-      // When: the doctor contribution runs.
-      const reports = await runCheck("linux", privateRootMount, env);
-
-      // Then: the WSL private-root warning is surfaced.
-      expect(reports).toHaveLength(1);
-      expect(reports[0]).toMatchObject({ status: "warn", severity: "warn" });
-    });
-  }
 
   test("returns one warning with immediate and persistent remediations on WSL private root", async () => {
     // Given: WSL with private root mount propagation.

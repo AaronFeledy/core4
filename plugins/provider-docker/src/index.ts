@@ -47,6 +47,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  hostPlatformFamily,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
@@ -61,6 +62,7 @@ import {
   LogFileHelperAssets,
   type LogOptions,
   type LogTarget,
+  PathsService,
   type ProviderError,
   RuntimeProvider,
   type RuntimeProviderShape,
@@ -433,11 +435,9 @@ export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.sta
 
 export const npipeSocketPath = normalizeNamedPipePath;
 
-const platformFromProcess = (): HostPlatform =>
-  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
-
 const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boolean => {
-  if (platform === "darwin" || platform === "win32") return true;
+  const family = hostPlatformFamily(platform);
+  if (family === "darwin" || family === "win32") return true;
   const socketPath = unixSocketPath(dockerHost);
   return (
     dockerHost.startsWith("tcp://") ||
@@ -460,7 +460,7 @@ const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContain
 };
 
 const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
-  platform === "win32" ? "host.docker.internal" : undefined;
+  hostPlatformFamily(platform) === "win32" ? "host.docker.internal" : undefined;
 
 const hostProxyCapabilities = (
   platform: HostPlatform,
@@ -527,7 +527,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
 
 export const introspectProviderCapabilities = (
   api: DockerApiClient,
-  platform: HostPlatform = platformFromProcess(),
+  platform: HostPlatform,
   dockerHost = "/var/run/docker.sock",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
@@ -684,14 +684,17 @@ export const makeDockerApiClient = (
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
   const env = options.env ?? process.env;
   if (options.dockerHost !== undefined) return options.dockerHost;
-  const platform = options.platform ?? platformFromProcess();
-  if (platform === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
+  if (options.platform === undefined) {
+    throw unavailable("select", "provider-docker host resolution requires the resolved host platform.");
+  }
+  const family = hostPlatformFamily(options.platform);
+  if (family === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
     return env.LANDO_TEST_WINDOWS_DOCKER_SOCKET;
   }
   if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) return env.LANDO_TEST_DOCKER_SOCKET;
   if (env.DOCKER_HOST !== undefined) return env.DOCKER_HOST;
-  if (platform === "win32") return "npipe://./pipe/docker_engine";
-  if (platform === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
+  if (family === "win32") return "npipe://./pipe/docker_engine";
+  if (family === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
     return `${env.HOME}/.docker/desktop/docker.sock`;
   }
   return "/var/run/docker.sock";
@@ -1437,7 +1440,12 @@ const makeUnavailable = (operation: string) =>
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
-  const platform = options.platform ?? platformFromProcess();
+  if (options.platform === undefined) {
+    return Effect.fail(
+      unavailable("select", "provider-docker construction requires the resolved host platform."),
+    );
+  }
+  const platform = options.platform;
   const resolvedDockerHost = resolveDockerHost({
     platform,
     ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
@@ -1627,9 +1635,10 @@ export const plugin = definePlugin({
         id: runtimeProviderId,
         make: () =>
           Effect.gen(function* () {
+            const paths = yield* PathsService;
             const assets = yield* LogFileHelperAssets;
             const logFileHelperPayloads = yield* assets.payloads;
-            return yield* makeRuntimeProvider({ logFileHelperPayloads });
+            return yield* makeRuntimeProvider({ platform: paths.platform, logFileHelperPayloads });
           }),
       },
     ],

@@ -673,8 +673,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     60_000,
   );
 
-  test("matrix: covers linux / darwin / win32 via fake Podman API", async () => {
-    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+  test("matrix: covers every host identity via fake Podman API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl") =>
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
@@ -692,11 +692,7 @@ describe("provider-podman RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
-          {
-            platform: "wsl",
-            supported: false,
-            skipReason: "provider-podman targets native Windows, not WSL",
-          },
+          { platform: "wsl", supported: true, factory: () => buildProvider("wsl") },
         ],
       }),
     );
@@ -706,7 +702,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
-      "wsl:skipped",
+      "wsl:passed",
     ]);
   });
 

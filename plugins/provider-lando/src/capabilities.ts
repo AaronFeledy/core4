@@ -2,7 +2,7 @@ import { buildProviderCapabilities } from "@lando/container-runtime/capabilities
 import { Effect, Schema, type Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
+import { type HostPlatform, ProviderCapabilities, hostPlatformFamily } from "@lando/sdk/schema";
 
 import { podmanComposeKnobs } from "./compose-knobs.ts";
 import {
@@ -20,17 +20,14 @@ const TRANSPORT_REMEDIATION =
 const bindMountPerformanceForPlatform = (
   platform: HostPlatform,
 ): ProviderCapabilities["bindMountPerformance"] => {
-  if (platform === "linux") return "native";
-  if (platform === "darwin") return "slow";
-  if (platform === "win32") return "slow";
-  return "none";
+  return hostPlatformFamily(platform) === "linux" ? "native" : "slow";
 };
 
 type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
 type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
 
 const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
-  platform === "win32" ? "host.containers.internal" : undefined;
+  hostPlatformFamily(platform) === "win32" ? "host.containers.internal" : undefined;
 
 const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
   if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
@@ -164,11 +161,12 @@ export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
 ): ProviderCapabilities => {
+  const family = hostPlatformFamily(platform);
   return buildProviderCapabilities({
-    bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
+    bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
-    bindMountPerformance: bindMountPerformanceForPlatform(platform),
+    bindMountPerformance: bindMountPerformanceForPlatform(family),
     volumeSnapshot: "native",
     serviceFileCopy: "native",
     artifactExport: true,
@@ -180,7 +178,7 @@ export const providerLandoCapabilitiesForPlatform = (
     composeKnobs: { supported: podmanComposeKnobs() },
     composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],
-    hostProxy: hostProxyCapabilities(platform, containerTargets),
+    hostProxy: hostProxyCapabilities(family, containerTargets),
   });
 };
 
@@ -395,11 +393,7 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
-  platform: HostPlatform = process.platform === "darwin"
-    ? "darwin"
-    : process.platform === "linux"
-      ? "linux"
-      : "win32",
+  platform: HostPlatform,
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
     Effect.map((info) => {

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -131,6 +132,16 @@ describe("resolveRuntimeBundleEntry", () => {
 
   test("returns the pinned entry for linux x64", async () => {
     const entry = await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64"));
+    expect(entry.url).toContain("linux-x64");
+  });
+
+  test("resolves WSL identity through the linux x64 bundle key", async () => {
+    // Given: the canonical WSL host identity.
+    // When: its pinned runtime bundle is resolved.
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("wsl", "x64"));
+
+    // Then: the Linux-family bundle is selected.
+    expect(entry).toEqual(await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64")));
     expect(entry.url).toContain("linux-x64");
   });
 
