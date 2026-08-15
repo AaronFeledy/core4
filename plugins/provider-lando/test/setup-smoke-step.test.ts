@@ -14,6 +14,7 @@ describe("provider-lando setup smoke step", () => {
 
     await Effect.runPromise(
       setupProviderLando({
+        platform: "linux",
         podmanApi,
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         smoke: true,
@@ -37,6 +38,7 @@ describe("provider-lando setup smoke step", () => {
 
     await Effect.runPromise(
       setupProviderLando({
+        platform: "linux",
         podmanApi,
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         managedRuntimeSetup: (progress) =>
