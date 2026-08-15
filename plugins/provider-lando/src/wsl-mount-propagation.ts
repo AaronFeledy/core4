@@ -6,20 +6,18 @@ export type RootMountPropagation = "shared" | "private" | "unknown";
 
 export interface WslMountPropagationReaders {
   readonly readMountinfo: () => Promise<string | undefined>;
-  readonly readProcVersion: () => Promise<string | undefined>;
 }
 
-const readProcFile = async (path: string): Promise<string | undefined> => {
+const readMountinfo = async (): Promise<string | undefined> => {
   try {
-    return await Bun.file(path).text();
+    return await Bun.file("/proc/self/mountinfo").text();
   } catch {
     return undefined;
   }
 };
 
 const systemReaders: WslMountPropagationReaders = {
-  readMountinfo: () => readProcFile("/proc/self/mountinfo"),
-  readProcVersion: () => readProcFile("/proc/version"),
+  readMountinfo,
 };
 
 const optionalRead = (read: () => Promise<string | undefined>): Effect.Effect<string | undefined, never> =>
@@ -83,7 +81,7 @@ export const makeWslMountPropagationCheck = (
       const isWsl =
         input.platform === "wsl" ||
         (input.platform === "linux" &&
-          /microsoft/iu.test((yield* optionalRead(readers.readProcVersion)) ?? ""));
+          (input.env.WSL_DISTRO_NAME !== undefined || input.env.WSL_INTEROP !== undefined));
       if (!isWsl) return [];
 
       const mountinfo = yield* optionalRead(readers.readMountinfo);

@@ -11,15 +11,18 @@ const privateRootMount =
 const sharedRootMount =
   "82 67 8:48 / / rw,relatime shared:1 - ext4 /dev/sdd rw,discard,errors=remount-ro,data=ordered";
 
-const runCheck = (platform: HostPlatform, mountinfo: string, procVersion = "Linux version 6.8.0-generic") =>
+const runCheck = (
+  platform: HostPlatform,
+  mountinfo: string,
+  env: Readonly<Record<string, string | undefined>> = {},
+) =>
   Effect.runPromise(
     makeWslMountPropagationCheck({
       readMountinfo: async () => mountinfo,
-      readProcVersion: async () => procVersion,
     }).run({
       providerId: "lando",
       platform,
-      env: {},
+      env,
       userDataRoot: undefined,
       binDir: undefined,
       stateDir: undefined,
@@ -90,7 +93,7 @@ describe("parseRootMountPropagation", () => {
 });
 
 describe("makeWslMountPropagationCheck", () => {
-  for (const platform of ["linux", "darwin", "win32"] as const) {
+  for (const platform of ["darwin", "win32"] as const) {
     test(`returns no reports on ${platform}`, async () => {
       // Given: a non-WSL platform and private mountinfo.
 
@@ -99,6 +102,32 @@ describe("makeWslMountPropagationCheck", () => {
 
       // Then: the WSL-only warning is absent.
       expect(reports).toEqual([]);
+    });
+  }
+
+  test("returns no reports on linux without injected WSL markers", async () => {
+    // Given: Linux without injected WSL environment markers.
+
+    // When: the doctor contribution runs.
+    const reports = await runCheck("linux", privateRootMount);
+
+    // Then: the injected inputs do not identify WSL.
+    expect(reports).toEqual([]);
+  });
+
+  for (const [marker, env] of [
+    ["WSL_DISTRO_NAME", { WSL_DISTRO_NAME: "Ubuntu" }],
+    ["WSL_INTEROP", { WSL_INTEROP: "/run/WSL/1_interop" }],
+  ] as const) {
+    test(`detects WSL on linux from the injected ${marker} marker`, async () => {
+      // Given: Linux with one injected WSL environment marker and private root propagation.
+
+      // When: the doctor contribution runs.
+      const reports = await runCheck("linux", privateRootMount, env);
+
+      // Then: the WSL private-root warning is surfaced.
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ status: "warn", severity: "warn" });
     });
   }
 
@@ -139,20 +168,5 @@ describe("makeWslMountPropagationCheck", () => {
 
     // Then: an uncertain parse never creates a warning.
     expect(reports).toEqual([]);
-  });
-
-  test("detects WSL from the proc version signature when core reports linux", async () => {
-    // Given: core's linux platform value and WSL's Microsoft kernel signature.
-
-    // When: the doctor contribution runs.
-    const reports = await runCheck(
-      "linux",
-      privateRootMount,
-      "Linux version 5.15.153.1-microsoft-standard-WSL2",
-    );
-
-    // Then: the private-root warning is still surfaced.
-    expect(reports).toHaveLength(1);
-    expect(reports[0]).toMatchObject({ status: "warn", severity: "warn" });
   });
 });

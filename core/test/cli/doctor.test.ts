@@ -112,7 +112,7 @@ describe("meta:doctor command", () => {
   test("renders providerKind: managed for provider-lando", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const result = await Effect.runPromise(
-      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+      doctorWithoutPluginChecks({ platform: "linux", env: {} }).pipe(Effect.provide(buildLayers(provider))),
     );
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
@@ -371,7 +371,9 @@ describe("meta:doctor command", () => {
       },
       getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctor({ platform: "win32", env: {} }).pipe(Effect.provide(buildLayers(provider))),
+    );
     const actual = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const expected = readFileSync(WINDOWS_FIXTURE_PATH, "utf-8");
 
