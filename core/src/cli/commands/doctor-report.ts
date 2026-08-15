@@ -7,7 +7,12 @@
 import { Effect, Option } from "effect";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
-import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  type ConfigService,
+  DeprecationService,
+  type PathsService,
+  type RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { lintLandofile } from "@lando/engine/services/landofile-live";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -195,5 +200,5 @@ export const collectDoctorReport = <R>(
  */
 export const doctorReport = (
   options: DoctorOptions = {},
-): Effect.Effect<DoctorReport, never, ConfigService | RuntimeProviderRegistry> =>
+): Effect.Effect<DoctorReport, never, ConfigService | PathsService | RuntimeProviderRegistry> =>
   collectDoctorReport({ options, provider: doctor(options), deprecations: doctorDeprecations() });

@@ -4,7 +4,7 @@ import { dirname, relative, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
@@ -100,23 +100,8 @@ const loadOverrideManifest = (
     ),
   );
 
-const platformArchKey = (platform: HostPlatform, arch: string): string => `${platform}-${arch}`;
-
-const currentHostPlatform = (): HostPlatform | undefined => {
-  if (process.platform === "darwin" || process.platform === "linux" || process.platform === "win32") {
-    return process.platform;
-  }
-  return undefined;
-};
-
-const unsupportedHostPlatformError = () =>
-  new ProviderUnavailableError({
-    providerId: PROVIDER_ID,
-    operation: "setup",
-    message: `No pinned runtime-bundle entry for unsupported host platform ${process.platform}.`,
-    remediation:
-      "Run `lando setup` on a supported host (Linux x64/arm64, Apple Silicon macOS arm64, Windows x64) or update the bundled manifest.",
-  });
+const platformArchKey = (platform: HostPlatform, arch: string): string =>
+  `${hostPlatformFamily(platform)}-${arch}`;
 
 /**
  * Resolve the pinned manifest entry for a given host platform + arch.
@@ -230,7 +215,7 @@ const currentArch = (): string => process.arch;
 
 export interface DefaultRuntimeBundleDownloaderOptions {
   readonly stateDir: string;
-  readonly platform?: HostPlatform;
+  readonly platform: HostPlatform;
   readonly arch?: string;
   readonly url?: string;
   readonly sha256?: string;
@@ -262,10 +247,7 @@ export const makeDefaultRuntimeBundleDownloader = (
   const arch = options.arch ?? currentArch();
 
   const downloadEffect: Effect.Effect<RuntimeBundle, ProviderUnavailableError> = Effect.gen(function* () {
-    const platform = options.platform ?? currentHostPlatform();
-    if (platform === undefined) {
-      return yield* Effect.fail(unsupportedHostPlatformError());
-    }
+    const platform = options.platform;
     if ((options.url === undefined) !== (options.sha256 === undefined)) {
       return yield* Effect.fail(pairedOverrideError());
     }

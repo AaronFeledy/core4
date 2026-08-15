@@ -162,7 +162,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     await writeFile(landofilePath, makeRunnableLandofile(`compose-fixture-${fixture.id}`, fixtureSource));
 
     const landofile = await Effect.runPromise(loadLandofileFile(landofilePath));
-    const capabilities = await Effect.runPromise(introspectProviderCapabilities(api));
+    const capabilities = await Effect.runPromise(introspectProviderCapabilities(api, "linux"));
     plan = await Effect.runPromise(
       AppPlanner.pipe(
         Effect.flatMap((planner) => planner.plan(landofile, capabilities)),

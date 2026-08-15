@@ -78,11 +78,7 @@ export const makeWslMountPropagationCheck = (
   id: "wsl-root-mount-propagation",
   run: (input) =>
     Effect.gen(function* () {
-      const isWsl =
-        input.platform === "wsl" ||
-        (input.platform === "linux" &&
-          (input.env.WSL_DISTRO_NAME !== undefined || input.env.WSL_INTEROP !== undefined));
-      if (!isWsl) return [];
+      if (input.platform !== "wsl") return [];
 
       const mountinfo = yield* optionalRead(readers.readMountinfo);
       if (mountinfo === undefined || parseRootMountPropagation(mountinfo) !== "private") return [];

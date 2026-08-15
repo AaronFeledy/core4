@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { OOM_CHECK_NAME } from "../../src/cli/commands/doctor-oom.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
@@ -42,9 +43,10 @@ const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
 };
 
 const buildLayers = (provider: typeof TestRuntimeProvider) =>
-  Layer.merge(
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
 describe("doctor collection of oom died events", () => {

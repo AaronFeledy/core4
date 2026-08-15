@@ -15,7 +15,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { type HostPlatform, type HostPlatformFamily, hostPlatformFamily } from "@lando/sdk/schema";
 import type { EventService, ProviderError } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
@@ -40,9 +40,6 @@ const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 const PROVIDER_ID = "lando";
 const MINIMUM_PODMAN_VERSION = "6.0.0";
 const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
-
-const currentHostPlatform = (): HostPlatform =>
-  process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
 
 export class PodmanNotInstalledError extends ProviderUnavailableError {
   constructor(cause?: unknown) {
@@ -160,7 +157,7 @@ export interface SetupOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
-  readonly platform?: HostPlatform;
+  readonly platform: HostPlatform;
   readonly arch?: string;
   readonly socketPath?: string;
   readonly skipSocketProbe?: boolean;
@@ -303,6 +300,7 @@ const machineFailure = (
   cause: unknown,
   platform: HostPlatform,
 ): ProviderUnavailableError => {
+  const family = hostPlatformFamily(platform);
   const output =
     typeof cause === "object" && cause !== null
       ? ["stdout" in cause ? cause.stdout : undefined, "stderr" in cause ? cause.stderr : undefined]
@@ -312,7 +310,7 @@ const machineFailure = (
   const normalizedOutput = typeof output === "string" ? output.replaceAll("\0", "") : output;
   const diagnostics = typeof normalizedOutput === "string" ? normalizedOutput.trim() : "";
   const missingHelper =
-    platform === "win32" && typeof normalizedOutput === "string"
+    family === "win32" && typeof normalizedOutput === "string"
       ? WINDOWS_MACHINE_HELPERS.find(
           (helper) =>
             normalizedOutput.toLowerCase().includes(helper) &&
@@ -330,7 +328,7 @@ const machineFailure = (
     });
   }
   if (
-    platform === "win32" &&
+    family === "win32" &&
     typeof normalizedOutput === "string" &&
     (WINDOWS_MACHINE_PREREQUISITE_FAILURE.test(normalizedOutput) ||
       (operation === "create" && WINDOWS_MACHINE_CREATE_PREREQUISITE_FAILURE.test(normalizedOutput)))
@@ -338,7 +336,7 @@ const machineFailure = (
     return new WindowsMachinePrerequisiteError(cause);
   }
   if (
-    platform === "darwin" &&
+    family === "darwin" &&
     typeof normalizedOutput === "string" &&
     /virtualization|vfkit|hypervisor|qemu|helper/i.test(normalizedOutput)
   ) {
@@ -398,87 +396,90 @@ const runMachineCommand = (
   });
 
 export const makeSystemPodmanMachineRunner = (
-  command = "podman",
-  machineName = "lando",
-  platform: HostPlatform = currentHostPlatform(),
+  command: string,
+  machineName: string,
+  platform: HostPlatform,
   spawn: MachineSpawn = defaultMachineSpawn,
-): PodmanMachineRunner => ({
-  inspect: runMachineCommand(spawn, command, ["machine", "inspect", machineName], "inspect", platform).pipe(
-    Effect.flatMap((stdout) =>
-      Effect.try({
-        try: (): PodmanMachineStatus => {
-          const machines = JSON.parse(stdout) as unknown;
-          const machine = Array.isArray(machines) ? machines[0] : machines;
-          if (typeof machine !== "object" || machine === null) {
-            return "missing";
-          }
-          const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
-          return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
-        },
-        catch: (cause) =>
-          new ProviderUnavailableError({
-            providerId: PROVIDER_ID,
-            operation: "inspect",
-            message: "Failed to parse `podman machine inspect` output.",
-            remediation: "Verify the Podman machine state and rerun `lando setup`.",
-            cause,
-          }),
+): PodmanMachineRunner => {
+  const family = hostPlatformFamily(platform);
+  return {
+    inspect: runMachineCommand(spawn, command, ["machine", "inspect", machineName], "inspect", platform).pipe(
+      Effect.flatMap((stdout) =>
+        Effect.try({
+          try: (): PodmanMachineStatus => {
+            const machines = JSON.parse(stdout) as unknown;
+            const machine = Array.isArray(machines) ? machines[0] : machines;
+            if (typeof machine !== "object" || machine === null) {
+              return "missing";
+            }
+            const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
+            return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
+          },
+          catch: (cause) =>
+            new ProviderUnavailableError({
+              providerId: PROVIDER_ID,
+              operation: "inspect",
+              message: "Failed to parse `podman machine inspect` output.",
+              remediation: "Verify the Podman machine state and rerun `lando setup`.",
+              cause,
+            }),
+        }),
+      ),
+      Effect.catchAll((cause) => {
+        const raw = cause.cause;
+        if (typeof raw !== "object" || raw === null) {
+          return Effect.fail(cause);
+        }
+        const exitCode = "exitCode" in raw ? raw.exitCode : undefined;
+        const stderr = "stderr" in raw && typeof raw.stderr === "string" ? raw.stderr : "";
+        return exitCode === 125 && /not\s*(exist|found)|no such|cannot find/i.test(stderr)
+          ? Effect.succeed("missing" as const)
+          : Effect.fail(cause);
       }),
     ),
-    Effect.catchAll((cause) => {
-      const raw = cause.cause;
-      if (typeof raw !== "object" || raw === null) {
-        return Effect.fail(cause);
-      }
-      const exitCode = "exitCode" in raw ? raw.exitCode : undefined;
-      const stderr = "stderr" in raw && typeof raw.stderr === "string" ? raw.stderr : "";
-      return exitCode === 125 && /not\s*(exist|found)|no such|cannot find/i.test(stderr)
-        ? Effect.succeed("missing" as const)
-        : Effect.fail(cause);
-    }),
-  ),
-  create: runMachineCommand(
-    spawn,
-    command,
-    buildManagedMachineInitArgs(machineName),
-    "create",
-    platform,
-  ).pipe(Effect.asVoid),
-  syncTrust: runMachineCommand(
-    spawn,
-    command,
-    buildManagedMachineTrustSyncArgs(machineName),
-    "syncTrust",
-    platform,
-  ).pipe(Effect.asVoid),
-  start: runMachineCommand(
-    spawn,
-    command,
-    ["machine", "start", "--update-connection=false", machineName],
-    "start",
-    platform,
-  ).pipe(Effect.asVoid),
-  stop: runMachineCommand(spawn, command, ["machine", "stop", machineName], "stop", platform).pipe(
-    Effect.asVoid,
-  ),
-  upgrade:
-    platform === "win32"
-      ? Effect.fail(new WindowsMachineOsUnsupportedError())
-      : runMachineCommand(
-          spawn,
-          command,
-          ["machine", "os", "upgrade", machineName],
-          "upgrade",
-          platform,
-        ).pipe(Effect.asVoid),
-  teardown: runMachineCommand(
-    spawn,
-    command,
-    ["machine", "rm", "--force", machineName],
-    "teardown",
-    platform,
-  ).pipe(Effect.asVoid),
-});
+    create: runMachineCommand(
+      spawn,
+      command,
+      buildManagedMachineInitArgs(machineName),
+      "create",
+      platform,
+    ).pipe(Effect.asVoid),
+    syncTrust: runMachineCommand(
+      spawn,
+      command,
+      buildManagedMachineTrustSyncArgs(machineName),
+      "syncTrust",
+      platform,
+    ).pipe(Effect.asVoid),
+    start: runMachineCommand(
+      spawn,
+      command,
+      ["machine", "start", "--update-connection=false", machineName],
+      "start",
+      platform,
+    ).pipe(Effect.asVoid),
+    stop: runMachineCommand(spawn, command, ["machine", "stop", machineName], "stop", platform).pipe(
+      Effect.asVoid,
+    ),
+    upgrade:
+      family === "win32"
+        ? Effect.fail(new WindowsMachineOsUnsupportedError())
+        : runMachineCommand(
+            spawn,
+            command,
+            ["machine", "os", "upgrade", machineName],
+            "upgrade",
+            platform,
+          ).pipe(Effect.asVoid),
+    teardown: runMachineCommand(
+      spawn,
+      command,
+      ["machine", "rm", "--force", machineName],
+      "teardown",
+      platform,
+    ).pipe(Effect.asVoid),
+  };
+};
 
 const MANAGED_MACHINE_NAME = "lando";
 
@@ -748,7 +749,7 @@ interface SetupStep {
 }
 
 const buildSetupSteps = (
-  platform: HostPlatform,
+  family: HostPlatformFamily,
   hasBundle: boolean,
   hasStateDir: boolean,
   probesSocket: boolean,
@@ -758,7 +759,7 @@ const buildSetupSteps = (
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
   steps.push({ taskId: "podman", label: "Detect Podman" });
-  if (platform === "darwin" || platform === "win32")
+  if (family === "darwin" || family === "win32")
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
   if (managesRuntime) {
@@ -849,10 +850,11 @@ const withStep = <A, E>(
     return result;
   });
 
-export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<SetupResult, ProviderError> =>
+export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupResult, ProviderError> =>
   Effect.gen(function* () {
-    const platform = options.platform ?? currentHostPlatform();
-    const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
+    const platform = options.platform;
+    const family = hostPlatformFamily(platform);
+    const arch = options.arch;
     if (isIntelMacHost(platform, arch)) {
       return yield* Effect.fail(new IntelMacUnsupportedError(arch ?? "x64"));
     }
@@ -861,7 +863,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
     const probesSocket = options.skipSocketProbe !== true;
     const managesRuntime = options.managedRuntimeSetup !== undefined;
     const steps = buildSetupSteps(
-      platform,
+      family,
       hasBundle,
       hasStateDir,
       probesSocket,
@@ -899,7 +901,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
       const runtimeConfigDir = options.runtimeConfigDir;
       let machineOwnership: RecordedMachineOwnership | undefined;
       const existingMachineOwnership =
-        options.stateDir === undefined || (platform !== "darwin" && platform !== "win32")
+        options.stateDir === undefined || (family !== "darwin" && family !== "win32")
           ? undefined
           : yield* readExistingMachineOwnership(options.stateDir, options.eventService);
       const bundle =
@@ -956,7 +958,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
               machine: { name: "lando", createdByLando: true },
             }).pipe(Effect.asVoid);
 
-      if (platform === "darwin" && machineStep !== undefined) {
+      if (family === "darwin" && machineStep !== undefined) {
         const ensured = yield* withStep(
           options.eventService,
           machineStep,
@@ -970,7 +972,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
-      if (platform === "win32" && machineStep !== undefined) {
+      if (family === "win32" && machineStep !== undefined) {
         const ensured = yield* withStep(
           options.eventService,
           machineStep,

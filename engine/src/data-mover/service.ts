@@ -786,6 +786,7 @@ const validateHostEndpoints = (spec: DataTransferSpec, scratchDir: string) => {
 };
 
 const reflinkCopyTree = async (source: string, destination: string): Promise<boolean> => {
+  // Kernel/ABI semantics are intentional: WSL reports linux and supports this cp capability probe.
   if (process.platform !== "linux") return false;
   try {
     const proc = Bun.spawn(["cp", "-a", "--reflink=auto", `${source}/.`, destination], {

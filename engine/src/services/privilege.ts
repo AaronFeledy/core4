@@ -38,6 +38,7 @@ export const sudoSpawnForPrivilege = async (
   command: ReadonlyArray<string>,
   options: PrivilegeSpawnOptions = {},
 ): Promise<PrivilegeSpawnPlan> => {
+  // Kernel semantics are intentional: WSL reports linux and uses the Linux sudo path.
   const platform = options.platform ?? process.platform;
   const [cmd = "", ...args] = command;
   if (platform !== "linux") return { cmd, args, env: {} };

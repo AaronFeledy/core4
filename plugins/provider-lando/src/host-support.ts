@@ -1,10 +1,12 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
 
 export const isIntelMacHost = (platform: HostPlatform | undefined, arch: string | undefined): boolean =>
-  platform === "darwin" && (arch === "x64" || arch === "x86_64");
+  platform !== undefined &&
+  hostPlatformFamily(platform) === "darwin" &&
+  (arch === "x64" || arch === "x86_64");
 
 export class IntelMacUnsupportedError extends ProviderUnavailableError {
   constructor(arch: string) {

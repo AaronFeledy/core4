@@ -112,6 +112,27 @@ describe("provider-docker capabilities", () => {
     ).toBe("slow");
     expect(dockerCapabilitiesForHost("linux", "tcp://127.0.0.1:2375").bindMountPerformance).toBe("slow");
     expect(dockerCapabilitiesForHost("darwin", "/var/run/docker.sock").bindMountPerformance).toBe("slow");
+    expect(dockerCapabilitiesForHost("wsl", "/var/run/docker.sock").bindMountPerformance).toBe("native");
+  });
+
+  test("keeps WSL identity while using Linux-family behavior", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "wsl",
+            env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" },
+            dockerApi: { info: Effect.succeed({ Architecture: "x86_64" }) },
+          }),
+        ),
+      ),
+    );
+
+    expect(provider.platform).toBe("wsl");
+    expect(
+      resolveDockerHost({ platform: "wsl", env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" } }),
+    ).toBe("/home/alice/.docker/desktop/docker.sock");
+    expect(provider.capabilities.bindMountPerformance).toBe("slow");
   });
 
   test("introspects platform-specific Docker capabilities after API discovery", async () => {

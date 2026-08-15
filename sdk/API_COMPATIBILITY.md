@@ -219,6 +219,8 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostPlatformFamily`
+- `hostPlatformFamily`
 - `HostProxyContainerTarget`
 - `HostProxyErrorCode`
 - `HostProxyGatewayHostname`

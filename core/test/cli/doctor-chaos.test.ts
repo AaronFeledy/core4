@@ -14,8 +14,9 @@ import {
   TestContext,
 } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
@@ -86,9 +87,10 @@ const layersFor = (
   registry: ReturnType<typeof statusRegistry> | ReturnType<typeof failingSelectRegistry>,
   configOptions: { readonly failGet?: boolean } = {},
 ) =>
-  Layer.merge(
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry as never),
     Layer.succeed(ConfigService, buildConfigService(configOptions)),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>

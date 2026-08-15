@@ -6,6 +6,7 @@ import {
   PluginLoadError,
 } from "@lando/sdk/errors";
 import type { CertificateAuthorityContributionLayer } from "@lando/sdk/plugins";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { CertificateAuthority, Downloader, PathsService, ProcessRunner } from "@lando/sdk/services";
 
 import { type GraphCertificateAuthorityCandidate, PluginContributionGraph } from "./contribution-graph.ts";
@@ -29,10 +30,10 @@ export const selectCertificateAuthorityCandidate = <
   Candidate extends CertificateAuthorityCandidateDefinition,
 >(
   candidates: ReadonlyArray<Candidate>,
-  platform: string,
+  platform: HostPlatform,
 ): Either.Either<Candidate, SelectionError> => {
   const defaults = candidates.filter(
-    (candidate) => candidate.defaultFor?.platform?.includes(platform) === true,
+    (candidate) => candidate.defaultFor?.platform?.includes(hostPlatformFamily(platform)) === true,
   );
   const soleDefault = defaults[0];
   if (defaults.length === 1 && soleDefault !== undefined) return Either.right(soleDefault);
@@ -124,7 +125,7 @@ export const CertificateAuthorityResolverLive = Layer.scoped(
     const downloader = yield* Downloader;
     const processRunner = yield* ProcessRunner;
     const scope = yield* Scope.Scope;
-    const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, process.platform);
+    const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, paths.platform);
     const acquire: Effect.Effect<
       Context.Tag.Service<typeof CertificateAuthority>,
       SelectionError | PluginLoadError

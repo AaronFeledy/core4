@@ -10,6 +10,8 @@ import {
 const probes = (hasUidmapTools: boolean) => ({
   probe: () => ({
     subidConfigured: true,
+    subidRangeSufficient: true,
+    subidRangesDisjoint: true,
     hasUidmapTools,
     cgroupsV2Delegated: true,
     hasXdgRuntimeDir: true,
@@ -33,6 +35,17 @@ describe("uidmap provider setup", () => {
         version: "26.04",
       }),
     ]);
+  });
+
+  test("plans the Linux-family uidmap change for WSL identity", () => {
+    // Given: WSL running the supported Ubuntu release without uidmap tools.
+    const host = parseLinuxHostRelease('ID=ubuntu\nVERSION_ID="26.04"\n');
+
+    // When: provider setup inspects rootless prerequisites.
+    const plan = Effect.runSync(inspectUidmapSetupPlan({ platform: "wsl", host, probes: probes(false) }));
+
+    // Then: WSL receives the same Linux-family provisioning change.
+    expect(plan.changes).toEqual([expect.objectContaining({ _tag: "install-uidmap", platform: "linux" })]);
   });
 
   test("fails closed on another host without emitting a change", () => {

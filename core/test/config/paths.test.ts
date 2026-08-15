@@ -104,6 +104,28 @@ describe("normalizeHostPlatform", () => {
   });
 });
 
+describe("makeLandoPaths platform snapshot", () => {
+  test("detects the host platform once per construction", () => {
+    // Given: an observable WSL marker lookup on Linux.
+    let detectionReads = 0;
+    const env: Record<string, string | undefined> = {};
+    Object.defineProperty(env, "WSL_DISTRO_NAME", {
+      enumerable: false,
+      get() {
+        detectionReads += 1;
+        return undefined;
+      },
+    });
+
+    // When: the complete paths snapshot is constructed.
+    const paths = makeLandoPaths({ platform: "linux", home: "/home/tester", env });
+
+    // Then: identity detection happened once and is carried by the snapshot.
+    expect(paths.platform).toBe("linux");
+    expect(detectionReads).toBe(1);
+  });
+});
+
 describe("resolveLandoRoots platform-default matrix", () => {
   const home = "/home/tester";
 

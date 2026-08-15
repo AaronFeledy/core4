@@ -7,7 +7,7 @@ import {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
 } from "@lando/sdk/errors";
-import { type HostPlatform, ProviderId, type ProviderSetupPlan } from "@lando/sdk/schema";
+import { type HostPlatform, ProviderId, type ProviderSetupPlan, hostPlatformFamily } from "@lando/sdk/schema";
 import type { PrivilegeService } from "@lando/sdk/services";
 
 import type { RootlessProbes } from "./rootless-preflight.ts";
@@ -70,7 +70,11 @@ export const inspectUidmapSetupPlan = (
   if (input.probes.probe().hasUidmapTools) {
     return Effect.succeed({ providerId: PROVIDER_ID, changes: [] });
   }
-  if (input.platform !== "linux" || input.host?.id !== "ubuntu" || input.host.versionId !== "26.04") {
+  if (
+    hostPlatformFamily(input.platform) !== "linux" ||
+    input.host?.id !== "ubuntu" ||
+    input.host.versionId !== "26.04"
+  ) {
     return Effect.fail(
       new ProviderSetupUnsupportedHostError({
         providerId: PROVIDER_ID,

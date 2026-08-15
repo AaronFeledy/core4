@@ -21,6 +21,7 @@ import {
   PluginManifest,
   ProviderId,
   type ProviderSetupPlan,
+  hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
@@ -287,21 +288,6 @@ const makeNoPlanError = (appId: AppId, operation: string) =>
       "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
   });
 
-const currentHostPlatform = (): HostPlatform | undefined => {
-  if (process.platform === "darwin" || process.platform === "linux" || process.platform === "win32") {
-    return process.platform;
-  }
-  return undefined;
-};
-
-const unsupportedHostPlatformError = () =>
-  new ProviderUnavailableError({
-    providerId: "lando",
-    operation: "setup",
-    message: `provider-lando does not support host platform ${process.platform}.`,
-    remediation: "Run `lando setup` on Linux, macOS, or Windows, or select another runtime provider.",
-  });
-
 const probeRuntimeSocketStatus = (podmanApi?: PodmanApiClient): Effect.Effect<RuntimeServiceStatus> => {
   if (podmanApi === undefined) {
     return Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false });
@@ -333,7 +319,7 @@ export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
-  readonly platform?: HostPlatform;
+  readonly platform: HostPlatform;
   readonly arch?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
@@ -373,15 +359,13 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
 export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
-  const platform = options.platform ?? currentHostPlatform();
-  if (platform === undefined) {
-    return Effect.fail(unsupportedHostPlatformError());
-  }
+  const platform = options.platform;
+  const family = hostPlatformFamily(platform);
   const externalSocketPath = options.socketPath;
   const managedSocketPath =
     options.providerSocketPath === undefined
       ? undefined
-      : platform === "win32"
+      : family === "win32"
         ? WINDOWS_MANAGED_MACHINE_PIPE
         : options.providerSocketPath;
   const socketPath = externalSocketPath ?? managedSocketPath;
@@ -392,7 +376,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
+  const arch = options.arch ?? process.arch;
   const podmanBin =
     runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
@@ -402,7 +386,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   let bundleVersion: string | undefined;
   const machineRunner =
     options.podmanMachine ??
-    (platform === "linux" || runtimeBinDir === undefined
+    (family === "linux" || runtimeBinDir === undefined
       ? undefined
       : makeSystemPodmanMachineRunner(managedRuntimePodmanArgv0(runtimeBinDir, platform), "lando", platform));
   const artifactDownloadMissing = (): ProviderUnavailableError =>
@@ -593,7 +577,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
       planSetup: () =>
-        shouldManageRuntime && platform === "linux"
+        shouldManageRuntime && family === "linux"
           ? inspectUidmapSetupPlan({
               platform,
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
@@ -953,6 +937,7 @@ export const plugin = definePlugin({
             const logFileHelperPayloads = yield* logFileHelperAssets.payloads;
             const runtimeState = yield* makePluginRuntimeState(ctx, paths, manifest.name);
             return yield* makeRuntimeProvider({
+              platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
               runtimeBinDir: paths.runtimeBinDir,

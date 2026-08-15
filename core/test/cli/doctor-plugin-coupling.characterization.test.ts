@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { type Context, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import {
   MUTAGEN_TOOL_MANIFEST,
@@ -65,9 +65,10 @@ const runDoctorWithUserDataRoot = (userDataRoot: string) =>
   Effect.runPromise(
     doctor().pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
           Layer.succeed(RuntimeProviderRegistry, buildRegistry(slowBindMountProvider)),
           Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) })),
+          Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
         ),
       ),
     ),
@@ -227,9 +228,13 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
           platform: "linux",
         }).pipe(
           Effect.provide(
-            Layer.merge(
+            Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, registryThatMustNotConstruct),
               Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(dataRoot) })),
+              Layer.succeed(
+                PathsService,
+                makeLandoPaths({ userDataRoot: dataRoot, platform: "linux", env: {} }),
+              ),
             ),
           ),
         ),

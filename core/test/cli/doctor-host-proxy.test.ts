@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema, TestClock, TestContext } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
@@ -76,9 +76,10 @@ const runDoctor = (
   Effect.runPromise(
     doctor(env === undefined ? {} : { env }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
           Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
           Layer.succeed(ConfigService, buildConfigService(userDataRoot)),
+          Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
         ),
       ),
     ),

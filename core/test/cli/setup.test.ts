@@ -2093,6 +2093,7 @@ describe("meta:setup command", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
+        platform: "linux",
         podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
@@ -2139,6 +2140,7 @@ describe("meta:setup command", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
+        platform: "linux",
         podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
