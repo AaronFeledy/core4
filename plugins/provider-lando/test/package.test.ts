@@ -11,9 +11,11 @@ describe("@lando/provider-lando package", () => {
     expect(plugin.PLUGIN_NAME).toBe("@lando/provider-lando");
     expect(plugin.makeWslMountPropagationCheck).toBeFunction();
     expect(plugin.parseRootMountPropagation).toBeFunction();
-    expect(Layer.isLayer(plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando }))).toBe(
-      true,
-    );
+    expect(
+      Layer.isLayer(
+        plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, platform: "linux" }),
+      ),
+    ).toBe(true);
     expect(plugin.manifest).toMatchObject({
       name: "@lando/provider-lando",
       version: "0.0.0",
@@ -30,7 +32,10 @@ describe("@lando/provider-lando package", () => {
         runPluginContract({
           manifest: plugin.manifest,
           layers: {
-            provider: plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+            provider: plugin.makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              platform: "linux",
+            }),
           },
         }),
       ),
