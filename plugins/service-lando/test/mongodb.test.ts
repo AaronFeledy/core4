@@ -5,6 +5,7 @@ import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 
 import { MONGODB_FEATURE_ID, mongodbServiceFeature, mongodbServiceType } from "../src/services/mongodb.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -98,7 +99,7 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "mongo:8" });
-    expect(plan.endpoints[0]?.port).toBe(37017);
+    expect(firstEndpointPort(plan)).toBe(37017);
     expect(plan.environment).toMatchObject({
       MONGO_INITDB_ROOT_USERNAME: "myuser",
       MONGO_INITDB_ROOT_PASSWORD: "lando",
@@ -177,7 +178,7 @@ describe("mongodb ServiceType", () => {
       featureOverrides,
     });
 
-    expect(plan.endpoints[0]?.port).toBe(47017);
+    expect(firstEndpointPort(plan)).toBe(47017);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/47017"]);
   });
 
