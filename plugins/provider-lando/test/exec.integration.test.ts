@@ -62,6 +62,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -78,7 +79,12 @@ const frame = (stream: "stdout" | "stderr", text: string): Uint8Array => {
   return output;
 };
 
-const makeFakeApi = (exitCode: number, stdout: string, stderr = "") => {
+const makeFakeApi = (
+  exitCode: number,
+  stdout: string,
+  stderr = "",
+  streamOverride?: NonNullable<PodmanApiClient["stream"]>,
+) => {
   const calls: PodmanHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -99,6 +105,7 @@ const makeFakeApi = (exitCode: number, stdout: string, stderr = "") => {
       }),
     stream: (request) => {
       calls.push(request);
+      if (streamOverride !== undefined) return streamOverride(request);
       const chunks = [frame("stdout", stdout), ...(stderr.length === 0 ? [] : [frame("stderr", stderr)])];
       return Stream.fromIterable(chunks);
     },
@@ -164,14 +171,10 @@ describe("provider-lando exec", () => {
   });
 
   test("emits raw stdout chunks for TTY exec streams and forwards stdin and terminal resize events", async () => {
-    const fake = makeFakeApi(0, "ignored");
+    const fake = makeFakeApi(0, "ignored", "", () => Stream.fromIterable([textEncoder.encode("raw-tty\n")]));
     const stdinStream = (async function* () {
       yield textEncoder.encode("typed\n");
     })();
-    fake.api.stream = (request) => {
-      fake.calls.push(request);
-      return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
-    };
 
     const chunks = await Effect.runPromise(
       execStream(
@@ -197,12 +200,8 @@ describe("provider-lando exec", () => {
   });
 
   test("interrupts provider exec streams when the abort signal fires", async () => {
-    const fake = makeFakeApi(0, "ignored");
+    const fake = makeFakeApi(0, "ignored", "", () => Stream.never);
     const controller = new AbortController();
-    fake.api.stream = (request) => {
-      fake.calls.push(request);
-      return Stream.never;
-    };
 
     const chunks = await Effect.runPromise(
       Effect.scoped(
