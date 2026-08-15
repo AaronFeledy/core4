@@ -2,14 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Stream } from "effect";
+import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { LandofileValidationError, ProviderUnavailableError } from "@lando/core/errors";
+import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  GlobalConfig,
   type LandofileShape,
   PortablePath,
   type ProviderCapabilities,
@@ -19,8 +20,9 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
-  ConfigService,
+  type EventFor,
   EventService,
+  type EventServiceShape,
   type LandoEvent,
   LandofileService,
   PluginRegistry,
@@ -38,7 +40,8 @@ import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling"
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
-import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -133,38 +136,13 @@ const makeProvider = (
   const calls: ExecRecord[] = [];
   let i = 0;
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: providerId,
     displayName: "Fake",
     version: "0.0.0",
     platform: "linux",
     capabilities,
     isAvailable: Effect.succeed(true),
-    setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
-    getVersions: Effect.succeed({ provider: "0.0.0" }),
-    buildArtifact: () =>
-      Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "buildArtifact",
-          message: "n/a",
-        }),
-      ),
-    pullArtifact: () =>
-      Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "pullArtifact",
-          message: "n/a",
-        }),
-      ),
-    removeArtifact: () => Effect.void,
-    apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
-    restart: () => Effect.void,
-    waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.void,
     exec: (target, spec) => {
       calls.push({
         service: String(target.service),
@@ -180,12 +158,6 @@ const makeProvider = (
         stderr: response.stderr ?? "",
       });
     },
-    execStream: () => Stream.empty,
-    run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    logs: () => Stream.empty,
-    inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
-    list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
@@ -252,7 +224,7 @@ const cachedPlanKey = async (
 ): Promise<string> =>
   deriveAppPlanCacheKey({
     appRoot,
-    landofile: { ...landofile, provider: String(provider.id) },
+    landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],
     sourceFingerprint: await Effect.runPromise(readAppPlanSourceFingerprint(appRoot)),
   });
@@ -266,33 +238,33 @@ const cacheAwareLayer = (options: {
 }) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, CacheServiceLive);
 
 const configLayer = (defaultProviderId: string | null) =>
-  Layer.succeed(ConfigService, {
-    get: (key: string) => {
-      if (key !== "defaultProviderId") return Effect.succeed(undefined);
-      return Effect.succeed(defaultProviderId === null ? null : ProviderId.make(defaultProviderId));
-    },
-  });
+  configServiceLayer(Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId }));
 
 const recordingEventLayer = (events: LandoEvent[]) =>
   Layer.effect(
     EventService,
     Effect.gen(function* () {
       const queue = yield* Queue.unbounded<LandoEvent>();
-      return {
+      const service: EventServiceShape = {
         publish: (event: LandoEvent) =>
           Effect.gen(function* () {
             events.push(event);
             yield* Queue.offer(queue, event);
           }),
-        subscribe: (name: string) =>
-          Stream.fromQueue(queue).pipe(Stream.filter((event) => name === "*" || event._tag === name)),
+        subscribe: <Name extends string>(name: Name) =>
+          Stream.fromQueue(queue).pipe(
+            Stream.filter((event): event is EventFor<Name> => name === "*" || event._tag === name),
+          ),
         subscribeQueue: Effect.succeed(queue),
         waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
       };
+      return service;
     }),
   );
 
-const runtimeFor = (layer: Layer.Layer<never, never, never>) => Effect.provide(layer);
+const runtimeFor = <A, E, R>(layer: Layer.Layer<A, E, R>) => Effect.provide(layer);
 
 describe("runTooling — CLI rendering", () => {
   test("publishes task-tree events for successful provider-exec tooling output", async () => {
@@ -512,7 +484,9 @@ describe("runTooling — CLI rendering", () => {
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan: freshPlan, provider, planCalls }),
         Layer.succeed(PluginRegistry, {
-          list: Effect.fail(new Error("plugin registry unavailable")),
+          list: Effect.fail(
+            new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+          ),
           load: () => Effect.die("not used"),
           loadServiceType: () => Effect.die("not used"),
           loadServiceFeature: () => Effect.die("not used"),
@@ -570,7 +544,7 @@ describe("runTooling — CLI rendering", () => {
       const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "fresh\n" }]);
       const staleLandofile: LandofileShape = {
         name: "scenario",
-        services: { web: { type: "node", environment: { NODE_ENV: "stale" } } },
+        services: { [ServiceName.make("web")]: { type: "node", environment: { NODE_ENV: "stale" } } },
         tooling: { test: { cmd: "bun test" } },
       };
       const landofile: LandofileShape = {
