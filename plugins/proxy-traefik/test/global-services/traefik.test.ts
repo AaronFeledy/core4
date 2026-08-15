@@ -15,7 +15,7 @@ const decodeConfig = async (): Promise<ServiceConfig> => {
 };
 
 const commandText = (config: ServiceConfig): string =>
-  Array.isArray(config.command) ? config.command.join("\n") : (config.command ?? "");
+  typeof config.command === "string" ? config.command : (config.command?.join("\n") ?? "");
 
 describe("traefik global service ServiceConfig", () => {
   test("default export is an Effect producing a valid ServiceConfig", async () => {
