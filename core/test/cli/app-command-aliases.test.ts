@@ -110,7 +110,7 @@ test("custom keys cannot claim a canonical command id", async () => {
   });
 });
 
-test.each(["help", "--help", "--version", "-V"] as const)(
+test.each(["help", "--help", "--version", "-V", "--custom"] as const)(
   "reserved token %s cannot be claimed by a custom alias",
   async (alias) => {
     await withAliasCache({ custom: { [alias]: "app:greet" } }, async ({ root, cacheRoot }) => {
@@ -165,6 +165,93 @@ test("unknown custom targets fail with close matches and remediation", async () 
       target: "app:grete",
       closeMatches: expect.arrayContaining(["app:greet"]),
       remediation: expect.stringContaining("app:cache:refresh"),
+    });
+  });
+});
+
+test("oversized unknown targets skip fuzzy suggestions", async () => {
+  const target = `app:${"x".repeat(1_024)}`;
+  await withAliasCache({ custom: { hi: target } }, async ({ root, cacheRoot }) => {
+    // Given / When
+    const error = await Effect.runPromise(
+      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(CommandAliasTargetError);
+    if (!(error instanceof CommandAliasTargetError)) throw error;
+    expect(error.target).toBe(target);
+    expect(error.closeMatches).toEqual([]);
+  });
+});
+
+test("alias diagnostics escape terminal control characters", async () => {
+  const alias = "bad\u001b[2J";
+  await withAliasCache({ custom: { [alias]: "app:missing" } }, async ({ root, cacheRoot }) => {
+    // Given / When
+    const error = await Effect.runPromise(
+      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
+    );
+
+    // Then
+    if (!(error instanceof CommandAliasTargetError)) throw error;
+    expect(error.message).toContain("bad\\u001b[2J");
+    expect(error.message).not.toContain("\u001b");
+  });
+});
+
+test.each(["--help", "-h", "--version", "-V", "-v"] as const)(
+  "flag token %s is not-tooling when aliases are disabled",
+  async (token) => {
+    await withAliasCache({ enabled: false }, async ({ root, cacheRoot }) => {
+      // Given / When
+      const route = await Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot }));
+
+      // Then
+      expect(route).toMatchObject({ _tag: "not-tooling" });
+    });
+  },
+);
+
+test.each(["--help", "-h", "--version", "-V", "-v"] as const)(
+  "flag token %s is not-tooling when listed in disabled",
+  async (token) => {
+    await withAliasCache({ disabled: [token] }, async ({ root, cacheRoot }) => {
+      // Given / When
+      const route = await Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot }));
+
+      // Then
+      expect(route).toMatchObject({ _tag: "not-tooling" });
+    });
+  },
+);
+
+test("prototype-inherited custom keys are ignored", async () => {
+  await withAliasCache({ custom: {} }, async ({ root, cacheRoot }) => {
+    // Given / When — Object.prototype has toString; empty custom must not inherit it
+    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["toString"], cwd: root, cacheRoot }));
+
+    // Then
+    expect(route).toMatchObject({
+      _tag: "unknown-tooling",
+      commandId: "app:toString",
+      name: "toString",
+    });
+  });
+});
+
+test("explicit own custom key constructor resolves", async () => {
+  await withAliasCache({ custom: { constructor: "app:greet" } }, async ({ root, cacheRoot }) => {
+    // Given / When
+    const route = await Effect.runPromise(
+      resolveToolingRoute({ argv: ["constructor"], cwd: root, cacheRoot }),
+    );
+
+    // Then
+    expect(route).toMatchObject({
+      _tag: "bun-script",
+      commandId: "app:greet",
+      name: "greet",
     });
   });
 });

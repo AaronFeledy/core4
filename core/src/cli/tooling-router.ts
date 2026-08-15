@@ -9,12 +9,19 @@ import type { CacheError } from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { type BuiltInCommandEntry, resolveBuiltInCommand } from "./built-in-command-registry";
-import { activeCommandAliases, canonicalBuiltIn, commandAliasPolicyError } from "./command-alias-policy";
+import {
+  type BuiltInCommandEntry,
+  builtInCommandEntries,
+  resolveBuiltInCommand,
+} from "./built-in-command-registry";
+import { activeCommandAliases, commandAliasPolicyError } from "./command-alias-policy";
 import { escapeDiagnosticText } from "./diagnostic-text";
 
 const CACHE_REMEDIATION =
   "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
+
+const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
+  builtInCommandEntries.find((entry) => entry.spec.id === commandId);
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -91,6 +98,9 @@ export const resolveToolingRoute = (
     const token = options.argv[0];
     if (token === undefined) return { _tag: "not-tooling" } as const;
     if (canonicalBuiltIn(token) !== undefined) return { _tag: "not-tooling" } as const;
+    // Flags are never tooling tokens; bail before app-root/cache so enabled:false
+    // and disabled lists cannot capture --help/-h/--version/-V/-v.
+    if (token.startsWith("-")) return { _tag: "not-tooling" } as const;
     const name = toolingName(token);
 
     const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
@@ -142,23 +152,24 @@ export const resolveToolingRoute = (
     if (policyError !== undefined) return yield* Effect.fail(policyError);
     if (policy?.enabled === false) return { _tag: "alias-disabled", token } as const;
 
-    const customTarget = policy?.custom[token];
-    if (customTarget !== undefined) {
-      const builtInTarget = canonicalBuiltIn(customTarget);
+    const custom =
+      policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
+    if (custom !== undefined) {
+      const builtInTarget = canonicalBuiltIn(custom);
       if (builtInTarget !== undefined) {
         return {
           _tag: "built-in",
-          commandId: customTarget,
+          commandId: custom,
           entry: builtInTarget,
           argv: commandArgv,
         } as const;
       }
-      const customEntry = cache.entries.find((candidate) => candidate.id === customTarget);
-      const customName = customTarget.startsWith("app:") ? customTarget.slice("app:".length) : customTarget;
+      const customEntry = cache.entries.find((candidate) => candidate.id === custom);
+      const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
       if (customEntry === undefined)
         return {
           _tag: "unknown-tooling",
-          commandId: customTarget,
+          commandId: custom,
           name: customName,
           argv: commandArgv,
           remediation: CACHE_REMEDIATION,
@@ -166,7 +177,7 @@ export const resolveToolingRoute = (
       if (customEntry.source === "bun-script") {
         return {
           _tag: "bun-script",
-          commandId: customTarget,
+          commandId: custom,
           name: customName,
           argv: commandArgv,
           appRoot,
@@ -174,7 +185,7 @@ export const resolveToolingRoute = (
       }
       return {
         _tag: "tooling",
-        commandId: customTarget,
+        commandId: custom,
         name: customName,
         argv: commandArgv,
       } as const;
