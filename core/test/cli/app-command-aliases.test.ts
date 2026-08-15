@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
-import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { resolveAppCommandHelpAliases, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
 const withAliasCache = async <T>(
   commandAliases: {
@@ -37,45 +37,45 @@ const withAliasCache = async <T>(
 
 test("custom aliases override registered built-in aliases and target cached tooling", async () => {
   await withAliasCache({ custom: { start: "app:greet" } }, async ({ root, cacheRoot }) => {
-    // Given / When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["start", "friend"], cwd: root, cacheRoot }),
-    );
+    // Given
+    const argv = ["start", "friend"] as const;
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
       _tag: "bun-script",
       commandId: "app:greet",
       name: "greet",
-      argv: ["friend"],
     });
+    expect(argv.slice(1)).toEqual(["friend"]);
   });
 });
 
 test("colon-form custom aliases resolve through the app policy", async () => {
   await withAliasCache({ custom: { "project:greet": "app:greet" } }, async ({ root, cacheRoot }) => {
-    // Given / When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["project:greet", "friend"], cwd: root, cacheRoot }),
-    );
+    // Given
+    const argv = ["project:greet", "friend"] as const;
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
       _tag: "bun-script",
       commandId: "app:greet",
       name: "greet",
-      argv: ["friend"],
     });
+    expect(argv.slice(1)).toEqual(["friend"]);
   });
 });
 
 test("disabled built-in aliases do not block canonical command ids", async () => {
   await withAliasCache({ disabled: ["start"] }, async ({ root, cacheRoot }) => {
     // Given / When
-    const disabled = await Effect.runPromise(resolveToolingRoute({ argv: ["start"], cwd: root, cacheRoot }));
-    const canonical = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["app:start"], cwd: root, cacheRoot }),
-    );
+    const disabled = await Effect.runPromise(resolveToolingRoute("start", { cwd: root, cacheRoot }));
+    const canonical = await Effect.runPromise(resolveToolingRoute("app:start", { cwd: root, cacheRoot }));
 
     // Then
     expect(disabled).toMatchObject({ _tag: "alias-disabled", token: "start" });
@@ -86,19 +86,58 @@ test("disabled built-in aliases do not block canonical command ids", async () =>
 test("enabled false suppresses custom aliases", async () => {
   await withAliasCache({ enabled: false, custom: { hi: "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({ _tag: "alias-disabled", token: "hi" });
   });
 });
 
+const dormantInvalidPolicies = [
+  ["unknown targets", { hi: "app:missing" }, "hi"],
+  ["canonical collisions", { "app:greet": "app:greet" }, "hi"],
+] as const;
+
+test.each(dormantInvalidPolicies)(
+  "enabled false ignores dormant %s during routing",
+  async (_case, custom, token) => {
+    await withAliasCache({ enabled: false, custom }, async ({ root, cacheRoot }) => {
+      // Given / When
+      const route = await Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }));
+
+      // Then
+      expect(route).toEqual({ _tag: "alias-disabled", token });
+    });
+  },
+);
+
+test.each(dormantInvalidPolicies)("enabled false ignores dormant %s in root help", async (_case, custom) => {
+  await withAliasCache({ enabled: false, custom }, async ({ root, cacheRoot }) => {
+    // Given / When
+    const aliases = await Effect.runPromise(resolveAppCommandHelpAliases({ cwd: root, cacheRoot }));
+
+    // Then
+    expect(aliases).toEqual([]);
+  });
+});
+
+test.each(dormantInvalidPolicies)(
+  "enabled false with dormant %s keeps canonical cached commands available",
+  async (_case, custom) => {
+    await withAliasCache({ enabled: false, custom }, async ({ root, cacheRoot }) => {
+      // Given / When
+      const route = await Effect.runPromise(resolveToolingRoute("app:greet", { cwd: root, cacheRoot }));
+
+      // Then
+      expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet", name: "greet" });
+    });
+  },
+);
+
 test("custom keys cannot claim a canonical command id", async () => {
   await withAliasCache({ custom: { "app:start": "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const error = await Effect.runPromise(
-      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-    );
+    const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
     // Then
     expect(error).toBeInstanceOf(CommandAliasConflictError);
@@ -115,9 +154,7 @@ test.each(["help", "--help", "--version", "-V", "--custom"] as const)(
   async (alias) => {
     await withAliasCache({ custom: { [alias]: "app:greet" } }, async ({ root, cacheRoot }) => {
       // Given / When
-      const error = await Effect.runPromise(
-        Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-      );
+      const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
       // Then
       expect(error).toBeInstanceOf(CommandAliasConflictError);
@@ -129,9 +166,7 @@ test.each(["help", "--help", "--version", "-V", "--custom"] as const)(
 test("unregistered aliases cannot claim a reserved namespace", async () => {
   await withAliasCache({ custom: { "app:shortcut": "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const error = await Effect.runPromise(
-      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-    );
+    const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
     // Then
     expect(error).toBeInstanceOf(CommandAliasConflictError);
@@ -142,9 +177,7 @@ test("unregistered aliases cannot claim a reserved namespace", async () => {
 test("registered colon aliases remain available for explicit app remapping", async () => {
   await withAliasCache({ custom: { "scratch:gc": "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["scratch:gc"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute("scratch:gc", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
@@ -154,9 +187,7 @@ test("registered colon aliases remain available for explicit app remapping", asy
 test("unknown custom targets fail with close matches and remediation", async () => {
   await withAliasCache({ custom: { hi: "app:grete" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const error = await Effect.runPromise(
-      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-    );
+    const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
     // Then
     expect(error).toBeInstanceOf(CommandAliasTargetError);
@@ -173,9 +204,7 @@ test("oversized unknown targets skip fuzzy suggestions", async () => {
   const target = `app:${"x".repeat(1_024)}`;
   await withAliasCache({ custom: { hi: target } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const error = await Effect.runPromise(
-      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-    );
+    const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
     // Then
     expect(error).toBeInstanceOf(CommandAliasTargetError);
@@ -189,9 +218,7 @@ test("alias diagnostics escape terminal control characters", async () => {
   const alias = "bad\u001b[2J";
   await withAliasCache({ custom: { [alias]: "app:missing" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const error = await Effect.runPromise(
-      Effect.flip(resolveToolingRoute({ argv: ["hi"], cwd: root, cacheRoot })),
-    );
+    const error = await Effect.runPromise(Effect.flip(resolveToolingRoute("hi", { cwd: root, cacheRoot })));
 
     // Then
     if (!(error instanceof CommandAliasTargetError)) throw error;
@@ -205,7 +232,7 @@ test.each(["--help", "-h", "--version", "-V", "-v"] as const)(
   async (token) => {
     await withAliasCache({ enabled: false }, async ({ root, cacheRoot }) => {
       // Given / When
-      const route = await Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }));
 
       // Then
       expect(route).toMatchObject({ _tag: "not-tooling" });
@@ -218,7 +245,7 @@ test.each(["--help", "-h", "--version", "-V", "-v"] as const)(
   async (token) => {
     await withAliasCache({ disabled: [token] }, async ({ root, cacheRoot }) => {
       // Given / When
-      const route = await Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }));
 
       // Then
       expect(route).toMatchObject({ _tag: "not-tooling" });
@@ -229,7 +256,7 @@ test.each(["--help", "-h", "--version", "-V", "-v"] as const)(
 test("prototype-inherited custom keys are ignored", async () => {
   await withAliasCache({ custom: {} }, async ({ root, cacheRoot }) => {
     // Given / When — Object.prototype has toString; empty custom must not inherit it
-    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["toString"], cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(resolveToolingRoute("toString", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
@@ -243,9 +270,7 @@ test("prototype-inherited custom keys are ignored", async () => {
 test("explicit own custom key constructor resolves", async () => {
   await withAliasCache({ custom: { constructor: "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["constructor"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute("constructor", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({

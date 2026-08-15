@@ -21,6 +21,7 @@ const RESERVED_NAMESPACE_HEADS = new Set(
 );
 
 interface CommandAliasPolicyInput {
+  readonly enabled?: boolean | undefined;
   readonly custom?: Readonly<Record<string, string>> | undefined;
 }
 
@@ -51,6 +52,7 @@ export const commandAliasRegistrationError = (
   policy: CommandAliasPolicyInput | undefined,
   appCommandIds: ReadonlyArray<string>,
 ): CommandAliasConflictError | CommandAliasTargetError | undefined => {
+  if (policy?.enabled === false) return undefined;
   const canonicalIds = commandIds(appCommandIds);
   for (const [alias, target] of Object.entries(policy?.custom ?? {})) {
     const safeAlias = escapeDiagnosticText(alias);

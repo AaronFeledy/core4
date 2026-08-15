@@ -134,6 +134,20 @@ test("app cache refresh rejects unknown alias targets before writing", async () 
   });
 });
 
+test.each([
+  ["unknown targets", { hi: "app:missing" }],
+  ["canonical collisions", { "app:hello": "app:start" }],
+] as const)("app cache refresh ignores dormant %s when aliases are disabled", async (_case, custom) => {
+  await withRefreshFixture({ enabled: false, custom }, async ({ cachePath, refresh }) => {
+    // Given / When
+    const result = await Effect.runPromise(refresh);
+
+    // Then
+    expect(result.commandsCompiled).toBe(1);
+    expect(await Bun.file(cachePath).exists()).toBe(true);
+  });
+});
+
 test("app cache refresh accepts built-in and compiled tooling alias targets", async () => {
   await withRefreshFixture(
     { custom: { launch: "app:start", greet: "app:hello" } },
