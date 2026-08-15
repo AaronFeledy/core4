@@ -254,14 +254,15 @@ export const runTooling = (
       ...(options.env === undefined ? {} : { env: options.env }),
       agentEnvAllowlist,
     });
-    const toolingRedactionTokens = [...new Set(collectSecretEnvValues(invocation.env))];
+    const redactionTokens = [
+      ...new Set([...collectAppPlanRedactionTokens(plan), ...collectSecretEnvValues(invocation.env)]),
+    ];
 
     const startedAt = Date.now();
     const result = yield* engine.run(invocation, plan, provider);
     const progressEvents = events?._tag === "Some" ? events.value : undefined;
 
     if (progressEvents !== undefined) {
-      const redactionTokens = [...collectAppPlanRedactionTokens(plan), ...toolingRedactionTokens];
       const redaction = yield* Effect.serviceOption(RedactionService);
       const redactor =
         redaction._tag === "Some"
@@ -284,7 +285,7 @@ export const runTooling = (
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
-      redactionTokens: toolingRedactionTokens,
+      redactionTokens,
       ...(progressEvents === undefined ? {} : { rendered: true }),
     };
   });

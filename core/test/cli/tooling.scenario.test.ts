@@ -600,7 +600,9 @@ describe("runTooling — CLI rendering", () => {
   });
 
   test("returns the verbatim exit code, stdout, and stderr from RuntimeProvider.exec", async () => {
-    const plan = makePlan([makeService("appserver", true)]);
+    const plan = makePlan([
+      { ...makeService("appserver", true), environment: { PLAN_SECRET: "plan-secret" } },
+    ]);
     const { provider, calls } = makeProvider([
       { exitCode: 5, stdout: "out-1\nbare-task-password\n", stderr: "bare-default-token\n" },
     ]);
@@ -628,7 +630,13 @@ describe("runTooling — CLI rendering", () => {
     expect(result.exitCode).toBe(5);
     expect(result.stdout).toBe("out-1\nbare-task-password\n");
     expect(result.stderr).toBe("bare-default-token\n");
-    expect(result.redactionTokens).toEqual(["bare-default-token", "12345678", "bare-task-password", "true"]);
+    expect(result.redactionTokens).toEqual([
+      "plan-secret",
+      "bare-default-token",
+      "12345678",
+      "bare-task-password",
+      "true",
+    ]);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("appserver");
     expect(calls[0]?.command).toEqual(["sh", "-c", 'composer "$@"', "lando-tooling", "install"]);
