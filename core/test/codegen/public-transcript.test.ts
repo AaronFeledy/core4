@@ -215,12 +215,18 @@ describe("build-guide-scenarios public transcript emission", () => {
       const written = await emitPublicTranscripts(asts, root);
 
       expect(written).toEqual([
-        "dist/transcripts/public/guides/tabs-guide/main.linux.json",
-        "dist/transcripts/public/guides/tabs-guide/main.macos.json",
+        "dist/transcripts/public/guides/tabs-guide/main.default=linux.json",
+        "dist/transcripts/public/guides/tabs-guide/main.default=macos.json",
       ]);
 
-      const linux = await readTranscript(root, "dist/transcripts/public/guides/tabs-guide/main.linux.json");
-      const macos = await readTranscript(root, "dist/transcripts/public/guides/tabs-guide/main.macos.json");
+      const linux = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/tabs-guide/main.default=linux.json",
+      );
+      const macos = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/tabs-guide/main.default=macos.json",
+      );
 
       expect(linux.variant).toBe("default=linux");
       expect(macos.variant).toBe("default=macos");

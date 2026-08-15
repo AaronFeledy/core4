@@ -1,4 +1,9 @@
-# Beta 1 decisions
+---
+title: Decision log
+description: Records architectural and release decisions for Lando v4.
+---
+
+# Decision log
 
 ## Bun floor decision
 
@@ -60,7 +65,7 @@ Beta 1 runs the full signed release **manually until RC**. The generated `releas
 
 Rationale: the orchestrator is fully implemented and credential-gated, but release signing credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow. Wiring the full pipeline into CI now would produce a job that warning-skips every signing stage — the appearance of an automated release without a trustworthy signed artifact. Keeping the pipeline manual means a run either produces a genuinely signed release or fails closed. Full-pipeline CI is an explicit RC gate, not a Beta 1 deliverable.
 
-Operational contract: maintainers cut `4.0.0-beta.N` by invoking `scripts/release.ts` by hand per `docs/release-runbook.md`, which documents the exact invocation, the required per-stage credentials, and the verification steps. Local rehearsal (`LOCAL_REHEARSAL=1`) exercises stage ordering without credentials.
+Operational contract: maintainers cut `4.0.0-beta.N` by invoking `scripts/release.ts` by hand per `release.md`, which documents the exact invocation, the required per-stage credentials, and the verification steps. Local rehearsal (`LOCAL_REHEARSAL=1`) exercises stage ordering without credentials.
 
 Platform vocabulary is preserved across domains: CI/release artifact ids use `windows-x64`; the `win32-x64` runtime host key stays confined to the runtime-bundle and mutagen host-key domain and never appears in the release workflow.
 

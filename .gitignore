@@ -2,6 +2,7 @@
 **/dist/
 /dist/*
 /docs/reference/schemas/
+docs/.astro/
 *.tsbuildinfo
 **/*.tsbuildinfo
 

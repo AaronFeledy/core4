@@ -280,7 +280,7 @@ describe("ci workflow codegen", () => {
       const bunVersion = (await readFile(resolve(repoRoot, ".bun-version"), "utf8")).trim();
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(24);
+      expect(versionFileMatches).toBe(25);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -487,7 +487,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
       expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(19);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(20);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -596,7 +596,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("Scope: dev prerelease only");
       expect(workflow).toContain("scripts/release.ts");
       expect(workflow).toContain("invoked manually, not by this workflow");
-      expect(workflow).toContain("docs/release-runbook.md");
+      expect(workflow).toContain("docs/contributing/release.md");
       expect(workflow).not.toContain("beta-1-decisions");
 
       expect(workflow.startsWith(`${generatedReleaseHeader}\n`)).toBe(true);

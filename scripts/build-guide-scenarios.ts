@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
 import remarkFrontmatter from "remark-frontmatter";
@@ -44,12 +44,14 @@ import {
   redactPublicTranscript,
   redactPublicTranscriptText,
 } from "../core/src/docs/render/index.ts";
-import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
+import { encodeVariantPair, encodeVariantString, variantFileSuffix } from "../core/src/docs/variant.ts";
+import { GuideId, type GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
+
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
   NotImplementedError,
-} from "../sdk/src/errors/index.ts";
+} from "@lando/core/errors";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
@@ -1042,7 +1044,9 @@ type PublicTranscriptFrameInput = {
 };
 
 const variantStringOf = (variant: GuideVariant | undefined): string =>
-  variant === undefined ? "" : variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ");
+  variant === undefined
+    ? ""
+    : encodeVariantString(variant.pairs.map((pair) => encodeVariantPair(pair.axis, pair.value)));
 
 const runResultSummary = (props: RunProps): string => {
   if (isLibraryRunProps(props)) return "library code executed";
@@ -1184,15 +1188,10 @@ export const buildPublicTranscript = (
 };
 
 export const publicTranscriptVariantSuffix = (variant: GuideVariant | undefined): string =>
-  variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
+  variantFileSuffix(variantStringOf(variant));
 
 export const publicTranscriptSuffixFromVariantString = (variant: string): string =>
-  variant === ""
-    ? ""
-    : `.${variant
-        .split(" ")
-        .map((pair) => pair.split("=")[1] ?? "")
-        .join(".")}`;
+  variantFileSuffix(variant);
 
 export const publicTranscriptRelativePath = (
   guideId: string,
@@ -1201,13 +1200,83 @@ export const publicTranscriptRelativePath = (
   outputRoot = PUBLIC_TRANSCRIPT_ROOT,
 ): string => `${outputRoot}/${guideId}/${scenarioId}${publicTranscriptVariantSuffix(variant)}.json`;
 
+const GUIDE_ID_ARG_REMEDIATION =
+  "Pass --only with a lowercase kebab-case guide id matching the GuideId schema (a-z, 0-9, hyphen)." as const;
+const CLEAR_TARGET_REMEDIATION =
+  "Clear targets must resolve strictly under the canonical generated output root." as const;
+
+export class UnsafeGuideIdError extends Schema.TaggedError<UnsafeGuideIdError>()("UnsafeGuideIdError", {
+  message: Schema.String,
+  guideId: Schema.String,
+  remediation: Schema.String,
+}) {}
+
+export class UnsafeGuideClearTargetError extends Schema.TaggedError<UnsafeGuideClearTargetError>()(
+  "UnsafeGuideClearTargetError",
+  {
+    message: Schema.String,
+    target: Schema.String,
+    root: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+/** Decode a CLI/clear guide id through the canonical SDK GuideId schema. */
+export const decodeGuideIdArg = (value: string): typeof GuideId.Type => {
+  const decoded = Schema.decodeUnknownEither(GuideId)(value);
+  if (Either.isLeft(decoded)) {
+    throw new UnsafeGuideIdError({
+      message: `Invalid guide id: ${value}`,
+      guideId: value,
+      remediation: GUIDE_ID_ARG_REMEDIATION,
+    });
+  }
+  return decoded.right;
+};
+
+const isStrictlyInside = (root: string, candidate: string): boolean => {
+  const rel = relative(root, candidate);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+};
+
+/**
+ * Resolve the recursive rm target for a clearGuideId under an output root.
+ * Empty/undefined clearGuideId means the whole output root (full rebuild).
+ * Non-empty ids must decode as GuideId and stay strictly inside the output root.
+ */
+export const resolveContainedClearTarget = (
+  root: string,
+  outputRoot: string,
+  clearGuideId: string | undefined,
+): string => {
+  const canonicalOutputRoot = resolve(root, outputRoot);
+  if (clearGuideId === undefined || clearGuideId === "") {
+    return canonicalOutputRoot;
+  }
+
+  const guideId = decodeGuideIdArg(clearGuideId);
+  const target = resolve(canonicalOutputRoot, guideId);
+  if (!isStrictlyInside(canonicalOutputRoot, target)) {
+    throw new UnsafeGuideClearTargetError({
+      message: `Clear target escapes output root: ${target}`,
+      target,
+      root: canonicalOutputRoot,
+      remediation: CLEAR_TARGET_REMEDIATION,
+    });
+  }
+  return target;
+};
+
 export const emitPublicTranscripts = async (
   asts: ReadonlyArray<GuideScenarioAst>,
   root = REPO_ROOT,
   outputRoot = PUBLIC_TRANSCRIPT_ROOT,
   options: EmitGuideScenarioOptions = {},
 ): Promise<ReadonlyArray<string>> => {
-  await rm(resolve(root, outputRoot, options.clearGuideId ?? ""), { force: true, recursive: true });
+  await rm(resolveContainedClearTarget(root, outputRoot, options.clearGuideId), {
+    force: true,
+    recursive: true,
+  });
   const written: string[] = [];
   for (const guide of asts) {
     const guideId = guide.frontmatter.id;
@@ -1235,7 +1304,10 @@ export const emitGuideScenarioTests = async (
   outputRoot = GENERATED_GUIDE_TEST_ROOT,
   options: EmitGuideScenarioOptions = {},
 ): Promise<ReadonlyArray<string>> => {
-  await rm(resolve(root, outputRoot, options.clearGuideId ?? ""), { force: true, recursive: true });
+  await rm(resolveContainedClearTarget(root, outputRoot, options.clearGuideId), {
+    force: true,
+    recursive: true,
+  });
   const written: string[] = [];
   const hostPlatform = resolveHostGuidePlatform();
   for (const guide of asts) {
@@ -1243,8 +1315,7 @@ export const emitGuideScenarioTests = async (
     const variants = variantsOf(guide);
     for (const scenario of [...guide.scenarios].sort((left, right) => left.id.localeCompare(right.id))) {
       for (const variant of variants) {
-        const suffix = variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
-        const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.test.ts`;
+        const relativePath = `${outputRoot}/${guideId}/${scenario.id}${publicTranscriptVariantSuffix(variant)}.test.ts`;
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });
         await Bun.write(absolutePath, renderScenarioTest(guide, scenario, variant, hostPlatform));
@@ -1264,19 +1335,19 @@ export const buildGuideScenarioTests = async (
     ...(options.onlyGuide === undefined ? {} : { clearGuideId: options.onlyGuide }),
   });
 
-const parseBuildGuideScenarioArgs = (args: ReadonlyArray<string>): BuildGuideScenarioOptions => {
+export const parseBuildGuideScenarioArgs = (args: ReadonlyArray<string>): BuildGuideScenarioOptions => {
   const options: { onlyGuide?: string } = {};
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--only") {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) throw new Error("--only requires a guide id");
-      options.onlyGuide = value;
+      options.onlyGuide = decodeGuideIdArg(value);
       index += 1;
       continue;
     }
     if (arg?.startsWith("--only=")) {
-      options.onlyGuide = arg.slice("--only=".length);
+      options.onlyGuide = decodeGuideIdArg(arg.slice("--only=".length));
       continue;
     }
     throw new Error(`Unknown build-guide-scenarios flag: ${arg}`);

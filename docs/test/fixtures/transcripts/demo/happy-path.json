@@ -1,0 +1,22 @@
+{
+  "guideId": "demo",
+  "scenarioId": "happy-path",
+  "variant": "",
+  "runtime": "cli",
+  "render": true,
+  "frames": [
+    {
+      "kind": "step",
+      "sourceFile": "docs/guides/demo.mdx",
+      "sourceLine": 10,
+      "displayText": "Start"
+    },
+    {
+      "kind": "run",
+      "sourceFile": "docs/guides/demo.mdx",
+      "sourceLine": 11,
+      "commandDisplay": "lando start",
+      "resultSummary": "expected exit 0"
+    }
+  ]
+}

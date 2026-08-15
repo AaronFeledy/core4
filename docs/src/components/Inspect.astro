@@ -1,0 +1,30 @@
+---
+import { componentFramePropsFor } from "./component-frame.ts";
+
+interface Props {
+  readonly file?: string;
+  readonly json?: string;
+  readonly events?: true;
+  readonly output?: true;
+  readonly [key: string]: unknown;
+}
+
+const { file, json, events } = Astro.props;
+const [kind, target] =
+  file !== undefined
+    ? ["file", file]
+    : json !== undefined
+      ? ["JSON", json]
+      : events === true
+        ? ["events", "event stream"]
+        : ["output", "command output"];
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inspect");
+---
+
+<figure class="lando-inspect" {...dataAttributes}>
+  <figcaption>Inspect {kind}</figcaption>
+  <pre><code>{target}</code></pre>
+  {frame?.resultSummary && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
+</figure>

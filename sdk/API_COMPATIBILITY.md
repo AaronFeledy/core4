@@ -119,6 +119,7 @@
 - `ArtifactBuildSpec`
 - `ArtifactManifestEntry`
 - `ArtifactRef`
+- `AxisToken`
 - `assertJsonSchemaDeprecationsValid`
 - `assertPublicSchemaAnnotations`
 - `BuildBlock`
@@ -133,6 +134,7 @@
 - `CommandResultFormat`
 - `CommandSpec`
 - `CommandWarning`
+- `ComponentId`
 - `COMPOSE_DEPRECATED_TOP_LEVEL_KEYS`
 - `COMPOSE_EXTENSION_TOP_LEVEL_PATTERN`
 - `COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY`

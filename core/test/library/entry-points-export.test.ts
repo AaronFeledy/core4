@@ -90,6 +90,15 @@ const documentedAuxiliaryEntryPoints = [
     assertSymbol: (mod: Record<string, unknown>) => expect(mod.renderPublicTranscriptHtml).toBeFunction(),
   },
   {
+    specifier: "@lando/core/docs/variant",
+    exportKey: "./docs/variant",
+    target: "./src/docs/variant.ts",
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.variantFileSuffix).toBeFunction();
+      expect(mod.encodeVariantPair).toBeFunction();
+    },
+  },
+  {
     specifier: "@lando/core/docs/redactions",
     exportKey: "./docs/redactions",
     target: "./src/docs/render/redaction.ts",

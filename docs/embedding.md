@@ -1,3 +1,8 @@
+---
+title: Embedding `@lando/core`
+description: How to embed the Effect-native @lando/core library API in a host application.
+---
+
 # Embedding `@lando/core`
 
 The `@lando/core` library API is Effect-native. Embedding hosts compose Effect programs with the exported service tags and runtime Layer, then run those programs at the host boundary with Effect.
@@ -20,6 +25,7 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/cli/operations` | Built-in command operations for hosts that want command logic without argv parsing. |
 | `@lando/core/docs/components` | Executable-guide component contracts and decode helpers. |
 | `@lando/core/docs/render` | Public transcript view-model and deterministic HTML renderer for docs pipelines. |
+| `@lando/core/docs/variant` | Guide-variant string encoding and file-suffix helpers for docs pipelines. |
 | `@lando/core/docs/redactions` | Public transcript redaction helpers for docs pipelines. |
 
 The default `@lando/core` entry is plugin-free: importing it does not require or install any bundled plugin package. A host that installs the bundled plugin packages and wants `bundled-only` discovery must import the opt-in before constructing a runtime:

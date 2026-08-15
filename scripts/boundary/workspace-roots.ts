@@ -28,6 +28,7 @@ export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
 export const ALL_PACKAGE_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
+  "docs/src",
   "engine/src",
   "http-client/src",
   "landofile/src",
@@ -44,7 +45,9 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  * `check-deprecations.ts`) that predate the boundary substrate and walk
  * directories without glob expansion. Deliberately omits
  * `container-runtime/src`: neither gate has ever covered it, and extending
- * coverage here would silently broaden both gates.
+ * coverage here would silently broaden both gates. Deliberately omits
+ * `docs/src`: it is a build-time-only docs site that neither gate has ever
+ * walked, and adding it would silently broaden both gates.
  */
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
@@ -66,6 +69,7 @@ export const ALL_PACKAGE_WALK_ROOTS = [
 export const NON_PLUGIN_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
+  "docs/src",
   "engine/src",
   "http-client/src",
   "landofile/src",

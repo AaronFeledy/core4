@@ -1,3 +1,8 @@
+---
+title: Telemetry Redaction and Retention Policy
+description: How Lando redacts telemetry before it leaves your machine and how long any collected data is retained.
+---
+
 # Telemetry Redaction and Retention Policy
 
 This is the canonical, in-repo policy for how Lando telemetry is redacted before it leaves your machine and how long any collected data is retained. It is published before telemetry emission is enabled by default and is linked from the [telemetry event inventory](./events.md), the opt-out command output (`lando config telemetry status`), and the machine-readable inventory in [`engine/src/telemetry/inventory.ts`](../../engine/src/telemetry/inventory.ts).

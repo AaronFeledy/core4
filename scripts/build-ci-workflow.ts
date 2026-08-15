@@ -243,6 +243,33 @@ ${renderSmokeCommands(platform)}
 ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
 `;
 
+const renderDocsBuild = (): string => `  docs-build:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+      - name: Check docs
+        run: bun run docs:check
+
+      - name: Test docs
+        run: bun run docs:test
+
+      - name: Build docs
+        run: bun run docs:build
+
+      - name: Confirm generated schema reference is published
+        run: test -f docs/dist/reference/schemas/app-plan/index.html
+
+${timingNoticeStep("docs-build", 15)}
+`;
+
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     needs: [build-linux-x64]
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
@@ -764,6 +791,7 @@ permissions:
 jobs:
 ${renderStaticChecks()}
 ${renderUnitTests()}
+${renderDocsBuild()}
   schema-snapshot:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15

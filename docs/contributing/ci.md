@@ -1,3 +1,8 @@
+---
+title: CI runbook
+description: Reproduce CI checks locally and inspect their failure artifacts.
+---
+
 # CI runbook
 
 Use these commands to reproduce the CI jobs locally.
@@ -231,6 +236,21 @@ Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagno
 
 Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
 
+## Docs build
+
+The `docs-build` job runs on Linux x64 and is a required status check for `main`. Reproduce it locally:
+
+```bash
+bun run docs:check
+bun run docs:test
+bun run docs:build
+test -f docs/dist/reference/schemas/app-plan/index.html
+```
+
+| Job | Commands |
+| --- | --- |
+| `docs-build` | `bun run docs:check`, `bun run docs:test`, `bun run docs:build`, then confirm `docs/dist/reference/schemas/app-plan/index.html` |
+
 ## Branch protection
 
 Protect `main` in GitHub with required status checks enabled. All required status checks must pass before a pull request can merge to `main`:
@@ -239,6 +259,7 @@ Protect `main` in GitHub with required status checks enabled. All required statu
 - `unit-tests-linux-x64`
 - `schema-snapshot`
 - `bundled-codegen`
+- `docs-build`
 - `library-api-tests`
 - `recipe-tests`
 - `guide-scenarios-darwin-arm64`

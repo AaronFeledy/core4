@@ -1,0 +1,62 @@
+<slot />
+
+<style is:global>
+  .lando-scenario {
+    margin-block: 2rem;
+  }
+
+  .lando-step,
+  .lando-cleanup,
+  .lando-skip {
+    margin-block: 1.5rem;
+    padding: 1rem 1.25rem;
+    border-inline-start: 0.2rem solid var(--sl-color-accent);
+    background: var(--sl-color-bg-nav);
+  }
+
+  .lando-step > :first-child,
+  .lando-cleanup > :first-child {
+    margin-top: 0;
+  }
+
+  .lando-run,
+  .lando-inline,
+  .lando-inspect {
+    margin-block: 1rem;
+  }
+
+  .lando-run pre,
+  .lando-inline pre,
+  .lando-inspect pre {
+    margin-block: 0;
+  }
+
+  .lando-verify,
+  .lando-fixture {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    margin-block: 0.75rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .lando-inspect figcaption {
+    margin-bottom: 0.35rem;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+  }
+
+  .lando-skip__badge {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    color: var(--sl-color-text-accent);
+    font-size: var(--sl-text-sm);
+    font-weight: 700;
+  }
+
+  .lando-tab {
+    display: flow-root;
+  }
+</style>

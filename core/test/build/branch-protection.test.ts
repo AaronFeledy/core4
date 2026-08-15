@@ -3,13 +3,14 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const runbookPath = resolve(repoRoot, "docs/ci-runbook.md");
+const runbookPath = resolve(repoRoot, "docs/contributing/ci.md");
 
 const requiredChecks = [
   "static-checks",
   "unit-tests-linux-x64",
   "schema-snapshot",
   "bundled-codegen",
+  "docs-build",
   "library-api-tests",
   "recipe-tests",
   "guide-scenarios-darwin-arm64",

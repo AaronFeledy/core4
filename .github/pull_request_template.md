@@ -1,1 +1,1 @@
-CI troubleshooting: [CI runbook](../docs/ci-runbook.md)
+CI troubleshooting: [CI runbook](../docs/contributing/ci.md)

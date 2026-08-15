@@ -1,0 +1,17 @@
+---
+import { componentFramePropsFor } from "./component-frame.ts";
+
+interface Props {
+  readonly name: string;
+  readonly [key: string]: unknown;
+}
+
+const { name } = Astro.props;
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "step");
+---
+
+<section class="lando-step" {...dataAttributes}>
+  <h3>{frame?.displayText ?? name}</h3>
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  <slot />
+</section>

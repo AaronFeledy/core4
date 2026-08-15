@@ -1,0 +1,14 @@
+{
+  "guideId": "corrupt",
+  "scenarioId": "invalid-schema",
+  "variant": "",
+  "runtime": "cli",
+  "render": true,
+  "frames": [
+    {
+      "kind": "unknown",
+      "sourceFile": "docs/guides/corrupt.mdx",
+      "sourceLine": 0
+    }
+  ]
+}
