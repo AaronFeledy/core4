@@ -2,14 +2,18 @@ import type { LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sd
 
 import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import type { EffectiveTooling } from "../planner/effective-tooling.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
 
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
 
-export const compileToolingCommands = (landofile: LandofileShape): ReadonlyArray<CommandIndexEntry> => {
-  const tooling = landofile.tooling;
+export const compileToolingCommands = (
+  landofile: LandofileShape,
+  effectiveTooling: EffectiveTooling | undefined = landofile.tooling,
+): ReadonlyArray<CommandIndexEntry> => {
+  const tooling = effectiveTooling;
   if (tooling === undefined) return [];
   const internal = new Set(getInternalToolingTasks(landofile));
   return Object.entries(tooling)
@@ -36,8 +40,9 @@ export const compileBunShellScriptCommands = (
 export const compileAppCommands = (
   landofile: LandofileShape,
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
+  effectiveTooling?: EffectiveTooling,
 ): ReadonlyArray<CommandIndexEntry> => {
-  const toolingEntries = compileToolingCommands(landofile);
+  const toolingEntries = compileToolingCommands(landofile, effectiveTooling);
   const seen = new Set(toolingEntries.map((entry) => entry.id));
   const merged: CommandIndexEntry[] = [...toolingEntries];
   for (const entry of compileBunShellScriptCommands(scripts)) {

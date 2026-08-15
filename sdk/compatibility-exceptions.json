@@ -574,5 +574,77 @@
     "changeKind": "property-removed",
     "path": "$.contributes.cas",
     "justification": "The unreleased cas manifest key is replaced before Beta by the normative typed certificateAuthorities contribution; no shipped consumer contract exists (US-500)."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.tooling.additionalProperties",
+    "justification": "Tooling tasks intentionally add optional env and dir fields while preserving every previously accepted field; acceptance widening (US-563)."
   }
 ]

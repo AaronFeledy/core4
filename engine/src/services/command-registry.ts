@@ -93,7 +93,11 @@ export const CommandRegistryLive = Layer.effect(
           pluginRegistryOption._tag === "Some"
             ? yield* pluginRegistryOption.value.list.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
             : undefined;
-        yield* writeCachesForLandofile(landofile, entries, pluginManifests);
+        if (Object.keys(landofile.services ?? {}).length === 0) {
+          yield* writeCachesForLandofile(landofile, entries, pluginManifests);
+        } else {
+          yield* writePluginCommandCache(pluginManifests === undefined ? {} : { manifests: pluginManifests });
+        }
         return toRegisteredCommands(entries);
       }).pipe(
         Effect.catchAllCause(() =>

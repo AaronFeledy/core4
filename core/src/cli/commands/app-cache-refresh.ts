@@ -45,6 +45,7 @@ import {
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
 
@@ -121,7 +122,7 @@ export const refreshAppCache = (
 
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);
-    const entries = compileAppCommands(landofile, scripts);
+    const entries = compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan));
 
     const appCachePath = yield* writeAppCommandCacheStrict({
       landofile,

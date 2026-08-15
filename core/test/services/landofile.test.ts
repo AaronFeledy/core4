@@ -11,7 +11,7 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/core/errors";
-import { ServiceName } from "@lando/core/schema";
+import { PortablePath, ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
@@ -839,11 +839,44 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
     });
   };
 
-  test("rejects top-level `toolingDefaults:` with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "toolingDefaults:", "  method: checksum", ""],
-      "not supported yet",
-    );
+  test("loads tooling defaults and task env and dir fields", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "toolingDefaults:",
+          "  service: appserver",
+          "  dir: /app",
+          "  env:",
+          "    APP_ENV: development",
+          "  vars:",
+          "    MODE: default",
+          "tooling:",
+          "  build:",
+          "    cmd: make",
+          "    dir: /app/frontend",
+          "    env:",
+          "      APP_ENV: test",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const landofile = await discover();
+
+      // Then
+      expect(landofile.toolingDefaults).toEqual({
+        service: "appserver",
+        dir: PortablePath.make("/app"),
+        env: { APP_ENV: "development" },
+        vars: { MODE: "default" },
+      });
+      expect(landofile.tooling?.build?.dir).toBe(PortablePath.make("/app/frontend"));
+      expect(landofile.tooling?.build?.env).toEqual({ APP_ENV: "test" });
+    });
   });
 
   test("accepts top-level `toolingIncludes:` and registers its namespaced tasks", async () => {

@@ -25,6 +25,7 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
+import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
@@ -108,12 +109,18 @@ export const buildToolingInvocation = (
   } = {},
 ): ToolingInvocation => {
   const commands = normalizeCommands(task, options.args ?? []);
+  const cwd = task.dir ?? options.cwd;
+  const taskEnv =
+    task.env === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(task.env).map(([key, value]) => [key, String(value)]));
+  const env = taskEnv === undefined && options.env === undefined ? undefined : { ...taskEnv, ...options.env };
   return {
     tool: name,
     ...(task.service === undefined ? {} : { service: task.service }),
     ...(options.user === undefined ? {} : { user: options.user }),
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    ...(options.env === undefined ? {} : { env: options.env }),
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(env === undefined ? {} : { env }),
     ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
     commands,
   };
@@ -165,8 +172,11 @@ export const runTooling = (
       target === undefined
         ? yield* loadUserLandofile(landofileService)
         : yield* loadUserLandofileAt(landofileService, target.root);
+    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
+    const plan = target?.plan ?? (yield* resolveToolingPlan({ landofile, appRoot }));
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
-    const task = landofile.tooling?.[toolingLookupKey];
+    const tooling = effectiveToolingForPlan(plan) ?? compileEffectiveTooling({ landofile, services: [] });
+    const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
 
     if (task !== undefined && reservedOwner !== undefined) {
@@ -176,7 +186,6 @@ export const runTooling = (
     }
 
     if (task === undefined) {
-      const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
       if (appRoot !== undefined) {
         const scriptResult = yield* runBunShellTooling(options, appRoot);
         if (scriptResult !== undefined) return scriptResult;
@@ -203,8 +212,6 @@ export const runTooling = (
     const argumentFailure = validateToolingArguments(options.name, task, options.args ?? []);
     if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
 
-    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
-    const plan = target?.plan ?? (yield* resolveToolingPlan({ landofile, appRoot }));
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
     const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;

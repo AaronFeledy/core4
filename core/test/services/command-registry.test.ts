@@ -81,6 +81,7 @@ const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.
   name: name as PluginManifest["name"],
   version,
   api: 4,
+  bootstrap: "app",
   contributes: { commands },
 });
 
@@ -157,15 +158,20 @@ describe("CommandRegistryLive", () => {
   });
 
   test("returns an empty list when the Landofile has no `tooling:` section", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(
-        join(dir, ".lando.yml"),
-        ["name: myapp", "services:", "  web:", "    image: node:lts", ""].join("\n"),
-      );
-      process.chdir(dir);
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: myapp", "services:", "  web:", "    image: node:lts", ""].join("\n"),
+        );
+        process.chdir(dir);
 
-      const commands = await listFromLive();
-      expect(commands).toEqual([]);
+        const commands = await listFromLive();
+
+        expect(commands).toEqual([]);
+        expect(await Bun.file(appCommandCachePath(cacheRoot, "myapp", dir)).exists()).toBe(false);
+        expect(await Bun.file(appToolingCompilationCachePath(cacheRoot, dir)).exists()).toBe(false);
+      });
     });
   });
 

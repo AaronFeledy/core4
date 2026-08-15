@@ -13,6 +13,7 @@ import {
   AppId,
   type AppPlan,
   PluginName,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -392,6 +393,35 @@ describe("CacheServiceLive", () => {
         },
       }),
     ).not.toBe(deriveAppPlanCacheKey({ ...base, landofile: { name: "cache-plan", services: {} } }));
+  });
+
+  test("changes app-plan cache key for a toolingDefaults-only Landofile edit", () => {
+    // Given — deriveAppPlanCacheKey already fingerprints the whole Landofile
+    const base = {
+      appRoot: "/workspace/cache-plan-defaults",
+      landofile: {
+        name: "cache-plan-defaults",
+        services: { [ServiceName.make("web")]: { type: "node" } },
+        tooling: { hello: { cmd: "echo hi" } },
+      },
+      pluginManifests: [],
+    };
+    const withDefaults = {
+      ...base,
+      landofile: {
+        ...base.landofile,
+        toolingDefaults: { service: "web", dir: PortablePath.make("/app") },
+      },
+    };
+
+    // When
+    const without = deriveAppPlanCacheKey(base);
+    const withKey = deriveAppPlanCacheKey(withDefaults);
+    const restored = deriveAppPlanCacheKey(base);
+
+    // Then
+    expect(withKey).not.toBe(without);
+    expect(restored).toBe(without);
   });
 
   test("keys referenced files by path size and content but not mtime", () => {

@@ -198,5 +198,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |
 | — | — | PHP service customization | `docs/guides/services/php-customization.mdx` | Shipped |
 | — | — | PHP tooling command resolution | `docs/guides/tooling/php-command-resolution.mdx` | Shipped |
+| — | — | app-wide tooling defaults and task overrides | `docs/guides/tooling/defaults-and-aliases.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |

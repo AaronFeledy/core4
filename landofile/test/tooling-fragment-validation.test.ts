@@ -87,6 +87,25 @@ describe("tooling fragment validation", () => {
     if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
   });
 
+  test("a tooling fragment rejects top-level toolingDefaults", async () => {
+    // Given
+    await writeFile(
+      join(appRoot, "parent.yml"),
+      ["toolingDefaults:", "  service: appserver", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+      "utf8",
+    );
+
+    // When
+    const error = await failure({ toolingIncludes: { docs: { file: "./parent.yml" } } }, appRoot);
+
+    // Then
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("forbidden-field");
+      expect(error.message).toContain('"toolingDefaults"');
+    }
+  });
+
   test("a tooling fragment rejects a bare nested include", async () => {
     // Given a tooling fragment with an untyped nested include
     await writeFile(join(appRoot, "parent.yml"), "includes:\n  - ./tasks.yml\n", "utf8");

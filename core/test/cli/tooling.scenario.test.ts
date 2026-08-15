@@ -11,6 +11,7 @@ import {
   AppId,
   type AppPlan,
   type LandofileShape,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -35,6 +36,7 @@ import {
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -120,6 +122,8 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
 interface ExecRecord {
   readonly service: string;
   readonly command: ReadonlyArray<string>;
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 const makeProvider = (
@@ -161,7 +165,12 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: (target, spec) => {
-      calls.push({ service: String(target.service), command: spec.command });
+      calls.push({
+        service: String(target.service),
+        command: spec.command,
+        ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+        ...(spec.env === undefined ? {} : { env: spec.env }),
+      });
       const response = responses[i] ?? { exitCode: 0 };
       i += 1;
       return Effect.succeed({
@@ -582,6 +591,71 @@ describe("runTooling — CLI rendering", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("appserver");
     expect(calls[0]?.command).toEqual(["sh", "-c", 'composer "$@"', "lando-tooling", "install"]);
+  });
+
+  test("passes folded tooling defaults through the provider engine", async () => {
+    // Given
+    const plan = makePlan([makeService("default-service", true), makeService("worker")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const authoredLandofile: LandofileShape = {
+      name: "scenario",
+      toolingDefaults: {
+        service: "default-service",
+        dir: PortablePath.make("/workspace/from-defaults"),
+        env: { DEFAULT_ONLY: "default", SHARED: "default" },
+      },
+      tooling: { inspect: { cmd: "env" } },
+    };
+    const landofile = await Effect.runPromise(
+      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+    );
+    const layer = makeLayer({ landofile, plan, provider });
+
+    // When
+    await Effect.runPromise(runTooling({ name: "inspect" }).pipe(runtimeFor(layer)));
+
+    // Then
+    expect(calls[0]).toMatchObject({
+      service: "default-service",
+      cwd: "/workspace/from-defaults",
+      env: { DEFAULT_ONLY: "default", SHARED: "default" },
+    });
+  });
+
+  test("passes folded task overrides through the provider engine", async () => {
+    // Given
+    const plan = makePlan([makeService("default-service", true), makeService("worker")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const authoredLandofile: LandofileShape = {
+      name: "scenario",
+      toolingDefaults: {
+        service: "default-service",
+        dir: PortablePath.make("/workspace/from-defaults"),
+        env: { DEFAULT_ONLY: "default", SHARED: "default" },
+      },
+      tooling: {
+        inspect: {
+          service: "worker",
+          cmd: "env",
+          dir: PortablePath.make("/workspace/from-task"),
+          env: { SHARED: "task", TASK_ONLY: "task" },
+        },
+      },
+    };
+    const landofile = await Effect.runPromise(
+      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+    );
+    const layer = makeLayer({ landofile, plan, provider });
+
+    // When
+    await Effect.runPromise(runTooling({ name: "inspect" }).pipe(runtimeFor(layer)));
+
+    // Then
+    expect(calls[0]).toMatchObject({
+      service: "worker",
+      cwd: "/workspace/from-task",
+      env: { DEFAULT_ONLY: "default", SHARED: "task", TASK_ONLY: "task" },
+    });
   });
 
   test("appends pass-through args to argv-form cmd", async () => {

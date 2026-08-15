@@ -666,6 +666,10 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
 export type ToolingVar = typeof ToolingVar.Type;
 
+const ToolingEnvironment = Schema.Record({ key: Schema.String, value: ToolingVarLiteral }).annotations({
+  description: "Environment variables supplied to a tooling task as scalar values.",
+});
+
 export const ToolingFlagShape = Schema.Struct({
   type: Schema.optional(Schema.Literal("boolean", "option")),
   description: Schema.optional(Schema.String),
@@ -692,6 +696,8 @@ export type ToolingArgShape = typeof ToolingArgShape.Type;
  * - `cmd:` — single command (string or string array).
  * - `cmds:` — sequential command list (strings only in this schema).
  * - `arguments: false` — reject caller-supplied positional arguments.
+ * - `dir:` — task working directory.
+ * - `env:` — task environment overrides.
  * - `vars:` — accepted `ToolingVar` forms only.
  *
  * Supported deprecation metadata:
@@ -700,7 +706,7 @@ export type ToolingArgShape = typeof ToolingArgShape.Type;
  * Unsupported fields rejected by `LandofileService` with remediation:
  * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
  * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
- * `env:`, `user:`, `dir:`, `appMount:`, `stdio:`, `interactive:`,
+ * `user:`, `appMount:`, `stdio:`, `interactive:`,
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `disabled:`, `aliases:`,
@@ -716,12 +722,35 @@ export const ToolingTaskShape = Schema.Struct({
   arguments: Schema.optional(Schema.Literal(false)).annotations({
     description: "Set to false to reject caller-supplied positional arguments for this task.",
   }),
+  dir: Schema.optional(PortablePath).annotations({
+    description: "Working directory used when the tooling task runs.",
+  }),
+  env: Schema.optional(ToolingEnvironment).annotations({
+    description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
+  }),
   vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })),
   deprecated: Schema.optional(DeprecationNotice),
   flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingFlagShape })),
   args: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingArgShape })),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
+
+/** App-wide defaults inherited by tooling tasks unless a task overrides them. */
+export const ToolingDefaultsShape = Schema.Struct({
+  service: Schema.optional(Schema.String).annotations({
+    description: "Default service target inherited by tooling tasks.",
+  }),
+  dir: Schema.optional(PortablePath).annotations({
+    description: "Default working directory inherited by tooling tasks.",
+  }),
+  env: Schema.optional(ToolingEnvironment).annotations({
+    description: "Default environment variables inherited by tooling tasks.",
+  }),
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })).annotations({
+    description: "Default tooling variables inherited by tooling tasks.",
+  }),
+});
+export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;
 
 /**
  * BunShellScriptFrontMatter — accepted YAML front-matter for
@@ -883,8 +912,8 @@ const ComposeConfigConfig = Schema.Struct({
 
 /**
  * LandofileShape — the authored Landofile shape.
- * Excludes fields not modeled here: toolingDefaults:,
- * commandAliases:, events:, keys:, plugins:, pluginDirs:.
+ * Excludes fields not modeled here: commandAliases:, events:, keys:, plugins:,
+ * pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(
@@ -922,6 +951,9 @@ const LandofileShapeBase = Schema.Struct({
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfigDecode })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
+  toolingDefaults: Schema.optional(ToolingDefaultsShape).annotations({
+    description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",
+  }),
   tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
   toolingIncludes: Schema.optional(
     Schema.Record({ key: Schema.String, value: ToolingIncludeShape }),
