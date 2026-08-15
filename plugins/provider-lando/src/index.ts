@@ -79,6 +79,7 @@ import {
   makeSystemPodmanMachineRunner,
   setupProviderLando,
 } from "./setup.ts";
+import { runSmokeReadinessProbe } from "./smoke-probe.ts";
 import {
   type LinuxHostRelease,
   applyApprovedProviderSetupPlan,
@@ -216,6 +217,15 @@ export type {
   RootMountPropagation,
   WslMountPropagationReaders,
 } from "./wsl-mount-propagation.ts";
+export {
+  DEFAULT_BASE_IMAGE,
+  ProviderLandoSmokeError,
+  runBuildSmokeProbe,
+  runContainerSmokeProbe,
+  runHealthSmokeProbe,
+  runSmokeReadinessProbe,
+} from "./smoke-probe.ts";
+export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe.ts";
 
 export {
   ProviderBundleChecksumError,
@@ -341,6 +351,7 @@ export interface ProviderLayerOptions {
   readonly rootlessProbes?: RootlessProbes;
   readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
+  readonly smokeRetryPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
@@ -591,6 +602,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
         Effect.gen(function* () {
+          const smokeEnabled = Reflect.get(setupOptions.setupFlags ?? {}, "smoke") === true;
           const result = yield* setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
@@ -616,6 +628,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(options.runtimeConfigDir === undefined ? {} : { runtimeConfigDir: options.runtimeConfigDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
+            ...(smokeEnabled && canEnsure ? { smoke: true } : {}),
             ...(canEnsure
               ? {
                   managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
@@ -635,6 +648,19 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                         ),
                       );
                       yield* ensureEffectFor(progress, progress.runtimeBundleVersion);
+                      if (smokeEnabled) {
+                        yield* progress.run(
+                          "smoke",
+                          Effect.scoped(
+                            runSmokeReadinessProbe({
+                              podmanApi,
+                              ...(options.smokeRetryPolicy === undefined
+                                ? {}
+                                : { retryPolicy: options.smokeRetryPolicy }),
+                            }),
+                          ),
+                        );
+                      }
                     }),
                 }
               : { readinessCheck: ensureEffect }),
@@ -890,6 +916,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
           name: "runtime-bundle-sha256",
           description: "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
           type: "option",
+        },
+        {
+          name: "smoke",
+          description: "Verify container run, image build, and healthcheck operations during setup.",
+          type: "boolean",
         },
       ],
     },

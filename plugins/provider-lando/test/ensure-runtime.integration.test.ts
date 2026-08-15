@@ -211,6 +211,8 @@ const withRuntimeProvider = async <A>(
         rootlessProbes: {
           probe: () => ({
             subidConfigured: true,
+            subidRangeSufficient: true,
+            subidRangesDisjoint: true,
             hasUidmapTools: true,
             cgroupsV2Delegated: true,
             hasXdgRuntimeDir: true,

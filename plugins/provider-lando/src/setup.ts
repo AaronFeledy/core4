@@ -167,6 +167,7 @@ export interface SetupOptions {
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly readinessCheck?: Effect.Effect<void, ProviderUnavailableError>;
   readonly managedRuntimeSetup?: (progress: RuntimeSetupProgress) => Effect.Effect<void, ProviderError>;
+  readonly smoke?: boolean;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
@@ -182,7 +183,7 @@ export interface SetupOptions {
   ) => PodmanMachineRunner;
 }
 
-export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness";
+export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness" | "smoke";
 
 export interface RuntimeSetupProgress {
   readonly runtimeBundleVersion?: string;
@@ -752,6 +753,7 @@ const buildSetupSteps = (
   hasStateDir: boolean,
   probesSocket: boolean,
   managesRuntime: boolean,
+  smoke: boolean,
 ): ReadonlyArray<SetupStep> => {
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
@@ -763,6 +765,7 @@ const buildSetupSteps = (
     steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
     steps.push({ taskId: "launch", label: "Launch managed runtime" });
     steps.push({ taskId: "readiness", label: "Verify managed runtime readiness" });
+    if (smoke) steps.push({ taskId: "smoke", label: "Verify managed runtime operations" });
   }
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
@@ -857,7 +860,14 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
     const hasStateDir = options.stateDir !== undefined;
     const probesSocket = options.skipSocketProbe !== true;
     const managesRuntime = options.managedRuntimeSetup !== undefined;
-    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket, managesRuntime);
+    const steps = buildSetupSteps(
+      platform,
+      hasBundle,
+      hasStateDir,
+      probesSocket,
+      managesRuntime,
+      options.smoke === true,
+    );
     const treeStart = performance.now();
 
     yield* publishEvent(
