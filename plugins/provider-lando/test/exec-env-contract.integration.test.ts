@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema, Stream } from "effect";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 import { bringUp, exec } from "@lando/provider-lando";
 import {
@@ -58,7 +58,12 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
-  metadata: { ...metadata, source: "/srv/apps/envapp/.lando.yml" },
+  fileSync: [],
+  metadata: {
+    ...metadata,
+    resolvedAt: DateTime.unsafeMake(metadata.resolvedAt),
+    source: "/srv/apps/envapp/.lando.yml",
+  },
   extensions: {},
 });
 
