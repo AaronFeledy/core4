@@ -26,6 +26,7 @@ import {
   type ShellInteractiveSpec,
   ShellRunner,
 } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
@@ -110,6 +111,7 @@ const plan: AppPlan = {
 
 const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimeProviderShape => {
   const base: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: providerId,
     displayName: "Fake",
     version: "0.0.0",
