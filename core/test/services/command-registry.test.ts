@@ -712,7 +712,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the app-command cache when services change", async () => {
+  test("invalidates the app-command cache when services change without returning an authored-only list", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const landofilePath = join(dir, ".lando.yml");
@@ -762,7 +762,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
         const commands = await listFromLive();
 
-        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+        expect(commands).toEqual([]);
       });
     });
   });

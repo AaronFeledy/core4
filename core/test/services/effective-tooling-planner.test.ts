@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  CommandRegistry,
   LandofileService,
   PluginRegistry,
   RuntimeProviderRegistry,
@@ -28,6 +29,7 @@ import { CacheServiceLive } from "@lando/engine/cache/service";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { CommandRegistryLive } from "@lando/engine/services/command-registry";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { AppPlannerLive } from "@lando/engine/services/planner";
@@ -172,6 +174,12 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       emptyConfigServiceLayer,
       EventServiceLive,
     );
+    const registryIds = await Effect.runPromise(
+      Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
+        Effect.provide(Layer.provide(CommandRegistryLive, toolingLayer)),
+      ),
+    );
+    expect(registryIds).toEqual([]);
 
     await Effect.runPromise(runTooling({ name: "inspect" }).pipe(Effect.provide(toolingLayer)));
     expect(invocation?.commands).toEqual([["sh", "-c", 'second "$@"', "lando-tooling"]]);

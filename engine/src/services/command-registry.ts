@@ -88,16 +88,17 @@ export const CommandRegistryLive = Layer.effect(
 
         const landofile = yield* loadUserLandofile(landofileService);
         const scripts = yield* discoverScriptsForCwd(process.cwd());
-        const entries = compileAppCommands(landofile, scripts);
         const pluginManifests =
           pluginRegistryOption._tag === "Some"
             ? yield* pluginRegistryOption.value.list.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
             : undefined;
-        if (Object.keys(landofile.services ?? {}).length === 0) {
-          yield* writeCachesForLandofile(landofile, entries, pluginManifests);
-        } else {
+        const hasServices = Object.keys(landofile.services ?? {}).length > 0;
+        if (hasServices) {
           yield* writePluginCommandCache(pluginManifests === undefined ? {} : { manifests: pluginManifests });
+          return [];
         }
+        const entries = compileAppCommands(landofile, scripts);
+        yield* writeCachesForLandofile(landofile, entries, pluginManifests);
         return toRegisteredCommands(entries);
       }).pipe(
         Effect.catchAllCause(() =>
