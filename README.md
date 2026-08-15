@@ -131,7 +131,8 @@ bun test
 ```
 
 > The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
-> typechecks source and test trees, while `bun test` runs their assertions. Run a focused test by path, e.g.
+> typechecks source and non-docs test trees, while Astro owns `docs/**` through `docs:check` and `docs:test`.
+> Run a focused test by path, e.g.
 > `bun test core/test/unit/bootstrap.test.ts`.
 
 ### Common scripts
