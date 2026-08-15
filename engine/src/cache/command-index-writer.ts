@@ -139,14 +139,11 @@ const isRemoteInclude = (source: string): boolean =>
   source.startsWith("github:") ||
   /^https?:\/\//u.test(source);
 
-const includeEntrySource = (entry: NonNullable<LandofileShape["includes"]>[number]): string =>
-  typeof entry === "string" ? entry : entry.source;
-
 const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray<string> => {
   const remembered = getLocalIncludePaths(landofile);
   if (remembered.length > 0) return remembered;
   return (landofile.includes ?? [])
-    .map((entry) => includeEntrySource(entry))
+    .map((entry) => (typeof entry === "string" ? entry : entry.source))
     .filter((source) => !isRemoteInclude(source));
 };
 
@@ -399,8 +396,8 @@ const missingPluginNames = (
   manifests: ReadonlyArray<PluginManifest>,
   pluginNames: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
-  const present = manifests.map((manifest) => String(manifest.name));
-  return pluginNames.filter((name) => !present.includes(name));
+  const present = new Set(manifests.map((manifest) => String(manifest.name)));
+  return pluginNames.filter((name) => !present.has(name));
 };
 
 const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptions): Promise<string> => {

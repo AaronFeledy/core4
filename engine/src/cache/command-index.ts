@@ -9,9 +9,6 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-const contributionId = (entry: string | { readonly id: string }): string =>
-  typeof entry === "string" ? entry : entry.id;
-
 export const COMMAND_INDEX_SCHEMA_VERSION = 2n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
@@ -126,7 +123,7 @@ export const derivePluginCommandIdsByPlugin = (
           [
             manifest.name,
             [...(manifest.contributes?.commands ?? [])]
-              .map(contributionId)
+              .map((entry) => (typeof entry === "string" ? entry : entry.id))
               .sort((a, b) => a.localeCompare(b)),
           ] as const,
       )
@@ -146,23 +143,15 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
 export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>
   stableFingerprint(entries);
 
-const writeHeader = (magic: Uint8Array): Uint8Array => {
+const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
   const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
   header.set(magic, 0);
   new DataView(header.buffer).setBigUint64(VERSION_OFFSET, COMMAND_INDEX_SCHEMA_VERSION, true);
-  return header;
-};
-
-const concat = (head: Uint8Array, tail: Uint8Array): Uint8Array => {
-  const out = new Uint8Array(head.byteLength + tail.byteLength);
-  out.set(head, 0);
-  out.set(tail, head.byteLength);
-  return out;
-};
-
-const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
   const body = new Uint8Array(serialize(payload));
-  return concat(writeHeader(magic), body);
+  const bytes = new Uint8Array(header.byteLength + body.byteLength);
+  bytes.set(header, 0);
+  bytes.set(body, header.byteLength);
+  return bytes;
 };
 
 const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
