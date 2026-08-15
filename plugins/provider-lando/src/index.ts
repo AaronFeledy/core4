@@ -85,6 +85,7 @@ import {
   inspectUidmapSetupPlan,
   readLinuxHostRelease,
 } from "./uidmap-provision.ts";
+import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
   appliedPlanPath,
@@ -207,6 +208,14 @@ export type {
 } from "./setup.ts";
 export { parsePodmanVersionNumbers, podmanVersionMeetsFloor } from "./version-floor.ts";
 export type { PodmanVersionNumbers } from "./version-floor.ts";
+export {
+  makeWslMountPropagationCheck,
+  parseRootMountPropagation,
+} from "./wsl-mount-propagation.ts";
+export type {
+  RootMountPropagation,
+  WslMountPropagationReaders,
+} from "./wsl-mount-propagation.ts";
 
 export {
   ProviderBundleChecksumError,
@@ -891,6 +900,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
+  doctorChecks: [makeWslMountPropagationCheck()],
   hostMaintainers: [
     {
       id: "lando-runtime-service",

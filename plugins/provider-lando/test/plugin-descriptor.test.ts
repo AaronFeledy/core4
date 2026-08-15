@@ -37,6 +37,16 @@ describe("provider-lando plugin descriptor", () => {
     expect(maintainerIds).toEqual(["lando-runtime-service"]);
   });
 
+  test("contributes the WSL root mount propagation doctor check", () => {
+    // Given: provider-lando's exported plugin descriptor.
+
+    // When: doctor contributions are inspected.
+    const doctorCheckIds = plugin.doctorChecks?.map((check) => check.id);
+
+    // Then: the WSL propagation check is wired into the plugin.
+    expect(doctorCheckIds).toEqual(["wsl-root-mount-propagation"]);
+  });
+
   test("builds the existing provider availability and setup surface when services are provided", async () => {
     // Given: the SDK services required by a runtime-provider factory and plugin-scoped state.
     const paths = makeLandoPaths({ userDataRoot: "/tmp/provider-lando-plugin-descriptor" });
