@@ -12,7 +12,9 @@ describe("createRedactor surface", () => {
   });
 
   test("PATTERN_CLASSES exposes the canonical secrets catalog classes", () => {
-    expect(PATTERN_CLASSES.secretAssignment).toBeDefined();
+    const secretAssignment = PATTERN_CLASSES.secretAssignment;
+    expect(secretAssignment).toBeDefined();
+    if (secretAssignment === undefined) throw new Error("missing secret assignment pattern");
     expect(PATTERN_CLASSES.urlUserinfo).toBeDefined();
     expect(PATTERN_CLASSES.bearerToken).toBeDefined();
     expect(PATTERN_CLASSES.signedQueryParam).toBeDefined();
@@ -25,7 +27,7 @@ describe("createRedactor surface", () => {
     expect(PATTERN_CLASSES.digest).toBeDefined();
     expect(PATTERN_CLASSES.providerId).toBeDefined();
     expect(PATTERN_CLASSES.root).toBeDefined();
-    expect(PATTERN_CLASSES.secretAssignment.pattern).toBeInstanceOf(RegExp);
+    expect(secretAssignment.pattern).toBeInstanceOf(RegExp);
   });
 });
 
