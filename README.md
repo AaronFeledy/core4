@@ -131,7 +131,7 @@ bun test
 ```
 
 > The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
-> does not typecheck `sdk/test/`, so run both. Run a focused test by path, e.g.
+> typechecks source and test trees, while `bun test` runs their assertions. Run a focused test by path, e.g.
 > `bun test core/test/unit/bootstrap.test.ts`.
 
 ### Common scripts
