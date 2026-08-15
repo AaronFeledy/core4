@@ -564,7 +564,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           expect(cold.map((c) => c.id)).toEqual(["app:build"]);
 
           const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
-          expect(fresh).toBeNull();
+          expect(fresh).not.toBeNull();
 
           process.env.LANDO_TEMPLATE_INCLUDE = "fragment-bad.yml";
           const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
@@ -602,7 +602,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when a BOM-prefixed Landofile is templated", async () => {
+  test("keeps the warm tooling cache when a BOM-prefixed Landofile opts out of templating", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const landofile = { name: "bom-template-cache", tooling: { build: { cmd: "make" } } };
@@ -629,7 +629,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
         const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
 
-        expect(fresh).toBeNull();
+        expect(fresh?.entries.map((entry) => entry.id)).toEqual(["app:cached-only"]);
       });
     });
   });
