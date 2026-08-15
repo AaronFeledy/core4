@@ -619,7 +619,7 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
 });
 
 describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => {
-  const assertBetaRejection = (error: unknown, _expectedSpecSection: string): void => {
+  const assertBetaRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
@@ -672,7 +672,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "not supported yet");
+        if (failure._tag === "Some") assertBetaRejection(failure.value);
       }
     });
   });
@@ -814,17 +814,14 @@ describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
 });
 
 describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () => {
-  const assertBetaRejection = (error: unknown, _expectedSpecSection: string): void => {
+  const assertBetaRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
     expect(error.remediation).toContain("not supported yet");
   };
 
-  const assertRejectsLandofile = async (
-    content: ReadonlyArray<string>,
-    _expectedSpecSection: string,
-  ): Promise<void> => {
+  const assertRejectsLandofile = async (content: ReadonlyArray<string>): Promise<void> => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), content.join("\n"));
       process.chdir(dir);
@@ -834,7 +831,7 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, _expectedSpecSection);
+        if (failure._tag === "Some") assertBetaRejection(failure.value);
       }
     });
   };
@@ -899,10 +896,7 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
   });
 
   test("rejects top-level `events:` with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""],
-      "not supported yet",
-    );
+    await assertRejectsLandofile(["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""]);
   });
 
   test("accepts top-level `commandAliases:` while leaving events gated", async () => {
@@ -936,78 +930,86 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
   });
 
   test("rejects per-task `deps:` field with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "tooling:", "  build:", "    cmd: make", "    deps:", "      - assets", ""],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  build:",
+      "    cmd: make",
+      "    deps:",
+      "      - assets",
+      "",
+    ]);
   });
 
   test("rejects per-task `engine:` field with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "tooling:", "  echo:", "    cmd: echo hi", "    engine: host", ""],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  echo:",
+      "    cmd: echo hi",
+      "    engine: host",
+      "",
+    ]);
   });
 
   test("rejects runtime tooling `flags:` metadata other than deprecation notices", async () => {
-    await assertRejectsLandofile(
-      [
-        "name: myapp",
-        "tooling:",
-        "  echo:",
-        "    cmd: echo hi",
-        "    flags:",
-        "      verbose:",
-        "        type: boolean",
-        "",
-      ],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  echo:",
+      "    cmd: echo hi",
+      "    flags:",
+      "      verbose:",
+      "        type: boolean",
+      "",
+    ]);
   });
 
   test("rejects runtime tooling `args:` metadata other than deprecation notices", async () => {
-    await assertRejectsLandofile(
-      [
-        "name: myapp",
-        "tooling:",
-        "  echo:",
-        "    cmd: echo hi",
-        "    args:",
-        "      target:",
-        "        description: Deployment target",
-        "",
-      ],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  echo:",
+      "    cmd: echo hi",
+      "    args:",
+      "      target:",
+      "        description: Deployment target",
+      "",
+    ]);
   });
 
   test("rejects unsafe `raw:` var form with remediation", async () => {
-    await assertRejectsLandofile(
-      [
-        "name: myapp",
-        "tooling:",
-        "  run:",
-        "    cmd: echo",
-        "    vars:",
-        "      X:",
-        '        raw: "$(date)"',
-        "",
-      ],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  run:",
+      "    cmd: echo",
+      "    vars:",
+      "      X:",
+      '        raw: "$(date)"',
+      "",
+    ]);
   });
 
   test("rejects step-object `cmds[].task` entry with remediation (not silent schema error)", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - task: assets", ""],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  build:",
+      "    cmds:",
+      "      - task: assets",
+      "",
+    ]);
   });
 
   test("rejects step-object `cmds[].command` entry with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""],
-      "not supported yet",
-    );
+    await assertRejectsLandofile([
+      "name: myapp",
+      "tooling:",
+      "  build:",
+      "    cmds:",
+      "      - command: app:start",
+      "",
+    ]);
   });
 });
