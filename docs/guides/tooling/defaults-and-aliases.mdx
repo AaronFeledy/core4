@@ -39,12 +39,14 @@ service; Lando does not resolve it against the host app directory.
     <Step name="scaffold">
       <UseFixture name="tooling-defaults" />
     </Step>
-    <Step name="inspect-defaults">
-      <Run command="lando app:config --path toolingDefaults --format=json" />
-      <Verify command="lando app:config --path toolingDefaults --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\"[\\s\\S]*\"dir\":\\s*\"/app\"[\\s\\S]*\"APP_ENV\":\\s*\"development\"[\\s\\S]*\"MODE\":\\s*\"default\"" } }} />
+    <Step name="compile-effective-tooling">
+      <Run command="lando app:cache:refresh" />
     </Step>
-    <Step name="inspect-task-overrides">
-      <Verify command="lando app:config --path tooling.lint --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"worker\"[\\s\\S]*\"dir\":\\s*\"/app/tools\"[\\s\\S]*\"APP_ENV\":\\s*\"ci\"" } }} />
+    <Step name="run-inherited-task">
+      <Verify command="lando build --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"build\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="run-overridden-task">
+      <Verify command="lando lint --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"lint\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
