@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
 
+import { AbsolutePath } from "@lando/core/schema";
+
 import {
   renderScratchStartResult,
   scratchStartOptionsFromInput,
@@ -9,7 +11,7 @@ import {
 
 const fakeHandle = {
   id: "scratch-demo-abc123",
-  app: { kind: "scratch", id: "scratch-demo-abc123", root: "/x" },
+  app: { kind: "scratch", id: "scratch-demo-abc123", root: AbsolutePath.make("/x") },
 } as const;
 
 describe("scratch start foreground signal handling", () => {

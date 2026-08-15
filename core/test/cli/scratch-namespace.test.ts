@@ -102,10 +102,16 @@ const runSource = async (args: ReadonlyArray<string>): Promise<RunResult> => {
 const scratchRuntime = () => makeLandoRuntime({ bootstrap: "scratch" });
 
 const runScratch = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime())));
+  Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime())) as Effect.Effect<A, E, never>);
 
 const failureTag = async <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<string> => {
-  const result = await Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime()), Effect.either));
+  const result = await Effect.runPromise(
+    effect.pipe(Effect.provide(scratchRuntime()), Effect.either) as unknown as Effect.Effect<
+      { readonly _tag: "Left"; readonly left: E } | { readonly _tag: "Right"; readonly right: A },
+      never,
+      never
+    >,
+  );
   expect(result._tag).toBe("Left");
   if (result._tag === "Right") throw new Error("expected scratch operation to fail");
   return (result.left as { readonly _tag?: string })._tag ?? "";
@@ -132,9 +138,10 @@ describe("apps:scratch:* command operations", () => {
 
   test("id-addressed operations return ScratchAppNotFoundError for unknown ids", async () => {
     const id = "scratch-nope-000000";
-    for (const operation of [scratchInfo(id), scratchLogs(id), scratchStop(id), scratchDestroy(id)]) {
-      await expect(failureTag(operation)).resolves.toBe("ScratchAppNotFoundError");
-    }
+    await expect(failureTag(scratchInfo(id))).resolves.toBe("ScratchAppNotFoundError");
+    await expect(failureTag(scratchLogs(id))).resolves.toBe("ScratchAppNotFoundError");
+    await expect(failureTag(scratchStop(id))).resolves.toBe("ScratchAppNotFoundError");
+    await expect(failureTag(scratchDestroy(id))).resolves.toBe("ScratchAppNotFoundError");
   });
 });
 
