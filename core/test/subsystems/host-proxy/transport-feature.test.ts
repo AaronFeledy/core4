@@ -92,6 +92,8 @@ const sessionFor = async () =>
 describe("hostProxyRunLandoFeature", () => {
   test("injects least-privilege socket and shim mounts plus auth env", async () => {
     const session = await sessionFor();
+    if (session.shimPath === undefined) throw new TypeError("host-proxy shim path is missing");
+    if (session.socketPath === undefined) throw new TypeError("host-proxy socket path is missing");
     const environment: Record<string, string> = {};
     const mounts: Array<{
       readonly type: "bind";
@@ -236,7 +238,7 @@ describe("hostProxyRunLandoFeature", () => {
       slug: "demo",
       root: AbsolutePath.make("/tmp/demo"),
       provider: ProviderId.make("lando"),
-      services: { web: service },
+      services: { [ServiceName.make("web")]: service },
       routes: [],
       networks: [],
       stores: [],
@@ -245,13 +247,13 @@ describe("hostProxyRunLandoFeature", () => {
       extensions: {},
     } satisfies AppPlan);
 
-    const strippedWeb = stripped.services.web;
+    const strippedWeb = stripped.services[ServiceName.make("web")];
     expect(strippedWeb?.environment).toEqual({ LANDO_APP_NAME: "demo" });
     expect(strippedWeb?.mounts).toEqual([
       {
         type: "volume",
         source: "app-data",
-        target: "/data",
+        target: PortablePath.make("/data"),
         readOnly: false,
         realization: "passthrough",
       },
