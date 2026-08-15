@@ -211,9 +211,11 @@ describe("mergeResolutionOverParent", () => {
 
     const merged = mergeResolutionOverParent(parent, child);
     const endpoints = merged.normalizedConfig.endpoints ?? [];
+    const web = endpoints.find((endpoint) => endpoint.name === "web");
+    const metrics = endpoints.find((endpoint) => endpoint.name === "metrics");
     expect(endpoints.map((e) => e.name)).toEqual(["web", "metrics"]);
-    expect(endpoints.find((e) => e.name === "web")?.port).toBe(8080);
-    expect(endpoints.find((e) => e.name === "metrics")?.port).toBe(9090);
+    expect(web !== undefined && "port" in web ? web.port : undefined).toBe(8080);
+    expect(metrics !== undefined && "port" in metrics ? metrics.port : undefined).toBe(9090);
   });
 
   test("deep-merges a same-id feature's config rather than replacing it wholesale", () => {
