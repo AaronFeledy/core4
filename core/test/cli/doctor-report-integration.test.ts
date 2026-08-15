@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
@@ -37,6 +38,7 @@ const registryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
     Layer.succeed(ConfigService, configService(Effect.succeed(config), config)),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     Layer.succeed(RuntimeProviderRegistry, registryService),
   );
 

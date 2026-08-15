@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Context, Effect, Layer, Stream } from "effect";
 
 import { FilePermissionError } from "@lando/sdk/errors";
+import { PluginName } from "@lando/sdk/schema";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
@@ -28,6 +29,7 @@ const globalAppLayer = Layer.succeed(GlobalAppService, {
     userLandofile,
   }),
   ensureUserLandofile: Effect.succeed({ path: userLandofile, created: false }),
+  ensureRunning: () => Effect.succeed([]),
   regenerateDist: () => Effect.succeed({ path: distLandofile, status: "unchanged", serviceIds: [] }),
 } satisfies typeof GlobalAppService.Service);
 
@@ -127,7 +129,9 @@ describe("global-app doctor check", () => {
       const registry = Context.get(context, PluginRegistry);
       const manifests = await Effect.runPromise(registry.list);
 
-      expect(manifests.map((manifest) => manifest.name)).toContain("@example/global-doctor-user-plugin");
+      expect(manifests.map((manifest) => manifest.name)).toContain(
+        PluginName.make("@example/global-doctor-user-plugin"),
+      );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }
