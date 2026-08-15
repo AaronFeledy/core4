@@ -935,7 +935,7 @@ export const plugin = definePlugin({
             const logFileHelperAssets = yield* LogFileHelperAssets;
             const appPlanSanitizer = yield* AppPlanSanitizer;
             const logFileHelperPayloads = yield* logFileHelperAssets.payloads;
-            const runtimeState = yield* makePluginRuntimeState(ctx, paths, manifest.name);
+            const runtimeState = yield* makePluginRuntimeState(ctx);
             return yield* makeRuntimeProvider({
               platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
