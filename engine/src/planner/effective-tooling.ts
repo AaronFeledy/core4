@@ -4,7 +4,7 @@ import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
 
 export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
 
-export interface ToolingServiceContribution {
+interface ToolingServiceContribution {
   readonly name: string;
   readonly tooling?: EffectiveTooling;
 }
