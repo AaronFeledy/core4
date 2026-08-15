@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { PluginTrustState } from "../../src/schema/plugin-trust.ts";
