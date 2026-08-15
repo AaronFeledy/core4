@@ -64,7 +64,6 @@ const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   key: string;
   description: string;
 }> = [
-  { key: "env_file", description: "Landofile env file overrides" },
   { key: "toolingDefaults", description: "Tooling defaults" },
   { key: "events", description: "Events-as-tasks" },
   { key: "commandAliases", description: "Top-level command aliases" },

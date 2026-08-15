@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   AppPlanner,
   type ConfigService,
@@ -24,6 +25,7 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
 import { findAppRoot } from "@lando/landofile/discovery";
@@ -221,15 +223,23 @@ export const runTooling = (
     const result = yield* engine.run(invocation, plan, provider);
     const progressEvents = events?._tag === "Some" ? events.value : undefined;
 
-    yield* emitToolingOutputProgress({
-      events: progressEvents,
-      tool: result.tool,
-      service: String(result.service),
-      exitCode: result.exitCode,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      durationMs: Date.now() - startedAt,
-    });
+    if (progressEvents !== undefined) {
+      const redactionTokens = collectAppPlanRedactionTokens(plan);
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactor =
+        redaction._tag === "Some"
+          ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env, redactionTokens })
+          : createStandaloneRedactor("secrets", { sourceEnv: process.env, redactionTokens });
+      yield* emitToolingOutputProgress({
+        events: progressEvents,
+        tool: result.tool,
+        service: String(result.service),
+        exitCode: result.exitCode,
+        stdout: redactor.redactString(result.stdout),
+        stderr: redactor.redactString(result.stderr),
+        durationMs: Date.now() - startedAt,
+      });
+    }
 
     return {
       tool: result.tool,

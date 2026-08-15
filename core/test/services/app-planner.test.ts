@@ -1142,6 +1142,81 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("applies top-level env_file to every service below service files and explicit environment", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      await writeFile(join(appRoot, "shared.env"), "SHARED=top-first\nTOP_ONLY=yes\n");
+      await writeFile(join(appRoot, "shared.local.env"), "SHARED=top-last\nTOP_LAST_ONLY=yes\n");
+      await writeFile(join(appRoot, "service.env"), "SHARED=service\nSERVICE_ONLY=yes\n");
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "top-level-env-file",
+        runtime: 4,
+        env_file: ["shared.env", "shared.local.env"],
+        services: {
+          inherited: { image: "node:lts" },
+          serviceFile: { image: "node:lts", env_file: "service.env" },
+          explicit: {
+            image: "node:lts",
+            env_file: "service.env",
+            environment: { SHARED: "explicit" },
+          },
+        },
+      });
+
+      // When
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(PluginRegistryLive),
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      // Then
+      expect(appPlan.services[ServiceName.make("inherited")]?.environment).toMatchObject({
+        SHARED: "top-last",
+        TOP_ONLY: "yes",
+        TOP_LAST_ONLY: "yes",
+      });
+      expect(appPlan.services[ServiceName.make("serviceFile")]?.environment).toMatchObject({
+        SHARED: "service",
+        TOP_ONLY: "yes",
+        SERVICE_ONLY: "yes",
+      });
+      expect(appPlan.services[ServiceName.make("explicit")]?.environment).toMatchObject({
+        SHARED: "explicit",
+        TOP_ONLY: "yes",
+        SERVICE_ONLY: "yes",
+      });
+    });
+  });
+
+  test("fails with remediation for a missing top-level env_file even when the app has no services", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "missing-top-level-env-file",
+        runtime: 4,
+        env_file: "missing.env",
+      });
+
+      // When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(PluginRegistryLive),
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      // Then
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(String(failure)).toContain(join(appRoot, "missing.env"));
+      expect(String(failure)).toContain("Create a readable env file");
+    });
+  });
+
   test("preserves canonical map and list labels without emitting empty compose extensions", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -1279,6 +1354,122 @@ describe("AppPlannerLive", () => {
         expect(changedFromFile.services[ServiceName.make("web")]?.environment.ENV_FILE_VALUE).toBe("two");
         expect(changed.name).toBe("cached-app");
         expect(servicePlanCalls).toBe(3);
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("invalidates the persisted app plan cache when top-level env_file content changes", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-env-file-cache-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=one\n");
+      let servicePlanCalls = 0;
+      const cachedType = makeLegacyServiceTypeFake({
+        id: "env-file-cache-type",
+        normalizeConfig: ({ environment: _environment, ...normalizedConfig }) => normalizedConfig,
+        toServicePlan: ({
+          name,
+          appRoot,
+          provider = ProviderId.make("lando"),
+          primary = false,
+          metadata,
+        }) => {
+          servicePlanCalls += 1;
+          return Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: "env-file-cache-type",
+            provider,
+            primary,
+            artifact: { kind: "ref", ref: "env-file-cache-type:latest" },
+            environment: {},
+            workingDirectory: PortablePath.make("/app"),
+            appMount: {
+              source: AbsolutePath.make(appRoot),
+              target: PortablePath.make("/app"),
+              readOnly: false,
+              excludes: [],
+              includes: [],
+              realization: "passthrough",
+            },
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {},
+          });
+        },
+      });
+      const layer = AppPlannerLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            CacheServiceLive,
+            FileSystemLive,
+            Layer.succeed(PluginRegistry, {
+              list: Effect.succeed([
+                Schema.decodeUnknownSync(PluginManifest)({
+                  name: PluginName.make("@lando/env-file-cache"),
+                  version: "1.0.0",
+                  api: 4 as const,
+                  contributes: { serviceTypes: ["env-file-cache-type"] },
+                }),
+              ]),
+              load: () => Effect.die("not needed"),
+              loadServiceType: () => Effect.succeed(cachedType),
+              loadServiceFeature: (id: string) =>
+                id === cachedType.testFeature.id
+                  ? Effect.succeed(cachedType.testFeature)
+                  : Effect.fail(
+                      new PluginLoadError({
+                        message: `Service feature ${id} is not registered.`,
+                        pluginName: id,
+                      }),
+                    ),
+              loadAppFeature: () => Effect.die("not used"),
+            }),
+          ),
+        ),
+      );
+      const landofile: LandofileShape = {
+        name: "env-file-cache-app",
+        env_file: ["cache.env"],
+        services: { [ServiceName.make("web")]: { type: "env-file-cache-type" } },
+      };
+
+      try {
+        const runPlan = () =>
+          Effect.runPromise(
+            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+              Effect.provide(layer),
+            ),
+          );
+
+        // When
+        await runPlan();
+
+        // Then
+        expect(servicePlanCalls).toBe(1);
+
+        // When
+        await runPlan();
+
+        // Then
+        expect(servicePlanCalls).toBe(1);
+
+        // When
+        await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=two\n");
+        await runPlan();
+
+        // Then
+        expect(servicePlanCalls).toBe(2);
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;

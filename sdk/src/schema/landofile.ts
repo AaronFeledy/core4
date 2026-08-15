@@ -239,6 +239,21 @@ const ComposeEnvFileInput = Schema.transform(
     "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
 });
 
+const TOP_LEVEL_ENV_FILE_DESCRIPTION =
+  "One or more app-root-relative env-file paths applied to every service below service-level envFile and environment overrides.";
+
+const TopLevelEnvFileInput = Schema.transform(
+  Schema.Union(Schema.String, Schema.Array(Schema.String)).annotations({
+    description: TOP_LEVEL_ENV_FILE_DESCRIPTION,
+  }),
+  Schema.Array(Schema.String),
+  {
+    strict: true,
+    decode: (input) => (typeof input === "string" ? [input] : input),
+    encode: (paths) => paths,
+  },
+).annotations({ description: TOP_LEVEL_ENV_FILE_DESCRIPTION });
+
 const ComposeDependsOnInput = Schema.transformOrFail(
   Schema.Union(Schema.Array(Schema.String), ServiceDependencyInputRecord, Schema.Array(ServiceDependency)),
   Schema.Array(ServiceDependency),
@@ -869,7 +884,7 @@ const ComposeConfigConfig = Schema.Struct({
 /**
  * LandofileShape — the authored Landofile shape.
  * Excludes fields not modeled here: toolingDefaults:,
- * commandAliases:, events:, env_file:, keys:, plugins:, pluginDirs:.
+ * commandAliases:, events:, keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(
@@ -902,6 +917,7 @@ const LandofileShapeBase = Schema.Struct({
   networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedNetworkConfig })),
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
+  env_file: Schema.optional(TopLevelEnvFileInput),
   sshAgent: Schema.optional(SshAgentConfig),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfigDecode })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),

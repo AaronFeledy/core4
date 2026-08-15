@@ -69,6 +69,7 @@
 - `StreamFrame`'s `stdout`/`stderr` variants additively gain an optional `source?: string` so streaming `app:logs` frames carry declared-source provenance; omitted values decode verbatim (prior frames without `source` stay valid) and the schema snapshot is regenerated. `LogsAppOptions` (`@lando/sdk/app`) additively gains optional `source?: string` (a declared source id or the implicit `console`) to restrict `app logs` to one source; `@lando/sdk/app` also publishes the type-only `InfoLogSource`/`InfoLogSourceAvailability` contracts and `InfoAppService` additively gains optional `logSources?: readonly InfoLogSource[]` so `lando info` reports resolved log sources. All are additive type-only interface fields; no frozen service-tag signature changes.
 - `McpConfig` is a new public schema export and `GlobalConfig.mcp` is a new additive optional global-config field for MCP allow/deny/tooling policy. `McpConfig` and `McpServeOptions` additively accept optional positive-integer `maxConcurrent` caps (default 4 at runtime).
 - `AgentEnvConfig` is a new public schema export; `GlobalConfig.agentEnv` and the top-level `LandofileShape.agentEnv` are new additive optional fields for host agent-context env forwarding policy. `@lando/sdk/errors` additively gains the `AgentEnvPatternError` tagged error raised at config validation when `agentEnv.allow`/`deny` contain wildcard/pattern names.
+- `LandofileShape.env_file` is a new additive optional top-level field. It accepts one app-root-relative env-file path or a path list and canonicalizes the value to an ordered list applied to every service below service-level environment overrides.
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `security.ca`, `security.inheritNetworkCa`, and `security.inheritNetworkProxy` service fields. The nested authoring aliases `cas`, `certificate-authority`, and `certificate-authorities` accept a scalar or list and canonicalize to `security.ca: string[]`; leaf TLS `certs` remains a separate surface.
 - `ServiceConfig` and `ServiceConfigInput` additively accept the optional `certs` service field for leaf TLS: `true` issues a certificate from the active certificate authority, `false` disables issuance, a string supplies a custom certificate path, and `{ cert, key }` supplies an explicit pair. `certs` is not an alias for `security.ca`; the two fields decode independently and may both be present.
 - `@lando/sdk` publishes an additive MCP (Model Context Protocol) contract surface: the `McpToolDescriptor`, `McpCatalog`, `McpCatalogOptions`, and `McpServeOptions` public schemas (each registered in the JSON Schema registry and snapshot), plus the `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError` tagged errors on `@lando/sdk/errors`. These are additive contracts; the MCP service dispatch and `lando mcp` command land in later stories.
@@ -521,6 +522,7 @@
 - `LandofileShape.sshAgent`
 - `LandofileShape.version`
 - `LandofileShape.agentEnv`
+- `LandofileShape.env_file`
 - `LandofileShape.x-*`
 - `GlobalConfig.agentEnv`
 - `GlobalConfig.notify`
