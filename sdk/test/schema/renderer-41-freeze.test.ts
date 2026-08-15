@@ -187,7 +187,7 @@ describe("4.1 renderer surface freeze (schemas)", () => {
         },
       ],
     });
-    expect(manifest.contributes?.rendererPanels?.[0]?.id).toBe("build-status");
+    expect(manifest.contributes?.rendererPanels?.[0]?.id).toBe(RendererPanelId.make("build-status"));
     expect(manifest.subscribers?.[0]?.id).toBe("audit");
   });
 });

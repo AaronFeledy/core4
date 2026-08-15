@@ -49,7 +49,7 @@ describe("ServiceConfig security authoring", () => {
       basename: "corp.pem",
       checksum: "a".repeat(64),
       layer: "canonical",
-    };
+    } as const;
 
     // When
     const service = decodeAuthored({ security: { ca: [imported] } });
