@@ -71,7 +71,7 @@ export interface RecipeFetchContext {
 
 export const createRecipeFetchContext = (options: {
   readonly allowlist: ReadonlyArray<string> | undefined;
-  readonly fetchImpl?: typeof fetch;
+  readonly fetchImpl?: RecipeFetchContext["fetch"];
   readonly onWarn?: (message: string) => void;
   readonly recipe?: string;
   readonly maxRedirects?: number;
