@@ -78,9 +78,11 @@ const compareStableTags = (
   left: readonly [number, number, number],
   right: readonly [number, number, number],
 ): number => {
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) return left[index] - right[index];
-  }
+  const [leftMajor, leftMinor, leftPatch] = left;
+  const [rightMajor, rightMinor, rightPatch] = right;
+  if (leftMajor !== rightMajor) return leftMajor - rightMajor;
+  if (leftMinor !== rightMinor) return leftMinor - rightMinor;
+  if (leftPatch !== rightPatch) return leftPatch - rightPatch;
   return 0;
 };
 
