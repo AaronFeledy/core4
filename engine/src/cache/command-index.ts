@@ -29,7 +29,7 @@ export interface CommandIndexEntry {
   readonly source?: "bun-script";
 }
 
-export interface CommandAliasPolicy {
+interface CommandAliasPolicy {
   readonly enabled: boolean;
   readonly disabled: ReadonlyArray<string>;
   readonly custom: Readonly<Record<string, string>>;
