@@ -126,7 +126,9 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
   return result;
 };
 
-const makeShellRunnerService = (makeReplIO: () => ShellReplIO): Context.Tag.Service<typeof ShellRunner> => {
+export const makeShellRunnerService = (
+  makeReplIO: () => ShellReplIO,
+): Context.Tag.Service<typeof ShellRunner> => {
   const service: Context.Tag.Service<typeof ShellRunner> = {
     exec: (command, options) =>
       Effect.gen(function* () {

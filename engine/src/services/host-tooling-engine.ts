@@ -1,77 +1,26 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { $ } from "bun";
-import { Effect, Layer } from "effect";
+import { type Context, Effect, Layer } from "effect";
 
 import { ShellExecError, ShellScriptOutsideRootError, ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import {
-  type ProcessResult,
   type RuntimeProviderShape,
   type ShellCommandOptions,
+  type ShellRunner,
   ToolingEngine,
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
 import { quoteShellPath } from "./shell-quote.ts";
+import { makeShellRunnerService } from "./shell-runner.ts";
 import { noCommandsError } from "./tooling-engine.ts";
 
 const HOST_SERVICE = ":host";
-const decoder = new TextDecoder();
-
-interface BunShellOutput {
-  readonly exitCode: number;
-  readonly stdout: Uint8Array;
-  readonly stderr: Uint8Array;
-}
-
-const toProcessResult = (output: BunShellOutput): ProcessResult => ({
-  exitCode: output.exitCode,
-  stdout: decoder.decode(output.stdout),
-  stderr: decoder.decode(output.stderr),
+const hostShellRunner = makeShellRunnerService(() => {
+  throw new ShellExecError({ message: "Interactive host tooling is unavailable.", command: "" });
 });
-
-const formatArgvForMessage = (command: ReadonlyArray<string>): string =>
-  command.length === 0 ? "" : command.join(" ");
-
-const buildBunShell = (command: ReadonlyArray<string>, options: ShellCommandOptions | undefined) => {
-  let shell: ReturnType<typeof $>;
-  if (command.length >= 3 && command[0] === "sh" && command[1] === "-c") {
-    shell = $`${{ raw: command[2] ?? "" }}`;
-  } else {
-    shell = $`${command}`;
-  }
-  shell = shell.quiet().nothrow();
-  if (options?.cwd !== undefined) shell = shell.cwd(options.cwd);
-  if (options?.env !== undefined) {
-    shell = shell.env({ ...process.env, ...options.env });
-  }
-  return shell;
-};
-
-const execHost = async (
-  command: ReadonlyArray<string>,
-  options?: ShellCommandOptions,
-): Promise<ProcessResult> => {
-  const output = (await buildBunShell(command, options)) as BunShellOutput;
-  return toProcessResult(output);
-};
-
-const shellLaunchError = (
-  command: ReadonlyArray<string>,
-  options: ShellCommandOptions | undefined,
-  cause: unknown,
-): ShellExecError =>
-  new ShellExecError({
-    message:
-      cause instanceof Error
-        ? cause.message
-        : `Host shell failed to launch: ${formatArgvForMessage(command)}`,
-    command: formatArgvForMessage(command),
-    ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-    cause,
-  });
 
 const wrapShellAsToolingError = (tool: string, shellError: ShellExecError): ToolingExecError =>
   new ToolingExecError({
@@ -81,7 +30,12 @@ const wrapShellAsToolingError = (tool: string, shellError: ShellExecError): Tool
     cause: shellError,
   });
 
-const hostRun = (invocation: ToolingInvocation, _plan: AppPlan, _provider: RuntimeProviderShape) =>
+const hostRun = (
+  shell: Context.Tag.Service<typeof ShellRunner>,
+  invocation: ToolingInvocation,
+  _plan: AppPlan,
+  _provider: RuntimeProviderShape,
+) =>
   Effect.gen(function* () {
     if (invocation.commands.length === 0) {
       return yield* Effect.fail(noCommandsError(invocation.tool));
@@ -94,10 +48,18 @@ const hostRun = (invocation: ToolingInvocation, _plan: AppPlan, _provider: Runti
         ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
         ...(invocation.env === undefined ? {} : { env: invocation.env }),
       };
-      const result = yield* Effect.tryPromise({
-        try: () => execHost(command, options),
-        catch: (cause) => wrapShellAsToolingError(invocation.tool, shellLaunchError(command, options, cause)),
-      });
+      const commandLine = command.map(quoteShellPath).join(" ");
+      const result = yield* shell.exec(commandLine, options).pipe(
+        Effect.catchAll((cause) =>
+          cause.exitCode !== undefined
+            ? Effect.succeed({
+                exitCode: cause.exitCode,
+                stdout: cause.stdout ?? "",
+                stderr: cause.stderr ?? "",
+              })
+            : Effect.fail(wrapShellAsToolingError(invocation.tool, cause)),
+        ),
+      );
       stdout += result.stdout;
       stderr += result.stderr;
       exitCode = result.exitCode;
@@ -113,10 +75,20 @@ const hostRun = (invocation: ToolingInvocation, _plan: AppPlan, _provider: Runti
     return out;
   });
 
-export const HostToolingEngineLive = Layer.succeed(ToolingEngine, {
+export const runHostToolingWith = (
+  shell: Context.Tag.Service<typeof ShellRunner>,
+  invocation: ToolingInvocation,
+  plan: AppPlan,
+  provider: RuntimeProviderShape,
+): Effect.Effect<ToolingEngineResult, ToolingExecError> => hostRun(shell, invocation, plan, provider);
+
+const makeHostToolingEngine = (shell: Context.Tag.Service<typeof ShellRunner>) => ({
   id: "host",
-  run: hostRun,
+  run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
+    hostRun(shell, invocation, plan, provider),
 });
+
+export const HostToolingEngineLive = Layer.succeed(ToolingEngine, makeHostToolingEngine(hostShellRunner));
 
 const normalizeRoot = async (root: string): Promise<string> => {
   const resolved = await fs.realpath(root);
@@ -184,71 +156,14 @@ export const runHostScript = (
   scriptPath: string,
   permittedRoots: ReadonlyArray<string>,
   options?: ShellCommandOptions,
-): Effect.Effect<ProcessResult, ShellExecError | ShellScriptOutsideRootError> =>
+) =>
   Effect.gen(function* () {
     const resolved = yield* resolveScriptPath(scriptPath, permittedRoots);
-    const command = `bun ${quoteShellPath(resolved)}`;
-    return yield* Effect.tryPromise({
-      try: async () => {
-        let shell = $`${{ raw: command }}`.quiet().nothrow();
-        if (options?.cwd !== undefined) shell = shell.cwd(options.cwd);
-        if (options?.env !== undefined) shell = shell.env({ ...process.env, ...options.env });
-        const out = (await shell) as BunShellOutput;
-        const result = toProcessResult(out);
-        if (result.exitCode !== 0) {
-          throw new ShellExecError({
-            message: `Host script ${scriptPath} exited with code ${result.exitCode}.`,
-            command,
-            ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          });
-        }
-        return result;
-      },
-      catch: (cause) =>
-        cause instanceof ShellExecError
-          ? cause
-          : new ShellExecError({
-              message: cause instanceof Error ? cause.message : `Host script ${scriptPath} failed to launch.`,
-              command,
-              ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-              cause,
-            }),
-    });
+    return yield* hostShellRunner.runScript(resolved, options);
   });
 
 export const evaluateHostVar = (
   command: string,
   options?: ShellCommandOptions,
 ): Effect.Effect<string, ShellExecError> =>
-  Effect.tryPromise({
-    try: async () => {
-      let shell = $`${{ raw: command }}`.quiet().nothrow();
-      if (options?.cwd !== undefined) shell = shell.cwd(options.cwd);
-      if (options?.env !== undefined) shell = shell.env({ ...process.env, ...options.env });
-      const out = (await shell) as BunShellOutput;
-      const result = toProcessResult(out);
-      if (result.exitCode !== 0) {
-        throw new ShellExecError({
-          message: `Host var.sh expression exited with code ${result.exitCode}.`,
-          command,
-          ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-          exitCode: result.exitCode,
-          stdout: result.stdout,
-          stderr: result.stderr,
-        });
-      }
-      return result.stdout.replace(/\r?\n$/u, "");
-    },
-    catch: (cause) =>
-      cause instanceof ShellExecError
-        ? cause
-        : new ShellExecError({
-            message: cause instanceof Error ? cause.message : `Host var.sh expression failed: ${command}`,
-            command,
-            ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-            cause,
-          }),
-  });
+  hostShellRunner.exec(command, options).pipe(Effect.map((result) => result.stdout.replace(/\r?\n$/u, "")));
