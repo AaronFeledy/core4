@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {

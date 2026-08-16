@@ -6,12 +6,12 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
-import { providerImages } from "@lando/engine/data-mover/generated/provider-images";
+import { providerImages } from "../../src/testing/engine-layers.ts";
 import {
   DataMoverLive,
   __testOnlyEncodeTarOctal,
   __testOnlyUnarchivePayloadWithCap,
-} from "@lando/engine/data-mover/service";
+} from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {

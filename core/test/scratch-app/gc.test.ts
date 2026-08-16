@@ -17,22 +17,22 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { DataMoverLive } from "@lando/engine/data-mover/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { DataMoverLive } from "../../src/testing/engine-layers.ts";
+import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import {
   type ScratchRegistryEntry,
   ScratchRegistryLive,
   makeScratchRegistry,
-} from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+} from "../../src/testing/engine-layers.ts";
+import { ScratchResourceScanner } from "../../src/testing/engine-layers.ts";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "../../src/testing/engine-layers.ts";
+import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { SecretStoreLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";

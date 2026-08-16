@@ -4,8 +4,8 @@ import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 
 import { EventError } from "@lando/core/errors";
 import { EventService } from "@lando/core/services";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { EventDispatchControl, EventRuntimeLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { EventDispatchControl, EventRuntimeLive } from "../../src/testing/engine-layers.ts";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 
 const appRefFixture = {

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { makeHealthcheckRunner } from "@lando/engine/subsystems/healthcheck/runner-factory";
+import { makeHealthcheckRunner } from "../../../src/testing/engine-layers.ts";
 import { appId, commandPlan, drive, execSequence, nonePlan, service } from "./support.ts";
 
 describe("makeHealthcheckRunner", () => {

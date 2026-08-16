@@ -5,7 +5,7 @@ import { makeTestSecretStore } from "@lando/core/testing";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import { runSecretStoreContractSuite } from "@lando/sdk/test";
 
-import { makeEnvSecretStore } from "@lando/engine/services/secret-store";
+import { makeEnvSecretStore } from "../../src/testing/engine-layers.ts";
 
 const redactor = (values: ReadonlyArray<string>) => {
   const inner = createSecretRedactor(values);

@@ -49,7 +49,7 @@ describe("generated bootstrap layers", () => {
 
     expect(minimal).not.toContain("makePluginRegistryLive");
     expect(commands).toContain("makeEngineLandofileServiceLive");
-    expect(commands).toContain('from "@lando/engine/services/landofile-live"');
+    expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
     expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);

@@ -10,11 +10,11 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
-import { PluginRegistryLive, makePluginRegistryLive } from "@lando/engine/plugins/registry";
+import { PluginRegistryLive, makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import {
   collectGlobalServiceContributions,
   defaultGlobalServiceModuleLoader,
-} from "@lando/engine/services/global-services";
+} from "../../src/testing/engine-layers.ts";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 

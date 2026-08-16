@@ -11,7 +11,7 @@ import { AbsolutePath, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

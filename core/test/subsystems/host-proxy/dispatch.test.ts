@@ -9,8 +9,8 @@ import { EventService } from "@lando/sdk/services";
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
-} from "@lando/engine/subsystems/host-proxy/dispatch";
-import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
+} from "../../../src/testing/engine-layers.ts";
+import { buildRunLandoRequest } from "../../../src/testing/engine-layers.ts";
 import {
   RedactionService,
   type RedactionServiceShape,

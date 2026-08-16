@@ -9,8 +9,8 @@ import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
 import { NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
+import type { LandoRuntimeOptions } from "../../src/testing/engine-layers.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const tempRoots: string[] = [];

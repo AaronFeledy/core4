@@ -18,10 +18,10 @@ import {
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { loadLandofileFile } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 import {

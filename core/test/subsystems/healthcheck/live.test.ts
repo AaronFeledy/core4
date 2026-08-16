@@ -6,8 +6,8 @@ import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
 
-import * as liveModule from "@lando/engine/subsystems/healthcheck/live";
-import { makeHealthcheckRunner } from "@lando/engine/subsystems/healthcheck/runner-factory";
+import { HealthcheckRunnerLive } from "../../../src/testing/engine-layers.ts";
+import { makeHealthcheckRunner } from "../../../src/testing/engine-layers.ts";
 import {
   appId,
   commandPlan,
@@ -25,8 +25,6 @@ import {
   successOf,
   withFakeRedaction,
 } from "./support.ts";
-
-const { HealthcheckRunnerLive } = liveModule;
 
 describe("makeHealthcheckRunner", () => {
   test("kind none resolves skipped without calling exec", async () => {

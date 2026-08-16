@@ -16,26 +16,26 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import { hostProxyWorkerEntry } from "@lando/engine/composition";
-import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-proxy/session-env";
+import { hostProxyWorkerEntry } from "../../../src/testing/engine-layers.ts";
+import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/testing/engine-layers.ts";
 import {
   hostProxyMountInfoFromPlan,
   hostProxyWorkerArgv,
   removeOwnedHostProxyWorkerState,
-  startDetachedHostProxyWorker,
+  startDetachedHostProxyWorkerProcess as startDetachedHostProxyWorker,
   terminateOwnedHostProxyWorker,
   terminateOwnedHostProxyWorkersInRoot,
-  workerStatePath,
-} from "@lando/engine/subsystems/host-proxy/worker";
-import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
+  hostProxyWorkerStatePath as workerStatePath,
+} from "../../../src/testing/engine-layers.ts";
+import { defaultSpawnWorker } from "../../../src/testing/engine-layers.ts";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
   probeWorker,
   readWorkerRecord,
   writeWorkerRecord,
-} from "@lando/engine/subsystems/host-proxy/worker-state";
-import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
+} from "../../../src/testing/engine-layers.ts";
+import { readWorkerRecordStateAt } from "../../../src/testing/engine-layers.ts";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import "../../../src/runtime/engine-composition.ts";
 

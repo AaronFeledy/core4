@@ -9,8 +9,8 @@ import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
-import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
+import { makeShellRunnerLive } from "../../src/testing/engine-layers.ts";
+import { HostProxyServiceDisabled } from "../../src/testing/engine-layers.ts";
 import {
   type DownloaderEvents,
   makeDownloaderService,

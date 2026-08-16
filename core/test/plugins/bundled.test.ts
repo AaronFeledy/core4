@@ -20,7 +20,7 @@ import * as templateMustache from "@lando/template-mustache";
 
 import { ConfigService, Logger } from "@lando/sdk/services";
 
-import { PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { PluginRegistry, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
 

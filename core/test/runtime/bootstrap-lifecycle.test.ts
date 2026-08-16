@@ -8,8 +8,8 @@ import { type EventFor, EventService, type EventServiceShape, type LandoEvent } 
 import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
-} from "@lando/engine/runtime/bootstrap-lifecycle";
-import { makeEventServiceLive } from "@lando/engine/services/event-service";
+} from "../../src/testing/engine-layers.ts";
+import { makeEventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const stubEventService = (

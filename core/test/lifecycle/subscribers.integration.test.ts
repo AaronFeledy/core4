@@ -11,7 +11,7 @@ import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PluginRegistry } from "@lando/sdk/services";
 
-import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
+import { makeBootstrapLifecycleTracker } from "../../src/testing/engine-layers.ts";
 import { RedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";

@@ -33,14 +33,14 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
-import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "@lando/engine/services/planner";
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/testing/engine-layers.ts";
+import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/testing/engine-layers.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
   artifactBuild: true,

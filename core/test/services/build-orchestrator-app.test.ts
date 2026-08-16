@@ -14,8 +14,8 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
