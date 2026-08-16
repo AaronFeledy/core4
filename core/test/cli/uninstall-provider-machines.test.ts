@@ -125,6 +125,7 @@ describe("uninstall managed provider machines", () => {
             return { removed: false };
           },
           remove: async () => {},
+          listDiscoveredApps: async () => [], // No running apps
         }),
       );
 

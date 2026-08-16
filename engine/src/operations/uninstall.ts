@@ -75,6 +75,7 @@ export interface UninstallOptions {
     userDataRoot: string,
     userCacheRoot: string,
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
+  readonly cleanupDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -239,11 +240,13 @@ const buildRunningAppsStep = async (
     destructive: true,
   };
   if (listDiscoveredApps === undefined) {
+    // Fail closed: cannot verify safety, so refuse to proceed
     return {
       ...base,
       target: "Lando apps",
-      status: "skipped" as const,
-      detail: "Unable to list running apps; provider registry unavailable.",
+      status: "user-owned" as const,
+      detail:
+        "Cannot verify whether Lando apps are running; provider discovery unavailable. Uninstall cannot proceed safely.",
     };
   }
   try {
@@ -252,23 +255,26 @@ const buildRunningAppsStep = async (
       return {
         ...base,
         target: "Lando apps",
-        status: "skipped" as const,
-        detail: "No running Lando apps found.",
+        status: "owned" as const,
+        detail:
+          "No running Lando apps found. Will clean up any leftover Lando-labeled containers and resources.",
       };
     }
     const appList = apps.map((app) => app.appId).join(", ");
     return {
       ...base,
       target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
-      status: "user-owned" as const,
-      detail: `Uninstall cannot proceed while ${apps.length} Lando app${apps.length === 1 ? " is" : "s are"} running. Run \`lando poweroff\` first, then retry uninstall.`,
+      status: "owned" as const,
+      detail: `Found ${apps.length} running Lando app${apps.length === 1 ? "" : "s"}. Will stop and remove ${apps.length === 1 ? "it" : "them"} along with unused Lando networks and volumes.`,
     };
-  } catch {
+  } catch (cause) {
+    // Fail closed: discovery failed, cannot verify safety
+    const error = cause instanceof Error ? cause.message : String(cause);
     return {
       ...base,
       target: "Lando apps",
-      status: "skipped" as const,
-      detail: "Unable to discover running apps; provider may be unavailable.",
+      status: "user-owned" as const,
+      detail: `Cannot verify whether Lando apps are running; discovery failed: ${error}. Uninstall cannot proceed safely.`,
     };
   }
 };
@@ -427,6 +433,7 @@ const executeUninstall = async (
   hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
+  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
   const teardownRuntimeService =
     options.teardownRuntimeService ??
@@ -438,15 +445,35 @@ const executeUninstall = async (
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
-    if (step.id === "running-apps" && step.status === "user-owned") {
-      // Running apps block uninstall - mark as failed and abort
-      executed.push({
-        ...step,
-        outcome: "failed",
-        error: step.detail ?? "Uninstall cannot proceed while Lando apps are running.",
-      });
-      // Abort immediately: do not process any remaining destructive steps
-      break;
+    if (step.id === "running-apps") {
+      if (step.status === "user-owned") {
+        // Discovery failed or unavailable - fail closed
+        executed.push({
+          ...step,
+          outcome: "failed",
+          error: step.detail ?? "Cannot verify running apps; uninstall cannot proceed safely.",
+        });
+        // Abort immediately: do not process any remaining destructive steps
+        break;
+      }
+      if (step.status === "owned" && options.listDiscoveredApps !== undefined) {
+        // Discovery succeeded - clean up any running apps
+        try {
+          const apps = await options.listDiscoveredApps(userDataRoot, userCacheRoot);
+          if (apps.length > 0) {
+            if (options.cleanupDiscoveredApps !== undefined) {
+              await options.cleanupDiscoveredApps(apps);
+            }
+          }
+          executed.push({ ...step, outcome: "completed" });
+        } catch (cause) {
+          const error = cause instanceof Error ? cause.message : String(cause);
+          executed.push({ ...step, outcome: "failed", error });
+          // If cleanup fails, abort to prevent orphaning resources
+          break;
+        }
+        continue;
+      }
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {

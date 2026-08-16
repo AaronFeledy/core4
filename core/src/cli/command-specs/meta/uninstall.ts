@@ -13,105 +13,208 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 const makeListDiscoveredApps =
   (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
   async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
-    try {
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileAsync = promisify(execFile);
-      const { readdir, readFile } = await import("node:fs/promises");
-      const { join } = await import("node:path");
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFile);
+    const { readdir, readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
 
-      const apps: DiscoveredApp[] = [];
-      const runtimes = [
-        { cmd: "docker", providerId: "docker" as const },
-        { cmd: "podman", providerId: "lando" as const },
-      ];
+    const apps: DiscoveredApp[] = [];
+    const runtimes = [
+      { cmd: "docker", providerId: "docker" as const },
+      { cmd: "podman", providerId: "lando" as const },
+    ];
 
-      // Fast timeout for docker/podman queries to avoid hanging in CI or when runtime unavailable
-      const QUERY_TIMEOUT_MS = 1000;
+    const QUERY_TIMEOUT_MS = 1000;
+    const errors: string[] = [];
 
-      for (const runtime of runtimes) {
+    for (const runtime of runtimes) {
+      // Query for core4 label (dev.lando.app) and Lando 3 compat (com.lando.app)
+      const labels = ["dev.lando.app", "com.lando.app"];
+      const runningAppIds = new Set<string>();
+
+      for (const label of labels) {
         try {
-          // Query for core4 label (dev.lando.app) and Lando 3 compat (com.lando.app)
-          const labels = ["dev.lando.app", "com.lando.app"];
-          const runningAppIds = new Set<string>();
+          // Race the query against a timeout
+          const queryPromise = execFileAsync(runtime.cmd, [
+            "ps",
+            "--filter",
+            `label=${label}`,
+            "--format",
+            `{{.Label "${label}"}}`,
+          ]);
 
-          for (const label of labels) {
-            try {
-              // Race the query against a timeout to fail fast if runtime unavailable
-              const queryPromise = execFileAsync(runtime.cmd, [
-                "ps",
-                "--filter",
-                `label=${label}`,
-                "--format",
-                `{{.Label "${label}"}}`,
-              ]);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`${runtime.cmd} ps query timed out after ${QUERY_TIMEOUT_MS}ms`)),
+              QUERY_TIMEOUT_MS,
+            ),
+          );
 
-              const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("timeout")), QUERY_TIMEOUT_MS),
-              );
+          const { stdout } = await Promise.race([queryPromise, timeoutPromise]);
 
-              const { stdout } = await Promise.race([queryPromise, timeoutPromise]);
-
-              const ids = stdout
-                .trim()
-                .split("\n")
-                .filter((id) => id.length > 0);
-              for (const id of ids) runningAppIds.add(id);
-            } catch {
-              // Skip if label query fails or times out
-            }
-          }
-
-          if (runningAppIds.size === 0) continue;
-
-          // Load cache details for running apps if available
-          const providersRoot = join(userDataRoot, "providers");
-          const appsDir = join(providersRoot, `provider-${runtime.providerId}`, "apps");
-          const cacheDetails = new Map<string, { name: string; root: string; services: string[] }>();
-
-          try {
-            const entries = await readdir(appsDir);
-            for (const entry of entries) {
-              if (!entry.endsWith(".json")) continue;
-              try {
-                const content = await readFile(join(appsDir, entry), "utf8");
-                const envelope = JSON.parse(content) as {
-                  plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
-                };
-                if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
-                  cacheDetails.set(envelope.plan.id, {
-                    name: envelope.plan.name ?? envelope.plan.id,
-                    root: envelope.plan.root,
-                    services: Object.keys(envelope.plan.services),
-                  });
-                }
-              } catch {
-                // Skip corrupt files
-              }
-            }
-          } catch {
-            // Skip if directory doesn't exist
-          }
-
-          // Block on ALL running labeled containers, even without cache
-          for (const appId of runningAppIds) {
-            const details = cacheDetails.get(appId);
-            apps.push({
-              appId,
-              appName: details?.name ?? appId,
-              providerId: runtime.providerId,
-              appRoot: details?.root ?? "(unknown)",
-              services: details?.services ?? [],
-            });
-          }
-        } catch {
-          // Skip if runtime command not available or fails
+          const ids = stdout
+            .trim()
+            .split("\n")
+            .filter((id) => id.length > 0);
+          for (const id of ids) runningAppIds.add(id);
+        } catch (cause) {
+          // Collect error - if ALL queries fail we need to surface this
+          const error = cause instanceof Error ? cause.message : String(cause);
+          errors.push(`${runtime.cmd}: ${error}`);
         }
       }
 
-      return apps;
-    } catch {
-      return [];
+      if (runningAppIds.size === 0) continue;
+
+      // Load cache details for running apps if available
+      const providersRoot = join(userDataRoot, "providers");
+      const appsDir = join(providersRoot, `provider-${runtime.providerId}`, "apps");
+      const cacheDetails = new Map<string, { name: string; root: string; services: string[] }>();
+
+      try {
+        const entries = await readdir(appsDir);
+        for (const entry of entries) {
+          if (!entry.endsWith(".json")) continue;
+          try {
+            const content = await readFile(join(appsDir, entry), "utf8");
+            const envelope = JSON.parse(content) as {
+              plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
+            };
+            if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
+              cacheDetails.set(envelope.plan.id, {
+                name: envelope.plan.name ?? envelope.plan.id,
+                root: envelope.plan.root,
+                services: Object.keys(envelope.plan.services),
+              });
+            }
+          } catch {
+            // Skip corrupt files
+          }
+        }
+      } catch {
+        // Skip if directory doesn't exist
+      }
+
+      // Report ALL running labeled containers, even without cache
+      for (const appId of runningAppIds) {
+        const details = cacheDetails.get(appId);
+        apps.push({
+          appId,
+          appName: details?.name ?? appId,
+          providerId: runtime.providerId,
+          appRoot: details?.root ?? "(unknown)",
+          services: details?.services ?? [],
+        });
+      }
+    }
+
+    // If we found apps, return them regardless of errors
+    if (apps.length > 0) return apps;
+
+    // If we had errors and found no apps, we cannot be sure - fail closed
+    if (errors.length > 0) {
+      throw new Error(`Failed to query container runtimes: ${errors.join("; ")}`);
+    }
+
+    // No errors and no apps means clean state
+    return apps;
+  };
+
+const makeCleanupDiscoveredApps =
+  (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
+  async (apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFile);
+
+    // Group apps by provider/runtime
+    const dockerApps = apps.filter((app) => app.providerId === "docker");
+    const podmanApps = apps.filter((app) => app.providerId === "lando");
+
+    const cleanupRuntime = async (cmd: string, appIds: ReadonlyArray<string>) => {
+      if (appIds.length === 0) return;
+
+      // Stop and remove containers with Lando labels
+      const labels = ["dev.lando.app", "com.lando.app"];
+      for (const label of labels) {
+        try {
+          // List containers with this label
+          const { stdout } = await execFileAsync(cmd, [
+            "ps",
+            "-a",
+            "--filter",
+            `label=${label}`,
+            "--format",
+            "{{.ID}}",
+          ]);
+
+          const containerIds = stdout
+            .trim()
+            .split("\n")
+            .filter((id) => id.length > 0);
+
+          if (containerIds.length === 0) continue;
+
+          // Stop containers
+          try {
+            await execFileAsync(cmd, ["stop", ...containerIds]);
+          } catch {
+            // Continue even if stop fails - containers may already be stopped
+          }
+
+          // Remove containers
+          await execFileAsync(cmd, ["rm", "-f", ...containerIds]);
+        } catch (cause) {
+          // If cleanup fails for one label, continue with the next
+          const error = cause instanceof Error ? cause.message : String(cause);
+          throw new Error(`Failed to clean up ${cmd} containers with label ${label}: ${error}`);
+        }
+      }
+
+      // Prune unused Lando networks
+      try {
+        await execFileAsync(cmd, ["network", "prune", "-f", "--filter", "label=dev.lando.network=true"]);
+      } catch {
+        // Network prune is best-effort
+      }
+
+      // Prune unused Lando volumes
+      try {
+        await execFileAsync(cmd, ["volume", "prune", "-f", "--filter", "label=dev.lando.volume=true"]);
+      } catch {
+        // Volume prune is best-effort
+      }
+    };
+
+    const errors: string[] = [];
+
+    if (dockerApps.length > 0) {
+      try {
+        await cleanupRuntime(
+          "docker",
+          dockerApps.map((app) => app.appId),
+        );
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        errors.push(error);
+      }
+    }
+
+    if (podmanApps.length > 0) {
+      try {
+        await cleanupRuntime(
+          "podman",
+          podmanApps.map((app) => app.appId),
+        );
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        errors.push(error);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Container cleanup failed: ${errors.join("; ")}`);
     }
   };
 
@@ -129,6 +232,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _teardownProviderMachines?: unknown;
     readonly _reportFallbackDir?: unknown;
     readonly _listDiscoveredApps?: unknown;
+    readonly _cleanupDiscoveredApps?: unknown;
   };
   const purge = flags.purge === true;
   return {
@@ -140,6 +244,10 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
       typeof extra._listDiscoveredApps === "function"
         ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
         : makeListDiscoveredApps(),
+    cleanupDiscoveredApps:
+      typeof extra._cleanupDiscoveredApps === "function"
+        ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
+        : makeCleanupDiscoveredApps(),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),
