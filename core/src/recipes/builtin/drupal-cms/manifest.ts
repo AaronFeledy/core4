@@ -39,5 +39,5 @@ files:
     template: true
 postInit:
   - type: message
-    text: Run 'lando start', then scaffold Drupal CMS 2 with 'lando composer create-project drupal/cms .', then install with 'lando drush site:install recipes/drupal_cms_starter -y'.
+    text: Run 'lando start', then scaffold Drupal CMS 2 with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.
 `;
