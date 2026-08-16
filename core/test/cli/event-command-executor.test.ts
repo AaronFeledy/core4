@@ -50,7 +50,7 @@ const makeHarness = (): Harness => {
     query: () => Effect.succeed([]),
   };
   const renderer = {
-    id: "test",
+    id: "plain",
     capabilities: RENDERER_CAPABILITIES_NONE,
     message: {
       info: (body: string) => Effect.sync(() => presentation.push(`info:${body}`)),
@@ -166,6 +166,35 @@ describe("EventCommandExecutorLive", () => {
     // Then
     expect(result.exitCode).toBe(7);
     expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-run`, exitCode: 7 });
+  });
+
+  test("renders a successful target result through the provided renderer", async () => {
+    // Given
+    const harness = makeHarness();
+    let renderedInput: unknown;
+    const spec = {
+      ...testSpec(() => Effect.succeed("done")),
+      render: (value, input, ctx) => {
+        renderedInput = input;
+        return `${String(value)}:${ctx?.mode ?? "missing"}`;
+      },
+    } satisfies LandoCommandSpec;
+
+    // When
+    const result = await Effect.runPromise(
+      executorFor(entryFor(spec, { flags: { label: Flags.string() } }), harness).run({
+        command: spec.id,
+        flags: { label: "rendered" },
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+
+    // Then
+    expect(harness.presentation).toEqual(["stdout:done:plain\n"]);
+    expect(renderedInput).toMatchObject({ flags: { label: "rendered" } });
+    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   });
 
   test("preserves a tagged target failure", async () => {
@@ -346,13 +375,16 @@ describe("EventCommandExecutorLive", () => {
   test("silent suppresses target renderer presentation but preserves lifecycle events", async () => {
     // Given
     const harness = makeHarness();
-    const spec = testSpec(() =>
-      Renderer.pipe(
-        Effect.flatMap((renderer) =>
-          Effect.all([renderer.message.info("hidden message"), renderer.output.stdout("hidden output")]),
+    const spec = {
+      ...testSpec(() =>
+        Renderer.pipe(
+          Effect.flatMap((renderer) =>
+            Effect.all([renderer.message.info("hidden message"), renderer.output.stdout("hidden output")]),
+          ),
         ),
       ),
-    );
+      render: () => "hidden rendered result",
+    } satisfies LandoCommandSpec;
 
     // When
     await Effect.runPromise(
@@ -428,6 +460,41 @@ describe("EventCommandExecutorLive", () => {
       tool: "meta:test:event-command",
     });
   });
+
+  test("rejects deferred canonical commands with the structured not-implemented error", async () => {
+    // Given
+    const harness = makeHarness();
+    const deferred = {
+      summary: "Deferred test command.",
+      remediation: "Use an implemented command.",
+      phase: "4.1" as const,
+    };
+    const spec: LandoCommandSpec = {
+      ...testSpec(() => Effect.die("deferred command must not run")),
+      deferred,
+    };
+    const entry: BuiltInCommandEntry = {
+      ...entryFor(spec),
+      status: { kind: "deferred", plan: deferred },
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        executorFor(entry, harness).run({
+          command: spec.id,
+          flags: {},
+          args: {},
+          argv: [],
+          cwd: process.cwd(),
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
+  });
+
   test("keeps canonical arguments structured and exposes raw argv as parsedArgv", async () => {
     // Given
     const harness = makeHarness();

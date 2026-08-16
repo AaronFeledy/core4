@@ -11,6 +11,9 @@ import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-lifecycle";
 import type { CompiledCommandInput } from "./compiled-runtime";
+import { notImplementedErrorForSpec } from "./deferred-commands";
+import { DEFAULT_RESULT_FORMAT } from "./format-flags";
+import { DEFAULT_RENDERER_MODE, isRendererMode } from "./renderer-selection";
 
 let eventCommandEntries: ReadonlyArray<BuiltInCommandEntry> = [];
 
@@ -93,6 +96,9 @@ export const makeEventCommandExecutor = (
           }),
         );
       }
+      if (entry.status.kind === "deferred") {
+        return yield* Effect.fail(notImplementedErrorForSpec(entry.spec));
+      }
       const input = compileInput({
         entry,
         flags: resolved.flags,
@@ -120,6 +126,18 @@ export const makeEventCommandExecutor = (
           : { successExitCode: (value) => entry.spec.successExitCode?.(value, input) }),
       });
       if (exit._tag === "Success") {
+        if (resolved.silent !== true && entry.spec.render !== undefined) {
+          const renderer = yield* Renderer;
+          const rendered = entry.spec.render(exit.value, input, {
+            mode: isRendererMode(renderer.id) ? renderer.id : DEFAULT_RENDERER_MODE,
+            format: DEFAULT_RESULT_FORMAT,
+            columns: undefined,
+            isTTY: renderer.capabilities.interactive,
+          });
+          if (rendered !== undefined && rendered.length > 0) {
+            yield* renderer.output.stdout(`${rendered}\n`);
+          }
+        }
         return {
           exitCode: entry.spec.successExitCode?.(exit.value, input) ?? 0,
           stdout: "",
