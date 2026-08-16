@@ -17,9 +17,5 @@
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./dist", "./node_modules"],
-  "references": [
-    { "path": "../sdk" },
-    { "path": "../redaction" },
-    { "path": "../engine" }
-  ]
+  "references": [{ "path": "../sdk" }, { "path": "../redaction" }, { "path": "../engine" }]
 }
