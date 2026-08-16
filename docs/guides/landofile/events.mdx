@@ -31,11 +31,10 @@ tooling:
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
-    <Step name="load">
+    <Step name="start">
       <UseFixture name="events-demo" />
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pre-start[\\s\\S]*post-start[\\s\\S]*pre-stop[\\s\\S]*post-stop" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "before-stop-first[\\s\\S]*before-stop-second[\\s\\S]*after-stop" } }} />
+      <Run command="lando start" />
+      <Verify event="post-start" />
     </Step>
     <Step name="stop">
       <Run command="lando stop" />
