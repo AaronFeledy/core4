@@ -48,7 +48,7 @@ Landofile schema changes flow through `@lando/sdk` (`sdk/src/schema/landofile.ts
 
 - [ ] `commandAliases` is removed from `BETA_TOP_LEVEL_KEYS`; schema per §8.1 with SDK snapshot updates.
 - [ ] The native dispatcher resolves app-scoped aliases after canonical ids and registered aliases; an alias shadowing a canonical id is rejected with `CommandAliasConflictError` and remediation; alias disablement works.
-- [ ] Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap).
+- [ ] Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap) for Landofiles fully determined by file inputs (declarative YAML at any merge layer, no template-engine rendering). Dynamic forms (`.lando.ts`, template-rendered Landofiles) serve aliases from the last full decode per §7.1.1 and are excluded from freshness parity; no environment, host, or template-input fingerprints may be introduced as cache invalidation triggers (adjudicated 2026-08-15; dynamic-form provenance deferred to a dedicated spec story).
 - [ ] Machine output (`--format json`) reports the resolved canonical id; help output lists active app aliases in app context.
 - [ ] Guide coverage in `docs/guides/tooling/defaults-and-aliases.mdx`; guide gates green.
 - [ ] Tests pass; typecheck passes; lint passes.

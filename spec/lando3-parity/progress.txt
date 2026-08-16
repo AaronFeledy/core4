@@ -184,3 +184,10 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Hash dynamic configuration inputs at the cache boundary, but distinguish semantic user inputs from wrapper controls such as `_`, `SHLVL`, and `BUN_BE_BUN`; command substitution and source-mode self-exec legitimately change those controls.
 ---
+
+## 2026-08-15 19:10 CDT - US-564 Adjudication (human)
+- Contradiction: Review demanded "Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap)" for every accepted Landofile form, including `.lando.ts` and template-rendered Landofiles whose output depends on environment/host/render inputs. §7.1.1's "only" clause (re-decoding only on file changes) and §8.7/§12.2's cache-only router rules exclude those non-file inputs as invalidation triggers, so Build's env/host/template-input fingerprints were unauthorized by the normative spec.
+- Decision (option 3 of the .looper-stop brief, chosen by human adjudicator): §7.1.1 amended to make explicit that non-file evaluation inputs are NOT re-decoding triggers and caches MUST NOT fingerprint them; dynamic forms serve the last full decode and are excluded from cache-only freshness parity until a dedicated deterministic-evaluation/provenance spec story lands. US-564 AC 3 narrowed accordingly in prd.json and prd-lando3-parity-02-landofile-keys.md.
+- Consequence: US-564 `passes` set to false; Build must excise the environment/host/template-input fingerprint machinery added in "feat: commandAliases" (dynamic-form caches stay file-fingerprint-only per §7.1.1) while keeping the proven static YAML source/compiled/hot-path alias behavior.
+- Follow-up story: none in this wave; deterministic programmatic-Landofile evaluation and import provenance is deferred to a spec-owned story outside the Lando 3 parity PRD.
+---
