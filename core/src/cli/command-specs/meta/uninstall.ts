@@ -20,7 +20,6 @@ const makeListDiscoveredApps =
       const { readdir, readFile } = await import("node:fs/promises");
       const { join } = await import("node:path");
 
-      // Query Docker for running Lando containers
       const apps: DiscoveredApp[] = [];
       const runtimes = [
         { cmd: "docker", providerId: "docker" as const },
@@ -29,27 +28,36 @@ const makeListDiscoveredApps =
 
       for (const runtime of runtimes) {
         try {
-          // List running containers with Lando app label
-          const { stdout } = await execFileAsync(runtime.cmd, [
-            "ps",
-            "--filter",
-            "label=com.lando.app",
-            "--format",
-            '{{.Label "com.lando.app"}}',
-          ]);
+          // Query for core4 label (dev.lando.app) and Lando 3 compat (com.lando.app)
+          const labels = ["dev.lando.app", "com.lando.app"];
+          const runningAppIds = new Set<string>();
 
-          const runningAppIds = new Set(
-            stdout
-              .trim()
-              .split("\n")
-              .filter((id) => id.length > 0),
-          );
+          for (const label of labels) {
+            try {
+              const { stdout } = await execFileAsync(runtime.cmd, [
+                "ps",
+                "--filter",
+                `label=${label}`,
+                "--format",
+                `{{.Label "${label}"}}`,
+              ]);
+
+              const ids = stdout
+                .trim()
+                .split("\n")
+                .filter((id) => id.length > 0);
+              for (const id of ids) runningAppIds.add(id);
+            } catch {
+              // Skip if label query fails
+            }
+          }
 
           if (runningAppIds.size === 0) continue;
 
-          // Load app details from cache for running apps
+          // Load cache details for running apps if available
           const providersRoot = join(userDataRoot, "providers");
           const appsDir = join(providersRoot, `provider-${runtime.providerId}`, "apps");
+          const cacheDetails = new Map<string, { name: string; root: string; services: string[] }>();
 
           try {
             const entries = await readdir(appsDir);
@@ -60,17 +68,10 @@ const makeListDiscoveredApps =
                 const envelope = JSON.parse(content) as {
                   plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
                 };
-                if (
-                  envelope.plan?.id &&
-                  runningAppIds.has(envelope.plan.id) &&
-                  envelope.plan.root &&
-                  envelope.plan.services
-                ) {
-                  apps.push({
-                    appId: envelope.plan.id,
-                    appName: envelope.plan.name ?? envelope.plan.id,
-                    providerId: runtime.providerId,
-                    appRoot: envelope.plan.root,
+                if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
+                  cacheDetails.set(envelope.plan.id, {
+                    name: envelope.plan.name ?? envelope.plan.id,
+                    root: envelope.plan.root,
                     services: Object.keys(envelope.plan.services),
                   });
                 }
@@ -80,6 +81,18 @@ const makeListDiscoveredApps =
             }
           } catch {
             // Skip if directory doesn't exist
+          }
+
+          // Block on ALL running labeled containers, even without cache
+          for (const appId of runningAppIds) {
+            const details = cacheDetails.get(appId);
+            apps.push({
+              appId,
+              appName: details?.name ?? appId,
+              providerId: runtime.providerId,
+              appRoot: details?.root ?? "(unknown)",
+              services: details?.services ?? [],
+            });
           }
         } catch {
           // Skip if runtime command not available or fails

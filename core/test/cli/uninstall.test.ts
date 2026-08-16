@@ -848,4 +848,50 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("purge aborts when containers are running even without cache files", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Simulate running container discovered by docker ps but no cache file exists
+      // This can happen if cache was corrupted/deleted or container started outside normal flow
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [
+            {
+              appId: "orphaned-app",
+              appName: "orphaned-app",
+              providerId: "docker",
+              appRoot: "(unknown)", // No cache file
+              services: [],
+            },
+          ],
+        }),
+      );
+
+      // Uninstall must fail even without cache details
+      expect(result.failed).toBe(true);
+
+      // Running-apps step must be marked as failed
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.outcome).toBe("failed");
+      expect(runningAppsStep?.error).toContain("Uninstall cannot proceed while");
+
+      // Critical: data/cache/config directories must NOT be deleted
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(existsSync(userConfRoot)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
