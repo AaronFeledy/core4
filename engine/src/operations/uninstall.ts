@@ -231,10 +231,7 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
 const buildRunningAppsStep = async (
   userDataRoot: string,
   userCacheRoot: string,
-  listDiscoveredApps?: (
-    userDataRoot: string,
-    userCacheRoot: string,
-  ) => Promise<ReadonlyArray<DiscoveredApp>>,
+  listDiscoveredApps?: (userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>,
 ): Promise<UninstallPlanStep> => {
   const base = {
     id: "running-apps",
@@ -430,7 +427,6 @@ const executeUninstall = async (
   hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
   const teardownRuntimeService =
     options.teardownRuntimeService ??

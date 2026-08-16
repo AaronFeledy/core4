@@ -10,18 +10,16 @@ import {
 import { renderUninstallResult } from "../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
-const makeListDiscoveredApps = (): ((
-  userDataRoot: string,
-  userCacheRoot: string,
-) => Promise<ReadonlyArray<DiscoveredApp>>) => {
-  return async (userDataRoot: string, userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
+const makeListDiscoveredApps =
+  (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
+  async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
     try {
       const { readdir, readFile } = await import("node:fs/promises");
       const { join } = await import("node:path");
-      
+
       const providersRoot = join(userDataRoot, "providers");
       const apps: DiscoveredApp[] = [];
-      
+
       // Read apps from provider-docker
       try {
         const dockerAppsDir = join(providersRoot, "provider-docker", "apps");
@@ -30,7 +28,9 @@ const makeListDiscoveredApps = (): ((
           if (!entry.endsWith(".json")) continue;
           try {
             const content = await readFile(join(dockerAppsDir, entry), "utf8");
-            const envelope = JSON.parse(content) as { plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> } };
+            const envelope = JSON.parse(content) as {
+              plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
+            };
             if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
               apps.push({
                 appId: envelope.plan.id,
@@ -47,7 +47,7 @@ const makeListDiscoveredApps = (): ((
       } catch {
         // Skip if directory doesn't exist
       }
-      
+
       // Read apps from provider-lando (Podman)
       try {
         const landoAppsDir = join(providersRoot, "provider-lando", "apps");
@@ -56,7 +56,9 @@ const makeListDiscoveredApps = (): ((
           if (!entry.endsWith(".json")) continue;
           try {
             const content = await readFile(join(landoAppsDir, entry), "utf8");
-            const envelope = JSON.parse(content) as { plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> } };
+            const envelope = JSON.parse(content) as {
+              plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
+            };
             if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
               apps.push({
                 appId: envelope.plan.id,
@@ -73,13 +75,12 @@ const makeListDiscoveredApps = (): ((
       } catch {
         // Skip if directory doesn't exist
       }
-      
+
       return apps;
     } catch {
       return [];
     }
   };
-};
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
