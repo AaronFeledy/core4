@@ -495,18 +495,91 @@ const executeUninstall = async (
         if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
-        // After teardown, make the directory removable before attempting removal
+        // After teardown, fully release the runtime directory by:
+        // 1. Killing any leftover child processes (fuse-overlayfs, conmon, pasta, etc)
+        // 2. Unmounting any fuse/overlay mounts
+        // 3. Making the tree removable
         const { chmod } = await import("node:fs/promises");
         const { existsSync } = await import("node:fs");
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+
         if (existsSync(step.target)) {
+          // Kill any processes with cwd or open files under the runtime dir
+          // Common culprits: fuse-overlayfs, conmon, pasta, aardvark-dns
           try {
-            // Make all files writable by owner so rm can succeed
+            // Find PIDs with open files or cwd under the runtime directory
+            const { stdout: lsofOut } = await execFileAsync("lsof", ["+D", step.target], {
+              timeout: 5000,
+            }).catch(() => ({ stdout: "" }));
+
+            const pids = new Set<string>();
+            for (const line of lsofOut.split("\n").slice(1)) {
+              const fields = line.trim().split(/\s+/);
+              if (fields.length > 1 && fields[1]) pids.add(fields[1]);
+            }
+
+            // Also try ps to find podman-related processes by name
+            const { stdout: psOut } = await execFileAsync("ps", ["ax", "-o", "pid,command"], {
+              timeout: 5000,
+            }).catch(() => ({ stdout: "" }));
+
+            for (const line of psOut.split("\n")) {
+              if (
+                line.includes("fuse-overlayfs") ||
+                line.includes("conmon") ||
+                line.includes("pasta") ||
+                line.includes("aardvark-dns") ||
+                line.includes("podman pause")
+              ) {
+                const pid = line.trim().split(/\s+/)[0];
+                if (pid && /^\d+$/.test(pid)) pids.add(pid);
+              }
+            }
+
+            // Kill all found processes
+            for (const pid of pids) {
+              try {
+                await execFileAsync("kill", ["-9", pid], { timeout: 1000 });
+              } catch {
+                // Process may have already exited
+              }
+            }
+          } catch {
+            // lsof/ps may not be available or may fail; continue anyway
+          }
+
+          // Unmount any fuse/overlay mounts under the runtime directory
+          try {
+            const { stdout: mountOut } = await execFileAsync("mount", [], { timeout: 5000 }).catch(() => ({
+              stdout: "",
+            }));
+
+            const mounts: string[] = [];
+            for (const line of mountOut.split("\n")) {
+              if (line.includes(step.target)) {
+                const match = line.match(/on (.+?) type/);
+                if (match?.[1]) mounts.push(match[1]);
+              }
+            }
+
+            // Unmount in reverse order (deepest first)
+            for (const mount of mounts.sort().reverse()) {
+              try {
+                await execFileAsync("umount", ["-f", mount], { timeout: 5000 });
+              } catch {
+                // Mount may have already been unmounted
+              }
+            }
+          } catch {
+            // mount/umount may not be available; continue anyway
+          }
+
+          // Make the tree removable
+          try {
             await chmod(step.target, 0o700);
-            // Recursively make contents writable
-            const { execFile } = await import("node:child_process");
-            const { promisify } = await import("node:util");
-            const execFileAsync = promisify(execFile);
-            await execFileAsync("chmod", ["-R", "u+w", step.target]);
+            await execFileAsync("chmod", ["-R", "u+w", step.target], { timeout: 10000 });
           } catch {
             // chmod may fail on some files, but try to remove anyway
           }
@@ -520,6 +593,14 @@ const executeUninstall = async (
         continue;
       }
       await remove(step.target);
+
+      // For runtime-service, verify the directory was actually removed
+      if (step.id === "runtime-service" && existsSync(step.target)) {
+        throw new Error(
+          `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
+        );
+      }
+
       executed.push({ ...step, outcome: "completed" });
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : String(cause);
