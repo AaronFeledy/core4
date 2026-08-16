@@ -1,0 +1,2714 @@
+{
+  "note": "Shrink-only migration ledger for detached test entrypoints and packages without tests. Regenerate with bun run scripts/generate-detached-tests-baseline.ts.",
+  "testTierEdges": [
+    {
+      "file": "core/test/app/selector.test.ts",
+      "specifier": "@lando/engine/app/selector"
+    },
+    {
+      "file": "core/test/build/build-compiled-binary.test.ts",
+      "specifier": "../../../scripts/build-compiled-binary.ts"
+    },
+    {
+      "file": "core/test/build/build-compiled-binary.test.ts",
+      "specifier": "../../../scripts/generated/opentui-native/catalog.generated.ts"
+    },
+    {
+      "file": "core/test/build/canonical-guide-acceptance.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/build/cli-bundle.ts",
+      "specifier": "../../../scripts/generated/opentui-native/catalog.generated.ts"
+    },
+    {
+      "file": "core/test/build/compile.test.ts",
+      "specifier": "@lando/engine/data-mover/generated/provider-images"
+    },
+    {
+      "file": "core/test/build/compose-coverage-ci.test.ts",
+      "specifier": "../../../scripts/build-ci-workflow.ts"
+    },
+    {
+      "file": "core/test/build/compose-vendor-bump-workflow.test.ts",
+      "specifier": "../../../scripts/build-compose-vendor-bump-workflow.ts"
+    },
+    {
+      "file": "core/test/build/compose-vendor-bump-workflow.test.ts",
+      "specifier": "../../../scripts/runtime-bundle-supply-chain.ts"
+    },
+    {
+      "file": "core/test/build/dist-bundle.test.ts",
+      "specifier": "../../../scripts/dist-bundle.ts"
+    },
+    {
+      "file": "core/test/build/landofile-package-seam.test.ts",
+      "specifier": "../../../scripts/test-shards.ts"
+    },
+    {
+      "file": "core/test/build/mcp-guide-acceptance.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/build/oclif-version-pins.test.ts",
+      "specifier": "../../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "core/test/build/opentui-compiled-acceptance.test.ts",
+      "specifier": "../../../scripts/generated/opentui-native/catalog.generated.ts"
+    },
+    {
+      "file": "core/test/build/php-base-images.test.ts",
+      "specifier": "../../../plugins/service-lando/src/services/php-prerequisites.ts"
+    },
+    {
+      "file": "core/test/build/php-base-images.test.ts",
+      "specifier": "../../../plugins/service-lando/src/services/php.ts"
+    },
+    {
+      "file": "core/test/build/php-base-images.test.ts",
+      "specifier": "../../../scripts/build-php-base-images.ts"
+    },
+    {
+      "file": "core/test/build/php-base-workflow.test.ts",
+      "specifier": "../../../scripts/build-php-base-workflow.ts"
+    },
+    {
+      "file": "core/test/build/schema-compatibility.test.ts",
+      "specifier": "../../../scripts/check-schema-compatibility.ts"
+    },
+    {
+      "file": "core/test/build/schema-compatibility.test.ts",
+      "specifier": "../../../scripts/schema-compatibility/classifier.ts"
+    },
+    {
+      "file": "core/test/build/schema-snapshot.test.ts",
+      "specifier": "../../../sdk/src/schema/index.ts"
+    },
+    {
+      "file": "core/test/cache/app-command-alias-cache.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/cache/app-command-alias-cache.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cache/app-command-alias-cache.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cache/app-plan-revision.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/cache/app-plan-revision.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cache/app-plan-revision.test.ts",
+      "specifier": "@lando/engine/version"
+    },
+    {
+      "file": "core/test/cache/binary-encoding.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/cache/binary-encoding.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/cache/binary-encoding.test.ts",
+      "specifier": "@lando/engine/cache/cwd-app-map"
+    },
+    {
+      "file": "core/test/cache/binary-encoding.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cache/binary-encoding.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/cache/command-index-writer.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/cache/command-index-writer.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cache/command-index-writer.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cache/command-index-writer.test.ts",
+      "specifier": "@lando/engine/plugins/plugin-discovery"
+    },
+    {
+      "file": "core/test/cli/aliases.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/app-cache-alias-validation.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/app-cache-alias-validation.test.ts",
+      "specifier": "@lando/engine/planner/effective-tooling"
+    },
+    {
+      "file": "core/test/cli/app-cache.scenario.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/app-cache.scenario.test.ts",
+      "specifier": "@lando/engine/planner/effective-tooling"
+    },
+    {
+      "file": "core/test/cli/app-command-aliases.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/app-command-aliases.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/app-resolution-tooling-includes.test.ts",
+      "specifier": "@lando/engine/landofile/app-resolution"
+    },
+    {
+      "file": "core/test/cli/app-resolution-version-constraint.test.ts",
+      "specifier": "@lando/engine/landofile/app-resolution"
+    },
+    {
+      "file": "core/test/cli/app-resolution-version-constraint.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/cli/app-resolution.test.ts",
+      "specifier": "@lando/engine/landofile/app-resolution"
+    },
+    {
+      "file": "core/test/cli/apps-list.scenario.test.ts",
+      "specifier": "@lando/engine/cache/cwd-app-map"
+    },
+    {
+      "file": "core/test/cli/apps-poweroff.scenario.test.ts",
+      "specifier": "@lando/engine/cache/cwd-app-map"
+    },
+    {
+      "file": "core/test/cli/apps-poweroff.scenario.test.ts",
+      "specifier": "@lando/engine/runtime/host-maintenance"
+    },
+    {
+      "file": "core/test/cli/command-lifecycle-adapters.test.ts",
+      "specifier": "@lando/engine/runtime/cli-options"
+    },
+    {
+      "file": "core/test/cli/command-lifecycle.test.ts",
+      "specifier": "@lando/engine/operations/stream-frame-sink"
+    },
+    {
+      "file": "core/test/cli/commands/host-endpoint-urls.test.ts",
+      "specifier": "@lando/engine/operations/authority-url"
+    },
+    {
+      "file": "core/test/cli/config-write/dot-path.test.ts",
+      "specifier": "@lando/engine/config-write/dot-path"
+    },
+    {
+      "file": "core/test/cli/config-write/dot-path.test.ts",
+      "specifier": "@lando/engine/config-write/value-parse"
+    },
+    {
+      "file": "core/test/cli/config-write/meta-config-write.test.ts",
+      "specifier": "@lando/engine/operations/config"
+    },
+    {
+      "file": "core/test/cli/config-write/write-core.test.ts",
+      "specifier": "@lando/engine/config-write/write-core"
+    },
+    {
+      "file": "core/test/cli/doctor-certs-status.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/cli/doctor-host-proxy.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-state"
+    },
+    {
+      "file": "core/test/cli/doctor-report-integration.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/cli/doctor-report.test.ts",
+      "specifier": "@lando/engine/deprecation/service"
+    },
+    {
+      "file": "core/test/cli/doctor-subsystems-fix.test.ts",
+      "specifier": "@lando/engine/subsystems/certs/api"
+    },
+    {
+      "file": "core/test/cli/doctor-subsystems-fix.test.ts",
+      "specifier": "@lando/engine/subsystems/healthcheck/api"
+    },
+    {
+      "file": "core/test/cli/doctor-subsystems-fix.test.ts",
+      "specifier": "@lando/engine/subsystems/proxy/api"
+    },
+    {
+      "file": "core/test/cli/doctor-subsystems-fix.test.ts",
+      "specifier": "@lando/engine/subsystems/scanner/api"
+    },
+    {
+      "file": "core/test/cli/doctor-subsystems-fix.test.ts",
+      "specifier": "@lando/engine/subsystems/ssh/api"
+    },
+    {
+      "file": "core/test/cli/doctor.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/cli/dynamic-app-command-aliases.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/cli/dynamic-app-command-aliases.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/dynamic-app-command-aliases.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/operations/ensure-global-services"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/ensure-global-services.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/operations/stream-frame-sink"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/global-commands.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/cli/global-install.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/global-install.test.ts",
+      "specifier": "@lando/engine/operations/global-install"
+    },
+    {
+      "file": "core/test/cli/global-install.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/global-install.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/init.canonical-recipes.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/cli/init.landofile-ts.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/cli/init.landofile-ts.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/cli/init.landofile-ts.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/cli/init.scenario.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/cli/logs.scenario.test.ts",
+      "specifier": "@lando/engine/operations/logs"
+    },
+    {
+      "file": "core/test/cli/meta-config.scenario.test.ts",
+      "specifier": "@lando/engine/operations/config"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-add.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-add.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/trust-store"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-link.scenario.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-new.scenario.test.ts",
+      "specifier": "@lando/engine/operations/plugin-scaffold"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-remove.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-remove.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/trust-store"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-trust.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-trust.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/trust-store"
+    },
+    {
+      "file": "core/test/cli/meta-plugin-unlink.scenario.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/native-help.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/opentui-coldstart-canary.test.ts",
+      "specifier": "../../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "core/test/cli/paint-banner.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/progress.test.ts",
+      "specifier": "@lando/engine/operations/progress"
+    },
+    {
+      "file": "core/test/cli/progress.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/rebuild.scenario.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/rebuild.scenario.test.ts",
+      "specifier": "@lando/engine/services/build-orchestrator"
+    },
+    {
+      "file": "core/test/cli/rebuild.scenario.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/rebuild.scenario.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/rebuild.scenario.test.ts",
+      "specifier": "@lando/engine/services/shell-runner"
+    },
+    {
+      "file": "core/test/cli/redaction-ac6.test.ts",
+      "specifier": "@lando/engine/services/secret-store"
+    },
+    {
+      "file": "core/test/cli/renderer-boundary.test.ts",
+      "specifier": "@lando/engine/deprecation/service"
+    },
+    {
+      "file": "core/test/cli/renderer-first-paint.test.ts",
+      "specifier": "../../../plugins/renderer-lando/src/renderer-runtime.ts"
+    },
+    {
+      "file": "core/test/cli/renderer-first-paint.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-live-region-test-kit.ts",
+      "specifier": "../../../plugins/renderer-lando/src/opentui/live-region-controller.ts"
+    },
+    {
+      "file": "core/test/cli/renderer-messages.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-summary-surfaces.test.ts",
+      "specifier": "@lando/engine/operations/info"
+    },
+    {
+      "file": "core/test/cli/renderer-summary-surfaces.test.ts",
+      "specifier": "@lando/engine/operations/uninstall"
+    },
+    {
+      "file": "core/test/cli/renderer-task-tree-runtime-input.test.ts",
+      "specifier": "../../../plugins/renderer-lando/src/renderer-runtime.ts"
+    },
+    {
+      "file": "core/test/cli/renderer-task-tree-runtime-input.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-task-tree-tail.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-task-tree.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-uninstall-boundary.test.ts",
+      "specifier": "@lando/engine/operations/uninstall"
+    },
+    {
+      "file": "core/test/cli/renderer-verbose.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer-visual-language.test.ts",
+      "specifier": "../../../plugins/renderer-lando/src/renderer-runtime.ts"
+    },
+    {
+      "file": "core/test/cli/renderer-visual-language.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer/bundled-renderers.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/renderer/visual-qa.test.ts",
+      "specifier": "../../../../plugins/renderer-lando/src/renderer-runtime.ts"
+    },
+    {
+      "file": "core/test/cli/renderer/visual-qa.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/reserved-aliases.test.ts",
+      "specifier": "@lando/engine/operations/reserved-aliases"
+    },
+    {
+      "file": "core/test/cli/restart.scenario.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/restart.scenario.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/restart.scenario.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/restart.scenario.test.ts",
+      "specifier": "@lando/engine/services/shell-runner"
+    },
+    {
+      "file": "core/test/cli/runtime-telemetry.test.ts",
+      "specifier": "@lando/engine/runtime/cli-options"
+    },
+    {
+      "file": "core/test/cli/scratch-list-info.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/cli/scratch-recipe-flags.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/build-orchestrator"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/cli/scratch-run.test.ts",
+      "specifier": "@lando/engine/services/secret-store"
+    },
+    {
+      "file": "core/test/cli/setup-certificate-authority-resolver.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/cli/setup.scenario.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/cli/setup.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/api"
+    },
+    {
+      "file": "core/test/cli/setup.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/cli/shell.scenario.test.ts",
+      "specifier": "@lando/engine/deprecation/built-in-contracts"
+    },
+    {
+      "file": "core/test/cli/shell.scenario.test.ts",
+      "specifier": "@lando/engine/deprecation/service"
+    },
+    {
+      "file": "core/test/cli/start.scenario.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/cli/start.scenario.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/cli/start.scenario.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/cli/start.scenario.test.ts",
+      "specifier": "@lando/engine/services/shell-runner"
+    },
+    {
+      "file": "core/test/cli/start.scenario.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/cli/tooling-argv.test.ts",
+      "specifier": "@lando/engine/operations/tooling"
+    },
+    {
+      "file": "core/test/cli/tooling-router-policy.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/tooling-router.scenario.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/tooling-router.scenario.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/cli/tooling-router.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/cli/tooling.scenario.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/cli/tooling.scenario.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/cli/tooling.scenario.test.ts",
+      "specifier": "@lando/engine/planner/effective-tooling"
+    },
+    {
+      "file": "core/test/cli/tooling.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/cli/tooling.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "core/test/cli/uninstall-provider-machines.test.ts",
+      "specifier": "@lando/engine/operations/uninstall"
+    },
+    {
+      "file": "core/test/cli/uninstall-provider-machines.test.ts",
+      "specifier": "@lando/engine/runtime/managed-provider-machine"
+    },
+    {
+      "file": "core/test/cli/uninstall-runtime-service.test.ts",
+      "specifier": "@lando/engine/operations/uninstall"
+    },
+    {
+      "file": "core/test/cli/uninstall-runtime-service.test.ts",
+      "specifier": "@lando/engine/runtime/host-maintenance"
+    },
+    {
+      "file": "core/test/cli/uninstall.test.ts",
+      "specifier": "@lando/engine/operations/uninstall"
+    },
+    {
+      "file": "core/test/cli/update-manifest.test.ts",
+      "specifier": "@lando/engine/operations/update"
+    },
+    {
+      "file": "core/test/cli/update-telemetry.test.ts",
+      "specifier": "@lando/engine/operations/update"
+    },
+    {
+      "file": "core/test/cli/update-telemetry.test.ts",
+      "specifier": "@lando/engine/telemetry/events"
+    },
+    {
+      "file": "core/test/codegen/guide-scenarios-security.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/codegen/guide-scenarios.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/codegen/library-source-map.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/codegen/library-source-map.test.ts",
+      "specifier": "../../../scripts/test-reporters/scenario-source-mapper.ts"
+    },
+    {
+      "file": "core/test/codegen/public-transcript.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/codegen/recipe-readmes.test.ts",
+      "specifier": "../../../scripts/build-recipe-readmes.ts"
+    },
+    {
+      "file": "core/test/config/agent-env-redaction.test.ts",
+      "specifier": "@lando/engine/config/agent-env"
+    },
+    {
+      "file": "core/test/config/agent-env.test.ts",
+      "specifier": "@lando/engine/config/agent-env"
+    },
+    {
+      "file": "core/test/conformance/compose-fixture-outcomes.test.ts",
+      "specifier": "@lando/engine/services/draft"
+    },
+    {
+      "file": "core/test/conformance/compose-fixtures.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/conformance/compose-fixtures.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/conformance/compose-fixtures.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/conformance/compose-fixtures.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/contract/host-proxy-runlando.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/dispatch"
+    },
+    {
+      "file": "core/test/contract/host-proxy-runlando.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/shim"
+    },
+    {
+      "file": "core/test/data-mover/service.test.ts",
+      "specifier": "@lando/engine/data-mover/generated/provider-images"
+    },
+    {
+      "file": "core/test/data-mover/service.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/docs/render-public-transcript-exclusion.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/global-app/materialize.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/global-app/materialize.test.ts",
+      "specifier": "@lando/engine/operations/global-install"
+    },
+    {
+      "file": "core/test/global-app/materialize.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/global-app/materialize.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/landofile/service.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/library/import-boundary.test.ts",
+      "specifier": "../../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "core/test/library/paths-export.test.ts",
+      "specifier": "../../../paths/package.json"
+    },
+    {
+      "file": "core/test/lifecycle/publish-render.test.ts",
+      "specifier": "@lando/engine/lifecycle/publish-render"
+    },
+    {
+      "file": "core/test/lifecycle/publish-render.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/lifecycle/route-urls.test.ts",
+      "specifier": "@lando/engine/lifecycle/route-urls"
+    },
+    {
+      "file": "core/test/lifecycle/subscriber-descriptor-loaders.test.ts",
+      "specifier": "@lando/engine/lifecycle/subscriber-index"
+    },
+    {
+      "file": "core/test/lifecycle/subscriber-descriptor-loaders.test.ts",
+      "specifier": "@lando/engine/lifecycle/subscribers"
+    },
+    {
+      "file": "core/test/lifecycle/subscribers.integration.test.ts",
+      "specifier": "@lando/engine/runtime/bootstrap-lifecycle"
+    },
+    {
+      "file": "core/test/lifecycle/subscribers.test.ts",
+      "specifier": "@lando/engine/lifecycle/subscriber-config"
+    },
+    {
+      "file": "core/test/lifecycle/subscribers.test.ts",
+      "specifier": "@lando/engine/lifecycle/subscriber-index"
+    },
+    {
+      "file": "core/test/lifecycle/subscribers.test.ts",
+      "specifier": "@lando/engine/lifecycle/subscriber-loader"
+    },
+    {
+      "file": "core/test/lifecycle/subscribers.test.ts",
+      "specifier": "@lando/engine/plugins/context"
+    },
+    {
+      "file": "core/test/managed-file/events.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/managed-file/redaction-env.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/managed-file/service.test.ts",
+      "specifier": "@lando/engine/config/roots"
+    },
+    {
+      "file": "core/test/mcp/service.test.ts",
+      "specifier": "@lando/engine/operations/stream-frame-sink"
+    },
+    {
+      "file": "core/test/mcp/service.test.ts",
+      "specifier": "@lando/engine/runtime/cwd"
+    },
+    {
+      "file": "core/test/plugins/bundled.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/plugins/certificate-authority-selection.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/plugins/context.test.ts",
+      "specifier": "@lando/engine/plugins/context"
+    },
+    {
+      "file": "core/test/plugins/contribution-graph-sources.test.ts",
+      "specifier": "@lando/engine/plugins/contribution-graph"
+    },
+    {
+      "file": "core/test/plugins/contribution-graph-sources.test.ts",
+      "specifier": "@lando/engine/plugins/plugin-discovery"
+    },
+    {
+      "file": "core/test/plugins/module-set.test.ts",
+      "specifier": "@lando/engine/plugins/module-set"
+    },
+    {
+      "file": "core/test/plugins/setup-flags.test.ts",
+      "specifier": "@lando/engine/plugins/setup-flags"
+    },
+    {
+      "file": "core/test/providers/log-file-helper-assets.test.ts",
+      "specifier": "@lando/engine/providers/log-file-helper-payloads"
+    },
+    {
+      "file": "core/test/providers/log-file-helper-payloads.test.ts",
+      "specifier": "@lando/engine/providers/log-file-helper-payloads"
+    },
+    {
+      "file": "core/test/providers/precedence.test.ts",
+      "specifier": "@lando/engine/providers/precedence"
+    },
+    {
+      "file": "core/test/providers/registry.characterization.test.ts",
+      "specifier": "@lando/engine/providers/registry"
+    },
+    {
+      "file": "core/test/providers/registry.descriptor.test.ts",
+      "specifier": "@lando/engine/providers/registry"
+    },
+    {
+      "file": "core/test/providers/scratch-labels.test.ts",
+      "specifier": "../../../plugins/provider-docker/src/index.ts"
+    },
+    {
+      "file": "core/test/providers/scratch-labels.test.ts",
+      "specifier": "../../../plugins/provider-lando/src/bring-up.ts"
+    },
+    {
+      "file": "core/test/recipes/canonical-recipes.matrix.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/recipes/canonical-recipes.matrix.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/recipes/canonical-recipes.matrix.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/redaction/services-cannot-weaken.test.ts",
+      "specifier": "@lando/engine/services/shell-runner"
+    },
+    {
+      "file": "core/test/redaction/services-cannot-weaken.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/api"
+    },
+    {
+      "file": "core/test/runtime/bootstrap-layer-support.test.ts",
+      "specifier": "@lando/engine/runtime/bootstrap-layer-support"
+    },
+    {
+      "file": "core/test/runtime/bootstrap-lifecycle.test.ts",
+      "specifier": "@lando/engine/runtime/bootstrap-lifecycle"
+    },
+    {
+      "file": "core/test/runtime/bootstrap-lifecycle.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/runtime/bootstrap-plugin-services.test.ts",
+      "specifier": "@lando/engine/runtime/host-maintenance"
+    },
+    {
+      "file": "core/test/runtime/certificate-authority-discovery-runtime.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/runtime/certificate-authority-discovery-runtime.test.ts",
+      "specifier": "@lando/engine/runtime/runtime-options"
+    },
+    {
+      "file": "core/test/runtime/certificate-authority-production-path.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/runtime/certificate-authority-runtime.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/runtime/make-runtime.test.ts",
+      "specifier": "@lando/engine/runtime/interrupt"
+    },
+    {
+      "file": "core/test/runtime/make-runtime.test.ts",
+      "specifier": "@lando/engine/runtime/runtime-options"
+    },
+    {
+      "file": "core/test/runtime/managed-provider-machine.integration.test.ts",
+      "specifier": "@lando/engine/runtime/managed-provider-machine"
+    },
+    {
+      "file": "core/test/runtime/managed-provider-machine.test.ts",
+      "specifier": "@lando/engine/runtime/managed-provider-machine"
+    },
+    {
+      "file": "core/test/scenario/global-mailpit-live.integration.test.ts",
+      "specifier": "../../../plugins/service-lando/src/mailpit-constants.ts"
+    },
+    {
+      "file": "core/test/scenario/global-traefik-live.integration.test.ts",
+      "specifier": "../../../plugins/proxy-traefik/src/global-services/traefik.ts"
+    },
+    {
+      "file": "core/test/scenario/global-traefik-routing.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/scenario/global-traefik-routing.scenario.test.ts",
+      "specifier": "@lando/engine/services/global-services"
+    },
+    {
+      "file": "core/test/scenario/global-traefik-routing.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/scenarios/reporter.test.ts",
+      "specifier": "../../../scripts/test-reporters/scenario-source-mapper.ts"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/scratch-app/gc.test.ts",
+      "specifier": "@lando/engine/services/secret-store"
+    },
+    {
+      "file": "core/test/scratch-app/registry.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle-helper-source-build.test.ts",
+      "specifier": "../../../scripts/assemble-runtime-bundle.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle-source-build.test.ts",
+      "specifier": "../../../scripts/assemble-runtime-bundle.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle-verification.test.ts",
+      "specifier": "../../../plugins/provider-lando/src/managed-runtime-service.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle-verification.test.ts",
+      "specifier": "../../../scripts/assemble-runtime-bundle.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle-verification.test.ts",
+      "specifier": "../../../scripts/linux-podman-source-build.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle.test.ts",
+      "specifier": "../../../scripts/assemble-runtime-bundle.ts"
+    },
+    {
+      "file": "core/test/scripts/assemble-runtime-bundle.test.ts",
+      "specifier": "../../../scripts/build-runtime-bundle-workflow.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/detached-tests-baseline.test.ts",
+      "specifier": "../../../../scripts/boundary/rules/package-dag-test.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/engine.test.ts",
+      "specifier": "../../../../scripts/boundary/engine.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/engine.test.ts",
+      "specifier": "../../../../scripts/boundary/format.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/engine.test.ts",
+      "specifier": "../../../../scripts/boundary/types.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/inventory.test.ts",
+      "specifier": "../../../../scripts/boundary/registry.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/inventory.test.ts",
+      "specifier": "../../../../scripts/boundary/types.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/literals.test.ts",
+      "specifier": "../../../../scripts/boundary/literals.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/workspace-roots.test.ts",
+      "specifier": "../../../../scripts/boundary/registry.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/workspace-roots.test.ts",
+      "specifier": "../../../../scripts/boundary/workspace-roots.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/workspace-roots.test.ts",
+      "specifier": "../../../../scripts/check-deprecations.ts"
+    },
+    {
+      "file": "core/test/scripts/boundary/workspace-roots.test.ts",
+      "specifier": "../../../../scripts/check-telemetry-inventory.ts"
+    },
+    {
+      "file": "core/test/scripts/build-bundled-plugin-command-cache.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/scripts/build-bundled-plugin-command-cache.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/scripts/build-compose-vendor.test.ts",
+      "specifier": "../../../scripts/build-compose-vendor.ts"
+    },
+    {
+      "file": "core/test/scripts/build-compose-vendor.test.ts",
+      "specifier": "../../../scripts/compose-vendor.ts"
+    },
+    {
+      "file": "core/test/scripts/build-guide-scenarios.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/scripts/build-provider-images.test.ts",
+      "specifier": "../../../scripts/build-provider-images.ts"
+    },
+    {
+      "file": "core/test/scripts/build-runtime-bundle.test.ts",
+      "specifier": "../../../scripts/build-runtime-bundle.ts"
+    },
+    {
+      "file": "core/test/scripts/check-codegen-drift.test.ts",
+      "specifier": "../../../scripts/check-codegen-drift.ts"
+    },
+    {
+      "file": "core/test/scripts/check-compose-coverage.test.ts",
+      "specifier": "../../../scripts/check-compose-coverage.ts"
+    },
+    {
+      "file": "core/test/scripts/check-deprecations.test.ts",
+      "specifier": "../../../scripts/check-deprecations.ts"
+    },
+    {
+      "file": "core/test/scripts/check-env-helper-boundary.test.ts",
+      "specifier": "../../../scripts/check-env-helper-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-generated-output.test.ts",
+      "specifier": "../../../scripts/check-generated-output.ts"
+    },
+    {
+      "file": "core/test/scripts/check-guide-coverage.test.ts",
+      "specifier": "../../../scripts/check-guide-coverage.ts"
+    },
+    {
+      "file": "core/test/scripts/check-guide-drift.test.ts",
+      "specifier": "../../../scripts/check-guide-drift.ts"
+    },
+    {
+      "file": "core/test/scripts/check-import-cycle.test.ts",
+      "specifier": "../../../scripts/boundary/engine.ts"
+    },
+    {
+      "file": "core/test/scripts/check-import-cycle.test.ts",
+      "specifier": "../../../scripts/boundary/rules/import-cycle.ts"
+    },
+    {
+      "file": "core/test/scripts/check-import-cycle.test.ts",
+      "specifier": "../../../scripts/check-import-cycle.ts"
+    },
+    {
+      "file": "core/test/scripts/check-import-cycle.test.ts",
+      "specifier": "../../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "core/test/scripts/check-machine-output.test.ts",
+      "specifier": "../../../scripts/boundary/engine.ts"
+    },
+    {
+      "file": "core/test/scripts/check-machine-output.test.ts",
+      "specifier": "../../../scripts/check-machine-output.ts"
+    },
+    {
+      "file": "core/test/scripts/check-managed-file-boundary.test.ts",
+      "specifier": "../../../scripts/check-managed-file-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-package-dag-source.test.ts",
+      "specifier": "../../../scripts/boundary/rules/import-cycle.ts"
+    },
+    {
+      "file": "core/test/scripts/check-package-dag-source.test.ts",
+      "specifier": "../../../scripts/boundary/rules/package-dag-policy.ts"
+    },
+    {
+      "file": "core/test/scripts/check-package-dag-source.test.ts",
+      "specifier": "../../../scripts/boundary/rules/package-dag.ts"
+    },
+    {
+      "file": "core/test/scripts/check-paths-boundary.test.ts",
+      "specifier": "../../../scripts/boundary/rules/paths.ts"
+    },
+    {
+      "file": "core/test/scripts/check-paths-boundary.test.ts",
+      "specifier": "../../../scripts/check-paths-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-probe-boundary.test.ts",
+      "specifier": "../../../scripts/boundary/rules/probe.ts"
+    },
+    {
+      "file": "core/test/scripts/check-probe-boundary.test.ts",
+      "specifier": "../../../scripts/check-probe-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-public-transcripts.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/scripts/check-redaction-boundary.test.ts",
+      "specifier": "../../../scripts/boundary/rules/redaction.ts"
+    },
+    {
+      "file": "core/test/scripts/check-redaction-boundary.test.ts",
+      "specifier": "../../../scripts/check-redaction-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-renderer-boundary.test.ts",
+      "specifier": "../../../scripts/boundary/rules/renderer.ts"
+    },
+    {
+      "file": "core/test/scripts/check-renderer-boundary.test.ts",
+      "specifier": "../../../scripts/check-renderer-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-runtime-bundle-manifest.test.ts",
+      "specifier": "../../../scripts/check-runtime-bundle-manifest.ts"
+    },
+    {
+      "file": "core/test/scripts/check-spec-reference.test.ts",
+      "specifier": "../../../scripts/check-spec-reference.ts"
+    },
+    {
+      "file": "core/test/scripts/check-state-store-boundary.test.ts",
+      "specifier": "../../../scripts/boundary/rules/state-store.ts"
+    },
+    {
+      "file": "core/test/scripts/check-state-store-boundary.test.ts",
+      "specifier": "../../../scripts/check-state-store-boundary.ts"
+    },
+    {
+      "file": "core/test/scripts/check-telemetry-inventory.test.ts",
+      "specifier": "../../../scripts/check-telemetry-inventory.ts"
+    },
+    {
+      "file": "core/test/scripts/codegen-biome-spawns.test.ts",
+      "specifier": "../../../scripts/_codegen-output.ts"
+    },
+    {
+      "file": "core/test/scripts/codegen-output.test.ts",
+      "specifier": "../../../scripts/_codegen-output.ts"
+    },
+    {
+      "file": "core/test/scripts/compose-key-matrix.test.ts",
+      "specifier": "../../../scripts/build-compose-key-matrix.ts"
+    },
+    {
+      "file": "core/test/scripts/compose-schema.test.ts",
+      "specifier": "../../../scripts/compose-schema.ts"
+    },
+    {
+      "file": "core/test/scripts/compose-vendor.test.ts",
+      "specifier": "../../../scripts/compose-vendor.ts"
+    },
+    {
+      "file": "core/test/scripts/dev-guides.test.ts",
+      "specifier": "../../../scripts/dev-guides.ts"
+    },
+    {
+      "file": "core/test/scripts/lint-guides.test.ts",
+      "specifier": "../../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "core/test/scripts/lint-guides.test.ts",
+      "specifier": "../../../scripts/lint-guides.ts"
+    },
+    {
+      "file": "core/test/scripts/linux-netavark-source-patch.test.ts",
+      "specifier": "../../../scripts/linux-podman-source-build.ts"
+    },
+    {
+      "file": "core/test/scripts/npm-dev-package.test.ts",
+      "specifier": "../../../scripts/prepare-npm-dev-packages"
+    },
+    {
+      "file": "core/test/scripts/package-dag-policy.test.ts",
+      "specifier": "../../../scripts/boundary/rules/package-dag-policy.ts"
+    },
+    {
+      "file": "core/test/scripts/release-workflow.test.ts",
+      "specifier": "../../../scripts/build-release-workflow.ts"
+    },
+    {
+      "file": "core/test/scripts/release-workflow.test.ts",
+      "specifier": "../../../scripts/prepare-npm-dev-packages.ts"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/build-update-manifest"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/check-deprecations"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/ci-platforms"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/prepare-npm-dev-packages"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/release"
+    },
+    {
+      "file": "core/test/scripts/release.test.ts",
+      "specifier": "../../../scripts/release-sbom"
+    },
+    {
+      "file": "core/test/scripts/report-compose-schema-diff.test.ts",
+      "specifier": "../../../scripts/report-compose-schema-diff.ts"
+    },
+    {
+      "file": "core/test/scripts/runtime-bundle-sources.test.ts",
+      "specifier": "../../../scripts/runtime-bundle-sources.ts"
+    },
+    {
+      "file": "core/test/scripts/smoke-windows-binary.test.ts",
+      "specifier": "../../../scripts/smoke-windows-binary.ts"
+    },
+    {
+      "file": "core/test/services/app-feature.test.ts",
+      "specifier": "@lando/engine/services/app-feature"
+    },
+    {
+      "file": "core/test/services/app-planner-certs-harness.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/services/app-planner-certs-harness.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/app-planner-certs-harness.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/app-planner-certs-harness.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/app-planner-network-inject.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/app-planner-network-inject.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/app-planner-network-inject.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/services/base/lando"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/app-planner.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/base-composition.test.ts",
+      "specifier": "@lando/engine/services/base/l337"
+    },
+    {
+      "file": "core/test/services/base-composition.test.ts",
+      "specifier": "@lando/engine/services/base/lando"
+    },
+    {
+      "file": "core/test/services/base-composition.test.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "core/test/services/build-app-depends-on.test.ts",
+      "specifier": "@lando/engine/services/build-app-plan"
+    },
+    {
+      "file": "core/test/services/build-app-gate-graph.test.ts",
+      "specifier": "@lando/engine/services/build-app-graph"
+    },
+    {
+      "file": "core/test/services/build-app-gate-graph.test.ts",
+      "specifier": "@lando/engine/services/build-app-plan"
+    },
+    {
+      "file": "core/test/services/build-app-plan.test.ts",
+      "specifier": "@lando/engine/services/build-app-plan"
+    },
+    {
+      "file": "core/test/services/build-app-runner-test-support.ts",
+      "specifier": "@lando/engine/services/build-orchestrator"
+    },
+    {
+      "file": "core/test/services/build-app-runner-test-support.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/build-artifact-runner.test.ts",
+      "specifier": "@lando/engine/services/build-artifact-runner"
+    },
+    {
+      "file": "core/test/services/build-key-ca.test.ts",
+      "specifier": "@lando/engine/services/build-key"
+    },
+    {
+      "file": "core/test/services/build-key-privilege.test.ts",
+      "specifier": "@lando/engine/services/build-key"
+    },
+    {
+      "file": "core/test/services/build-key.test.ts",
+      "specifier": "@lando/engine/services/build-key"
+    },
+    {
+      "file": "core/test/services/build-orchestrator-app.test.ts",
+      "specifier": "@lando/engine/services/build-orchestrator"
+    },
+    {
+      "file": "core/test/services/build-orchestrator-app.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/build-orchestrator.test.ts",
+      "specifier": "@lando/engine/services/build-key"
+    },
+    {
+      "file": "core/test/services/build-orchestrator.test.ts",
+      "specifier": "@lando/engine/services/build-orchestrator"
+    },
+    {
+      "file": "core/test/services/build-orchestrator.test.ts",
+      "specifier": "@lando/engine/services/build-results"
+    },
+    {
+      "file": "core/test/services/build-orchestrator.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/build-results.test.ts",
+      "specifier": "@lando/engine/services/build-results"
+    },
+    {
+      "file": "core/test/services/build-transcript.test.ts",
+      "specifier": "@lando/engine/services/build-transcript"
+    },
+    {
+      "file": "core/test/services/bundled-global-service-loader.test.ts",
+      "specifier": "@lando/engine/services/bundled-global-service-loader"
+    },
+    {
+      "file": "core/test/services/bundled-global-service-loader.test.ts",
+      "specifier": "@lando/engine/services/global-services"
+    },
+    {
+      "file": "core/test/services/cache.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/services/cache.test.ts",
+      "specifier": "@lando/engine/cache/atomic"
+    },
+    {
+      "file": "core/test/services/cache.test.ts",
+      "specifier": "@lando/engine/cache/cwd-app-map"
+    },
+    {
+      "file": "core/test/services/cache.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/services/cache.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/command-registry.test.ts",
+      "specifier": "@lando/engine/cache/command-index"
+    },
+    {
+      "file": "core/test/services/command-registry.test.ts",
+      "specifier": "@lando/engine/cache/command-index-writer"
+    },
+    {
+      "file": "core/test/services/command-registry.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/services/command-registry.test.ts",
+      "specifier": "@lando/engine/services/command-registry"
+    },
+    {
+      "file": "core/test/services/command-registry.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/compose-knobs.test.ts",
+      "specifier": "@lando/engine/services/compose-knobs"
+    },
+    {
+      "file": "core/test/services/compose-preserved-paths.test.ts",
+      "specifier": "@lando/engine/services/compose-preserved-paths"
+    },
+    {
+      "file": "core/test/services/config.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/dependency-validation-regression.test.ts",
+      "specifier": "@lando/engine/services/dependency-validation"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/operations/tooling"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/planner/effective-tooling"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/services/command-registry"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/effective-tooling-planner.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/env-overrides.test.ts",
+      "specifier": "@lando/engine/providers/precedence"
+    },
+    {
+      "file": "core/test/services/env-overrides.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/event-service-delivery.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/event-service-publish-contract.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/event-service-waitfor-query.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/event-service.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/extends.test.ts",
+      "specifier": "@lando/engine/services/extends"
+    },
+    {
+      "file": "core/test/services/feature-composition.test.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "core/test/services/file-system.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/global-app.test.ts",
+      "specifier": "@lando/engine/global-app/service"
+    },
+    {
+      "file": "core/test/services/global-app.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/global-app.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/global-services.test.ts",
+      "specifier": "@lando/engine/services/global-services"
+    },
+    {
+      "file": "core/test/services/host-opener.test.ts",
+      "specifier": "@lando/engine/services/host-opener"
+    },
+    {
+      "file": "core/test/services/host-shell-repl.test.ts",
+      "specifier": "@lando/engine/services/host-shell-line"
+    },
+    {
+      "file": "core/test/services/host-shell-repl.test.ts",
+      "specifier": "@lando/engine/services/host-shell-redactor"
+    },
+    {
+      "file": "core/test/services/host-shell-repl.test.ts",
+      "specifier": "@lando/engine/services/host-shell-repl"
+    },
+    {
+      "file": "core/test/services/host-tooling-engine.test.ts",
+      "specifier": "@lando/engine/services/host-tooling-engine"
+    },
+    {
+      "file": "core/test/services/landofile-compose-rejection.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-compose-spellings.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-discovery.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-limits.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-planner.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-support.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-support.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-support.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-support.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-load-expression-support.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/landofile-tooling-includes-layers.test.ts",
+      "specifier": "@lando/engine/cache/command-compiler"
+    },
+    {
+      "file": "core/test/services/landofile-tooling-includes-layers.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile-ts.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/landofile.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/load-app-feature.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/load-service-feature.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/log-sources.test.ts",
+      "specifier": "@lando/engine/services/log-sources"
+    },
+    {
+      "file": "core/test/services/logger.test.ts",
+      "specifier": "@lando/engine/logging/service"
+    },
+    {
+      "file": "core/test/services/plugin-registry.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/plugin-registry.test.ts",
+      "specifier": "@lando/engine/services/global-services"
+    },
+    {
+      "file": "core/test/services/privilege.test.ts",
+      "specifier": "@lando/engine/services/privilege"
+    },
+    {
+      "file": "core/test/services/process-runner.test.ts",
+      "specifier": "@lando/engine/services/process-runner"
+    },
+    {
+      "file": "core/test/services/redirect-log-round-trip.test.ts",
+      "specifier": "@lando/engine/services/redirect-log-sources"
+    },
+    {
+      "file": "core/test/services/redirect-log-sources.test.ts",
+      "specifier": "@lando/engine/services/redirect-log-sources"
+    },
+    {
+      "file": "core/test/services/runtime-provider-registry.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/runtime-provider-registry.test.ts",
+      "specifier": "@lando/engine/providers/registry"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/scratch-finalizer.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/scratch-flags.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/scratch-fork.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/data-mover/service"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/scratch-app/service"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/services/config"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/services/scratch-recipe.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/services/secret-store-contract.test.ts",
+      "specifier": "@lando/engine/services/secret-store"
+    },
+    {
+      "file": "core/test/services/secret-store.test.ts",
+      "specifier": "@lando/engine/services/secret-store"
+    },
+    {
+      "file": "core/test/services/service-certs.test.ts",
+      "specifier": "@lando/engine/services/service-certs"
+    },
+    {
+      "file": "core/test/services/shell-runner.test.ts",
+      "specifier": "@lando/engine/services/shell-runner"
+    },
+    {
+      "file": "core/test/services/tooling-engine-contract.test.ts",
+      "specifier": "@lando/engine/services/host-tooling-engine"
+    },
+    {
+      "file": "core/test/services/tooling-engine-contract.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "core/test/services/tooling-engine.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "core/test/state-store/import-seam.test.ts",
+      "specifier": "../../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "core/test/state/plugin-state.test.ts",
+      "specifier": "@lando/engine/plugins/context"
+    },
+    {
+      "file": "core/test/state/plugin-state.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "core/test/subsystems/healthcheck/live.test.ts",
+      "specifier": "@lando/engine/subsystems/healthcheck/live"
+    },
+    {
+      "file": "core/test/subsystems/healthcheck/live.test.ts",
+      "specifier": "@lando/engine/subsystems/healthcheck/runner-factory"
+    },
+    {
+      "file": "core/test/subsystems/healthcheck/runner-factory.test.ts",
+      "specifier": "@lando/engine/subsystems/healthcheck/runner-factory"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/dispatch.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/dispatch"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/dispatch.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/shim"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/plan-sanitizer.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/plan-sanitizer-live"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/plan-sanitizer.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport-feature"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/proxy-bypass.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/proxy-bypass"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/shim.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/cwd-remap"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/shim.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/shim"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport-feature.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/dispatch"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport-response"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/transport-shim"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/transport.test.ts",
+      "specifier": "@lando/engine/version"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker-process.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/detached-worker"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker-process.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-process"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker-process.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-state"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/composition"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/session-env"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-process"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-state"
+    },
+    {
+      "file": "core/test/subsystems/host-proxy/worker.test.ts",
+      "specifier": "@lando/engine/subsystems/host-proxy/worker-state-file"
+    },
+    {
+      "file": "core/test/subsystems/proxy/deferred-certificate-authority.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/subsystems/proxy/deferred-certificate-authority.test.ts",
+      "specifier": "@lando/engine/subsystems/proxy/deferred-certificate-authority"
+    },
+    {
+      "file": "core/test/subsystems/proxy/registry.test.ts",
+      "specifier": "@lando/engine/plugins/certificate-authority-resolver"
+    },
+    {
+      "file": "core/test/subsystems/proxy/registry.test.ts",
+      "specifier": "@lando/engine/subsystems/proxy/registry"
+    },
+    {
+      "file": "core/test/subsystems/proxy/route-filter-contract.test.ts",
+      "specifier": "@lando/engine/subsystems/proxy/filter"
+    },
+    {
+      "file": "core/test/subsystems/proxy/traefik-contract.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/subsystems/scanner/live-layer.test.ts",
+      "specifier": "@lando/engine/subsystems/scanner/live"
+    },
+    {
+      "file": "core/test/subsystems/scanner/live.test.ts",
+      "specifier": "@lando/engine/subsystems/scanner/live"
+    },
+    {
+      "file": "core/test/subsystems/scanner/probe-behavior.test.ts",
+      "specifier": "@lando/engine/subsystems/scanner/live"
+    },
+    {
+      "file": "core/test/subsystems/scanner/support.ts",
+      "specifier": "@lando/engine/subsystems/scanner/live"
+    },
+    {
+      "file": "core/test/telemetry/inventory-doc.test.ts",
+      "specifier": "@lando/engine/telemetry/inventory"
+    },
+    {
+      "file": "core/test/testing/events.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/testing/test-runtime.test.ts",
+      "specifier": "@lando/engine/scratch-app/registry"
+    },
+    {
+      "file": "core/test/testing/test-runtime.test.ts",
+      "specifier": "@lando/engine/scratch-app/scanner"
+    },
+    {
+      "file": "core/test/testing/wait-for-event.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "core/test/unit/bootstrap.test.ts",
+      "specifier": "@lando/engine/runtime/bootstrap"
+    },
+    {
+      "file": "core/test/unit/config-paths.test.ts",
+      "specifier": "@lando/engine/config/roots"
+    },
+    {
+      "file": "core/test/unit/landofile-service-extension-keys.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/unit/landofile-template-render.test.ts",
+      "specifier": "@lando/engine/composition"
+    },
+    {
+      "file": "core/test/unit/landofile-template-render.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "core/test/unit/landofile-tooling-include-precedence.test.ts",
+      "specifier": "@lando/engine/cache/command-compiler"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-preserved-paths.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-preserved-paths.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-preserved-paths.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-preserved-paths.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-field-preservation.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-field-preservation.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-field-preservation.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-field-preservation.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-project-fields.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/cache/app-plan"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/cache/paths"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/cache/service"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/services/file-system"
+    },
+    {
+      "file": "core/test/unit/planner-cache-hit-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-compose-preserved-path-capability.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-compose-preserved-path-capability.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-compose-project-field-capability.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-compose-project-field-capability.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-compose-service-field-capability.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-compose-service-field-capability.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "core/test/unit/planner-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "core/test/unit/planner-compose-service-fields.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "docs/test/variant-pairing.test.ts",
+      "specifier": "../../scripts/build-guide-scenarios.ts"
+    },
+    {
+      "file": "engine/test/engine-closure.test.ts",
+      "specifier": "../../scripts/module-edge-scan.ts"
+    },
+    {
+      "file": "engine/test/package-seam.test.ts",
+      "specifier": "../../scripts/test-shards.ts"
+    },
+    {
+      "file": "plugins/ca-mkcert/test/_fixtures.ts",
+      "specifier": "../../../sdk/test/tool-provisioning/_fixtures.ts"
+    },
+    {
+      "file": "plugins/ca-mkcert/test/provision.test.ts",
+      "specifier": "../../../sdk/test/tool-provisioning/_fixtures.ts"
+    },
+    {
+      "file": "plugins/file-sync-mutagen/test/provision.test.ts",
+      "specifier": "../../../sdk/test/tool-provisioning/_fixtures.ts"
+    },
+    {
+      "file": "plugins/provider-lando/test/applied-state.integration.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "plugins/provider-lando/test/compose-fixtures.integration.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/provider-lando/test/compose-fixtures.integration.test.ts",
+      "specifier": "@lando/engine/services/landofile-live"
+    },
+    {
+      "file": "plugins/provider-lando/test/compose-fixtures.integration.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/provider-lando/test/cross-process.integration.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "plugins/provider-lando/test/exec-env-contract.integration.test.ts",
+      "specifier": "../../service-lando/test/support/compose-harness.ts"
+    },
+    {
+      "file": "plugins/provider-lando/test/logs-live-container-files.integration.test.ts",
+      "specifier": "@lando/engine/providers/log-file-helper-payloads"
+    },
+    {
+      "file": "plugins/provider-lando/test/plugin-descriptor.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "plugins/provider-lando/test/setup-machine-argv.test.ts",
+      "specifier": "../../../scripts/windows-managed-setup-acceptance.ts"
+    },
+    {
+      "file": "plugins/provider-podman/test/applied-state.integration.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "plugins/provider-podman/test/compose-knobs-declaration.test.ts",
+      "specifier": "../../provider-lando/test/compose-knobs-fixtures.ts"
+    },
+    {
+      "file": "plugins/provider-podman/test/contract.integration.test.ts",
+      "specifier": "@lando/engine/plugins/context-state"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-consumer-async-drain.test.ts",
+      "specifier": "../../../core/src/cli/renderer/io.ts"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-consumer-async-drain.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-consumer.test.ts",
+      "specifier": "../../../core/src/cli/renderer/io.ts"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-consumer.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-resize-ordering.test.ts",
+      "specifier": "../../../core/src/cli/renderer/io.ts"
+    },
+    {
+      "file": "plugins/renderer-lando/test/task-tree-resize-ordering.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/boot-feature.test.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "plugins/service-lando/test/certs-feature.test.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-endpoint-intent.test.ts",
+      "specifier": "../../provider-lando/src/capabilities.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-endpoint-intent.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-endpoint-intent.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.providers.test.ts",
+      "specifier": "../../provider-docker/src/index.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.providers.test.ts",
+      "specifier": "../../provider-lando/src/compose.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.providers.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.providers.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/compose-passthrough.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/elasticsearch.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/elasticsearch.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/elasticsearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/elasticsearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/elasticsearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/go.integration.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/go.integration.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/go.integration.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/go.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/go.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/go.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/go.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/go.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/meilisearch.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/meilisearch.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/meilisearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/meilisearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/meilisearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/memcached.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/memcached.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/memcached.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/memcached.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/memcached.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/mongodb.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/mongodb.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/mongodb.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/mongodb.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/mongodb.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/opensearch.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/opensearch.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/opensearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/opensearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/opensearch.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/php-prerequisites.integration.test.ts",
+      "specifier": "@lando/engine/services/build-key"
+    },
+    {
+      "file": "plugins/service-lando/test/registration.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/registration.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/security-feature.test.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "plugins/service-lando/test/solr.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/solr.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/solr.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/solr.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/solr.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/static.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/static.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/static.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/static.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/static.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    },
+    {
+      "file": "plugins/service-lando/test/support/compose-harness.ts",
+      "specifier": "@lando/engine/services/base/l337"
+    },
+    {
+      "file": "plugins/service-lando/test/support/compose-harness.ts",
+      "specifier": "@lando/engine/services/base/lando"
+    },
+    {
+      "file": "plugins/service-lando/test/support/compose-harness.ts",
+      "specifier": "@lando/engine/services/feature"
+    },
+    {
+      "file": "plugins/service-lando/test/support/compose-harness.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/valkey.scenario.test.ts",
+      "specifier": "../../../core/test/cli/agent-env-test-config.ts"
+    },
+    {
+      "file": "plugins/service-lando/test/valkey.scenario.test.ts",
+      "specifier": "@lando/engine/plugins/registry"
+    },
+    {
+      "file": "plugins/service-lando/test/valkey.scenario.test.ts",
+      "specifier": "@lando/engine/services/event-service"
+    },
+    {
+      "file": "plugins/service-lando/test/valkey.scenario.test.ts",
+      "specifier": "@lando/engine/services/planner"
+    },
+    {
+      "file": "plugins/service-lando/test/valkey.scenario.test.ts",
+      "specifier": "@lando/engine/services/tooling-engine"
+    }
+  ],
+  "packagesWithoutTests": ["paths", "redaction", "state-store"]
+}
