@@ -63,14 +63,13 @@ export const destroyAppForTarget = (
     const ref = target.app;
     const volumes = resolvedOptions.volumes ?? false;
 
-    yield* events.publish(
-      PreDestroyEvent.make({
-        _tag: "pre-destroy",
-        app: ref,
-        timestamp: now(),
-      }),
-    );
-    yield* runAppEvent(plan, "pre-destroy");
+    const preDestroy = PreDestroyEvent.make({
+      _tag: "pre-destroy",
+      app: ref,
+      timestamp: now(),
+    });
+    yield* events.publish(preDestroy);
+    yield* runAppEvent(plan, "pre-destroy", preDestroy);
 
     yield* terminateFileSyncSessions(ref);
 
@@ -104,14 +103,13 @@ export const destroyAppForTarget = (
       );
     }
 
-    yield* events.publish(
-      PostDestroyEvent.make({
-        _tag: "post-destroy",
-        app: ref,
-        timestamp: now(),
-      }),
-    );
-    yield* runPostAppEvent(plan, "post-destroy");
+    const postDestroy = PostDestroyEvent.make({
+      _tag: "post-destroy",
+      app: ref,
+      timestamp: now(),
+    });
+    yield* events.publish(postDestroy);
+    yield* runPostAppEvent(plan, "post-destroy", postDestroy);
 
     return {
       app: plan.name,

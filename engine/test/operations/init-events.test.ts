@@ -135,6 +135,26 @@ describe("app initialization lifecycle events", () => {
     expect(published).toContain("message.warn");
   });
 
+  test("publishes typed init events and exposes each exact payload to its event steps", async () => {
+    // Given
+    const executed: string[] = [];
+    const published: string[] = [];
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-init": ["{{ event._tag }}"],
+      "post-init": ["{{ event._tag }}"],
+    });
+
+    // When
+    await Effect.runPromise(runAppInitEvents(plan).pipe(Effect.provide(eventRuntime(executed, published))));
+
+    // Then
+    expect(executed).toEqual(["pre-init", "post-init"]);
+    expect(published.filter((tag) => tag === "pre-init" || tag === "post-init")).toEqual([
+      "pre-init",
+      "post-init",
+    ]);
+  });
+
   test("rebuild initializes once and passes one resolved target to stop and start", async () => {
     // Given
     const source = await Bun.file(new URL("../../src/operations/rebuild.ts", import.meta.url)).text();

@@ -65,8 +65,9 @@ const stopAppWithResolvedPlan = (
         timestamp: now(),
       }),
     );
-    yield* events.publish(PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() }));
-    yield* runAppEvent(plan, "pre-stop");
+    const preStop = PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() });
+    yield* events.publish(preStop);
+    yield* runAppEvent(plan, "pre-stop", preStop);
 
     const services = Object.values(plan.services).reverse();
     for (const service of services) {
@@ -109,10 +110,9 @@ const stopAppWithResolvedPlan = (
         timestamp: now(),
       }),
     );
-    yield* events.publish(
-      PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() }),
-    );
-    yield* runPostAppEvent(plan, "post-stop");
+    const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
+    yield* events.publish(postStop);
+    yield* runPostAppEvent(plan, "post-stop", postStop);
 
     return {
       result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },

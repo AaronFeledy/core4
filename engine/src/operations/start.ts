@@ -106,17 +106,16 @@ export const startAppForTarget = (
         timestamp: now(),
       }),
     );
-    yield* events.publish(
-      PreStartEvent.make({
-        _tag: "pre-start",
-        scope: "app",
-        app: ref,
-        plan,
-        triggeredBy: "app:start",
-        timestamp: now(),
-      }),
-    );
-    yield* runAppEvent(plan, "pre-start");
+    const preStart = PreStartEvent.make({
+      _tag: "pre-start",
+      scope: "app",
+      app: ref,
+      plan,
+      triggeredBy: "app:start",
+      timestamp: now(),
+    });
+    yield* events.publish(preStart);
+    yield* runAppEvent(plan, "pre-start", preStart);
 
     const neededGlobalServices = requiredGlobalServicesForPlan(plan);
     if (neededGlobalServices.length > 0) {
@@ -258,16 +257,15 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          yield* events.publish(
-            PostStartEvent.make({
-              _tag: "post-start",
-              scope: "app",
-              app: ref,
-              plan,
-              timestamp: now(),
-            }),
-          );
-          yield* runPostAppEvent(plan, "post-start");
+          const postStart = PostStartEvent.make({
+            _tag: "post-start",
+            scope: "app",
+            app: ref,
+            plan,
+            timestamp: now(),
+          });
+          yield* events.publish(postStart);
+          yield* runPostAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),
