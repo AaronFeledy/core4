@@ -61,20 +61,14 @@ describe("subsystem failure-recovery classification", () => {
     }
   });
 
-  test("read-only mode shows manual solution for unavailable automatic subsystems (not yet implemented)", async () => {
+  test("read-only mode shows automatic solution for unavailable automatic subsystems", async () => {
     const result = await runDefault(false);
     for (const name of AUTOMATIC_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
-      // Unavailable services show manual solutions, not automatic
-      expect(solution?.kind).toBe("manual");
-      // Proxy uses lando global:install, SSH uses lando setup
-      if (name === "proxy") {
-        expect(solution?.command).toBe("lando global:install");
-      } else {
-        expect(solution?.command).toBe("lando setup");
-      }
+      expect(solution?.kind).toBe("automatic");
+      expect(solution?.command).toBe("lando doctor --fix");
     }
   });
 
@@ -175,12 +169,7 @@ describe("doctor --fix recovery", () => {
       expect(check?.context.fixError?.length).toBeGreaterThan(0);
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
-      // Proxy uses lando global:install, SSH uses lando setup
-      if (name === "proxy") {
-        expect(solution?.command).toBe("lando global:install");
-      } else {
-        expect(solution?.command).toBe("lando setup");
-      }
+      expect(solution?.command).toBe("lando setup");
     }
   });
 

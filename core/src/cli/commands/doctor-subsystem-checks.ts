@@ -75,8 +75,7 @@ export const PROXY_SPEC: SubsystemSpec = {
   automaticRemediation:
     "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
   manualRemediation:
-    "The HTTPS reverse proxy is not available in this Alpha release. Run `lando global:install` to install the global app with Traefik, then start it to enable HTTPS routing.",
-  manualCommand: "lando global:install",
+    "The HTTPS reverse proxy is not running. Run `lando setup` to provision the global app with Traefik, or start it manually if already installed.",
 };
 
 export const CERTS_SPEC: SubsystemSpec = {
@@ -90,9 +89,9 @@ export const SSH_SPEC: SubsystemSpec = {
   name: "ssh",
   recovery: "automatic",
   automaticRemediation:
-    "The SSH agent sidecar is not available. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
+    "The SSH agent sidecar is not running. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
   manualRemediation:
-    "The SSH agent sidecar is not available in this Alpha release. SSH agent forwarding will be implemented in a future release.",
+    "The SSH agent sidecar is not running. Run `lando setup` to provision SSH agent forwarding.",
 };
 
 export const HEALTHCHECK_SPEC: SubsystemSpec = {
@@ -129,11 +128,7 @@ const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
   SUBSYSTEM_SPECS.map((spec) => [spec.name, spec] as const),
 );
 
-const degradedSolution = (spec: SubsystemSpec, serviceId: string): DoctorSolution => {
-  // Unavailable services are not implemented yet, don't advertise automatic fix
-  if (serviceId === "unavailable") {
-    return manualSetupSolution(spec.manualRemediation, spec.manualCommand);
-  }
+const degradedSolution = (spec: SubsystemSpec, _serviceId: string): DoctorSolution => {
   return spec.recovery === "automatic" && spec.automaticRemediation !== undefined
     ? automaticFixSolution(spec.automaticRemediation)
     : manualSetupSolution(spec.manualRemediation, spec.manualCommand);

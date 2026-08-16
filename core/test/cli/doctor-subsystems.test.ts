@@ -63,15 +63,11 @@ describe("meta:doctor subsystem checks", () => {
       expect(check.solutions.length).toBeGreaterThanOrEqual(1);
       const solution = check.solutions[0];
       expect(solution?.description.length).toBeGreaterThan(0);
-      // Unavailable automatic subsystems show manual solutions (not yet implemented)
-      const isUnavailableAutomatic =
-        check.recovery === "automatic" && check.context.subsystemId === "unavailable";
-      if (check.recovery === "automatic" && !isUnavailableAutomatic) {
+      if (check.recovery === "automatic") {
         expect(solution?.kind).toBe("automatic");
         expect(solution?.command).toBe("lando doctor --fix");
       } else {
         expect(solution?.kind).toBe("manual");
-        // Different subsystems may have different manual commands
         expect(solution?.command).toBeDefined();
       }
     }
