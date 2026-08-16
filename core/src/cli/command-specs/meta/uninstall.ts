@@ -26,6 +26,9 @@ const makeListDiscoveredApps =
         { cmd: "podman", providerId: "lando" as const },
       ];
 
+      // Fast timeout for docker/podman queries to avoid hanging in CI or when runtime unavailable
+      const QUERY_TIMEOUT_MS = 1000;
+
       for (const runtime of runtimes) {
         try {
           // Query for core4 label (dev.lando.app) and Lando 3 compat (com.lando.app)
@@ -34,7 +37,8 @@ const makeListDiscoveredApps =
 
           for (const label of labels) {
             try {
-              const { stdout } = await execFileAsync(runtime.cmd, [
+              // Race the query against a timeout to fail fast if runtime unavailable
+              const queryPromise = execFileAsync(runtime.cmd, [
                 "ps",
                 "--filter",
                 `label=${label}`,
@@ -42,13 +46,19 @@ const makeListDiscoveredApps =
                 `{{.Label "${label}"}}`,
               ]);
 
+              const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("timeout")), QUERY_TIMEOUT_MS),
+              );
+
+              const { stdout } = await Promise.race([queryPromise, timeoutPromise]);
+
               const ids = stdout
                 .trim()
                 .split("\n")
                 .filter((id) => id.length > 0);
               for (const id of ids) runningAppIds.add(id);
             } catch {
-              // Skip if label query fails
+              // Skip if label query fails or times out
             }
           }
 
