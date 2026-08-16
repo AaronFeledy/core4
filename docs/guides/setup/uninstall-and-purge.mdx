@@ -22,9 +22,25 @@ target gets removed.
 # app data, global app state, and app-affecting caches
 uninstall --yes --keep-data
 
-# Opts into deliberate removal of Lando-owned data and cache roots too
+# Opts into deliberate removal of Lando-owned data and cache roots,
+# stops and destroys all running Lando apps, and removes their
+# containers, networks, and volumes
 uninstall --yes --purge
 ```
+
+**Important:** `--purge` will stop and destroy all running Lando apps
+(user apps, global services like the proxy and mailpit, and scratch apps)
+and remove their Docker containers, networks, and volumes. If you want to
+preserve any running apps, run `lando stop` or `lando destroy --volumes`
+for specific apps before uninstall.
+
+When `--purge` is used, Lando removes:
+- All running app containers (including global proxy and mailpit)
+- App-specific Docker networks
+- App-specific Docker volumes
+- User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
+- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
+- User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
 A binary outside Lando's managed bin directory is never removed
 automatically — the plan prints exact manual removal steps for it instead.

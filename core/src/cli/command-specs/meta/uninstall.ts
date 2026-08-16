@@ -1,6 +1,7 @@
 import { Flags } from "../../spec/metadata";
 
 import {
+  type DiscoveredApp,
   type UninstallOptions,
   type UninstallResult,
   UninstallResultSchema,
@@ -9,12 +10,62 @@ import {
 import { renderUninstallResult } from "../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
+const makeListDiscoveredApps = (): ((
+  userDataRoot: string,
+  userCacheRoot: string,
+) => Promise<ReadonlyArray<DiscoveredApp>>) => {
+  return async (userDataRoot: string, userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
+    const { listServices } = await import("../../commands/list");
+    const { Effect } = await import("effect");
+    const { ConfigService } = await import("@lando/sdk/services");
+    const { ConfigServiceLive } = await import("@lando/engine/config/service");
+    const list = await Effect.runPromise(
+      listServices({ userDataRoot, userCacheRoot }).pipe(Effect.provide(ConfigServiceLive)),
+    );
+    return list.apps
+      .filter((app) => app.providerId !== "cache")
+      .map((app) => ({
+        appId: app.appId,
+        appName: app.appName,
+        providerId: app.providerId,
+        appRoot: app.appRoot,
+        services: app.services,
+      }));
+  };
+};
+
+const makeDestroyDiscoveredApps = (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) => {
+  return async (apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
+    const { Effect } = await import("effect");
+    const { RuntimeProviderRegistry } = await import("@lando/sdk/services");
+    const { RuntimeProviderRegistryLive } = await import("@lando/engine/providers/registry");
+    const { ConfigServiceLive } = await import("@lando/engine/config/service");
+
+    for (const app of apps) {
+      try {
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* RuntimeProviderRegistry;
+            const provider = yield* registry.getById(app.providerId);
+            // Destroy with volumes=true to fully clean up
+            yield* provider.destroy({ app: app.appId }, { volumes: true, removeState: true });
+          }).pipe(Effect.provide(RuntimeProviderRegistryLive), Effect.provide(ConfigServiceLive)),
+        );
+      } catch {
+        // Best-effort: continue with other apps even if one fails
+        continue;
+      }
+    }
+  };
+};
+
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
   const extra = input as {
     readonly _userDataRoot?: unknown;
     readonly _userCacheRoot?: unknown;
+    readonly _userConfRoot?: unknown;
     readonly _execPath?: unknown;
     readonly _exists?: unknown;
     readonly _remove?: unknown;
@@ -28,8 +79,11 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     yes: flags.yes === true,
     keepData: flags["keep-data"] === true && !purge,
     purge,
+    listDiscoveredApps: makeListDiscoveredApps(),
+    destroyDiscoveredApps: makeDestroyDiscoveredApps(),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
+    ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),
     ...(typeof extra._execPath === "string" ? { execPath: extra._execPath } : {}),
     ...(typeof extra._exists === "function" ? { exists: extra._exists as (path: string) => boolean } : {}),
     ...(typeof extra._remove === "function"

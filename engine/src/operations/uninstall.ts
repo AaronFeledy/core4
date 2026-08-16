@@ -44,6 +44,14 @@ export const UninstallPlanStepSchema = Schema.Struct({
   error: Schema.optional(Schema.String),
 });
 
+export interface DiscoveredApp {
+  readonly appId: string;
+  readonly appName: string;
+  readonly providerId: string;
+  readonly appRoot: string;
+  readonly services: ReadonlyArray<string>;
+}
+
 export interface UninstallOptions {
   readonly dryRun?: boolean;
   readonly yes?: boolean;
@@ -51,6 +59,7 @@ export interface UninstallOptions {
   readonly purge?: boolean;
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
+  readonly userConfRoot?: string;
   readonly execPath?: string;
   readonly exists?: (path: string) => boolean;
   readonly remove?: (path: string) => Promise<void>;
@@ -62,6 +71,11 @@ export interface UninstallOptions {
     userDataRoot: string,
   ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
   readonly teardownHostProxySessions?: (userDataRoot: string) => Promise<void>;
+  readonly listDiscoveredApps?: (
+    userDataRoot: string,
+    userCacheRoot: string,
+  ) => Promise<ReadonlyArray<DiscoveredApp>>;
+  readonly destroyDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -117,7 +131,14 @@ const installedBinaryStatus = (execPath: string, userDataRoot: string): Uninstal
   return compareBinaryPath.startsWith(`${compareBinDir}/`) ? "owned" : "user-owned";
 };
 
-const keepDataProtectedStepIds = new Set(["global-app-state", "caches", "user-data-root", "user-cache-root"]);
+const keepDataProtectedStepIds = new Set([
+  "global-app-state",
+  "caches",
+  "user-data-root",
+  "user-cache-root",
+  "running-apps",
+  "user-conf-root",
+]);
 
 const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot, "uninstall", "report.json");
 
@@ -193,7 +214,10 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
     return {
       ...step,
       status: "skipped",
-      detail: "Preserved by --keep-data; rerun with --purge to remove this state.",
+      detail:
+        step.id === "running-apps"
+          ? "Preserved by --keep-data; run `lando poweroff` or `lando destroy` first, then rerun with --purge."
+          : "Preserved by --keep-data; rerun with --purge to remove this state.",
     };
   }
   if (step.id === "installed-binary" && step.status === "user-owned") {
@@ -205,12 +229,61 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
   return step;
 };
 
-export const buildUninstallPlan = (
+const buildRunningAppsStep = async (
+  userDataRoot: string,
+  userCacheRoot: string,
+  listDiscoveredApps?: (
+    userDataRoot: string,
+    userCacheRoot: string,
+  ) => Promise<ReadonlyArray<DiscoveredApp>>,
+): Promise<UninstallPlanStep> => {
+  const base = {
+    id: "running-apps",
+    label: "running Lando apps and provider resources",
+    destructive: true,
+  };
+  if (listDiscoveredApps === undefined) {
+    return {
+      ...base,
+      target: "Lando apps",
+      status: "skipped" as const,
+      detail: "Unable to list running apps; provider registry unavailable.",
+    };
+  }
+  try {
+    const apps = await listDiscoveredApps(userDataRoot, userCacheRoot);
+    if (apps.length === 0) {
+      return {
+        ...base,
+        target: "Lando apps",
+        status: "skipped" as const,
+        detail: "No running Lando apps found.",
+      };
+    }
+    const appList = apps.map((app) => app.appId).join(", ");
+    return {
+      ...base,
+      target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
+      status: "owned" as const,
+      detail: `Stop and remove containers, networks, and volumes for ${apps.length} discovered Lando app${apps.length === 1 ? "" : "s"}.`,
+    };
+  } catch {
+    return {
+      ...base,
+      target: "Lando apps",
+      status: "skipped" as const,
+      detail: "Unable to discover running apps; provider may be unavailable.",
+    };
+  }
+};
+
+export const buildUninstallPlan = async (
   options: UninstallOptions = {},
   mode?: UninstallMode,
-): ReadonlyArray<UninstallPlanStep> => {
+): Promise<ReadonlyArray<UninstallPlanStep>> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+  const userConfRoot = options.userConfRoot ?? makeLandoPaths({ userDataRoot }).roots.userConfRoot;
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
   const classifyMachine = options.readManagedProviderMachine ?? classifyManagedProviderMachine;
@@ -223,7 +296,10 @@ export const buildUninstallPlan = (
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
 
+  const runningAppsStep = await buildRunningAppsStep(userDataRoot, userCacheRoot, options.listDiscoveredApps);
+
   const steps: ReadonlyArray<UninstallPlanStep> = [
+    runningAppsStep,
     {
       id: "runtime-service",
       label: "managed runtime service",
@@ -307,6 +383,14 @@ export const buildUninstallPlan = (
       detail: "Remove clearly delimited Lando shellenv blocks from shell profiles.",
     },
     {
+      id: "user-conf-root",
+      label: "user config root",
+      target: userConfRoot,
+      destructive: true,
+      status: pathStatus(userConfRoot, exists),
+      detail: "Remove Lando user config directory.",
+    },
+    {
       id: "user-data-root",
       label: "user data root",
       target: userDataRoot,
@@ -347,6 +431,7 @@ const executeUninstall = async (
   hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
+  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
   const teardownRuntimeService =
     options.teardownRuntimeService ??
@@ -354,10 +439,31 @@ const executeUninstall = async (
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
-  const steps = buildUninstallPlan(options, mode);
+  const listDiscoveredApps = options.listDiscoveredApps;
+  const destroyDiscoveredApps = options.destroyDiscoveredApps;
+  const steps = await buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
+    if (step.id === "running-apps" && step.status === "owned") {
+      try {
+        if (listDiscoveredApps === undefined || destroyDiscoveredApps === undefined) {
+          executed.push({
+            ...step,
+            outcome: "failed",
+            error: "App discovery or destroy handler unavailable.",
+          });
+          continue;
+        }
+        const apps = await listDiscoveredApps(userDataRoot, userCacheRoot);
+        await destroyDiscoveredApps(apps);
+        executed.push({ ...step, outcome: "completed" });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+      }
+      continue;
+    }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {
         await teardownHostProxySessions(userDataRoot);
@@ -431,11 +537,12 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
     const mode = requestedMode ?? "keep-data";
     if (!dryRun && yes)
       return yield* Effect.promise(() => executeUninstall(options, mode, hostMaintenanceRegistry));
+    const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
     return {
       dryRun,
       refused: !dryRun && !yes,
       mode,
       failed: false,
-      steps: buildUninstallPlan(options, mode),
+      steps,
     };
   });

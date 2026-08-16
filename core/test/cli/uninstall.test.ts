@@ -149,11 +149,11 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("plan includes a runtime-service step targeting the runtime directory", () => {
+  test("plan includes a runtime-service step targeting the runtime directory", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
@@ -173,11 +173,11 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("plan reports host-proxy sessions under userDataRoot run directory without removing the run root", () => {
+  test("plan reports host-proxy sessions under userDataRoot run directory without removing the run root", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const hostProxyRunDir = join(userDataRoot, "run");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
@@ -228,7 +228,7 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("runtime-service is removed under both keep-data and purge", () => {
+  test("runtime-service is removed under both keep-data and purge", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
@@ -240,13 +240,13 @@ describe("meta:uninstall", () => {
       };
 
       expect(
-        buildUninstallPlan(options, "keep-data").find((step) => step.id === "runtime-service"),
+        (await buildUninstallPlan(options, "keep-data")).find((step) => step.id === "runtime-service"),
       ).toMatchObject({
         target: runtimeDir,
         status: "owned",
       });
       expect(
-        buildUninstallPlan(options, "purge").find((step) => step.id === "runtime-service"),
+        (await buildUninstallPlan(options, "purge")).find((step) => step.id === "runtime-service"),
       ).toMatchObject({
         target: runtimeDir,
         status: "owned",
@@ -366,12 +366,12 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("managed-provider-runtime remains distinct from runtime-service", () => {
+  test("managed-provider-runtime remains distinct from runtime-service", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
       const providerRuntime = join(userDataRoot, "providers", "lando");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
