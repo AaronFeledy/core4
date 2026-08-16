@@ -20,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {

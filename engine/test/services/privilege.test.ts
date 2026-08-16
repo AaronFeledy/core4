@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { sudoSpawnForPrivilege } from "@lando/engine/services/privilege";
+import { sudoSpawnForPrivilege } from "../../src/services/privilege";
 
 describe("PrivilegeService", () => {
   test("uses sudo -A with SUDO_ASKPASS when an askpass helper exists", async () => {

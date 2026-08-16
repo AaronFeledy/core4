@@ -11,11 +11,11 @@ import {
   LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
-} from "@lando/core/errors";
-import { ServiceName, defineLandofile } from "@lando/core/schema";
-import { LandofileService } from "@lando/core/services";
+} from "@lando/sdk/errors";
+import { ServiceName, defineLandofile } from "@lando/sdk/schema";
+import { LandofileService } from "@lando/sdk/services";
 
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { LandofileServiceLive } from "../../src/services/landofile-live";
 import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
 
 const withTempCwd = async <T>(

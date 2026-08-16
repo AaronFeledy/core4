@@ -16,8 +16,8 @@ import {
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
 
-import { HostToolingEngineLive } from "@lando/engine/services/host-tooling-engine";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { HostToolingEngineLive } from "../../src/services/host-tooling-engine";
+import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {

@@ -13,7 +13,7 @@ import {
   materializeGlobalServices,
   resolveGlobalServiceContributions,
   validateGlobalServiceContributions,
-} from "@lando/engine/services/global-services";
+} from "../../src/services/global-services";
 
 const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   artifactBuild: false,

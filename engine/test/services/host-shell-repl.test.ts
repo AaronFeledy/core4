@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
-import { SecretNotFoundError } from "@lando/core/errors";
-import { EventService } from "@lando/core/services";
+import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
-import type { LandoEvent, ShellReplInput } from "@lando/sdk/services";
+import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
 
-import { hostShellEvaluatorArgv, runHostShellLine } from "@lando/engine/services/host-shell-line";
-import { makeStatefulShellRedactor } from "@lando/engine/services/host-shell-redactor";
-import { runHostShellRepl } from "@lando/engine/services/host-shell-repl";
+import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line";
+import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor";
+import { runHostShellRepl } from "../../src/services/host-shell-repl";
 import { RedactionService } from "@lando/redaction/service";
 
 const input = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<ShellReplInput> =>

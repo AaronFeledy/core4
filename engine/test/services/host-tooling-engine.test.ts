@@ -21,7 +21,7 @@ import {
   evaluateHostVar,
   resolveScriptPath,
   runHostScript,
-} from "@lando/engine/services/host-tooling-engine";
+} from "../../src/services/host-tooling-engine";
 
 const providerId = ProviderId.make("lando");
 

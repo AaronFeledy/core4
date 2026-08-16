@@ -5,7 +5,7 @@ import { Either } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId } from "@lando/sdk/schema";
 
-import { mergeLogSources } from "@lando/engine/services/log-sources";
+import { mergeLogSources } from "../../src/services/log-sources";
 
 const source = (input: {
   readonly id: string;

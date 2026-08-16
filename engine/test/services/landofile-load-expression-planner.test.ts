@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 
-import { appPlanCachePath } from "@lando/engine/cache/paths";
+import { appPlanCachePath } from "../../src/cache/paths";
 import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
   IMPORTED_PEM,

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
-import { loadLandofileLayers } from "@lando/engine/services/landofile-live";
+import { compileToolingCommands } from "../../src/cache/command-compiler";
+import { loadLandofileLayers } from "../../src/services/landofile-live";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 
 test("a higher Landofile layer removes internal provenance from its task winner", async () => {

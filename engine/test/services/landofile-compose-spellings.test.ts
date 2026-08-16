@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { LandofileValidationError } from "@lando/core/errors";
-import { PortablePath, ServiceName } from "@lando/core/schema";
-import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { LandofileService } from "@lando/sdk/services";
+import { LandofileServiceLive } from "../../src/services/landofile-live";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-spellings-"));

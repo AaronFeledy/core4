@@ -10,10 +10,10 @@ import {
   LandofileParseError,
   LandofileValidationError,
   NotImplementedError,
-} from "@lando/core/errors";
-import { PortablePath, ServiceName } from "@lando/core/schema";
-import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+} from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { LandofileService } from "@lando/sdk/services";
+import { LandofileServiceLive } from "../../src/services/landofile-live";
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
 import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
 

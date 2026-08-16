@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { SecretNotFoundError } from "@lando/core/errors";
-import { SecretStore } from "@lando/core/services";
+import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretStore } from "@lando/sdk/services";
 
-import { makeEnvSecretStoreLive } from "@lando/engine/services/secret-store";
+import { makeEnvSecretStoreLive } from "../../src/services/secret-store";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SecretStore>, env: Record<string, string | undefined>) =>
   Effect.runPromise(effect.pipe(Effect.provide(makeEnvSecretStoreLive({ env }))));

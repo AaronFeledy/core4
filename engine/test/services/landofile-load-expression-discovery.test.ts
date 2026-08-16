@@ -10,7 +10,7 @@ import { LandofileLoadOutsideRootError, NotImplementedError } from "@lando/sdk/e
 import { GlobalConfig, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { LandofileServiceLive } from "../../src/services/landofile-live";
 import { PEM, discover, discoverFailure, withApp } from "./landofile-load-expression-support.ts";
 
 test("discovers load and import CA expressions", async () => {

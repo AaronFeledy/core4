@@ -4,7 +4,7 @@ import { Effect, Exit, Layer } from "effect";
 
 import { ShellRunner } from "@lando/sdk/services";
 
-import { canOpenHost, openUrl, openerCommandFor } from "@lando/engine/services/host-opener";
+import { canOpenHost, openUrl, openerCommandFor } from "../../src/services/host-opener";
 
 const fakeShell = (record: { commands: string[] }) =>
   Layer.succeed(ShellRunner, {
