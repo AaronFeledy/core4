@@ -1834,7 +1834,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                       state: status,
                       containerId: container.id,
                       endpoints,
-                      ...(container.startedAt !== undefined ? {} : {}),
+                      ...(container.startedAt === undefined
+                        ? {}
+                        : { lastStartedAt: new Date(container.startedAt) }),
                     };
                   }),
               ),

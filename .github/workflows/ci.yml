@@ -1147,7 +1147,6 @@ jobs:
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build windows-x64 binary
-        shell: bash
         run: |
           mkdir -p dist
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
