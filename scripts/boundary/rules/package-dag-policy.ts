@@ -90,6 +90,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: ["@lando/core"],
   },
+  "@lando/ssh-agent": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
 };
