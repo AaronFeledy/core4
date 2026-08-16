@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect } from "effect";
 import type { HostPlatform } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { makeIptablesForwardCheck } from "../src/iptables-forward-check.ts";
 
