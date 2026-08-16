@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { DependencyPlan, ServicePlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 
-import { buildAppGraph } from "@lando/engine/services/build-app-graph";
-import { appSteps } from "@lando/engine/services/build-app-plan";
+import { buildAppGraph } from "../../src/services/build-app-graph.ts";
+import { appSteps } from "../../src/services/build-app-plan.ts";
 import { planWith } from "./build-app-runner-test-support.ts";
 
 const dependency = (

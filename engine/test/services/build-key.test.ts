@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
-import { buildKeyForService } from "@lando/engine/services/build-key";
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { buildKeyForService } from "../../src/services/build-key.ts";
 
 const providerId = ProviderId.make("test");
 

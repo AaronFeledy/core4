@@ -12,7 +12,7 @@ import {
 import {
   collectComposePreservedPaths,
   findUnsupportedComposePreservedPath,
-} from "@lando/engine/services/compose-preserved-paths";
+} from "../../src/services/compose-preserved-paths.ts";
 
 type ComposeCapabilityView = Pick<ProviderCapabilities, "composePreservedPaths" | "composeSpec">;
 

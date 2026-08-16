@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 
 import { DateTime, Effect } from "effect";
 
-import { buildKeyForService } from "@lando/engine/services/build-key";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { buildKeyForService } from "../../src/services/build-key.ts";
 
 test("keys CA descriptors by digest and archive name but not host path", async () => {
   // Given

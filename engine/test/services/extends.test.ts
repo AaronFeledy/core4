@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Schema } from "effect";
 
-import { ServiceTypeCollisionError } from "@lando/core/errors";
-import type { ServiceConfig } from "@lando/core/schema";
+import { ServiceTypeCollisionError } from "@lando/sdk/errors";
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 
 import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,
   composeExtendedServiceType,
   mergeResolutionOverParent,
-} from "@lando/engine/services/extends";
+} from "../../src/services/extends.ts";
 
 const emptyConfig = (): ServiceConfig => ({}) as ServiceConfig;
 

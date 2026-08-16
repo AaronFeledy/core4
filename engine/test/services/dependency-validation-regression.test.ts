@@ -4,7 +4,7 @@ import { Effect } from "effect";
 
 import { ServiceName } from "@lando/sdk/schema";
 
-import { validateServiceDependencies } from "@lando/engine/services/dependency-validation";
+import { validateServiceDependencies } from "../../src/services/dependency-validation.ts";
 
 test("treats __proto__ as missing unless it is an own service property", async () => {
   // Given

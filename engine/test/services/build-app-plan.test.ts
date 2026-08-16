@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime } from "effect";
 
-import { appStepBatches, appSteps } from "@lando/engine/services/build-app-plan";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { appStepBatches, appSteps } from "../../src/services/build-app-plan.ts";
 
 const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
   const provider = ProviderId.make("test");

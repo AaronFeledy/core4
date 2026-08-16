@@ -14,7 +14,7 @@ import {
   collectComposeKnobs,
   findUnsupportedComposeKnob,
   mergeComposeKnobs,
-} from "@lando/engine/services/compose-knobs";
+} from "../../src/services/compose-knobs.ts";
 
 type ComposeCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeKnobs">;
 

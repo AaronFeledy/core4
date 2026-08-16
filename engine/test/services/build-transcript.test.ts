@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 
-import { makeBuildTranscriptPath, openBuildTranscript } from "@lando/engine/services/build-transcript";
+import { makeBuildTranscriptPath, openBuildTranscript } from "../../src/services/build-transcript.ts";
 
 describe("makeBuildTranscriptPath", () => {
   test("contains branded identifiers within the builds root", () => {

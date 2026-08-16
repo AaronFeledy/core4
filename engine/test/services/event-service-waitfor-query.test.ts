@@ -5,8 +5,8 @@ import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream, TestClock, TestConte
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
 
-import { EventServiceLive, makeEventServiceLive } from "@lando/engine/services/event-service";
 import { RedactionServiceLive } from "@lando/redaction/service";
+import { EventServiceLive, makeEventServiceLive } from "../../src/services/event-service.ts";
 
 const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({
