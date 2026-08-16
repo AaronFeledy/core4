@@ -149,6 +149,26 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
+// Rootless Podman runtime directories contain subuid-owned files that a plain
+// rm cannot delete (EACCES/EPERM). Retry inside podman's user namespace on
+// Linux before giving up; rethrow the original failure when that is not
+// possible so the step reports the real cause.
+const defaultRemoveRuntimeDir = async (path: string): Promise<void> => {
+  try {
+    await defaultRemove(path);
+  } catch (cause) {
+    if (process.platform !== "linux") throw cause;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      await execFileAsync("podman", ["unshare", "rm", "-rf", path], { timeout: 30_000 });
+    } catch {
+      throw cause;
+    }
+  }
+};
+
 const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
   await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot));
@@ -298,7 +318,13 @@ export const buildUninstallPlan = async (
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
 
-  const runningAppsStep = await buildRunningAppsStep(userDataRoot, userCacheRoot, options.listDiscoveredApps);
+  // keep-data never touches app state, so skip container-runtime discovery
+  // entirely; stepWithMode marks the step as preserved.
+  const runningAppsStep = await buildRunningAppsStep(
+    userDataRoot,
+    userCacheRoot,
+    mode === "keep-data" ? undefined : options.listDiscoveredApps,
+  );
 
   const steps: ReadonlyArray<UninstallPlanStep> = [
     runningAppsStep,
@@ -447,6 +473,8 @@ const executeUninstall = async (
 
   for (const step of steps) {
     if (step.id === "running-apps") {
+      // This step's target is a description, never a filesystem path; it must
+      // not fall through to remove(step.target).
       if (step.status === "user-owned") {
         // Discovery failed or unavailable - fail closed
         executed.push({
@@ -457,24 +485,28 @@ const executeUninstall = async (
         // Abort immediately: do not process any remaining destructive steps
         break;
       }
-      if (step.status === "owned" && options.listDiscoveredApps !== undefined) {
-        // Discovery succeeded - clean up any running apps
-        try {
-          const apps = await options.listDiscoveredApps(userDataRoot, userCacheRoot);
-          if (apps.length > 0) {
-            if (options.cleanupDiscoveredApps !== undefined) {
-              await options.cleanupDiscoveredApps(apps);
-            }
-          }
-          executed.push({ ...step, outcome: "completed" });
-        } catch (cause) {
-          const error = cause instanceof Error ? cause.message : String(cause);
-          executed.push({ ...step, outcome: "failed", error });
-          // If cleanup fails, abort to prevent orphaning resources
-          break;
-        }
+      if (step.status !== "owned") {
+        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
         continue;
       }
+      // Discovery succeeded: re-list for a fresh snapshot, then sweep leftover
+      // Lando containers, networks, and volumes even when no app is running.
+      try {
+        const apps =
+          options.listDiscoveredApps === undefined
+            ? []
+            : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
+        if (options.cleanupDiscoveredApps !== undefined) {
+          await options.cleanupDiscoveredApps(apps);
+        }
+        executed.push({ ...step, outcome: "completed" });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+        // If cleanup fails, abort to prevent orphaning resources
+        break;
+      }
+      continue;
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {
@@ -496,32 +528,6 @@ const executeUninstall = async (
         if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
-        // After teardown, clean up the runtime directory using podman's unshare if available
-        // (for proper user namespace handling) or fall back to regular removal
-        const { execFile } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const execFileAsync = promisify(execFile);
-
-        if (exists(step.target)) {
-          // Try podman unshare rm -rf first (handles user namespaces properly)
-          try {
-            // Check if podman is available
-            await execFileAsync("podman", ["--version"], { timeout: 2000 });
-            // Use podman unshare to remove the directory with proper user namespace mapping
-            await execFileAsync("podman", ["unshare", "rm", "-rf", step.target], { timeout: 30000 });
-            // If successful and directory is gone, we're done
-            if (!exists(step.target)) {
-              executed.push({ ...step, outcome: "completed" });
-              continue;
-            }
-          } catch {
-            // Podman not available or unshare failed; will try regular removal
-          }
-        } else {
-          // Directory already gone
-          executed.push({ ...step, outcome: "completed" });
-          continue;
-        }
       }
       if (step.id === "managed-provider-machines") {
         // The target is a machine NAME, not a filesystem path: tear it down via the
@@ -530,13 +536,17 @@ const executeUninstall = async (
         executed.push({ ...step, outcome: "completed" });
         continue;
       }
-      await remove(step.target);
-
-      // For runtime-service, verify the directory was actually removed
-      if (step.id === "runtime-service" && exists(step.target)) {
-        throw new Error(
-          `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
-        );
+      if (step.id === "runtime-service") {
+        await (options.remove ?? defaultRemoveRuntimeDir)(step.target);
+        // Verify removal: lingering mounts or processes can survive a
+        // successful-looking rm and would leave the runtime half-removed.
+        if (exists(step.target)) {
+          throw new Error(
+            `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
+          );
+        }
+      } else {
+        await remove(step.target);
       }
 
       executed.push({ ...step, outcome: "completed" });

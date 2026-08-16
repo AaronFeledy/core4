@@ -10,77 +10,57 @@ import {
 import { renderUninstallResult } from "../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
-const makeListDiscoveredApps = ():
-  | ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>)
-  | undefined => {
-  // Check if any container runtime is available before returning a discovery function
-  const { execFileSync } = require("node:child_process");
-  let hasAnyRuntime = false;
-  for (const cmd of ["podman", "docker"]) {
-    try {
-      execFileSync(cmd, ["--version"], { stdio: "ignore" });
-      hasAnyRuntime = true;
-      break;
-    } catch {
-      // Runtime not available, try next
-    }
-  }
+const CONTAINER_RUNTIMES = [
+  { cmd: "docker", providerId: "docker" },
+  { cmd: "podman", providerId: "lando" },
+] as const;
 
-  // If no runtime is available, return undefined to signal discovery is unavailable
-  if (!hasAnyRuntime) {
-    return undefined;
-  }
+// core4 apps carry dev.lando.app; com.lando.app covers Lando 3 leftovers.
+const LANDO_APP_LABELS = ["dev.lando.app", "com.lando.app"] as const;
+const RUNTIME_PROBE_TIMEOUT_MS = 2_000;
+const RUNTIME_QUERY_TIMEOUT_MS = 5_000;
+const RUNTIME_CLEANUP_TIMEOUT_MS = 60_000;
 
-  return async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
+const makeListDiscoveredApps =
+  (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
+  async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
     const { readdir, readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
 
-    const apps: DiscoveredApp[] = [];
-    const runtimes = [
-      { cmd: "docker", providerId: "docker" as const },
-      { cmd: "podman", providerId: "lando" as const },
-    ];
+    const availableRuntimes: Array<(typeof CONTAINER_RUNTIMES)[number]> = [];
+    for (const runtime of CONTAINER_RUNTIMES) {
+      try {
+        await execFileAsync(runtime.cmd, ["--version"], { timeout: RUNTIME_PROBE_TIMEOUT_MS });
+        availableRuntimes.push(runtime);
+      } catch {
+        // Runtime not installed; only installed runtimes are queried below.
+      }
+    }
+    // Fail closed: with no runtime to ask, running apps cannot be ruled out.
+    if (availableRuntimes.length === 0) {
+      throw new Error("neither docker nor podman is available to verify running Lando apps");
+    }
 
-    const QUERY_TIMEOUT_MS = 1000;
+    const apps: DiscoveredApp[] = [];
     const errors: string[] = [];
 
-    for (const runtime of runtimes) {
-      // Query for core4 label (dev.lando.app) and Lando 3 compat (com.lando.app)
-      const labels = ["dev.lando.app", "com.lando.app"];
+    for (const runtime of availableRuntimes) {
       const runningAppIds = new Set<string>();
-
-      for (const label of labels) {
+      for (const label of LANDO_APP_LABELS) {
         try {
-          // Race the query against a timeout
-          const queryPromise = execFileAsync(runtime.cmd, [
-            "ps",
-            "--filter",
-            `label=${label}`,
-            "--format",
-            `{{.Label "${label}"}}`,
-          ]);
-
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error(`${runtime.cmd} ps query timed out after ${QUERY_TIMEOUT_MS}ms`)),
-              QUERY_TIMEOUT_MS,
-            ),
+          const { stdout } = await execFileAsync(
+            runtime.cmd,
+            ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
+            { timeout: RUNTIME_QUERY_TIMEOUT_MS },
           );
-
-          const { stdout } = await Promise.race([queryPromise, timeoutPromise]);
-
-          const ids = stdout
-            .trim()
-            .split("\n")
-            .filter((id) => id.length > 0);
-          for (const id of ids) runningAppIds.add(id);
+          for (const id of stdout.trim().split("\n")) {
+            if (id.length > 0) runningAppIds.add(id);
+          }
         } catch (cause) {
-          // Collect error - if ALL queries fail we need to surface this
-          const error = cause instanceof Error ? cause.message : String(cause);
-          errors.push(`${runtime.cmd}: ${error}`);
+          errors.push(`${runtime.cmd}: ${cause instanceof Error ? cause.message : String(cause)}`);
         }
       }
 
@@ -128,108 +108,84 @@ const makeListDiscoveredApps = ():
       }
     }
 
-    // If we found apps, return them regardless of errors
+    // Apps found: report them; a partially failed query cannot un-find them.
     if (apps.length > 0) return apps;
 
-    // If we had errors and found no apps, we cannot be sure - fail closed
+    // Fail closed: a runtime is installed but could not be queried, so a
+    // clean state cannot be claimed.
     if (errors.length > 0) {
       throw new Error(`Failed to query container runtimes: ${errors.join("; ")}`);
     }
 
-    // No errors and no apps means clean state
     return apps;
   };
-};
 
+// Sweeps every installed runtime rather than only the discovered apps:
+// leftover stopped containers, networks, and volumes must go too (#771).
 const makeCleanupDiscoveredApps =
   (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
-  async (apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
+  async (_apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
 
-    // Group apps by provider/runtime
-    const dockerApps = apps.filter((app) => app.providerId === "docker");
-    const podmanApps = apps.filter((app) => app.providerId === "lando");
+    const errors: string[] = [];
 
-    const cleanupRuntime = async (cmd: string, appIds: ReadonlyArray<string>) => {
-      if (appIds.length === 0) return;
+    for (const runtime of CONTAINER_RUNTIMES) {
+      try {
+        await execFileAsync(runtime.cmd, ["--version"], { timeout: RUNTIME_PROBE_TIMEOUT_MS });
+      } catch {
+        // Runtime not installed; nothing to sweep.
+        continue;
+      }
 
-      // Stop and remove containers with Lando labels
-      const labels = ["dev.lando.app", "com.lando.app"];
-      for (const label of labels) {
+      // Stop and remove every Lando-labeled container, running or stopped.
+      for (const label of LANDO_APP_LABELS) {
         try {
-          // List containers with this label
-          const { stdout } = await execFileAsync(cmd, [
-            "ps",
-            "-a",
-            "--filter",
-            `label=${label}`,
-            "--format",
-            "{{.ID}}",
-          ]);
-
+          const { stdout } = await execFileAsync(
+            runtime.cmd,
+            ["ps", "-a", "--filter", `label=${label}`, "--format", "{{.ID}}"],
+            { timeout: RUNTIME_QUERY_TIMEOUT_MS },
+          );
           const containerIds = stdout
             .trim()
             .split("\n")
             .filter((id) => id.length > 0);
-
           if (containerIds.length === 0) continue;
 
-          // Stop containers
           try {
-            await execFileAsync(cmd, ["stop", ...containerIds]);
+            await execFileAsync(runtime.cmd, ["stop", ...containerIds], {
+              timeout: RUNTIME_CLEANUP_TIMEOUT_MS,
+            });
           } catch {
-            // Continue even if stop fails - containers may already be stopped
+            // Containers may already be stopped; forced removal below is the real gate.
           }
-
-          // Remove containers
-          await execFileAsync(cmd, ["rm", "-f", ...containerIds]);
+          await execFileAsync(runtime.cmd, ["rm", "-f", ...containerIds], {
+            timeout: RUNTIME_CLEANUP_TIMEOUT_MS,
+          });
         } catch (cause) {
-          // If cleanup fails for one label, continue with the next
-          const error = cause instanceof Error ? cause.message : String(cause);
-          throw new Error(`Failed to clean up ${cmd} containers with label ${label}: ${error}`);
+          errors.push(`${runtime.cmd} (${label}): ${cause instanceof Error ? cause.message : String(cause)}`);
         }
       }
 
-      // Prune unused Lando networks
+      // Prune unused Lando networks and volumes; best-effort.
       try {
-        await execFileAsync(cmd, ["network", "prune", "-f", "--filter", "label=dev.lando.network=true"]);
-      } catch {
-        // Network prune is best-effort
-      }
-
-      // Prune unused Lando volumes
-      try {
-        await execFileAsync(cmd, ["volume", "prune", "-f", "--filter", "label=dev.lando.volume=true"]);
-      } catch {
-        // Volume prune is best-effort
-      }
-    };
-
-    const errors: string[] = [];
-
-    if (dockerApps.length > 0) {
-      try {
-        await cleanupRuntime(
-          "docker",
-          dockerApps.map((app) => app.appId),
+        await execFileAsync(
+          runtime.cmd,
+          ["network", "prune", "-f", "--filter", "label=dev.lando.network=true"],
+          { timeout: RUNTIME_CLEANUP_TIMEOUT_MS },
         );
-      } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
-        errors.push(error);
+      } catch {
+        // Networks still attached to containers are skipped by prune anyway.
       }
-    }
-
-    if (podmanApps.length > 0) {
       try {
-        await cleanupRuntime(
-          "podman",
-          podmanApps.map((app) => app.appId),
+        await execFileAsync(
+          runtime.cmd,
+          ["volume", "prune", "-f", "--filter", "label=dev.lando.volume=true"],
+          { timeout: RUNTIME_CLEANUP_TIMEOUT_MS },
         );
-      } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
-        errors.push(error);
+      } catch {
+        // Volumes still in use are skipped by prune anyway.
       }
     }
 
@@ -255,20 +211,24 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _cleanupDiscoveredApps?: unknown;
   };
   const purge = flags.purge === true;
-  const listDiscoveredApps =
-    typeof extra._listDiscoveredApps === "function"
-      ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
-      : makeListDiscoveredApps();
+  const hasInjectedDiscovery = typeof extra._listDiscoveredApps === "function";
+  const listDiscoveredApps = hasInjectedDiscovery
+    ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
+    : makeListDiscoveredApps();
+  // Injected discovery without injected cleanup must not fall through to the
+  // real container-sweeping cleanup: tests would touch the host runtime.
   const cleanupDiscoveredApps =
     typeof extra._cleanupDiscoveredApps === "function"
       ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
-      : makeCleanupDiscoveredApps();
+      : hasInjectedDiscovery
+        ? undefined
+        : makeCleanupDiscoveredApps();
   return {
     dryRun: flags["dry-run"] === true,
     yes: flags.yes === true,
     keepData: flags["keep-data"] === true && !purge,
     purge,
-    ...(listDiscoveredApps !== undefined ? { listDiscoveredApps } : {}),
+    listDiscoveredApps,
     ...(cleanupDiscoveredApps !== undefined ? { cleanupDiscoveredApps } : {}),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),

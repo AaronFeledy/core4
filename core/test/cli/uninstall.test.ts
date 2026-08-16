@@ -5,10 +5,9 @@ import { dirname, join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import type { DiscoveredApp } from "@lando/engine/operations/uninstall";
 import { metaUninstallSpec, uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
-import { buildUninstallPlan, uninstall } from "../../src/testing/engine-layers.ts";
+import { type DiscoveredApp, buildUninstallPlan, uninstall } from "../../src/testing/engine-layers.ts";
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-test-"));
