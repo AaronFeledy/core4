@@ -658,5 +658,11 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "AxisToken is now a named public schema, so TabsProps hoists the identical lowercase kebab-case string constraint behind a local reference; accepted values are unchanged."
+  },
+  {
+    "surface": "schema:ProviderSetupPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.changes.items.anyOf",
+    "justification": "ProviderSetupHostChange union additively includes ProvisionSubuidHostChange, ProvisionSubgidHostChange, and ProvisionCgroupsDelegationHostChange for missing-only prerequisite provisioning (add subuid/subgid ranges when user has none, create systemd cgroups delegation drop-in when absent, never overwrite existing config); every previously accepted change type remains accepted."
   }
 ]

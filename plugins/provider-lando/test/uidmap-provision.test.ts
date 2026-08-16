@@ -5,7 +5,7 @@ import {
   applyApprovedProviderSetupPlan,
   inspectUidmapSetupPlan,
   parseLinuxHostRelease,
-} from "../src/uidmap-provision.ts";
+} from "../src/prerequisite-provision.ts";
 
 const probes = (hasUidmapTools: boolean) => ({
   probe: () => ({
@@ -24,7 +24,9 @@ describe("uidmap provider setup", () => {
     const host = parseLinuxHostRelease('ID=ubuntu\nVERSION_ID="26.04"\n');
 
     // When
-    const plan = Effect.runSync(inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false) }));
+    const plan = Effect.runSync(
+      inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
+    );
 
     // Then
     expect(plan.changes).toEqual([
@@ -42,7 +44,9 @@ describe("uidmap provider setup", () => {
     const host = parseLinuxHostRelease('ID=ubuntu\nVERSION_ID="26.04"\n');
 
     // When: provider setup inspects rootless prerequisites.
-    const plan = Effect.runSync(inspectUidmapSetupPlan({ platform: "wsl", host, probes: probes(false) }));
+    const plan = Effect.runSync(
+      inspectUidmapSetupPlan({ platform: "wsl", host, probes: probes(false), user: "testuser" }),
+    );
 
     // Then: WSL receives the same Linux-family provisioning change.
     expect(plan.changes).toEqual([expect.objectContaining({ _tag: "install-uidmap", platform: "linux" })]);
@@ -54,7 +58,7 @@ describe("uidmap provider setup", () => {
 
     // When
     const exit = Effect.runSyncExit(
-      inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false) }),
+      inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
     );
 
     // Then
@@ -81,6 +85,7 @@ describe("uidmap provider setup", () => {
         platform: "linux",
         host: { id: "ubuntu", versionId: "26.04" },
         probes: { ...probes(false), probe: () => ({ ...probes(false).probe(), hasUidmapTools: installed }) },
+        user: "testuser",
       }),
     );
 
@@ -89,6 +94,7 @@ describe("uidmap provider setup", () => {
       applyApprovedProviderSetupPlan(plan, {
         privilege,
         probes: { ...probes(false), probe: () => ({ ...probes(false).probe(), hasUidmapTools: installed }) },
+        user: "testuser",
       }),
     );
 

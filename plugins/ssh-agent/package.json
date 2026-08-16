@@ -1,0 +1,12 @@
+{
+  "name": "@lando/ssh-agent",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "effect": "^3.12.5"
+  }
+}

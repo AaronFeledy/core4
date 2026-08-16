@@ -60,6 +60,12 @@ import {
   buildPodmanServiceArgs,
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
+import {
+  type LinuxHostRelease,
+  applyApprovedProviderSetupPlan,
+  inspectUidmapSetupPlan,
+  readLinuxHostRelease,
+} from "./prerequisite-provision.ts";
 import { redactDetails } from "./redact.ts";
 import {
   type RootlessProbes,
@@ -81,12 +87,6 @@ import {
   setupProviderLando,
 } from "./setup.ts";
 import { runSmokeReadinessProbe } from "./smoke-probe.ts";
-import {
-  type LinuxHostRelease,
-  applyApprovedProviderSetupPlan,
-  inspectUidmapSetupPlan,
-  readLinuxHostRelease,
-} from "./uidmap-provision.ts";
 import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
@@ -167,8 +167,8 @@ export {
   inspectUidmapSetupPlan,
   parseLinuxHostRelease,
   readLinuxHostRelease,
-} from "./uidmap-provision.ts";
-export type { LinuxHostRelease } from "./uidmap-provision.ts";
+} from "./prerequisite-provision.ts";
+export type { LinuxHostRelease } from "./prerequisite-provision.ts";
 export type {
   RootlessPrerequisite,
   RootlessProbeResults,
@@ -583,6 +583,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               platform,
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
+              user: process.env.USER,
             })
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
@@ -623,6 +624,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                         applyApprovedProviderSetupPlan(plan, {
                           probes: rootlessProbes,
                           privilege: setupOptions.privilege,
+                          user: process.env.USER,
                         }).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {

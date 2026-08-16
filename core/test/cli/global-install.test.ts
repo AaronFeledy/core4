@@ -99,7 +99,7 @@ describe("global:install command operation", () => {
       expect(await readFile(join(dataRoot, "global", ".lando.yml"), "utf8")).toContain("User overrides");
       expect(output).toContain(".lando.dist.yml");
       expect(output).toContain("created");
-      expect(output).toContain("Global services: mailpit, traefik");
+      expect(output).toContain("Global services: mailpit, ssh-agent, traefik");
     });
   });
 

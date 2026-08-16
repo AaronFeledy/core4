@@ -93,6 +93,72 @@ The following install paths are **not yet available** in Alpha:
 
 These will be stood up before Beta. For now, use the GitHub prerelease or npm install paths above.
 
+## Provider setup
+
+After installing Lando, run setup to provision the container runtime provider:
+
+```bash
+lando setup --yes
+```
+
+The `--yes` flag consents to automatic prerequisite installation (uidmap tools on supported distributions). The default provider is the **Lando-managed Podman runtime**, which bundles a rootless Podman installation that runs independently of any system Docker or Podman.
+
+### What lando setup does automatically
+
+On first-time Linux systems, `lando setup --yes` can automatically handle most managed Podman prerequisites:
+
+- **uidmap tools**: On Ubuntu and Debian, Lando installs the `uidmap` package automatically. Fedora/RHEL and other distributions require manual installation (see below).
+- **Runtime bundle**: Downloads and extracts the Lando-managed Podman runtime.
+- **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing.
+
+### Manual prerequisites (when lando setup cannot auto-fix)
+
+If `lando setup` fails, follow the remediation guidance in the error message. Common manual steps:
+
+#### uidmap tools (Fedora/RHEL and unrecognized distributions)
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install shadow-utils
+lando setup
+```
+
+#### Subordinate UID/GID ranges
+
+If setup reports missing subuid/subgid ranges, add them:
+
+```bash
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+lando setup
+```
+
+#### cgroups v2 delegation
+
+If setup reports a cgroups delegation error, create the systemd drop-in:
+
+```bash
+sudo mkdir -p /etc/systemd/system/user@.service.d
+echo -e "[Service]\nDelegate=cpu cpuset io memory pids" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+sudo systemctl daemon-reload
+lando setup
+```
+
+#### XDG_RUNTIME_DIR
+
+If setup reports a missing XDG_RUNTIME_DIR, log out and back in. Most modern distributions with systemd set this automatically. If the issue persists after re-login, your session manager may need configuration (distribution-specific).
+
+### Verifying setup
+
+After setup completes, verify the runtime is ready:
+
+```bash
+lando doctor
+```
+
+If `lando doctor` reports issues, use `lando doctor --fix` to attempt automatic remediation (when available).
+
+Advanced users who prefer system Docker can specify `--provider=docker` when running setup.
+
 ## Bug report checklist
 
 Before filing an Alpha bug, run diagnostics and include the output:
