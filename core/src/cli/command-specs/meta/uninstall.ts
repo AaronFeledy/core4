@@ -14,66 +14,76 @@ const makeListDiscoveredApps =
   (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
   async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
     try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
       const { readdir, readFile } = await import("node:fs/promises");
       const { join } = await import("node:path");
 
-      const providersRoot = join(userDataRoot, "providers");
+      // Query Docker for running Lando containers
       const apps: DiscoveredApp[] = [];
+      const runtimes = [
+        { cmd: "docker", providerId: "docker" as const },
+        { cmd: "podman", providerId: "lando" as const },
+      ];
 
-      // Read apps from provider-docker
-      try {
-        const dockerAppsDir = join(providersRoot, "provider-docker", "apps");
-        const entries = await readdir(dockerAppsDir);
-        for (const entry of entries) {
-          if (!entry.endsWith(".json")) continue;
+      for (const runtime of runtimes) {
+        try {
+          // List running containers with Lando app label
+          const { stdout } = await execFileAsync(runtime.cmd, [
+            "ps",
+            "--filter",
+            "label=com.lando.app",
+            "--format",
+            '{{.Label "com.lando.app"}}',
+          ]);
+
+          const runningAppIds = new Set(
+            stdout
+              .trim()
+              .split("\n")
+              .filter((id) => id.length > 0),
+          );
+
+          if (runningAppIds.size === 0) continue;
+
+          // Load app details from cache for running apps
+          const providersRoot = join(userDataRoot, "providers");
+          const appsDir = join(providersRoot, `provider-${runtime.providerId}`, "apps");
+
           try {
-            const content = await readFile(join(dockerAppsDir, entry), "utf8");
-            const envelope = JSON.parse(content) as {
-              plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
-            };
-            if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
-              apps.push({
-                appId: envelope.plan.id,
-                appName: envelope.plan.name ?? envelope.plan.id,
-                providerId: "docker",
-                appRoot: envelope.plan.root,
-                services: Object.keys(envelope.plan.services),
-              });
+            const entries = await readdir(appsDir);
+            for (const entry of entries) {
+              if (!entry.endsWith(".json")) continue;
+              try {
+                const content = await readFile(join(appsDir, entry), "utf8");
+                const envelope = JSON.parse(content) as {
+                  plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
+                };
+                if (
+                  envelope.plan?.id &&
+                  runningAppIds.has(envelope.plan.id) &&
+                  envelope.plan.root &&
+                  envelope.plan.services
+                ) {
+                  apps.push({
+                    appId: envelope.plan.id,
+                    appName: envelope.plan.name ?? envelope.plan.id,
+                    providerId: runtime.providerId,
+                    appRoot: envelope.plan.root,
+                    services: Object.keys(envelope.plan.services),
+                  });
+                }
+              } catch {
+                // Skip corrupt files
+              }
             }
           } catch {
-            // Skip corrupt files
+            // Skip if directory doesn't exist
           }
+        } catch {
+          // Skip if runtime command not available or fails
         }
-      } catch {
-        // Skip if directory doesn't exist
-      }
-
-      // Read apps from provider-lando (Podman)
-      try {
-        const landoAppsDir = join(providersRoot, "provider-lando", "apps");
-        const entries = await readdir(landoAppsDir);
-        for (const entry of entries) {
-          if (!entry.endsWith(".json")) continue;
-          try {
-            const content = await readFile(join(landoAppsDir, entry), "utf8");
-            const envelope = JSON.parse(content) as {
-              plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> };
-            };
-            if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
-              apps.push({
-                appId: envelope.plan.id,
-                appName: envelope.plan.name ?? envelope.plan.id,
-                providerId: "lando",
-                appRoot: envelope.plan.root,
-                services: Object.keys(envelope.plan.services),
-              });
-            }
-          } catch {
-            // Skip corrupt files
-          }
-        }
-      } catch {
-        // Skip if directory doesn't exist
       }
 
       return apps;

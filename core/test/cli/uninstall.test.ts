@@ -750,7 +750,7 @@ describe("meta:uninstall", () => {
       const userConfRoot = join(root, "conf");
       mkdirSync(userConfRoot, { recursive: true });
 
-      // Simulate discovered apps by providing a listDiscoveredApps that returns apps
+      // Simulate discovered RUNNING apps (as if docker/podman ps returned them)
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { yes: true, purge: true },
@@ -793,6 +793,57 @@ describe("meta:uninstall", () => {
       if (dataStep) expect(dataStep.outcome).not.toBe("completed");
       if (cacheStep) expect(cacheStep.outcome).not.toBe("completed");
       if (confStep) expect(confStep.outcome).not.toBe("completed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge succeeds when apps are cached but not running", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Create fake cache files to simulate stopped apps (files exist but containers not running)
+      const dockerAppsDir = join(userDataRoot, "providers", "provider-docker", "apps");
+      mkdirSync(dockerAppsDir, { recursive: true });
+      writeFileSync(
+        join(dockerAppsDir, "stopped-app.json"),
+        JSON.stringify({
+          plan: {
+            id: "stopped-app",
+            name: "stopped-app",
+            root: "/fake/path",
+            services: { web: {} },
+          },
+        }),
+      );
+
+      // Discovery returns empty (no running containers, only cached files)
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [], // No running apps
+        }),
+      );
+
+      // Uninstall must succeed
+      expect(result.failed).toBe(false);
+
+      // Running-apps step should be skipped (no running apps found)
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.status).toBe("skipped");
+
+      // Data/cache/config directories should be deleted
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(existsSync(userConfRoot)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
