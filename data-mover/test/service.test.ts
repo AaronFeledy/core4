@@ -6,6 +6,13 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Queue, Schema, type Scope, Stream } from "effect";
 
+import { providerImages } from "@lando/data-mover/provider-images";
+import {
+  DataMoverLive,
+  __testOnlyEncodeTarOctal,
+  __testOnlyUnarchivePayloadWithCap,
+} from "@lando/data-mover/service";
+import { makeTestDataMover } from "@lando/data-mover/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -40,13 +47,6 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { StateStoreLive } from "@lando/state-store/service";
-import { providerImages } from "@lando/data-mover/provider-images";
-import {
-  DataMoverLive,
-  __testOnlyEncodeTarOctal,
-  __testOnlyUnarchivePayloadWithCap,
-} from "@lando/data-mover/service";
-import { makeTestDataMover } from "@lando/data-mover/testing";
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -1502,9 +1502,7 @@ describe("DataMoverLive", () => {
       const testStore = Context.get(
         await Effect.runPromise(
           Effect.scoped(
-            Layer.build(
-              StateStoreLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
-            ),
+            Layer.build(StateStoreLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
           ),
         ),
         StateStore,
