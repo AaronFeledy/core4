@@ -40,8 +40,7 @@ describe("ci runbook", () => {
     // Given: the contributor-facing Building from source instructions.
     const readme = await readText(readmePath);
     const buildingFromSource = readme.match(/^## Building from source\n[\s\S]*?(?=^## )/m)?.[0];
-    if (buildingFromSource === undefined)
-      throw new Error("expected README Building from source section");
+    if (buildingFromSource === undefined) throw new Error("expected README Building from source section");
     const commands = buildingFromSource
       .match(/```bash\n([\s\S]*?)\n```/)?.[1]
       ?.split("\n")
