@@ -1,38 +1,23 @@
 import { existsSync } from "node:fs";
 import { dirname, normalize, relative, resolve, sep } from "node:path";
 
-import { type WorkspacePackage, loadWorkspacePackages, resolveWorkspaceSpecifier } from "../graph.ts";
-import type { BoundaryRule, FileRecord, ProgramContext } from "../types.ts";
+import { type WorkspacePackage, resolveWorkspaceSpecifier } from "../graph.ts";
+import type { FileRecord, ProgramContext } from "../types.ts";
 
-const BASELINE_PATH = "scripts/boundary/detached-tests-baseline.json";
 const TEST_MODULE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"] as const;
 const TEST_FILE_SUFFIXES = TEST_MODULE_EXTENSIONS.map((extension) => `.test${extension}`);
 
-export type DetachedTestBaselineEdge = {
+type TestTierEdgeViolation = {
   readonly file: string;
   readonly specifier: string;
-};
-
-export type DetachedTestsBaseline = {
-  readonly note: string;
-  readonly testTierEdges: readonly DetachedTestBaselineEdge[];
-  readonly packagesWithoutTests: readonly string[];
-};
-
-export type TestTierEdgeViolation = DetachedTestBaselineEdge & {
   readonly line: number;
   readonly owner: string;
   readonly target: string;
 };
 
-export type TestPresenceViolation = {
+type TestPresenceViolation = {
   readonly directory: string;
   readonly manifest: string;
-};
-
-export type TestTierViolations = {
-  readonly testTierEdges: readonly TestTierEdgeViolation[];
-  readonly packagesWithoutTests: readonly TestPresenceViolation[];
 };
 
 type TestPackage = {
@@ -43,43 +28,6 @@ type TestPackage = {
   readonly directoryPrefix: string;
   readonly testPrefix: string;
   readonly exports: ReadonlyMap<string, string>;
-};
-
-const EMPTY_BASELINE: DetachedTestsBaseline = {
-  note: "",
-  testTierEdges: [],
-  packagesWithoutTests: [],
-};
-
-const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parseBaselineEdge = (value: unknown, baselinePath: string): DetachedTestBaselineEdge => {
-  if (!isJsonObject(value) || typeof value.file !== "string" || typeof value.specifier !== "string") {
-    throw new TypeError(`Invalid detached-tests baseline edge: ${baselinePath}`);
-  }
-  return { file: value.file, specifier: value.specifier };
-};
-
-export const readDetachedTestsBaseline = async (root: string): Promise<DetachedTestsBaseline> => {
-  const baselinePath = resolve(root, BASELINE_PATH);
-  const baselineFile = Bun.file(baselinePath);
-  if (!(await baselineFile.exists())) return EMPTY_BASELINE;
-  const parsed: unknown = JSON.parse(await baselineFile.text());
-  if (
-    !isJsonObject(parsed) ||
-    typeof parsed.note !== "string" ||
-    !Array.isArray(parsed.testTierEdges) ||
-    !Array.isArray(parsed.packagesWithoutTests) ||
-    !parsed.packagesWithoutTests.every((value) => typeof value === "string")
-  ) {
-    throw new TypeError(`Invalid detached-tests baseline: ${baselinePath}`);
-  }
-  return {
-    note: parsed.note,
-    testTierEdges: parsed.testTierEdges.map((value) => parseBaselineEdge(value, baselinePath)),
-    packagesWithoutTests: parsed.packagesWithoutTests,
-  };
 };
 
 const testPackages = (
@@ -201,11 +149,8 @@ const collectMissingTests = (
 export const checkPackageTestEdges = async (
   context: ProgramContext,
   packages: ReadonlyMap<string, WorkspacePackage>,
-  baseline: DetachedTestsBaseline,
 ): Promise<void> => {
-  const baselineEdges = new Set(baseline.testTierEdges.map((edge) => `${edge.file}\0${edge.specifier}`));
   for (const violation of await collectTestEdges(context, packages)) {
-    if (baselineEdges.has(`${violation.file}\0${violation.specifier}`)) continue;
     context.report(
       violation.file,
       violation.line,
@@ -217,41 +162,12 @@ export const checkPackageTestEdges = async (
 export const checkPackageTestPresence = (
   context: ProgramContext,
   packages: ReadonlyMap<string, WorkspacePackage>,
-  baseline: DetachedTestsBaseline,
 ): void => {
-  const baselinePackages = new Set(baseline.packagesWithoutTests);
   for (const violation of collectMissingTests(context, packages)) {
-    if (baselinePackages.has(violation.directory)) continue;
     context.report(
       violation.manifest,
       1,
       `[PackageDagMissingTestTree] ${violation.directory} has src/ but no tests. Remediation: add tests under ${violation.directory}/test/.`,
     );
   }
-};
-
-export const collectTestTierViolations = async (root: string): Promise<TestTierViolations> => {
-  let collected: TestTierViolations | undefined;
-  const collectionRule = {
-    id: "package-dag-test-collector",
-    scope: {
-      roots: ["."],
-      extensions: [".json", ".ts", ".tsx", ".mts", ".cts"],
-      excludeDirNames: [".git", ".local", ".codegraph", "node_modules", "dist"],
-    },
-    carveOuts: { files: [], prefixes: [] },
-    passMessage: "",
-    failureHeadline: "",
-    onProgram: async (context: ProgramContext): Promise<void> => {
-      const packages = await loadWorkspacePackages(context.root);
-      collected = {
-        testTierEdges: await collectTestEdges(context, packages),
-        packagesWithoutTests: collectMissingTests(context, packages),
-      };
-    },
-  } satisfies BoundaryRule;
-  const { runRuleSet } = await import("../engine.ts");
-  await runRuleSet([collectionRule], root);
-  if (collected === undefined) throw new TypeError("Detached-test collection did not run");
-  return collected;
 };

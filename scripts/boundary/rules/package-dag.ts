@@ -10,11 +10,7 @@ import {
   isWorkspaceTargetAllowed,
 } from "./package-dag-policy.ts";
 import { checkPackageSourceEdges } from "./package-dag-source.ts";
-import {
-  checkPackageTestEdges,
-  checkPackageTestPresence,
-  readDetachedTestsBaseline,
-} from "./package-dag-test.ts";
+import { checkPackageTestEdges, checkPackageTestPresence } from "./package-dag-test.ts";
 
 const PACKAGE_DAG_SCOPE = {
   roots: ["."],
@@ -50,12 +46,11 @@ const edgeDetail = (owner: WorkspaceManifest, kind: WorkspaceEdgeKind, target: s
 };
 
 const checkProgram = async (context: ProgramContext): Promise<void> => {
-  const [packages, testPackages, testBaseline] = await Promise.all([
+  const [packages, testPackages] = await Promise.all([
     collectManifests(context.root).then((manifests) =>
       Promise.all(manifests.map((manifest) => readWorkspaceManifest(manifest, context.root))),
     ),
     loadWorkspacePackages(context.root),
-    readDetachedTestsBaseline(context.root),
   ]);
   const workspaceNames = new Set(packages.map((workspacePackage) => workspacePackage.name));
 
@@ -78,8 +73,8 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
   }
 
   await checkPackageSourceEdges(context, packages);
-  await checkPackageTestEdges(context, testPackages, testBaseline);
-  checkPackageTestPresence(context, testPackages, testBaseline);
+  await checkPackageTestEdges(context, testPackages);
+  checkPackageTestPresence(context, testPackages);
 };
 
 export const packageDagRule = {

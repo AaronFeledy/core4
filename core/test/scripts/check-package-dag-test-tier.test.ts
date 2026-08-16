@@ -202,65 +202,30 @@ describe("check-package-dag test-tier policy", () => {
     },
   );
 
-  test("suppresses a baselined edge without suppressing a new edge", async () => {
+  test("offers no suppression mechanism for a foreign private subpath", async () => {
     // Given
     await writeEngineExports();
+    const retiredLedgerPath = [
+      "scripts/boundary",
+      `${["detached", "tests", "baseline"].join("-")}.json`,
+    ].join("/");
     await Promise.all([
-      fixture.write("core/test/baselined.test.ts", 'import "@lando/engine/private";\n'),
-      fixture.write("core/test/new.test.ts", 'import "@lando/engine/private";\n'),
+      fixture.write("core/test/private.test.ts", 'import "@lando/engine/private";\n'),
       fixture.write(
-        "scripts/boundary/detached-tests-baseline.json",
+        retiredLedgerPath,
         `${JSON.stringify({
-          note: "regenerate with scripts/generate-detached-tests-baseline.ts",
-          testTierEdges: [{ file: "core/test/baselined.test.ts", specifier: "@lando/engine/private" }],
+          note: "retired suppression ledger",
+          testTierEdges: [{ file: "core/test/private.test.ts", specifier: "@lando/engine/private" }],
           packagesWithoutTests: [],
         })}\n`,
       ),
     ]);
 
     // When
-    const result = await fixture.runGate(["--report"]);
+    const result = await fixture.runGate([]);
 
     // Then
-    expect(result.stdout).not.toContain("core/test/baselined.test.ts");
-    expect(result.stdout).toContain("core/test/new.test.ts:1: [PackageDagDetachedTestEdge]");
-  });
-
-  test("suppresses a baselined missing test tree without suppressing a new one", async () => {
-    // Given
-    await Promise.all([
-      fixture.writeRoot(["old", "new"]),
-      fixture.writePackage("old", "@lando/paths", { withoutTests: true }),
-      fixture.writePackage("new", "@lando/redaction", { withoutTests: true }),
-      fixture.write("old/src/index.ts", "export {};\n"),
-      fixture.write("new/src/index.ts", "export {};\n"),
-      fixture.write(
-        "scripts/boundary/detached-tests-baseline.json",
-        `${JSON.stringify({
-          note: "regenerate with scripts/generate-detached-tests-baseline.ts",
-          testTierEdges: [],
-          packagesWithoutTests: ["old"],
-        })}\n`,
-      ),
-    ]);
-
-    // When
-    const result = await fixture.runGate(["--report"]);
-
-    // Then
-    expect(result.stdout).not.toContain("old/package.json");
-    expect(result.stdout).toContain("new/package.json:1: [PackageDagMissingTestTree]");
-  });
-
-  test("treats an absent baseline file as an empty baseline", async () => {
-    // Given
-    await writeEngineExports();
-    await fixture.write("core/test/unbaselined.test.ts", 'import "@lando/engine/private";\n');
-
-    // When
-    const result = await fixture.runGate(["--report"]);
-
-    // Then
-    expect(result.stdout).toContain("core/test/unbaselined.test.ts:1: [PackageDagDetachedTestEdge]");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("core/test/private.test.ts:1: [PackageDagDetachedTestEdge]");
   });
 });

@@ -1,5 +1,0 @@
-{
-  "note": "Shrink-only migration ledger for detached test entrypoints and packages without tests. Regenerate with bun run scripts/generate-detached-tests-baseline.ts.",
-  "testTierEdges": [],
-  "packagesWithoutTests": []
-}
