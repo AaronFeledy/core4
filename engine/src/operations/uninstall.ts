@@ -439,13 +439,14 @@ const executeUninstall = async (
 
   for (const step of steps) {
     if (step.id === "running-apps" && step.status === "user-owned") {
-      // Running apps block uninstall - mark as failed
+      // Running apps block uninstall - mark as failed and abort
       executed.push({
         ...step,
         outcome: "failed",
         error: step.detail ?? "Uninstall cannot proceed while Lando apps are running.",
       });
-      continue;
+      // Abort immediately: do not process any remaining destructive steps
+      break;
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {

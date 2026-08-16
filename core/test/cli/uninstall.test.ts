@@ -741,4 +741,60 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("purge aborts and preserves data when running apps are discovered", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Simulate discovered apps by providing a listDiscoveredApps that returns apps
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [
+            {
+              appId: "test-app",
+              appName: "test-app",
+              providerId: "docker",
+              appRoot: "/fake/path",
+              services: ["web", "database"],
+            },
+          ],
+        }),
+      );
+
+      // Uninstall must fail
+      expect(result.failed).toBe(true);
+
+      // Running-apps step must be marked as failed
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.outcome).toBe("failed");
+      expect(runningAppsStep?.error).toContain("Uninstall cannot proceed while");
+      expect(runningAppsStep?.error).toContain("lando poweroff");
+
+      // Critical: data/cache/config directories must NOT be deleted
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(existsSync(userConfRoot)).toBe(true);
+
+      // None of the data/cache/config steps should have been executed
+      const dataStep = result.steps.find((step) => step.id === "user-data-root");
+      const cacheStep = result.steps.find((step) => step.id === "user-cache-root");
+      const confStep = result.steps.find((step) => step.id === "user-conf-root");
+
+      // These steps should either not be in the executed list, or should not have "completed" outcome
+      if (dataStep) expect(dataStep.outcome).not.toBe("completed");
+      if (cacheStep) expect(cacheStep.outcome).not.toBe("completed");
+      if (confStep) expect(confStep.outcome).not.toBe("completed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

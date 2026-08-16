@@ -95,6 +95,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _readManagedProviderMachine?: unknown;
     readonly _teardownProviderMachines?: unknown;
     readonly _reportFallbackDir?: unknown;
+    readonly _listDiscoveredApps?: unknown;
   };
   const purge = flags.purge === true;
   return {
@@ -102,7 +103,10 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     yes: flags.yes === true,
     keepData: flags["keep-data"] === true && !purge,
     purge,
-    listDiscoveredApps: makeListDiscoveredApps(),
+    listDiscoveredApps:
+      typeof extra._listDiscoveredApps === "function"
+        ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
+        : makeListDiscoveredApps(),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),
