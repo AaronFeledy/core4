@@ -109,7 +109,7 @@ On first-time Linux systems, `lando setup --yes` can automatically handle most m
 
 - **uidmap tools**: On Ubuntu and Debian, Lando installs the `uidmap` package automatically. Fedora/RHEL and other distributions require manual installation (see below).
 - **Runtime bundle**: Downloads and extracts the Lando-managed Podman runtime.
-- **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing (when the global app is available).
+- **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing.
 
 ### Manual prerequisites (when lando setup cannot auto-fix)
 
