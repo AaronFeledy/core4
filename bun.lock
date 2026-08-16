@@ -223,6 +223,17 @@
         "@lando/sdk": "workspace:*",
       },
     },
+    "plugins/ssh-agent": {
+      "name": "@lando/ssh-agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.12.5",
+      },
+      "devDependencies": {
+        "@lando/sdk": "workspace:*",
+      },
+    },
     "plugins/template-handlebars": {
       "name": "@lando/template-handlebars",
       "version": "0.0.0",
@@ -547,6 +558,8 @@
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
 
     "@lando/service-lando": ["@lando/service-lando@workspace:plugins/service-lando"],
+
+    "@lando/ssh-agent": ["@lando/ssh-agent@workspace:plugins/ssh-agent"],
 
     "@lando/state-store": ["@lando/state-store@workspace:state-store"],
 

@@ -26,6 +26,7 @@ export interface BundledPluginEntry {
     readonly fileSyncEngines?: ReadonlyArray<string>;
     readonly certificateAuthorities?: ReadonlyArray<string>;
     readonly proxyServices?: ReadonlyArray<string>;
+    readonly sshServices?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
     readonly subscribers?: ReadonlyArray<{
@@ -92,6 +93,11 @@ export const buildConfig: BuildConfig = {
       name: "@lando/proxy-traefik",
       path: "plugins/proxy-traefik",
       contributes: { proxyServices: ["traefik"], globalServices: ["traefik"] },
+    },
+    {
+      name: "@lando/ssh-agent",
+      path: "plugins/ssh-agent",
+      contributes: { sshServices: ["sidecar"], globalServices: ["ssh-agent"] },
     },
     {
       name: "@lando/template-handlebars",
