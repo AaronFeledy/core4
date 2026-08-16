@@ -29,7 +29,7 @@ Those services run in containers on a runtime you control: Lando-managed Podman 
 | Section | What's there |
 | --- | --- |
 | [Install the Alpha](./alpha-install-and-bug-reports/) | Install paths, checksum verification, and what to attach to a bug report. |
-| [Guides](./guides/tutorial/app-lifecycle/) | Walkthroughs for services, tooling, plugins, and the CLI. Most run as executable tests, so they stay in step with the code. |
+| [Tutorial](./guides/tutorial/app-lifecycle/) | Start here: learn the everyday commands for starting, inspecting, and tearing down apps. |
 | [Recipes](./recipes/wordpress/) | Ready-made stacks for Drupal, Drupal CMS, LAMP, LEMP, and WordPress. |
 | [Reference](./reference/commands/) | Generated command and schema reference, down to individual flags. |
 | [Embedding](./embedding/) | Drive the `@lando/core` library API from your own application. |

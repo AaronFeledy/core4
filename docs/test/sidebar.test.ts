@@ -51,6 +51,8 @@ const internalLinksOf = (source: string): readonly string[] => [
   ]),
 ];
 
+const normalizeLink = (href: string): string => (href.startsWith("./") ? href.slice(1) : href);
+
 describe("docs sidebar", () => {
   test("lists every top-level group in reading order", () => {
     // Given: the published sidebar.
@@ -160,15 +162,15 @@ describe("docs landing page", () => {
     // Given: the landing page source.
     const source = await readLandingPage();
 
-    // When: its internal links are collected.
-    const links = internalLinksOf(source);
+    // When: its internal links are collected and normalized.
+    const links = internalLinksOf(source).map(normalizeLink);
 
     // Then: every documentation area has an entry point.
-    expect(links).toContain(`./${ALPHA_INSTALL_SLUG}/`);
-    expect(links.some((href) => href.includes("/guides/"))).toBe(true);
-    expect(links.some((href) => href.includes("/recipes/"))).toBe(true);
-    expect(links.some((href) => href.includes("/reference/"))).toBe(true);
-    expect(links).toContain("./embedding/");
+    expect(links).toContain(`/${ALPHA_INSTALL_SLUG}/`);
+    expect(links.some((href) => href.startsWith("/guides/"))).toBe(true);
+    expect(links.some((href) => href.startsWith("/recipes/"))).toBe(true);
+    expect(links.some((href) => href.startsWith("/reference/"))).toBe(true);
+    expect(links).toContain("/embedding/");
   });
 
   test("only links pages that exist", async () => {
@@ -178,8 +180,9 @@ describe("docs landing page", () => {
     // When: each internal link is resolved back to a content file.
     const resolved = await Promise.all(
       internalLinksOf(source).map(async (href) => {
+        const normalized = normalizeLink(href);
         const candidates = await Promise.all(
-          contentFileCandidates(href).map((path) => Bun.file(path).exists()),
+          contentFileCandidates(normalized).map((path) => Bun.file(path).exists()),
         );
         return [href, candidates.includes(true)] as const;
       }),

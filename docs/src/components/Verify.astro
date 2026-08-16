@@ -1,4 +1,5 @@
 ---
+import { isPlaceholderResultSummary } from "../lib/is-placeholder.ts";
 import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
@@ -20,6 +21,7 @@ const [kind, target] = [
 const expectation =
   expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
 const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "verify");
+const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
 <div class="lando-verify" {...dataAttributes}>
@@ -29,7 +31,7 @@ const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro
     {expectation && <span>expects <code>{expectation}</code></span>}
   </p>
   {frame?.commandDisplay && <pre><code class="language-sh">{frame.commandDisplay}</code></pre>}
-  {frame?.resultSummary && (
+  {showCapturedOutput && (
     <figure class="lando-frame-output">
       <figcaption>Captured output</figcaption>
       <pre><code>{frame.resultSummary}</code></pre>
