@@ -438,4 +438,24 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(error.outputTail).toContain("[redacted]");
     expect(invocations).toHaveLength(2);
   });
+
+  test("does not publish task detail for a failing silent event step", async () => {
+    // Given
+    const invocations: ToolingInvocation[] = [];
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-start": [{ cmd: "quiet-fail", silent: true }],
+    });
+
+    // When
+    const details = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* Effect.flip(runAppEvent(plan, "pre-start"));
+        return yield* events.query("task.detail");
+      }).pipe(Effect.provide(eventRuntime(invocations, [], new Set(['quiet-fail "$@"'])))),
+    );
+
+    // Then
+    expect(details).toEqual([]);
+  });
 });

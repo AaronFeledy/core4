@@ -217,16 +217,13 @@ const publish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
     durationMs: Date.now() - execution.startedAt,
   });
 
-const finish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
-  execution.result.exitCode === 0
-    ? Effect.succeed(execution)
-    : publish(options, execution).pipe(
-        Effect.zipRight(
-          Effect.fail(
-            nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result),
-          ),
-        ),
-      );
+const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
+  if (execution.result.exitCode === 0) return Effect.succeed(execution);
+  const failure = Effect.fail(
+    nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result),
+  );
+  return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.zipRight(failure));
+};
 
 export const makeEventStepRunners = (
   options: EventRuntimeOptions,
