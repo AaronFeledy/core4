@@ -22,6 +22,11 @@ lando composer create-project drupal/cms .
 lando drush site:install recipes/drupal_cms_starter -y
 ```
 
+**Note:** If `lando composer create-project` fails with "directory is not empty",
+this is because Lando creates empty `vendor` and `node_modules` volumes by default
+to improve file sync performance. This is a known issue (#767). Workaround: run
+`composer create-project drupal/cms temp-dir`, then `mv temp-dir/* temp-dir/.* . && rmdir temp-dir`.
+
 Drupal CMS 2 uses the same Lando stack as the `drupal` recipe; the difference is
 the Composer project (`drupal/cms`) and its bundled install profile / recipes.
 
