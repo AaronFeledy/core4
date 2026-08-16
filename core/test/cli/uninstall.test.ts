@@ -263,6 +263,7 @@ describe("meta:uninstall", () => {
       const runtimeDir = join(userDataRoot, "runtime");
       const order: string[] = [];
       const teardownRoots: string[] = [];
+      let runtimeDirExists = true;
 
       const result = await Effect.runPromise(
         uninstall({
@@ -271,7 +272,7 @@ describe("meta:uninstall", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
-          exists: (path: string) => path === runtimeDir,
+          exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
             teardownRoots.push(rootPath);
             order.push("teardown");
@@ -279,6 +280,7 @@ describe("meta:uninstall", () => {
           },
           remove: async (path: string) => {
             order.push(`remove:${path}`);
+            if (path === runtimeDir) runtimeDirExists = false;
           },
         }),
       );
@@ -302,18 +304,21 @@ describe("meta:uninstall", () => {
       process.env.LANDO_USER_CACHE_ROOT = userCacheRoot;
       const runtimeDir = join(userDataRoot, "runtime");
       const teardownRoots: string[] = [];
+      let runtimeDirExists = true;
 
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
           keepData: true,
           execPath: join(root, "lando"),
-          exists: (path: string) => path === runtimeDir,
+          exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
             teardownRoots.push(rootPath);
             return { terminated: true, pid: 1234 };
           },
-          remove: async () => {},
+          remove: async (path: string) => {
+            if (path === runtimeDir) runtimeDirExists = false;
+          },
         }),
       );
 

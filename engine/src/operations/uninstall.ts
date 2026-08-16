@@ -435,6 +435,7 @@ const executeUninstall = async (
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
+  const exists = options.exists ?? ((path: string) => existsSync(path));
   const teardownRuntimeService =
     options.teardownRuntimeService ??
     ((root: string) => defaultTeardownRuntimeService(hostMaintenanceRegistry, root));
@@ -497,35 +498,29 @@ const executeUninstall = async (
         }
         // After teardown, clean up the runtime directory using podman's unshare if available
         // (for proper user namespace handling) or fall back to regular removal
-        const { existsSync } = await import("node:fs");
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
         const execFileAsync = promisify(execFile);
 
-        if (existsSync(step.target)) {
+        if (exists(step.target)) {
           // Try podman unshare rm -rf first (handles user namespaces properly)
-          let cleanedViaPodman = false;
           try {
             // Check if podman is available
             await execFileAsync("podman", ["--version"], { timeout: 2000 });
             // Use podman unshare to remove the directory with proper user namespace mapping
             await execFileAsync("podman", ["unshare", "rm", "-rf", step.target], { timeout: 30000 });
-            cleanedViaPodman = true;
+            // If successful and directory is gone, we're done
+            if (!exists(step.target)) {
+              executed.push({ ...step, outcome: "completed" });
+              continue;
+            }
           } catch {
             // Podman not available or unshare failed; will try regular removal
           }
-
-          // If podman cleanup didn't work, try docker (which may also have unshare-like cleanup)
-          if (!cleanedViaPodman && existsSync(step.target)) {
-            try {
-              await execFileAsync("docker", ["--version"], { timeout: 2000 });
-              // Docker doesn't have unshare, but try regular rm with elevated privileges if needed
-              await execFileAsync("rm", ["-rf", step.target], { timeout: 30000 });
-              cleanedViaPodman = true;
-            } catch {
-              // Docker cleanup failed; will fall through to regular removal
-            }
-          }
+        } else {
+          // Directory already gone
+          executed.push({ ...step, outcome: "completed" });
+          continue;
         }
       }
       if (step.id === "managed-provider-machines") {
@@ -538,7 +533,7 @@ const executeUninstall = async (
       await remove(step.target);
 
       // For runtime-service, verify the directory was actually removed
-      if (step.id === "runtime-service" && existsSync(step.target)) {
+      if (step.id === "runtime-service" && exists(step.target)) {
         throw new Error(
           `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
         );
