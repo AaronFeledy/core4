@@ -39,33 +39,33 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   subid: {
     message: "Rootless Podman requires subordinate UID/GID ranges for your user.",
     remediation:
-      "Add a range for your user to /etc/subuid and /etc/subgid, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`.",
+      "Add a range for your user to /etc/subuid and /etc/subgid, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
   "subid-range": {
     message: "Rootless Podman requires one contiguous subordinate UID/GID range with at least 65536 IDs.",
     remediation:
-      "Assign a single range of at least 65536 IDs, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`.",
+      "Assign a single range of at least 65536 IDs, e.g. `sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER`, then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
   "subid-overlap": {
     message:
       "Rootless Podman requires subordinate UID/GID ranges that do not overlap another user's allocation.",
     remediation:
-      "Inspect /etc/subuid and /etc/subgid, reassign a non-conflicting range for your user, then rerun `lando setup`.",
+      "Inspect /etc/subuid and /etc/subgid, reassign a non-conflicting range for your user, then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
   "uidmap-tools": {
     message: "Rootless Podman requires the newuidmap/newgidmap helper binaries.",
     remediation:
-      "Install the uidmap tools (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`.",
+      "Install the uidmap tools (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
   "cgroups-v2-delegation": {
     message: "Rootless Podman requires cgroups v2 controller delegation for your user session.",
     remediation:
-      "Enable systemd user cgroup delegation (create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`), run `systemctl daemon-reload`, then rerun `lando setup`.",
+      "Enable systemd user cgroup delegation (create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`), run `systemctl daemon-reload`, then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
   "xdg-runtime-dir": {
     message: "Rootless Podman requires XDG_RUNTIME_DIR to be set for your session.",
     remediation:
-      "Start a full user session so XDG_RUNTIME_DIR is set, or export XDG_RUNTIME_DIR=/run/user/$(id -u), then rerun `lando setup`.",
+      "Start a full user session so XDG_RUNTIME_DIR is set, or export XDG_RUNTIME_DIR=/run/user/$(id -u), then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.",
   },
 };
 

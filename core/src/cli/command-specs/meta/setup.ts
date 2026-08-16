@@ -23,6 +23,13 @@ import {
 } from "@lando/engine/providers/precedence";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
+import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { resolveUserConfRoot } from "@lando/engine/config/roots";
+import { join } from "node:path";
+import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { emitConfigYaml } from "@lando/engine/config-write/write-core";
+import { Either } from "effect";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext } from "../../renderer-boundary";
@@ -60,6 +67,34 @@ import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-
 export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
+
+const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    const confRoot = resolveUserConfRoot();
+    const configPath = join(confRoot, "config.yml");
+    
+    try {
+      // Read existing config
+      const existing = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
+      const tree = existing.length > 0 ? (parseMinimalYaml(existing) as Record<string, unknown>) : {};
+      
+      // Set defaultProviderId
+      tree.defaultProviderId = providerId;
+      
+      // Emit as YAML
+      const emitted = emitConfigYaml({ file: configPath, value: tree, path: "defaultProviderId" });
+      if (Either.isLeft(emitted)) return;
+      
+      // Write atomically
+      if (!existsSync(confRoot)) {
+        mkdirSync(confRoot, { recursive: true });
+      }
+      yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.right));
+    } catch {
+      // Silently fail - config persistence is optional
+    }
+  }).pipe(Effect.catchAll(() => Effect.void));
+
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -115,6 +150,10 @@ export const setupSpec: LandoCommandSpec<
       const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
         Effect.tapError((cause) => recorder.recordFailure("network", cause)),
       );
+      
+      // Track if provider selection came from --provider flag to persist it
+      const shouldPersistProvider = flag !== undefined && flag !== config;
+      
       if (!inputBooleanFlag(input, "skip-provider")) {
         if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
           const available = yield* provider.isAvailable;
@@ -157,6 +196,11 @@ export const setupSpec: LandoCommandSpec<
           status: "satisfied",
           evidence: `Provider ${selectedProviderId} setup completed.`,
         });
+        
+        // Persist the provider selection if it came from --provider flag
+        if (shouldPersistProvider) {
+          yield* writeConfigDefaultProvider(selectedProviderId);
+        }
       } else {
         yield* recorder.record({
           id: "provider",

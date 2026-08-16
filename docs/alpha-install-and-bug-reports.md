@@ -93,6 +93,57 @@ The following install paths are **not yet available** in Alpha:
 
 These will be stood up before Beta. For now, use the GitHub prerelease or npm install paths above.
 
+## Provider setup
+
+After installing Lando, run setup to provision the container runtime provider:
+
+```bash
+lando setup
+```
+
+The default provider is the **Lando-managed Podman runtime**. This bundles a rootless Podman installation that runs independently of any system Docker or Podman.
+
+### Setup requirements for managed Podman
+
+The managed Podman provider requires:
+
+- **Linux x64 or arm64** (Ubuntu, Debian, Fedora, or compatible distributions)
+- **Subordinate UID/GID ranges** configured in `/etc/subuid` and `/etc/subgid`
+- **uidmap helper tools** (`newuidmap` and `newgidmap`)
+- **cgroups v2 controller delegation** (requires systemd on most distributions)
+- **XDG_RUNTIME_DIR** set for your user session
+
+On **Ubuntu 26.04**, Lando can automatically install the `uidmap` package if you consent with `lando setup --yes`. On other distributions, you must install uidmap tools manually before setup (e.g., `sudo apt-get install uidmap` on Debian/Ubuntu or `sudo dnf install shadow-utils` on Fedora).
+
+### Docker fallback
+
+If the default managed Podman setup fails (for example, on hosts without systemd or where cgroups v2 delegation cannot be configured), use the **Docker provider** instead:
+
+```bash
+lando setup --provider=docker
+```
+
+This requires Docker to be installed and running on your system. After successful setup with `--provider=docker`, Lando persists this choice so you don't need to specify it again.
+
+You can also set the provider globally:
+
+```bash
+lando config set defaultProviderId docker
+```
+
+Or use the `LANDO_PROVIDER` environment variable:
+
+```bash
+export LANDO_PROVIDER=docker
+lando setup
+```
+
+After setup completes, verify the runtime is ready:
+
+```bash
+lando doctor
+```
+
 ## Bug report checklist
 
 Before filing an Alpha bug, run diagnostics and include the output:

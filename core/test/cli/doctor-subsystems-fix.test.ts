@@ -41,7 +41,7 @@ const expectTaggedDiagnosticForFailure = (
   exit: { readonly _tag: string; readonly cause?: unknown },
 ): void => {
   expect(exit._tag).toBe("Failure");
-  const diagnostic = subsystemFailureDiagnostic(subsystem, exit.cause);
+  const diagnostic = subsystemFailureDiagnostic(subsystem, "unavailable", exit.cause);
   expect(diagnostic._tag).toBe("DoctorSubsystemFailure");
   expect(diagnostic.subsystem).toBe(subsystem);
   expect(["info", "warn", "error"]).toContain(diagnostic.severity);
@@ -61,14 +61,15 @@ describe("subsystem failure-recovery classification", () => {
     }
   });
 
-  test("read-only mode advertises an automatic `lando doctor --fix` solution for proxy and ssh", async () => {
+  test("read-only mode shows manual solution for unavailable automatic subsystems (not yet implemented)", async () => {
     const result = await runDefault(false);
     for (const name of AUTOMATIC_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
-      expect(solution?.kind).toBe("automatic");
-      expect(solution?.command).toBe("lando doctor --fix");
+      // Unavailable services show manual solutions, not automatic
+      expect(solution?.kind).toBe("manual");
+      expect(solution?.command).toBe("lando setup");
     }
   });
 
@@ -104,13 +105,13 @@ describe("subsystem failure-recovery classification", () => {
 describe("each subsystem failure path produces a tagged error with severity + solution", () => {
   test("classifySubsystemFailure returns severity + solution for every subsystem", () => {
     for (const name of [...AUTOMATIC_SUBSYSTEMS, ...MANUAL_SUBSYSTEMS]) {
-      const classified = classifySubsystemFailure(name);
+      const classified = classifySubsystemFailure(name, "unavailable");
       expect(classified).toBeDefined();
       if (classified === undefined) throw new Error(`missing classification for ${name}`);
       expect(["info", "warn", "error"]).toContain(classified.severity);
       expect(classified?.solution.description.length).toBeGreaterThan(0);
     }
-    expect(classifySubsystemFailure("nope")).toBeUndefined();
+    expect(classifySubsystemFailure("nope", "unavailable")).toBeUndefined();
   });
 
   test("each bundled subsystem failure path fails with its tagged error and maps to a diagnostic", async () => {
@@ -151,7 +152,7 @@ describe("each subsystem failure path produces a tagged error with severity + so
     );
     expectTaggedDiagnosticForFailure("scanner", scanner);
 
-    const diag = subsystemFailureDiagnostic("proxy", new Error("boom"));
+    const diag = subsystemFailureDiagnostic("proxy", "unavailable", new Error("boom"));
     expect(diag._tag).toBe("DoctorSubsystemFailure");
     expect(diag.subsystem).toBe("proxy");
     expect(["info", "warn", "error"]).toContain(diag.severity);
