@@ -103,13 +103,12 @@ Development follows this phase ladder:
 
 - How to download the dev prerelease binary (Linux x64)
 - How to install via npm (Linux/macOS)
-- Setting up the managed Podman provider prerequisites
+- Running `lando setup` and `lando doctor` for first-time configuration
 - Where to file bug reports with the right diagnostic files
 
 > **Current limitation:** The default provider's runtime bundle manifest points at
 > placeholder URLs. To test the full setup flow, build a local runtime bundle with
-> `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it,
-> or see the alpha install docs for managed Podman prerequisites.
+> `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
 
 ## Toolchain
 
