@@ -206,3 +206,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Cache-only alias routing falls back to the canonical built-in when no fresh app command cache exists; route any change to that behavior through a spec-owned story rather than a reviewer-authored regression contract.
 ---
+
+## 2026-08-15 21:32 CDT - US-564 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a node:lts app with `commandAliases.custom.hi: app:greet` and `disabled: [rebuild]`. `lando hi --format=json` and `lando app:greet --format=json` both reported `command: app:greet` and printed `hello-from-alias`; app-context help listed `hi -> app:greet` and omitted `rebuild`; `lando rebuild` failed with `UnknownCommandError`; reserved `app:*` alias refresh failed with `CommandAliasConflictError`; unknown target failed with `CommandAliasTargetError`. Adjacent `info`/`exec`/`cache:refresh`/`version`/`app:config`/`scratch --help`/`destroy` worked. Destroyed the app and removed `/tmp/us564-*`.
+- **Out-of-scope finding:** `lando apps:list --format=json` returned `{"apps":[]}` while `lando info` showed `us564-verify` running. Same applied-app registry gap recorded in US-562 and earlier US-564 Verify.
+---
