@@ -116,7 +116,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(providerContracts).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(providerContracts).toContain(
       "      - name: Prepare managed Lando provider from committed manifest",
@@ -286,6 +286,9 @@ describe("ci workflow", () => {
     expect(rehearsal).toContain("      - name: Compile all platform binaries");
     expect(rehearsal).toContain("          mkdir -p dist/bundle");
     expect(rehearsal).toContain('          bun install --frozen-lockfile --os="*" --cpu="*"');
+    expect(rehearsal).toContain(
+      '          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")',
+    );
     for (const target of [
       "bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64",
       "bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64",
@@ -294,7 +297,7 @@ describe("ci workflow", () => {
       "bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe",
     ]) {
       expect(rehearsal).toContain(
-        `          bun run scripts/build-compiled-binary.ts --target ${target} --minify --sourcemap=external`,
+        `          bun run scripts/build-compiled-binary.ts --target ${target} --version "$VERSION" --minify --sourcemap=external`,
       );
     }
     expect(rehearsal).toContain(
@@ -537,7 +540,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(buildLinux).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(buildLinux).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildLinux).toContain("          test -f dist/lando");
@@ -573,7 +576,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("    runs-on: macos-15");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildDarwin).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(buildDarwin).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildDarwin).toContain("          test -f dist/lando");
@@ -616,7 +619,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(buildWindows).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(buildWindows).toContain(
       "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
@@ -661,7 +664,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("    runs-on: macos-15-intel");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildDarwin).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(buildDarwin).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildDarwin).toContain("          test -f dist/lando");
@@ -697,7 +700,7 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(buildLinuxArm).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildLinuxArm).toContain(
-      "          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --minify --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(buildLinuxArm).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildLinuxArm).toContain("          test -f dist/lando");
