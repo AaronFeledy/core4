@@ -15,6 +15,7 @@ import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
 import * as rendererLando from "@lando/renderer-lando";
 import * as serviceLando from "@lando/service-lando";
+import * as sshAgent from "@lando/ssh-agent";
 import * as templateHandlebars from "@lando/template-handlebars";
 import * as templateMustache from "@lando/template-mustache";
 
@@ -35,6 +36,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   fileSyncMutagen.plugin,
   caMkcert.plugin,
   proxyTraefik.plugin,
+  sshAgent.plugin,
   templateHandlebars.plugin,
   templateMustache.plugin,
 ];
@@ -46,7 +48,7 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(12);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(13);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );

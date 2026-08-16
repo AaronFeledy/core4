@@ -230,9 +230,6 @@
         "@lando/sdk": "workspace:*",
         "effect": "^3.12.5",
       },
-      "devDependencies": {
-        "@lando/sdk": "workspace:*",
-      },
     },
     "plugins/template-handlebars": {
       "name": "@lando/template-handlebars",
