@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { AppId } from "@lando/sdk/schema";
-import { type FileSystem, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 
 const SSH_SIDECAR_ID = "ssh-agent" as const;
 
@@ -16,16 +16,7 @@ const setupError = (cause: unknown): SshError =>
   new SshError({
     message: "SSH agent sidecar setup failed.",
     sshId: SSH_SIDECAR_ID,
-    remediation:
-      "Run `lando meta:global:start ssh-agent` and resolve the reported global-app failure.",
-    cause,
-  });
-
-const agentError = (app: AppId, cause: unknown): SshError =>
-  new SshError({
-    message: `SSH agent socket retrieval failed for ${String(app)}.`,
-    sshId: SSH_SIDECAR_ID,
-    remediation: "Ensure the SSH agent sidecar is running via `lando setup`, then retry.",
+    remediation: "Run `lando meta:global:start ssh-agent` and resolve the reported global-app failure.",
     cause,
   });
 
@@ -38,7 +29,7 @@ export const SshServiceLive = Layer.effect(
 
     return {
       id: SSH_SIDECAR_ID,
-      setup: (options) =>
+      setup: (_options) =>
         Effect.gen(function* () {
           // Ensure the SSH agent sidecar global service is running
           yield* globalApp.ensureRunning([SSH_SIDECAR_ID]);
@@ -51,15 +42,10 @@ export const SshServiceLive = Layer.effect(
           }
         }).pipe(Effect.mapError(setupError)),
       getAgentSocket: (appId) =>
-        Effect.gen(function* () {
-          // Return the socket path for this app's SSH agent
-          // The actual socket will be created by the SSH agent sidecar global service
-          const socketPath = `${paths.userDataRoot}/ssh/${String(appId)}.sock`;
-          return {
-            socketPath,
-            appId,
-          };
-        }).pipe(Effect.mapError((cause) => agentError(appId, cause))),
+        Effect.succeed({
+          socketPath: `${paths.userDataRoot}/ssh/${String(appId)}.sock`,
+          appId,
+        }),
     };
   }),
 );

@@ -2,7 +2,7 @@ import { Context, Effect, Either, Layer } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { type SshService } from "@lando/sdk/services";
+import type { SshService } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "../../composition.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
@@ -44,7 +44,8 @@ const registrationsFromModules = (
 ): Effect.Effect<ReadonlyArray<SshServiceRegistration>, SshError> =>
   Effect.gen(function* () {
     const indexResult = makePluginCapabilityIndex(modules);
-    if (Either.isLeft(indexResult)) return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
+    if (Either.isLeft(indexResult))
+      return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
     const index = indexResult.right;
     const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.sshServices ?? []);
     return yield* Effect.forEach(contributions, (contribution) => {
@@ -72,7 +73,7 @@ export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginMod
     Effect.gen(function* () {
       const registrations = yield* registrationsFromModules(modules);
       const byId = new Map(registrations.map((registration) => [registration.id, registration]));
-      
+
       return {
         list: Effect.succeed([...byId.keys()]),
         select: (selection = {}) =>
@@ -80,14 +81,16 @@ export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginMod
             if (selection.explicit !== undefined) {
               const registration = byId.get(selection.explicit);
               return registration === undefined
-                ? yield* Effect.fail(selectionError(`SSH service ${selection.explicit} is not installed.`, selection.explicit))
+                ? yield* Effect.fail(
+                    selectionError(`SSH service ${selection.explicit} is not installed.`, selection.explicit),
+                  )
                 : registration;
             }
-            
+
             // Return the first (and likely only) SSH service
             const sole = registrations[0];
             if (sole !== undefined) return sole;
-            
+
             return yield* Effect.fail(
               selectionError("No SshService plugin could be selected unambiguously.", "unknown"),
             );
@@ -96,20 +99,14 @@ export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginMod
     }),
   );
 
-export const SshServiceRegistryLive = Layer.suspend(() =>
-  makeSshServiceRegistryLive(bundledPluginModules()),
-);
+export const SshServiceRegistryLive = Layer.suspend(() => makeSshServiceRegistryLive(bundledPluginModules()));
 
 export const SelectedSshServiceLive = Layer.unwrapEffect(
   Effect.flatMap(SshServiceRegistry, (registry) =>
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
         ? Effect.succeed(SshServiceUnavailableLive)
-        : registry
-            .select()
-            .pipe(
-              Effect.map((selected) => selected.layer),
-            ),
+        : registry.select().pipe(Effect.map((selected) => selected.layer)),
     ),
   ),
 );
