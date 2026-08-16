@@ -19,17 +19,16 @@ const classifyingAs =
     classification;
 
 describe("uninstall managed provider machines", () => {
-  test("plan marks the machine step owned when setup state records a Lando-created machine", () => {
+  test("plan lists Lando-owned managed provider machines as owned", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
         exists: () => false,
         readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
       });
-
       expect(plan.find((step) => step.id === "managed-provider-machines")).toMatchObject({
         status: "owned",
         target: "lando",
@@ -139,10 +138,10 @@ describe("uninstall managed provider machines", () => {
     }
   });
 
-  test("absent machine record skips the step", () => {
+  test("absent machine record skips the step", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const plan = buildUninstallPlan(
+      const plan = await buildUninstallPlan(
         {
           userDataRoot,
           userCacheRoot,

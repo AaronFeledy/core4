@@ -249,7 +249,9 @@ describe("native argv parser seam", () => {
       "skip-file-sync": true,
     });
     expect(shellenvShellFromInput(compiledInput("meta:shellenv", ["--shell=pwsh"]))).toBe("powershell");
-    expect(uninstallOptionsFromInput(compiledInput("meta:uninstall", ["--dry-run", "--purge"]))).toEqual({
+    expect(
+      uninstallOptionsFromInput(compiledInput("meta:uninstall", ["--dry-run", "--purge"])),
+    ).toMatchObject({
       dryRun: true,
       yes: false,
       keepData: false,

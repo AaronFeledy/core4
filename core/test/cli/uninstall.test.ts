@@ -149,11 +149,11 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("plan includes a runtime-service step targeting the runtime directory", () => {
+  test("plan includes a runtime-service step targeting the runtime directory", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
@@ -173,11 +173,11 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("plan reports host-proxy sessions under userDataRoot run directory without removing the run root", () => {
+  test("plan reports host-proxy sessions under userDataRoot run directory without removing the run root", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const hostProxyRunDir = join(userDataRoot, "run");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
@@ -228,7 +228,7 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("runtime-service is removed under both keep-data and purge", () => {
+  test("runtime-service is removed under both keep-data and purge", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
@@ -240,13 +240,13 @@ describe("meta:uninstall", () => {
       };
 
       expect(
-        buildUninstallPlan(options, "keep-data").find((step) => step.id === "runtime-service"),
+        (await buildUninstallPlan(options, "keep-data")).find((step) => step.id === "runtime-service"),
       ).toMatchObject({
         target: runtimeDir,
         status: "owned",
       });
       expect(
-        buildUninstallPlan(options, "purge").find((step) => step.id === "runtime-service"),
+        (await buildUninstallPlan(options, "purge")).find((step) => step.id === "runtime-service"),
       ).toMatchObject({
         target: runtimeDir,
         status: "owned",
@@ -366,12 +366,12 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("managed-provider-runtime remains distinct from runtime-service", () => {
+  test("managed-provider-runtime remains distinct from runtime-service", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
       const providerRuntime = join(userDataRoot, "providers", "lando");
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
@@ -741,4 +741,157 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("purge aborts and preserves data when running apps are discovered", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Simulate discovered RUNNING apps (as if docker/podman ps returned them)
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [
+            {
+              appId: "test-app",
+              appName: "test-app",
+              providerId: "docker",
+              appRoot: "/fake/path",
+              services: ["web", "database"],
+            },
+          ],
+        }),
+      );
+
+      // Uninstall must fail
+      expect(result.failed).toBe(true);
+
+      // Running-apps step must be marked as failed
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.outcome).toBe("failed");
+      expect(runningAppsStep?.error).toContain("Uninstall cannot proceed while");
+      expect(runningAppsStep?.error).toContain("lando poweroff");
+
+      // Critical: data/cache/config directories must NOT be deleted
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(existsSync(userConfRoot)).toBe(true);
+
+      // None of the data/cache/config steps should have been executed
+      const dataStep = result.steps.find((step) => step.id === "user-data-root");
+      const cacheStep = result.steps.find((step) => step.id === "user-cache-root");
+      const confStep = result.steps.find((step) => step.id === "user-conf-root");
+
+      // These steps should either not be in the executed list, or should not have "completed" outcome
+      if (dataStep) expect(dataStep.outcome).not.toBe("completed");
+      if (cacheStep) expect(cacheStep.outcome).not.toBe("completed");
+      if (confStep) expect(confStep.outcome).not.toBe("completed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge succeeds when apps are cached but not running", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Create fake cache files to simulate stopped apps (files exist but containers not running)
+      const dockerAppsDir = join(userDataRoot, "providers", "provider-docker", "apps");
+      mkdirSync(dockerAppsDir, { recursive: true });
+      writeFileSync(
+        join(dockerAppsDir, "stopped-app.json"),
+        JSON.stringify({
+          plan: {
+            id: "stopped-app",
+            name: "stopped-app",
+            root: "/fake/path",
+            services: { web: {} },
+          },
+        }),
+      );
+
+      // Discovery returns empty (no running containers, only cached files)
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [], // No running apps
+        }),
+      );
+
+      // Uninstall must succeed
+      expect(result.failed).toBe(false);
+
+      // Running-apps step should be skipped (no running apps found)
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.status).toBe("skipped");
+
+      // Data/cache/config directories should be deleted
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(existsSync(userConfRoot)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge aborts when containers are running even without cache files", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      // Simulate running container discovered by docker ps but no cache file exists
+      // This can happen if cache was corrupted/deleted or container started outside normal flow
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: userConfRoot,
+          _execPath: join(root, "lando"),
+          _listDiscoveredApps: async () => [
+            {
+              appId: "orphaned-app",
+              appName: "orphaned-app",
+              providerId: "docker",
+              appRoot: "(unknown)", // No cache file
+              services: [],
+            },
+          ],
+        }),
+      );
+
+      // Uninstall must fail even without cache details
+      expect(result.failed).toBe(true);
+
+      // Running-apps step must be marked as failed
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.outcome).toBe("failed");
+      expect(runningAppsStep?.error).toContain("Uninstall cannot proceed while");
+
+      // Critical: data/cache/config directories must NOT be deleted
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(existsSync(userConfRoot)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

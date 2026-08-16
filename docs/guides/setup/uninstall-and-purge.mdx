@@ -22,9 +22,28 @@ target gets removed.
 # app data, global app state, and app-affecting caches
 uninstall --yes --keep-data
 
-# Opts into deliberate removal of Lando-owned data and cache roots too
+# Opts into deliberate removal of Lando-owned data and cache roots
 uninstall --yes --purge
 ```
+
+**Important:** `--purge` will fail with a non-zero exit code if any Lando
+apps are still running. Stop all apps first:
+
+```sh
+# Stop all apps (preserves containers/volumes for restart)
+lando poweroff
+
+# Or destroy specific apps (removes containers and volumes)
+lando destroy --volumes
+
+# Then purge Lando
+lando uninstall --yes --purge
+```
+
+When `--purge` succeeds, it has removed:
+- User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
+- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
+- User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
 A binary outside Lando's managed bin directory is never removed
 automatically — the plan prints exact manual removal steps for it instead.
