@@ -40,9 +40,10 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
+  // Only single-token forms can be remapped by commandAliases; multi-token
+  // registered paths such as `recipes list` stay on the cold path in-app.
   const appSensitiveAlias =
-    (argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "")) ||
-    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list");
+    argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
   const appAliasContext = appSensitiveAlias && (await hasAppContext(process.cwd()));
 
   if (
@@ -83,7 +84,7 @@ const main = async (): Promise<void> => {
 
   if (
     (argv.length === 1 && (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
-    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list" && !appAliasContext) ||
+    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
     (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list")
   ) {
     const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
