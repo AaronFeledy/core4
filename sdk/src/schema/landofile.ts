@@ -910,10 +910,22 @@ const ComposeConfigConfig = Schema.Struct({
   name: Schema.optional(Schema.String),
 });
 
+export const CommandAliasesShape = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether top-level command aliases are enabled for this app. Defaults to true.",
+  }),
+  disabled: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Top-level alias tokens disabled for this app; canonical command ids remain callable.",
+  }),
+  custom: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    description: "App-specific top-level alias tokens mapped to canonical command ids.",
+  }),
+}).annotations({ identifier: "CommandAliasesShape", title: "Command Aliases" });
+export type CommandAliasesShape = typeof CommandAliasesShape.Type;
+
 /**
  * LandofileShape — the authored Landofile shape.
- * Excludes fields not modeled here: commandAliases:, events:, keys:, plugins:,
- * pluginDirs:.
+ * Excludes fields not modeled here: events:, keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(
@@ -936,6 +948,9 @@ const LandofileShapeBase = Schema.Struct({
   recipe: Schema.optional(Schema.String),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
+  commandAliases: Schema.optional(CommandAliasesShape).annotations({
+    description: "Per-app top-level command alias remapping and disablement policy.",
+  }),
   agentEnv: Schema.optional(Schema.Boolean),
   version: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),

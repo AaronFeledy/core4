@@ -1,15 +1,12 @@
-/**
- * `lando app cache:refresh` — rebuild the app plan and command index cache.
- *
- * This command performs full app bootstrap and rebuilds the app plan cache
- * and command index without contacting the provider.
- */
+/** Rebuilds the app plan and command index caches without contacting the provider. */
 import { Effect, Schema } from "effect";
 
 import type {
   AppIdReservedError,
   CacheError,
   CapabilityError,
+  CommandAliasConflictError,
+  CommandAliasTargetError,
   ComposeKeyRejectedError,
   LandoCommandError,
   LandofileFormConflictError,
@@ -39,6 +36,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution";
+import { commandAliasRegistrationError } from "../command-alias-policy";
 
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
 import {
@@ -86,6 +84,8 @@ type AppCacheRefreshError =
   | PluginManifestError
   | CapabilityError
   | PublicationUnsupportedError
+  | CommandAliasConflictError
+  | CommandAliasTargetError
   | CacheError
   | LandoCommandError
   | NoProviderInstalledError
@@ -123,6 +123,11 @@ export const refreshAppCache = (
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);
     const entries = compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan));
+    const aliasError = commandAliasRegistrationError(
+      landofile.commandAliases,
+      entries.map((entry) => entry.id),
+    );
+    if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
     const appCachePath = yield* writeAppCommandCacheStrict({
       landofile,

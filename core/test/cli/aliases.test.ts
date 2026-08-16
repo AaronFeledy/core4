@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -34,10 +34,15 @@ interface CommandWithAliases {
   readonly aliases?: ReadonlyArray<string>;
 }
 
-const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult> => {
+const runCommand = async (
+  cmd: Array<string>,
+  cwd = coreRoot,
+  env: Record<string, string | undefined> = process.env,
+): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd,
     cwd,
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -126,6 +131,42 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
             "Run `lando init --full --name=<name>` to scaffold an app.",
           );
         }
+      } finally {
+        await rm(cwd, { recursive: true, force: true });
+      }
+    }, 120_000);
+
+    test("route app command overrides through the compiled dispatcher", async () => {
+      const cwd = await mkdtemp(join(tmpdir(), "lando-compiled-app-alias-"));
+      const cacheRoot = join(cwd, "cache");
+      try {
+        const [{ Effect }, { writeAppCommandCacheStrict }] = await Promise.all([
+          import("effect"),
+          import("@lando/engine/cache/command-index-writer"),
+        ]);
+        await mkdir(join(cwd, ".lando", "scripts"), { recursive: true });
+        await writeFile(join(cwd, ".lando.yml"), "name: compiled-alias\n");
+        await writeFile(join(cwd, ".lando", "scripts", "greet.bun.sh"), "echo -n compiled-alias-ok\n");
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: {
+              name: "compiled-alias",
+              commandAliases: {
+                custom: { start: "app:greet", bun: "app:greet", x: "app:greet" },
+              },
+            },
+            entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+            cwd,
+            cacheRoot,
+          }),
+        );
+        const env = { ...process.env, LANDO_USER_CACHE_ROOT: cacheRoot };
+
+        const results = await Promise.all(
+          ["start", "bun", "x"].map((alias) => runCommand([binaryPath, alias, "--format=json"], cwd, env)),
+        );
+
+        for (const result of results) expect(result.stdout).toContain('"command":"app:greet"');
       } finally {
         await rm(cwd, { recursive: true, force: true });
       }

@@ -93,6 +93,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   NetworkingPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   IsolateMode: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProviderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CommandAliasesShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",

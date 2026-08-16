@@ -1,15 +1,13 @@
 import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 
+import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
-
-const contributionId = (entry: string | { readonly id: string }): string =>
-  typeof entry === "string" ? entry : entry.id;
 
 export const COMMAND_INDEX_SCHEMA_VERSION = 2n;
 
@@ -28,6 +26,24 @@ export interface CommandIndexEntry {
   readonly source?: "bun-script";
 }
 
+interface CommandAliasPolicy {
+  readonly enabled: boolean;
+  readonly disabled: ReadonlyArray<string>;
+  readonly custom: Readonly<Record<string, string>>;
+}
+
+export const normalizeAppCommandAliasPolicy = (landofile: LandofileShape): CommandAliasPolicy | undefined => {
+  const policy = landofile.commandAliases;
+  if (policy === undefined) return undefined;
+  return {
+    enabled: policy.enabled ?? true,
+    disabled: [...new Set(policy.disabled ?? [])].sort((left, right) => left.localeCompare(right)),
+    custom: Object.fromEntries(
+      Object.entries(policy.custom ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  };
+};
+
 export interface AppCommandIndexPayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
@@ -35,11 +51,13 @@ export interface AppCommandIndexPayload {
   readonly sourceFile: string;
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
+  readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly toolingFingerprint?: string;
   readonly entriesFingerprint?: string;
+  readonly aliasPolicy?: CommandAliasPolicy;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
@@ -105,7 +123,7 @@ export const derivePluginCommandIdsByPlugin = (
           [
             manifest.name,
             [...(manifest.contributes?.commands ?? [])]
-              .map(contributionId)
+              .map((entry) => (typeof entry === "string" ? entry : entry.id))
               .sort((a, b) => a.localeCompare(b)),
           ] as const,
       )
@@ -117,6 +135,7 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
     services: landofile.services ?? null,
     tooling: landofile.tooling ?? null,
     toolingDefaults: landofile.toolingDefaults ?? null,
+    commandAliases: landofile.commandAliases ?? null,
     includes: landofile.includes ?? null,
     versionConstraints: getVersionConstraintEntries(landofile, ".lando.yml"),
   });
@@ -124,23 +143,15 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
 export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>
   stableFingerprint(entries);
 
-const writeHeader = (magic: Uint8Array): Uint8Array => {
+const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
   const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
   header.set(magic, 0);
   new DataView(header.buffer).setBigUint64(VERSION_OFFSET, COMMAND_INDEX_SCHEMA_VERSION, true);
-  return header;
-};
-
-const concat = (head: Uint8Array, tail: Uint8Array): Uint8Array => {
-  const out = new Uint8Array(head.byteLength + tail.byteLength);
-  out.set(head, 0);
-  out.set(tail, head.byteLength);
-  return out;
-};
-
-const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
   const body = new Uint8Array(serialize(payload));
-  return concat(writeHeader(magic), body);
+  const bytes = new Uint8Array(header.byteLength + body.byteLength);
+  bytes.set(header, 0);
+  bytes.set(body, header.byteLength);
+  return bytes;
 };
 
 const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {

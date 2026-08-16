@@ -60,14 +60,14 @@
       "acceptanceCriteria": [
         "commandAliases removed from BETA_TOP_LEVEL_KEYS; schema per §8.1; SDK snapshots updated.",
         "Native dispatcher resolves app aliases after canonical ids and registered aliases; shadowing a canonical id rejected with CommandAliasConflictError; disablement works.",
-        "Identical resolution in source and compiled dispatch and on the tooling hot path (cached app plan, no full bootstrap).",
+        "Identical resolution in source and compiled dispatch and on the tooling hot path (cached app plan, no full bootstrap) for Landofiles fully determined by file inputs (declarative YAML, no template rendering). Dynamic forms (.lando.ts, template-rendered) serve aliases from the last full decode per §7.1.1 and are excluded from freshness parity; no environment/host/template-input fingerprints as cache invalidation triggers.",
         "--format json reports resolved canonical id; help lists active app aliases in app context.",
         "Guide coverage in docs/guides/tooling/defaults-and-aliases.mdx; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Adjudicated 2026-08-15 (human, option 3): dynamic-form cache-only freshness parity is excluded; non-file invalidation fingerprints were removed, and deterministic dynamic-input provenance remains deferred to a dedicated spec story."
     },
     {
       "id": "US-565",

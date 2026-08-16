@@ -1,6 +1,7 @@
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
+import { escapeDiagnosticText } from "./diagnostic-text";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 
 type ColdCommandEntry = {
@@ -18,7 +19,7 @@ type ColdTopicEntry = {
   readonly hidden?: boolean;
 };
 
-export const renderColdRootHelp = (): string => {
+export const renderColdRootHelp = (activeAliases?: ReadonlyArray<readonly [string, string]>): string => {
   const entries: ReadonlyArray<readonly [string, ColdCommandEntry]> = Object.entries(
     COMMAND_REGISTRY_MANIFEST.commands,
   );
@@ -63,8 +64,9 @@ COMMANDS`,
     for (const { spec } of namespaceEntries) lines.push(`    ${spec.id.padEnd(30)} ${spec.summary}`);
   }
   lines.push("", "ALIASES");
-  for (const [alias, canonicalId] of aliases.sort(([left], [right]) => left.localeCompare(right))) {
-    lines.push(`  ${alias} -> ${canonicalId}`);
+  for (const [alias, canonicalId] of activeAliases ??
+    aliases.sort(([left], [right]) => left.localeCompare(right))) {
+    lines.push(`  ${escapeDiagnosticText(alias)} -> ${escapeDiagnosticText(canonicalId)}`);
   }
   return lines.join("\n");
 };

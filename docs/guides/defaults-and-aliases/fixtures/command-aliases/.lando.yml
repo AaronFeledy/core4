@@ -1,0 +1,13 @@
+name: command-aliases-demo
+runtime: 4
+services:
+  web:
+    type: node:lts
+    primary: true
+tooling:
+  greet:
+    service: web
+    cmd: echo hello
+commandAliases:
+  custom:
+    hi: app:greet

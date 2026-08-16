@@ -132,6 +132,7 @@
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`
+- `CommandAliasesShape`
 - `CommandSpec`
 - `CommandWarning`
 - `ComponentId`
@@ -599,6 +600,7 @@
 - `ArchiveFormatError`
 - `ArtifactTransferError`
 - `CommandAliasConflictError`
+- `CommandAliasTargetError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`
