@@ -1,10 +1,5 @@
-import { createHash } from "node:crypto";
-
 import type { RecipeRenderer } from "../registry";
 import { DRUPAL_CMS_RECIPE_ID } from "./manifest";
-
-const postgresPassword = (appName: string): string =>
-  `lando-${createHash("sha256").update(appName).digest("hex").slice(0, 16)}`;
 
 export const DRUPAL_CMS_SCAFFOLD_COMMAND = [
   "set -eu",
@@ -49,11 +44,15 @@ export const DRUPAL_CMS_SCAFFOLD_COMMAND = [
 ].join("\n");
 
 const renderLandofile = (appName: string, php: string, database: string): string => {
-  const dbHost = database === "postgres" ? "database" : "database";
-  const dbPort = database === "postgres" ? "5432" : "3306";
   const dbDriver = database === "postgres" ? "pgsql" : "mysql";
-  const dbPassword = database === "postgres" ? postgresPassword(appName) : "lando";
   const dbName = appName;
+
+  // For postgres, compute the password hash as the postgres service does
+  // For mariadb, use the hardcoded "lando" password
+  const dbPasswordExpr =
+    database === "postgres"
+      ? `$(printf '%s' '${appName}' | sha256sum | cut -c1-16 | sed 's/^/lando-/')`
+      : "lando";
 
   return [
     `name: ${appName}`,
@@ -66,13 +65,6 @@ const renderLandofile = (appName: string, php: string, database: string): string
     "    webroot: /app/web",
     "    allowOverride: true",
     "    port: 80",
-    "    environment:",
-    `      LANDO_DB_HOST: ${dbHost}`,
-    `      LANDO_DB_PORT: ${dbPort}`,
-    "      LANDO_DB_USER: lando",
-    `      LANDO_DB_PASSWORD: ${dbPassword}`,
-    `      LANDO_DB_NAME: ${dbName}`,
-    `      LANDO_DB_DRIVER: ${dbDriver}`,
     "    dependsOn:",
     "      - database",
     "  database:",
@@ -98,7 +90,7 @@ const renderLandofile = (appName: string, php: string, database: string): string
     "    service: appserver",
     "    description: Install Drupal CMS 2 using the drupal_cms_starter recipe.",
     "    arguments: false",
-    '    cmd: vendor/bin/drush site:install recipes/drupal_cms_starter --db-url="$LANDO_DB_DRIVER://lando:$LANDO_DB_PASSWORD@$LANDO_DB_HOST:$LANDO_DB_PORT/$LANDO_DB_NAME" -y',
+    `    cmd: vendor/bin/drush site:install recipes/drupal_cms_starter --db-url="${dbDriver}://lando:${dbPasswordExpr}@database/${dbName}" -y`,
     "",
   ].join("\n");
 };
