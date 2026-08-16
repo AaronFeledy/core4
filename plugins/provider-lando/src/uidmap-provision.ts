@@ -71,34 +71,39 @@ export const inspectUidmapSetupPlan = (
     return Effect.succeed({ providerId: PROVIDER_ID, changes: [] });
   }
 
-  // Only Ubuntu can be auto-provisioned
+  // Auto-provision on Ubuntu and Debian (use apt-get)
   if (
-    hostPlatformFamily(input.platform) !== "linux" ||
-    input.host?.id !== "ubuntu" ||
-    input.host.versionId !== "26.04"
+    hostPlatformFamily(input.platform) === "linux" &&
+    input.host !== undefined &&
+    (input.host.id === "ubuntu" || input.host.id === "debian")
   ) {
-    return Effect.fail(
-      new ProviderSetupUnsupportedHostError({
-        providerId: PROVIDER_ID,
-        prerequisite: "uidmap-tools",
-        message: "Automatic uidmap provisioning is supported only on Ubuntu 26.04.",
-        remediation: manualUidmapRemediation,
-        ...(input.host === undefined ? {} : { host: input.host }),
-      }),
-    );
+    return Effect.succeed({
+      providerId: PROVIDER_ID,
+      changes: [
+        {
+          _tag: "install-uidmap",
+          platform: "linux",
+          distribution: "ubuntu",
+          version: "26.04",
+          reason: "Rootless Podman requires newuidmap and newgidmap before the managed runtime can start.",
+        },
+      ],
+    });
   }
-  return Effect.succeed({
-    providerId: PROVIDER_ID,
-    changes: [
-      {
-        _tag: "install-uidmap",
-        platform: "linux",
-        distribution: "ubuntu",
-        version: "26.04",
-        reason: "Rootless Podman requires newuidmap and newgidmap before the managed runtime can start.",
-      },
-    ],
-  });
+
+  // Unsupported distribution - provide manual remediation
+  return Effect.fail(
+    new ProviderSetupUnsupportedHostError({
+      providerId: PROVIDER_ID,
+      prerequisite: "uidmap-tools",
+      message:
+        input.host === undefined
+          ? "Automatic uidmap provisioning requires a recognized Linux distribution."
+          : `Automatic uidmap provisioning is not supported on ${input.host.id}.`,
+      remediation: manualUidmapRemediation,
+      ...(input.host === undefined ? {} : { host: input.host }),
+    }),
+  );
 };
 
 const provisioningFailure = (
@@ -109,9 +114,9 @@ const provisioningFailure = (
     providerId: PROVIDER_ID,
     change: "install-uidmap",
     stage,
-    message: `Failed to ${stage === "update" ? "refresh Ubuntu package metadata" : "install uidmap"}.`,
+    message: `Failed to ${stage === "update" ? "refresh apt-get package metadata" : "install uidmap"}.`,
     remediation:
-      "Resolve the apt-get failure, then rerun `lando setup --yes`; or install Ubuntu's uidmap package manually.",
+      "Resolve the apt-get failure, then rerun `lando setup --yes`; or install uidmap tools manually.",
     exitCode: result.exitCode,
     stderr: result.stderr,
   });

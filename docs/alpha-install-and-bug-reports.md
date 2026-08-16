@@ -98,78 +98,70 @@ These will be stood up before Beta. For now, use the GitHub prerelease or npm in
 After installing Lando, run setup to provision the container runtime provider:
 
 ```bash
-lando setup
+lando setup --yes
 ```
 
-The default provider is the **Lando-managed Podman runtime**. This bundles a rootless Podman installation that runs independently of any system Docker or Podman.
+The `--yes` flag consents to automatic prerequisite installation (uidmap tools on supported distributions). The default provider is the **Lando-managed Podman runtime**, which bundles a rootless Podman installation that runs independently of any system Docker or Podman.
 
-### Setup requirements for managed Podman
+### What lando setup does automatically
 
-The managed Podman provider requires:
+On first-time Linux systems, `lando setup --yes` can automatically handle most managed Podman prerequisites:
 
-- **Linux x64 or arm64** (Ubuntu, Debian, Fedora, or compatible distributions)
-- **Subordinate UID/GID ranges** configured in `/etc/subuid` and `/etc/subgid`
-- **uidmap helper tools** (`newuidmap` and `newgidmap`)
-- **cgroups v2 controller delegation** (requires systemd on most distributions)
-- **XDG_RUNTIME_DIR** set for your user session
+- **uidmap tools**: On Ubuntu 26.04, Lando installs the `uidmap` package automatically. Other distributions require manual installation (see below).
+- **Runtime bundle**: Downloads and extracts the Lando-managed Podman runtime.
+- **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing (when the global app is available).
 
-#### Installing uidmap tools
+### Manual prerequisites (when lando setup cannot auto-fix)
 
-On **Ubuntu 26.04**, Lando can automatically install the `uidmap` package if you consent with `lando setup --yes`. On other distributions, you must install uidmap tools manually before running setup:
+If `lando setup` fails, follow the remediation guidance in the error message. Common manual steps:
 
-**Debian/Ubuntu:**
+#### uidmap tools (non-Ubuntu distributions)
+
+**Debian:**
 ```bash
 sudo apt-get install uidmap
+lando setup
 ```
 
 **Fedora/RHEL:**
 ```bash
 sudo dnf install shadow-utils
+lando setup
 ```
 
-After installing uidmap, rerun `lando setup` to complete the provider configuration.
+#### Subordinate UID/GID ranges
 
-#### Configuring cgroups v2 delegation
-
-If setup fails with a cgroups v2 delegation error, enable systemd user cgroup delegation. Create `/etc/systemd/system/user@.service.d/delegate.conf` with:
-
-```ini
-[Service]
-Delegate=cpu cpuset io memory pids
-```
-
-Then reload systemd and rerun setup:
+If setup reports missing subuid/subgid ranges, add them:
 
 ```bash
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+lando setup
+```
+
+#### cgroups v2 delegation
+
+If setup reports a cgroups delegation error, create the systemd drop-in:
+
+```bash
+sudo mkdir -p /etc/systemd/system/user@.service.d
+echo -e "[Service]\nDelegate=cpu cpuset io memory pids" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
 sudo systemctl daemon-reload
 lando setup
 ```
 
-#### Configuring subordinate UIDs/GIDs
-
-If setup fails with a subuid/subgid error, ensure your user has subordinate UID and GID ranges. Check `/etc/subuid` and `/etc/subgid` for an entry like:
-
-```
-yourusername:100000:65536
-```
-
-If missing, add entries manually (requires root), then rerun `lando setup`.
-
 #### XDG_RUNTIME_DIR
 
-If setup fails with an XDG_RUNTIME_DIR error, ensure your user session sets this variable. Most modern distributions with systemd set this automatically. Verify with:
+If setup reports a missing XDG_RUNTIME_DIR, log out and back in. Most modern distributions with systemd set this automatically. If the issue persists after re-login, your session manager may need configuration (distribution-specific).
 
-```bash
-echo $XDG_RUNTIME_DIR
-```
-
-If empty, log out and back in, or configure your session manager to set it.
+### Verifying setup
 
 After setup completes, verify the runtime is ready:
 
 ```bash
 lando doctor
 ```
+
+If `lando doctor` reports issues, use `lando doctor --fix` to attempt automatic remediation (when available).
 
 Advanced users who prefer system Docker can specify `--provider=docker` when running setup.
 
