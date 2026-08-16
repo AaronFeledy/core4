@@ -273,3 +273,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Do not emulate POSIX positional parameters by textual substitution; preserve structured shell source and argv until the execution adapter can bind them without an external interpreter.
 ---
+
+## 2026-08-16 17:42 CDT - US-565 Review
+- Fixed the final Bugbot regression by self-providing `EventCommandExecutor` inside its captured runtime context, so a canonical event command may enter a different lifecycle event containing another `command:` step without losing nested execution or correlation. The recorded Build blockers and `passes: false` decision remain unchanged.
+- Verification: the 15-test canonical executor file, 14-test adjacent event-kernel file, and focused `@lando/core` typecheck passed; changed-file diagnostics were clean.
+---
