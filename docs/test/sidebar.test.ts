@@ -166,11 +166,11 @@ describe("docs landing page", () => {
     const links = internalLinksOf(source).map(normalizeLink);
 
     // Then: every documentation area has an entry point.
-    expect(links).toContain(`./${ALPHA_INSTALL_SLUG}/`);
-    expect(links.some((href) => href.includes("/guides/"))).toBe(true);
-    expect(links.some((href) => href.includes("/recipes/"))).toBe(true);
-    expect(links.some((href) => href.includes("/reference/"))).toBe(true);
-    expect(links).toContain("./embedding/");
+    expect(links).toContain(`/${ALPHA_INSTALL_SLUG}/`);
+    expect(links.some((href) => href.startsWith("/guides/"))).toBe(true);
+    expect(links.some((href) => href.startsWith("/recipes/"))).toBe(true);
+    expect(links.some((href) => href.startsWith("/reference/"))).toBe(true);
+    expect(links).toContain("/embedding/");
   });
 
   test("only links pages that exist", async () => {
