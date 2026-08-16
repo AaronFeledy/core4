@@ -963,7 +963,9 @@ describe("meta:uninstall", () => {
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
           _listDiscoveredApps: async () => {
-            throw new Error("Failed to query container runtimes: podman: command not found; docker: command not found");
+            throw new Error(
+              "Failed to query container runtimes: podman: command not found; docker: command not found",
+            );
           },
         }),
       );
