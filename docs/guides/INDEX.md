@@ -168,7 +168,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `lemp` | Nginx + PHP + MariaDB | `recipes/lemp/README.mdx` | Shipped |
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
-| `drupal-cms` | Drupal CMS / Starshot (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+| `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 
