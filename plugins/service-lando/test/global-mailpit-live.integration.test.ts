@@ -17,7 +17,7 @@ import {
   MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
   MAILPIT_WEB_PORT,
-} from "../../../plugins/service-lando/src/mailpit-constants.ts";
+} from "../src/mailpit-constants.ts";
 
 const providerId = ProviderId.make("lando");
 const SUBJECT = "Mailpit live integration";

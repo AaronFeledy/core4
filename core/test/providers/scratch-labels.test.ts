@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime } from "effect";
 
+import { scratchLabelsForPlan as dockerScratchLabelsForPlan } from "@lando/provider-docker";
+import { scratchLabelsForPlan as landoScratchLabelsForPlan } from "@lando/provider-lando";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { scratchLabelsForPlan as dockerScratchLabelsForPlan } from "../../../plugins/provider-docker/src/index.ts";
-import { scratchLabelsForPlan as landoScratchLabelsForPlan } from "../../../plugins/provider-lando/src/bring-up.ts";
 
 const plan = (id: string, extensionId: string | undefined): AppPlan => ({
   id: AppId.make(id),
