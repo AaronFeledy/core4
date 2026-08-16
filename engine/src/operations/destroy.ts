@@ -23,7 +23,7 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-reso
 import { destroyAppAndRemoveRoutes } from "../lifecycle/routes.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { runAppEvent, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -134,6 +134,7 @@ export const destroyApp = (
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
         const plan = yield* planner.plan(landofile, capabilities);
+        yield* runAppInitEvents(plan);
         return yield* destroyAppForTarget(options, {
           plan,
           root: plan.root,

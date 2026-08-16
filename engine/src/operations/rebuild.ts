@@ -27,7 +27,7 @@ import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import type { AppRef } from "@lando/sdk/schema";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
-import { runAppEvent, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -73,6 +73,7 @@ export const rebuildApp = (
         return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
       }));
     const plan = resolvedTarget.plan;
+    yield* runAppInitEvents(plan);
     const events = yield* EventService;
     const ref: AppRef = resolvedTarget.app;
     const timestamp = () => DateTime.unsafeMake(new Date().toISOString());

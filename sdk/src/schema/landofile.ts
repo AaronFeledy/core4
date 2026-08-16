@@ -687,6 +687,8 @@ export const ToolingArgShape = Schema.Struct({
 export type ToolingArgShape = typeof ToolingArgShape.Type;
 
 export const AppLifecycleEventName = Schema.Literal(
+  "pre-init",
+  "post-init",
   "pre-start",
   "post-start",
   "pre-stop",
@@ -698,12 +700,20 @@ export const AppLifecycleEventName = Schema.Literal(
 ).annotations({ description: "App lifecycle point that runs an ordered Landofile event step list." });
 export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
 
+const EventStepCondition = Schema.Union(Schema.String, Schema.Boolean);
+
 export const EventCommandStep = Schema.Struct({
   cmd: Schema.optional(Schema.Never),
   task: Schema.optional(Schema.Never),
   command: Schema.String,
+  defer: Schema.optional(Schema.Never),
+  for: Schema.optional(Schema.Never),
   flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
   args: Schema.optional(Schema.Array(Schema.String)),
+  raw: Schema.optional(Schema.Array(Schema.String)),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
 }).annotations({
   identifier: "EventCommandStep",
   description: "Direct invocation of a canonical Lando command.",
@@ -714,6 +724,12 @@ export const EventTaskStep = Schema.Struct({
   cmd: Schema.optional(Schema.Never),
   task: Schema.String,
   command: Schema.optional(Schema.Never),
+  defer: Schema.optional(Schema.Never),
+  for: Schema.optional(Schema.Never),
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
 }).annotations({
   identifier: "EventTaskStep",
   description: "Invocation of an effective Landofile tooling task.",
@@ -724,20 +740,197 @@ export const EventCmdStep = Schema.Struct({
   cmd: Schema.String,
   task: Schema.optional(Schema.Never),
   command: Schema.optional(Schema.Never),
+  defer: Schema.optional(Schema.Never),
+  for: Schema.optional(Schema.Never),
   service: Schema.optional(Schema.String),
   env: Schema.optional(ToolingEnvironment),
   user: Schema.optional(Schema.String),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
 }).annotations({
   identifier: "EventCmdStep",
   description: "Provider tooling command with optional service targeting.",
 });
 export type EventCmdStep = typeof EventCmdStep.Type;
 
+const EventForVarSelector = Schema.Struct({
+  var: Schema.String,
+  matrix: Schema.optional(Schema.Never),
+  sources: Schema.optional(Schema.Never),
+  generates: Schema.optional(Schema.Never),
+});
+
+const EventForMatrixSelector = Schema.Struct({
+  var: Schema.optional(Schema.Never),
+  matrix: Schema.Record({ key: Schema.String, value: Schema.Array(ToolingVarLiteral) }),
+  sources: Schema.optional(Schema.Never),
+  generates: Schema.optional(Schema.Never),
+});
+
+const EventForSourcesSelector = Schema.Struct({
+  var: Schema.optional(Schema.Never),
+  matrix: Schema.optional(Schema.Never),
+  sources: Schema.Literal(true),
+  generates: Schema.optional(Schema.Never),
+});
+
+const EventForGeneratesSelector = Schema.Struct({
+  var: Schema.optional(Schema.Never),
+  matrix: Schema.optional(Schema.Never),
+  sources: Schema.optional(Schema.Never),
+  generates: Schema.Literal(true),
+});
+
+export const EventForSelector = Schema.Union(
+  Schema.Array(ToolingVarLiteral),
+  EventForVarSelector,
+  EventForMatrixSelector,
+  EventForSourcesSelector,
+  EventForGeneratesSelector,
+).annotations({
+  identifier: "EventForSelector",
+  description: "Literal or task-derived values selected for an event step loop.",
+});
+export type EventForSelector = typeof EventForSelector.Type;
+
+const EventDeferredCmdShorthand = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.optional(Schema.Never),
+  command: Schema.optional(Schema.Never),
+  defer: Schema.String,
+  for: Schema.optional(Schema.Never),
+  service: Schema.optional(Schema.String),
+  env: Schema.optional(ToolingEnvironment),
+  user: Schema.optional(Schema.String),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventDeferredCmdStep = Schema.Struct({
+  cmd: Schema.String,
+  task: Schema.optional(Schema.Never),
+  command: Schema.optional(Schema.Never),
+  defer: Schema.Literal(true),
+  for: Schema.optional(Schema.Never),
+  service: Schema.optional(Schema.String),
+  env: Schema.optional(ToolingEnvironment),
+  user: Schema.optional(Schema.String),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventDeferredTaskStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.String,
+  command: Schema.optional(Schema.Never),
+  defer: Schema.Literal(true),
+  for: Schema.optional(Schema.Never),
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventDeferredCommandStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.optional(Schema.Never),
+  command: Schema.String,
+  defer: Schema.Literal(true),
+  for: Schema.optional(Schema.Never),
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  args: Schema.optional(Schema.Array(Schema.String)),
+  raw: Schema.optional(Schema.Array(Schema.String)),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+export const EventDeferStep = Schema.Union(
+  EventDeferredCmdShorthand,
+  EventDeferredCmdStep,
+  EventDeferredTaskStep,
+  EventDeferredCommandStep,
+).annotations({
+  identifier: "EventDeferStep",
+  description: "An event action registered for LIFO finalization.",
+});
+export type EventDeferStep = typeof EventDeferStep.Type;
+
+const EventForCmdStep = Schema.Struct({
+  cmd: Schema.String,
+  task: Schema.optional(Schema.Never),
+  command: Schema.optional(Schema.Never),
+  defer: Schema.optional(Schema.Never),
+  for: EventForSelector,
+  service: Schema.optional(Schema.String),
+  env: Schema.optional(ToolingEnvironment),
+  user: Schema.optional(Schema.String),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventForTaskStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.String,
+  command: Schema.optional(Schema.Never),
+  defer: Schema.optional(Schema.Never),
+  for: EventForSelector,
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventForCommandStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.optional(Schema.Never),
+  command: Schema.String,
+  defer: Schema.optional(Schema.Never),
+  for: EventForSelector,
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  args: Schema.optional(Schema.Array(Schema.String)),
+  raw: Schema.optional(Schema.Array(Schema.String)),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+const EventForDeferredCmdStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.optional(Schema.Never),
+  command: Schema.optional(Schema.Never),
+  defer: Schema.String,
+  for: EventForSelector,
+  service: Schema.optional(Schema.String),
+  env: Schema.optional(ToolingEnvironment),
+  user: Schema.optional(Schema.String),
+  ignoreError: Schema.optional(Schema.Boolean),
+  if: Schema.optional(EventStepCondition),
+  silent: Schema.optional(Schema.Boolean),
+});
+
+export const EventForStep = Schema.Union(
+  EventForCmdStep,
+  EventForTaskStep,
+  EventForCommandStep,
+  EventForDeferredCmdStep,
+).annotations({
+  identifier: "EventForStep",
+  description: "An event action repeated for each selected value.",
+});
+export type EventForStep = typeof EventForStep.Type;
+
 export const EventStep = Schema.Union(
   Schema.String,
   EventCmdStep,
   EventTaskStep,
   EventCommandStep,
+  EventDeferStep,
+  EventForStep,
 ).annotations({
   identifier: "EventStep",
   description: "One ordered events-as-tasks step.",
@@ -745,6 +938,8 @@ export const EventStep = Schema.Union(
 export type EventStep = typeof EventStep.Type;
 
 export const LandofileEvents = Schema.Struct({
+  "pre-init": Schema.optional(Schema.Array(EventStep)),
+  "post-init": Schema.optional(Schema.Array(EventStep)),
   "pre-start": Schema.optional(Schema.Array(EventStep)),
   "post-start": Schema.optional(Schema.Array(EventStep)),
   "pre-stop": Schema.optional(Schema.Array(EventStep)),

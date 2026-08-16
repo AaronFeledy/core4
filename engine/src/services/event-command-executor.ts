@@ -1,10 +1,11 @@
 import { Context, type Effect } from "effect";
 
-import type { EventCommandStep } from "@lando/sdk/schema";
-
 export interface EventCommandExecutorInput {
-  readonly step: EventCommandStep;
+  readonly command: string;
+  readonly flags: Readonly<Record<string, string | number | boolean>>;
+  readonly args: ReadonlyArray<string>;
   readonly cwd: string;
+  readonly silent?: boolean;
 }
 
 interface EventCommandExecutorResult {

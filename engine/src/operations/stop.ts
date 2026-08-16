@@ -22,7 +22,7 @@ import {
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { runAppEvent, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -136,6 +136,7 @@ export const stopAppWithPlan = (
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
         const plan = yield* planner.plan(landofile, capabilities);
+        yield* runAppInitEvents(plan);
         return yield* stopAppWithResolvedPlan(options, {
           plan,
           root: plan.root,

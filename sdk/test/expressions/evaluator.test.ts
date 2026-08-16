@@ -119,6 +119,15 @@ describe("evaluateExpression happy paths", () => {
     expect(evaluateExpressionValue("{{ app.name }}", { app: { name: "demo" } })).toBe("demo");
   });
 
+  test.each([
+    ["event", "{{ event.name }}", { event: { name: "post-init" } }, "post-init"],
+    ["item", "{{ item.name }}", { item: { name: "appserver" } }, "appserver"],
+    ["key", "{{ key }}", { key: "web" }, "web"],
+  ] as const)("reads the %s invocation scope", (_scope, source, context, expected) => {
+    // Given / When / Then
+    expect(evaluateExpressionValue(source, context)).toBe(expected);
+  });
+
   test("gets a collection member", () => {
     expect(
       evaluateExpressionValue('{{ get(vars.config, "port") }}', { vars: { config: { port: 80 } } }),

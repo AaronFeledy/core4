@@ -11,6 +11,8 @@ import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "../src/tooling-beta
 
 const cliEntry = resolve(import.meta.dirname, "../../core/bin/lando.ts");
 const validNames = [
+  "pre-init",
+  "post-init",
   "pre-start",
   "post-start",
   "pre-stop",
@@ -49,19 +51,39 @@ describe("Landofile events", () => {
     ).toThrow();
   });
 
-  test("unsupported structured event fields fail closed before schema decode", async () => {
+  test("Wave 3 structured event fields graduate from the Beta scanner", async () => {
     // Given
-    const unsupportedSteps = [
+    const graduatedSteps = [
       { defer: "later" },
-      { for: "service" },
+      { for: ["service"], cmd: "echo {{ item }}" },
       { if: "condition" },
-      { dir: "/workspace" },
-      { platforms: ["linux"] },
       { command: "app:info", raw: true },
       { command: "app:info", silent: true },
       { command: "app:info", ignoreError: true },
       { task: "prepare", vars: { MODE: "fast" } },
       { task: "prepare", silent: true },
+    ] as const;
+
+    for (const step of graduatedSteps) {
+      // When
+      const outcome = await Effect.runPromise(
+        Effect.either(
+          rejectBetaToolingFeatures("/workspace/.lando.yml", {
+            events: { "pre-start": [step] },
+          }),
+        ),
+      );
+
+      // Then
+      expect(outcome._tag).toBe("Right");
+    }
+  });
+
+  test("unrelated event fields remain rejected by the Beta scanner", async () => {
+    // Given
+    const unsupportedSteps = [
+      { cmd: "pwd", dir: "/workspace" },
+      { cmd: "uname", platforms: ["linux"] },
     ] as const;
 
     for (const step of unsupportedSteps) {
@@ -77,35 +99,11 @@ describe("Landofile events", () => {
       // Then
       expect(outcome._tag).toBe("Left");
       if (outcome._tag !== "Left") throw new Error("expected unsupported event step failure");
-      expect(outcome.left).toMatchObject({
-        _tag: "NotImplementedError",
-        remediation: BETA_REMEDIATION,
-      });
+      expect(outcome.left).toMatchObject({ _tag: "NotImplementedError", remediation: BETA_REMEDIATION });
     }
   });
 
-  test("unsupported inert event fields are absent from the strict public schema", () => {
-    // Given
-    const unsupportedSteps = [
-      { command: "app:info", raw: true },
-      { command: "app:info", silent: true },
-      { command: "app:info", ignoreError: true },
-      { task: "prepare", vars: { MODE: "fast" } },
-      { task: "prepare", silent: true },
-    ] as const;
-
-    for (const step of unsupportedSteps) {
-      // When / Then
-      expect(() =>
-        Schema.decodeUnknownSync(LandofileShape)(
-          { name: "bad", events: { "pre-start": [step] } },
-          { onExcessProperty: "error" },
-        ),
-      ).toThrow();
-    }
-  });
-
-  test("an unknown event name fails closed listing the eight valid app lifecycle names", async () => {
+  test("an unknown event name fails closed listing the ten valid app lifecycle names", async () => {
     // Given
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-events-validation-")));
     try {

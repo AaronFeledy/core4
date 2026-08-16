@@ -190,6 +190,7 @@ export type StartAppError =
   | EventError
   | LandofileEventLifecycleReentryError
   | LandofileEventStepFailedError
+  | ToolingCompileError
   | FileSyncDriftError
   | FileSyncStartError
   | FileSyncStopError
@@ -231,6 +232,7 @@ export type StopAppError =
   | EventError
   | LandofileEventLifecycleReentryError
   | LandofileEventStepFailedError
+  | ToolingCompileError
   | FileSyncDriftError
   | FileSyncStartError
   | FileSyncStopError

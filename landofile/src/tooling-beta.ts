@@ -38,9 +38,7 @@ const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
 const BETA_VAR_KEYS = new Set(["raw"]);
-const BETA_EVENT_STEP_KEYS = new Set(["defer", "for", "if", "dir", "platforms"]);
-const BETA_EVENT_COMMAND_KEYS = new Set(["raw", "silent", "ignoreError"]);
-const BETA_EVENT_TASK_KEYS = new Set(["vars", "silent"]);
+const BETA_EVENT_STEP_KEYS = new Set(["dir", "platforms"]);
 
 interface ToolingBetaFinding {
   readonly task: string;
@@ -58,12 +56,7 @@ const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBe
     for (const step of steps) {
       if (step === null || typeof step !== "object" || Array.isArray(step)) continue;
       const structuredStep = step as Record<string, unknown>;
-      const unsupportedKey = Object.keys(structuredStep).find(
-        (key) =>
-          BETA_EVENT_STEP_KEYS.has(key) ||
-          (Object.hasOwn(structuredStep, "command") && BETA_EVENT_COMMAND_KEYS.has(key)) ||
-          (Object.hasOwn(structuredStep, "task") && BETA_EVENT_TASK_KEYS.has(key)),
-      );
+      const unsupportedKey = Object.keys(structuredStep).find((key) => BETA_EVENT_STEP_KEYS.has(key));
       if (unsupportedKey !== undefined) {
         return {
           task: event,

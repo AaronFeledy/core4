@@ -30,7 +30,7 @@ import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from ".
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
-import { runAppEvent, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -298,6 +298,7 @@ export const startApp = (
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
         const plan = yield* planner.plan(landofile, capabilities);
+        yield* runAppInitEvents(plan);
         return yield* startAppForTarget(
           options,
           { plan, root: plan.root, app: appRef(plan), landofile },

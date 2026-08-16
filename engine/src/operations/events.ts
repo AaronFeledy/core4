@@ -6,242 +6,173 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppLifecycleEventName, AppPlan, EventStep, ToolingTaskShape } from "@lando/sdk/schema";
-import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
+import type { ExpressionContext } from "@lando/sdk/expressions";
+import type { AppLifecycleEventName, AppPlan, EventStep } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
-import { runBunShellTooling } from "./tooling-bun-script.ts";
-import { emitToolingOutputProgress } from "./tooling-progress.ts";
-import { buildToolingInvocation } from "./tooling.ts";
+import { compileEventStepProgram } from "../tooling/step-compiler.ts";
+import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
+import { runToolingStepProgram } from "../tooling/step-runner.ts";
+import { makeEventStepRunners } from "./event-step-runtime.ts";
 
-const activeEventCommands = FiberRef.unsafeMake<ReadonlyArray<string>>([]);
-const OUTPUT_TAIL_LENGTH = 4_000;
+interface ActiveEventFrame {
+  readonly event: AppLifecycleEventName;
+  readonly command?: string;
+}
 
-const stepKind = (step: EventStep): "cmd" | "task" | "command" => {
-  if (typeof step === "string" || step.cmd !== undefined) return "cmd";
-  if (step.task !== undefined) return "task";
-  return "command";
+interface EventRedactor {
+  readonly redactString: (value: string) => string;
+}
+
+const activeEventFrames = FiberRef.unsafeMake<ReadonlyArray<ActiveEventFrame>>([]);
+
+const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
+  if (typeof step === "string") return "cmd";
+  if ("task" in step && step.task !== undefined) return "task";
+  if ("command" in step && step.command !== undefined) return "command";
+  return "cmd";
 };
 
-const eventToolingTask = (step: EventStep): ToolingTaskShape | undefined => {
-  if (typeof step === "string") return { cmd: step };
-  if (step.cmd !== undefined) {
-    return {
-      cmd: step.cmd,
-      ...(step.service === undefined ? {} : { service: step.service }),
-      ...(step.env === undefined ? {} : { env: step.env }),
-    };
-  }
-  return undefined;
+const redactionValuesForStep = (
+  step: EventStep,
+  tooling: ReturnType<typeof effectiveToolingForPlan>,
+): ReadonlyArray<string> => {
+  if (typeof step === "string") return [];
+  const env =
+    "task" in step && step.task !== undefined
+      ? tooling?.[step.task]?.env
+      : "env" in step
+        ? step.env
+        : undefined;
+  return env === undefined
+    ? []
+    : collectSecretEnvValues(
+        Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+      );
 };
 
-const outputTail = (stdout: string, stderr: string): string =>
-  `${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`.slice(-OUTPUT_TAIL_LENGTH);
-
-const failureExitCode = (error: unknown): number => {
+const eventError = (
+  error: unknown,
+  event: AppLifecycleEventName,
+  step: EventStep,
+  redactor: EventRedactor,
+): LandofileEventLifecycleReentryError | LandofileEventStepFailedError | ToolingCompileError => {
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "exitCode" in error &&
-    typeof error.exitCode === "number"
+    error instanceof LandofileEventLifecycleReentryError ||
+    error instanceof LandofileEventStepFailedError ||
+    error instanceof ToolingCompileError
   ) {
-    return error.exitCode;
+    return error;
   }
-  return 1;
+  return new LandofileEventStepFailedError({
+    message: `Event ${event} step 1 failed.`,
+    event,
+    index: 0,
+    kind: authoredStepKind(step),
+    exitCode: 1,
+    outputTail: redactor.redactString(error instanceof Error ? error.message : String(error)),
+    remediation: `Fix ${event} step 1, then rerun the lifecycle command.`,
+  });
 };
 
-const toolingRuntime = (tool: string) =>
+const runCanonicalCommand = (plan: AppPlan, leaf: ResolvedToolingCommandStepLeaf) =>
   Effect.gen(function* () {
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registry)) {
+    const executor = yield* Effect.serviceOption(EventCommandExecutor);
+    if (Option.isNone(executor)) {
       return yield* Effect.fail(
         new ToolingCompileError({
-          message: "Runtime provider registry is unavailable for event execution.",
-          tool,
+          message: `Canonical command event step ${leaf.command} is unavailable in this runtime.`,
+          tool: leaf.command,
+          remediation: "Use the app bootstrap layer that provides canonical command invocation.",
         }),
       );
     }
-    const engine = yield* Effect.serviceOption(ToolingEngine);
-    if (Option.isNone(engine)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({ message: "Tooling engine is unavailable for event execution.", tool }),
-      );
-    }
-    return { registry: registry.value, engine: engine.value };
-  });
-
-const executeEventStep = (plan: AppPlan, event: AppLifecycleEventName, step: EventStep) =>
-  Effect.gen(function* () {
-    if (typeof step !== "string" && step.command !== undefined) {
-      const active = yield* FiberRef.get(activeEventCommands);
-      if (active.includes(event)) {
-        return yield* Effect.fail(
-          new LandofileEventLifecycleReentryError({
-            message: `Command ${step.command} reentered lifecycle event ${event}.`,
-            event,
-            command: step.command,
-            remediation:
-              "Remove the lifecycle command cycle or call a non-lifecycle command from this event.",
-          }),
-        );
-      }
-      const executor = yield* Effect.serviceOption(EventCommandExecutor);
-      if (Option.isNone(executor)) {
-        return yield* Effect.fail(
-          new ToolingCompileError({
-            message: `Canonical command event step ${step.command} is unavailable in this runtime.`,
-            tool: step.command,
-            remediation: "Use the app bootstrap layer that provides canonical command invocation.",
-          }),
-        );
-      }
-      const result = yield* executor.value
-        .run({ step, cwd: String(plan.root) })
-        .pipe(Effect.locally(activeEventCommands, [...active, event]));
-      return { ...result, service: ":lando" };
-    }
-
-    if (typeof step !== "string" && step.task !== undefined) {
-      const task = effectiveToolingForPlan(plan)?.[step.task];
-      if (task === undefined) {
-        const script = yield* runBunShellTooling(
-          { name: step.task, cwd: String(plan.root), renderProgress: false },
-          String(plan.root),
-        );
-        if (script !== undefined) return script;
-        return yield* Effect.fail(
-          new ToolingCompileError({
-            message: `Unknown event tooling task ${step.task}.`,
-            tool: step.task,
-            remediation: "Define the named tooling task or update the event to reference an existing task.",
-          }),
-        );
-      }
-      const runtime = yield* toolingRuntime(step.task);
-      const provider = yield* runtime.registry.select(plan);
-      const result = yield* runtime.engine.run(buildToolingInvocation(step.task, task), plan, provider);
-      return { ...result, service: String(result.service) };
-    }
-
-    const task = eventToolingTask(step);
-    if (task === undefined) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: "Invalid event step.",
-          tool: event,
-          remediation: "Use a supported event cmd, task, or canonical command step.",
-        }),
-      );
-    }
-    const runtime = yield* toolingRuntime(event);
-    const provider = yield* runtime.registry.select(plan);
-    const result = yield* runtime.engine.run(
-      buildToolingInvocation(`${event}`, task, {
-        ...(typeof step !== "string" && step.user !== undefined ? { user: step.user } : {}),
-      }),
-      plan,
-      provider,
+    const active = yield* FiberRef.get(activeEventFrames);
+    const invokingFrames = active.map((frame, index) =>
+      index === active.length - 1 ? { ...frame, command: leaf.command } : frame,
     );
-    return { ...result, service: String(result.service) };
+    const result = yield* executor.value
+      .run({
+        command: leaf.command,
+        flags: leaf.flags,
+        args: [...leaf.args, ...leaf.raw],
+        cwd: String(plan.root),
+        silent: leaf.silent,
+      })
+      .pipe(Effect.locally(activeEventFrames, invokingFrames));
+    return { ...result, tool: leaf.command, service: ":lando" };
   });
 
 export const runAppEvent = (
   plan: AppPlan,
   event: AppLifecycleEventName,
-): Effect.Effect<void, LandofileEventStepFailedError | LandofileEventLifecycleReentryError> => {
+  payload?: ExpressionContext["event"],
+): Effect.Effect<
+  void,
+  LandofileEventLifecycleReentryError | LandofileEventStepFailedError | ToolingCompileError
+> => {
   const steps = effectiveEventsForPlan(plan)?.[event] ?? [];
-  if (steps.length === 0) return Effect.void;
+  const first = steps[0];
+  if (first === undefined) return Effect.void;
   return Effect.gen(function* () {
-    const eventsOption = yield* Effect.serviceOption(EventService);
-    const redactionOption = yield* Effect.serviceOption(RedactionService);
-    if (Option.isNone(eventsOption) || Option.isNone(redactionOption)) {
-      const step = steps[0];
-      if (step === undefined) return;
+    const active = yield* FiberRef.get(activeEventFrames);
+    const reentered = active.findLast((frame) => frame.event === event);
+    if (reentered !== undefined) {
+      const command = reentered.command ?? event;
       return yield* Effect.fail(
-        new LandofileEventStepFailedError({
-          message: `Event ${event} requires the app event runtime.`,
+        new LandofileEventLifecycleReentryError({
+          message: `Command ${command} reentered lifecycle event ${event}.`,
           event,
-          index: 0,
-          kind: stepKind(step),
-          exitCode: 1,
-          outputTail: "",
-          remediation: "Run the lifecycle command with the app bootstrap layer.",
+          command,
+          remediation: "Remove the lifecycle command cycle or call a non-lifecycle command from this event.",
         }),
       );
     }
-    const events = eventsOption.value;
-    const redaction = redactionOption.value;
-    const effectiveTooling = effectiveToolingForPlan(plan);
-    const redactor = yield* redaction.forProfile("secrets", {
-      sourceEnv: process.env,
-      redactionTokens: [
-        ...collectAppPlanRedactionTokens(plan),
-        ...steps.flatMap((step) => {
-          const env =
-            typeof step !== "string" && step.cmd !== undefined
-              ? step.env
-              : typeof step !== "string" && step.task !== undefined
-                ? effectiveTooling?.[step.task]?.env
-                : undefined;
-          return env === undefined
-            ? []
-            : collectSecretEnvValues(
-                Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
-              );
-        }),
-      ],
-    });
-    for (const [index, step] of steps.entries()) {
-      const startedAt = Date.now();
-      const outcome = yield* Effect.either(executeEventStep(plan, event, step));
-      if (outcome._tag === "Left") {
-        if (outcome.left instanceof LandofileEventLifecycleReentryError)
-          return yield* Effect.fail(outcome.left);
-        const failed = new LandofileEventStepFailedError({
-          message: `Event ${event} step ${index + 1} failed.`,
-          event,
-          index,
-          kind: stepKind(step),
-          ...(typeof step !== "string" && step.cmd !== undefined && step.service !== undefined
-            ? { service: step.service }
-            : {}),
-          exitCode: failureExitCode(outcome.left),
-          outputTail: redactor.redactString(
-            outcome.left instanceof Error ? outcome.left.message : String(outcome.left),
-          ),
-          remediation: `Fix ${event} step ${index + 1}, then rerun the lifecycle command.`,
-        });
-        return yield* Effect.fail(failed);
-      }
-      const result = outcome.right;
-      yield* emitToolingOutputProgress({
-        events,
-        tool: `${event}:${index + 1}`,
-        service: result.service,
-        stdout: redactor.redactString(result.stdout),
-        stderr: redactor.redactString(result.stderr),
-        exitCode: result.exitCode,
-        durationMs: Date.now() - startedAt,
-      });
-      if (result.exitCode !== 0) {
+    return yield* Effect.gen(function* () {
+      const eventsOption = yield* Effect.serviceOption(EventService);
+      const redactionOption = yield* Effect.serviceOption(RedactionService);
+      if (Option.isNone(eventsOption) || Option.isNone(redactionOption)) {
         return yield* Effect.fail(
           new LandofileEventStepFailedError({
-            message: `Event ${event} step ${index + 1} failed with exit code ${result.exitCode}.`,
+            message: `Event ${event} requires the app event runtime.`,
             event,
-            index,
-            kind: stepKind(step),
-            ...(result.service === "" ? {} : { service: result.service }),
-            exitCode: result.exitCode,
-            outputTail: redactor.redactString(outputTail(result.stdout, result.stderr)),
-            remediation: `Fix ${event} step ${index + 1}, then rerun the lifecycle command.`,
+            index: 0,
+            kind: authoredStepKind(first),
+            exitCode: 1,
+            outputTail: "",
+            remediation: "Run the lifecycle command with the app bootstrap layer.",
           }),
         );
       }
-    }
+      const tooling = effectiveToolingForPlan(plan);
+      const redactor = yield* redactionOption.value.forProfile("secrets", {
+        sourceEnv: process.env,
+        redactionTokens: [
+          ...collectAppPlanRedactionTokens(plan),
+          ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
+        ],
+      });
+      const program = yield* compileEventStepProgram(steps).pipe(
+        Effect.mapError((error) => eventError(error, event, first, redactor)),
+      );
+      const context: ExpressionContext = payload === undefined ? {} : { event: payload };
+      yield* runToolingStepProgram(
+        program,
+        context,
+        makeEventStepRunners({
+          plan,
+          event,
+          events: eventsOption.value,
+          redactor,
+          runCanonical: (leaf) => runCanonicalCommand(plan, leaf),
+        }),
+      ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
+    }).pipe(Effect.locally(activeEventFrames, [...active, { event }]));
   });
 };
 
@@ -260,3 +191,9 @@ export const runPostAppEvent = (plan: AppPlan, event: AppLifecycleEventName) =>
       ),
     ),
   );
+
+export const runAppInitEvents = (plan: AppPlan) =>
+  Effect.gen(function* () {
+    yield* runAppEvent(plan, "pre-init");
+    yield* runPostAppEvent(plan, "post-init");
+  });
