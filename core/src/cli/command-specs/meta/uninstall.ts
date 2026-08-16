@@ -10,27 +10,28 @@ import {
 import { renderUninstallResult } from "../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
-const makeListDiscoveredApps =
-  (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) | undefined => {
-    // Check if any container runtime is available before returning a discovery function
-    const { execFileSync } = require("node:child_process");
-    let hasAnyRuntime = false;
-    for (const cmd of ["podman", "docker"]) {
-      try {
-        execFileSync(cmd, ["--version"], { stdio: "ignore" });
-        hasAnyRuntime = true;
-        break;
-      } catch {
-        // Runtime not available, try next
-      }
+const makeListDiscoveredApps = ():
+  | ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>)
+  | undefined => {
+  // Check if any container runtime is available before returning a discovery function
+  const { execFileSync } = require("node:child_process");
+  let hasAnyRuntime = false;
+  for (const cmd of ["podman", "docker"]) {
+    try {
+      execFileSync(cmd, ["--version"], { stdio: "ignore" });
+      hasAnyRuntime = true;
+      break;
+    } catch {
+      // Runtime not available, try next
     }
-    
-    // If no runtime is available, return undefined to signal discovery is unavailable
-    if (!hasAnyRuntime) {
-      return undefined;
-    }
-    
-    return async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
+  }
+
+  // If no runtime is available, return undefined to signal discovery is unavailable
+  if (!hasAnyRuntime) {
+    return undefined;
+  }
+
+  return async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
@@ -138,7 +139,7 @@ const makeListDiscoveredApps =
     // No errors and no apps means clean state
     return apps;
   };
-  };
+};
 
 const makeCleanupDiscoveredApps =
   (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>

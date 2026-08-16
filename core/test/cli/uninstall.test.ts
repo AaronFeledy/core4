@@ -954,8 +954,7 @@ describe("meta:uninstall", () => {
       const userConfRoot = join(root, "conf");
       mkdirSync(userConfRoot, { recursive: true });
 
-      // When docker/podman are not in PATH, the real discovery throws
-      // This simulates runtime being unavailable
+      // Simulate runtime being unavailable by throwing when discovery is attempted
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { yes: true, purge: true },
@@ -963,7 +962,9 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
-          // Don't provide _listDiscoveredApps so it uses the real one which will fail
+          _listDiscoveredApps: async () => {
+            throw new Error("Failed to query container runtimes: podman: command not found; docker: command not found");
+          },
         }),
       );
 
