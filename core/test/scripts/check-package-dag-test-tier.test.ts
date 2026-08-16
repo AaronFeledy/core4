@@ -111,6 +111,20 @@ describe("check-package-dag test-tier policy", () => {
     );
   });
 
+  test("allows a relative import escaping to a repo-root non-package path", async () => {
+    // Given
+    await Promise.all([
+      fixture.write("core/test/root-script.test.ts", 'import "../../scripts/root-helper.ts";\n'),
+      fixture.write("scripts/root-helper.ts", "export {};\n"),
+    ]);
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "Package DAG violations: 0\n", stderr: "" });
+  });
+
   test.each([
     ["dynamic import", 'void import("SPECIFIER");'],
     ["require", 'require("SPECIFIER");'],

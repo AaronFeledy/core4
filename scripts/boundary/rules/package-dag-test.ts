@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { posix, relative, resolve } from "node:path";
+import { dirname, normalize, relative, resolve, sep } from "node:path";
 
 import { type WorkspacePackage, loadWorkspacePackages, resolveWorkspaceSpecifier } from "../graph.ts";
 import type { BoundaryRule, FileRecord, ProgramContext } from "../types.ts";
@@ -37,6 +37,8 @@ export type TestTierViolations = {
 
 type TestPackage = {
   readonly name: string;
+  readonly absoluteDirectory: string;
+  readonly absoluteDirectoryPrefix: string;
   readonly directory: string;
   readonly directoryPrefix: string;
   readonly testPrefix: string;
@@ -86,10 +88,13 @@ const testPackages = (
 ): readonly TestPackage[] =>
   [...packages.entries()]
     .map(([name, workspacePackage]) => {
+      const absoluteDirectory = normalize(workspacePackage.directory);
       const directory = relative(root, workspacePackage.directory).replaceAll("\\", "/") || ".";
       const directoryPrefix = directory === "." ? "" : `${directory}/`;
       return {
         name,
+        absoluteDirectory,
+        absoluteDirectoryPrefix: `${absoluteDirectory}${sep}`,
         directory,
         directoryPrefix,
         testPrefix: `${directoryPrefix}test/`,
@@ -102,8 +107,8 @@ const isTestModule = (file: FileRecord, workspacePackage: TestPackage): boolean 
   file.relativePath.startsWith(workspacePackage.testPrefix) &&
   TEST_MODULE_EXTENSIONS.some((extension) => file.relativePath.endsWith(extension));
 
-const containsPath = (workspacePackage: TestPackage, path: string): boolean =>
-  path === workspacePackage.directory || path.startsWith(workspacePackage.directoryPrefix);
+const containsResolvedPath = (workspacePackage: TestPackage, path: string): boolean =>
+  path === workspacePackage.absoluteDirectory || path.startsWith(workspacePackage.absoluteDirectoryPrefix);
 
 const workspaceTarget = (specifier: string, packages: readonly TestPackage[]): TestPackage | undefined =>
   packages.find(
@@ -140,15 +145,15 @@ const collectTestEdges = async (
     for (const edge of await context.edges(file)) {
       const normalizedSpecifier = edge.specifier.replaceAll("\\", "/");
       if (normalizedSpecifier.startsWith(".")) {
-        const targetPath = posix.normalize(posix.join(posix.dirname(file.relativePath), normalizedSpecifier));
-        if (containsPath(owner, targetPath)) continue;
-        const target = owners.find((candidate) => containsPath(candidate, targetPath));
+        const targetPath = normalize(resolve(dirname(file.absolutePath), normalizedSpecifier));
+        const target = owners.find((candidate) => containsResolvedPath(candidate, targetPath));
+        if (target === undefined || target.name === owner.name) continue;
         violations.push({
           file: file.relativePath,
           line: edge.line,
           specifier: edge.specifier,
           owner: owner.name,
-          target: target?.name ?? targetPath,
+          target: target.name,
         });
         continue;
       }

@@ -9,7 +9,7 @@ import {
 
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 const baselinePath = resolve(repoRoot, "scripts/boundary/detached-tests-baseline.json");
-const MAX_TEST_TIER_BASELINE_ENTRIES = 677;
+const MAX_TEST_TIER_BASELINE_ENTRIES = 571;
 const MAX_PACKAGES_WITHOUT_TESTS = 3;
 
 const edgeKey = (edge: { readonly file: string; readonly specifier: string }): string =>
