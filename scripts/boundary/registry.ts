@@ -67,7 +67,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: packageDagRule,
-    seamJustification: "This is the primary package ownership gate.",
+    seamJustification:
+      "This is the primary package ownership gate; the @lando/data-mover seam removes data-mover from the engine-closure structural scan while package-DAG enforces the new package direction.",
   },
   {
     rule: pathsRule,
