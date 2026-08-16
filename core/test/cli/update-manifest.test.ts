@@ -20,7 +20,7 @@ import {
   scheduleWindowsReplacement,
   update,
   updateChannelForVersion,
-} from "@lando/engine/operations/update";
+} from "../../src/testing/engine-layers.ts";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { buildBugReport } from "../../src/cli/bug-report.ts";

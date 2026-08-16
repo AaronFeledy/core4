@@ -21,8 +21,8 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
-import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
+import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
 import { makeHttpClientLive } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";

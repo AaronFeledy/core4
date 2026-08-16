@@ -5,8 +5,8 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { buildUninstallPlan, uninstall } from "@lando/engine/operations/uninstall";
-import type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
+import { buildUninstallPlan, uninstall } from "../../src/testing/engine-layers.ts";
+import type { ManagedProviderMachineClassification } from "../../src/testing/engine-layers.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
 const makeRoots = () => {

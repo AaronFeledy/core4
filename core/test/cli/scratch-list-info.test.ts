@@ -18,7 +18,7 @@ import {
 import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
-import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/testing/engine-layers.ts";
 import {
   ScratchInfoResultSchema,
   ScratchListResultSchema,

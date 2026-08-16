@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ScratchAppService } from "@lando/core/services";
 import { Effect } from "effect";
 
-import { resolveScratchAcquireIsolation } from "@lando/engine/scratch-app/service";
+import { resolveScratchAcquireIsolation } from "../../src/testing/engine-layers.ts";
 import {
   normalizeScratchStartArgv,
   scratchStart,

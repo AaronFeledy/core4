@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { buildUninstallPlan, uninstall } from "@lando/engine/operations/uninstall";
+import { buildUninstallPlan, uninstall } from "../../src/testing/engine-layers.ts";
 import { metaUninstallSpec, uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildToolingInvocation, validateToolingArguments } from "@lando/engine/operations/tooling";
+import { buildToolingInvocation, validateToolingArguments } from "../../src/testing/engine-layers.ts";
 import { PortablePath } from "@lando/sdk/schema";
 
 describe("buildToolingInvocation", () => {

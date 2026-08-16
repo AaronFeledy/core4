@@ -34,11 +34,11 @@ import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
   writeCachedAppPlan,
-} from "@lando/engine/cache/app-plan";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+} from "../../src/testing/engine-layers.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { attachEffectiveTooling } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { ProviderExecToolingEngineLive } from "../../src/testing/engine-layers.ts";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
