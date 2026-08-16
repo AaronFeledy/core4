@@ -97,6 +97,19 @@ Development follows this phase ladder:
   a given command tier needs (the CLI cold-start / first-byte path stays free of
   Effect/OCLIF/plugin imports).
 
+## Try the Alpha
+
+**Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
+
+- How to download the dev prerelease binary (Linux x64)
+- How to install via npm (Linux/macOS)
+- Where to file bug reports with the right diagnostic files
+
+> **Current limitation:** The default provider's runtime bundle manifest points at
+> placeholder URLs. End-to-end `lando setup` requires either building a local
+> runtime bundle or using `--provider=docker` / `LANDO_PROVIDER=docker` to fall
+> back to system Docker.
+
 ## Toolchain
 
 - **Runtime:** Bun (>=1.3.14, see `engines` and `.bun-version`). Node is not supported.
@@ -108,7 +121,7 @@ Development follows this phase ladder:
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
 
-## Quick start
+## Building from source
 
 ```bash
 # Install all workspace deps (creates the workspace symlinks)
@@ -166,8 +179,6 @@ integration or standalone fixture-scenario tests, not in a rendered page.
 
 CI failures can be reproduced locally with the [CI runbook](./docs/contributing/ci.md).
 Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
-Installing an alpha build or filing bug reports? See [alpha install and bug
-reports](./docs/alpha-install-and-bug-reports.md).
 
 ## CLI surface
 

@@ -8,6 +8,14 @@ tags: [beta, docs, installer]
 
 # POSIX installer
 
+> **Alpha status:** The POSIX installer and channel manifests described below are
+> **not yet available**. The hosts `get.lando.dev` and `update.lando.dev` are not
+> yet serving v4 artifacts. See [alpha install and bug
+> reports](../../alpha-install-and-bug-reports.md) for current install options.
+>
+> The installer script exists in this repository at `scripts/install.sh`, but it
+> requires live channel manifests to function.
+
 ## Platform detection
 
 The installer maps your host to a release artifact:
@@ -20,15 +28,15 @@ The installer maps your host to a release artifact:
 
 ## Channels
 
-`stable` is the default channel manifest, resolved from
+`stable` will be the default channel manifest, resolved from
 `https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or
-`LANDO_CHANNEL=dev` to install from a different channel.
+`LANDO_CHANNEL=dev` to install from a different channel once these are available.
 
 ## Verify and install
 
-The installer downloads the binary, a `SHA256SUMS` checksum manifest, and
+The installer will download the binary, a `SHA256SUMS` checksum manifest, and
 `SHA256SUMS.asc`, its GPG signature, for your detected platform, then
-verifies the manifest against the installer-vendored GPG trust root:
+verify the manifest against the installer-vendored GPG trust root:
 
 ```sh
 gpg --homedir <installer-trust-root> --verify SHA256SUMS.asc SHA256SUMS
