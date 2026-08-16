@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
 import { ToolingStepConditionError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
-import { AppLifecycleEventName, EventStep, LandofileEvents } from "@lando/sdk/schema";
+import { AppLifecycleEventName, EventStep, LandofileEvents, PortablePath } from "@lando/sdk/schema";
 
 const decodeOptions = [undefined, { onExcessProperty: "error" }] as const;
 
@@ -13,7 +13,7 @@ const acceptedSteps = [
   {
     command: "app:info",
     flags: { format: "json" },
-    args: ["appserver"],
+    args: { service: "appserver", depth: 2, ready: true },
     raw: ["--verbose"],
     ignoreError: true,
     if: false,
@@ -74,6 +74,27 @@ describe("EventStep", () => {
         true,
       );
     }
+  });
+  test("accepts the tooling working-directory grammar on direct event commands", () => {
+    // Given
+    const input = { cmd: "pwd", service: ":host", dir: "/workspace" };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(EventStep)(input);
+
+    // Then
+    expect(decoded).toEqual({ ...input, dir: PortablePath.make(input.dir) });
+  });
+
+  test("rejects positional arrays for canonical command arguments", () => {
+    // Given
+    const input = { command: "app:info", args: ["appserver"] };
+
+    // When
+    const decoded = Schema.decodeUnknownEither(EventStep)(input, { onExcessProperty: "error" });
+
+    // Then
+    expect(Either.isLeft(decoded)).toBe(true);
   });
 });
 
