@@ -16,6 +16,8 @@ The CI pipeline publishes a `v4.0.0-dev.N` GitHub prerelease after each successf
 - `lando` — the Linux x64 compiled binary
 - `SHA256SUMS` — checksum manifest
 
+**Platform support:** Linux x64 only. Windows binaries are deferred. macOS users should use the npm install path until macOS binary promotion lands in Beta.
+
 **To install:**
 
 1. Go to the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease
