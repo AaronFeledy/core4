@@ -23,6 +23,7 @@
 - `ComposeServiceFieldKey` changes pre-ship from `networks | configs | secrets | profiles | x-*` to `networks | configs | secrets | profiles | labels`. `composeServiceFields` is now a native-tier fail-closed refinement matching `composeKnobs`: non-empty declarations require `composeSpec: "native"`. Service-level `x-*` values remain losslessly preserved inert metadata outside the capability surface.
 - `@lando/sdk/schema` additively exports `ComposePreservedPathKey` and `ComposePreservedPathCapabilities`, and `ProviderCapabilities` additively gains optional `composePreservedPaths`. This fail-closed exact-path refinement covers matrix-preserved Compose service descendants outside the `composeKnobs` and `composeServiceFields` families (`depends_on.*.restart` and `healthcheck.start_interval`). Omitting it is equivalent to `{ supported: [] }`; `composeSpec: "native"` alone never implies support. No internal field map or base struct is exported.
 - `@lando/sdk/schema` additively exports `ComposeProjectFieldKey` and `ComposeProjectFieldCapabilities`, and `ProviderCapabilities` additively gains optional `composeProjectFields`. This native-tier fail-closed refinement covers preserved top-level Compose `configs` and `secrets`; omission means no support, while top-level `x-*` remains losslessly preserved inert metadata outside the capability surface.
+- `PluginContribution.sshServices` is a new additive optional field for contributing `SshService` implementations. The `SshServiceContribution` schema includes `id`, optional `name`, `defaultFor` (app sshAgent: true), and the type-only Layer. The bundled `@lando/ssh-agent` plugin contributes the default SSH agent sidecar.
 
 - `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
@@ -325,6 +326,7 @@
 - `ServiceDependencyCondition`
 - `SkipProps`
 - `SshAgentConfig`
+- `SshServiceContribution`
 - `StepProps`
 - `StorageInput`
 - `StorageScope`
