@@ -5,17 +5,17 @@ import {
   LandofileEventStepFailedError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppLifecycleEventName, AppPlan, EventStep } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
+import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
-import { compileEventStepProgram } from "../tooling/step-compiler.ts";
+import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { makeEventStepRunners } from "./event-step-runtime.ts";
@@ -61,22 +61,26 @@ const eventError = (
   event: AppLifecycleEventName,
   step: EventStep,
   redactor: EventRedactor,
-): LandofileEventLifecycleReentryError | LandofileEventStepFailedError | ToolingCompileError => {
+): LandofileEventLifecycleReentryError | LandofileEventStepFailedError => {
   if (
     error instanceof LandofileEventLifecycleReentryError ||
-    error instanceof LandofileEventStepFailedError ||
-    error instanceof ToolingCompileError
+    error instanceof LandofileEventStepFailedError
   ) {
     return error;
   }
+  const identity =
+    error instanceof EventStepCompileError
+      ? { index: error.authoredIndex, kind: error.kind }
+      : { index: 0, kind: authoredStepKind(step) };
+  const failure = error instanceof EventStepCompileError ? error.cause : error;
   return new LandofileEventStepFailedError({
-    message: `Event ${event} step 1 failed.`,
+    message: `Event ${event} step ${identity.index + 1} failed.`,
     event,
-    index: 0,
-    kind: authoredStepKind(step),
+    index: identity.index,
+    kind: identity.kind,
     exitCode: 1,
-    outputTail: redactor.redactString(error instanceof Error ? error.message : String(error)),
-    remediation: `Fix ${event} step 1, then rerun the lifecycle command.`,
+    outputTail: redactor.redactString(failure instanceof Error ? failure.message : String(failure)),
+    remediation: `Fix ${event} step ${identity.index + 1}, then rerun the lifecycle command.`,
   });
 };
 
@@ -100,7 +104,8 @@ const runCanonicalCommand = (plan: AppPlan, leaf: ResolvedToolingCommandStepLeaf
       .run({
         command: leaf.command,
         flags: leaf.flags,
-        args: [...leaf.args, ...leaf.raw],
+        args: leaf.args,
+        argv: leaf.raw,
         cwd: String(plan.root),
         silent: leaf.silent,
       })
@@ -112,10 +117,7 @@ export const runAppEvent = (
   plan: AppPlan,
   event: AppLifecycleEventName,
   payload?: ExpressionContext["event"],
-): Effect.Effect<
-  void,
-  LandofileEventLifecycleReentryError | LandofileEventStepFailedError | ToolingCompileError
-> => {
+): Effect.Effect<void, LandofileEventLifecycleReentryError | LandofileEventStepFailedError> => {
   const steps = effectiveEventsForPlan(plan)?.[event] ?? [];
   const first = steps[0];
   if (first === undefined) return Effect.void;
@@ -136,6 +138,7 @@ export const runAppEvent = (
     return yield* Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
       const redactionOption = yield* Effect.serviceOption(RedactionService);
+      const shellRunner = yield* Effect.serviceOption(ShellRunner);
       if (Option.isNone(eventsOption) || Option.isNone(redactionOption)) {
         return yield* Effect.fail(
           new LandofileEventStepFailedError({
@@ -157,6 +160,20 @@ export const runAppEvent = (
           ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
         ],
       });
+      const redactorFor = (records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>) =>
+        redactionOption.value.forProfile("secrets", {
+          sourceEnv: process.env,
+          redactionTokens: [
+            ...collectAppPlanRedactionTokens(plan),
+            ...records.flatMap((record) =>
+              record === undefined
+                ? []
+                : collectSecretEnvValues(
+                    Object.fromEntries(Object.entries(record).map(([name, value]) => [name, String(value)])),
+                  ),
+            ),
+          ],
+        });
       const program = yield* compileEventStepProgram(steps).pipe(
         Effect.mapError((error) => eventError(error, event, first, redactor)),
       );
@@ -168,7 +185,9 @@ export const runAppEvent = (
           plan,
           event,
           events: eventsOption.value,
+          ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
+          redactorFor,
           runCanonical: (leaf) => runCanonicalCommand(plan, leaf),
         }),
       ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
@@ -176,8 +195,12 @@ export const runAppEvent = (
   });
 };
 
-export const runPostAppEvent = (plan: AppPlan, event: AppLifecycleEventName) =>
-  runAppEvent(plan, event).pipe(
+export const runPostAppEvent = (
+  plan: AppPlan,
+  event: AppLifecycleEventName,
+  payload?: ExpressionContext["event"],
+) =>
+  runAppEvent(plan, event, payload).pipe(
     Effect.catchAll((error) =>
       EventService.pipe(
         Effect.flatMap((events) =>
@@ -194,6 +217,12 @@ export const runPostAppEvent = (plan: AppPlan, event: AppLifecycleEventName) =>
 
 export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {
-    yield* runAppEvent(plan, "pre-init");
-    yield* runPostAppEvent(plan, "post-init");
+    const events = yield* EventService;
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    yield* events.publish(pre);
+    yield* runAppEvent(plan, "pre-init", pre);
+    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    yield* events.publish(post);
+    yield* runPostAppEvent(plan, "post-init", post);
   });

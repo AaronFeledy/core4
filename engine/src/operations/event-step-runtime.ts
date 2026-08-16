@@ -10,11 +10,13 @@ import type { AppLifecycleEventName, AppPlan, ToolingTaskShape } from "@lando/sd
 import {
   type EventService,
   RuntimeProviderRegistry,
+  type ShellRunner,
   ToolingEngine,
   type ToolingEngineResult,
 } from "@lando/sdk/services";
 
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
 import type {
   ResolvedToolingCmdStepLeaf,
@@ -38,7 +40,11 @@ interface EventRuntimeOptions {
   readonly plan: AppPlan;
   readonly event: AppLifecycleEventName;
   readonly events: Context.Tag.Service<typeof EventService>;
+  readonly hostRunner?: Context.Tag.Service<typeof ShellRunner>;
   readonly redactor: Redactor;
+  readonly redactorFor: (
+    records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
+  ) => Effect.Effect<Redactor>;
   readonly runCanonical: (
     leaf: ResolvedToolingCommandStepLeaf,
   ) => Effect.Effect<ToolingEngineResult, unknown>;
@@ -48,12 +54,10 @@ interface EventLeafResult {
   readonly leaf: ResolvedToolingStepLeaf;
   readonly startedAt: number;
   readonly result: ToolingEngineResult;
+  readonly redactor: Redactor;
 }
 
-type EventLeafError =
-  | LandofileEventLifecycleReentryError
-  | LandofileEventStepFailedError
-  | ToolingCompileError;
+type EventLeafError = LandofileEventLifecycleReentryError | LandofileEventStepFailedError;
 
 const outputTail = (stdout: string, stderr: string): string =>
   `${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`.slice(-OUTPUT_TAIL_LENGTH);
@@ -98,7 +102,10 @@ const nonzeroFailure = (
     kind: leaf.kind,
     ...(String(result.service) === "" ? {} : { service: String(result.service) }),
     exitCode: result.exitCode,
-    outputTail: options.redactor.redactString(outputTail(result.stdout, result.stderr)),
+    outputTail: outputTail(
+      options.redactor.redactString(result.stdout),
+      options.redactor.redactString(result.stderr),
+    ),
     remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
   });
 
@@ -122,25 +129,45 @@ const toolingRuntime = (tool: string) =>
     return { registry: registry.value, engine: engine.value };
   });
 
-const runInvocation = (options: EventRuntimeOptions, tool: string, task: ToolingTaskShape) =>
+const runInvocation = (
+  options: EventRuntimeOptions,
+  tool: string,
+  task: ToolingTaskShape,
+  invocationOptions: { readonly user?: string } = {},
+) =>
   Effect.gen(function* () {
     const runtime = yield* toolingRuntime(tool);
     const provider = yield* runtime.registry.select(options.plan);
-    return yield* runtime.engine.run(buildToolingInvocation(tool, task), options.plan, provider);
+    const invocation = buildToolingInvocation(tool, task, invocationOptions);
+    if (invocation.service === ":host") {
+      if (options.hostRunner === undefined) {
+        return yield* Effect.fail(
+          new ToolingCompileError({
+            message: "ShellRunner is unavailable for host event execution.",
+            tool,
+          }),
+        );
+      }
+      return yield* runHostToolingWith(options.hostRunner, invocation, options.plan, provider);
+    }
+    return yield* runtime.engine.run(invocation, options.plan, provider);
   });
 
-const runCmd = (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) => {
-  const startedAt = Date.now();
-  const task: ToolingTaskShape = {
-    cmd: leaf.command,
-    ...(leaf.service === undefined ? {} : { service: leaf.service }),
-    ...(leaf.env === undefined ? {} : { env: leaf.env }),
-    ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
-  };
-  return runInvocation(options, `${options.event}`, task).pipe(
-    Effect.map((result) => ({ leaf, result, startedAt })),
-  );
-};
+const runCmd = (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) =>
+  Effect.gen(function* () {
+    const startedAt = Date.now();
+    const redactor = yield* options.redactorFor([leaf.env]);
+    const task: ToolingTaskShape = {
+      cmd: leaf.command,
+      ...(leaf.service === undefined ? {} : { service: leaf.service }),
+      ...(leaf.env === undefined ? {} : { env: leaf.env }),
+      ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
+    };
+    const result = yield* runInvocation(options, `${options.event}`, task, {
+      ...(leaf.user === undefined ? {} : { user: leaf.user }),
+    }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+    return { leaf, result, startedAt, redactor };
+  });
 
 const runTask = (
   options: EventRuntimeOptions,
@@ -150,23 +177,33 @@ const runTask = (
   Effect.gen(function* () {
     const startedAt = Date.now();
     const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
+    const variableRedactor = yield* options.redactorFor([leaf.vars]);
     if (task === undefined) {
       const script = yield* runBunShellTooling(
         { name: leaf.task, cwd: String(options.plan.root), renderProgress: false },
         String(options.plan.root),
       );
-      if (script !== undefined) return { leaf, result: script, startedAt };
+      if (script !== undefined) return { leaf, result: script, startedAt, redactor: variableRedactor };
       return yield* Effect.fail(
-        new ToolingCompileError({
-          message: `Unknown event tooling task ${leaf.task}.`,
-          tool: leaf.task,
-          remediation: "Define the named tooling task or update the event to reference an existing task.",
-        }),
+        stepFailure(
+          { ...options, redactor: variableRedactor },
+          leaf,
+          new ToolingCompileError({
+            message: `Unknown event tooling task ${leaf.task}.`,
+            tool: leaf.task,
+            remediation: "Define the named tooling task or update the event to reference an existing task.",
+          }),
+        ),
       );
     }
-    const resolved = yield* resolveToolingTaskShape(task, context);
-    const result = yield* runInvocation(options, leaf.task, resolved);
-    return { leaf, result, startedAt };
+    const resolved = yield* resolveToolingTaskShape(task, context).pipe(
+      Effect.mapError((error) => stepFailure({ ...options, redactor: variableRedactor }, leaf, error)),
+    );
+    const redactor = yield* options.redactorFor([resolved.env, leaf.vars]);
+    const result = yield* runInvocation(options, leaf.task, resolved).pipe(
+      Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
+    );
+    return { leaf, result, startedAt, redactor };
   });
 
 const publish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
@@ -174,8 +211,8 @@ const publish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
     events: options.events,
     tool: `${options.event}:${execution.leaf.authoredIndex + 1}`,
     service: String(execution.result.service),
-    stdout: options.redactor.redactString(execution.result.stdout),
-    stderr: options.redactor.redactString(execution.result.stderr),
+    stdout: execution.redactor.redactString(execution.result.stdout),
+    stderr: execution.redactor.redactString(execution.result.stderr),
     exitCode: execution.result.exitCode,
     durationMs: Date.now() - execution.startedAt,
   });
@@ -184,7 +221,11 @@ const finish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
   execution.result.exitCode === 0
     ? Effect.succeed(execution)
     : publish(options, execution).pipe(
-        Effect.zipRight(Effect.fail(nonzeroFailure(options, execution.leaf, execution.result))),
+        Effect.zipRight(
+          Effect.fail(
+            nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result),
+          ),
+        ),
       );
 
 export const makeEventStepRunners = (
@@ -196,9 +237,7 @@ export const makeEventStepRunners = (
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
     effect.pipe(
       Effect.catchAll((error) =>
-        error instanceof LandofileEventLifecycleReentryError ||
-        error instanceof LandofileEventStepFailedError ||
-        (leaf.kind === "command" && error instanceof ToolingCompileError)
+        error instanceof LandofileEventLifecycleReentryError || error instanceof LandofileEventStepFailedError
           ? Effect.fail(error)
           : Effect.fail(stepFailure(options, leaf, error)),
       ),
@@ -212,14 +251,23 @@ export const makeEventStepRunners = (
         leaf,
         Effect.suspend(() => {
           const startedAt = Date.now();
-          return options.runCanonical(leaf).pipe(Effect.map((result) => ({ leaf, result, startedAt })));
+          return options.redactorFor([leaf.flags]).pipe(
+            Effect.flatMap((redactor) =>
+              options.runCanonical(leaf).pipe(
+                Effect.mapError((error) =>
+                  error instanceof LandofileEventLifecycleReentryError
+                    ? error
+                    : stepFailure({ ...options, redactor }, leaf, error),
+                ),
+                Effect.map((result) => ({ leaf, result, startedAt, redactor })),
+              ),
+            ),
+          );
         }),
       ),
     present: (execution) => publish(options, execution.result),
     mapLeafError: (leaf, error) =>
-      error instanceof LandofileEventLifecycleReentryError ||
-      error instanceof LandofileEventStepFailedError ||
-      (leaf.kind === "command" && error instanceof ToolingCompileError)
+      error instanceof LandofileEventLifecycleReentryError || error instanceof LandofileEventStepFailedError
         ? error
         : stepFailure(options, leaf, error),
   };
