@@ -1176,7 +1176,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(compose).toContain("      custom-app-net:");
     expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
-    expect(compose).not.toContain("aliases:");
+    expect(compose).toContain("aliases:");
     expect(compose).not.toContain("lando_bridge_network");
   });
 
