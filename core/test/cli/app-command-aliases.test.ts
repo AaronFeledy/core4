@@ -84,13 +84,17 @@ test("disabled built-in aliases do not block canonical command ids", async () =>
   });
 });
 
-test("enabled false suppresses custom aliases", async () => {
+test("enabled false suppresses custom aliases without blocking bare tooling", async () => {
   await withAliasCache({ enabled: false, custom: { hi: "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
+    const [alias, tooling] = await Promise.all([
+      Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot })),
+      Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot })),
+    ]);
 
     // Then
-    expect(route).toMatchObject({ _tag: "alias-disabled", token: "hi" });
+    expect(alias).toMatchObject({ _tag: "alias-disabled", token: "hi" });
+    expect(tooling).toMatchObject({ _tag: "bun-script", commandId: "app:greet", name: "greet" });
   });
 });
 
