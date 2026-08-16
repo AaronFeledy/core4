@@ -5,7 +5,8 @@ services:
     primary: true
 events:
   pre-start:
-    - echo preparing-start
+    - cmd: echo preparing-start
+      service: ":host"
   post-start:
     - task: warm-cache
   pre-stop:

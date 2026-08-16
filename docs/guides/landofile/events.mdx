@@ -17,7 +17,8 @@ services:
     primary: true
 events:
   pre-start:
-    - echo "Preparing the app"
+    - cmd: echo "Preparing the app"
+      service: ":host"
   post-start:
     - task: warm-cache
 tooling:
@@ -26,7 +27,7 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. `pre-start` runs before any service exists, so a `pre-start` step stays a plain command or a canonical Lando command, never a `service`-targeted exec. Save `service:` targeting for events that fire once the app is up, like `pre-stop` and `post-stop`.
+`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"` to run on the host instead. Once services are up, later events like `pre-stop` and `post-stop` can target a real service the normal way.
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
