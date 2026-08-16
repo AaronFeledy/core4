@@ -39,8 +39,8 @@ import {
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import { definePlugin } from "@lando/sdk/plugins";
 import {
-  type AppId,
   type AppPlan,
+  AppId,
   type HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -1781,7 +1781,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   return {
                     app: AppId.make(appId),
                     service: ServiceName.make(serviceName),
-                    providerId: PROVIDER_ID,
+                    providerId: ProviderId.make(PROVIDER_ID),
                     status,
                     state: status,
                     containerId: container.id,
