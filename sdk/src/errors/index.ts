@@ -15,6 +15,7 @@ export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./keymap.ts";
 export * from "./landofile.ts";
+export * from "./landofile-events.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./open.ts";
