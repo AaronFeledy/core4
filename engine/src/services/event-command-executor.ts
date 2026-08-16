@@ -7,7 +7,7 @@ export interface EventCommandExecutorInput {
   readonly cwd: string;
 }
 
-export interface EventCommandExecutorResult {
+interface EventCommandExecutorResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
