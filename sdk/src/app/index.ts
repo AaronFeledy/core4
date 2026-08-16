@@ -187,6 +187,7 @@ export interface StartAppResult {
 export type StartAppError =
   | AppIdReservedError
   | BuildPhaseFailedError
+  | ComposeKeyRejectedError
   | EventError
   | LandofileEventLifecycleReentryError
   | LandofileEventStepFailedError
@@ -201,6 +202,7 @@ export type StartAppError =
   | LandofileValidationError
   | LandofileUnknownEventError
   | LandofileIncludeError
+  | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError

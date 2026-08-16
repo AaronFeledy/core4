@@ -77,8 +77,9 @@ export const rebuildApp = (
     const events = yield* EventService;
     const ref: AppRef = resolvedTarget.app;
     const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
-    yield* events.publish(PreRebuildEvent.make({ _tag: "pre-rebuild", app: ref, timestamp: timestamp() }));
-    yield* runAppEvent(plan, "pre-rebuild");
+    const preRebuild = PreRebuildEvent.make({ _tag: "pre-rebuild", app: ref, timestamp: timestamp() });
+    yield* events.publish(preRebuild);
+    yield* runAppEvent(plan, "pre-rebuild", preRebuild);
     yield* stopAppWithPlan({}, resolvedTarget);
     const start = yield* compensateFailure(
       startApp(
@@ -92,8 +93,9 @@ export const rebuildApp = (
       ),
       proxy.removeRoutes(plan.id),
     );
-    yield* events.publish(PostRebuildEvent.make({ _tag: "post-rebuild", app: ref, timestamp: timestamp() }));
-    yield* runPostAppEvent(plan, "post-rebuild");
+    const postRebuild = PostRebuildEvent.make({ _tag: "post-rebuild", app: ref, timestamp: timestamp() });
+    yield* events.publish(postRebuild);
+    yield* runPostAppEvent(plan, "post-rebuild", postRebuild);
     return {
       app: start.app,
       servicesRebuilt: start.servicesStarted.map((service) => service.name),
