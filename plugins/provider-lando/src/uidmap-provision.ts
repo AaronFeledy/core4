@@ -62,7 +62,7 @@ export const readLinuxHostRelease = (): LinuxHostRelease | undefined => {
 };
 
 const manualUidmapRemediation =
-  "Install newuidmap and newgidmap using the host's trusted package manager (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.";
+  "Install newuidmap and newgidmap using the host's trusted package manager (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`.";
 
 export const inspectUidmapSetupPlan = (
   input: UidmapInspection,

@@ -113,36 +113,65 @@ The managed Podman provider requires:
 - **cgroups v2 controller delegation** (requires systemd on most distributions)
 - **XDG_RUNTIME_DIR** set for your user session
 
-On **Ubuntu 26.04**, Lando can automatically install the `uidmap` package if you consent with `lando setup --yes`. On other distributions, you must install uidmap tools manually before setup (e.g., `sudo apt-get install uidmap` on Debian/Ubuntu or `sudo dnf install shadow-utils` on Fedora).
+#### Installing uidmap tools
 
-### Docker fallback
+On **Ubuntu 26.04**, Lando can automatically install the `uidmap` package if you consent with `lando setup --yes`. On other distributions, you must install uidmap tools manually before running setup:
 
-If the default managed Podman setup fails (for example, on hosts without systemd or where cgroups v2 delegation cannot be configured), use the **Docker provider** instead:
-
+**Debian/Ubuntu:**
 ```bash
-lando setup --provider=docker
+sudo apt-get install uidmap
 ```
 
-This requires Docker to be installed and running on your system. After successful setup with `--provider=docker`, Lando persists this choice so you don't need to specify it again.
-
-You can also set the provider globally:
-
+**Fedora/RHEL:**
 ```bash
-lando config set defaultProviderId docker
+sudo dnf install shadow-utils
 ```
 
-Or use the `LANDO_PROVIDER` environment variable:
+After installing uidmap, rerun `lando setup` to complete the provider configuration.
+
+#### Configuring cgroups v2 delegation
+
+If setup fails with a cgroups v2 delegation error, enable systemd user cgroup delegation. Create `/etc/systemd/system/user@.service.d/delegate.conf` with:
+
+```ini
+[Service]
+Delegate=cpu cpuset io memory pids
+```
+
+Then reload systemd and rerun setup:
 
 ```bash
-export LANDO_PROVIDER=docker
+sudo systemctl daemon-reload
 lando setup
 ```
+
+#### Configuring subordinate UIDs/GIDs
+
+If setup fails with a subuid/subgid error, ensure your user has subordinate UID and GID ranges. Check `/etc/subuid` and `/etc/subgid` for an entry like:
+
+```
+yourusername:100000:65536
+```
+
+If missing, add entries manually (requires root), then rerun `lando setup`.
+
+#### XDG_RUNTIME_DIR
+
+If setup fails with an XDG_RUNTIME_DIR error, ensure your user session sets this variable. Most modern distributions with systemd set this automatically. Verify with:
+
+```bash
+echo $XDG_RUNTIME_DIR
+```
+
+If empty, log out and back in, or configure your session manager to set it.
 
 After setup completes, verify the runtime is ready:
 
 ```bash
 lando doctor
 ```
+
+Advanced users who prefer system Docker can specify `--provider=docker` when running setup.
 
 ## Bug report checklist
 
