@@ -30,7 +30,6 @@ const runtimeBrainDirectories = [
   "scratch-app",
   "services",
   "subsystems",
-  "telemetry",
   "tooling",
   "tunnel",
   "utils",

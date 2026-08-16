@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { redactTelemetryData, scrubTelemetryValue } from "../../src/telemetry/redaction.ts";
+import { redactTelemetryData, scrubTelemetryValue } from "@lando/telemetry/redaction";
 
 describe("scrubTelemetryValue", () => {
   test("removes POSIX absolute paths", () => {

@@ -35,6 +35,9 @@
       "path": "../data-mover"
     },
     {
+      "path": "../telemetry"
+    },
+    {
       "path": "../landofile"
     },
     {

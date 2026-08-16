@@ -274,5 +274,5 @@ export {
   TELEMETRY_EVENT_INVENTORY,
   type UpdateOutcome,
   updateOutcomeFromError,
-} from "@lando/engine/telemetry/events";
+} from "@lando/telemetry/events";
 export { CORE_VERSION } from "@lando/engine/version";

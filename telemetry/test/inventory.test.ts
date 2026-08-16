@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { TELEMETRY_EVENT_INVENTORY, UPDATE_OUTCOMES } from "../../src/telemetry/events.ts";
+import { TELEMETRY_EVENT_INVENTORY, UPDATE_OUTCOMES } from "@lando/telemetry/events";
 import {
   TELEMETRY_EVENTS,
   TELEMETRY_EVENT_FIELD_NAMES,
   type TelemetryEventSpec,
-} from "../../src/telemetry/inventory.ts";
+} from "@lando/telemetry/inventory";
 
 describe("telemetry event inventory source of truth", () => {
   test("declares exactly the two recorded events", () => {

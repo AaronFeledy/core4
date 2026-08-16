@@ -105,6 +105,7 @@ jobs:
           bun run --filter='@lando/http-client' build
           bun run --filter='@lando/managed-file' build
           bun run --filter='@lando/data-mover' build
+          bun run --filter='@lando/telemetry' build
           bun run --filter='@lando/engine' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
@@ -139,6 +140,7 @@ jobs:
           npm publish --workspace @lando/http-client --dry-run --access public --tag dev
           npm publish --workspace @lando/managed-file --dry-run --access public --tag dev
           npm publish --workspace @lando/data-mover --dry-run --access public --tag dev
+          npm publish --workspace @lando/telemetry --dry-run --access public --tag dev
           npm publish --workspace @lando/engine --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
@@ -167,6 +169,7 @@ jobs:
           npm publish --workspace @lando/http-client --access public --tag dev --provenance
           npm publish --workspace @lando/managed-file --access public --tag dev --provenance
           npm publish --workspace @lando/data-mover --access public --tag dev --provenance
+          npm publish --workspace @lando/telemetry --access public --tag dev --provenance
           npm publish --workspace @lando/engine --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
@@ -212,7 +215,7 @@ jobs:
           mkdir -p "$SMOKE_ROOT"
           cd "$SMOKE_ROOT"
           npm init --yes >/dev/null
-          for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION" "@lando/container-runtime@$LANDO_NPM_VERSION" "@lando/state-store@$LANDO_NPM_VERSION" "@lando/landofile@$LANDO_NPM_VERSION" "@lando/redaction@$LANDO_NPM_VERSION" "@lando/http-client@$LANDO_NPM_VERSION" "@lando/managed-file@$LANDO_NPM_VERSION" "@lando/data-mover@$LANDO_NPM_VERSION" "@lando/engine@$LANDO_NPM_VERSION" "@lando/core@$LANDO_NPM_VERSION" "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/ssh-agent@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"; do
+          for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION" "@lando/container-runtime@$LANDO_NPM_VERSION" "@lando/state-store@$LANDO_NPM_VERSION" "@lando/landofile@$LANDO_NPM_VERSION" "@lando/redaction@$LANDO_NPM_VERSION" "@lando/http-client@$LANDO_NPM_VERSION" "@lando/managed-file@$LANDO_NPM_VERSION" "@lando/data-mover@$LANDO_NPM_VERSION" "@lando/telemetry@$LANDO_NPM_VERSION" "@lando/engine@$LANDO_NPM_VERSION" "@lando/core@$LANDO_NPM_VERSION" "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/ssh-agent@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"; do
             for attempt in {1..30}; do
               if test "$(npm view "$package_spec" version 2>/dev/null || true)" = "$LANDO_NPM_VERSION"; then
                 break

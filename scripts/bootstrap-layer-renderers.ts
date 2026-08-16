@@ -21,7 +21,7 @@ export const renderMinimal = (): string =>
     'import { RedactionServiceLive } from "@lando/redaction/service";',
     'import { SecretStoreLive } from "@lando/engine/services/secret-store";',
     'import { StateStoreLive } from "@lando/state-store/service";',
-    'import { makeTelemetryLayer } from "@lando/engine/telemetry/service";',
+    'import { makeTelemetryLayer } from "@lando/telemetry/service";',
     'import { makeLandoPaths } from "@lando/paths";',
     'import { EventService, PathsService, Renderer } from "@lando/sdk/services";',
     'import { makeLibraryRenderer, type BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',

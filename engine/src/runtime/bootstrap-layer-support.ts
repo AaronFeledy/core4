@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
-import type { Renderer, RootOverrides, RuntimeProvider, Telemetry } from "@lando/sdk/services";
+import type { Renderer, RootOverrides, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -122,9 +122,4 @@ export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Servic
     stdout: () => Effect.void,
     stderr: () => Effect.void,
   },
-});
-
-export const makeLibraryTelemetry = (enabled: boolean): Context.Tag.Service<typeof Telemetry> => ({
-  enabled,
-  record: () => Effect.void,
 });
