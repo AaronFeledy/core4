@@ -10,7 +10,7 @@ import {
   toneChip,
   truncateToWidth,
   wrapToWidth,
-} from "../../src/cli/renderer/console-layout.ts";
+} from "@lando/renderer/console-layout";
 
 const ESC = String.fromCharCode(27);
 

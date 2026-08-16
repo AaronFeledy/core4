@@ -16,6 +16,10 @@ ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
 
 const argv = Bun.argv.slice(2);
+const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
+  const { writeStdioLine } = await import("@lando/renderer/io");
+  writeStdioLine(destination, text);
+};
 const LANDOFILE_BASENAMES = [
   ".lando.base",
   ".lando.dist",
@@ -54,7 +58,7 @@ const main = async (): Promise<void> => {
       (argv[0] === "version" && !appAliasContext))
   ) {
     const { CORE_VERSION } = await import("@lando/engine/version");
-    console.log(CORE_VERSION);
+    await writeLine("stdout", CORE_VERSION);
     return;
   }
 
@@ -63,7 +67,7 @@ const main = async (): Promise<void> => {
     (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv")
   ) {
     const { renderShellenv } = await import("../src/cli/commands/shellenv");
-    console.log(renderShellenv("posix"));
+    await writeLine("stdout", renderShellenv("posix"));
     return;
   }
 
@@ -74,11 +78,14 @@ const main = async (): Promise<void> => {
   ) {
     if (argv[0] === "--help" || argv[0] === "-h") {
       const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
-      console.log(renderColdRootHelp());
+      await writeLine("stdout", renderColdRootHelp());
       return;
     }
     const { CORE_VERSION, renderMetaVersion } = await import("@lando/engine/version");
-    console.log(renderMetaVersion({ core: CORE_VERSION, bun: Bun.version, platform: process.platform }));
+    await writeLine(
+      "stdout",
+      renderMetaVersion({ core: CORE_VERSION, bun: Bun.version, platform: process.platform }),
+    );
     return;
   }
 
@@ -88,7 +95,7 @@ const main = async (): Promise<void> => {
     (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list")
   ) {
     const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
-    console.log(renderColdRecipesList());
+    await writeLine("stdout", renderColdRecipesList());
     return;
   }
 
@@ -100,7 +107,7 @@ const main = async (): Promise<void> => {
   });
 };
 
-main().catch((error: unknown) => {
-  console.error(error);
+main().catch(async (error: unknown) => {
+  await writeLine("stderr", String(error));
   process.exit(1);
 });

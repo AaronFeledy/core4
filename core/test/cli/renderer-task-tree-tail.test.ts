@@ -20,8 +20,8 @@ import {
   TaskTreeViewModel,
   csi,
 } from "@lando/renderer-lando/task-tree-tail";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { EventServiceLive } from "../../src/testing/engine-layers";
 
 const ts = "2026-05-19T12:00:00.000Z";

@@ -45,6 +45,29 @@ export const createStdioRendererIO = (
   },
 });
 
+export const writeStdioLine = (destination: "stdout" | "stderr", text: string): void => {
+  const stream = destination === "stdout" ? process.stdout : process.stderr;
+  stream.write(`${text}\n`);
+};
+
+export const detachStdioWrites = (): void => {
+  const sink: typeof process.stdout.write = ((
+    _chunk: string | Uint8Array,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void,
+  ) => {
+    if (typeof encodingOrCallback === "function") encodingOrCallback(null);
+    else if (typeof callback === "function") callback(null);
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    process.stdout.write = sink;
+    process.stderr.write = sink;
+  } catch {
+    return;
+  }
+};
+
 export interface BufferedRendererIO extends RendererIO {
   readonly stdout: () => string;
   readonly stderr: () => string;

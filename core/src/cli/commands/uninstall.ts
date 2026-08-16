@@ -3,8 +3,8 @@ import type {
   UninstallResult,
   UninstallStepStatus,
 } from "@lando/engine/operations/uninstall";
+import { type SummaryDocument, type SummaryTone, formatSummary } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
-import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary";
 
 const statusLabel = (status: UninstallStepStatus): string => {
   switch (status) {

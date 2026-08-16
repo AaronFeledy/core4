@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Schema } from "effect";
 
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   clearActiveCommandInvocation,
   resetActiveCommandInvocation,
@@ -11,7 +12,6 @@ import {
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
 
 beforeEach(() => {

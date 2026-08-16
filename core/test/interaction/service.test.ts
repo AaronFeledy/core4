@@ -8,8 +8,9 @@ import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted, type Scop
 import { ChoicesUnavailableError } from "@lando/sdk/errors";
 import { Logger, Renderer } from "@lando/sdk/services";
 
-import { makeRendererServiceLiveForMode } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeRendererServiceLiveForMode } from "@lando/renderer/output";
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { resetInteractivePromptDegradationForTest } from "../../src/interaction/interactive-driver.ts";
 import {
   makeDefaultResolveInteractionDriver,
@@ -477,7 +478,7 @@ describe("InteractionServiceLive — renderer coordination", () => {
         Effect.runSync(
           Effect.scoped(
             Effect.gen(function* () {
-              const context = yield* Layer.build(makeRendererServiceLiveForMode(mode, io));
+              const context = yield* Layer.build(makeRendererServiceLiveForMode(mode, landoRenderer, io));
               const renderer = Context.get(context, Renderer);
               yield* renderer.output.stdout("chrome");
               yield* renderer.output.stderr("diag");

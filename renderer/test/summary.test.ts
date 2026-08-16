@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
-import { type SummaryDocument, formatSummary } from "../../src/cli/renderer/summary.ts";
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 
 const ESC = String.fromCharCode(27);
 const BOLD = `${ESC}[1m`;

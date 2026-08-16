@@ -95,6 +95,7 @@
     "@lando/managed-file": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/redaction": "workspace:*",
+    "@lando/renderer": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
     "effect": "^3.21.2",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createBufferedRendererIO, createStdioRendererIO } from "../../src/cli/renderer/io.ts";
+import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 
 describe("renderer IO output stream seam", () => {
   test("stdio IO exposes process stdout by default", () => {

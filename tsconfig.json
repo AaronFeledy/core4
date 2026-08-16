@@ -33,6 +33,9 @@
       "path": "./telemetry"
     },
     {
+      "path": "./renderer"
+    },
+    {
       "path": "./engine"
     },
     {

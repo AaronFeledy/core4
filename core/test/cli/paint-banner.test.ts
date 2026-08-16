@@ -9,10 +9,10 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/pre-renderer.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/testing/engine-layers";
 
 const ESC = String.fromCharCode(27);

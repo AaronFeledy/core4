@@ -23,10 +23,10 @@ export {
   type BufferedRendererIOOptions,
   type RendererIO,
   createBufferedRendererIO,
-} from "../cli/renderer/io";
-export { displayWidth, stripAnsi } from "../cli/renderer/console-layout";
-export { makeJsonRendererLive, renderPlain } from "../cli/renderer/runtime";
-export { type SummaryDocument, formatSummary } from "../cli/renderer/summary";
+} from "@lando/renderer/io";
+export { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+export { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
+export { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 
 export { makePluginStateStore } from "@lando/engine/plugins/context-state";
 export { makePluginRegistryLive, PluginRegistryLive } from "@lando/engine/plugins/registry";

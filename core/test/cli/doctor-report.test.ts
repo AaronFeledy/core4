@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorReport,
@@ -32,7 +33,6 @@ import {
   renderAppVersionConstraintResult,
 } from "../../src/cli/commands/doctor-version-constraint.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { DeprecationServiceLive } from "../../src/testing/engine-layers.ts";
 

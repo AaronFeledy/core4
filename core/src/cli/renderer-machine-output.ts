@@ -19,8 +19,8 @@ import {
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { writeResultLine } from "@lando/renderer/output";
 import type { CommandWarningsShape } from "./command-warnings";
-import { writeResultLine } from "./renderer-output";
 
 export interface StreamOutputFrame {
   readonly _tag: "stdout" | "stderr";

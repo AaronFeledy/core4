@@ -29,11 +29,11 @@ import {
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { formatSummary } from "@lando/renderer/summary";
 import { Either } from "effect";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext } from "../../renderer-boundary";
-import { formatSummary } from "../../renderer/summary";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";

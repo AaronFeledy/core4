@@ -24,13 +24,13 @@ import {
 } from "@lando/sdk/services";
 
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
 import {
   type SummaryDocument,
   type SummaryTone,
   formatSummary,
   worstSummaryTone,
-} from "../../renderer/summary";
+} from "@lando/renderer/summary";
+import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;

@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import type { NotImplementedError } from "@lando/sdk/errors";
 
-import { emitOptionalStdout } from "../renderer-boundary";
+import { emitOptionalStdout } from "@lando/renderer/output";
 import { type BunSelfSpawner, bunSelfRun, bunSelfX } from "./bun-self-runner";
 
 export interface MetaBunOptions {

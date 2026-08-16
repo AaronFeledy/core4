@@ -24,7 +24,7 @@ import {
   styleBoxTop,
   toneChip,
   wrapToWidth,
-} from "./console-layout";
+} from "./console-layout.ts";
 
 export type { SummaryTone };
 

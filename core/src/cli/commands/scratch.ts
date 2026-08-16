@@ -17,9 +17,15 @@ import type {
 } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
+import { emitOptionalStdout } from "@lando/renderer/output";
+import {
+  type SummaryDocument,
+  type SummaryTone,
+  formatSummary,
+  worstSummaryTone,
+} from "@lando/renderer/summary";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
-import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary";
-import { type SummaryDocument, type SummaryTone, formatSummary, worstSummaryTone } from "../renderer/summary";
+import { type RenderContext, isDecoratedContext } from "../renderer-boundary";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;

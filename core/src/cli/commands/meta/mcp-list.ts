@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 
+import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { computeEffectiveAllowlist } from "../../../mcp/catalog";
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
-import { type SummaryDocument, formatSummary } from "../../renderer/summary";
 
 export const McpListToolSchema = Schema.Struct({
   id: Schema.String,
