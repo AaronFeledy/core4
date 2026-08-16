@@ -16,15 +16,16 @@ export const compileEffectiveEvents = (input: {
   readonly landofile: Pick<LandofileShape, "events">;
   readonly services: ReadonlyArray<EventServiceContribution>;
 }): LandofileEvents => {
-  const contributed: Record<string, LandofileEvents[keyof LandofileEvents]> = {};
+  const merged: Record<string, LandofileEvents[keyof LandofileEvents]> = { ...input.landofile.events };
   for (const service of [...input.services].sort((left, right) => compareOrdinal(left.name, right.name))) {
     for (const [name, steps] of Object.entries(service.events ?? {}).sort(([left], [right]) =>
       compareOrdinal(left, right),
     )) {
-      if (contributed[name] === undefined) contributed[name] = steps;
+      if (steps === undefined) continue;
+      merged[name] = [...(merged[name] ?? []), ...steps];
     }
   }
-  return sortedEvents({ ...contributed, ...input.landofile.events });
+  return sortedEvents(merged);
 };
 
 export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents): AppPlan => {

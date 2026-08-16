@@ -137,7 +137,7 @@ describe("compileEffectiveTooling", () => {
 });
 
 describe("compileEffectiveEvents", () => {
-  test("authored event lists replace lexicographically deterministic service contributions", () => {
+  test("authored event steps precede every lexicographically ordered service contribution", () => {
     // Given / When
     const events = compileEffectiveEvents({
       landofile: { events: { "pre-start": ["echo authored"] } },
@@ -149,8 +149,8 @@ describe("compileEffectiveEvents", () => {
 
     // Then
     expect(events).toEqual({
-      "post-start": ["echo alpha post"],
-      "pre-start": ["echo authored"],
+      "post-start": ["echo alpha post", "echo zeta post"],
+      "pre-start": ["echo authored", "echo alpha", "echo zeta"],
     });
   });
 

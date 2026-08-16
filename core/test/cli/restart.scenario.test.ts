@@ -38,7 +38,7 @@ import {
   attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
-} from "@lando/engine/operations/events";
+} from "@lando/engine/planner/effective-events";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
@@ -259,7 +259,7 @@ const makeRestartLayer = (
 };
 
 describe("lando restart", () => {
-  test("user events override service-type contribution and lifecycle order occurs once", async () => {
+  test("user events run before service-type contributions and lifecycle order occurs once", async () => {
     // Given
     const effective = compileEffectiveEvents({
       landofile: {
@@ -292,7 +292,7 @@ describe("lando restart", () => {
     expect(
       harness.events.filter((event) => ["pre-stop", "post-stop", "pre-start", "post-start"].includes(event)),
     ).toEqual(["pre-stop", "post-stop", "pre-start", "post-start"]);
-    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(4);
+    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(8);
   });
   test("destroys then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();
