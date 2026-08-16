@@ -46,7 +46,7 @@ automatically — the plan prints exact manual removal steps for it instead.
 <Guide>
   <Scenario id="keep-data-preserves-state" render>
     <Step name="scaffold">
-      <UseFixture name="keep-data-demo" />
+      <Run command="lando init --recipe node --name keep-data-demo --yes" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -71,7 +71,7 @@ automatically — the plan prints exact manual removal steps for it instead.
 
   <Scenario id="purge-cleans-leftovers" render>
     <Step name="scaffold">
-      <UseFixture name="purge-demo" />
+      <Run command="lando init --recipe node --name purge-demo --yes" />
     </Step>
     <Step name="start-app">
       <Run command="lando start" />
