@@ -233,7 +233,8 @@ ${codegenStep}
         run: |
           mkdir -p dist
 ${renderHostProxyShimBuildCommands(platform)}
-          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary
