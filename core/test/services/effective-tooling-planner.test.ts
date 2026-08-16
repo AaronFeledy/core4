@@ -25,14 +25,14 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { runTooling } from "@lando/engine/operations/tooling";
-import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { CommandRegistryLive } from "@lando/engine/services/command-registry";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { runTooling } from "../../src/testing/engine-layers.ts";
+import { effectiveToolingForPlan } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { CommandRegistryLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 import { emptyConfigServiceLayer } from "../cli/agent-env-test-config.ts";
 
 const capabilities: ProviderCapabilities = {

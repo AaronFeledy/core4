@@ -3,7 +3,6 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import { effectiveBootstrapForCommand } from "@lando/engine/runtime/cli-options";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";
@@ -20,6 +19,7 @@ import { runDynamicTooling } from "../../src/cli/dynamic-tooling.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { effectiveBootstrapForCommand } from "../../src/testing/engine-layers.ts";
 
 afterEach(() => {
   setActiveCommandId("cli:unknown");

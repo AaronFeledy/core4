@@ -135,7 +135,8 @@ export type {
   VolumePruneReport,
 } from "./volume-prune.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
-export { bringUp } from "./bring-up.ts";
+export { bringUp, scratchLabelsForPlan } from "./bring-up.ts";
+export { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 export type { BringUpOptions } from "./bring-up.ts";
 export { podmanComposeKnobs } from "./compose-knobs.ts";
 export { bringDown } from "./bring-down.ts";

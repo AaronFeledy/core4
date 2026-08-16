@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import type { JsonSchemaName } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import type { JsonSchemaName } from "../../../sdk/src/schema/index.ts";
 
 import {
   JSON_SCHEMA_NAMES,
@@ -16,7 +16,7 @@ import {
   renderSchemaReferenceMarkdown,
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
-} from "../../../sdk/src/schema/index.ts";
+} from "@lando/sdk/schema";
 import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 

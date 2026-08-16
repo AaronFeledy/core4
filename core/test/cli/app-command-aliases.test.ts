@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import { commandAliasRegistrationError } from "../../src/cli/command-alias-policy.ts";
 import { resolveAppCommandHelpAliases, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers.ts";
 
 const withAliasCache = async <T>(
   commandAliases: {

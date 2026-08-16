@@ -18,3 +18,30 @@ export * from "./secret-store";
 export * from "./state-store";
 export * from "./test-runtime";
 export * from "./tunnel";
+export {
+  type BufferedRendererIO,
+  type BufferedRendererIOOptions,
+  type RendererIO,
+  createBufferedRendererIO,
+} from "../cli/renderer/io";
+export { displayWidth, stripAnsi } from "../cli/renderer/console-layout";
+export { makeJsonRendererLive, renderPlain } from "../cli/renderer/runtime";
+export { type SummaryDocument, formatSummary } from "../cli/renderer/summary";
+
+export { makePluginStateStore } from "@lando/engine/plugins/context-state";
+export { makePluginRegistryLive, PluginRegistryLive } from "@lando/engine/plugins/registry";
+export { loadLogFileHelperPayloads } from "@lando/engine/providers/log-file-helper-payloads";
+export { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
+export { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
+export { buildKeyForService } from "@lando/engine/services/build-key";
+export { EventServiceLive } from "@lando/engine/services/event-service";
+export { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
+export { loadLandofileFile } from "@lando/engine/services/landofile-live";
+export {
+  AppPlanner,
+  AppPlannerLive,
+  applyAuthoredAppMount,
+  applyAuthoredHealthcheck,
+  mergeDefaultExcludes,
+} from "@lando/engine/services/planner";
+export { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";

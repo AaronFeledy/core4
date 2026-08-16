@@ -18,24 +18,24 @@ import {
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
-} from "@lando/engine/subsystems/host-proxy/dispatch";
+} from "../../../src/testing/engine-layers.ts";
 import {
   HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
   hostProxyRunLandoStateDir,
   scopedHostProxyRunLandoSession,
   sendHostProxyRunLando,
-} from "@lando/engine/subsystems/host-proxy/transport";
-import { requestPathname } from "@lando/engine/subsystems/host-proxy/transport-response";
+} from "../../../src/testing/engine-layers.ts";
+import { requestPathname } from "../../../src/testing/engine-layers.ts";
 import {
   defaultHostProxyShimArtifactPath,
   resolveHostProxyShimArtifactPath,
-} from "@lando/engine/subsystems/host-proxy/transport-shim";
-import { CORE_VERSION } from "@lando/engine/version";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+} from "../../../src/testing/engine-layers.ts";
+import { CORE_VERSION } from "../../../src/testing/engine-layers.ts";
 
 const tempDirs: string[] = [];
 

@@ -11,7 +11,7 @@ import {
   EventRuntimeLive,
   EventServiceLive,
   makeEventServiceLive,
-} from "@lando/engine/services/event-service";
+} from "../../src/testing/engine-layers.ts";
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)({
   _tag: "pre-app-start",

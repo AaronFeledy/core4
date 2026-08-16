@@ -21,7 +21,8 @@
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
     "./marker": "./src/marker.ts",
-    "./codecs": "./src/codecs.ts"
+    "./codecs": "./src/codecs.ts",
+    "./testing": "./src/testing.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "managed-file"],

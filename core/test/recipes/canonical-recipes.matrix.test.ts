@@ -7,13 +7,11 @@ import { Effect } from "effect";
 import type { LandofileShape } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive } from "@lando/engine/services/planner";
 import { initApp } from "../../src/cli/commands/init.ts";
 import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
+import { AppPlannerLive, LandofileServiceLive, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 
 interface CanonicalAnswers {
   readonly name: string;

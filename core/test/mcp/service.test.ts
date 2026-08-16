@@ -6,8 +6,6 @@ import type { McpServeOptions } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { RedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
@@ -21,6 +19,7 @@ import {
 } from "../../src/mcp/service.ts";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
+import { RuntimeCwd, StreamFrameSink } from "../../src/testing/engine-layers.ts";
 
 const spec = (
   id: string,

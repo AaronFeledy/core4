@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import type { InfoAppResult } from "@lando/engine/operations/info";
-import type { UninstallResult } from "@lando/engine/operations/uninstall";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
@@ -15,6 +13,8 @@ import { buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
 import { formatSummary } from "../../src/cli/renderer/summary.ts";
+import type { InfoAppResult } from "../../src/testing/engine-layers";
+import type { UninstallResult } from "../../src/testing/engine-layers";
 
 const nonEmptyLines = (text: string): ReadonlyArray<string> =>
   text.split("\n").filter((line) => line.length > 0);

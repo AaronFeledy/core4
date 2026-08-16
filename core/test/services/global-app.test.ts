@@ -8,10 +8,10 @@ import { GlobalDistConflictError, GlobalLandofilePathConflictError } from "@land
 import { AbsolutePath, LandofileShape } from "@lando/core/schema";
 import { GlobalAppService } from "@lando/core/services";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
+import { GlobalAppServiceLive } from "../../src/testing/engine-layers.ts";
+import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 
 const globalAppLayer = GlobalAppServiceLive.pipe(
   Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),

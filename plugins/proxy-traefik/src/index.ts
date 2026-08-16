@@ -25,6 +25,7 @@ export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
 export { makeTraefikProxyService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
 export const proxyServices = new Map([["traefik", proxy]]);
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([

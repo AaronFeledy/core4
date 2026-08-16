@@ -6,8 +6,8 @@ import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
-import { logsAppForTarget } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
+import { logsAppForTarget } from "../../src/testing/engine-layers";
 
 import {
   AbsolutePath,

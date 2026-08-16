@@ -13,9 +13,9 @@ import type {
 } from "@lando/sdk/services";
 import { Downloader } from "@lando/sdk/services";
 
-import { makeFakeDownloader, sha256Hex } from "../../../sdk/test/tool-provisioning/_fixtures.ts";
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { MKCERT_TOOL_MANIFEST } from "../src/provision.ts";
+import { makeFakeDownloader, sha256Hex } from "./support/fake-downloader.ts";
 
 export const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 

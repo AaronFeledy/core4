@@ -9,8 +9,8 @@ import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderI
 import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { CacheError } from "@lando/sdk/errors";
 
-import { appCommandCachePath } from "@lando/engine/cache/paths";
-import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { appCommandCachePath } from "../../src/testing/engine-layers.ts";
+import { attachEffectiveTooling } from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

@@ -16,14 +16,14 @@ import {
 import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
-} from "@lando/engine/plugins/certificate-authority-resolver";
+} from "../../../src/testing/engine-layers.ts";
 import {
   type ProxyServiceRegistration,
   ProxyServiceRegistry,
   SelectedProxyServiceLive,
   makeProxyServiceRegistry,
   makeProxyServiceRegistryLive,
-} from "@lando/engine/subsystems/proxy/registry";
+} from "../../../src/testing/engine-layers.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
 const service = (id: string): ProxyServiceShape => ({

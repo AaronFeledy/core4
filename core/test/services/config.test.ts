@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { ConfigError } from "@lando/core/errors";
 import { ProviderId } from "@lando/core/schema";
 import { ConfigService } from "@lando/core/services";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
 
 const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-config-service-"));

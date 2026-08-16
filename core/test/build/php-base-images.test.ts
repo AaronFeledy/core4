@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 import {
   PHP_COMMON_EXTENSIONS,
   PHP_COMPOSER,
-} from "../../../plugins/service-lando/src/services/php-prerequisites.ts";
-import { SUPPORTED_PHP_VERSIONS } from "../../../plugins/service-lando/src/services/php.ts";
+  SUPPORTED_PHP_VERSIONS,
+} from "@lando/service-lando/php-internals";
 import { renderPhpBaseDockerfile } from "../../../scripts/build-php-base-images.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

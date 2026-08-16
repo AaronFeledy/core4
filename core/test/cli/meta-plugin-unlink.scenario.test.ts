@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
 import { ConfigService } from "@lando/sdk/services";
 import { pluginLink } from "../../src/cli/commands/plugin-link.ts";
 import {
@@ -13,6 +12,7 @@ import {
   pluginUnlink,
   renderPluginUnlinkResult,
 } from "../../src/cli/commands/plugin-unlink.ts";
+import { pluginCommandCachePath } from "../../src/testing/engine-layers";
 
 let root: string;
 let userDataRoot: string;

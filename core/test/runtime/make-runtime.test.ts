@@ -25,9 +25,9 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 
-import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
-import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { installSignalHandlers } from "../../src/testing/engine-layers.ts";
+import { normalizePluginPolicy } from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 

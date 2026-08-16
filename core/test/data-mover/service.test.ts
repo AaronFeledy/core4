@@ -6,12 +6,6 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
-import { providerImages } from "@lando/engine/data-mover/generated/provider-images";
-import {
-  DataMoverLive,
-  __testOnlyEncodeTarOctal,
-  __testOnlyUnarchivePayloadWithCap,
-} from "@lando/engine/data-mover/service";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -48,6 +42,12 @@ import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { StateStoreLive } from "@lando/state-store/service";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { makeTestDataMover } from "../../src/testing/data-mover.ts";
+import { providerImages } from "../../src/testing/engine-layers.ts";
+import {
+  DataMoverLive,
+  __testOnlyEncodeTarOctal,
+  __testOnlyUnarchivePayloadWithCap,
+} from "../../src/testing/engine-layers.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const app = AppId.make("data-app");

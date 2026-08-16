@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makePluginStateStore } from "@lando/core/testing";
 import {
   appliedPlanPath,
   loadAppliedPlan,

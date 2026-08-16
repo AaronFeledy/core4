@@ -6,9 +6,9 @@ import { Cause, DateTime, Effect, Option } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
-import { startDetachedHostProxyWorker } from "@lando/engine/subsystems/host-proxy/detached-worker";
-import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
-import { workerStatePath } from "@lando/engine/subsystems/host-proxy/worker-state";
+import { startDetachedHostProxyWorker } from "../../../src/testing/engine-layers.ts";
+import { defaultSpawnWorker } from "../../../src/testing/engine-layers.ts";
+import { workerStatePath } from "../../../src/testing/engine-layers.ts";
 import "../../../src/runtime/engine-composition.ts";
 
 const MEBIBYTE = 1024 * 1024;
