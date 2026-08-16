@@ -246,7 +246,7 @@ const buildRunningAppsStep = async (
       target: "Lando apps",
       status: "user-owned" as const,
       detail:
-        "Cannot verify whether Lando apps are running; provider discovery unavailable. Uninstall cannot proceed safely.",
+        "Cannot verify whether Lando apps are running; discovery failed (container runtime unavailable). Uninstall cannot proceed safely.",
     };
   }
   try {

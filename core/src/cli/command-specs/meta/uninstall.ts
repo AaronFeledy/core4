@@ -11,8 +11,26 @@ import { renderUninstallResult } from "../../commands/uninstall";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
 const makeListDiscoveredApps =
-  (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
-  async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
+  (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) | undefined => {
+    // Check if any container runtime is available before returning a discovery function
+    const { execFileSync } = require("node:child_process");
+    let hasAnyRuntime = false;
+    for (const cmd of ["podman", "docker"]) {
+      try {
+        execFileSync(cmd, ["--version"], { stdio: "ignore" });
+        hasAnyRuntime = true;
+        break;
+      } catch {
+        // Runtime not available, try next
+      }
+    }
+    
+    // If no runtime is available, return undefined to signal discovery is unavailable
+    if (!hasAnyRuntime) {
+      return undefined;
+    }
+    
+    return async (userDataRoot: string, _userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
@@ -119,6 +137,7 @@ const makeListDiscoveredApps =
 
     // No errors and no apps means clean state
     return apps;
+  };
   };
 
 const makeCleanupDiscoveredApps =
@@ -235,19 +254,21 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _cleanupDiscoveredApps?: unknown;
   };
   const purge = flags.purge === true;
+  const listDiscoveredApps =
+    typeof extra._listDiscoveredApps === "function"
+      ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
+      : makeListDiscoveredApps();
+  const cleanupDiscoveredApps =
+    typeof extra._cleanupDiscoveredApps === "function"
+      ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
+      : makeCleanupDiscoveredApps();
   return {
     dryRun: flags["dry-run"] === true,
     yes: flags.yes === true,
     keepData: flags["keep-data"] === true && !purge,
     purge,
-    listDiscoveredApps:
-      typeof extra._listDiscoveredApps === "function"
-        ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
-        : makeListDiscoveredApps(),
-    cleanupDiscoveredApps:
-      typeof extra._cleanupDiscoveredApps === "function"
-        ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
-        : makeCleanupDiscoveredApps(),
+    ...(listDiscoveredApps !== undefined ? { listDiscoveredApps } : {}),
+    ...(cleanupDiscoveredApps !== undefined ? { cleanupDiscoveredApps } : {}),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),

@@ -60,6 +60,7 @@ describe("Engine package seam", () => {
     expect(packageManifest.types).toBe("./src/index.ts");
     expect(exports).toEqual({
       ".": "./src/index.ts",
+      "./operations/uninstall": "./src/operations/uninstall.ts",
       "./*": "./src/*.ts",
       "./package.json": "./package.json",
     });
