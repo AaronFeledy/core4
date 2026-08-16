@@ -140,7 +140,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: PodmanHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
 
 describe("provider-lando Compose knob bring-up realization", () => {
   test("Given knobs and plan-derived networking, when creating a container, then HostConfig merges every source", async () => {

@@ -193,6 +193,7 @@ describe("container plan helpers", () => {
         Retries: 3,
         StartPeriod: 10_000_000_000,
       },
+      ExposedPorts: { "8080/tcp": {}, "9090/tcp": {} },
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
