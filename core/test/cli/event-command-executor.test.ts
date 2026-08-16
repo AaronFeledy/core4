@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Cause, Context, Effect, Exit, Queue, Schema, Stream } from "effect";
 
@@ -12,6 +15,7 @@ import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registr
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
+import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import {
   type ArgDefinitions,
   Args,
@@ -117,7 +121,13 @@ describe("EventCommandExecutorLive", () => {
     // When
     await Effect.runPromise(
       runCommandLifecycle(
-        executor.run({ command: "meta:test:event-command", flags: {}, args: [], cwd: "/workspace/demo" }),
+        executor.run({
+          command: "meta:test:event-command",
+          flags: {},
+          args: {},
+          argv: [],
+          cwd: "/workspace/demo",
+        }),
         { invocation: outerInvocation },
       ).pipe(Effect.provide(harness.context)),
     );
@@ -147,7 +157,8 @@ describe("EventCommandExecutorLive", () => {
       executorFor(entryFor(spec), harness).run({
         command: spec.id,
         flags: {},
-        args: [],
+        args: {},
+        argv: [],
         cwd: "/workspace/demo",
       }),
     );
@@ -167,7 +178,13 @@ describe("EventCommandExecutorLive", () => {
 
     // When
     const exit = await Effect.runPromiseExit(
-      executor.run({ command: "meta:test:event-command", flags: {}, args: [], cwd: "/workspace/demo" }),
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
     );
 
     // Then
@@ -186,7 +203,13 @@ describe("EventCommandExecutorLive", () => {
 
     // When
     const exit = await Effect.runPromiseExit(
-      executor.run({ command: "meta:test:event-command", flags: {}, args: [], cwd: "/workspace/demo" }),
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
     );
 
     // Then
@@ -217,7 +240,13 @@ describe("EventCommandExecutorLive", () => {
 
     // When
     await Effect.runPromise(
-      executor.run({ command: "meta:test:event-command", flags: {}, args: [], cwd: "/workspace/demo" }),
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
     );
 
     // Then
@@ -225,7 +254,42 @@ describe("EventCommandExecutorLive", () => {
     expect(process.cwd()).toBe(processCwd);
   });
 
-  test("resolves built-in commands from the registry-injected entries", async () => {
+  test("runs nested app commands inside the resolved app root", async () => {
+    // Given
+    const harness = makeHarness();
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-event-command-root-"));
+    let observedCwd = "";
+    const spec = {
+      ...testSpec(() =>
+        Effect.sync(() => {
+          observedCwd = process.cwd();
+          return "done";
+        }),
+      ),
+      namespace: "app" as const,
+      id: "app:test:event-command",
+    };
+
+    try {
+      // When
+      await Effect.runPromise(
+        executorFor(entryFor(spec), harness).run({
+          command: spec.id,
+          flags: {},
+          args: {},
+          argv: [],
+          cwd: appRoot,
+        }),
+      );
+
+      // Then
+      expect(observedCwd).toBe(appRoot);
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves built-in commands from the complete canonical registry", async () => {
     // Given
     const harness = makeHarness();
     const { builtInCommandEntries } = await import("../../src/cli/built-in-command-registry.ts");
@@ -234,28 +298,49 @@ describe("EventCommandExecutorLive", () => {
 
     // When
     const result = await Effect.runPromise(
-      executor.run({ command: "meta:version", flags: {}, args: [], cwd: process.cwd() }),
+      executor.run({ command: "meta:version", flags: {}, args: {}, argv: [], cwd: process.cwd() }),
     );
 
     // Then
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   });
 
-  test("does not deadlock beneath an outer resolved cwd", async () => {
+  test("runs an app command reentrantly beneath an outer non-current resolved cwd", async () => {
     // Given
     const harness = makeHarness();
-    const executor = executorFor(entryFor(testSpec(() => Effect.void)), harness);
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-event-command-reentrant-root-"));
+    let observedCwd = "";
+    const spec = {
+      ...testSpec(() =>
+        Effect.sync(() => {
+          observedCwd = process.cwd();
+        }),
+      ),
+      namespace: "app" as const,
+      id: "app:test:event-command",
+    };
 
-    // When
-    const result = await Effect.runPromise(
-      withResolvedCwd(
-        process.cwd(),
-        executor.run({ command: "meta:test:event-command", flags: {}, args: [], cwd: process.cwd() }),
-      ).pipe(Effect.timeout("250 millis")),
-    );
+    try {
+      // When
+      const result = await Effect.runPromise(
+        withResolvedCwd(
+          appRoot,
+          executorFor(entryFor(spec), harness).run({
+            command: spec.id,
+            flags: {},
+            args: {},
+            argv: [],
+            cwd: appRoot,
+          }),
+        ).pipe(Effect.timeout("250 millis")),
+      );
 
-    // Then
-    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+      // Then
+      expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+      expect(observedCwd).toBe(appRoot);
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 
   test("silent suppresses target renderer presentation but preserves lifecycle events", async () => {
@@ -274,7 +359,8 @@ describe("EventCommandExecutorLive", () => {
       executorFor(entryFor(spec), harness).run({
         command: spec.id,
         flags: {},
-        args: [],
+        args: {},
+        argv: [],
         cwd: "/workspace/demo",
         silent: true,
       }),
@@ -285,7 +371,7 @@ describe("EventCommandExecutorLive", () => {
     expect(harness.events.map((event) => event._tag)).toEqual([`cli-${spec.id}-init`, `cli-${spec.id}-run`]);
   });
 
-  test("preserves metadata flag and argument validation", async () => {
+  test("preserves metadata flag validation", async () => {
     // Given
     const harness = makeHarness();
     const executor = executorFor(
@@ -304,22 +390,79 @@ describe("EventCommandExecutorLive", () => {
       executor.run({
         command: "meta:test:event-command",
         flags: { bogus: true },
-        args: [],
+        args: {},
+        argv: [],
         cwd: process.cwd(),
       }),
     );
-    const excessArgs = await Effect.runPromiseExit(
+    // Then
+    expect(Exit.isFailure(unknownFlag)).toBe(true);
+  });
+
+  test("rejects an unknown named canonical command argument", async () => {
+    // Given
+    const harness = makeHarness();
+    const executor = executorFor(
+      entryFor(
+        testSpec(() => Effect.void),
+        { args: { value: Args.string() } },
+      ),
+      harness,
+    );
+
+    // When
+    const unknownArg = await Effect.runPromiseExit(
       executor.run({
         command: "meta:test:event-command",
         flags: {},
-        args: ["one", "two"],
+        args: { bogus: "value" },
+        argv: [],
         cwd: process.cwd(),
       }),
     );
 
     // Then
-    expect(Exit.isFailure(unknownFlag)).toBe(true);
-    expect(Exit.isFailure(excessArgs)).toBe(true);
+    expect(Exit.isFailure(unknownArg)).toBe(true);
+    expect(Exit.isFailure(unknownArg) ? Cause.squash(unknownArg.cause) : undefined).toMatchObject({
+      _tag: "ToolingCompileError",
+      tool: "meta:test:event-command",
+    });
+  });
+  test("keeps canonical arguments structured and exposes raw argv as parsedArgv", async () => {
+    // Given
+    const harness = makeHarness();
+    let captured:
+      | { readonly parsedArgv: ReadonlyArray<string>; readonly args: Record<string, unknown> }
+      | undefined;
+    const spec = testSpec((input) =>
+      Effect.sync(() => {
+        if (typeof input === "object" && input !== null && "argv" in input && "args" in input) {
+          captured = {
+            parsedArgv: extractSpecParsedArgv(input),
+            args:
+              typeof input.args === "object" && input.args !== null
+                ? Object.fromEntries(Object.entries(input.args))
+                : {},
+          };
+        }
+        return "done";
+      }),
+    );
+    const executor = executorFor(entryFor(spec, { args: { target: Args.string() } }), harness);
+
+    // When
+    await Effect.runPromise(
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: { target: "named" },
+        argv: ["--", "raw", "tail"],
+        cwd: "/workspace/demo",
+      }),
+    );
+
+    // Then
+    expect(captured).toEqual({ args: { target: "named" }, parsedArgv: ["--", "raw", "tail"] });
   });
 });
 

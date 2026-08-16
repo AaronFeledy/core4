@@ -7,6 +7,7 @@ import { Renderer } from "@lando/sdk/services";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
+import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-lifecycle";
 import type { CompiledCommandInput } from "./compiled-runtime";
@@ -45,7 +46,8 @@ const argDefinitionsForCommand = (entry: BuiltInCommandEntry): Readonly<Record<s
 const compileInput = (input: {
   readonly entry: BuiltInCommandEntry;
   readonly flags: Readonly<Record<string, string | number | boolean>>;
-  readonly args: ReadonlyArray<string>;
+  readonly args: Readonly<Record<string, string | number | boolean>>;
+  readonly argv: ReadonlyArray<string>;
   readonly flagDefinitions: Readonly<Record<string, unknown>>;
   readonly argDefinitions: Readonly<Record<string, unknown>>;
 }): CompiledCommandInput | ToolingCompileError => {
@@ -58,20 +60,19 @@ const compileInput = (input: {
       remediation: `Remove ${unknownFlag} or use a flag declared by ${commandId}.`,
     });
   }
-  const argNames = Object.keys(input.argDefinitions);
-  if (input.args.length > argNames.length) {
+  const unknownArg = Object.keys(input.args).find((name) => input.argDefinitions[name] === undefined);
+  if (unknownArg !== undefined) {
     return new ToolingCompileError({
-      message: `Too many arguments for canonical command ${commandId}.`,
+      message: `Unknown argument ${unknownArg} for canonical command ${commandId}.`,
       tool: commandId,
-      remediation: `Pass at most ${argNames.length} positional arguments.`,
+      remediation: `Remove ${unknownArg} or use an argument declared by ${commandId}.`,
     });
   }
   return {
-    argv: [],
+    argv: input.argv,
+    parsedArgv: input.argv,
     flags: { ...input.flags },
-    args: Object.fromEntries(
-      argNames.flatMap((name, index) => (input.args[index] === undefined ? [] : [[name, input.args[index]]])),
-    ),
+    args: { ...input.args },
   };
 };
 
@@ -96,12 +97,14 @@ export const makeEventCommandExecutor = (
         entry,
         flags: resolved.flags,
         args: resolved.args,
+        argv: resolved.argv,
         flagDefinitions: flagDefinitionsForCommand(entry),
         argDefinitions: argDefinitionsForCommand(entry),
       });
       if (input instanceof ToolingCompileError) return yield* Effect.fail(input);
 
-      const target = entry.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
+      const operation = entry.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
+      const target = entry.spec.namespace === "app" ? withResolvedCwd(resolved.cwd, operation) : operation;
       const command =
         resolved.silent === true ? target.pipe(Effect.provideService(Renderer, silentRenderer)) : target;
       const invocation = yield* makeNestedCommandInvocation(entry.spec.id, {

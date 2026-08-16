@@ -20,6 +20,7 @@ export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state
 
 export interface CompiledCommandInput {
   readonly argv: ReadonlyArray<string>;
+  readonly parsedArgv?: ReadonlyArray<string>;
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
   readonly rendererMode?: RendererMode;

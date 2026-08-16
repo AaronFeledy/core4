@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, type FiberId, FiberRef } from "effect";
 
 import {
   AppIdReservedError,
@@ -86,20 +86,29 @@ const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
   });
 
 const cwdResolutionLock = Effect.unsafeMakeSemaphore(1);
+const cwdResolutionOwner = FiberRef.unsafeMake<FiberId.Runtime | undefined>(undefined);
 
 export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  cwdResolutionLock.withPermits(1)(
-    Effect.suspend(() =>
-      root === process.cwd()
-        ? use
-        : Effect.acquireUseRelease(
-            enterDir(root),
-            () => use,
-            (original) => Effect.sync(() => process.chdir(original)),
-          ),
+  Effect.fiberIdWith((fiberId) =>
+    FiberRef.get(cwdResolutionOwner).pipe(
+      Effect.flatMap((owner) => {
+        const useAtRoot = Effect.suspend(() =>
+          root === process.cwd()
+            ? use
+            : Effect.acquireUseRelease(
+                enterDir(root),
+                () => use,
+                (original) => Effect.sync(() => process.chdir(original)),
+              ),
+        );
+        const ownsLock = owner?.id === fiberId.id && owner.startTimeMillis === fiberId.startTimeMillis;
+        return ownsLock
+          ? useAtRoot
+          : cwdResolutionLock.withPermits(1)(useAtRoot.pipe(Effect.locally(cwdResolutionOwner, fiberId)));
+      }),
     ),
   );
 

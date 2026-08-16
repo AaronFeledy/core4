@@ -3,7 +3,8 @@ import { Context, type Effect } from "effect";
 export interface EventCommandExecutorInput {
   readonly command: string;
   readonly flags: Readonly<Record<string, string | number | boolean>>;
-  readonly args: ReadonlyArray<string>;
+  readonly args: Readonly<Record<string, string | number | boolean>>;
+  readonly argv: ReadonlyArray<string>;
   readonly cwd: string;
   readonly silent?: boolean;
 }
