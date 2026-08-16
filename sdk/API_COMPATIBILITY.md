@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
   reloading or planning through those bound App-handle methods. `ShareAppError` additively includes

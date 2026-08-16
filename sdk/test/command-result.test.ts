@@ -1,18 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando/sdk/errors";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
-
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
   encodeStreamResultFrame,
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
-} from "../../src/cli/result-encode.ts";
-import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
+} from "@lando/sdk/command-result";
+import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando/sdk/errors";
+import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,
@@ -20,6 +18,7 @@ class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("Examp
 }) {}
 
 const plainRedactor = createRedactor("secrets", { values: [] });
+const EmptyResultSchema = Schema.Struct({});
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));

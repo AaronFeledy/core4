@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import type { Redactor } from "@lando/sdk/secrets";
 
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
 
 export type DoctorNdjsonStatus = "pass" | "warn" | "fail";
 

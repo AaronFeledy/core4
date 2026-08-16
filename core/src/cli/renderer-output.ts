@@ -9,6 +9,7 @@
  */
 import { Effect, Layer, Option } from "effect";
 
+import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "@lando/sdk/command-result";
 import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
@@ -27,7 +28,6 @@ import {
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,

@@ -23,13 +23,13 @@ import { Effect, Layer, Schema } from "effect";
 
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { buildCatalog, computeEffectiveAllowlist } from "../../mcp/catalog";
 import type { McpDispatchDeps, McpRunInput } from "../../mcp/dispatch";
 import { dispatchTool } from "../../mcp/dispatch";
 import type { McpCommandEntry } from "../../mcp/registry";
 import { computeMcpDefaultAllowlist } from "../allowlists/mcp";
 import { MCP_DEFAULT_ALLOWLIST } from "../generated/mcp-allowlist";
-import type { CommandResultOutcome } from "../result-encode";
 import type { LandoCommandSpec } from "../spec/command-base";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";

@@ -158,7 +158,7 @@ export const machineOutputRule = {
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: ["core/src/cli/result-encode.ts"], prefixes: [] },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Machine output boundary check passed.",
   failureHeadline:
     "Machine output boundary check failed. Command-result envelopes must serialize only through encodeCommandResult, and every command spec must declare a resultSchema.",
