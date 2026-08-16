@@ -59,4 +59,11 @@ describe("docs workspace", () => {
     expect(astroConfig).toContain('site: "https://aaronfeledy.github.io"');
     expect(astroConfig).toContain('base: "/core4/"');
   });
+
+  test("keeps splash-page links relative so GitHub Pages base works", async () => {
+    const splash = await Bun.file(resolve(repoRoot, "docs/index.md")).text();
+
+    expect(splash).not.toMatch(/\]\(\/(?!\/)/);
+    expect(splash).not.toMatch(/link:\s*\/(?!\/)/);
+  });
 });

@@ -422,9 +422,7 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
     expect(docsBuild).toContain("        uses: actions/upload-pages-artifact@v3");
     expect(docsBuild).toContain("          path: docs/dist");
-    expect(docsBuild).toContain(
-      "        if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
-    );
+    expect(docsBuild).toContain("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
       docsBuild.indexOf("bun run docs:check"),
     );
@@ -446,9 +444,7 @@ describe("ci workflow", () => {
     const deployDocs = findIndentedBlock(jobs, "deploy-docs", 2);
 
     expect(jobs).toContain("  deploy-docs:");
-    expect(deployDocs).toContain(
-      "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
-    );
+    expect(deployDocs).toContain("    if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(deployDocs).toContain("    needs: [docs-build]");
     expect(deployDocs).toContain("      pages: write");
     expect(deployDocs).toContain("      id-token: write");
