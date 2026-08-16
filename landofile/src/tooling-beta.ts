@@ -38,12 +38,44 @@ const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
 const BETA_VAR_KEYS = new Set(["raw"]);
+const BETA_EVENT_STEP_KEYS = new Set(["defer", "for", "if", "dir", "platforms"]);
+const BETA_EVENT_COMMAND_KEYS = new Set(["raw", "silent", "ignoreError"]);
+const BETA_EVENT_TASK_KEYS = new Set(["vars", "silent"]);
 
 interface ToolingBetaFinding {
   readonly task: string;
   readonly key: string;
   readonly description: string;
+  readonly event?: string;
 }
+
+const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBetaFinding | undefined => {
+  const events = parsed.events;
+  if (events === null || typeof events !== "object" || Array.isArray(events)) return undefined;
+
+  for (const [event, steps] of Object.entries(events as Record<string, unknown>)) {
+    if (!Array.isArray(steps)) continue;
+    for (const step of steps) {
+      if (step === null || typeof step !== "object" || Array.isArray(step)) continue;
+      const structuredStep = step as Record<string, unknown>;
+      const unsupportedKey = Object.keys(structuredStep).find(
+        (key) =>
+          BETA_EVENT_STEP_KEYS.has(key) ||
+          (Object.hasOwn(structuredStep, "command") && BETA_EVENT_COMMAND_KEYS.has(key)) ||
+          (Object.hasOwn(structuredStep, "task") && BETA_EVENT_TASK_KEYS.has(key)),
+      );
+      if (unsupportedKey !== undefined) {
+        return {
+          task: event,
+          key: `events.${event}[].${unsupportedKey}`,
+          description: `Event step field "${unsupportedKey}"`,
+          event,
+        };
+      }
+    }
+  }
+  return undefined;
+};
 
 const scanToolingInputMetadataForBeta = (
   taskName: string,
@@ -92,7 +124,10 @@ const scanToolingInputMetadataForBeta = (
 
 export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;
-  const tooling = (parsed as Record<string, unknown>).tooling;
+  const parsedRecord = parsed as Record<string, unknown>;
+  const eventFinding = scanEventsForBeta(parsedRecord);
+  if (eventFinding !== undefined) return eventFinding;
+  const tooling = parsedRecord.tooling;
   if (tooling === null || typeof tooling !== "object" || Array.isArray(tooling)) return undefined;
   const toolingMap = tooling as Record<string, unknown>;
 
@@ -162,7 +197,10 @@ export const rejectBetaToolingFeatures = (
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
-      message: `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`,
+      message:
+        finding.event === undefined
+          ? `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`
+          : `${finding.description} in event "${finding.event}" is not supported in Alpha Landofiles at ${filePath}.`,
       commandId: "landofile.parse",
       remediation: BETA_REMEDIATION,
     }),

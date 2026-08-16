@@ -11,6 +11,7 @@ import type {
   LandofileLockMismatchError,
   LandofileSandboxError,
   LandofileTimeoutError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ToolingIncludeCycleError,
@@ -91,6 +92,7 @@ type AppConfigError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | LandofileWriteValidationError
   | LandofileIncludeError

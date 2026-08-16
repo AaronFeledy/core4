@@ -686,6 +686,79 @@ export const ToolingArgShape = Schema.Struct({
 });
 export type ToolingArgShape = typeof ToolingArgShape.Type;
 
+export const AppLifecycleEventName = Schema.Literal(
+  "pre-start",
+  "post-start",
+  "pre-stop",
+  "post-stop",
+  "pre-rebuild",
+  "post-rebuild",
+  "pre-destroy",
+  "post-destroy",
+).annotations({ description: "App lifecycle point that runs an ordered Landofile event step list." });
+export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
+
+export const EventCommandStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.optional(Schema.Never),
+  command: Schema.String,
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  args: Schema.optional(Schema.Array(Schema.String)),
+}).annotations({
+  identifier: "EventCommandStep",
+  description: "Direct invocation of a canonical Lando command.",
+});
+export type EventCommandStep = typeof EventCommandStep.Type;
+
+export const EventTaskStep = Schema.Struct({
+  cmd: Schema.optional(Schema.Never),
+  task: Schema.String,
+  command: Schema.optional(Schema.Never),
+}).annotations({
+  identifier: "EventTaskStep",
+  description: "Invocation of an effective Landofile tooling task.",
+});
+export type EventTaskStep = typeof EventTaskStep.Type;
+
+export const EventCmdStep = Schema.Struct({
+  cmd: Schema.String,
+  task: Schema.optional(Schema.Never),
+  command: Schema.optional(Schema.Never),
+  service: Schema.optional(Schema.String),
+  env: Schema.optional(ToolingEnvironment),
+  user: Schema.optional(Schema.String),
+}).annotations({
+  identifier: "EventCmdStep",
+  description: "Provider tooling command with optional service targeting.",
+});
+export type EventCmdStep = typeof EventCmdStep.Type;
+
+export const EventStep = Schema.Union(
+  Schema.String,
+  EventCmdStep,
+  EventTaskStep,
+  EventCommandStep,
+).annotations({
+  identifier: "EventStep",
+  description: "One ordered events-as-tasks step.",
+});
+export type EventStep = typeof EventStep.Type;
+
+export const LandofileEvents = Schema.Struct({
+  "pre-start": Schema.optional(Schema.Array(EventStep)),
+  "post-start": Schema.optional(Schema.Array(EventStep)),
+  "pre-stop": Schema.optional(Schema.Array(EventStep)),
+  "post-stop": Schema.optional(Schema.Array(EventStep)),
+  "pre-rebuild": Schema.optional(Schema.Array(EventStep)),
+  "post-rebuild": Schema.optional(Schema.Array(EventStep)),
+  "pre-destroy": Schema.optional(Schema.Array(EventStep)),
+  "post-destroy": Schema.optional(Schema.Array(EventStep)),
+}).annotations({
+  identifier: "LandofileEvents",
+  description: "Ordered tasks keyed by app lifecycle event name.",
+});
+export type LandofileEvents = typeof LandofileEvents.Type;
+
 /**
  * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by this
  * schema.
@@ -925,7 +998,7 @@ export type CommandAliasesShape = typeof CommandAliasesShape.Type;
 
 /**
  * LandofileShape — the authored Landofile shape.
- * Excludes fields not modeled here: events:, keys:, plugins:, pluginDirs:.
+ * Excludes fields not modeled here: keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(
@@ -970,6 +1043,7 @@ const LandofileShapeBase = Schema.Struct({
     description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",
   }),
   tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
+  events: Schema.optional(LandofileEvents),
   toolingIncludes: Schema.optional(
     Schema.Record({ key: Schema.String, value: ToolingIncludeShape }),
   ).annotations({

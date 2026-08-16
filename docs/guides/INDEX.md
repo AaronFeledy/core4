@@ -199,5 +199,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | PHP service customization | `docs/guides/services/php-customization.mdx` | Shipped |
 | — | — | PHP tooling command resolution | `docs/guides/tooling/php-command-resolution.mdx` | Shipped |
 | L3-PARITY-02 | US-563, US-564 | app-wide tooling defaults, task overrides, and per-app command aliases | `docs/guides/tooling/defaults-and-aliases.mdx` | Shipped |
+| L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |

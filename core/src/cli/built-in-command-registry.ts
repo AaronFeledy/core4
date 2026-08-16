@@ -93,6 +93,7 @@ import VersionCommand from "./command-specs/meta/version";
 import XCommand from "./command-specs/meta/x";
 import { mcpRegistryFromBuiltIns } from "./commands/meta/mcp";
 import { type DeferredCommandPlan, notImplementedErrorForSpec } from "./deferred-commands";
+import { injectEventCommandRegistry } from "./event-command-executor";
 import type { LandoCommandSpec } from "./spec/command-base";
 import type { CommandClass } from "./spec/metadata";
 
@@ -213,6 +214,8 @@ export const builtInCommandRegistry = {
 const builtInCommandIndex = buildBuiltInCommandIndex(Object.entries(builtInCommandRegistry));
 
 export const builtInCommandEntries: ReadonlyArray<BuiltInCommandEntry> = builtInCommandIndex.entries;
+
+injectEventCommandRegistry(builtInCommandEntries);
 
 export const deferredBuiltInCommandIds: ReadonlyArray<string> = builtInCommandEntries
   .filter((entry) => entry.status.kind === "deferred")

@@ -1,0 +1,22 @@
+name: events-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+events:
+  pre-start:
+    - echo preparing-start
+  post-start:
+    - task: warm-cache
+  pre-stop:
+    - cmd: echo before-stop-first
+      service: web
+    - cmd: echo before-stop-second
+      service: web
+  post-stop:
+    - cmd: echo after-stop
+      service: web
+tooling:
+  warm-cache:
+    service: web
+    cmd: echo cache-ready

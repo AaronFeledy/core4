@@ -12,6 +12,7 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NotImplementedError,
   ToolingIncludeCycleError,
@@ -28,6 +29,7 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileValidationError
       | LandofileSandboxError
       | LandofileTimeoutError
+      | LandofileUnknownEventError
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError

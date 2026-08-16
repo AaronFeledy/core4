@@ -1,0 +1,137 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+import { Effect, Schema } from "effect";
+
+import { LandofileShape } from "@lando/sdk/schema";
+
+import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "../src/tooling-beta.ts";
+
+const cliEntry = resolve(import.meta.dirname, "../../core/bin/lando.ts");
+const validNames = [
+  "pre-start",
+  "post-start",
+  "pre-stop",
+  "post-stop",
+  "pre-rebuild",
+  "post-rebuild",
+  "pre-destroy",
+  "post-destroy",
+] as const;
+
+describe("Landofile events", () => {
+  test("the four event step forms decode strictly and remain mutually exclusive", () => {
+    // Given
+    const authored = {
+      name: "events-app",
+      events: {
+        "pre-start": [
+          "echo string",
+          { cmd: "echo object", service: "appserver", env: { TOKEN: "value" }, user: "www-data" },
+          { task: "prepare" },
+          { command: "app:info", flags: { format: "json" }, args: ["appserver"] },
+        ],
+      },
+    };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(authored, { onExcessProperty: "error" });
+
+    // Then
+    expect(decoded.events?.["pre-start"]).toHaveLength(4);
+    expect(() =>
+      Schema.decodeUnknownSync(LandofileShape)(
+        { name: "bad", events: { "pre-start": [{ cmd: "echo bad", task: "also-bad" }] } },
+        { onExcessProperty: "error" },
+      ),
+    ).toThrow();
+  });
+
+  test("unsupported structured event fields fail closed before schema decode", async () => {
+    // Given
+    const unsupportedSteps = [
+      { defer: "later" },
+      { for: "service" },
+      { if: "condition" },
+      { dir: "/workspace" },
+      { platforms: ["linux"] },
+      { command: "app:info", raw: true },
+      { command: "app:info", silent: true },
+      { command: "app:info", ignoreError: true },
+      { task: "prepare", vars: { MODE: "fast" } },
+      { task: "prepare", silent: true },
+    ] as const;
+
+    for (const step of unsupportedSteps) {
+      // When
+      const outcome = await Effect.runPromise(
+        Effect.either(
+          rejectBetaToolingFeatures("/workspace/.lando.yml", {
+            events: { "pre-start": [step] },
+          }),
+        ),
+      );
+
+      // Then
+      expect(outcome._tag).toBe("Left");
+      if (outcome._tag !== "Left") throw new Error("expected unsupported event step failure");
+      expect(outcome.left).toMatchObject({
+        _tag: "NotImplementedError",
+        remediation: BETA_REMEDIATION,
+      });
+    }
+  });
+
+  test("unsupported inert event fields are absent from the strict public schema", () => {
+    // Given
+    const unsupportedSteps = [
+      { command: "app:info", raw: true },
+      { command: "app:info", silent: true },
+      { command: "app:info", ignoreError: true },
+      { task: "prepare", vars: { MODE: "fast" } },
+      { task: "prepare", silent: true },
+    ] as const;
+
+    for (const step of unsupportedSteps) {
+      // When / Then
+      expect(() =>
+        Schema.decodeUnknownSync(LandofileShape)(
+          { name: "bad", events: { "pre-start": [step] } },
+          { onExcessProperty: "error" },
+        ),
+      ).toThrow();
+    }
+  });
+
+  test("an unknown event name fails closed listing the eight valid app lifecycle names", async () => {
+    // Given
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-events-validation-")));
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: bad-events\nevents:\n  pre-serve:\n    - echo nope\n");
+
+      // When
+      const proc = Bun.spawn({
+        cmd: [process.execPath, cliEntry, "app:config:lint", "--format=json"],
+        cwd: dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      const output = `${stdout}\n${stderr}`;
+
+      // Then
+      expect(exitCode).not.toBe(0);
+      expect(output).toContain("LandofileUnknownEventError");
+      for (const name of validNames) expect(output).toContain(name);
+      expect(output).not.toContain('pre-serve"');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

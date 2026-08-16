@@ -68,6 +68,7 @@ import {
   assertComposeServiceFieldsSupported,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
+import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling, compileEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
@@ -357,6 +358,13 @@ export const planApp = (
         ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
       })),
     });
+    const effectiveEvents = compileEffectiveEvents({
+      landofile,
+      services: resolvedServices.map((entry) => ({
+        name: entry.name,
+        ...(entry.resolution.events === undefined ? {} : { events: entry.resolution.events }),
+      })),
+    });
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
@@ -374,6 +382,7 @@ export const planApp = (
             base: entry.resolution.base,
             normalizedConfig: entry.resolution.normalizedConfig,
             tooling: entry.resolution.tooling ?? {},
+            events: entry.resolution.events ?? {},
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             envFileInputs: entry.envFileInputs,
@@ -405,7 +414,7 @@ export const planApp = (
         yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-        return attachEffectiveTooling(cached, effectiveTooling);
+        return attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEvents);
       }
     }
 
@@ -482,34 +491,37 @@ export const planApp = (
       ...(finalized.routes.length > 0 ? ["traefik"] : []),
       ...appFeatureResult.requires.globalServices,
     ];
-    const plan = attachEffectiveTooling(
-      yield* decodeAppPlan(appRoot, {
-        id: appId,
-        name: appName,
-        slug: appSlug,
-        root: AbsolutePath.make(appRoot),
-        provider,
-        services: finalized.services,
-        routes: finalized.routes,
-        networks,
-        ...(networking !== undefined ? { networking } : {}),
-        stores: finalized.stores,
-        fileSync: finalized.fileSync,
-        metadata: encodedMetadata,
-        extensions:
-          hostProxyExtension === undefined && !hasComposeProjectExtension
+    const plan = attachEffectiveEvents(
+      attachEffectiveTooling(
+        yield* decodeAppPlan(appRoot, {
+          id: appId,
+          name: appName,
+          slug: appSlug,
+          root: AbsolutePath.make(appRoot),
+          provider,
+          services: finalized.services,
+          routes: finalized.routes,
+          networks,
+          ...(networking !== undefined ? { networking } : {}),
+          stores: finalized.stores,
+          fileSync: finalized.fileSync,
+          metadata: encodedMetadata,
+          extensions:
+            hostProxyExtension === undefined && !hasComposeProjectExtension
+              ? {}
+              : {
+                  ...(hostProxyExtension === undefined
+                    ? {}
+                    : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+                  ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+                },
+          ...(requiredGlobalServices.length === 0
             ? {}
-            : {
-                ...(hostProxyExtension === undefined
-                  ? {}
-                  : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
-                ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
-              },
-        ...(requiredGlobalServices.length === 0
-          ? {}
-          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-      }),
-      effectiveTooling,
+            : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
+        }),
+        effectiveTooling,
+      ),
+      effectiveEvents,
     );
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);

@@ -5,8 +5,10 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import {
   PostAppStopEvent,
   PostServiceStopEvent,
+  PostStopEvent,
   PreAppStopEvent,
   PreServiceStopEvent,
+  PreStopEvent,
 } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
@@ -20,6 +22,7 @@ import {
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { runAppEvent, runPostAppEvent } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -62,6 +65,8 @@ const stopAppWithResolvedPlan = (
         timestamp: now(),
       }),
     );
+    yield* events.publish(PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() }));
+    yield* runAppEvent(plan, "pre-stop");
 
     const services = Object.values(plan.services).reverse();
     for (const service of services) {
@@ -104,6 +109,10 @@ const stopAppWithResolvedPlan = (
         timestamp: now(),
       }),
     );
+    yield* events.publish(
+      PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() }),
+    );
+    yield* runPostAppEvent(plan, "post-stop");
 
     return {
       result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },

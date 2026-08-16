@@ -15,6 +15,7 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
   type NotImplementedError,
@@ -45,6 +46,7 @@ export type UserLandofileError =
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileUnknownEventError
   | LandofileFormConflictError
   | NotImplementedError
   | LandofileIncludeError

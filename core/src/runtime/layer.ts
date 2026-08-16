@@ -79,6 +79,7 @@ import {
   normalizePluginPolicy,
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
+import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
@@ -107,6 +108,7 @@ type MinimalRuntimeServices =
   | Telemetry
   | ConfigService
   | EventService
+  | EventCommandExecutor
   | EventDeliveryMetrics
   | PathsService
   | FileSystem

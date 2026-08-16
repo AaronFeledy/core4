@@ -1,0 +1,62 @@
+---
+id: events
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile, events]
+---
+
+# Run tasks at app lifecycle events
+
+Use `events:` when work must run every time an app reaches a lifecycle point, whether the command came from the CLI or an embedding host.
+
+```yaml
+name: events-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+events:
+  pre-start:
+    - echo "Preparing the app"
+  post-start:
+    - task: warm-cache
+tooling:
+  warm-cache:
+    service: web
+    cmd: echo "Cache ready"
+```
+
+`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. `pre-start` runs before any service exists, so a `pre-start` step stays a plain command or a canonical Lando command, never a `service`-targeted exec. Save `service:` targeting for events that fire once the app is up, like `pre-stop` and `post-stop`.
+
+<Guide>
+  <Scenario id="ordered-lifecycle-tasks" render>
+    <Step name="load">
+      <UseFixture name="events-demo" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pre-start[\\s\\S]*post-start[\\s\\S]*pre-stop[\\s\\S]*post-stop" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "before-stop-first[\\s\\S]*before-stop-second[\\s\\S]*after-stop" } }} />
+    </Step>
+    <Step name="stop">
+      <Run command="lando stop" />
+      <Verify command="lando stop" expect={{ stdout: { regex: "stopped: events-demo" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failing-pre-event" render={false} reason="Regression coverage for failing lifecycle event tasks">
+    <Step name="fail">
+      <UseFixture name="events-failure" />
+      <Run command="lando stop --format=json" expectExit={1} />
+      <Verify errorTag="LandofileEventStepFailedError" expect={{ regex: "pre-stop" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Available events
+
+You can attach tasks to `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in the order you declare them. User-authored event lists replace lower-precedence service-type contributions for the same lifecycle point.

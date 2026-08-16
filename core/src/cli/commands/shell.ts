@@ -20,6 +20,7 @@ import {
   type LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
   type NoProviderInstalledError,
@@ -132,6 +133,7 @@ export type ShellAppError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError

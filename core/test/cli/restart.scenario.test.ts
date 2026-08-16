@@ -23,6 +23,7 @@ import {
   PluginRegistry,
   ProxyService,
   RuntimeProviderRegistry,
+  ToolingEngine,
 } from "@lando/core/services";
 import type {
   AppSelector,
@@ -33,6 +34,11 @@ import type {
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import {
+  attachEffectiveEvents,
+  compileEffectiveEvents,
+  effectiveEventsForPlan,
+} from "@lando/engine/operations/events";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
@@ -171,7 +177,10 @@ const requiredStartServicesLayer = (proxy: ProxyServiceShape) =>
     shellRunnerLive,
   );
 
-const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPlan> } = {}) => {
+const makeRestartLayer = (
+  options: { readonly buildEffect?: Effect.Effect<AppPlan>; readonly plannedApp?: AppPlan } = {},
+) => {
+  const plannedApp = options.plannedApp ?? plan;
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{ readonly reconcile: boolean }> = [];
@@ -196,19 +205,25 @@ const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPla
       }),
     inspect: (target) =>
       Effect.succeed({
-        app: plan.id,
+        app: plannedApp.id,
         service: target.service,
         providerId,
         status: "running",
         state: "running",
-        endpoints: plan.services[target.service]?.endpoints ?? [],
+        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
   };
 
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-restart", services: {} }) }),
+    Layer.succeed(LandofileService, {
+      discover: Effect.succeed({
+        name: "test-restart",
+        services: {},
+        events: effectiveEventsForPlan(plannedApp),
+      }),
+    }),
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => options.buildEffect ?? Effect.succeed(appPlan),
       buildApp: () => Effect.void,
@@ -218,6 +233,17 @@ const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPla
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
+    }),
+    Layer.succeed(ToolingEngine, {
+      id: "recording",
+      run: (invocation) =>
+        Effect.succeed({
+          tool: invocation.tool,
+          service: invocation.service ?? "web",
+          exitCode: 0,
+          stdout: invocation.commands[0]?.[2]?.replace(/^echo /u, "").replace(/ "[$]@"$/u, "") ?? "",
+          stderr: "",
+        }),
     }),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => events.push(event._tag)),
@@ -233,21 +259,60 @@ const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPla
 };
 
 describe("lando restart", () => {
+  test("user events override service-type contribution and lifecycle order occurs once", async () => {
+    // Given
+    const effective = compileEffectiveEvents({
+      landofile: {
+        events: {
+          "pre-stop": ["echo user-pre-stop"],
+          "post-stop": ["echo user-post-stop"],
+          "pre-start": ["echo user-pre-start"],
+          "post-start": ["echo user-post-start"],
+        },
+      },
+      services: [
+        {
+          name: "web",
+          events: {
+            "pre-stop": ["echo service-pre-stop"],
+            "post-stop": ["echo service-post-stop"],
+            "pre-start": ["echo service-pre-start"],
+            "post-start": ["echo service-post-start"],
+          },
+        },
+      ],
+    });
+    const eventPlan = attachEffectiveEvents({ ...plan }, effective);
+    const harness = makeRestartLayer({ plannedApp: eventPlan });
+
+    // When
+    await Effect.runPromise(restartApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(
+      harness.events.filter((event) => ["pre-stop", "post-stop", "pre-start", "post-start"].includes(event)),
+    ).toEqual(["pre-stop", "post-stop", "pre-start", "post-start"]);
+    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(4);
+  });
   test("destroys then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();
     const result = await Effect.runPromise(restartApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.events).toEqual([
       "pre-app-stop",
+      "pre-stop",
       "pre-service-stop",
       "post-service-stop",
       "post-app-stop",
+      "post-stop",
       "pre-app-start",
+      "pre-start",
       "task.tree.start",
       "task.start",
       "task.complete",
       "task.tree.complete",
       "post-app-start",
+      "post-start",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
