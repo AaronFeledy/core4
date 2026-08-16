@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Either } from "effect";
 
-import { getAtPath, setAtPath, unsetAtPath } from "@lando/engine/config-write/dot-path";
-import { type ValueType, parseTypedValue } from "@lando/engine/config-write/value-parse";
+import { getAtPath, setAtPath, unsetAtPath } from "../../src/config-write/dot-path.ts";
+import { type ValueType, parseTypedValue } from "../../src/config-write/value-parse.ts";
 
 const right = (raw: string, type: ValueType): unknown => {
   const result = parseTypedValue(raw, type);

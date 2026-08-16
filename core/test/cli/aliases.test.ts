@@ -142,7 +142,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       try {
         const [{ Effect }, { writeAppCommandCacheStrict }] = await Promise.all([
           import("effect"),
-          import("@lando/engine/cache/command-index-writer"),
+          import("../../src/testing/engine-layers.ts"),
         ]);
         await mkdir(join(cwd, ".lando", "scripts"), { recursive: true });
         await writeFile(join(cwd, ".lando.yml"), "name: compiled-alias\n");

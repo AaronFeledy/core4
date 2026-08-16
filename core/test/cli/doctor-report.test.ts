@@ -18,7 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import { DeprecationServiceLive } from "../../src/testing/engine-layers.ts";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorReport,

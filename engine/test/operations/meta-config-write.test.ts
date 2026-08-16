@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type EditorRunner, config } from "@lando/engine/operations/config";
+import { type EditorRunner, config } from "../../src/operations/config.ts";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
 

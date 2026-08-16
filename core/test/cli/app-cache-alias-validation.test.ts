@@ -7,8 +7,8 @@ import { DateTime, Effect, Layer } from "effect";
 import { type AppCacheRefreshResult, refreshAppCache } from "@lando/core/cli/operations";
 import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
-import { appCommandCachePath } from "@lando/engine/cache/paths";
-import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { appCommandCachePath } from "../../src/testing/engine-layers.ts";
+import { attachEffectiveTooling } from "../../src/testing/engine-layers.ts";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 

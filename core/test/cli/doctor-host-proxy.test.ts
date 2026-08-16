@@ -14,7 +14,7 @@ import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   writeWorkerRecord,
-} from "@lando/engine/subsystems/host-proxy/worker-state";
+} from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import {
   buildHostProxyAllowlistDoctorCheck,

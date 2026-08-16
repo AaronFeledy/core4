@@ -5,7 +5,7 @@ import { Effect, Layer, Queue, Schema, Stream } from "effect";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
 
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { StreamFrameSink } from "../../src/testing/engine-layers.ts";
 import {
   type RunWithRendererHandlingOptions,
   runWithRendererHandling,

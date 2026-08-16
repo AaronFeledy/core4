@@ -13,7 +13,7 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
   loadUserLandofileFile,
-} from "@lando/engine/landofile/app-resolution";
+} from "../../src/landofile/app-resolution.ts";
 
 const landofile = (name?: string): LandofileShape =>
   (name === undefined ? {} : { name }) as unknown as LandofileShape;

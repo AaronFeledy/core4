@@ -9,7 +9,7 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 import {
   DoctorReportSchema,
   collectDoctorReport,

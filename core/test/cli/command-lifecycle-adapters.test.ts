@@ -3,7 +3,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import { effectiveBootstrapForCommand } from "@lando/engine/runtime/cli-options";
+import { effectiveBootstrapForCommand } from "../../src/testing/engine-layers.ts";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";

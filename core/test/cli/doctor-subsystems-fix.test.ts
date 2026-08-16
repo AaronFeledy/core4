@@ -11,11 +11,11 @@ import {
 } from "@lando/sdk/services";
 import { TestProxyService } from "@lando/sdk/test";
 
-import { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
-import { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";
-import { ProxyServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
-import { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
-import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import { CertificateAuthorityUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { HealthcheckRunnerUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { ProxyServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { UrlScannerUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { SshServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   DefaultSubsystemDoctorLayer,
