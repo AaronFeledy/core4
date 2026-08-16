@@ -30,6 +30,9 @@
     },
     {
       "path": "../http-client"
+    },
+    {
+      "path": "../telemetry"
     }
   ]
 }

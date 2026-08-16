@@ -19,6 +19,7 @@
     "http-client",
     "managed-file",
     "data-mover",
+    "telemetry",
     "engine",
     "docs",
     "plugins/*"

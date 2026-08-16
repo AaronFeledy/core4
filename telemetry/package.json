@@ -1,6 +1,6 @@
 {
-  "name": "@lando/engine",
-  "description": "Private runtime engine implementation for Lando runtimes.",
+  "name": "@lando/telemetry",
+  "description": "Private telemetry inventory, redaction, and transport implementation for Lando runtimes.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lando-community/core4.git",
-    "directory": "engine"
+    "directory": "telemetry"
   },
   "type": "module",
   "private": true,
@@ -19,25 +19,18 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts",
+    "./events": "./src/events.ts",
+    "./inventory": "./src/inventory.ts",
+    "./policy": "./src/policy.ts",
+    "./redaction": "./src/redaction.ts",
+    "./service": "./src/service.ts",
     "./package.json": "./package.json"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
-  "keywords": ["lando", "engine", "runtime"],
+  "keywords": ["lando", "telemetry", "redaction"],
   "dependencies": {
-    "@lando/container-runtime": "workspace:*",
-    "@lando/http-client": "workspace:*",
-    "@lando/landofile": "workspace:*",
-    "@lando/paths": "workspace:*",
-    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "@lando/state-store": "workspace:*",
-    "@lando/telemetry": "workspace:*",
-    "effect": "^3.21.2",
-    "semver": "^7.8.5"
-  },
-  "devDependencies": {
-    "@types/semver": "^7.7.1"
+    "effect": "^3.21.2"
   },
   "scripts": {
     "build": "tsc -b",

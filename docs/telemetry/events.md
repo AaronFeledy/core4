@@ -1,13 +1,13 @@
 ---
 title: Telemetry Event Inventory
-description: The canonical, in-repo inventory of every telemetry event Lando records, kept in sync with engine/src/telemetry/inventory.ts.
+description: The canonical, in-repo inventory of every telemetry event Lando records, kept in sync with telemetry/src/inventory.ts.
 ---
 
 # Telemetry Event Inventory
 
 This is the canonical, in-repo inventory of every telemetry event Lando records. It lists each event's allowed fields, field types, allowed values, owning package, source trigger, and recording scope (CLI-only vs library-eligible).
 
-The machine-readable source of truth lives in [`engine/src/telemetry/inventory.ts`](../../engine/src/telemetry/inventory.ts). The `check:telemetry-inventory` gate fails when code records an event that is not declared there, and a consistency test fails when this document drifts from it. Adding a telemetry event therefore requires editing the inventory module **and** this document in the same change.
+The machine-readable source of truth lives in [`telemetry/src/inventory.ts`](../../telemetry/src/inventory.ts). The `check:telemetry-inventory` gate fails when code records an event that is not declared there, and a consistency test fails when this document drifts from it. Adding a telemetry event therefore requires editing the inventory module **and** this document in the same change.
 
 Related reference schemas: [telemetry config](../reference/schemas/telemetry-config.mdx) and the [`deprecation-used` event](../reference/schemas/deprecation-used-event.mdx).
 
@@ -26,7 +26,7 @@ None. The transport drains a bounded in-memory queue into registered sinks and e
 ### `update-outcome`
 
 - **Owner:** `@lando/core`
-- **Trigger:** `engine/src/telemetry/events.ts:recordUpdateOutcomeTelemetry (via lando update)`
+- **Trigger:** `telemetry/src/events.ts:recordUpdateOutcomeTelemetry (via lando update)`
 - **Scope:** CLI-only
 
 Records the categorized result of a `lando update` self-update attempt. Emitted once per update run, including failures.

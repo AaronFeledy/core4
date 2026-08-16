@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { TELEMETRY_EVENTS, type TelemetryEventScope } from "../../src/telemetry/inventory.ts";
+import { TELEMETRY_EVENTS, type TelemetryEventScope } from "@lando/telemetry/inventory";
 
-const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
+const repoRoot = resolve(import.meta.dirname, "..", "..");
 const docPath = resolve(repoRoot, "docs/telemetry/events.md");
 
 interface ParsedField {

@@ -19,6 +19,7 @@ export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "paths/src",
   "redaction/src",
   "state-store/src",
+  "telemetry/src",
   "plugins",
 ] as const;
 
@@ -39,6 +40,7 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
   "redaction/src",
   "sdk/src",
   "state-store/src",
+  "telemetry/src",
   "plugins/*/src",
 ] as const;
 
@@ -62,6 +64,7 @@ export const ALL_PACKAGE_WALK_ROOTS = [
   "redaction/src",
   "sdk/src",
   "state-store/src",
+  "telemetry/src",
   "plugins",
 ] as const;
 
@@ -82,4 +85,5 @@ export const NON_PLUGIN_SOURCE_ROOTS = [
   "redaction/src",
   "sdk/src",
   "state-store/src",
+  "telemetry/src",
 ] as const;

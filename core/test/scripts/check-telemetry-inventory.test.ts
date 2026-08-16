@@ -19,7 +19,7 @@ describe("telemetry inventory gate", () => {
     try {
       await write(
         root,
-        "engine/src/telemetry/events.ts",
+        "telemetry/src/events.ts",
         'export const r = (telemetry) => telemetry.record("update-outcome", {});\n',
       );
       await write(
@@ -66,7 +66,7 @@ describe("telemetry inventory gate", () => {
     try {
       await write(
         root,
-        "engine/src/telemetry/service.ts",
+        "telemetry/src/service.ts",
         "export const dispatch = (sink, record) => sink.record(record.event, record.data);\n",
       );
 
