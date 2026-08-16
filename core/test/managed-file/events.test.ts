@@ -8,9 +8,9 @@ import { Chunk, Effect, Layer, Queue, type Scope } from "effect";
 import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
 import { ManagedFileServiceLive, makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { RedactionServiceLive } from "@lando/redaction/service";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
