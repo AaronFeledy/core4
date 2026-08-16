@@ -215,7 +215,7 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
       status: "skipped",
       detail:
         step.id === "running-apps"
-          ? "Preserved by --keep-data; rerun with --purge to see discovered apps."
+          ? "Preserved by --keep-data; rerun with --purge to check for running apps."
           : "Preserved by --keep-data; rerun with --purge to remove this state.",
     };
   }
@@ -239,7 +239,7 @@ const buildRunningAppsStep = async (
   const base = {
     id: "running-apps",
     label: "running Lando apps and provider resources",
-    destructive: false,
+    destructive: true,
   };
   if (listDiscoveredApps === undefined) {
     return {
@@ -263,8 +263,8 @@ const buildRunningAppsStep = async (
     return {
       ...base,
       target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
-      status: "manual" as const,
-      detail: `Run \`lando poweroff\` to stop ${apps.length} discovered app${apps.length === 1 ? "" : "s"} before purge, or they will remain running.`,
+      status: "user-owned" as const,
+      detail: `Uninstall cannot proceed while ${apps.length} Lando app${apps.length === 1 ? " is" : "s are"} running. Run \`lando poweroff\` first, then retry uninstall.`,
     };
   } catch {
     return {
@@ -442,9 +442,13 @@ const executeUninstall = async (
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
-    if (step.id === "running-apps") {
-      // Running apps step is informational only - just mark it as manual
-      executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+    if (step.id === "running-apps" && step.status === "user-owned") {
+      // Running apps block uninstall - mark as failed
+      executed.push({
+        ...step,
+        outcome: "failed",
+        error: step.detail ?? "Uninstall cannot proceed while Lando apps are running.",
+      });
       continue;
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {

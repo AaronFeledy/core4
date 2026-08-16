@@ -81,10 +81,6 @@ const makeListDiscoveredApps = (): ((
   };
 };
 
-// Note: destroyDiscoveredApps removed - uninstall --purge will now just warn about
-// running apps and suggest the user run `lando poweroff` first. Automatic destruction
-// requires complex provider wiring that increases the cold-start penalty.
-
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
@@ -106,7 +102,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     keepData: flags["keep-data"] === true && !purge,
     purge,
     listDiscoveredApps: makeListDiscoveredApps(),
-    // destroyDiscoveredApps removed - uninstall will just warn about running apps
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),

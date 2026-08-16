@@ -26,7 +26,8 @@ uninstall --yes --keep-data
 uninstall --yes --purge
 ```
 
-**Important:** Before running `--purge`, stop all running Lando apps:
+**Important:** `--purge` will fail with a non-zero exit code if any Lando
+apps are still running. Stop all apps first:
 
 ```sh
 # Stop all apps (preserves containers/volumes for restart)
@@ -39,11 +40,7 @@ lando destroy --volumes
 lando uninstall --yes --purge
 ```
 
-The purge plan shows any discovered running apps and reminds you to stop
-them first. If you purge while apps are running, their containers,
-networks, and volumes will remain after uninstall completes.
-
-When `--purge` is used, Lando removes:
+When `--purge` succeeds, it has removed:
 - User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
 - User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
 - User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
