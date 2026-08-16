@@ -6,13 +6,12 @@ import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect"
 
 import { ShellExecError } from "@lando/core/errors";
 import { EventService, ShellRunner } from "@lando/core/services";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
-import { RedactionService } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { makeShellRunnerLive, withShellRedactionTokens } from "@lando/engine/services/shell-runner";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
 
 const redactionLayer = Layer.succeed(RedactionService, {
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
 });
 
 const unexpectedReplIO = () => {
@@ -143,6 +142,29 @@ describe("makeShellRunnerLive", () => {
     expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
     const payload = JSON.stringify(events);
     expect(payload).not.toContain("topsecret");
+    expect(payload).toContain("[redacted]");
+  });
+
+  test("redacts scoped tokens from shell events without exporting them to the child", async () => {
+    // Given
+    const events: LandoEvent[] = [];
+    const secret = "event-task-secret";
+
+    // When
+    const result = await Effect.runPromise(
+      withShellRedactionTokens(
+        [secret],
+        Effect.flatMap(ShellRunner, (shellRunner) =>
+          shellRunner.exec(`test -z "$EVENT_TASK_TOKEN" && printf '${secret}' && printf '${secret}' 1>&2`),
+        ),
+      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: secret, stderr: secret });
+    expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
+    const payload = JSON.stringify(events);
+    expect(payload).not.toContain(secret);
     expect(payload).toContain("[redacted]");
   });
 

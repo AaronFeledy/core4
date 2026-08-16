@@ -29,6 +29,7 @@ import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("event-reentry"),
@@ -170,6 +171,10 @@ const eventRuntime = (
     }),
   );
 
+const hostShellRunnerLive = makeShellRunnerLive(() => {
+  throw new TypeError("Interactive shell IO was not expected in this test.");
+});
+
 describe("runAppEvent tooling-step kernel", () => {
   test("preserves the resolved user and working directory on direct command event steps", async () => {
     // Given
@@ -220,6 +225,50 @@ describe("runAppEvent tooling-step kernel", () => {
     const published = JSON.stringify(details);
     expect(published).not.toContain("resolved-secret-value");
     expect(published).toContain("[redacted]");
+  });
+
+  test("redacts resolved task variables from host shell lifecycle events", async () => {
+    // Given
+    const invocations: ToolingInvocation[] = [];
+    const secret = "resolved-host-secret";
+    const plan = attachEffectiveTooling(
+      attachEffectiveEvents(eventPlan(), {
+        "pre-start": [{ task: "named", vars: { EVENT_TASK_TOKEN: secret } }],
+      }),
+      {
+        named: {
+          cmd: `printf '{{ vars.EVENT_TASK_TOKEN }}'; printf '{{ vars.EVENT_TASK_TOKEN }}' >&2; printf ':%s' "\${EVENT_TASK_TOKEN-unset}"`,
+          service: ":host",
+        },
+      },
+    );
+
+    // When
+    const published = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "pre-start");
+        return {
+          pre: yield* events.query("pre-shell-exec"),
+          post: yield* events.query("post-shell-exec"),
+          details: yield* events.query("task.detail"),
+        };
+      }).pipe(Effect.provide(Layer.mergeAll(eventRuntime(invocations), hostShellRunnerLive))),
+    );
+
+    // Then
+    expect(published.pre).toHaveLength(1);
+    expect(published.post).toHaveLength(1);
+    expect(published.details).toHaveLength(2);
+    expect(published.pre[0]?.command).toContain("[redacted]");
+    expect(published.post[0]?.command).toContain("[redacted]");
+    expect(published.post[0]?.stdout).toBe("[redacted]:unset");
+    expect(published.post[0]?.stderr).toBe("[redacted]");
+    const payload = JSON.stringify(published);
+    expect(payload).not.toContain(secret);
+    expect(payload).toContain("[redacted]");
+    expect(payload).toContain(":unset");
+    expect(invocations).toEqual([]);
   });
 
   test("routes host-targeted event commands through ShellRunner", async () => {

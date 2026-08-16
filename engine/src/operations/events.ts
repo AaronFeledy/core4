@@ -160,20 +160,23 @@ export const runAppEvent = (
           ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
         ],
       });
-      const redactorFor = (records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>) =>
-        redactionOption.value.forProfile("secrets", {
-          sourceEnv: process.env,
-          redactionTokens: [
-            ...collectAppPlanRedactionTokens(plan),
-            ...records.flatMap((record) =>
-              record === undefined
-                ? []
-                : collectSecretEnvValues(
-                    Object.fromEntries(Object.entries(record).map(([name, value]) => [name, String(value)])),
-                  ),
-            ),
-          ],
-        });
+      const redactorFor = (records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>) => {
+        const redactionTokens = [
+          ...collectAppPlanRedactionTokens(plan),
+          ...records.flatMap((record) => {
+            if (record === undefined) return [];
+            return collectSecretEnvValues(
+              Object.fromEntries(Object.entries(record).map(([name, value]) => [name, String(value)])),
+            );
+          }),
+        ];
+        return redactionOption.value
+          .forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens,
+          })
+          .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
+      };
       const program = yield* compileEventStepProgram(steps).pipe(
         Effect.mapError((error) => eventError(error, event, first, redactor)),
       );
