@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./operations/uninstall": "./src/operations/uninstall.ts",
     "./*": "./src/*.ts",
     "./package.json": "./package.json"
   },
