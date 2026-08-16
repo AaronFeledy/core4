@@ -18,12 +18,6 @@ import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";
 import { buildToolingInvocation } from "./tooling.ts";
 
-export {
-  attachEffectiveEvents,
-  compileEffectiveEvents,
-  effectiveEventsForPlan,
-} from "../planner/effective-events.ts";
-
 const activeEventCommands = FiberRef.unsafeMake<ReadonlyArray<string>>([]);
 const OUTPUT_TAIL_LENGTH = 4_000;
 
@@ -59,6 +53,26 @@ const failureExitCode = (error: unknown): number => {
   }
   return 1;
 };
+
+const toolingRuntime = (tool: string) =>
+  Effect.gen(function* () {
+    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+    if (Option.isNone(registry)) {
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "Runtime provider registry is unavailable for event execution.",
+          tool,
+        }),
+      );
+    }
+    const engine = yield* Effect.serviceOption(ToolingEngine);
+    if (Option.isNone(engine)) {
+      return yield* Effect.fail(
+        new ToolingCompileError({ message: "Tooling engine is unavailable for event execution.", tool }),
+      );
+    }
+    return { registry: registry.value, engine: engine.value };
+  });
 
 const executeEventStep = (plan: AppPlan, event: AppLifecycleEventName, step: EventStep) =>
   Effect.gen(function* () {
@@ -99,53 +113,33 @@ const executeEventStep = (plan: AppPlan, event: AppLifecycleEventName, step: Eve
           String(plan.root),
         );
         if (script !== undefined) return script;
-        return yield* Effect.fail({ exitCode: 1, message: `Unknown event tooling task ${step.task}.` });
-      }
-      const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
-      if (Option.isNone(registryOption)) {
         return yield* Effect.fail(
           new ToolingCompileError({
-            message: "Runtime provider registry is unavailable for event execution.",
+            message: `Unknown event tooling task ${step.task}.`,
             tool: step.task,
+            remediation: "Define the named tooling task or update the event to reference an existing task.",
           }),
         );
       }
-      const engineOption = yield* Effect.serviceOption(ToolingEngine);
-      if (Option.isNone(engineOption)) {
-        return yield* Effect.fail(
-          new ToolingCompileError({
-            message: "Tooling engine is unavailable for event execution.",
-            tool: step.task,
-          }),
-        );
-      }
-      const provider = yield* registryOption.value.select(plan);
-      const result = yield* engineOption.value.run(buildToolingInvocation(step.task, task), plan, provider);
+      const runtime = yield* toolingRuntime(step.task);
+      const provider = yield* runtime.registry.select(plan);
+      const result = yield* runtime.engine.run(buildToolingInvocation(step.task, task), plan, provider);
       return { ...result, service: String(result.service) };
     }
 
     const task = eventToolingTask(step);
-    if (task === undefined) return yield* Effect.fail({ exitCode: 1, message: "Invalid event step." });
-    const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registryOption)) {
+    if (task === undefined) {
       return yield* Effect.fail(
         new ToolingCompileError({
-          message: "Runtime provider registry is unavailable for event execution.",
+          message: "Invalid event step.",
           tool: event,
+          remediation: "Use a supported event cmd, task, or canonical command step.",
         }),
       );
     }
-    const engineOption = yield* Effect.serviceOption(ToolingEngine);
-    if (Option.isNone(engineOption)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: "Tooling engine is unavailable for event execution.",
-          tool: event,
-        }),
-      );
-    }
-    const provider = yield* registryOption.value.select(plan);
-    const result = yield* engineOption.value.run(
+    const runtime = yield* toolingRuntime(event);
+    const provider = yield* runtime.registry.select(plan);
+    const result = yield* runtime.engine.run(
       buildToolingInvocation(`${event}`, task, {
         ...(typeof step !== "string" && step.user !== undefined ? { user: step.user } : {}),
       }),
@@ -181,17 +175,24 @@ export const runAppEvent = (
     }
     const events = eventsOption.value;
     const redaction = redactionOption.value;
+    const effectiveTooling = effectiveToolingForPlan(plan);
     const redactor = yield* redaction.forProfile("secrets", {
       sourceEnv: process.env,
       redactionTokens: [
         ...collectAppPlanRedactionTokens(plan),
-        ...steps.flatMap((step) =>
-          typeof step !== "string" && step.cmd !== undefined && step.env !== undefined
-            ? collectSecretEnvValues(
-                Object.fromEntries(Object.entries(step.env).map(([name, value]) => [name, String(value)])),
-              )
-            : [],
-        ),
+        ...steps.flatMap((step) => {
+          const env =
+            typeof step !== "string" && step.cmd !== undefined
+              ? step.env
+              : typeof step !== "string" && step.task !== undefined
+                ? effectiveTooling?.[step.task]?.env
+                : undefined;
+          return env === undefined
+            ? []
+            : collectSecretEnvValues(
+                Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+              );
+        }),
       ],
     });
     for (const [index, step] of steps.entries()) {

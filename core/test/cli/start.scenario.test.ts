@@ -51,7 +51,8 @@ import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/operations/events";
+import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
@@ -887,6 +888,50 @@ describe("lando start", () => {
       outputTail: "[redacted] failed",
     });
     expect(JSON.stringify(failure)).not.toContain(secret);
+  });
+
+  test("named task env secrets are redacted from task detail and tagged failure output", async () => {
+    // Given
+    const secret = "named-event-task-token";
+    const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
+    attachEffectiveTooling(plannedApp, {
+      "secret-task": { cmd: "fail named task", service: "web", env: { EVENT_TOKEN: secret } },
+    });
+    const harness = makeStartLayer({
+      plannedApp,
+      eventResult: { exitCode: 9, stdout: secret, stderr: `${secret} failed` },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    const failure = failureOf(exit);
+    const details = harness.taskEvents
+      .filter((event) => event._tag === "task.detail")
+      .map((event) => String(event.line));
+    expect(details).toContain("[redacted]");
+    expect(details).toContain("[redacted] failed");
+    expect(failure).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "[redacted]\n[redacted] failed",
+    });
+    expect(`${details.join("\n")}\n${JSON.stringify(failure)}`).not.toContain(secret);
+  });
+
+  test("unknown named event tasks preserve the typed compile failure message", async () => {
+    // Given
+    const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "missing-task" }] });
+    const harness = makeStartLayer({ plannedApp });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(failureOf(exit)).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "Unknown event tooling task missing-task.",
+    });
   });
 
   test("a post-start event failure warns, exits successfully, and does not roll back", async () => {
