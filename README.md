@@ -208,6 +208,11 @@ architecture uses **one** native command registry and dispatcher for both
 source and compiled modes. Registry completeness, machine-output conformance,
 and relocated-binary smoke replace the retired dual-path parity layer.
 
+## Docs
+
+The Starlight preview is at <https://aaronfeledy.github.io/core4/>.
+Build it locally with `bun run docs:dev` or `bun run docs:build`.
+
 ## Contributing
 
 Repo-specific quirks and conventions that agents and contributors must follow
