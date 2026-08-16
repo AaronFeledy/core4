@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
+import { decodeAppCommandIndex } from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -87,6 +88,7 @@ test("Given an unchanged programmatic Landofile, when routing its alias, then th
           // When
           const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
           const cacheBytes = await readFile(appToolingCompilationCachePath(cacheRoot, root));
+          const cache = decodeAppCommandIndex(new Uint8Array(cacheBytes));
 
           // Then
           expect(route).toMatchObject({
@@ -94,6 +96,7 @@ test("Given an unchanged programmatic Landofile, when routing its alias, then th
             commandId: "app:greet",
             name: "greet",
           });
+          expect(cache).not.toHaveProperty("sourceRuntimeInputsHash");
           expect(Buffer.from(cacheBytes).includes("raw-secret-must-not-be-persisted")).toBe(false);
         },
       );
@@ -101,7 +104,7 @@ test("Given an unchanged programmatic Landofile, when routing its alias, then th
   );
 });
 
-test("Given a programmatic Landofile cache, when its environment changes, then the hot path rejects it", async () => {
+test("Given a programmatic Landofile cache, when its environment changes, then the hot path serves the last full decode", async () => {
   await withEnvironment({ LANDO_TEST_ALIAS_NAME: "hi" }, async () => {
     await withCacheFixture(
       {
@@ -124,7 +127,7 @@ test("Given a programmatic Landofile cache, when its environment changes, then t
         const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
 
         // Then
-        expect(route).toMatchObject({ _tag: "cache-miss", commandId: "app:hi" });
+        expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
       },
     );
   });
@@ -164,7 +167,7 @@ test("Given a programmatic Landofile cache, when invocation-control variables ch
   );
 });
 
-test("Given an unchanged templated Landofile, when routing its alias, then changed render inputs alone invalidate it", async () => {
+test("Given an unchanged templated Landofile, when render inputs change, then the hot path serves the last full decode", async () => {
   await withEnvironment({ LANDO_TEST_ALIAS_TARGET: "app:greet" }, async () => {
     await withCacheFixture(
       {
@@ -190,7 +193,7 @@ test("Given an unchanged templated Landofile, when routing its alias, then chang
 
         // Then
         expect(freshRoute).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
-        expect(staleRoute).toMatchObject({ _tag: "cache-miss", commandId: "app:hi" });
+        expect(staleRoute).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
       },
     );
   });

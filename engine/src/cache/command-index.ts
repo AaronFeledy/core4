@@ -50,7 +50,6 @@ export interface AppCommandIndexPayload {
   readonly appName: string;
   readonly sourceFile: string;
   readonly sourceContentHash?: string;
-  readonly sourceRuntimeInputsHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
   readonly sourceMtimeMs: number;

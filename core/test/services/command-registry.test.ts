@@ -382,7 +382,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when TypeScript Landofile output changes with the environment", async () => {
+  test("keeps the last full TypeScript decode when only the environment changes", async () => {
     await withTempCacheRoot(async () => {
       await withTempCwd(async (dir) => {
         const envKey = "LANDO_TEST_TOOLING_COMMAND";
@@ -407,7 +407,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           process.env[envKey] = "second";
           const warm = await listFromLive();
 
-          expect(warm.map((command) => command.id)).toEqual(["app:second"]);
+          expect(warm.map((command) => command.id)).toEqual(["app:first"]);
         } finally {
           if (previousCommand === undefined) Reflect.deleteProperty(process.env, envKey);
           else process.env[envKey] = previousCommand;
@@ -537,7 +537,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when a templated local include target changes", async () => {
+  test("keeps the last full decode when only a template input changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const previousInclude = process.env.LANDO_TEMPLATE_INCLUDE;
@@ -569,11 +569,11 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           process.env.LANDO_TEMPLATE_INCLUDE = "fragment-bad.yml";
           const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
 
-          expect(stale).toBeNull();
+          expect(stale).not.toBeNull();
 
           const commands = await listFromLive();
 
-          expect(commands).toEqual([]);
+          expect(commands.map((command) => command.id)).toEqual(["app:build"]);
         } finally {
           if (previousInclude === undefined) Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_INCLUDE");
           else process.env.LANDO_TEMPLATE_INCLUDE = previousInclude;

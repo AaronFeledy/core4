@@ -14,7 +14,6 @@ import {
   type LandofileReferencedFile,
   getLandofileReferencedFiles,
 } from "@lando/landofile/load-expression-provenance";
-import { detectTemplateDirective } from "@lando/landofile/template-render";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -23,7 +22,7 @@ import {
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { bundledPluginModules, landofileRuntimeInputs } from "../composition.ts";
+import { bundledPluginModules } from "../composition.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
 import { compilePluginCommands } from "./command-compiler.ts";
@@ -118,67 +117,6 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
     if (isMissingFile(cause)) return null;
     throw cause;
   }
-};
-
-const RUNTIME_ENV_CONTROL_KEYS = new Set(["_", "BUN_BE_BUN", "SHLVL"]);
-
-const stringEnvironment = (): Readonly<Record<string, string>> =>
-  Object.fromEntries(
-    Object.entries(process.env)
-      .filter(([key, value]) => value !== undefined && !RUNTIME_ENV_CONTROL_KEYS.has(key))
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => [key, value ?? ""]),
-  );
-
-const stableRuntimeValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stableRuntimeValue);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort((left, right) => left.localeCompare(right))
-        .map((key) => [key, stableRuntimeValue(Reflect.get(value, key))]),
-    );
-  }
-  return value;
-};
-
-const runtimeInputsHashFor = (source: AppCommandCacheSource): string | undefined => {
-  const usesProgrammaticLandofile = source.landofileSources.some((entry) =>
-    entry.relativePath.endsWith(".ts"),
-  );
-  const usesRenderedTemplate = source.landofileSources.some((entry) => {
-    const directive = detectTemplateDirective(Buffer.from(entry.bytes).toString("utf8"));
-    return directive !== undefined && directive.engineId !== "none";
-  });
-  if (!usesProgrammaticLandofile && !usesRenderedTemplate) return undefined;
-
-  const env = stringEnvironment();
-  const platform = process.platform;
-  const inputs = {
-    ...(usesProgrammaticLandofile
-      ? {
-          programmatic: {
-            env,
-            host: {
-              os: platform,
-              arch: process.arch,
-              platform,
-              isWsl: platform === "linux" && (process.env.WSL_DISTRO_NAME ?? "") !== "",
-            },
-          },
-        }
-      : {}),
-    ...(usesRenderedTemplate
-      ? {
-          template:
-            landofileRuntimeInputs().templates.context ??
-            ({ bootstrapLevel: "app", env, scope: "landofile" } as const),
-        }
-      : {}),
-  };
-  return createHash("sha256")
-    .update(JSON.stringify(stableRuntimeValue(inputs)))
-    .digest("hex");
 };
 
 interface BunShellScriptSource {
@@ -385,8 +323,6 @@ const writeAppCommandCacheTask = async (
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
   const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
   const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
-  const runtimeInputsHash = runtimeInputsHashFor(source);
-
   const cached = await readAppCommandCacheTask({
     ...options,
     cacheRoot,
@@ -399,7 +335,6 @@ const writeAppCommandCacheTask = async (
       ...cached,
       sourceFile: filePath,
       sourceContentHash: contentHash,
-      ...(runtimeInputsHash === undefined ? {} : { sourceRuntimeInputsHash: runtimeInputsHash }),
       sourceLocalIncludePaths,
       sourceReferencedFiles,
       sourceMtimeMs: stats.mtimeMs,
@@ -419,7 +354,6 @@ const writeAppCommandCacheTask = async (
     appName,
     sourceFile: filePath,
     sourceContentHash: contentHash,
-    ...(runtimeInputsHash === undefined ? {} : { sourceRuntimeInputsHash: runtimeInputsHash }),
     sourceLocalIncludePaths,
     sourceReferencedFiles,
     sourceMtimeMs: stats.mtimeMs,
@@ -567,8 +501,6 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (payload.sourceFile !== source.filePath) return null;
     if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
     if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
-    const runtimeInputsHash = runtimeInputsHashFor(source);
-    if (runtimeInputsHash !== undefined && payload.sourceRuntimeInputsHash !== runtimeInputsHash) return null;
     if (
       payload.sourceContentHash !==
       (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths))
