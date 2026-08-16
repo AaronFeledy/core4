@@ -29,6 +29,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/file-sync-mutagen",
   "@lando/ca-mkcert",
   "@lando/proxy-traefik",
+  "@lando/ssh-agent",
   "@lando/template-handlebars",
   "@lando/template-mustache",
 ];
