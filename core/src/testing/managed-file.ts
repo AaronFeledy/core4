@@ -1,1 +1,1 @@
-export * from "@lando/engine/testing/managed-file";
+export * from "@lando/managed-file/testing";
