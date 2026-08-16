@@ -14,14 +14,14 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
+import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 
 const providerId = ProviderId.make("test");
 const metadata = {

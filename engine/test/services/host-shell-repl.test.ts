@@ -8,10 +8,10 @@ import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
 
+import { RedactionService } from "@lando/redaction/service";
 import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line";
 import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor";
 import { runHostShellRepl } from "../../src/services/host-shell-repl";
-import { RedactionService } from "@lando/redaction/service";
 
 const input = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<ShellReplInput> =>
   (async function* () {

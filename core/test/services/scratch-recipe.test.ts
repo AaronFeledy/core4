@@ -14,6 +14,13 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { createRedactor } from "@lando/sdk/secrets";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { StateStoreLive } from "@lando/state-store/service";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 import { DataMoverLive } from "../../src/testing/engine-layers.ts";
 import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
@@ -25,13 +32,6 @@ import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
-import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 
 const providerId = ProviderId.make("lando");
 

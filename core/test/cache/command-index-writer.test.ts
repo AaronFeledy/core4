@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import { type PluginManifest, ServiceName } from "@lando/sdk/schema";
 
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { decodePluginCommandIndex } from "../../src/testing/engine-layers.ts";
 import {
   invalidatePluginCommandCache,
@@ -16,7 +17,6 @@ import {
 } from "../../src/testing/engine-layers.ts";
 import { pluginCommandCachePath } from "../../src/testing/engine-layers.ts";
 import { mergeDiscoveredPlugins } from "../../src/testing/engine-layers.ts";
-import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
   name: name as PluginManifest["name"],

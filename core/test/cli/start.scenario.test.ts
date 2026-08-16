@@ -49,13 +49,13 @@ import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { GlobalAppServiceLive } from "../../src/testing/engine-layers.ts";
 import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 import { makeShellRunnerLive } from "../../src/testing/engine-layers.ts";
 import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

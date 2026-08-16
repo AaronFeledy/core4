@@ -11,9 +11,9 @@ import { AbsolutePath, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 
 test("bundled mkcert setup issues certs through the production app planner", async () => {
   // Given: isolated roots containing a fingerprinted, preinstalled fake mkcert.

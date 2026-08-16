@@ -7,16 +7,13 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import {
-  type HostProxyRunLandoExecutor,
-  dispatchRunLando,
-} from "../../../src/testing/engine-layers.ts";
-import { buildRunLandoRequest } from "../../../src/testing/engine-layers.ts";
-import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
 import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
+import { type HostProxyRunLandoExecutor, dispatchRunLando } from "../../../src/testing/engine-layers.ts";
+import { buildRunLandoRequest } from "../../../src/testing/engine-layers.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };

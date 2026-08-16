@@ -5,12 +5,12 @@ import { Effect, Layer, Queue, Schema, Stream } from "effect";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
 
-import { StreamFrameSink } from "../../src/testing/engine-layers.ts";
 import {
   type RunWithRendererHandlingOptions,
   runWithRendererHandling,
 } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { StreamFrameSink } from "../../src/testing/engine-layers.ts";
 
 class CommandLifecycleTestError extends Schema.TaggedError<CommandLifecycleTestError>()(
   "CommandLifecycleTestError",

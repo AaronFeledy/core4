@@ -30,6 +30,8 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 
+import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -39,8 +41,6 @@ import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 import { attachEffectiveTooling } from "../../src/testing/engine-layers.ts";
 import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { ProviderExecToolingEngineLive } from "../../src/testing/engine-layers.ts";
-import { resolveLandofileIncludes } from "@lando/landofile/includes";
-import { TestRuntimeProvider } from "@lando/sdk/test";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

@@ -5,12 +5,9 @@ import { Context, Effect, Layer, Queue, Stream } from "effect";
 import { EventError } from "@lando/sdk/errors";
 import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import {
-  makeBootstrapLifecycleTracker,
-  superviseBootstrapLayer,
-} from "../../src/testing/engine-layers.ts";
-import { makeEventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { makeBootstrapLifecycleTracker, superviseBootstrapLayer } from "../../src/testing/engine-layers.ts";
+import { makeEventServiceLive } from "../../src/testing/engine-layers.ts";
 
 const stubEventService = (
   publish: (event: LandoEvent) => Effect.Effect<void, EventError>,

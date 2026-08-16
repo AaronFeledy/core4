@@ -94,7 +94,11 @@ export {
   reservedTopLevelAliasOwner,
 } from "@lando/engine/operations/reserved-aliases";
 export { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-export { buildToolingInvocation, runTooling, validateToolingArguments } from "@lando/engine/operations/tooling";
+export {
+  buildToolingInvocation,
+  runTooling,
+  validateToolingArguments,
+} from "@lando/engine/operations/tooling";
 export { buildUninstallPlan, uninstall, type UninstallResult } from "@lando/engine/operations/uninstall";
 export {
   buildWindowsReplacementScript,

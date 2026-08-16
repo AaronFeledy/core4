@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import { EventService, ProcessRunner } from "@lando/sdk/services";
-import { ProcessRunnerLive } from "../../src/services/process-runner";
 import { RedactionService } from "@lando/redaction/service";
+import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
+import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
+import { ProcessRunnerLive } from "../../src/services/process-runner";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),

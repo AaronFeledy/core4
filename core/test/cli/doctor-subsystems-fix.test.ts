@@ -11,11 +11,6 @@ import {
 } from "@lando/sdk/services";
 import { TestProxyService } from "@lando/sdk/test";
 
-import { CertificateAuthorityUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { HealthcheckRunnerUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { ProxyServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { UrlScannerUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { SshServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   DefaultSubsystemDoctorLayer,
@@ -26,6 +21,11 @@ import {
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { CertificateAuthorityUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { HealthcheckRunnerUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { ProxyServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { UrlScannerUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { SshServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["proxy", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;

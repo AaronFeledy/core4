@@ -8,8 +8,8 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { CertificateAuthority } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
-import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 
 const authorityLayer = (id: string) =>
   Layer.succeed(CertificateAuthority, { ...makeTestCertificateAuthority(), id });

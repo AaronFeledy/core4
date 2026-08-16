@@ -2,11 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 
-import {
-  assertToolingNameClaimable,
-  reservedTopLevelAliasOwner,
-} from "../../src/testing/engine-layers";
 import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/spec/command-base.ts";
+import { assertToolingNameClaimable, reservedTopLevelAliasOwner } from "../../src/testing/engine-layers";
 
 describe("reservedTopLevelAliasOwner", () => {
   test("reserves the bare run alias for apps:scratch:run", () => {

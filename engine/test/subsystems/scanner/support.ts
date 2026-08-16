@@ -11,9 +11,9 @@ import {
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 import type { HttpClientShape } from "@lando/http-client/service";
 import { RedactionService, type RedactionServiceShape } from "@lando/redaction/service";
+import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));

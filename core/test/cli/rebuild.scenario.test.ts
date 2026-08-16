@@ -28,14 +28,14 @@ import {
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { StateStoreLive } from "@lando/state-store/service";
 import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
 import { BuildOrchestratorLive } from "../../src/testing/engine-layers";
 import { ConfigServiceLive } from "../../src/testing/engine-layers";
 import { FileSystemLive } from "../../src/testing/engine-layers";
 import { makeShellRunnerLive } from "../../src/testing/engine-layers";
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { StateStoreLive } from "@lando/state-store/service";
 import "../../src/runtime/engine-composition.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

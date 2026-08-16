@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
+import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
+import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
 import {
   LandofileFormConflictError,
   LandofileNotFoundError,
@@ -14,8 +16,6 @@ import {
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { LandofileServiceLive } from "../../src/services/landofile-live";
-import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
-import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-"));

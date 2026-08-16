@@ -7,9 +7,9 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(resolveLandofileIncludes({ landofile, appRoot, cacheRoot: join(appRoot, ".cache") }));

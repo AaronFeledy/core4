@@ -9,13 +9,13 @@ import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName }
 import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
+import { parseLandofile } from "@lando/landofile/parser";
+import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
 import { globalInstall } from "../../src/testing/engine-layers";
 import { ConfigServiceLive } from "../../src/testing/engine-layers";
 import { FileSystemLive } from "../../src/testing/engine-layers";
-import { parseLandofile } from "@lando/landofile/parser";
-import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
-import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-install-data-"));

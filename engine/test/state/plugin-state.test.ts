@@ -5,12 +5,12 @@ import { join, sep } from "node:path";
 
 import { Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
 
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
-import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
-import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import type { PluginStateBucketSpec } from "../../src/plugins/context-state.ts";
+import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const Doc = Schema.Struct({ count: Schema.Number, label: Schema.String });

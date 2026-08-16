@@ -5,13 +5,13 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { pluginCommandCachePath } from "../../src/testing/engine-layers";
 import { ConfigService } from "@lando/sdk/services";
 import {
   type PluginLinkOptions,
   pluginLink,
   renderPluginLinkResult,
 } from "../../src/cli/commands/plugin-link.ts";
+import { pluginCommandCachePath } from "../../src/testing/engine-layers";
 
 let root: string;
 let userDataRoot: string;

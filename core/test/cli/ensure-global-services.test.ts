@@ -36,10 +36,7 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { CacheServiceLive } from "../../src/testing/engine-layers";
 import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
-import {
-  ensureGlobalServicesRunning,
-  requiredGlobalServicesForPlan,
-} from "../../src/testing/engine-layers";
+import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "../../src/testing/engine-layers";
 import { ConfigServiceLive } from "../../src/testing/engine-layers";
 import { FileSystemLive } from "../../src/testing/engine-layers";
 import { AppPlannerLive } from "../../src/testing/engine-layers";

@@ -10,13 +10,13 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
+import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 import { PluginRegistryLive, makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import {
   collectGlobalServiceContributions,
   defaultGlobalServiceModuleLoader,
 } from "../../src/testing/engine-layers.ts";
-import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest } from "@lando/sdk/schema";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",

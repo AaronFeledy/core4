@@ -16,6 +16,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { hostProxyWorkerEntry } from "../../../src/testing/engine-layers.ts";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/testing/engine-layers.ts";
 import {
@@ -36,7 +37,6 @@ import {
   writeWorkerRecord,
 } from "../../../src/testing/engine-layers.ts";
 import { readWorkerRecordStateAt } from "../../../src/testing/engine-layers.ts";
-import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import "../../../src/runtime/engine-composition.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };

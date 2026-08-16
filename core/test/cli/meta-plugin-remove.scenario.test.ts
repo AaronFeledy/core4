@@ -8,12 +8,12 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "../../src/testing/engine-layers";
-import { makePluginTrustStore } from "../../src/testing/engine-layers";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
+import { writePluginCommandCacheStrict } from "../../src/testing/engine-layers";
+import { makePluginTrustStore } from "../../src/testing/engine-layers";
 
 let userDataRoot: string;
 

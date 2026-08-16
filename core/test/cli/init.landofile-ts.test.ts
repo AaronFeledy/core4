@@ -7,12 +7,12 @@ import { Effect } from "effect";
 import { type LandofileShape, ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 
-import { PluginRegistryLive } from "../../src/testing/engine-layers";
-import { LandofileServiceLive } from "../../src/testing/engine-layers";
-import { AppPlannerLive } from "../../src/testing/engine-layers";
 import { initApp } from "../../src/cli/commands/init.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
 import { nodeTsRenderer } from "../../src/recipes/builtin/node-ts/render.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers";
+import { LandofileServiceLive } from "../../src/testing/engine-layers";
+import { AppPlannerLive } from "../../src/testing/engine-layers";
 
 const FORBIDDEN_RUNTIME_BUILTINS = [
   "fs",

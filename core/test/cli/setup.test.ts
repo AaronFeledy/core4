@@ -21,8 +21,6 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
-import { HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
-import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
 import { makeHttpClientLive } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
@@ -56,6 +54,8 @@ import {
 } from "../../src/cli/commands/setup-network-trust.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
+import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},

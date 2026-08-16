@@ -13,9 +13,9 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 
-import { deterministicMetadata } from "../../src/testing/engine-layers.ts";
 import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import { analyzeComposeDispositions } from "@lando/landofile/compose/rejections";
+import { deterministicMetadata } from "../../src/testing/engine-layers.ts";
 import { ComposeFixtureOutcomeError } from "./compose-fixture-outcome-values.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 

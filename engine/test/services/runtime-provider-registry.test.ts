@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
 
+import { DownloaderLive } from "@lando/http-client/downloader";
+import { HttpClientLive } from "@lando/http-client/live";
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { NoProviderInstalledError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -10,14 +15,9 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestManagedFileStore } from "@lando/managed-file/testing";
+import { StateStoreLive } from "@lando/state-store/service";
 import { PluginRegistryLive } from "../../src/plugins/registry";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry";
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
-import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { StateStoreLive } from "@lando/state-store/service";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),

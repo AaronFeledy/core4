@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { Scope } from "effect";
 
-import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
+import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

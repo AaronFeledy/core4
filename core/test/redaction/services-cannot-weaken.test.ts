@@ -9,8 +9,6 @@ import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
-import { makeShellRunnerLive } from "../../src/testing/engine-layers.ts";
-import { HostProxyServiceDisabled } from "../../src/testing/engine-layers.ts";
 import {
   type DownloaderEvents,
   makeDownloaderService,
@@ -20,6 +18,8 @@ import type { HttpClientShape } from "@lando/http-client/service";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
+import { makeShellRunnerLive } from "../../src/testing/engine-layers.ts";
+import { HostProxyServiceDisabled } from "../../src/testing/engine-layers.ts";
 
 /**
  * These assertions target each surface's shipped redaction point:

@@ -19,10 +19,10 @@ import {
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
+import { parseLandofile } from "@lando/landofile/parser";
 import { GlobalAppServiceLive } from "../../src/testing/engine-layers.ts";
 import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { parseLandofile } from "@lando/landofile/parser";
 
 const provider = { ...TestRuntimeProvider, id: "lando" };
 

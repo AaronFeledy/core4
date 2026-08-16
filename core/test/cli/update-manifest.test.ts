@@ -6,6 +6,11 @@ import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
+import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { buildBugReport } from "../../src/cli/bug-report.ts";
+import { updateOptionsFromInput } from "../../src/cli/command-specs/meta/update.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import {
   type UpdateChecksumSignatureVerifier,
   UpdateLaunchProbeError,
@@ -21,11 +26,6 @@ import {
   update,
   updateChannelForVersion,
 } from "../../src/testing/engine-layers.ts";
-import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { buildBugReport } from "../../src/cli/bug-report.ts";
-import { updateOptionsFromInput } from "../../src/cli/command-specs/meta/update.ts";
-import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();
 

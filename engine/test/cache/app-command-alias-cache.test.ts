@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { deriveAppCommandToolingFingerprint } from "../../src/cache/command-index.ts";
+import { rememberLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
+import { deriveAppCommandToolingFingerprint } from "../../src/cache/command-index.ts";
 import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
-import { rememberLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 
 const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-command-alias-cache-"));

@@ -6,12 +6,12 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
-import { PluginRegistry } from "@lando/sdk/services";
-import { makePluginRegistryLive } from "../../src/plugins/registry";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { PluginRegistry } from "@lando/sdk/services";
 import { ConfigService } from "@lando/sdk/services";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
+import { makePluginRegistryLive } from "../../src/plugins/registry";
 
 const runWithPluginRegistry = <A, E>(
   effect: Effect.Effect<A, E, PluginRegistry>,

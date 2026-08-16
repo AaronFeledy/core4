@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -20,6 +18,8 @@ import {
 import { createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
+import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 
 export const providerId = ProviderId.make("test");
 

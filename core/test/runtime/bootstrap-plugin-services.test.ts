@@ -4,8 +4,8 @@ import { Context, Effect, Layer, Option } from "effect";
 
 import { FileSyncEngine } from "@lando/sdk/services";
 
-import { HostMaintenanceRegistry } from "../../src/testing/engine-layers.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { HostMaintenanceRegistry } from "../../src/testing/engine-layers.ts";
 
 describe("bootstrap plugin services", () => {
   test("app bootstrap provides file sync from bundled plugin descriptors", async () => {

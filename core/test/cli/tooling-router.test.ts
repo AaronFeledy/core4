@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers.ts";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
+import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));

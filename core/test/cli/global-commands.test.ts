@@ -43,13 +43,6 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "../../src/testing/engine-layers";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
-import { StreamFrameSink } from "../../src/testing/engine-layers";
-import { ConfigServiceLive } from "../../src/testing/engine-layers";
-import { EventServiceLive } from "../../src/testing/engine-layers";
-import { FileSystemLive } from "../../src/testing/engine-layers";
-import { AppPlannerLive } from "../../src/testing/engine-layers";
 import { parseLandofile } from "@lando/landofile/parser";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
@@ -63,6 +56,13 @@ import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers";
+import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
+import { StreamFrameSink } from "../../src/testing/engine-layers";
+import { ConfigServiceLive } from "../../src/testing/engine-layers";
+import { EventServiceLive } from "../../src/testing/engine-layers";
+import { FileSystemLive } from "../../src/testing/engine-layers";
+import { AppPlannerLive } from "../../src/testing/engine-layers";
 
 interface ApplyCall {
   readonly plan: AppPlan;
