@@ -107,7 +107,7 @@ The `--yes` flag consents to automatic prerequisite installation (uidmap tools o
 
 On first-time Linux systems, `lando setup --yes` can automatically handle most managed Podman prerequisites:
 
-- **uidmap tools**: On Ubuntu 26.04, Lando installs the `uidmap` package automatically. Other distributions require manual installation (see below).
+- **uidmap tools**: On Ubuntu and Debian, Lando installs the `uidmap` package automatically. Fedora/RHEL and other distributions require manual installation (see below).
 - **Runtime bundle**: Downloads and extracts the Lando-managed Podman runtime.
 - **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing (when the global app is available).
 
@@ -115,13 +115,7 @@ On first-time Linux systems, `lando setup --yes` can automatically handle most m
 
 If `lando setup` fails, follow the remediation guidance in the error message. Common manual steps:
 
-#### uidmap tools (non-Ubuntu distributions)
-
-**Debian:**
-```bash
-sudo apt-get install uidmap
-lando setup
-```
+#### uidmap tools (Fedora/RHEL and unrecognized distributions)
 
 **Fedora/RHEL:**
 ```bash

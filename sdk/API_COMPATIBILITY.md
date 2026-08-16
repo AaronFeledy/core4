@@ -27,6 +27,7 @@
 - `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
 - `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
+- `InstallUidmapHostChange` schema is widened to accept flexible `distribution: String` and `version: String` (previously hardcoded to `Literal("ubuntu")` and `Literal("26.04")`). Supported distributions are Ubuntu and Debian via apt-get. `ProviderSetupHostChange` union additively includes `ProvisionSubuidHostChange`, `ProvisionSubgidHostChange`, and `ProvisionCgroupsDelegationHostChange` for missing-only prerequisite provisioning (add subuid/subgid ranges when user has none, create systemd cgroups delegation drop-in when absent, never overwrite existing config).
 - `EndpointInput` and `EndpointPlan` are now explicit `_tag: "internal" | "published"` unions. Published network endpoints carry `publication: { bindAddress?, hostPort? }`; internal endpoints are never host-visible, Unix sockets cannot be published, and runtime-assigned ports belong to endpoint materialization output. `RoutePlan.backend` is planner-resolved. The schema barrel additively exports `BindAddress`, `PortNumber`, `InternalEndpoint`, and `PublishedEndpoint`.
 - `@lando/sdk/errors` additively exports `PublicationUnsupportedError` for plan-time rejection when a provider cannot satisfy explicit endpoint publication intent.
 
@@ -285,6 +286,9 @@
 - `PluginTrustState`
 - `PortablePath`
 - `ProviderExtensionConfig`
+- `ProvisionCgroupsDelegationHostChange`
+- `ProvisionSubgidHostChange`
+- `ProvisionSubuidHostChange`
 - `ProviderSetupHostChange`
 - `ProviderSetupPlan`
 - `ProxyApplyResult`
