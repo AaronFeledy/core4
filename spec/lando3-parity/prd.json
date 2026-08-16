@@ -66,8 +66,8 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Adjudicated 2026-08-15 (human, option 3): dynamic-form cache-only freshness parity excluded and deferred to a dedicated provenance story; §7.1.1 amended to forbid non-file invalidation fingerprints. Build must excise the env/host/template-input fingerprint machinery added on this branch."
+      "passes": true,
+      "notes": "Adjudicated 2026-08-15 (human, option 3): dynamic-form cache-only freshness parity is excluded; non-file invalidation fingerprints were removed, and deterministic dynamic-input provenance remains deferred to a dedicated spec story."
     },
     {
       "id": "US-565",
