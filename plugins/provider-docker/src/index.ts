@@ -70,6 +70,7 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
 import { waitForExit } from "./wait-for-exit.ts";
 
@@ -1642,4 +1643,5 @@ export const plugin = definePlugin({
       },
     ],
   ]),
+  doctorChecks: [makeIptablesForwardCheck()],
 });
