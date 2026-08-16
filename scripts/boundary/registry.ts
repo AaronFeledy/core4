@@ -88,7 +88,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: rendererRule,
     seamJustification:
-      "The @lando/renderer seam owns terminal writes; the owner-excluding rule scans runtime consumers plus core/bin for property-access-based console/process write access because package-DAG cannot enforce call-site output routing. Computed access such as `console[\"log\"]` is not detected.",
+      'The @lando/renderer seam owns terminal writes; the owner-excluding rule scans runtime consumers plus core/bin for property-access-based console/process write access because package-DAG cannot enforce call-site output routing. Computed access such as `console["log"]` is not detected.',
   },
   {
     rule: specReferenceRule,
