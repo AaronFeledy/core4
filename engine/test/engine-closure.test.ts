@@ -16,7 +16,6 @@ const runtimeBrainDirectories = [
   "app",
   "cache",
   "config",
-  "data-mover",
   "deprecation",
   "errors",
   "global-app",

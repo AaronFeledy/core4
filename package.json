@@ -18,6 +18,7 @@
     "redaction",
     "http-client",
     "managed-file",
+    "data-mover",
     "engine",
     "docs",
     "plugins/*"

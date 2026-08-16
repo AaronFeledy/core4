@@ -1,1 +1,1 @@
-export * from "@lando/engine/testing/data-mover";
+export * from "@lando/data-mover/testing";

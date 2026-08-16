@@ -1,0 +1,28 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "composite": true,
+    "noEmit": false,
+    "paths": {
+      "@lando/landofile": ["../landofile/src/index.ts"],
+      "@lando/landofile/*": ["../landofile/src/*.ts"],
+      "@lando/paths": ["../paths/src/paths.ts"],
+      "@lando/paths/*": ["../paths/src/*.ts"],
+      "@lando/redaction": ["../redaction/src/index.ts"],
+      "@lando/redaction/*": ["../redaction/src/*.ts"],
+      "@lando/sdk": ["../sdk/src/index.ts"],
+      "@lando/sdk/*": ["../sdk/src/*/index.ts"]
+    }
+  },
+  "include": ["./src/**/*.ts"],
+  "exclude": ["./dist", "./node_modules"],
+  "references": [
+    { "path": "../sdk" },
+    { "path": "../paths" },
+    { "path": "../landofile" },
+    { "path": "../redaction" }
+  ]
+}

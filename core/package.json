@@ -87,6 +87,7 @@
   "keywords": ["lando", "lando-core", "effect", "bun"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/data-mover": "workspace:*",
     "@lando/engine": "workspace:*",
     "@lando/http-client": "workspace:*",
     "@lando/landofile": "workspace:*",

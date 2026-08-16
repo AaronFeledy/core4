@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
+import { Context, Effect, Layer, Queue, Schema, type Scope, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -40,15 +40,13 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { StateStoreLive } from "@lando/state-store/service";
-import { makeLandoRuntime } from "../../src/index.ts";
-import { makeTestDataMover } from "../../src/testing/data-mover.ts";
-import { providerImages } from "../../src/testing/engine-layers.ts";
+import { providerImages } from "@lando/data-mover/provider-images";
 import {
   DataMoverLive,
   __testOnlyEncodeTarOctal,
   __testOnlyUnarchivePayloadWithCap,
-} from "../../src/testing/engine-layers.ts";
-import { makeTestStateStore } from "../../src/testing/state-store.ts";
+} from "@lando/data-mover/service";
+import { makeTestDataMover } from "@lando/data-mover/testing";
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -209,18 +207,6 @@ const runDataMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>
   );
 
 describe("DataMoverLive", () => {
-  test("provider bootstrap exposes DataMover while minimal bootstrap does not", async () => {
-    const providerContext = await Effect.runPromise(
-      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "provider" }))),
-    );
-    const minimalContext = await Effect.runPromise(
-      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "minimal" }))),
-    );
-
-    expect(Option.isSome(Context.getOption(providerContext, DataMover))).toBe(true);
-    expect(Option.isNone(Context.getOption(minimalContext, DataMover))).toBe(true);
-  });
-
   test("dispatches native service file copies and reports accelerated", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "payload.txt");
@@ -1513,12 +1499,21 @@ describe("DataMoverLive", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      const testStore = makeTestStateStore();
+      const testStore = Context.get(
+        await Effect.runPromise(
+          Effect.scoped(
+            Layer.build(
+              StateStoreLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+            ),
+          ),
+        ),
+        StateStore,
+      );
       let removeNativeCalls = 0;
       const failingStateStore: Context.Tag.Service<typeof StateStore> = {
-        ...testStore.service,
+        ...testStore,
         open: (spec) =>
-          testStore.service.open(spec).pipe(
+          testStore.open(spec).pipe(
             Effect.map((bucket) =>
               spec.key === "index.bin"
                 ? {

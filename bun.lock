@@ -34,6 +34,7 @@
       },
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/data-mover": "workspace:*",
         "@lando/engine": "workspace:*",
         "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
@@ -47,6 +48,20 @@
       },
       "devDependencies": {
         "@types/semver": "^7.7.1",
+      },
+    },
+    "data-mover": {
+      "name": "@lando/data-mover",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/landofile": "workspace:*",
+        "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+      "devDependencies": {
+        "@lando/state-store": "workspace:*",
       },
     },
     "docs": {
@@ -527,6 +542,8 @@
     "@lando/container-runtime": ["@lando/container-runtime@workspace:container-runtime"],
 
     "@lando/core": ["@lando/core@workspace:core"],
+
+    "@lando/data-mover": ["@lando/data-mover@workspace:data-mover"],
 
     "@lando/docs": ["@lando/docs@workspace:docs"],
 

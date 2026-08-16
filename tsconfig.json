@@ -27,6 +27,9 @@
       "path": "./managed-file"
     },
     {
+      "path": "./data-mover"
+    },
+    {
       "path": "./engine"
     },
     {
