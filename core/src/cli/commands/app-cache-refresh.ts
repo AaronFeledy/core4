@@ -1,9 +1,4 @@
-/**
- * `lando app cache:refresh` — rebuild the app plan and command index cache.
- *
- * This command performs full app bootstrap and rebuilds the app plan cache
- * and command index without contacting the provider.
- */
+/** Rebuilds the app plan and command index caches without contacting the provider. */
 import { Effect, Schema } from "effect";
 
 import type {

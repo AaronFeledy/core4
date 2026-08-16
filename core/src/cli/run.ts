@@ -62,17 +62,15 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
       ? await Effect.runPromise(Effect.either(resolveToolingRoute(rawHead)))
       : undefined;
-  const passthroughAliasRoute =
+  const isBunOrXAlias =
     passthroughAliasResolution?._tag === "Right" &&
     passthroughAliasResolution.right._tag === "built-in" &&
     (passthroughAliasResolution.right.commandId === "meta:bun" ||
-      passthroughAliasResolution.right.commandId === "meta:x")
-      ? passthroughAliasResolution.right
-      : undefined;
+      passthroughAliasResolution.right.commandId === "meta:x");
   const isBunOrXPassthrough =
     rawHead === "meta:bun" ||
     rawHead === "meta:x" ||
-    passthroughAliasRoute !== undefined ||
+    isBunOrXAlias ||
     ((rawHead === "bun" || rawHead === "x") &&
       passthroughAliasResolution?._tag === "Right" &&
       passthroughAliasResolution.right._tag === "not-tooling");

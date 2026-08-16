@@ -59,17 +59,10 @@ const makeAppFixture = async (): Promise<{
   };
 };
 
-const writeFreshCache = async (
-  fixture: Awaited<ReturnType<typeof makeAppFixture>>,
-  commandAliases?: {
-    readonly enabled?: boolean;
-    readonly disabled?: ReadonlyArray<string>;
-    readonly custom?: Readonly<Record<string, string>>;
-  },
-): Promise<void> => {
+const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
-      landofile: { name: "native-help", ...(commandAliases === undefined ? {} : { commandAliases }) },
+      landofile: { name: "native-help" },
       entries: [{ id: "app:known", summary: "Known task", hidden: false, source: "bun-script" }],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,

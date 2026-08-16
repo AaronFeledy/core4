@@ -22,6 +22,17 @@ interface CacheFixture {
 }
 
 const entries = [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }] as const;
+const programmaticSource = [
+  "export default (ctx: { env: Record<string, string | undefined> }) => ({",
+  '  name: "dynamic-alias",',
+  '  commandAliases: { custom: { [ctx.env.LANDO_TEST_ALIAS_NAME ?? "fallback"]: "app:greet" } },',
+  "});",
+  "",
+].join("\n");
+const programmaticLandofile = {
+  name: "dynamic-alias",
+  commandAliases: { custom: { hi: "app:greet" } },
+} satisfies LandofileShape;
 
 const withEnvironment = async <T>(
   overrides: Readonly<Record<string, string>>,
@@ -72,17 +83,8 @@ test("Given an unchanged programmatic Landofile, when routing its alias, then th
       await withCacheFixture(
         {
           sourceName: ".lando.ts",
-          source: [
-            "export default (ctx: { env: Record<string, string | undefined> }) => ({",
-            '  name: "dynamic-alias",',
-            '  commandAliases: { custom: { [ctx.env.LANDO_TEST_ALIAS_NAME ?? "fallback"]: "app:greet" } },',
-            "});",
-            "",
-          ].join("\n"),
-          landofile: {
-            name: "dynamic-alias",
-            commandAliases: { custom: { hi: "app:greet" } },
-          },
+          source: programmaticSource,
+          landofile: programmaticLandofile,
         },
         async ({ root, cacheRoot }) => {
           // When
@@ -109,17 +111,8 @@ test("Given a programmatic Landofile cache, when its environment changes, then t
     await withCacheFixture(
       {
         sourceName: ".lando.ts",
-        source: [
-          "export default (ctx: { env: Record<string, string | undefined> }) => ({",
-          '  name: "dynamic-alias",',
-          '  commandAliases: { custom: { [ctx.env.LANDO_TEST_ALIAS_NAME ?? "fallback"]: "app:greet" } },',
-          "});",
-          "",
-        ].join("\n"),
-        landofile: {
-          name: "dynamic-alias",
-          commandAliases: { custom: { hi: "app:greet" } },
-        },
+        source: programmaticSource,
+        landofile: programmaticLandofile,
       },
       async ({ root, cacheRoot }) => {
         // When
@@ -140,17 +133,8 @@ test("Given a programmatic Landofile cache, when invocation-control variables ch
       await withCacheFixture(
         {
           sourceName: ".lando.ts",
-          source: [
-            "export default (ctx: { env: Record<string, string | undefined> }) => ({",
-            '  name: "dynamic-alias",',
-            '  commandAliases: { custom: { [ctx.env.LANDO_TEST_ALIAS_NAME ?? "fallback"]: "app:greet" } },',
-            "});",
-            "",
-          ].join("\n"),
-          landofile: {
-            name: "dynamic-alias",
-            commandAliases: { custom: { hi: "app:greet" } },
-          },
+          source: programmaticSource,
+          landofile: programmaticLandofile,
         },
         async ({ root, cacheRoot }) => {
           // When

@@ -22,15 +22,20 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
   }
 };
 
+const makeAppRoot = async (cacheRoot: string, name: string): Promise<string> => {
+  const appRoot = join(cacheRoot, name);
+  await mkdir(appRoot, { recursive: true });
+  await writeFile(join(appRoot, ".lando.yml"), `name: ${name}\n`);
+  return appRoot;
+};
+
 describe("writeAppCommandCacheStrict command alias policy", () => {
   test("invalidates cached aliases when a referenced file changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
-      const appRoot = join(cacheRoot, "referenced-alias-app");
+      const appRoot = await makeAppRoot(cacheRoot, "referenced-alias-app");
       const targetPath = join(appRoot, "alias-target.txt");
       const initialTarget = "app:known";
-      await mkdir(appRoot, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: referenced-alias-app\n");
       await writeFile(targetPath, initialTarget);
       const targetStats = await stat(targetPath);
       const landofile = rememberLandofileReferencedFiles(
@@ -67,9 +72,7 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
   test("persists a normalized policy on a fresh app command cache", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
-      const appRoot = join(cacheRoot, "alias-app");
-      await mkdir(appRoot, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: alias-app\n");
+      const appRoot = await makeAppRoot(cacheRoot, "alias-app");
       const landofile = {
         name: "alias-app",
         commandAliases: {
@@ -101,9 +104,7 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
   test("refreshes alias policy when reusing an otherwise fresh command cache", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
-      const appRoot = join(cacheRoot, "alias-reuse-app");
-      await mkdir(appRoot, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: alias-reuse-app\n");
+      const appRoot = await makeAppRoot(cacheRoot, "alias-reuse-app");
       const landofile = {
         name: "alias-reuse-app",
         commandAliases: { enabled: false, custom: { hi: "app:known" } },
@@ -148,9 +149,7 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
   test("omits alias policy when the Landofile has no commandAliases section", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
-      const appRoot = join(cacheRoot, "no-alias-app");
-      await mkdir(appRoot, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: no-alias-app\n");
+      const appRoot = await makeAppRoot(cacheRoot, "no-alias-app");
 
       // When
       await Effect.runPromise(

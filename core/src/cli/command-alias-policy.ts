@@ -42,17 +42,12 @@ const editDistance = (left: string, right: string): number => {
   return previous[right.length] ?? left.length;
 };
 
-const commandIds = (appCommandIds: ReadonlyArray<string>): ReadonlyArray<string> => [
-  ...BUILT_IN_COMMAND_IDS,
-  ...appCommandIds,
-];
-
 export const commandAliasRegistrationError = (
   policy: CommandAliasPolicyInput | undefined,
   appCommandIds: ReadonlyArray<string>,
 ): CommandAliasConflictError | CommandAliasTargetError | undefined => {
   if (policy?.enabled === false) return undefined;
-  const canonicalIds = commandIds(appCommandIds);
+  const canonicalIds = [...BUILT_IN_COMMAND_IDS, ...appCommandIds];
   for (const [alias, target] of Object.entries(policy?.custom ?? {})) {
     const safeAlias = escapeDiagnosticText(alias);
     const safeTarget = escapeDiagnosticText(target);

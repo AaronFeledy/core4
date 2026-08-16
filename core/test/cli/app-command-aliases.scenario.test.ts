@@ -41,6 +41,11 @@ const envelope = (output: string): Record<string, unknown> => {
   return Object.fromEntries(Object.entries(parsed));
 };
 
+const inheritedEnvironment = (): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+
 const makeEntryFixture = async (commandAliases: {
   readonly enabled?: boolean;
   readonly disabled?: ReadonlyArray<string>;
@@ -67,13 +72,10 @@ const makeEntryFixture = async (commandAliases: {
       cacheRoot,
     }),
   );
-  const inheritedEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  );
   return {
     appRoot,
     env: {
-      ...inheritedEnv,
+      ...inheritedEnvironment(),
       LANDO_USER_CACHE_ROOT: cacheRoot,
       LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
       LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
@@ -123,11 +125,8 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
         cacheRoot,
       }),
     );
-    const inheritedEnv = Object.fromEntries(
-      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-    );
     const env = {
-      ...inheritedEnv,
+      ...inheritedEnvironment(),
       PATH: "/no-such-path",
       LANDO_USER_CACHE_ROOT: cacheRoot,
       LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),

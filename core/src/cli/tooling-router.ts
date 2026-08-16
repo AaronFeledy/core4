@@ -177,7 +177,7 @@ export const resolveToolingRoute = (
       } as const;
     }
 
-    if (policy?.disabled.includes(token) === true) return { _tag: "alias-disabled", token } as const;
+    if (policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
 
     const registeredAlias = resolveBuiltInCommand(token);
     if (registeredAlias !== undefined) {
