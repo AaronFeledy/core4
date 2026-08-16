@@ -1,4 +1,4 @@
-import { Cause, type Context, Effect, Layer } from "effect";
+import { Cause, Context, Effect, Layer } from "effect";
 
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -83,8 +83,8 @@ export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
   fixedEntries?: ReadonlyArray<BuiltInCommandEntry>,
 ): Context.Tag.Service<typeof EventCommandExecutor> => ({
-  run: (resolved: EventCommandExecutorInput) =>
-    Effect.gen(function* () {
+  run(resolved: EventCommandExecutorInput) {
+    return Effect.gen(function* () {
       const entries = fixedEntries ?? eventCommandEntries;
       const entry = entries.find((candidate) => candidate.spec.id === resolved.command);
       if (entry === undefined) {
@@ -146,7 +146,8 @@ export const makeEventCommandExecutor = (
       }
       if (Cause.isInterruptedOnly(exit.cause)) return yield* Effect.interrupt;
       return yield* Effect.fail(Cause.squash(exit.cause));
-    }).pipe(Effect.provide(runtimeContext)),
+    }).pipe(Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)));
+  },
 });
 
 export const EventCommandExecutorLive = Layer.effect(

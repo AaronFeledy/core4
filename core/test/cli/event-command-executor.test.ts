@@ -3,11 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Context, Effect, Exit, Queue, Schema, Stream } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Queue, Schema, Stream } from "effect";
 
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
 
+import { runAppEvent } from "@lando/engine/operations/events";
+import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -111,7 +114,61 @@ const testSpec = (run: LandoCommandSpec["run"]): LandoCommandSpec => ({
   run,
 });
 
+const eventPlan = (): AppPlan => ({
+  id: AppId.make("nested-event-command"),
+  name: "nested-event-command",
+  slug: "nested-event-command",
+  root: AbsolutePath.make("/workspace/demo"),
+  provider: ProviderId.make("test"),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: { resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
+  extensions: {},
+});
+
 describe("EventCommandExecutorLive", () => {
+  test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
+    // Given
+    const harness = makeHarness();
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-stop": [{ command: "meta:test:second" }],
+    });
+    let secondRan = false;
+    const first = {
+      ...testSpec(() => runAppEvent(plan, "pre-stop")),
+      id: "meta:test:first",
+    } satisfies LandoCommandSpec;
+    const second = {
+      ...testSpec(() =>
+        Effect.sync(() => {
+          secondRan = true;
+        }),
+      ),
+      id: "meta:test:second",
+    } satisfies LandoCommandSpec;
+    const executor = makeEventCommandExecutor(harness.context, [entryFor(first), entryFor(second)]);
+
+    // When
+    await Effect.runPromise(
+      executor.run({
+        command: first.id,
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: String(plan.root),
+      }),
+    );
+
+    // Then
+    expect(secondRan).toBe(true);
+    const firstInit = harness.events.find((event) => event._tag === "cli-meta:test:first-init");
+    const secondInit = harness.events.find((event) => event._tag === "cli-meta:test:second-init");
+    expect(secondInit?.parentInvocationId).toBe(firstInit?.invocationId);
+  });
+
   test("publishes a correlated nested command lifecycle", async () => {
     // Given
     const harness = makeHarness();
