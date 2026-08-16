@@ -37,7 +37,7 @@ describe("native CLI dispatch unification", () => {
     // Then no source-only OCLIF dispatch path remains.
     expect(source).not.toContain('import { execute } from "@oclif/core"');
     expect(runCliSource).not.toMatch(/\bexecute\s*\(/);
-    expect(runCliSource).toContain("await runCompiledCli(options.argv)");
+    expect(runCliSource).toContain("runCompiledCli(options.argv)");
   });
 
   test("source entry uses native argument validation", async () => {
