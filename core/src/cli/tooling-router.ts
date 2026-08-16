@@ -143,10 +143,8 @@ export const resolveToolingRoute = (
     if (policyError !== undefined) return yield* Effect.fail(policyError);
 
     const custom =
-      aliasesEnabled && policy?.custom !== undefined && Object.hasOwn(policy.custom, token)
-        ? policy.custom[token]
-        : undefined;
-    if (custom !== undefined) {
+      policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
+    if (aliasesEnabled && custom !== undefined) {
       const builtInTarget = canonicalBuiltIn(custom);
       if (builtInTarget !== undefined) {
         return {
@@ -181,8 +179,9 @@ export const resolveToolingRoute = (
 
     if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
 
-    const registeredAlias = aliasesEnabled ? resolveBuiltInCommand(token) : undefined;
-    if (registeredAlias !== undefined) {
+    const registeredAlias = resolveBuiltInCommand(token);
+    const isKnownAlias = custom !== undefined || registeredAlias !== undefined;
+    if (aliasesEnabled && registeredAlias !== undefined) {
       return {
         _tag: "built-in",
         commandId: registeredAlias.spec.id,
@@ -191,13 +190,13 @@ export const resolveToolingRoute = (
     }
 
     if (name === undefined) {
-      if (!aliasesEnabled) return { _tag: "alias-disabled", token } as const;
+      if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
       return { _tag: "not-tooling" } as const;
     }
     const commandId = `app:${name}`;
     const entry = cache.entries.find((candidate) => candidate.id === commandId);
     if (entry === undefined) {
-      if (!aliasesEnabled) return { _tag: "alias-disabled", token } as const;
+      if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
       return {
         _tag: "unknown-tooling",
         commandId,

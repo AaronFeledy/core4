@@ -84,23 +84,25 @@ test("disabled built-in aliases do not block canonical command ids", async () =>
   });
 });
 
-test("enabled false suppresses custom aliases without blocking bare tooling", async () => {
+test("enabled false only suppresses aliases", async () => {
   await withAliasCache({ enabled: false, custom: { hi: "app:greet" } }, async ({ root, cacheRoot }) => {
     // Given / When
-    const [alias, tooling] = await Promise.all([
+    const [alias, tooling, unknown] = await Promise.all([
       Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot })),
       Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot })),
+      Effect.runPromise(resolveToolingRoute("missing", { cwd: root, cacheRoot })),
     ]);
 
     // Then
     expect(alias).toMatchObject({ _tag: "alias-disabled", token: "hi" });
     expect(tooling).toMatchObject({ _tag: "bun-script", commandId: "app:greet", name: "greet" });
+    expect(unknown).toMatchObject({ _tag: "unknown-tooling", commandId: "app:missing" });
   });
 });
 
 const dormantInvalidPolicies = [
   ["unknown targets", { hi: "app:missing" }, "hi"],
-  ["canonical collisions", { "app:greet": "app:greet" }, "hi"],
+  ["canonical collisions", { "app:greet": "app:greet" }, "start"],
 ] as const;
 
 test.each(dormantInvalidPolicies)(
