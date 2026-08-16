@@ -29,7 +29,7 @@ export interface ToolingCommandStepLeaf extends ToolingStepLeafBase {
   readonly kind: "command";
   readonly command: string;
   readonly flags: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly args: ReadonlyArray<string>;
+  readonly args: Readonly<Record<string, ToolingVarLiteral>>;
   readonly raw: ReadonlyArray<string>;
 }
 

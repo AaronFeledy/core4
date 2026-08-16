@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import { ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventForSelector, EventStep, ToolingVarLiteral } from "@lando/sdk/schema";
@@ -14,6 +14,13 @@ import type {
   ToolingStepSelector,
   ToolingTaskStepLeaf,
 } from "./step-program.ts";
+
+export class EventStepCompileError extends Data.TaggedError("EventStepCompileError")<{
+  readonly message: string;
+  readonly authoredIndex: number;
+  readonly kind: ToolingStepLeaf["kind"];
+  readonly cause: ToolingStepSelectorUnavailableError;
+}> {}
 
 const leafNode = (leaf: ToolingStepLeaf): ToolingStepLeafNode => ({
   kind: "leaf",
@@ -44,6 +51,7 @@ const cmdLeaf = (
   command: "cmd" in step && step.cmd !== undefined ? step.cmd : step.defer,
   ...shared(step, authoredIndex),
   ...("service" in step && step.service !== undefined ? { service: step.service } : {}),
+  ...("dir" in step && step.dir !== undefined ? { dir: String(step.dir) } : {}),
   ...("env" in step && step.env !== undefined ? { env: step.env } : {}),
   ...("user" in step && step.user !== undefined ? { user: step.user } : {}),
 });
@@ -65,7 +73,7 @@ const commandLeaf = (
   kind: "command",
   command: step.command,
   flags: step.flags ?? {},
-  args: step.args ?? [],
+  args: step.args ?? {},
   raw: step.raw ?? [],
   ...shared(step, authoredIndex),
 });
@@ -122,8 +130,20 @@ const compileNode = (
 
 export const compileEventStepProgram = (
   steps: ReadonlyArray<EventStep>,
-): Effect.Effect<ToolingStepProgram, ToolingStepSelectorUnavailableError> =>
-  Effect.forEach(steps, compileNode).pipe(Effect.map((nodes) => ({ nodes })));
+): Effect.Effect<ToolingStepProgram, EventStepCompileError> =>
+  Effect.forEach(steps, (step, authoredIndex) =>
+    compileNode(step, authoredIndex).pipe(
+      Effect.mapError(
+        (cause) =>
+          new EventStepCompileError({
+            message: cause.message,
+            authoredIndex,
+            kind: compileLeaf(step, authoredIndex).kind,
+            cause,
+          }),
+      ),
+    ),
+  ).pipe(Effect.map((nodes) => ({ nodes })));
 
 export const compileSimpleToolingTaskProgram = (name: string): ToolingStepProgram => ({
   nodes: [
