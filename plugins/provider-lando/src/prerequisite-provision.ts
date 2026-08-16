@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -147,12 +147,26 @@ export const inspectPrerequisiteSetupPlan = (
   }
 
   // Check cgroups delegation - only create drop-in when absent
-  if (!probeResults.cgroupsV2Delegated && !existsSync(DELEGATE_CONF_PATH)) {
-    changes.push({
-      _tag: "provision-cgroups-delegation",
-      path: DELEGATE_CONF_PATH,
-      reason: "Rootless Podman requires cgroups v2 controller delegation for your user session.",
-    });
+  if (!probeResults.cgroupsV2Delegated) {
+    if (!existsSync(DELEGATE_CONF_PATH)) {
+      changes.push({
+        _tag: "provision-cgroups-delegation",
+        path: DELEGATE_CONF_PATH,
+        reason: "Rootless Podman requires cgroups v2 controller delegation for your user session.",
+      });
+    } else {
+      // Drop-in exists but delegation isn't active - user needs to log out/back in
+      return Effect.fail(
+        new ProviderSetupUnsupportedHostError({
+          providerId: PROVIDER_ID,
+          prerequisite: "cgroups-delegation",
+          message: "The cgroups delegation drop-in exists but your session is not delegated.",
+          remediation:
+            "Log out of your current session, log back in, then rerun `lando setup`. (The systemd delegation drop-in only applies to new user sessions.)",
+          ...(input.host === undefined ? {} : { host: input.host }),
+        }),
+      );
+    }
   }
 
   return Effect.succeed({ providerId: PROVIDER_ID, changes: changes as ProviderSetupPlan["changes"] });
@@ -241,7 +255,7 @@ export const applyApprovedPrerequisitePlan = (
           // Find a non-conflicting range
           const actualStart = findNextAvailableRange(path, start);
 
-          // Use usermod if available
+          // Use usermod to add the range
           const usermodCmd = [
             "/usr/sbin/usermod",
             isSubuid ? "--add-subuids" : "--add-subgids",
@@ -252,24 +266,17 @@ export const applyApprovedPrerequisitePlan = (
           const result = yield* input.privilege.elevate(usermodCmd);
 
           if (result.exitCode !== 0) {
-            // Fallback: try direct file append if usermod fails
-            try {
-              const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-              const entry = `${user}:${actualStart}:${count}\n`;
-              writeFileSync(path, existing + entry, { mode: 0o644 });
-            } catch (_error) {
-              return yield* Effect.fail(
-                new ProviderSetupProvisioningError({
-                  providerId: PROVIDER_ID,
-                  change: change._tag,
-                  stage: "install",
-                  message: `Failed to provision ${isSubuid ? "subordinate UID" : "subordinate GID"} range.`,
-                  remediation: `Manually add a range for your user to ${path}, e.g. \`sudo usermod ${isSubuid ? "--add-subuids" : "--add-subgids"} 100000-165535 $USER\`, then rerun \`lando setup\`.`,
-                  exitCode: result.exitCode,
-                  stderr: result.stderr,
-                }),
-              );
-            }
+            return yield* Effect.fail(
+              new ProviderSetupProvisioningError({
+                providerId: PROVIDER_ID,
+                change: change._tag,
+                stage: "provision",
+                message: `Failed to provision ${isSubuid ? "subordinate UID" : "subordinate GID"} range.`,
+                remediation: `Manually add a range for your user to ${path}, e.g. \`sudo usermod ${isSubuid ? "--add-subuids" : "--add-subgids"} 100000-165535 $USER\`, then rerun \`lando setup\`.`,
+                exitCode: result.exitCode,
+                stderr: result.stderr,
+              }),
+            );
           }
           break;
         }
@@ -323,12 +330,26 @@ export const applyApprovedPrerequisitePlan = (
                 new ProviderSetupProvisioningError({
                   providerId: PROVIDER_ID,
                   change: change._tag,
-                  stage: "install",
-                  message: "Created cgroups delegation drop-in, but systemd daemon-reload failed.",
-                  remediation: "Run `sudo systemctl daemon-reload` manually, then rerun `lando setup`.",
+                  stage: "reload",
+                  message:
+                    "Created cgroups delegation drop-in, but systemd daemon-reload failed. The delegation will not take effect until you log out and back in.",
+                  remediation:
+                    "Run `sudo systemctl daemon-reload`, then log out of your current session and log back in. After logging back in, rerun `lando setup`.",
                 }),
               );
             }
+
+            // Daemon reload succeeded, but delegation only applies to new sessions
+            return yield* Effect.fail(
+              new ProviderSetupProvisioningError({
+                providerId: PROVIDER_ID,
+                change: change._tag,
+                stage: "reload",
+                message:
+                  "Created cgroups delegation drop-in successfully. Log out of your current session and log back in for the delegation to take effect.",
+                remediation: "Log out, log back in, then rerun `lando setup`.",
+              }),
+            );
           } catch (_error) {
             return yield* Effect.fail(
               new ProviderSetupProvisioningError({
@@ -341,7 +362,6 @@ export const applyApprovedPrerequisitePlan = (
               }),
             );
           }
-          break;
         }
       }
     }
