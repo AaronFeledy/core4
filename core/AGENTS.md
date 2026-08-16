@@ -7,6 +7,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - `core/test/cli/fixtures/*.json` is formatted by `bun run lint`. Renderer tests should compare `JSON.parse(output)` to `Bun.file(fixture).json()`, not raw compact JSON strings.
 - Guide TDD specifics live in the root file. Use the core notes here only when changing the guide generator/runtime behavior, not for routine MDX edits.
 - `core/test/tsconfig.json` remains an editor/LSP project. The root aggregate test project owns gate coverage for `core/test/**` and its imports, so `bun run typecheck` is the authoritative test-type gate.
+- `core/src/testing/engine-layers.ts` is the single sanctioned internal engine-coupling seam for core tests: append-only during migration, shrink-only afterward, with its surface pinned by `core/test/testing/engine-layers-surface.test.ts`. Engine-owned tests live in `engine/test`.
 
 ## Recipe Sources
 
