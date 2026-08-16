@@ -27,7 +27,7 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"` to run on the host instead. Once services are up, later events like `pre-stop` and `post-stop` can target a real service the normal way.
+`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"` to run on the host instead. Use `pre-stop` for work inside a running service; `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>

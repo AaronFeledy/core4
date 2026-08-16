@@ -16,7 +16,7 @@ events:
       service: web
   post-stop:
     - cmd: echo after-stop
-      service: web
+      service: ":host"
 tooling:
   warm-cache:
     service: web
