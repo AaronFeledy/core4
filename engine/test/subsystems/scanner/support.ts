@@ -11,7 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { ScanSourceEndpoint } from "@lando/engine/subsystems/scanner/live";
+import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 import type { HttpClientShape } from "@lando/http-client/service";
 import { RedactionService, type RedactionServiceShape } from "@lando/redaction/service";
 

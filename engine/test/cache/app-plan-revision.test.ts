@@ -7,16 +7,16 @@ import { serialize } from "node:v8";
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
-import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/core/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   APP_PLAN_CACHE_MAGIC,
   APP_PLAN_CACHE_SCHEMA_VERSION,
   deriveAppPlanCacheKey,
   readCachedAppPlan,
-} from "@lando/engine/cache/app-plan";
-import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CORE_VERSION } from "@lando/engine/version";
+} from "../../src/cache/app-plan.ts";
+import { appPlanCachePath } from "../../src/cache/paths.ts";
+import { CORE_VERSION } from "../../src/version.ts";
 
 test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
   // Given

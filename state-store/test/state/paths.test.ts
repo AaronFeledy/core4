@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 
-import { resolveStatePath } from "@lando/state-store/paths";
+import { resolveStatePath } from "../../src/paths.ts";
 
 describe("resolveStatePath", () => {
   let base: string;

@@ -5,8 +5,8 @@ import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest, SubscriberManifestEntry } from "@lando/sdk/schema";
 
-import type { IndexedSubscriber } from "@lando/engine/lifecycle/subscriber-index";
-import { loadSubscriberFactory } from "@lando/engine/lifecycle/subscribers";
+import type { IndexedSubscriber } from "../../src/lifecycle/subscriber-index.ts";
+import { loadSubscriberFactory } from "../../src/lifecycle/subscribers.ts";
 
 const descriptorFixture = (): {
   readonly manifest: PluginManifest;

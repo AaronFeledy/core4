@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { MinimalYamlError, parseMinimalYaml, parseScalar } from "@lando/paths/yaml-min";
+import { MinimalYamlError, parseMinimalYaml, parseScalar } from "../src/yaml-min.ts";
 
 describe("parseScalar", () => {
   test("parses an inline flow array into a real array", () => {

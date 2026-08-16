@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import { FileSystemLive } from "../../../src/services/file-system.ts";
 import { makeTraefikProxyService } from "@lando/proxy-traefik";
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";

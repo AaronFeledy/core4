@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { withAdvisoryLock } from "@lando/state-store/lock";
+import { withAdvisoryLock } from "../../src/lock.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

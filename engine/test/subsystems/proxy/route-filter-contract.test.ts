@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@lando/sdk/test";
 
-import { RouteFilterId } from "@lando/engine/subsystems/proxy/filter";
+import { RouteFilterId } from "../../../src/subsystems/proxy/filter.ts";
 
 /**
  * RouteFilter built-in invocation.

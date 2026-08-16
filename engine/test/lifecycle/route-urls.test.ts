@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { type ProxyAuthority, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
-import { proxyUrlsByService } from "@lando/engine/lifecycle/route-urls";
+import { proxyUrlsByService } from "../../src/lifecycle/route-urls.ts";
 
 test("brackets IPv6 authorities in route URLs", () => {
   const service = ServiceName.make("web");

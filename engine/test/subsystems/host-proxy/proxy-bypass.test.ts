@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
+import { ensureHostProxyNoProxy } from "../../../src/subsystems/host-proxy/proxy-bypass.ts";
 
 describe("host proxy NO_PROXY bypass", () => {
   test("appends the target to existing entries and synchronizes both casings", () => {

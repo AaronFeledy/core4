@@ -10,7 +10,7 @@ import {
   acquireScratchRegistryLock,
   makeScratchRegistry,
   scratchRegistryPaths,
-} from "@lando/engine/scratch-app/registry";
+} from "../../src/scratch-app/registry.ts";
 import { LOCK_STALE_THRESHOLD_MS } from "@lando/state-store/lock";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {

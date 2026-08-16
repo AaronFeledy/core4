@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { remapContainerCwd } from "@lando/engine/subsystems/host-proxy/cwd-remap";
-import { buildRunLandoRequest, filterHostProxyEnv } from "@lando/engine/subsystems/host-proxy/shim";
+import { remapContainerCwd } from "../../../src/subsystems/host-proxy/cwd-remap.ts";
+import { buildRunLandoRequest, filterHostProxyEnv } from "../../../src/subsystems/host-proxy/shim.ts";
 
 describe("filterHostProxyEnv", () => {
   test("keeps safe host-proxy and agent-context env names", () => {

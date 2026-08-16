@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { writeFileAtomicScoped } from "@lando/state-store/atomic";
+import { writeFileAtomicScoped } from "../../src/atomic.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

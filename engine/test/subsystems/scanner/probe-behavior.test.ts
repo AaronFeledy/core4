@@ -4,7 +4,7 @@ import { Effect, Exit, Fiber, Option, TestClock, TestContext } from "effect";
 import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
 
-import { makeUrlScanner } from "@lando/engine/subsystems/scanner/live";
+import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import {
   appId,
   drive,
