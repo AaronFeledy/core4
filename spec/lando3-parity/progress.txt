@@ -198,3 +198,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Cache-only routing may deliberately serve stale dynamic output when the contract defines only file-based invalidation; freshness inputs must come from an explicit provenance contract, not inferred host state.
 ---
+
+## 2026-08-15 21:19 CDT - US-564 Review
+- Reviewed the committed per-app command-alias work against the source acceptance criteria; no in-scope defect required a code change and the story keeps `passes: true`.
+- Review notes (deferred/rejected): rejected Bugbot's finding that registered top-level aliases dispatch to their canonical built-in when the app command cache is missing or file-stale. The acceptance criterion scopes app alias resolution to a fresh cached app plan; an absent or stale cache carries no trusted alias policy, while stale-payload or bootstrap-time enforcement would invent an unowned freshness contract and break first-run command behavior.
+- Verification: typecheck, lint, explicit-base guide drift, and 87 focused dynamic-cache, command-registry, tooling-router, and app-alias tests passed with positive counts; the build step's broader recorded gates remain unchanged.
+- **Learnings for future iterations:**
+  - Cache-only alias routing falls back to the canonical built-in when no fresh app command cache exists; route any change to that behavior through a spec-owned story rather than a reviewer-authored regression contract.
+---
