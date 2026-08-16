@@ -260,7 +260,7 @@ test("Given corrupted app caches, when a custom task is resolved, then both disp
     expect(sourceResult.exitCode).toBe(1);
     expect(compiledResult.exitCode).toBe(1);
     expect(lastEnvelope(sourceResult.stdout)).toMatchObject({
-      command: "app:broken",
+      command: "cli:alias-resolution",
       ok: false,
       error: {
         _tag: "CacheError",
