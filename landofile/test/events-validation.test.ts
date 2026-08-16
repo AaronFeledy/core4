@@ -33,7 +33,7 @@ describe("Landofile events", () => {
           "echo string",
           { cmd: "echo object", service: "appserver", env: { TOKEN: "value" }, user: "www-data" },
           { task: "prepare" },
-          { command: "app:info", flags: { format: "json" }, args: ["appserver"] },
+          { command: "app:info", flags: { format: "json" }, args: { service: "appserver" } },
         ],
       },
     };
@@ -62,6 +62,7 @@ describe("Landofile events", () => {
       { command: "app:info", ignoreError: true },
       { task: "prepare", vars: { MODE: "fast" } },
       { task: "prepare", silent: true },
+      { cmd: "pwd", dir: "/workspace" },
     ] as const;
 
     for (const step of graduatedSteps) {
@@ -79,12 +80,9 @@ describe("Landofile events", () => {
     }
   });
 
-  test("unrelated event fields remain rejected by the Beta scanner", async () => {
+  test("event platforms remain rejected by the Beta scanner", async () => {
     // Given
-    const unsupportedSteps = [
-      { cmd: "pwd", dir: "/workspace" },
-      { cmd: "uname", platforms: ["linux"] },
-    ] as const;
+    const unsupportedSteps = [{ cmd: "uname", platforms: ["linux"] }] as const;
 
     for (const step of unsupportedSteps) {
       // When

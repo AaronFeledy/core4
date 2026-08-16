@@ -38,7 +38,7 @@ const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
 const BETA_VAR_KEYS = new Set(["raw"]);
-const BETA_EVENT_STEP_KEYS = new Set(["dir", "platforms"]);
+const BETA_EVENT_STEP_KEYS = new Set(["platforms"]);
 
 interface ToolingBetaFinding {
   readonly task: string;
