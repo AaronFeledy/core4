@@ -435,7 +435,9 @@ describe("provider-lando bringUp", () => {
         new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
-    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({ "custom-app-only": { Aliases: ["node"] } });
+    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
+      "custom-app-only": { Aliases: ["node"] },
+    });
     expect(
       fake.calls
         .filter((call) => call.path === "/networks/create")

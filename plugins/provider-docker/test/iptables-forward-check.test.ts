@@ -1,15 +1,25 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
+import type { HostPlatform } from "@lando/sdk/schema";
 
 import { makeIptablesForwardCheck } from "../src/iptables-forward-check.ts";
+
+const makeCheckInput = (platform: HostPlatform) => ({
+  providerId: "docker",
+  platform,
+  env: {},
+  userDataRoot: undefined,
+  binDir: undefined,
+  stateDir: undefined,
+});
 
 describe("iptables FORWARD check", () => {
   test("returns no reports on non-Linux platforms", async () => {
     const check = makeIptablesForwardCheck();
-    const darwinResult = await Effect.runPromise(check.run({ platform: "darwin" }));
-    const win32Result = await Effect.runPromise(check.run({ platform: "win32" }));
-    const wslResult = await Effect.runPromise(check.run({ platform: "wsl" }));
+    const darwinResult = await Effect.runPromise(check.run(makeCheckInput("darwin")));
+    const win32Result = await Effect.runPromise(check.run(makeCheckInput("win32")));
+    const wslResult = await Effect.runPromise(check.run(makeCheckInput("wsl")));
 
     expect(darwinResult).toEqual([]);
     expect(win32Result).toEqual([]);
@@ -24,23 +34,39 @@ describe("iptables FORWARD check", () => {
     };
 
     const check = makeIptablesForwardCheck(mockReaders);
-    const result = await Effect.runPromise(check.run({ platform: "linux" }));
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
 
     expect(result).toEqual([]);
   });
 
-  test("returns no reports when iptables-legacy has DROP but also has lando rules", async () => {
+  test("returns no reports when iptables-legacy has DROP but also has lando bridge rules", async () => {
     const mockReaders = {
       readIptablesLegacyForward: async () =>
-        "Chain FORWARD (policy DROP 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* lando */",
+        "Chain FORWARD (policy DROP 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* br-abc123 */",
       readIptablesNftForward: async () =>
-        "Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* lando */",
+        "Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* br-xyz789 */",
     };
 
     const check = makeIptablesForwardCheck(mockReaders);
-    const result = await Effect.runPromise(check.run({ platform: "linux" }));
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
 
     expect(result).toEqual([]);
+  });
+
+  test("returns warning when iptables-legacy has DROP with only docker0 rules but nft has lando rules", async () => {
+    const mockReaders = {
+      readIptablesLegacyForward: async () =>
+        "Chain FORWARD (policy DROP 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* docker0 */",
+      readIptablesNftForward: async () =>
+        "Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)\n ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* br-abc123 lando-global */",
+    };
+
+    const check = makeIptablesForwardCheck(mockReaders);
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.name).toBe("docker-iptables-forward-mixed");
+    expect(result[0]?.context.issue).toContain("docker0-only");
   });
 
   test("returns warning when iptables-legacy has DROP policy and no lando rules but nft does", async () => {
@@ -52,7 +78,7 @@ describe("iptables FORWARD check", () => {
     };
 
     const check = makeIptablesForwardCheck(mockReaders);
-    const result = await Effect.runPromise(check.run({ platform: "linux" }));
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
 
     expect(result).toHaveLength(1);
     expect(result[0]?.name).toBe("docker-iptables-forward-mixed");
@@ -70,7 +96,7 @@ describe("iptables FORWARD check", () => {
     };
 
     const check = makeIptablesForwardCheck(mockReaders);
-    const result = await Effect.runPromise(check.run({ platform: "linux" }));
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
 
     expect(result).toEqual([]);
   });
@@ -82,7 +108,7 @@ describe("iptables FORWARD check", () => {
     };
 
     const check = makeIptablesForwardCheck(mockReaders);
-    const result = await Effect.runPromise(check.run({ platform: "linux" }));
+    const result = await Effect.runPromise(check.run(makeCheckInput("linux")));
 
     expect(result).toEqual([]);
   });

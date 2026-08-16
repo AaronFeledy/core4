@@ -45,10 +45,10 @@ const hasDropPolicy = (output: string | undefined): boolean => {
   return /Chain FORWARD \(policy DROP/iu.test(output);
 };
 
-const hasDockerRules = (output: string | undefined): boolean => {
+const hasLandoRules = (output: string | undefined): boolean => {
   if (output === undefined) return false;
-  // Check for docker or lando network rules
-  return /docker0|br-|lando/iu.test(output);
+  // Check for lando network rules (br- bridges or lando-named networks)
+  return /br-|lando/iu.test(output);
 };
 
 export const makeIptablesForwardCheck = (
@@ -64,13 +64,14 @@ export const makeIptablesForwardCheck = (
       const legacyOutput = yield* optionalRead(readers.readIptablesLegacyForward);
       const nftOutput = yield* optionalRead(readers.readIptablesNftForward);
 
-      // Check if iptables-legacy has DROP policy and no lando rules
+      // Check iptables configurations
       const legacyHasDropPolicy = hasDropPolicy(legacyOutput);
-      const legacyHasLandoRules = hasDockerRules(legacyOutput);
-      const nftHasLandoRules = hasDockerRules(nftOutput);
+      const legacyHasLandoRules = hasLandoRules(legacyOutput);
+      const nftHasLandoRules = hasLandoRules(nftOutput);
 
       // Problem: legacy has DROP policy, legacy doesn't have lando rules, but nft does
-      // This means Docker is programming nft but packets hit legacy first
+      // This means Docker is programming nft but packets hit legacy first (including docker0-only case)
+      // The issue description specifically notes: "legacy FORWARD DROP with only docker0 rules"
       if (legacyHasDropPolicy && !legacyHasLandoRules && nftHasLandoRules) {
         const report = {
           name: "docker-iptables-forward-mixed",
@@ -80,7 +81,7 @@ export const makeIptablesForwardCheck = (
           context: {
             platform: "linux",
             legacyPolicy: "DROP",
-            issue: "iptables-legacy FORWARD policy blocks Docker networking",
+            issue: "iptables-legacy FORWARD policy blocks Docker networking (docker0-only or no Lando rules)",
           },
           solutions: [
             {
