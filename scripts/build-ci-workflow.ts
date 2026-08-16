@@ -285,7 +285,29 @@ ${codegenStep}
       - name: Confirm generated schema reference is published
         run: test -f docs/dist/reference/schemas/app-plan/index.html
 
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
 ${timingNoticeStep("docs-build", 15)}
+
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [docs-build]
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: \${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 `;
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:

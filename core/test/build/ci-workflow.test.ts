@@ -420,6 +420,11 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run docs:test");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
+    expect(docsBuild).toContain("        uses: actions/upload-pages-artifact@v3");
+    expect(docsBuild).toContain("          path: docs/dist");
+    expect(docsBuild).toContain(
+      "        if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    );
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
       docsBuild.indexOf("bun run docs:check"),
     );
@@ -433,6 +438,22 @@ describe("ci workflow", () => {
       docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
     );
     expect(staticChecksPlatform).not.toContain("docs-build");
+  });
+
+  test("deploys the docs site to GitHub Pages from main only", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const deployDocs = findIndentedBlock(jobs, "deploy-docs", 2);
+
+    expect(jobs).toContain("  deploy-docs:");
+    expect(deployDocs).toContain(
+      "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    );
+    expect(deployDocs).toContain("    needs: [docs-build]");
+    expect(deployDocs).toContain("      pages: write");
+    expect(deployDocs).toContain("      id-token: write");
+    expect(deployDocs).toContain("      name: github-pages");
+    expect(deployDocs).toContain("        uses: actions/deploy-pages@v4");
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {
