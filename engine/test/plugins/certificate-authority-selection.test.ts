@@ -7,7 +7,7 @@ import { AmbiguousCertificateAuthoritiesError, NoCertificateAuthorityError } fro
 import {
   type CertificateAuthorityCandidateDefinition,
   selectCertificateAuthorityCandidate,
-} from "@lando/engine/plugins/certificate-authority-resolver";
+} from "../../src/plugins/certificate-authority-resolver.ts";
 
 const candidate = (
   id: string,

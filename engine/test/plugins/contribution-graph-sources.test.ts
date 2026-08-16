@@ -8,8 +8,8 @@ import { PluginManifest } from "@lando/sdk/schema";
 import {
   type LoadedPluginContribution,
   mergeLoadedPluginSources,
-} from "@lando/engine/plugins/contribution-graph";
-import { systemPluginsFromModules } from "@lando/engine/plugins/plugin-discovery";
+} from "../../src/plugins/contribution-graph.ts";
+import { systemPluginsFromModules } from "../../src/plugins/plugin-discovery.ts";
 
 const loaded = (source: LoadedPluginContribution["source"], version: string): LoadedPluginContribution => {
   const manifest = Schema.decodeSync(PluginManifest)({

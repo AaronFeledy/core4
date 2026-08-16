@@ -4,10 +4,10 @@ import { Effect } from "effect";
 import type { Scope } from "effect";
 
 import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
-import { makeLandoPluginContext } from "@lando/engine/plugins/context";
-import { makeStateStore } from "@lando/state-store/service";
-import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+import { makeLandoPluginContext } from "../../src/plugins/context.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
@@ -30,7 +30,7 @@ const pluginContext = (
   makeLandoPluginContext({
     id,
     managedFileService,
-    stateStore: makeStateStore(),
+    stateStore: makeTestStateStore().service,
     pluginStateRoot: AbsolutePath.make(`/tmp/lando-plugin-context/${id}`),
   });
 

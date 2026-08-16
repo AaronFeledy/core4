@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { teardownManagedProviderMachine } from "@lando/engine/runtime/managed-provider-machine";
+import { teardownManagedProviderMachine } from "../../src/runtime/managed-provider-machine.ts";
 
 // Env-gated live provider integration: exercises real `podman machine rm --force lando`.
 // Opt in with LANDO_TEST_PODMAN_MACHINE_TEARDOWN=1 on a host where destroying a "lando"

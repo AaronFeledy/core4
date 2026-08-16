@@ -7,11 +7,11 @@ import { Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
-import { makeLandoPluginContext } from "@lando/engine/plugins/context";
-import type { PluginStateBucketSpec } from "@lando/engine/plugins/context-state";
-import { makeStateStore } from "@lando/state-store/service";
-import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+import { makeLandoPluginContext } from "../../src/plugins/context.ts";
+import type { PluginStateBucketSpec } from "../../src/plugins/context-state.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const Doc = Schema.Struct({ count: Schema.Number, label: Schema.String });
 type Doc = typeof Doc.Type;
@@ -51,7 +51,7 @@ const makeContext = async (id: string) =>
   makeLandoPluginContext({
     id,
     managedFileService: (await run(makeTestManagedFileStore())).service,
-    stateStore: makeStateStore(),
+    stateStore: makeTestStateStore().service,
     pluginStateRoot: await ensurePluginStateRoot(id),
   });
 
@@ -145,7 +145,7 @@ describe("LandoPluginContext stateStore scoping", () => {
   });
 
   test("distinct plugin ids cannot see each other's bucket", async () => {
-    const stateStore = makeStateStore();
+    const stateStore = makeTestStateStore().service;
     const managedFileService = (await run(makeTestManagedFileStore())).service;
     const pluginA = makeLandoPluginContext({
       id: "plugin-a",
@@ -174,7 +174,7 @@ describe("LandoPluginContext stateStore scoping", () => {
   });
 
   test("a plugin cannot see core state under the same user data root", async () => {
-    const stateStore = makeStateStore();
+    const stateStore = makeTestStateStore().service;
     const plugin = makeLandoPluginContext({
       id: "plugin-a",
       managedFileService: (await run(makeTestManagedFileStore())).service,

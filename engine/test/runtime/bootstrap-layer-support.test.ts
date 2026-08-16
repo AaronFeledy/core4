@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Stream } from "effect";
 
-import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
+import { runtimeProviderService } from "../../src/runtime/bootstrap-layer-support.ts";
 
 const expectUnsupportedStreamFailure = <A, E>(exit: Exit.Exit<A, E>, operation: string) => {
   expect(Exit.isFailure(exit)).toBe(true);

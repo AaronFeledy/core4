@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { TELEMETRY_EVENTS, type TelemetryEventScope } from "@lando/engine/telemetry/inventory";
+import { TELEMETRY_EVENTS, type TelemetryEventScope } from "../../src/telemetry/inventory.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const docPath = resolve(repoRoot, "docs/telemetry/events.md");

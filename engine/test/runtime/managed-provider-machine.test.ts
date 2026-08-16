@@ -12,7 +12,7 @@ import {
   type MachineSpawnResult,
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
-} from "@lando/engine/runtime/managed-provider-machine";
+} from "../../src/runtime/managed-provider-machine.ts";
 
 const enoent = (): never => {
   throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
