@@ -21,6 +21,7 @@
     "data-mover",
     "telemetry",
     "renderer",
+    "mcp",
     "engine",
     "docs",
     "plugins/*"

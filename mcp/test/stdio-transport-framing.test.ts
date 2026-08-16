@@ -3,7 +3,7 @@ import { Effect, Fiber, TestClock, TestContext } from "effect";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
-import { makeStdioMcpTransport } from "../../src/mcp/stdio-transport.ts";
+import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
 import {
   expectMcpTransportFailure,
   expectPolledMcpTransportFailure,

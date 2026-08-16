@@ -1,25 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Layer, Option } from "effect";
+import { Deferred, Effect, Fiber, Layer, Option, Schema } from "effect";
 
 import { createRedactor } from "@lando/sdk/secrets";
 
+import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
+import { McpTransport, type McpTransportReply, makeInMemoryTransport } from "@lando/mcp/transport";
 import { RedactionService } from "@lando/redaction/service";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import type { McpCommandEntry } from "../../src/mcp/registry.ts";
-import {
-  McpRuntimeConfig,
-  type McpRuntimeConfigShape,
-  McpService,
-  McpServiceLive,
-} from "../../src/mcp/service.ts";
-import { McpTransport, type McpTransportReply, makeInMemoryTransport } from "../../src/mcp/transport.ts";
+import { TestMcpCommandExecutor } from "./executor";
 
-const spec = (id: string, run: LandoCommandSpec["run"]): LandoCommandSpec => ({
+const spec = (id: string, run: McpCommandSpec["run"]): McpCommandSpec => ({
   id,
   summary: `${id} summary`,
-  namespace: id.split(":")[0] as LandoCommandSpec["namespace"],
-  bootstrap: "app",
-  resultSchema: EmptyResultSchema,
+  resultSchema: Schema.Struct({}),
   run,
 });
 
@@ -28,7 +21,11 @@ const redactionLayer = Layer.succeed(RedactionService, {
 });
 
 const serviceLayer = (config: McpRuntimeConfigShape) =>
-  McpServiceLive.pipe(Layer.provide(Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer)));
+  McpServiceLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer, TestMcpCommandExecutor),
+    ),
+  );
 
 describe("McpService.serve cancellation", () => {
   test("interrupts a single in-flight call when the transport cancels its request id", async () => {

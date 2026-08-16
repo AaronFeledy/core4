@@ -5,12 +5,12 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
+import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "@lando/mcp/dispatch";
+import type { McpCommandEntry } from "@lando/mcp/registry";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
-import type { McpCommandEntry } from "../../src/mcp/registry.ts";
-import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {
   message: Schema.String,

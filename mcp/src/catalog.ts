@@ -8,8 +8,8 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import { isMcpAllowlistForbidden } from "../cli/allowlists/mcp";
-import type { LandoCommandSpec } from "../cli/spec/command-base";
+import { isMcpAllowlistForbidden } from "./allowlist";
+import type { McpCommandSpec } from "./registry";
 import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
 export interface EffectiveAllowlistInput {
@@ -39,7 +39,7 @@ export const computeEffectiveAllowlist = (input: EffectiveAllowlistInput): Effec
   return { ids, source: parts.join("+") };
 };
 
-const toDescriptor = (spec: LandoCommandSpec): McpToolDescriptor => ({
+const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   toolId: spec.id,
   commandId: spec.id,
   title: spec.summary,

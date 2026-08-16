@@ -3,10 +3,10 @@ import { Schema } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 
+import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
+import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
-import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
   id,
