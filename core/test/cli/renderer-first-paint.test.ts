@@ -19,7 +19,7 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../src/testing/engine-layers";
 import { renderPlainLine } from "@lando/renderer-lando/format";
 import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";

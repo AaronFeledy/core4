@@ -9,10 +9,10 @@ import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName }
 import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { globalInstall } from "@lando/engine/operations/global-install";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
+import { globalInstall } from "../../src/testing/engine-layers";
+import { ConfigServiceLive } from "../../src/testing/engine-layers";
+import { FileSystemLive } from "../../src/testing/engine-layers";
 import { parseLandofile } from "@lando/landofile/parser";
 import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";

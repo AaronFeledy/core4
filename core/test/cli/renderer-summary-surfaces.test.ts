@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { InfoAppResult } from "@lando/engine/operations/info";
-import type { UninstallResult } from "@lando/engine/operations/uninstall";
+import type { InfoAppResult } from "../../src/testing/engine-layers";
+import type { UninstallResult } from "../../src/testing/engine-layers";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";

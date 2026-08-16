@@ -5,7 +5,7 @@ import { CommandAliasConflictError } from "@lando/sdk/errors";
 import {
   assertToolingNameClaimable,
   reservedTopLevelAliasOwner,
-} from "@lando/engine/operations/reserved-aliases";
+} from "../../src/testing/engine-layers";
 import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 describe("reservedTopLevelAliasOwner", () => {

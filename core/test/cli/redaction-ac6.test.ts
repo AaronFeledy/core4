@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { makeEnvSecretStoreLive } from "@lando/engine/services/secret-store";
+import { makeEnvSecretStoreLive } from "../../src/testing/engine-layers";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";

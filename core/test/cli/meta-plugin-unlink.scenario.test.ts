@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
+import { pluginCommandCachePath } from "../../src/testing/engine-layers";
 import { ConfigService } from "@lando/sdk/services";
 import { pluginLink } from "../../src/cli/commands/plugin-link.ts";
 import {

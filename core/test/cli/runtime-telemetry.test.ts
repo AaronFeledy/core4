@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Context, Effect, Layer } from "effect";
 
 import { Telemetry } from "@lando/core/services";
-import { cliRuntimeOptions, resolveCliTelemetryState } from "@lando/engine/runtime/cli-options";
+import { cliRuntimeOptions, resolveCliTelemetryState } from "../../src/testing/engine-layers";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const withEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {

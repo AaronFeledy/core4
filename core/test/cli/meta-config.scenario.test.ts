@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
-import { ConfigResultSchema, config } from "@lando/engine/operations/config";
+import { ConfigResultSchema, config } from "../../src/testing/engine-layers";
 import { ConfigService } from "@lando/sdk/services";
 
 import { renderConfigResult } from "../../src/cli/commands/config.ts";

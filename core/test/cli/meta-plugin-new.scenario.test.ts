@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import { Readable, Writable } from "node:stream";
 
-import { PLUGIN_NEW_TEMPLATE_IDS } from "@lando/engine/operations/plugin-scaffold";
+import { PLUGIN_NEW_TEMPLATE_IDS } from "../../src/testing/engine-layers";
 import { pluginNew, renderPluginNewResult } from "../../src/cli/commands/plugin-new.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";

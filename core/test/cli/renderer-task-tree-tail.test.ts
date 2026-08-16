@@ -14,7 +14,7 @@ import { Effect } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../src/testing/engine-layers";
 import {
   TASK_DETAIL_TAIL_CAPACITY,
   TaskDetailRing,

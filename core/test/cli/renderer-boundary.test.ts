@@ -4,7 +4,7 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import { DeprecationServiceLive } from "../../src/testing/engine-layers";
 import {
   makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,

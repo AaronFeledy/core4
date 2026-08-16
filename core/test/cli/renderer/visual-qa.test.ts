@@ -4,7 +4,7 @@ import { Effect, Layer } from "effect";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../../src/testing/engine-layers";
 import { makeLandoEventConsumer } from "../../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { landoRenderer } from "../../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";

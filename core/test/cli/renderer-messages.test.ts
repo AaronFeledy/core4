@@ -10,7 +10,7 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../src/testing/engine-layers";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";

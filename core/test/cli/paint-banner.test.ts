@@ -8,7 +8,7 @@ import { PaintBannerEvent } from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../src/testing/engine-layers";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/pre-renderer.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";

@@ -4,7 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 import { TaskStartEvent } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import { EventServiceLive } from "../../../src/testing/engine-layers";
 import {
   bundledRendererRegistry,
   landoRenderer,

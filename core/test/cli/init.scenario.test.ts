@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError } from "@lando/core/errors";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { LandofileServiceLive } from "../../src/testing/engine-layers";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

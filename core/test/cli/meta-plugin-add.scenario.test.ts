@@ -8,8 +8,8 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import { writePluginCommandCacheStrict } from "../../src/testing/engine-layers";
+import { makePluginTrustStore } from "../../src/testing/engine-layers";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
