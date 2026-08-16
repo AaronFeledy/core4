@@ -1,15 +1,6 @@
 import { Effect } from "effect";
 
 import {
-  type PlanMetadata,
-  ProviderId,
-  type ServiceConfig,
-  ServiceName,
-  type ServicePlan,
-} from "@lando/sdk/schema";
-import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
-
-import {
   type ComposeServiceFeature,
   L337_BASE_DEFAULT_FEATURE_IDS,
   LANDO_BASE_DEFAULT_FEATURE_IDS,
@@ -18,7 +9,14 @@ import {
   composeService,
   mergeDefaultExcludes,
 } from "@lando/core/testing";
-import { serviceFeatures } from "../../src/features/index.ts";
+import {
+  type PlanMetadata,
+  ProviderId,
+  type ServiceConfig,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 export interface ComposeServicePlanArgs {
   readonly serviceType: ServiceType;
@@ -30,8 +28,7 @@ export interface ComposeServicePlanArgs {
   readonly serviceName?: string;
   readonly metadata: typeof PlanMetadata.Encoded;
   readonly host?: ServiceTypeHostFacts;
-  readonly applyAuthoredWrappers?: boolean;
-  readonly featureOverrides?: ReadonlyMap<string, ServiceFeatureDefinition>;
+  readonly featureDefinitions: ReadonlyMap<string, ServiceFeatureDefinition>;
 }
 
 const baseDefaultFeatureIds = (base: "l337" | "lando"): ReadonlyArray<string> =>
@@ -39,9 +36,9 @@ const baseDefaultFeatureIds = (base: "l337" | "lando"): ReadonlyArray<string> =>
 
 const featureDefinitionFor = (
   id: string,
-  featureOverrides: ReadonlyMap<string, ServiceFeatureDefinition> | undefined,
+  featureDefinitions: ReadonlyMap<string, ServiceFeatureDefinition>,
 ): ServiceFeatureDefinition => {
-  const definition = featureOverrides?.get(id) ?? serviceFeatures.get(id);
+  const definition = featureDefinitions.get(id);
   if (definition === undefined)
     throw new Error(`Service feature "${id}" is not registered in the test harness.`);
   return definition;
@@ -49,11 +46,11 @@ const featureDefinitionFor = (
 
 const composeFeatureFor = (
   featureRef: { readonly id: string; readonly config?: Record<string, unknown> },
-  featureOverrides: ReadonlyMap<string, ServiceFeatureDefinition> | undefined,
+  featureDefinitions: ReadonlyMap<string, ServiceFeatureDefinition>,
 ): ComposeServiceFeature => ({
   id: featureRef.id,
   ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-  definition: featureDefinitionFor(featureRef.id, featureOverrides),
+  definition: featureDefinitionFor(featureRef.id, featureDefinitions),
 });
 
 export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<ServicePlan> => {
@@ -74,9 +71,9 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
 
   const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
   const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter((id) => !resolutionFeatureIds.has(id));
-  const defaultFeatures = baseDefaultIds.map((id) => featureDefinitionFor(id, args.featureOverrides));
+  const defaultFeatures = baseDefaultIds.map((id) => featureDefinitionFor(id, args.featureDefinitions));
   const features = resolution.features.map((featureRef) =>
-    composeFeatureFor(featureRef, args.featureOverrides),
+    composeFeatureFor(featureRef, args.featureDefinitions),
   );
   const rawPlan = await Effect.runPromise(
     composeService({
@@ -99,7 +96,6 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
     }),
   );
 
-  if (args.applyAuthoredWrappers === false) return rawPlan;
   return applyAuthoredHealthcheck(
     applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), args.service),
     args.service,

@@ -79,16 +79,16 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/provider-podman": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/provider-lando"],
-    devDependencies: [],
+    devDependencies: ["@lando/core"],
   },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/paths"],
+    devDependencies: ["@lando/core", "@lando/paths"],
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/core"],
+    devDependencies: ["@lando/core", "@lando/provider-docker", "@lando/provider-lando"],
   },
   "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },

@@ -5,7 +5,6 @@ import { Effect, Exit } from "effect";
 
 import { ToolManifestError } from "@lando/sdk/errors";
 
-import { makeFakeDownloader } from "../../../sdk/test/tool-provisioning/_fixtures.ts";
 import {
   MKCERT_TOOL_MANIFEST,
   MKCERT_TOOL_VERSION,
@@ -15,6 +14,7 @@ import {
   readInstalledMkcertStatus,
 } from "../src/provision.ts";
 import { MKCERT_BIN, failure, makeTempDirs, patchHostBinary } from "./_fixtures.ts";
+import { makeFakeDownloader } from "./support/fake-downloader.ts";
 
 describe("MKCERT_TOOL_MANIFEST", () => {
   test("pins every supported host key to a plain upstream binary", () => {

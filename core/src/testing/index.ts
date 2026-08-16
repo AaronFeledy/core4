@@ -18,6 +18,11 @@ export * from "./secret-store";
 export * from "./state-store";
 export * from "./test-runtime";
 export * from "./tunnel";
+export {
+  type BufferedRendererIO,
+  type BufferedRendererIOOptions,
+  createBufferedRendererIO,
+} from "../cli/renderer/io";
 
 export { makePluginStateStore } from "@lando/engine/plugins/context-state";
 export { makePluginRegistryLive, PluginRegistryLive } from "@lando/engine/plugins/registry";

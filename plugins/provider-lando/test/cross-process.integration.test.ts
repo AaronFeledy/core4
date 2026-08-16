@@ -11,7 +11,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makePluginStateStore } from "@lando/core/testing";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {

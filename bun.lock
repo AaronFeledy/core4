@@ -188,6 +188,9 @@
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
+      "devDependencies": {
+        "@lando/core": "workspace:*",
+      },
     },
     "plugins/proxy-traefik": {
       "name": "@lando/proxy-traefik",
@@ -207,6 +210,7 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
+        "@lando/core": "workspace:*",
         "@lando/paths": "workspace:*",
       },
     },
@@ -218,6 +222,8 @@
       },
       "devDependencies": {
         "@lando/core": "workspace:*",
+        "@lando/provider-docker": "workspace:*",
+        "@lando/provider-lando": "workspace:*",
       },
       "peerDependencies": {
         "@lando/sdk": "workspace:*",
