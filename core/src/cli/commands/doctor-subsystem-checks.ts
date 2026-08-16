@@ -75,7 +75,7 @@ export const PROXY_SPEC: SubsystemSpec = {
   automaticRemediation:
     "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
   manualRemediation:
-    "The HTTPS reverse proxy is not running. Run `lando setup` to provision the global app with Traefik, or start it manually if already installed.",
+    "The HTTPS reverse proxy is not running. Run `lando setup` to provision and start the global app with Traefik.",
 };
 
 export const CERTS_SPEC: SubsystemSpec = {
