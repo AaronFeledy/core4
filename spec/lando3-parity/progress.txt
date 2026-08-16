@@ -231,3 +231,16 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Canonical event commands must reuse the shared command lifecycle/renderer seam and remain available to embedding runtimes without a reverse registry import cycle.
   - Event redaction must seed secrets from referenced effective tooling tasks, not only inline event-step environment values.
 ---
+
+## 2026-08-16 05:16 CDT - US-565 Drift Audit
+- Trigger: 2 cycles, 1572 changed lines, 3 commits
+- Category 1: The public event schema partially freezes the larger canonical-command contract and still omits the full app lifecycle taxonomy; the story remains incomplete rather than absorbing the rest during audit.
+- Category 2: Canonical-command and guide execution proofs remain weaker than the production wiring claimed, while a stale Beta test contradicted the graduated key.
+- Category 3: Removed a test-facing forwarding export; the mutable command-registry injection, nested cwd deadlock, and late reentry guard remain Build blockers.
+- Category 4: Event errors pushed the Landofile error module past the 250-line ceiling, and an internal command-executor result type remained exported without an external consumer.
+- Category 6: Service contributions were discarded instead of merging below user steps, and plain-object failures plus named-task env redaction drifted from the tagged-output contract.
+- Category 7: Re-examination confirmed the stale rejection test, contribution loss, object-shaped failure output, and named-task redaction as branch-owned fixes; empty successful canonical-command output remains correctly tied to the shared Renderer boundary.
+- Fixed: Preserved all deterministically ordered contributed steps after user steps, restored typed failure messages and named-task secret redaction, corrected the graduated-key proof, guide precedence, and SDK compatibility note, split event errors by responsibility, and removed dead exports.
+- Split/excise decisions: None; `passes` stays false for the unresolved canonical-command lifecycle/embedding/deadlock contract and missing `pre-init`/`post-init` execution.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide lint/coverage/drift/public transcripts, 183 focused tests, and both guide scenarios passed; container-backed verification was not run.
+---
