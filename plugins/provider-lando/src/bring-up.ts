@@ -230,7 +230,9 @@ const createContainerRequest = (plan: AppPlan, service: ServicePlan, name: strin
         EndpointsConfig: Object.fromEntries(
           networkNames(plan).map((name) => [
             name,
-            name === sharedNetworkName(plan) ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+            name === sharedNetworkName(plan)
+              ? { Aliases: serviceNetworkAliases(plan, service) }
+              : { Aliases: [service.name] },
           ]),
         ),
       },

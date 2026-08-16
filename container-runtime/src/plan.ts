@@ -1,5 +1,6 @@
 import {
   type AppPlan,
+  type InternalEndpoint,
   type PublishedEndpoint,
   type ServicePlan,
   fileSyncVolumeName,
@@ -207,6 +208,18 @@ export const containerPortBindings = (
   return Object.fromEntries(grouped);
 };
 
+export const containerExposedPorts = (
+  endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
+): Record<string, Record<string, never>> => {
+  const ports: Record<string, Record<string, never>> = {};
+  for (const endpoint of endpoints) {
+    if (endpoint.protocol === "unix") continue;
+    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+    ports[key] = {};
+  }
+  return ports;
+};
+
 export const containerHostConfigFragment = (
   plan: AppPlan,
   service: ServicePlan,
@@ -246,6 +259,7 @@ export const containerCreateBodyFragment = (
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
   const healthcheck = containerHealthcheck(service.healthcheck);
+  const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -255,6 +269,7 @@ export const containerCreateBodyFragment = (
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
     ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
+    ...(Object.keys(exposedPorts).length > 0 ? { ExposedPorts: exposedPorts } : {}),
     Labels: options.labels ?? commonContainerLabels(plan, service),
     HostConfig: options.hostConfig ?? containerHostConfigFragment(plan, service),
     ...(options.networkingConfig === undefined ? {} : { NetworkingConfig: options.networkingConfig }),

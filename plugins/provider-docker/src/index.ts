@@ -70,6 +70,7 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
 import { waitForExit } from "./wait-for-exit.ts";
 
@@ -711,7 +712,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
   containerCreateBodyFragment(plan, service, {
     labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
     hostConfig: hostConfig(plan, service),
-    networkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
+    networkingConfig: { EndpointsConfig: { [networkName(plan)]: { Aliases: [service.name] } } },
     onMissingArtifact: (artifact) => {
       throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
         artifact,
@@ -742,8 +743,7 @@ export const renderCompose = (plan: AppPlan): string => {
       const networks = [
         "    networks:",
         ...networkNames(plan).flatMap((name) => {
-          if (name !== sharedNetwork) return [`      ${name}:`];
-          const aliases = serviceNetworkAliases(plan, service);
+          const aliases = name === sharedNetwork ? serviceNetworkAliases(plan, service) : [service.name];
           return aliases.length === 0
             ? [`      ${name}:`]
             : [`      ${name}:`, "        aliases:", ...aliases.map((alias) => `          - "${alias}"`)];
@@ -1643,4 +1643,5 @@ export const plugin = definePlugin({
       },
     ],
   ]),
+  doctorChecks: [makeIptablesForwardCheck()],
 });

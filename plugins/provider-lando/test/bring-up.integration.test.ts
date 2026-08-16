@@ -332,7 +332,7 @@ describe("provider-lando bringUp", () => {
     expect(nodeCreateBody?.Cmd).toEqual(nodeCommand);
     expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
-      "lando-bringupapp": {},
+      "lando-bringupapp": { Aliases: ["node"] },
       lando_bridge_network: { Aliases: ["node.bringupapp.internal"] },
     });
     expect(
@@ -369,7 +369,7 @@ describe("provider-lando bringUp", () => {
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
-      "custom-app-net": {},
+      "custom-app-net": { Aliases: ["node"] },
       "custom-shared-net": { Aliases: ["node.custom.internal"] },
     });
     expect(
@@ -435,7 +435,9 @@ describe("provider-lando bringUp", () => {
         new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
-    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({ "custom-app-only": {} });
+    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
+      "custom-app-only": { Aliases: ["node"] },
+    });
     expect(
       fake.calls
         .filter((call) => call.path === "/networks/create")

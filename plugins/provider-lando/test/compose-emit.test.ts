@@ -208,7 +208,7 @@ describe("provider-lando Compose emission", () => {
     });
 
     expect(content).toContain('      database:\n        condition: "service_healthy"\n');
-    expect(content).not.toContain('      - "database"');
+    expect(content).toContain('    depends_on:\n      database:\n        condition: "service_healthy"\n');
   });
 
   test("tmpfs mounts appear under tmpfs: key, not in volumes: list", () => {
@@ -349,7 +349,7 @@ describe("provider-lando Compose emission", () => {
 
     expect(content).toContain("      custom-app-net:\n");
     expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
-    expect(content).not.toContain("aliases:");
+    expect(content).toContain("aliases:");
     expect(content).not.toContain("lando_bridge_network");
   });
 });
