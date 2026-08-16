@@ -50,7 +50,12 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="start">
       <Run command="lando start" />
-      <Verify event="post-start" />
+      <Verify
+        expect={{
+          exitCode: 0,
+          stdout: { contains: "running" }
+        }}
+      />
     </Step>
     <Step name="uninstall-keep-data">
       <Run command="lando uninstall --yes --keep-data" />
@@ -75,7 +80,12 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="start-app">
       <Run command="lando start" />
-      <Verify event="post-start" />
+      <Verify
+        expect={{
+          exitCode: 0,
+          stdout: { contains: "running" }
+        }}
+      />
     </Step>
     <Step name="purge-cleans-up">
       <Run command="lando uninstall --yes --purge" />
