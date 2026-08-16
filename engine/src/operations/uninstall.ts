@@ -495,22 +495,22 @@ const executeUninstall = async (
         if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
-        // Teardown handles cleanup; explicitly remove the runtime directory afterward
-        // to ensure socket, PID files, and directory itself are gone
-        try {
-          await remove(step.target);
-        } catch (removeError) {
-          // If directory removal fails but teardown succeeded, log but don't fail
-          // This handles cases where processes may still hold file handles briefly
-          if (removeError instanceof Error && removeError.message.includes("EACCES")) {
-            // Permission denied is expected if teardown left protected files
-            // The runtime is stopped, which is the critical part
-          } else {
-            throw removeError;
+        // After teardown, make the directory removable before attempting removal
+        const { chmod } = await import("node:fs/promises");
+        const { existsSync } = await import("node:fs");
+        if (existsSync(step.target)) {
+          try {
+            // Make all files writable by owner so rm can succeed
+            await chmod(step.target, 0o700);
+            // Recursively make contents writable
+            const { execFile } = await import("node:child_process");
+            const { promisify } = await import("node:util");
+            const execFileAsync = promisify(execFile);
+            await execFileAsync("chmod", ["-R", "u+w", step.target]);
+          } catch {
+            // chmod may fail on some files, but try to remove anyway
           }
         }
-        executed.push({ ...step, outcome: "completed" });
-        continue;
       }
       if (step.id === "managed-provider-machines") {
         // The target is a machine NAME, not a filesystem path: tear it down via the
