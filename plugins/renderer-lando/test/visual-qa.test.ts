@@ -4,11 +4,14 @@ import { Effect, Layer } from "effect";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { EventServiceLive } from "../../../src/testing/engine-layers";
-import { makeLandoEventConsumer } from "../../../../plugins/renderer-lando/src/renderer-runtime.ts";
-import { landoRenderer } from "../../../src/cli/renderer/bundled-renderers.ts";
-import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";
-import { makeJsonRendererLive, renderPlain } from "../../../src/cli/renderer/runtime.ts";
+import {
+  EventServiceLive,
+  createBufferedRendererIO,
+  makeJsonRendererLive,
+  renderPlain,
+} from "@lando/core/testing";
+
+import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import {
   SUMMARY_FIXTURES,
   TREE_FIXTURES,
@@ -288,9 +291,7 @@ describe("undecorated machine-mode regression fixtures", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(
-          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive)),
-        ),
+        program.pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), EventServiceLive))),
       ),
     );
     expect(io.stdout()).not.toContain(ESC);

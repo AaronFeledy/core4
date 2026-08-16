@@ -21,6 +21,7 @@ import { resolve } from "node:path";
 
 import { Schema } from "effect";
 
+import { type SummaryDocument, displayWidth, formatSummary, stripAnsi } from "@lando/core/testing";
 import {
   type LandoEvent,
   MessageWarnEvent,
@@ -32,9 +33,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 
-import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
-import { displayWidth, stripAnsi } from "../../../src/cli/renderer/console-layout.ts";
-import { type SummaryDocument, formatSummary } from "../../../src/cli/renderer/summary.ts";
+import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
 export { displayWidth, stripAnsi };
 

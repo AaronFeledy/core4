@@ -19,13 +19,12 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "../../src/testing/engine-layers";
-import { renderPlainLine } from "@lando/renderer-lando/format";
-import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
-import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
-import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { type RendererIO, createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { createTestLiveRegionController, makeLiveRegionFixture } from "./renderer-live-region-test-kit.ts";
+import { EventServiceLive, type RendererIO, createBufferedRendererIO } from "@lando/core/testing";
+
+import { renderPlainLine } from "../src/format.ts";
+import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
+import { createTestLiveRegionController, makeLiveRegionFixture } from "./live-region-test-kit.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -199,7 +198,7 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
   test("the first recorded write is the plain task-tree start line", async () => {
     const recorder = createFakeTerminalRecorder();
     const event = treeStart("app", "Starting app", ["web", "db"]);
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive([event]).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toHaveLength(1);
     expect(recorder.chunks[0]).toBe(`${renderPlainLine(event)}\n`);
@@ -208,7 +207,7 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
   test("buffered degradation writes one complete plain line per event", async () => {
     const recorder = createFakeTerminalRecorder();
     const events = [treeStart("app", "Starting app", ["web"]), taskStart("web", "web", "app")];
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toEqual(events.map((event) => `${renderPlainLine(event)}\n`));
   });

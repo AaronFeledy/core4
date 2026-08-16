@@ -5,9 +5,9 @@ import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "../../src/testing/engine-layers";
-import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { EventServiceLive, createBufferedRendererIO } from "@lando/core/testing";
+
+import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 
 class FakeLiveRegion {
   setFooter(): void {}
