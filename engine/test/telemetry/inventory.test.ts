@@ -61,7 +61,9 @@ describe("telemetry event inventory source of truth", () => {
     for (const [name, spec] of Object.entries(TELEMETRY_EVENTS) as ReadonlyArray<
       readonly [keyof typeof TELEMETRY_EVENT_FIELD_NAMES, TelemetryEventSpec]
     >) {
-      expect([...TELEMETRY_EVENT_FIELD_NAMES[name]]).toEqual(spec.fields.map((field) => field.name));
+      expect(TELEMETRY_EVENT_FIELD_NAMES[name].map(String)).toEqual(
+        spec.fields.map((field) => String(field.name)),
+      );
     }
   });
 

@@ -81,6 +81,7 @@ const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.
   name: name as PluginManifest["name"],
   version,
   api: 4,
+  bootstrap: "app",
   contributes: { commands },
 });
 
@@ -157,15 +158,20 @@ describe("CommandRegistryLive", () => {
   });
 
   test("returns an empty list when the Landofile has no `tooling:` section", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(
-        join(dir, ".lando.yml"),
-        ["name: myapp", "services:", "  web:", "    image: node:lts", ""].join("\n"),
-      );
-      process.chdir(dir);
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: myapp", "services:", "  web:", "    image: node:lts", ""].join("\n"),
+        );
+        process.chdir(dir);
 
-      const commands = await listFromLive();
-      expect(commands).toEqual([]);
+        const commands = await listFromLive();
+
+        expect(commands).toEqual([]);
+        expect(await Bun.file(appCommandCachePath(cacheRoot, "myapp", dir)).exists()).toBe(false);
+        expect(await Bun.file(appToolingCompilationCachePath(cacheRoot, dir)).exists()).toBe(false);
+      });
     });
   });
 
@@ -376,7 +382,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when TypeScript Landofile output changes with the environment", async () => {
+  test("keeps the last full TypeScript decode when only the environment changes", async () => {
     await withTempCacheRoot(async () => {
       await withTempCwd(async (dir) => {
         const envKey = "LANDO_TEST_TOOLING_COMMAND";
@@ -401,7 +407,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           process.env[envKey] = "second";
           const warm = await listFromLive();
 
-          expect(warm.map((command) => command.id)).toEqual(["app:second"]);
+          expect(warm.map((command) => command.id)).toEqual(["app:first"]);
         } finally {
           if (previousCommand === undefined) Reflect.deleteProperty(process.env, envKey);
           else process.env[envKey] = previousCommand;
@@ -531,7 +537,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when a templated local include target changes", async () => {
+  test("keeps the last full decode when only a template input changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const previousInclude = process.env.LANDO_TEMPLATE_INCLUDE;
@@ -558,16 +564,16 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           expect(cold.map((c) => c.id)).toEqual(["app:build"]);
 
           const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
-          expect(fresh).toBeNull();
+          expect(fresh).not.toBeNull();
 
           process.env.LANDO_TEMPLATE_INCLUDE = "fragment-bad.yml";
           const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
 
-          expect(stale).toBeNull();
+          expect(stale).not.toBeNull();
 
           const commands = await listFromLive();
 
-          expect(commands).toEqual([]);
+          expect(commands.map((command) => command.id)).toEqual(["app:build"]);
         } finally {
           if (previousInclude === undefined) Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_INCLUDE");
           else process.env.LANDO_TEMPLATE_INCLUDE = previousInclude;
@@ -596,7 +602,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when a BOM-prefixed Landofile is templated", async () => {
+  test("keeps the warm tooling cache when a BOM-prefixed Landofile opts out of templating", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const landofile = { name: "bom-template-cache", tooling: { build: { cmd: "make" } } };
@@ -623,7 +629,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
         const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
 
-        expect(fresh).toBeNull();
+        expect(fresh?.entries.map((entry) => entry.id)).toEqual(["app:cached-only"]);
       });
     });
   });
@@ -706,7 +712,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the app-command cache when services change", async () => {
+  test("invalidates the app-command cache when services change without returning an authored-only list", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const landofilePath = join(dir, ".lando.yml");
@@ -756,7 +762,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
         const commands = await listFromLive();
 
-        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+        expect(commands).toEqual([]);
       });
     });
   });

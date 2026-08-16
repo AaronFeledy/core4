@@ -4,6 +4,7 @@ import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
+  compileAppCommands,
   compileBunShellScriptCommands,
   compilePluginCommands,
   compileToolingCommands,
@@ -33,6 +34,17 @@ describe("compileToolingCommands", () => {
       { id: "app:test", summary: "Tests", hidden: false, service: "appserver" },
       { id: "app:zoo", summary: "Z thing", hidden: false, service: "appserver" },
     ]);
+  });
+
+  test("sorts app command cache entries by ordinal code point order", () => {
+    // Given
+    const source = landofile({ alpha: { cmd: "a" }, Zulu: { cmd: "z" } });
+
+    // When
+    const entries = compileAppCommands(source, []);
+
+    // Then
+    expect(entries.map((entry) => entry.id)).toEqual(["app:Zulu", "app:alpha"]);
   });
 
   test("prefers description over summary and falls back to an empty string", () => {
@@ -106,6 +118,7 @@ const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifes
   name: name as PluginManifest["name"],
   version: "0.0.0",
   api: 4,
+  bootstrap: "app",
   contributes: commands === undefined ? undefined : { commands },
 });
 

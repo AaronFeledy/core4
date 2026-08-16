@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { DateTime } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -14,6 +15,7 @@ const plan = (id: string, extensionId: string | undefined): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata: {
     resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
     source: "scratch-labels.test",

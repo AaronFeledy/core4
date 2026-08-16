@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { type BaseSeed, type ComposeServiceInput, composeService } from "@lando/engine/services/feature";
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 const base: BaseSeed = {
@@ -69,7 +69,12 @@ describe("composeService", () => {
       apply: (ctx) =>
         Effect.sync(() => {
           ctx.addEnv("NODE_ENV", "development");
-          ctx.addMount({ type: "bind", source: "/host/cache", target: "/cache", readOnly: false });
+          ctx.addMount({
+            type: "bind",
+            source: "/host/cache",
+            target: PortablePath.make("/cache"),
+            readOnly: false,
+          });
           ctx.addBuildStep({
             id: "install",
             phase: "build",
@@ -83,7 +88,13 @@ describe("composeService", () => {
 
     expect(plan.environment).toEqual({ FROM_BASE: "yes", NODE_ENV: "development" });
     expect(plan.mounts).toEqual([
-      { type: "bind", source: "/host/cache", target: "/cache", readOnly: false, realization: "passthrough" },
+      {
+        type: "bind",
+        source: "/host/cache",
+        target: PortablePath.make("/cache"),
+        readOnly: false,
+        realization: "passthrough",
+      },
     ]);
     expect(plan.mounts.every((mount) => mount.realization === "passthrough")).toBe(true);
     expect(plan.extensions).toEqual({
@@ -126,7 +137,7 @@ describe("composeService", () => {
         Effect.sync(() => {
           ctx.addEnv("B", "2");
           ctx.addEnv("A", "1");
-          ctx.addEndpoint({ name: "http", protocol: "http", port: 80 });
+          ctx.addEndpoint({ _tag: "internal", name: "http", protocol: "http", port: 80 });
         }),
     };
 

@@ -35,6 +35,7 @@
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
 - `ToolingCompileError` and `ToolingExecError` additively accept optional `remediation` so cache-only routing and task failures can return actionable machine errors.
 - `ToolingTaskShape` additively accepts `arguments: false`; core rejects caller-supplied positional arguments for those tasks with `ToolingCompileError` instead of appending argv to the authored command.
+- `ToolingDefaultsShape` is a new public schema export for the narrow app-wide `service`, `dir`, `env`, and `vars` tooling defaults. `LandofileShape.toolingDefaults` and task-level `ToolingTaskShape.dir` / `ToolingTaskShape.env` are additive optional schema fields defining the contract for app-wide defaults and task-local overrides.
 - US-442 replaces the placeholder static CLI event tags with canonical dynamic `cli-<command-id>-init|run|error` tags and adds redacted invocation, duration, exit-code, and failure identity fields. `EventFor<Name>` narrows those dynamic tags to their public lifecycle variants.
 - `CommandWarning` additively accepts structured string context so machine warnings can retain actionable source metadata.
 - US-441 adds `LandofileFormConflictError` and extends each `LandofileVersionConstraintError.constraints` entry with ordered `layer` and `order` provenance.
@@ -118,6 +119,7 @@
 - `ArtifactBuildSpec`
 - `ArtifactManifestEntry`
 - `ArtifactRef`
+- `AxisToken`
 - `assertJsonSchemaDeprecationsValid`
 - `assertPublicSchemaAnnotations`
 - `BuildBlock`
@@ -130,8 +132,10 @@
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`
+- `CommandAliasesShape`
 - `CommandSpec`
 - `CommandWarning`
+- `ComponentId`
 - `COMPOSE_DEPRECATED_TOP_LEVEL_KEYS`
 - `COMPOSE_EXTENSION_TOP_LEVEL_PATTERN`
 - `COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY`
@@ -218,6 +222,8 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostPlatformFamily`
+- `hostPlatformFamily`
 - `HostProxyContainerTarget`
 - `HostProxyErrorCode`
 - `HostProxyGatewayHostname`
@@ -326,6 +332,7 @@
 - `ToolArtifactEntry`
 - `ToolManifest`
 - `ToolingArgShape`
+- `ToolingDefaultsShape`
 - `ToolingFlagShape`
 - `ToolingIncludeShape`
 - `ToolingTaskShape`
@@ -523,7 +530,10 @@
 - `LandofileShape.version`
 - `LandofileShape.agentEnv`
 - `LandofileShape.env_file`
+- `LandofileShape.toolingDefaults`
 - `LandofileShape.x-*`
+- `ToolingTaskShape.dir`
+- `ToolingTaskShape.env`
 - `GlobalConfig.agentEnv`
 - `GlobalConfig.notify`
 - `PluginManifest.deprecated`
@@ -590,6 +600,7 @@
 - `ArchiveFormatError`
 - `ArtifactTransferError`
 - `CommandAliasConflictError`
+- `CommandAliasTargetError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`

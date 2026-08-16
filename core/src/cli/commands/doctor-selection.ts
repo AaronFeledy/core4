@@ -1,7 +1,7 @@
 import { Effect, Either } from "effect";
 
 import type { ConfigError } from "@lando/sdk/errors";
-import { type HostPlatform, ProviderId } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import {
@@ -56,12 +56,6 @@ const branded = (value: string | undefined): ProviderId | undefined => {
   const trimmed = value.trim();
   if (trimmed === "") return undefined;
   return ProviderId.make(trimmed);
-};
-
-export const platformFromProcess = (): HostPlatform => {
-  if (process.platform === "linux") return "linux";
-  if (process.platform === "darwin") return "darwin";
-  return "win32";
 };
 
 export const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelectionRecord => ({

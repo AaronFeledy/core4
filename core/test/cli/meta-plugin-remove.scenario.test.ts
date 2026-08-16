@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,9 +6,10 @@ import { dirname, join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 
 import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
@@ -21,6 +23,12 @@ const fakeConfigService = (dataRoot: string) =>
       Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
     getEffective: () => Effect.succeed({} as never),
   } as never);
+
+const pluginAddLayer = (dataRoot: string) =>
+  Layer.merge(
+    fakeConfigService(dataRoot),
+    Layer.succeed(PluginTrustStore, makePluginTrustStore(join(dataRoot, "plugin-trust.yml"))),
+  );
 
 const makeNpmTarball = async (files: Readonly<Record<string, string>>): Promise<Uint8Array> => {
   const stage = await mkdtemp(join(tmpdir(), "lando-plugin-remove-tar-"));
@@ -388,7 +396,7 @@ describe("meta:plugin:remove command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
         fetcher: fetcherFor(bytes, []),
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     const versionedDir = installResult.entry;
     expect(await exists(versionedDir)).toBe(true);
@@ -431,7 +439,7 @@ describe("meta:plugin:remove command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
         fetcher: fetcherFor(bytes, []),
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     const versionedDir = installResult.entry;
     const nodeModulesDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -41,6 +42,7 @@ const appPlan = (slug: string, service: ServicePlan): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 });

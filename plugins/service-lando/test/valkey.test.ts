@@ -5,6 +5,7 @@ import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { VALKEY_FEATURE_ID, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -55,7 +56,7 @@ describe("valkey ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "valkey/valkey:7" });
     expect(plan.command).toEqual(["valkey-server", "--maxmemory", "256mb"]);
-    expect(plan.endpoints[0]?.port).toBe(16379);
+    expect(firstEndpointPort(plan)).toBe(16379);
   });
 
   test("default command tracks the overridden port", async () => {
@@ -80,7 +81,7 @@ describe("valkey ServiceType", () => {
   test("TCP healthcheck tracks the overridden port", async () => {
     const plan = await planValkeyService({ type: "valkey", port: 16379 });
 
-    expect(plan.endpoints[0]?.port).toBe(16379);
+    expect(firstEndpointPort(plan)).toBe(16379);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/16379"]);
   });
 

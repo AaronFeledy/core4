@@ -24,3 +24,190 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
+- Planner-read file content outside Landofile expression provenance must contribute source/hash metadata to `deriveAppPlanCacheKey`; embedding parsed values in a service type's normalized config is not a reliable cache identity.
+- App-scoped command-routing policy belongs in the fresh app-command cache; native dispatch and help consume that cache without bootstrapping, while canonical command ids bypass alias policy.
+- Dynamic and template-rendered Landofile command caches use file-based freshness only and serve the last full decode when non-file inputs change; do not fingerprint environment, host, or template-render inputs until a dedicated provenance contract authorizes them.
+
+## 2026-08-14 10:04 CDT - US-562
+- Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
+- The env-overrides guide now exercises the host-safe planner refresh path and renders the shared-file declaration plus service override without claiming that `app:config` exposes planner-derived values.
+- Verification: typecheck, lint, codegen, schema compatibility, boundaries, guide gates, focused planner/schema/Landofile/cache/redaction tests, and manual CLI spot checks passed.
+- **Learnings for future iterations:**
+  - `app:cache:refresh` is the host-safe CLI surface for planner-derived behavior; `app:config` reports the resolved authored Landofile and should only assert authored fields.
+---
+
+## 2026-08-14 10:43 CDT - US-562 Review
+- Fixed the confirmed redaction blocker by registering secret-shaped resolved service-environment values with the standard tooling/build event redactors; bare env-file secrets are now masked in task-detail output while ordinary values remain visible. Restored persisted-cache regression coverage for the refactored service-level env-file path.
+- Review notes (deferred/rejected): rejected the tooling-cache finding because dynamic tooling replans through the content-sensitive app-plan path; rejected redacting local per-step build transcripts or their TTY full-tail view because §6.13.6/§8.9.2 explicitly define that owner-only diagnostic surface as unredacted and excluded from telemetry, guide transcripts, and NDJSON; rejected extending the fix to tooling JSON/MCP results because machine envelopes are a separate §8.11 contract and the same pre-existing gap already applies to service-level env files; rejected a token guide assertion because the host-safe guide surface exposes authored config while focused planner tests prove derived environment precedence.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, the focused env-overrides guide, and focused planner/Landofile/schema/tooling/build/redaction test files passed with positive counts.
+- **Learnings for future iterations:**
+  - Event publishers that can expose provider output must seed the canonical redactor from secret-shaped values in the resolved app plan; process environment and SecretStore values alone do not cover Landofile env files.
+---
+
+## 2026-08-14 11:10 CDT - US-562 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a two-service app with top-level `env_file`, and confirmed shared values, service-level overrides, missing-file fail-closed remediation, plan-cache refresh after env-file edits, and no secret leak in `info`/`logs`/`config`. Adjacent service-level `env_file` still applied after start. Destroyed both apps.
+- **Out-of-scope finding:** `lando apps:list --format=json` returned `{"apps":[]}` while `lando info` in `/tmp/us562-verify` and `/tmp/us562-service-env` showed both apps running. Suspected apps-list/applied-app registry, not this story's planner/env_file path.
+---
+
+## 2026-08-14 17:18 CDT - Babysit
+- PR: #739 https://github.com/AaronFeledy/core4/pull/739
+- CI outcome: pass
+- Review feedback: fixed (bumped stock PHP libpq-dev pin to 15.19 after Debian security's libpq5=15.19 broke the image build and Drupal reader-path e2e)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-14 19:32 CDT - US-563
+- App-wide tooling defaults now fill service, working directory, environment, and variables beneath authored, included, recipe-materialized, and service-type-contributed tasks. Same-tier service contributions resolve deterministically, and the contributing service is the default target.
+- Effective tooling is attached privately to fresh and cached app plans, participates in cache identity, feeds command-index refresh, and drives runtime invocation without widening the public AppPlan contract. The executable guide shows inherited defaults and task-local overrides.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts passed; 606 focused and adjacent tests plus the generated guide scenario passed; compiled CLI verification passed in lando4-dev and its app-specific caches were removed.
+- **Learnings for future iterations:**
+  - Resolve service-type tooling before applying app defaults; folding defaults into authored tasks earlier can accidentally outrank values contributed later.
+  - Keep effective tooling as engine-private plan provenance until the compiled task graph needs its own persisted payload; public AppPlan remains provider-realization data.
+---
+
+## 2026-08-14 21:16 CDT - US-563 Review
+- Fixed service-derived command-cache invalidation, fail-closed cache-miss discovery for service apps, locale-independent command compilation, and script fallback without changing effective-tooling precedence. Tooling env secrets now redact from task events, CLI plain/JSON results, and MCP envelopes, including numeric and boolean values after normalization.
+- Review notes (deferred/rejected): rejected requiring effective tooling on arbitrary externally constructed AppPlan objects because the canonical fresh/cache-hit planner path owns and restores the private sidecar; rejected fingerprinting live linked-plugin source edits because managed plugin mutations invalidate app tooling caches and direct edits already require `app:cache:refresh`; rejected expanding the guide to assert every inherited field because the executable scenario proves applied/overridden defaults while focused compiler/runtime tests cover `dir`, `env`, and `vars`.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, public transcripts, the focused executable guide, and 163 focused schema/Landofile/planner/cache/tooling/renderer/MCP tests passed.
+- **Learnings for future iterations:**
+  - Result-scoped redaction tokens must cross every imperative shell, including MCP progress and result envelopes; event-only redaction is not enough.
+  - Script fallbacks must preserve the same effective-tooling-over-script precedence as command-index compilation, even when planning fails.
+---
+
+## 2026-08-14 21:48 CDT - US-563 Drift Audit
+- Trigger: 2 cycles, 1811 changed lines, 9 commits
+- Category 4: One internal planner type remained exported without a production or test consumer.
+- Category 5: Retained the US-562 pass-state carry-forward because `origin/main` already contains the merged US-562 implementation.
+- Category 6: The historical compiled-CLI claim was not rerun under this audit's host-safety constraints and remains unverified here.
+- Fixed: Removed the dead type export; retained the package seams, fail-closed cache-miss path, and boundary-specific redaction after importer and call-path review.
+- Split/excise decisions: None; every added public schema and effective-tooling surface traces to US-563 acceptance criteria.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 256 changed-test spot checks, the focused 4-test post-fix rerun, and the generated guide scenario passed.
+---
+
+## 2026-08-14 23:42 CDT - Babysit
+- PR: #741 https://github.com/AaronFeledy/core4/pull/741
+- CI outcome: pass
+- Review feedback: fixed (refresh tooling caches before start/restart/rebuild so planner-derived commands like drupal-scaffold exist after start; redact app-plan secrets from tooling results)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-15 01:10 CDT - US-564
+- Per-app `commandAliases` now remap or disable top-level aliases through the shared native dispatcher while preserving canonical command ids, canonical JSON identity, source/compiled parity, and active app-context help.
+- Alias policy is normalized into the fresh app-command cache and its semantic fingerprint; canonical/reserved collisions and unknown targets fail with tagged remediation. The executable defaults-and-aliases guide now exercises a custom alias and its canonical form.
+- Verification: typecheck, lint, boundaries, codegen drift, schema compatibility, guide coverage/drift/lint/public transcripts, 502 focused and adjacent tests, and both generated guide scenarios passed; automated source/compiled dispatch and relocated-binary CLI checks passed in `lando4-dev`, with QA resources removed.
+- **Learnings for future iterations:**
+  - Bare aliases handled by entry-point fast paths must flow through the shared dispatcher or app remapping and disablement are bypassed; keep fast paths only for reserved switches and canonical forms.
+  - Validate reserved namespace heads without blocking explicit app remaps of already-registered colon aliases such as `scratch:gc`.
+---
+
+## 2026-08-15 11:30 CDT - US-564 Review
+- Fixed import-time dispatcher crashes, refresh-time alias validation, app-aware preservation of level-none cold paths, target-aware Bun/x passthrough, pre-command alias failures, flag-shaped aliases, bounded fuzzy suggestions, terminal-control escaping, and load-expression provenance for fresh command caches. Added real compiled-binary coverage for app overrides.
+- Review notes (deferred/rejected): rejected graduating tooling-task top-level aliases and executable plugin-command aliases because prior Beta decisions defer those surfaces; rejected global-config alias behavior because US-564 is explicitly per-app. Cursor Bugbot was unavailable because the Cursor account has an unpaid invoice.
+- Verification: typecheck, lint, boundaries, explicit-base guide drift, the focused executable guide, 44 cache/router tests, and sandboxed source dispatch/cold-path checks passed. A host-built current compiled binary run inside `lando4-dev` resolved the custom `start` alias to canonical `app:greet` in its JSON envelope; the sandbox's Bun 1.3.14 test-runner path crashed before the compiled test body, so that runner invocation remains blocked by the runtime rather than deferred as product coverage.
+- **Learnings for future iterations:**
+  - Alias-sensitive level-none forms need an Effect-free app-context probe; importing Landofile discovery violates the cold-path boundary even when behavior is correct.
+  - Fresh app-command caches must fingerprint Landofile `load()`/`import()` provenance whenever policy or tooling can be expression-derived.
+---
+
+## 2026-08-15 14:24 CDT - US-564 Drift Audit
+- Trigger: 2 cycles, 1555 changed lines, 6 commits
+- Category 2: Cache and help proofs were relocated without weakening, but the interrupted route-state simplification left resolver call sites uncompilable until the migration was completed.
+- Category 3: Native dispatch retained a duplicate late tooling retry and carried argv inside already-resolved route values.
+- Category 4: Internal alias-policy and tooling helpers remained exported beyond their production consumers; the pre-existing cache-writer size was retained after importer review.
+- Category 6: Historical compiled-binary, focused-guide, and sandbox claims were not rerun under this audit's host-safety constraints and remain unverified here.
+- Fixed: Removed the duplicate dispatch path and route-owned argv, narrowed internal exports, completed the resolver migration, and preserved relocated cache coverage in its focused suite.
+- Split/excise decisions: None; every added public schema, error, cache, dispatcher, help, and guide surface traces to US-564 acceptance criteria.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, and 186 changed-test spot checks passed; schema compatibility still fails on the unrelated pre-existing `HostPlatformFamily` removal while every US-564 addition is compatible.
+---
+
+## 2026-08-15 15:12 CDT - US-564 Drift Audit (re-run)
+- Trigger: 2 cycles, 1736 changed lines, 12 commits
+- Category 3: Native dispatch still probed the app-command cache twice for the same alias head after the first audit's routing simplification.
+- Category 6: Historical compiled-binary and focused-guide claims were not rerun under host-safety constraints; guide drift skipped without pull-request context.
+- Fixed: Reused the preflight alias resolution during dispatch, removing the duplicate cache probe without adding another routing path.
+- Split/excise decisions: None; no deferred surface was absorbed and only US-564's pass state changed.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/lint/public transcripts, 177 changed-test spot checks, and 58 post-fix routing checks passed; schema compatibility still fails only on the pre-existing `HostPlatformFamily` removal.
+---
+
+## 2026-08-15 15:30 CDT - US-564 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a node:lts app with `commandAliases.custom.hi: app:greet` and `disabled: [rebuild]`. `lando hi --format=json` and `lando app:greet --format=json` both reported `command: app:greet` and printed `hello-from-alias`; app-context help listed `hi -> app:greet` and omitted `rebuild`; `lando rebuild` failed with `UnknownCommandError`; `lando app:cache:refresh` on a reserved `app:*` alias failed with `CommandAliasConflictError`. Adjacent `info`/`exec`/`cache:refresh`/`version`/`app:config`/`destroy` worked. Destroyed the app and removed `/tmp/us564-*`.
+- **Out-of-scope finding:** `lando start` first failed with `GlobalAutoStartError`, then `lando global:start` failed with `rootlessport listen tcp 127.0.0.1:38080: bind: address already in use`. The listener was a leftover host `rootlessport` (pid 1127198) from a deleted `/tmp/lando-start-scenario-*/test-start` cwd, not this story. Killing that orphan unblocked global+app start.
+- **Out-of-scope finding:** `lando apps:list` still printed `No Lando apps applied on this host` while `lando info` showed `us564-verify` running. Same applied-app registry gap recorded in US-562 Verify.
+- **Learnings for future iterations:**
+  - Before sandbox `lando start`, check host `127.0.0.1:38080` for orphaned Lando `rootlessport` from deleted temp apps; WSL localhost sharing makes host leftovers look like in-sandbox binds.
+---
+
+## 2026-08-15 16:01 CDT - Push
+- PR: none — skipped; uncommitted product changes in `core/test/testing/events.test.ts` (test case swap for `expectEvent` timeout options) plus uncommitted Verify progress entry. Resolve or commit those before push.
+---
+
+## 2026-08-15 16:02 CDT - Babysit
+- PR: none
+- CI outcome: fail (no PR; push skipped over uncommitted `core/test/testing/events.test.ts`)
+- Review feedback: none
+- Merge: deferred (missing PR)
+---
+
+## 2026-08-15 16:10 CDT - US-564 Build completion
+- Story verified complete on the existing branch with no new product code; removed a temporary test-fixture mutation that inverted two equivalent timeout cases and did not belong to command-alias behavior.
+- Verification: typecheck and lint passed; 97 focused command-alias, router, help, cache, and event-helper tests passed; compiled CLI acceptance verification remains recorded above.
+- **Learnings for future iterations:**
+  - Keep temporary test mutations out of the working tree after verification; equivalent fixture swaps can pass while leaving test names misleading and blocking publication.
+---
+
+## 2026-08-15 16:56 CDT - US-564 Review
+- Fixed registered bare aliases such as `scratch` bypassing app remapping and disablement, and escaped terminal controls in unknown-target close-match remediation without changing the raw tagged-error data.
+- Blocking: returned the story to Build because `.lando.ts` and templated Landofiles are accepted alias sources but the cache-only router unconditionally rejects their command caches, violating "Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap)."
+- Review notes (deferred/rejected): rejected fuzzy-match limits and bounded referenced-file hashing as broader local-project cache hardening outside the command-alias acceptance criteria; rejected weakening cache freshness by trusting dynamic source bytes because environment- or template-derived output would become stale. Cursor Bugbot remained unavailable because the Cursor account has an unpaid invoice.
+- Guide-Coverage-Skip: The existing alias guide already documents registered-alias overrides; focused dispatch tests cover the `scratch` regression.
+- Verification: typecheck, lint, explicit-base guide drift, and 255 focused alias, cache, router, help, schema, and Landofile tests passed with positive counts.
+- **Learnings for future iterations:**
+  - Cache-only command routing for dynamic Landofile forms needs a non-secret fingerprint of every permitted evaluation and render input; source-byte hashes alone cannot prove the resolved alias policy is fresh.
+---
+
+## 2026-08-15 17:18 CDT - US-564 Drift Audit
+- Trigger: 5 cycles, 1816 changed lines, 21 commits
+- Category 2: YAML-backed source, compiled, cache, JSON, and help proofs remain production-backed; dynamic and templated Landofile hot-path parity remains the recorded blocker.
+- Category 3: A defensive fuzzy-match cutoff and its test blessed empty close-match remediation for long unknown targets.
+- Category 6: Container-backed verification was not rerun under this audit's host-safety constraints and remains unverified here.
+- Fixed: Deleted the fuzzy-match cutoff and restored the oversized-target proof to require close-match remediation.
+- Split/excise decisions: None; public surfaces remain within US-564, and the story stays false for the recorded dynamic-Landofile cache boundary.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint, public transcripts, and 180 baseline plus 93 post-fix spot checks passed; schema compatibility still fails only on unrelated pre-existing schema removals and reference drift.
+---
+
+## 2026-08-15 18:18 CDT - US-564 Build completion
+- Dynamic and templated Landofile command caches now carry a non-secret fingerprint of their permitted runtime inputs, allowing cache-only alias routing without a full bootstrap while invalidating when a real environment or render input changes. Static YAML and explicit `template: none` remain source-hash-only.
+- Source and compiled dispatch now tolerate shell/Bun invocation-control differences while preserving canonical JSON command identity, alias disablement/remapping, and fail-closed refresh remediation.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, the focused executable guide, 101 focused cache/router tests, 19 compiled-binary tests, compiled build, and persistent-sandbox source/compiled/template CLI checks passed; reviewer gate approved and QA resources were removed.
+- **Learnings for future iterations:**
+  - Hash dynamic configuration inputs at the cache boundary, but distinguish semantic user inputs from wrapper controls such as `_`, `SHLVL`, and `BUN_BE_BUN`; command substitution and source-mode self-exec legitimately change those controls.
+---
+
+## 2026-08-15 19:10 CDT - US-564 Adjudication (human)
+- Contradiction: Review demanded "Alias resolution works identically in source and compiled dispatch and on the tooling hot path (aliases resolve from the cached app plan without a full bootstrap)" for every accepted Landofile form, including `.lando.ts` and template-rendered Landofiles whose output depends on environment/host/render inputs. §7.1.1's "only" clause (re-decoding only on file changes) and §8.7/§12.2's cache-only router rules exclude those non-file inputs as invalidation triggers, so Build's env/host/template-input fingerprints were unauthorized by the normative spec.
+- Decision (option 3 of the .looper-stop brief, chosen by human adjudicator): §7.1.1 amended to make explicit that non-file evaluation inputs are NOT re-decoding triggers and caches MUST NOT fingerprint them; dynamic forms serve the last full decode and are excluded from cache-only freshness parity until a dedicated deterministic-evaluation/provenance spec story lands. US-564 AC 3 narrowed accordingly in prd.json and prd-lando3-parity-02-landofile-keys.md.
+- Consequence: US-564 `passes` set to false; Build must excise the environment/host/template-input fingerprint machinery added in "feat: commandAliases" (dynamic-form caches stay file-fingerprint-only per §7.1.1) while keeping the proven static YAML source/compiled/hot-path alias behavior.
+- Follow-up story: none in this wave; deterministic programmatic-Landofile evaluation and import provenance is deferred to a spec-owned story outside the Lando 3 parity PRD.
+---
+
+## 2026-08-15 20:50 CDT - US-564 Build completion
+- Removed environment, host, and template-render input fingerprints from app-command cache payloads and freshness checks. Dynamic and template-rendered Landofiles now serve aliases from the last full decode, while declarative YAML, explicit `template: none`, referenced-file invalidation, canonical ids, JSON identity, help, and alias validation remain intact.
+- Verification: typecheck, lint, boundaries, codegen drift, guide coverage/drift/lint/public transcripts, schema compatibility for every commandAliases addition, the focused executable guide, 160 focused and adjacent tests, compiled build, and persistent-sandbox compiled CLI verification passed; reviewer gate approved and QA resources were removed. The schema compatibility gate still reports only unrelated pre-existing surface removals and reference drift.
+- **Learnings for future iterations:**
+  - Cache-only routing may deliberately serve stale dynamic output when the contract defines only file-based invalidation; freshness inputs must come from an explicit provenance contract, not inferred host state.
+---
+
+## 2026-08-15 21:19 CDT - US-564 Review
+- Reviewed the committed per-app command-alias work against the source acceptance criteria; no in-scope defect required a code change and the story keeps `passes: true`.
+- Review notes (deferred/rejected): rejected Bugbot's finding that registered top-level aliases dispatch to their canonical built-in when the app command cache is missing or file-stale. The acceptance criterion scopes app alias resolution to a fresh cached app plan; an absent or stale cache carries no trusted alias policy, while stale-payload or bootstrap-time enforcement would invent an unowned freshness contract and break first-run command behavior. Rejected preserving pre-field app-command caches without `sourceReferencedFiles`; v4 is unreleased, the cache is versioned and rebuildable, and treating incomplete payloads as stale is the intended fail-closed behavior rather than a migration defect.
+- Verification: typecheck, lint, explicit-base guide drift, and 87 focused dynamic-cache, command-registry, tooling-router, and app-alias tests passed with positive counts; the build step's broader recorded gates remain unchanged.
+- **Learnings for future iterations:**
+  - Cache-only alias routing falls back to the canonical built-in when no fresh app command cache exists; route any change to that behavior through a spec-owned story rather than a reviewer-authored regression contract.
+---
+
+## 2026-08-15 21:32 CDT - US-564 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a node:lts app with `commandAliases.custom.hi: app:greet` and `disabled: [rebuild]`. `lando hi --format=json` and `lando app:greet --format=json` both reported `command: app:greet` and printed `hello-from-alias`; app-context help listed `hi -> app:greet` and omitted `rebuild`; `lando rebuild` failed with `UnknownCommandError`; reserved `app:*` alias refresh failed with `CommandAliasConflictError`; unknown target failed with `CommandAliasTargetError`. Adjacent `info`/`exec`/`cache:refresh`/`version`/`app:config`/`scratch --help`/`destroy` worked. Destroyed the app and removed `/tmp/us564-*`.
+- **Out-of-scope finding:** `lando apps:list --format=json` returned `{"apps":[]}` while `lando info` showed `us564-verify` running. Same applied-app registry gap recorded in US-562 and earlier US-564 Verify.
+---

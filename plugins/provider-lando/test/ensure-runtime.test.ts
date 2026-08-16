@@ -233,6 +233,8 @@ const writeLaunchState = (p: ReturnType<typeof paths>, pid: number, runtimeBundl
 
 const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
   subidConfigured: true,
+  subidRangeSufficient: true,
+  subidRangesDisjoint: true,
   hasUidmapTools: true,
   cgroupsV2Delegated: true,
   hasXdgRuntimeDir: true,
@@ -711,6 +713,8 @@ describe("ensureRuntime", () => {
           rootlessProbes: {
             probe: () => ({
               subidConfigured: false,
+              subidRangeSufficient: false,
+              subidRangesDisjoint: false,
               hasUidmapTools: true,
               cgroupsV2Delegated: true,
               hasXdgRuntimeDir: true,

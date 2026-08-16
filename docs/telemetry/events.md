@@ -1,3 +1,8 @@
+---
+title: Telemetry Event Inventory
+description: The canonical, in-repo inventory of every telemetry event Lando records, kept in sync with engine/src/telemetry/inventory.ts.
+---
+
 # Telemetry Event Inventory
 
 This is the canonical, in-repo inventory of every telemetry event Lando records. It lists each event's allowed fields, field types, allowed values, owning package, source trigger, and recording scope (CLI-only vs library-eligible).

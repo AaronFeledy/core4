@@ -25,6 +25,19 @@ export type PortNumber = typeof PortNumber.Type;
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 
+export const HostPlatformFamily = Schema.Literal("darwin", "linux", "win32");
+export type HostPlatformFamily = typeof HostPlatformFamily.Type;
+
+const HOST_PLATFORM_FAMILY = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "win32",
+  wsl: "linux",
+} as const satisfies Record<HostPlatform, HostPlatformFamily>;
+
+export const hostPlatformFamily = (platform: HostPlatform): HostPlatformFamily =>
+  HOST_PLATFORM_FAMILY[platform];
+
 export const HostArchitecture = Schema.Literal("x64", "arm64");
 export type HostArchitecture = typeof HostArchitecture.Type;
 

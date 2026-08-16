@@ -50,6 +50,7 @@ const configLayer = Layer.succeed(ConfigService, {
   load: Effect.succeed(config),
   get: (key) => Effect.succeed(config[key]),
 });
+const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 
 const proxyModule = (id: string, layer: ProxyServiceRegistration["layer"]): LandoPluginModule => ({
   name: "@lando/proxy-test",
@@ -65,7 +66,9 @@ const proxyModule = (id: string, layer: ProxyServiceRegistration["layer"]): Land
 const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explicit: string) =>
   Effect.runPromise(
     Effect.flatMap(ProxyServiceRegistry, (registry) => registry.select({ explicit })).pipe(
-      Effect.provide(makeProxyServiceRegistryLive(modules).pipe(Layer.provide(configLayer))),
+      Effect.provide(
+        makeProxyServiceRegistryLive(modules).pipe(Layer.provide(Layer.merge(configLayer, pathsLayer))),
+      ),
       Effect.either,
     ),
   );
@@ -130,6 +133,24 @@ describe("ProxyService registry selection", () => {
 
     const selected = await Effect.runPromise(registry.select());
 
+    expect(selected.id).toBe("traefik");
+  });
+
+  test("selects the Linux manifest default for a WSL host", async () => {
+    // Given
+    const registry = makeProxyServiceRegistry({
+      registrations: [
+        registration("traefik", { platform: ["linux"] }),
+        registration("remote", { platform: ["darwin"] }),
+      ],
+      configured: Effect.succeed(undefined),
+      platform: "wsl",
+    });
+
+    // When
+    const selected = await Effect.runPromise(registry.select());
+
+    // Then
     expect(selected.id).toBe("traefik");
   });
 

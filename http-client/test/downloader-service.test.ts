@@ -116,7 +116,7 @@ describe("DownloaderLive", () => {
       expect(result.sizeBytes).toBe(payload.length);
       expect(result.path).toBe(join(dir, "artifact.bin"));
       expect(fake.calls.length).toBe(1);
-      expect(new Uint8Array(await readFile(join(dir, "artifact.bin")))).toEqual(payload);
+      expect(Array.from(await readFile(join(dir, "artifact.bin")))).toEqual(Array.from(payload));
       expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
     });
   });
@@ -215,7 +215,7 @@ describe("DownloaderLive", () => {
       expect(result.fromCache).toBe(false);
       expect(fakeAllowed.calls.length).toBe(1);
       expect(fakeAllowed.calls[0]?.allowFileSource).toBe(true);
-      expect(new Uint8Array(await readFile(join(dir, "allowed.bin")))).toEqual(payload);
+      expect(Array.from(await readFile(join(dir, "allowed.bin")))).toEqual(Array.from(payload));
     });
   });
 
@@ -239,7 +239,7 @@ describe("DownloaderLive", () => {
       );
 
       expect(error._tag).toBe("DownloadChecksumError");
-      expect(new Uint8Array(await readFile(join(dir, "out.bin")))).toEqual(bytes("pre-existing"));
+      expect(Array.from(await readFile(join(dir, "out.bin")))).toEqual(Array.from(bytes("pre-existing")));
       expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
     });
   });
@@ -444,7 +444,7 @@ describe("DownloaderLive", () => {
       expect(result.fromCache).toBe(false);
       expect(result.sha256).toBe(sha256Hex(payload));
       expect(fake.calls.length).toBe(1);
-      expect(new Uint8Array(await readFile(join(dir, "stale.bin")))).toEqual(payload);
+      expect(Array.from(await readFile(join(dir, "stale.bin")))).toEqual(Array.from(payload));
     });
   });
 

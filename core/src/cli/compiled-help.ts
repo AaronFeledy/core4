@@ -5,7 +5,8 @@ import { renderColdRootHelp } from "./cold-path-output";
 import { emitResultLine } from "./compiled-runtime";
 import { resolveTopLevelAliases } from "./spec/command-spec";
 
-export const printRootHelp = (): void => emitResultLine(renderColdRootHelp());
+export const printRootHelp = (activeAliases?: ReadonlyArray<readonly [string, string]>): void =>
+  emitResultLine(renderColdRootHelp(activeAliases));
 
 export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
   const { command, spec, status } = entry;

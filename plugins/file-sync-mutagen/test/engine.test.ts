@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, type Scope, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import {
@@ -7,6 +7,7 @@ import {
   AppId,
   FileSyncSessionRef,
   type FileSyncSessionSpec,
+  PortablePath,
   ServiceName,
 } from "@lando/sdk/schema";
 
@@ -31,7 +32,7 @@ const buildSpec = (
   service: ServiceName.make(overrides.service ?? "web"),
   mountKey: overrides.mountKey ?? "src",
   source: overrides.source ?? APP_ROOT,
-  target: { _tag: "volume", name: "lando-sync-src", path: "/app" as never },
+  target: { _tag: "volume", name: "lando-sync-src", path: PortablePath.make("/app") },
   mode: "two-way-safe",
   excludes: ["node_modules"],
 });
@@ -43,8 +44,9 @@ const fakeEngine = (
   return { engine: makeFileSyncEngine({ client }), client };
 };
 
-const runScoped = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(Effect.scoped(effect));
-const runScopedExit = <A, E>(effect: Effect.Effect<A, E, never>) =>
+const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
+  Effect.runPromise(Effect.scoped(effect));
+const runScopedExit = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
   Effect.runPromiseExit(Effect.scoped(effect));
 
 describe("@lando/file-sync-mutagen engine identity", () => {
@@ -105,7 +107,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     await runScoped(
       Effect.gen(function* () {
         const ref = yield* engine.createSession(spec);
-        expect(ref).toBe(expectedName as never);
+        expect(ref).toBe(FileSyncSessionRef.make(expectedName));
         expect([...client.state.sessions.keys()]).toContain(expectedName);
         expect(client.state.calls.some((c) => c.op === "create" && c.name === expectedName)).toBe(true);
       }),
@@ -377,7 +379,11 @@ describe("@lando/file-sync-mutagen fake state surfaces metadata", () => {
       service: ServiceName.make("web"),
       mountKey: "app-mount",
       source: APP_ROOT,
-      target: { _tag: "volume", name: "lando-sync-app-mount", path: "/app" as never },
+      target: {
+        _tag: "volume",
+        name: "lando-sync-app-mount",
+        path: PortablePath.make("/app"),
+      },
       mode: "two-way-safe",
       excludes,
     };

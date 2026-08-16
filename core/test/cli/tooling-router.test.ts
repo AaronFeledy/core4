@@ -58,7 +58,7 @@ test("Given a fresh app cache, when help options are command heads, then they ar
     // When
     const routes = await Promise.all(
       ["--help", "-h"].map((token) =>
-        Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot })),
+        Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot })),
       ),
     );
 
@@ -78,20 +78,19 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
         source: "bun-script",
       },
     ]);
+    const argv = ["quality", "--fix"] as const;
 
     // When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["quality", "--fix"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toEqual({
       _tag: "bun-script",
       commandId: "app:quality",
       name: "quality",
-      argv: ["--fix"],
       appRoot: root,
     });
+    expect(argv.slice(1)).toEqual(["--fix"]);
   });
 });
 
@@ -101,19 +100,18 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
     await writeFreshCache(root, cacheRoot, [
       { id: "app:quality", summary: "Run quality checks", hidden: false },
     ]);
+    const argv = ["quality", "--fix"] as const;
 
     // When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["quality", "--fix"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toEqual({
       _tag: "tooling",
       commandId: "app:quality",
       name: "quality",
-      argv: ["--fix"],
     });
+    expect(argv.slice(1)).toEqual(["--fix"]);
   });
 });
 
@@ -123,18 +121,17 @@ test("Given a fresh cached app task, when resolving version, then the flag remai
     await writeFreshCache(root, cacheRoot, [
       { id: "app:quality", summary: "Run quality checks", hidden: false },
     ]);
+    const argv = ["quality", "--version"] as const;
 
     // When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["quality", "--version"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
       _tag: "tooling",
       commandId: "app:quality",
-      argv: ["--version"],
     });
+    expect(argv.slice(1)).toEqual(["--version"]);
   });
 });
 
@@ -144,19 +141,18 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
     await writeFreshCache(root, cacheRoot, [
       { id: "app:quality", summary: "Run quality checks", hidden: false },
     ]);
+    const argv = ["app:quality", "--fix"] as const;
 
     // When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["app:quality", "--fix"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toEqual({
       _tag: "tooling",
       commandId: "app:quality",
       name: "quality",
-      argv: ["--fix"],
     });
+    expect(argv.slice(1)).toEqual(["--fix"]);
   });
 });
 
@@ -170,7 +166,7 @@ test("Given an uncached Landofile task, when resolving it, then the router does 
     );
 
     // When
-    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["uncached"], cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
@@ -186,7 +182,7 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
     await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
 
     // When
-    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["unknown"], cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(resolveToolingRoute("unknown", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
@@ -206,7 +202,6 @@ test("Given an argv-derived tooling name with terminal controls, when its error 
     _tag: "unknown-tooling",
     commandId: `app:${name}`,
     name,
-    argv: [],
     remediation: "refresh",
   });
 
@@ -226,8 +221,8 @@ test("Given another namespace or a directory outside an app, when resolving, the
     try {
       // When
       const [otherNamespace, outsideApp] = await Promise.all([
-        Effect.runPromise(resolveToolingRoute({ argv: ["meta:quality"], cwd: root, cacheRoot })),
-        Effect.runPromise(resolveToolingRoute({ argv: ["quality"], cwd: outside, cacheRoot })),
+        Effect.runPromise(resolveToolingRoute("meta:quality", { cwd: root, cacheRoot })),
+        Effect.runPromise(resolveToolingRoute("quality", { cwd: outside, cacheRoot })),
       ]);
 
       // Then
@@ -254,9 +249,7 @@ test("Given a stale version-policy cache, when resolving a task, then it require
     await writeFile(join(root, ".lando.yml"), "name: router-test\nlando: '>=99'\n");
 
     // When
-    const route = await Effect.runPromise(
-      resolveToolingRoute({ argv: ["policy-check"], cwd: root, cacheRoot }),
-    );
+    const route = await Effect.runPromise(resolveToolingRoute("policy-check", { cwd: root, cacheRoot }));
 
     // Then
     expect(route).toMatchObject({
@@ -290,7 +283,7 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
     );
     try {
       // When
-      const route = await Effect.runPromise(resolveToolingRoute({ argv: ["offline"], cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(resolveToolingRoute("offline", { cwd: root, cacheRoot }));
 
       // Then
       expect(route).toMatchObject({
@@ -315,7 +308,7 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
     );
 
     // When
-    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["uncached"], cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
     if (route._tag !== "cache-miss") {
       throw new Error(`expected cache-miss, got ${route._tag}`);
     }

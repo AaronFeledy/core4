@@ -35,7 +35,7 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 ## Tests
 
 - SDK tests import public paths (`@lando/sdk/schema`, `@lando/sdk/services`, etc.) so they exercise the plugin-author surface.
-- Root `tsc -b` does not walk `sdk/test/`; keep `bun run typecheck` and `bun test` paired for SDK changes.
+- Root `tsc -b` walks `sdk/test/` through the aggregate test project; keep `bun run typecheck` and `bun test` paired for SDK changes because runtime assertions remain distinct from static checking.
 
 ## Plugin-abstraction contract kit
 

@@ -30,11 +30,12 @@ const collectTypeScriptFiles = (directory: string): ReadonlyArray<string> =>
   });
 
 const resolveModuleEdge = (importer: string, specifier: string): string | undefined => {
+  // Legacy StateStore modules are only reachable through relative paths.
+  if (!specifier.startsWith(".")) return undefined;
   try {
     return resolve(Bun.resolveSync(specifier, dirname(importer)));
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
+  } catch {
+    return undefined;
   }
 };
 

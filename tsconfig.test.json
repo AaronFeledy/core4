@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": "."
+  },
+  "include": ["./test/**/*.ts", "./*/test/**/*.ts", "./plugins/*/test/**/*.ts", "./scripts/**/*.test.ts"],
+  "exclude": ["./docs/**", "./**/dist/**", "./**/node_modules/**"]
+}

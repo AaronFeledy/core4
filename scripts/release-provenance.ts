@@ -139,7 +139,7 @@ const workflowPathFromRef = (workflowRef: string): string => {
   const marker = "/.github/workflows/";
   const markerIndex = workflowRef.indexOf(marker);
   if (markerIndex === -1) return defaultWorkflowPath;
-  const workflowPath = workflowRef.slice(markerIndex + 1).split("@")[0];
+  const [workflowPath = ""] = workflowRef.slice(markerIndex + 1).split("@");
   return workflowPath === "" ? defaultWorkflowPath : workflowPath;
 };
 
@@ -228,6 +228,9 @@ const parseCliArgs = (args: ReadonlyArray<string>): GenerateReleaseProvenanceInp
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) {
+      throw new Error("Unexpected empty release-provenance argument.");
+    }
     const readValue = (label: string): string => {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`${label} expects a value`);

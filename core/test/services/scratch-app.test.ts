@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
+import { AbsolutePath } from "@lando/core/schema";
 import { ScratchAppService } from "@lando/core/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -49,7 +50,7 @@ describe("ScratchAppServiceLive", () => {
       const resolved = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.root).pipe(Effect.provide(scratchAppLayer)),
       );
-      expect(resolved).toBe(join(cacheRoot, "scratch"));
+      expect(resolved).toBe(AbsolutePath.make(join(cacheRoot, "scratch")));
     });
   });
 
@@ -58,7 +59,7 @@ describe("ScratchAppServiceLive", () => {
       const program = Effect.scoped(Effect.flatMap(ScratchAppService, (service) => service.ensureRoot));
       const first = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
       const second = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
-      expect(first).toBe(join(cacheRoot, "scratch"));
+      expect(first).toBe(AbsolutePath.make(join(cacheRoot, "scratch")));
       expect(second).toBe(first);
       expect(await directoryExists(join(cacheRoot, "scratch"))).toBe(true);
     });
@@ -83,15 +84,15 @@ describe("ScratchAppServiceLive", () => {
           Effect.provide(scratchAppLayer),
         ),
       );
-      const base = join(cacheRoot, "scratch");
-      const instanceRoot = join(base, "scratch-lamp-abc123");
+      const base = AbsolutePath.make(join(cacheRoot, "scratch"));
+      const instanceRoot = AbsolutePath.make(join(base, "scratch-lamp-abc123"));
       expect(resolved).toEqual({
         base,
         instanceRoot,
-        root: join(instanceRoot, "root"),
-        planCache: join(instanceRoot, "plan.bin"),
-        infoCache: join(instanceRoot, "info.json"),
-        buildResults: join(instanceRoot, "build-results.bin"),
+        root: AbsolutePath.make(join(instanceRoot, "root")),
+        planCache: AbsolutePath.make(join(instanceRoot, "plan.bin")),
+        infoCache: AbsolutePath.make(join(instanceRoot, "info.json")),
+        buildResults: AbsolutePath.make(join(instanceRoot, "build-results.bin")),
       });
     });
   });
@@ -150,7 +151,7 @@ describe("ScratchAppServiceLive", () => {
       const resolved = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.root).pipe(Effect.provide(runtime)),
       );
-      expect(resolved).toBe(join(cacheRoot, "scratch"));
+      expect(resolved).toBe(AbsolutePath.make(join(cacheRoot, "scratch")));
     });
   });
 });

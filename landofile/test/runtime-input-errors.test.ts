@@ -20,6 +20,9 @@ describe("Landofile runtime input failures", () => {
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new TypeError("Expected a typed include failure");
     expect(failure.value._tag).toBe("LandofileIncludeError");
+    if (failure.value._tag !== "LandofileIncludeError") {
+      throw new TypeError(`Expected LandofileIncludeError, got ${failure.value._tag}`);
+    }
     expect(failure.value.kind).toBe("source-unresolved");
   });
 });

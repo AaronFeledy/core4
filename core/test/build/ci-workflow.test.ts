@@ -42,12 +42,23 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
+  test("runs deterministic cross-file isolation regressions in one Bun process", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const isolationJob = findIndentedBlock(jobs, "test-isolation-linux-x64", 2);
+
+    // Then
+    expect(isolationJob).toContain("      - name: Run cross-file isolation regressions");
+    expect(isolationJob).toContain("        run: bun run test:unit:isolation");
+  });
+
   test("regenerates derived sources before every source-consuming CI job", async () => {
     // Given / When
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(19);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(21);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -388,6 +399,40 @@ describe("ci workflow", () => {
     expect(unitTests).toContain(
       '          if [[ "${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then',
     );
+  });
+
+  test("builds docs on a single Linux x64 job outside the static-check matrix", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const staticChecksPlatform = findIndentedBlock(jobs, "static-checks-platform", 2);
+    const docsBuild = findIndentedBlock(jobs, "docs-build", 2);
+
+    // Then
+    expect(jobs).toContain("  docs-build:");
+    expect(docsBuild).toContain("    runs-on: ubuntu-24.04");
+    expect(docsBuild).toContain("      - uses: actions/checkout@v5");
+    expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(docsBuild).toContain("          bun-version-file: .bun-version");
+    expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
+    expect(docsBuild).toContain("        run: bun run codegen");
+    expect(docsBuild).toContain("        run: bun run docs:check");
+    expect(docsBuild).toContain("        run: bun run docs:test");
+    expect(docsBuild).toContain("        run: bun run docs:build");
+    expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
+    expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
+      docsBuild.indexOf("bun run docs:check"),
+    );
+    expect(docsBuild.indexOf("bun run codegen")).toBeLessThan(docsBuild.indexOf("bun run docs:check"));
+    expect(docsBuild.indexOf("bun run docs:check")).toBeLessThan(docsBuild.indexOf("bun run docs:test"));
+    expect(docsBuild.indexOf("bun run docs:test")).toBeLessThan(docsBuild.indexOf("bun run docs:build"));
+    expect(docsBuild.indexOf("bun run docs:build")).toBeLessThan(
+      docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
+    );
+    expect(docsBuild.indexOf("bun run docs:build")).toBeLessThan(
+      docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
+    );
+    expect(staticChecksPlatform).not.toContain("docs-build");
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {

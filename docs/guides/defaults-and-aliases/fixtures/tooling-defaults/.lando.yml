@@ -1,0 +1,24 @@
+name: tooling-defaults-demo
+runtime: 4
+toolingDefaults:
+  service: web
+  dir: /app
+  env:
+    APP_ENV: development
+  vars:
+    MODE: default
+services:
+  web:
+    type: node:lts
+    primary: true
+  worker:
+    type: node:lts
+tooling:
+  build:
+    cmd: bun run build
+  lint:
+    service: worker
+    dir: /app/tools
+    env:
+      APP_ENV: ci
+    cmd: bun run lint

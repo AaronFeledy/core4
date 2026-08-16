@@ -1,5 +1,5 @@
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
-import { type EngineCompositionInputs, installEngineComposition } from "@lando/engine/composition";
+import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "@lando/engine/composition";
 
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { defaultGitRecipeCloner, publish } from "../recipes/git-source";
@@ -30,4 +30,4 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
   bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
 };
 
-installEngineComposition(baseEngineCompositionInputs);
+installEngineCompositionIfAbsent(baseEngineCompositionInputs);

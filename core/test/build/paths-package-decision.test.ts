@@ -8,7 +8,7 @@ const readText = async (path: string): Promise<string> => Bun.file(resolve(repoR
 
 describe("paths primitive package promotion decision", () => {
   test("publishes a Beta 1 decision promoting only @lando/paths with the public shim", async () => {
-    const decisions = await readText("docs/beta-1-decisions.md");
+    const decisions = await readText("docs/contributing/decisions.md");
 
     expect(decisions).toContain("## Paths primitive package promotion decision");
     expect(decisions).toContain("@lando/paths");
@@ -21,7 +21,7 @@ describe("paths primitive package promotion decision", () => {
   });
 
   test("rejects StateStore and RedactionService promotion", async () => {
-    const decisions = await readText("docs/beta-1-decisions.md");
+    const decisions = await readText("docs/contributing/decisions.md");
 
     expect(decisions).toContain("Rejected: promoting `StateStore`");
     expect(decisions).toContain("Rejected: promoting `RedactionService`");
@@ -31,7 +31,7 @@ describe("paths primitive package promotion decision", () => {
   });
 
   test("allows plugins to depend on @lando/paths but not @lando/core", async () => {
-    const decisions = await readText("docs/beta-1-decisions.md");
+    const decisions = await readText("docs/contributing/decisions.md");
 
     expect(decisions).toMatch(/Plugins may depend on `@lando\/paths` directly/i);
     expect(decisions).toContain("always-allowed");

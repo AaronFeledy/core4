@@ -23,10 +23,12 @@ const pathExists = async (path: string): Promise<boolean> => {
   }
 };
 
-const readProcessLine = async (
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  state: { buffer: string },
-): Promise<unknown> => {
+/** Structural reader shape shared by Bun's and `node:stream/web`'s stdout readers. */
+interface ChunkReader {
+  readonly read: () => Promise<{ readonly done: boolean; readonly value?: Uint8Array | undefined }>;
+}
+
+const readProcessLine = async (reader: ChunkReader, state: { buffer: string }): Promise<unknown> => {
   while (true) {
     const newline = state.buffer.indexOf("\n");
     if (newline >= 0) {
@@ -35,7 +37,7 @@ const readProcessLine = async (
       return JSON.parse(line);
     }
     const result = await reader.read();
-    if (result.done === true) return undefined;
+    if (result.done === true || result.value === undefined) return undefined;
     state.buffer += text(result.value);
   }
 };

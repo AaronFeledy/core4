@@ -42,6 +42,10 @@
       "types": "./src/docs/render/index.ts",
       "import": "./src/docs/render/index.ts"
     },
+    "./docs/variant": {
+      "types": "./src/docs/variant.ts",
+      "import": "./src/docs/variant.ts"
+    },
     "./docs/redactions": {
       "types": "./src/docs/render/redaction.ts",
       "import": "./src/docs/render/redaction.ts"

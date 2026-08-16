@@ -34,6 +34,20 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+type CommandsBootstrapLayer = ReturnType<typeof makeCommandsBootstrapLayer>;
+type SelfContainedBootstrapLayer = Layer.Layer<
+  Layer.Layer.Success<CommandsBootstrapLayer>,
+  Layer.Layer.Error<CommandsBootstrapLayer>
+>;
+
+/**
+ * Generated bootstrap layers declare host plugin layers as `Layer<unknown, unknown, unknown>`, so a
+ * composed layer reports `RIn = unknown` even when every input is self-contained. `core/src/runtime/layer.ts`
+ * narrows the same seam before handing the layer to a runtime.
+ */
+const selfContained = (layer: CommandsBootstrapLayer): SelfContainedBootstrapLayer =>
+  layer as SelfContainedBootstrapLayer;
+
 const runtime = async (
   disable: ReadonlyArray<string> = [],
   config?: string,
@@ -52,7 +66,11 @@ const runtime = async (
       loggerMode: "silent",
       rendererMode: "plain",
       telemetryEnabled: false,
-      pluginDiscovery: { bundled: true, ...discovery, disable },
+      pluginDiscovery: { bundled: true, system: false, ...discovery, disable },
+      pluginLayers: [],
+      pluginManifests: [],
+      externalImports: false,
+      cwd: root,
       rootOverrides: {
         userDataRoot: absolute("data"),
         userConfRoot: absolute("config"),
@@ -62,8 +80,8 @@ const runtime = async (
     });
   return {
     root,
-    layer: makeLayer(),
-    makeLayer,
+    layer: selfContained(makeLayer()),
+    makeLayer: () => selfContained(makeLayer()),
   };
 };
 

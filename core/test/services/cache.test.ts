@@ -12,7 +12,10 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type LandofileShape,
+  LogSourceId,
   PluginName,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -20,6 +23,7 @@ import {
 import { CacheService } from "@lando/core/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
+  type AppPlanCacheKeyInput,
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
   readCachedAppPlan,
@@ -307,7 +311,7 @@ describe("CacheServiceLive", () => {
   });
 
   test("derives app-plan cache keys from Landofile, plugin, provider, and app-root inputs", () => {
-    const base = {
+    const base: AppPlanCacheKeyInput = {
       appRoot: "/workspace/cache-plan",
       landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
       providerCapabilities,
@@ -316,6 +320,7 @@ describe("CacheServiceLive", () => {
           name: PluginName.make("@lando/node"),
           version: "1.0.0",
           api: 4 as const,
+          bootstrap: "app",
           contributes: { serviceTypes: ["node"] },
         },
       ],
@@ -330,7 +335,7 @@ describe("CacheServiceLive", () => {
         landofile: {
           name: "cache-plan",
           services: { [ServiceName.make("web")]: { type: "node", environment: { NODE_ENV: "test" } } },
-        },
+        } satisfies LandofileShape,
       }),
     ).not.toBe(key);
     expect(
@@ -341,10 +346,19 @@ describe("CacheServiceLive", () => {
           services: {
             [ServiceName.make("web")]: {
               type: "node",
-              logs: [{ id: "app", path: "/app/var/log/app.log", stream: "stderr" }],
+              logs: [
+                {
+                  id: LogSourceId.make("app"),
+                  path: AbsolutePath.make("/app/var/log/app.log"),
+                  stream: "stderr",
+                  required: false,
+                  strategy: "follow",
+                  timestamps: false,
+                },
+              ],
             },
           },
-        },
+        } satisfies LandofileShape,
       }),
     ).not.toBe(key);
     expect(
@@ -355,6 +369,7 @@ describe("CacheServiceLive", () => {
             name: PluginName.make("@lando/node"),
             version: "1.0.1",
             api: 4 as const,
+            bootstrap: "app",
             contributes: { serviceTypes: ["node"] },
           },
         ],
@@ -392,6 +407,35 @@ describe("CacheServiceLive", () => {
         },
       }),
     ).not.toBe(deriveAppPlanCacheKey({ ...base, landofile: { name: "cache-plan", services: {} } }));
+  });
+
+  test("changes app-plan cache key for a toolingDefaults-only Landofile edit", () => {
+    // Given — deriveAppPlanCacheKey already fingerprints the whole Landofile
+    const base = {
+      appRoot: "/workspace/cache-plan-defaults",
+      landofile: {
+        name: "cache-plan-defaults",
+        services: { [ServiceName.make("web")]: { type: "node" } },
+        tooling: { hello: { cmd: "echo hi" } },
+      },
+      pluginManifests: [],
+    };
+    const withDefaults = {
+      ...base,
+      landofile: {
+        ...base.landofile,
+        toolingDefaults: { service: "web", dir: PortablePath.make("/app") },
+      },
+    };
+
+    // When
+    const without = deriveAppPlanCacheKey(base);
+    const withKey = deriveAppPlanCacheKey(withDefaults);
+    const restored = deriveAppPlanCacheKey(base);
+
+    // Then
+    expect(withKey).not.toBe(without);
+    expect(restored).toBe(without);
   });
 
   test("keys referenced files by path size and content but not mtime", () => {

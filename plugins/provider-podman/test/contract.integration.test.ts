@@ -91,6 +91,7 @@ const makeFakeApi = () => {
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -200,6 +201,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.promise(async (): Promise<PodmanHttpResponse> => {
         calls.push(request);
@@ -390,6 +392,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -559,13 +562,15 @@ describe("provider-podman RuntimeProvider contract", () => {
       ),
     );
     const exit = await Effect.runPromiseExit(
-      provider.copyToService(
-        { app: appId, service: serviceName },
-        {
-          sourcePath: AbsolutePath.make(import.meta.path),
-          targetPath: PortablePath.make("/tmp/payload"),
-          overwrite: true,
-        },
+      Effect.scoped(
+        provider.copyToService(
+          { app: appId, service: serviceName },
+          {
+            sourcePath: AbsolutePath.make(import.meta.path),
+            targetPath: PortablePath.make("/tmp/payload"),
+            overwrite: true,
+          },
+        ),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
@@ -592,7 +597,9 @@ describe("provider-podman RuntimeProvider contract", () => {
     };
 
     // When
-    const exit = await Effect.runPromiseExit(provider.apply(invalidKnobPlan, { reconcile: true }));
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(invalidKnobPlan, { reconcile: true })),
+    );
 
     // Then
     const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
@@ -623,7 +630,7 @@ describe("provider-podman RuntimeProvider contract", () => {
           ),
         ),
       );
-      await Effect.runPromise(firstProvider.apply(plan, { reconcile: true }));
+      await Effect.runPromise(Effect.scoped(firstProvider.apply(plan, { reconcile: true })));
 
       const secondFake = makeFakeApi();
       const secondState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
@@ -643,7 +650,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       const snapshot = await Effect.runPromise(secondProvider.inspect({ app: appId, service: serviceName }));
       const listed = await Effect.runPromise(secondProvider.list({}));
 
-      expect(snapshot.providerId).toBe("podman");
+      expect(snapshot.providerId).toBe(providerId);
       expect(listed.map((entry) => entry.app)).toEqual([appId]);
       expect(secondFake.calls.some((call) => call.path.endsWith("/json"))).toBe(true);
     } finally {
@@ -673,8 +680,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     60_000,
   );
 
-  test("matrix: covers linux / darwin / win32 via fake Podman API", async () => {
-    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+  test("matrix: covers every host identity via fake Podman API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl") =>
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
@@ -692,11 +699,7 @@ describe("provider-podman RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
-          {
-            platform: "wsl",
-            supported: false,
-            skipReason: "provider-podman targets native Windows, not WSL",
-          },
+          { platform: "wsl", supported: true, factory: () => buildProvider("wsl") },
         ],
       }),
     );
@@ -706,7 +709,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
-      "wsl:skipped",
+      "wsl:passed",
     ]);
   });
 
@@ -718,7 +721,9 @@ describe("provider-podman RuntimeProvider contract", () => {
       ),
     );
 
-    const exit = await Effect.runPromiseExit(provider.apply(multiServicePlan, { reconcile: true }));
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(multiServicePlan, { reconcile: true })),
+    );
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.existing.size).toBe(0);
@@ -733,6 +738,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     let startCallCount = 0;
     const wrappedApi: PodmanApiClient = {
       info: inner.api.info,
+      ping: inner.api.ping,
       request: (req) => {
         const request = inner.api.request;
         if (request === undefined) {
@@ -748,7 +754,7 @@ describe("provider-podman RuntimeProvider contract", () => {
         }
         return request(req);
       },
-      stream: inner.api.stream,
+      ...(inner.api.stream === undefined ? {} : { stream: inner.api.stream }),
     };
 
     const provider = await Effect.runPromise(
@@ -758,7 +764,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     const exit = await Effect.runPromiseExit(
-      provider.apply(multiServicePlan, { reconcile: true, signal: controller.signal }),
+      Effect.scoped(provider.apply(multiServicePlan, { reconcile: true, signal: controller.signal })),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

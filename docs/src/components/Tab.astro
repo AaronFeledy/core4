@@ -1,0 +1,20 @@
+---
+import { TabItem } from "@astrojs/starlight/components";
+
+import { componentFramePropsFor } from "./component-frame.ts";
+
+interface Props {
+  readonly name: string;
+  readonly [key: string]: unknown;
+}
+
+const { name } = Astro.props;
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "tab");
+---
+
+<TabItem label={name}>
+  <div class="lando-tab" {...dataAttributes}>
+    {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+    <slot />
+  </div>
+</TabItem>

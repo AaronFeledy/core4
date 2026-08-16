@@ -1,11 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
 import { GlobalServiceMissingError } from "@lando/core/errors";
 import {
   AbsolutePath,
+  AppId,
   type AppPlan,
   PluginManifest,
   PortablePath,
@@ -238,6 +240,26 @@ const withHarness = async <T>(
     }
   });
 
+const appPlan: AppPlan = {
+  id: AppId.make("ensure-global-services"),
+  name: "ensure-global-services",
+  slug: "ensure-global-services",
+  root: AbsolutePath.make("/tmp/ensure-global-services"),
+  provider: providerId,
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+    source: "ensure-global-services.test",
+    runtime: 4,
+  },
+  extensions: {},
+  requires: { globalServices: ["traefik"] },
+};
+
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
@@ -249,10 +271,8 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 
 describe("ensureGlobalServicesRunning", () => {
   test("reads required global services from AppPlan.requires", () => {
-    expect(requiredGlobalServicesForPlan({ requires: { globalServices: ["traefik"] } } as AppPlan)).toEqual([
-      "traefik",
-    ]);
-    expect(requiredGlobalServicesForPlan({} as AppPlan)).toEqual([]);
+    expect(requiredGlobalServicesForPlan(appPlan)).toEqual(["traefik"]);
+    expect(requiredGlobalServicesForPlan({ ...appPlan, requires: undefined })).toEqual([]);
   });
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {

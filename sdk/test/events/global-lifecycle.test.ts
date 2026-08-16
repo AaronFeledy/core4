@@ -12,7 +12,7 @@ import {
   PreGlobalStopEvent,
   PreStartEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { AppId, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
 
 const FIXED_TIMESTAMP = DateTime.unsafeMake("2026-05-11T07:30:00Z");
 const FIXED_RESOLVED_AT = DateTime.unsafeMake("2026-05-10T18:51:00Z");
@@ -144,7 +144,7 @@ describe("global lifecycle event payload schemas", () => {
 
     expect(Either.isRight(pre)).toBe(true);
     expect(Either.isRight(post)).toBe(true);
-    if (Either.isRight(pre)) expect(pre.right.plan.id).toBe("global");
+    if (Either.isRight(pre)) expect(pre.right.plan.id).toBe(AppId.make("global"));
     if (Either.isRight(post)) expect(post.right.services).toEqual(["traefik"]);
   });
 
@@ -227,7 +227,7 @@ describe("global lifecycle event payload schemas", () => {
         services: ["traefik"],
         timestamp,
       },
-    ];
+    ] as const;
 
     for (const payload of payloads) {
       const result = Schema.decodeUnknownEither(LandoEvent)(payload);

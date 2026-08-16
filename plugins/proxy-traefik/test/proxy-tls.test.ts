@@ -111,11 +111,13 @@ describe("Traefik ProxyService TLS", () => {
     await Effect.runPromise(harness.service.applyRoutes(httpsRoutes, app));
 
     // When: the same app changes its HTTPS hostname.
+    const existingRoute = httpsRoutes[0];
+    if (existingRoute === undefined) throw new Error("expected HTTPS route fixture");
     await Effect.runPromise(
       harness.service.applyRoutes(
         [
           {
-            ...httpsRoutes[0],
+            ...existingRoute,
             hostname: "new.demo.lndo.site",
           },
         ],

@@ -26,10 +26,10 @@ import { chmod, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "n
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
-import { Effect, type Scope } from "effect";
+import { Effect, Schema, type Scope } from "effect";
 
 import { ToolExtractError, ToolInstallPathError, ToolManifestError } from "../errors/index.ts";
-import type { ToolManifest } from "../schema/index.ts";
+import { HostPlatform, type ToolManifest, hostPlatformFamily } from "../schema/index.ts";
 import { type DownloadError, Downloader } from "../services/index.ts";
 
 const DEFAULT_MODE = 0o755;
@@ -72,7 +72,8 @@ export interface InstalledTool {
 export type ToolError = ToolManifestError | ToolExtractError | ToolInstallPathError | DownloadError;
 
 /** Map a host platform + arch to the canonical `${platform}-${arch}` manifest key. */
-export const resolveHostKey = (platform: string, arch: string): string => `${platform}-${arch}`;
+export const resolveHostKey = (platform: string, arch: string): string =>
+  `${Schema.is(HostPlatform)(platform) ? hostPlatformFamily(platform) : platform}-${arch}`;
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

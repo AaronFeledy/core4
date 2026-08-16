@@ -4,13 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
+import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import { ConfigService, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  ConfigService,
+  Downloader,
+  EventService,
+  InteractionService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeHttpClientLive } from "@lando/http-client/live";
@@ -33,6 +40,12 @@ const collector = (): EventSink => {
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const testDownloader = Effect.runSync(makeTestDownloader());
+const testInteraction = makeTestInteractionService({ answers: { provider: "lando" } });
+const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
+  void init;
+  return Promise.resolve(new Response(null, { status: 204 }));
+}) as unknown as typeof fetch;
 
 const makeEventServiceLayer = (sink: EventSink) =>
   Layer.succeed(EventService, {
@@ -49,7 +62,11 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
   const provider = await Effect.runPromise(
     makeRuntimeProvider({
       sanitizeAppliedPlan: stripHostProxyRunLando,
-      podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+      platform: "linux",
+      podmanApi: {
+        info: Effect.succeed({ version: { Version: "6.0.2" } }),
+        ping: Effect.void,
+      },
       podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
       runtimeBundleDownloader: {
         download: Effect.succeed({
@@ -58,7 +75,6 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
           sha256: sha256(bundleBytes),
         }),
       },
-      platform: "linux",
       stateDir,
       eventService: { publish: sink.publish },
     }),
@@ -68,24 +84,21 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
   };
-  const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
-    void init;
-    return Promise.resolve(new Response(null, { status: 204 }));
-  }) as unknown as typeof fetch;
-
   return Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     makeEventServiceLayer(sink),
     makeConfigServiceLayer(),
+    Layer.succeed(Downloader, testDownloader.service),
+    Layer.succeed(InteractionService, testInteraction.service),
     makeHttpClientLive(okProbeFetch),
   );
 };
 
 const makeConfigServiceLayer = () => {
-  const config: GlobalConfig = {
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
-  };
+  });
   const load = Effect.succeed(config);
   return Layer.succeed(ConfigService, {
     load,
@@ -165,6 +178,7 @@ describe("meta:setup task tree progress", () => {
       const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
       let infoCalls = 0;
       const podmanApi = {
+        ping: Effect.void,
         info: Effect.suspend(() => {
           infoCalls += 1;
           if (infoCalls === 1) {
@@ -182,6 +196,7 @@ describe("meta:setup task tree progress", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
+          platform: "linux",
           podmanApi,
           podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader: {
@@ -191,7 +206,6 @@ describe("meta:setup task tree progress", () => {
               sha256: sha256(bundleBytes),
             }),
           },
-          platform: "linux",
           stateDir,
           eventService: { publish: sink.publish },
         }),
@@ -205,6 +219,9 @@ describe("meta:setup task tree progress", () => {
         Layer.succeed(RuntimeProviderRegistry, registry),
         makeEventServiceLayer(sink),
         makeConfigServiceLayer(),
+        Layer.succeed(Downloader, testDownloader.service),
+        Layer.succeed(InteractionService, testInteraction.service),
+        makeHttpClientLive(okProbeFetch),
       );
 
       const exit = await Effect.runPromiseExit(

@@ -39,6 +39,7 @@ const appPlan = (slug: string, service: ServicePlan): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 });

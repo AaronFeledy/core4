@@ -10,7 +10,10 @@ import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import { detectTemplateDirective } from "@lando/landofile/template-render";
+import {
+  type LandofileReferencedFile,
+  getLandofileReferencedFiles,
+} from "@lando/landofile/load-expression-provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -37,6 +40,7 @@ import {
   derivePluginCommandPluginListSha,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
+  normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
 import {
   appCommandCachePath,
@@ -58,6 +62,30 @@ const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
   return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+};
+
+const referencedFilesEqual = (
+  left: ReadonlyArray<LandofileReferencedFile> | undefined,
+  right: ReadonlyArray<LandofileReferencedFile>,
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const referencedFilesFresh = async (
+  files: ReadonlyArray<LandofileReferencedFile> | undefined,
+): Promise<boolean> => {
+  if (!Array.isArray(files)) return false;
+  const results = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const bytes = await readFile(file.absolutePath);
+        return (
+          bytes.byteLength === file.size && createHash("sha256").update(bytes).digest("hex") === file.sha256
+        );
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return results.every(Boolean);
 };
 
 const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
@@ -91,9 +119,6 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
   }
 };
 
-const landofileUsesTemplate = (bytes: Uint8Array): boolean =>
-  detectTemplateDirective(Buffer.from(bytes).toString("utf8")) !== undefined;
-
 interface BunShellScriptSource {
   readonly relativePath: string;
   readonly bytes: Uint8Array;
@@ -110,14 +135,11 @@ const isRemoteInclude = (source: string): boolean =>
   source.startsWith("github:") ||
   /^https?:\/\//u.test(source);
 
-const includeEntrySource = (entry: NonNullable<LandofileShape["includes"]>[number]): string =>
-  typeof entry === "string" ? entry : entry.source;
-
 const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray<string> => {
   const remembered = getLocalIncludePaths(landofile);
   if (remembered.length > 0) return remembered;
   return (landofile.includes ?? [])
-    .map((entry) => includeEntrySource(entry))
+    .map((entry) => (typeof entry === "string" ? entry : entry.source))
     .filter((source) => !isRemoteInclude(source));
 };
 
@@ -295,11 +317,12 @@ const writeAppCommandCacheTask = async (
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
+  const aliasPolicy = normalizeAppCommandAliasPolicy(options.landofile);
   const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+  const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
   const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
-
   const cached = await readAppCommandCacheTask({
     ...options,
     cacheRoot,
@@ -313,11 +336,13 @@ const writeAppCommandCacheTask = async (
       sourceFile: filePath,
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
+      sourceReferencedFiles,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
       versionConstraints,
       toolingFingerprint,
       entriesFingerprint,
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     };
     await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
     return cachePath;
@@ -330,11 +355,13 @@ const writeAppCommandCacheTask = async (
     sourceFile: filePath,
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
+    sourceReferencedFiles,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     versionConstraints,
     toolingFingerprint,
     entriesFingerprint,
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     generatedAtMs: (options.now ?? Date.now)(),
     entries: options.entries,
   };
@@ -364,8 +391,8 @@ const missingPluginNames = (
   manifests: ReadonlyArray<PluginManifest>,
   pluginNames: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
-  const present = manifests.map((manifest) => String(manifest.name));
-  return pluginNames.filter((name) => !present.includes(name));
+  const present = new Set(manifests.map((manifest) => String(manifest.name)));
+  return pluginNames.filter((name) => !present.has(name));
 };
 
 const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptions): Promise<string> => {
@@ -430,6 +457,8 @@ const readAppCommandCacheTask = async (
     if (payload.sourceFile !== filePath) return null;
     const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
     if (!pathsEqual(payload.sourceLocalIncludePaths, sourceLocalIncludePaths)) return null;
+    if (!referencedFilesEqual(payload.sourceReferencedFiles, getLandofileReferencedFiles(options.landofile)))
+      return null;
     if (payload.sourceContentHash !== (await sourceContentHash(source, appRoot, sourceLocalIncludePaths)))
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
@@ -461,8 +490,6 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
   const cwd = options.cwd ?? process.cwd();
   const source = await resolveAppCommandCacheSource(cwd);
   if (source === undefined) return null;
-  if (source.landofileSources.some((entry) => entry.relativePath.endsWith(".ts"))) return null;
-  if (source.landofileSources.some((entry) => landofileUsesTemplate(entry.bytes))) return null;
   const appRoot = dirname(source.filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
@@ -473,6 +500,7 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (payload.landoVersion !== CORE_VERSION) return null;
     if (payload.sourceFile !== source.filePath) return null;
     if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
+    if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
     if (
       payload.sourceContentHash !==
       (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths))
@@ -602,7 +630,20 @@ export const writePluginCommandCache = (
 export const invalidatePluginCommandCache = (
   options: { readonly cacheRoot?: string } = {},
 ): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-    await rm(pluginCommandCachePath(cacheRoot), { force: true });
-  }).pipe(Effect.catchAll(() => Effect.void));
+  Effect.tryPromise({
+    try: async () => {
+      const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+      await rm(pluginCommandCachePath(cacheRoot), { force: true });
+      const appsRoot = join(cacheRoot, "apps");
+      const entries = await readdir(appsRoot, { withFileTypes: true }).catch((cause) => {
+        if (isMissingFile(cause)) return [];
+        throw cause;
+      });
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isDirectory() && entry.name.startsWith("tooling-"))
+          .map((entry) => rm(join(appsRoot, entry.name), { recursive: true, force: true })),
+      );
+    },
+    catch: () => undefined,
+  }).pipe(Effect.ignore);

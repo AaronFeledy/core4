@@ -67,6 +67,7 @@ describe("provider-lando setup", () => {
   test("fails with remediation when Podman is not installed", async () => {
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
+        platform: "linux",
         podmanCommand: { version: Effect.fail(new PodmanNotInstalledError()) },
       }),
     );
@@ -90,7 +91,7 @@ describe("provider-lando setup", () => {
 
     try {
       const exit = await Effect.runPromiseExit(
-        setupProviderLando({ podmanCommand: podmanCommand("podman version 6.0.2") }),
+        setupProviderLando({ platform: "linux", podmanCommand: podmanCommand("podman version 6.0.2") }),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -123,6 +124,7 @@ describe("provider-lando setup", () => {
         Effect.provide(
           makeProviderLayer({
             sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
             podmanApi: {
               info: Effect.succeed({ version: { Version: "6.0.2" } }),
               ping: Effect.succeed(undefined),
@@ -248,6 +250,7 @@ describe("provider-lando setup", () => {
     const bundleBytes = new TextEncoder().encode("tampered lando runtime bundle");
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
+        platform: "linux",
         podmanApi: {
           info: Effect.succeed({ version: { Version: "6.0.2" } }),
           ping: Effect.succeed(undefined),

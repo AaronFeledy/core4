@@ -9,6 +9,7 @@ import {
   memcachedServiceType,
 } from "../src/services/memcached.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -56,7 +57,7 @@ describe("memcached ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6-bookworm" });
-    expect(plan.endpoints[0]?.port).toBe(21211);
+    expect(firstEndpointPort(plan)).toBe(21211);
     expect(plan.command).toEqual(["memcached", "-m", "128"]);
   });
 
@@ -82,7 +83,7 @@ describe("memcached ServiceType", () => {
   test("TCP healthcheck tracks the overridden port", async () => {
     const plan = await planMemcachedService({ type: "memcached", port: 21211 });
 
-    expect(plan.endpoints[0]?.port).toBe(21211);
+    expect(firstEndpointPort(plan)).toBe(21211);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21211"]);
   });
 

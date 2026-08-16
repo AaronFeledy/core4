@@ -138,6 +138,71 @@ jobs:
           fi
           echo "unit test shard matrix passed on ubuntu-24.04, ubuntu-26.04"
 
+  docs-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Check docs
+        run: bun run docs:check
+
+      - name: Test docs
+        run: bun run docs:test
+
+      - name: Build docs
+        run: bun run docs:build
+
+      - name: Confirm generated schema reference is published
+        run: test -f docs/dist/reference/schemas/app-plan/index.html
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::docs-build completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+
+  test-isolation-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Run cross-file isolation regressions
+        run: bun run test:unit:isolation
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::test-isolation-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
+
   schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

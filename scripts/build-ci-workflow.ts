@@ -164,6 +164,24 @@ ${timingNoticeStep("unit-tests-linux-x64-shard/${{ matrix.runs-on }}/${{ matrix.
           echo "unit test shard matrix passed on ${linuxX64RunnerList}"
 `;
 
+const renderTestIsolation = (): string => `  test-isolation-linux-x64:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+      - name: Run cross-file isolation regressions
+        run: bun run test:unit:isolation
+
+${timingNoticeStep("test-isolation-linux-x64", 10)}
+`;
+
 const renderSmokeCommands = (platform: CiPlatform): string =>
   platform.id === "windows-x64"
     ? `          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
@@ -241,6 +259,33 @@ ${renderSmokeCommands(platform)}
           retention-days: 14
 
 ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
+`;
+
+const renderDocsBuild = (): string => `  docs-build:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+      - name: Check docs
+        run: bun run docs:check
+
+      - name: Test docs
+        run: bun run docs:test
+
+      - name: Build docs
+        run: bun run docs:build
+
+      - name: Confirm generated schema reference is published
+        run: test -f docs/dist/reference/schemas/app-plan/index.html
+
+${timingNoticeStep("docs-build", 15)}
 `;
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
@@ -764,6 +809,8 @@ permissions:
 jobs:
 ${renderStaticChecks()}
 ${renderUnitTests()}
+${renderDocsBuild()}
+${renderTestIsolation()}
   schema-snapshot:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15

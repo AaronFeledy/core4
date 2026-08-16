@@ -34,7 +34,7 @@ const DEFAULT_SOURCES = {
 } as const satisfies MatrixSources;
 
 class ComposeKeyMatrixError extends Error {
-  readonly name = "ComposeKeyMatrixError";
+  override readonly name = "ComposeKeyMatrixError";
 }
 
 const failInvariant = (message: string): never => {

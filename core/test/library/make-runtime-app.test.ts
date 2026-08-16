@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { AppPlanner, RuntimeProvider, RuntimeProviderRegistry, makeLandoRuntime } from "@lando/core";
@@ -43,6 +44,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
             },
           }),
         ),
+        Effect.scoped,
       ),
     );
 

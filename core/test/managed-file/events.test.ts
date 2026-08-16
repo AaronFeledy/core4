@@ -1,10 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Chunk, Effect, Layer, Queue } from "effect";
+import { Chunk, Effect, Layer, Queue, type Scope } from "effect";
 
-import type { ManagedFile } from "@lando/sdk/schema";
+import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
@@ -14,15 +15,21 @@ import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
-const runScoped = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));
 
-const file = (overrides: Partial<ManagedFile> & Pick<ManagedFile, "id" | "path">): ManagedFile => ({
+type FileOverrides = Omit<Partial<ManagedFile>, "path"> & {
+  readonly id: ManagedFile["id"];
+  readonly path: string;
+};
+
+const file = ({ path, ...overrides }: FileOverrides): ManagedFile => ({
   owner: "test",
   mode: "file",
   format: "text",
   content: { kind: "text", value: "hello world\n" },
   ...overrides,
+  path: PortablePath.make(path),
 });
 
 const names = (events: ReadonlyArray<LandoEvent>): ReadonlyArray<string> =>

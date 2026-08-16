@@ -5,13 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Context, Effect, Layer, Schema } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { makeLandoPaths } from "@lando/paths";
 import { plugin as podmanPlugin } from "@lando/provider-podman";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
   type GlobalConfig,
+  PluginManifest,
   ProviderCapabilities,
   ProviderId,
   StreamFrame,
@@ -37,6 +40,7 @@ const providerWithComposeServiceFields = {
 } satisfies typeof TestRuntimeProvider;
 
 const OPTIONAL_CAPABILITY_FIELDS = new Set(["composePreservedPaths", "composeProjectFields", "hostProxy"]);
+const doctorPathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 
 const decodeFrames = (ndjson: string) =>
   ndjson
@@ -85,15 +89,46 @@ const buildConfigService = (
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
   configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<ConfigService | RuntimeProviderRegistry> =>
-  Layer.merge(
+): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry> =>
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService(configOverrides)),
+    doctorPathsLayer,
   );
 
 const doctorWithoutPluginChecks = (options: DoctorOptions = {}) => doctor(options, []);
 
 describe("meta:doctor command", () => {
+  test("threads an explicit WSL platform to plugin doctor checks verbatim", async () => {
+    // Given
+    let observedPlatform: string | undefined;
+    const module: LandoPluginModule = {
+      name: "@lando/doctor-platform-test",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/doctor-platform-test",
+        version: "1.0.0",
+        api: 4,
+      }),
+      doctorChecks: [
+        {
+          id: "platform-threading",
+          run: (context) => {
+            observedPlatform = context.platform;
+            return Effect.succeed([]);
+          },
+        },
+      ],
+    };
+
+    // When
+    await Effect.runPromise(
+      doctor({ platform: "wsl", env: {} }, [module]).pipe(Effect.provide(buildLayers(TestRuntimeProvider))),
+    );
+
+    // Then
+    expect(observedPlatform).toBe("wsl");
+  });
+
   test("renders the selected provider and every declared ProviderCapabilities field", async () => {
     const provider = providerWithComposeServiceFields;
     const result = await Effect.runPromise(
@@ -112,7 +147,7 @@ describe("meta:doctor command", () => {
   test("renders providerKind: managed for provider-lando", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const result = await Effect.runPromise(
-      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+      doctorWithoutPluginChecks({ platform: "linux", env: {} }).pipe(Effect.provide(buildLayers(provider))),
     );
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
@@ -371,7 +406,9 @@ describe("meta:doctor command", () => {
       },
       getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctor({ platform: "win32", env: {} }).pipe(Effect.provide(buildLayers(provider))),
+    );
     const actual = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const expected = readFileSync(WINDOWS_FIXTURE_PATH, "utf-8");
 
@@ -423,9 +460,10 @@ describe("meta:doctor command", () => {
       const result = await Effect.runPromise(
         doctorWithoutPluginChecks().pipe(
           Effect.provide(
-            Layer.merge(
+            Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, registry),
               Layer.succeed(ConfigService, buildConfigService()),
+              doctorPathsLayer,
             ),
           ),
         ),
@@ -446,9 +484,10 @@ describe("meta:doctor command", () => {
       const result = await Effect.runPromise(
         doctorWithoutPluginChecks({ env: {} }).pipe(
           Effect.provide(
-            Layer.merge(
+            Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
               Layer.succeed(ConfigService, buildConfigService({ defaultProviderId: null })),
+              doctorPathsLayer,
             ),
           ),
         ),
@@ -572,9 +611,10 @@ describe("meta:doctor command", () => {
             platform: "linux",
           }).pipe(
             Effect.provide(
-              Layer.merge(
+              Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
                 Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                doctorPathsLayer,
               ),
             ),
           ),
@@ -628,9 +668,10 @@ describe("meta:doctor command", () => {
             platform: "linux",
           }).pipe(
             Effect.provide(
-              Layer.merge(
+              Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, registry),
                 Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                doctorPathsLayer,
               ),
             ),
           ),
@@ -662,9 +703,10 @@ describe("meta:doctor command", () => {
             [podmanPlugin],
           ).pipe(
             Effect.provide(
-              Layer.merge(
+              Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
                 Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                doctorPathsLayer,
               ),
             ),
           ),

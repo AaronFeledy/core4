@@ -13,7 +13,9 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/core/testing";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 /**
  * Regression guard: secret values MUST NOT appear in `lando info`
@@ -102,12 +104,14 @@ const plan: AppPlan = {
 
 const makeInfoLayer = () => {
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
     platform: "linux",
     capabilities,
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -145,8 +149,10 @@ const makeInfoLayer = () => {
   return Layer.mergeAll(
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-info-secret", services: {} }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    }).pipe(Layer.provide(emptyConfigServiceLayer)),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }).pipe(
+      Layer.provide(emptyConfigServiceLayer),
+    ),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -173,7 +179,9 @@ describe("lando info never leaks secret values", () => {
   });
 
   test("neither the rendered text nor the JSON serialization contains a secret value", async () => {
-    const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer())));
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(emptyConfigServiceLayer), Effect.provide(makeInfoLayer())),
+    );
 
     const text = renderInfoAppResult(result);
     const json = JSON.stringify(result);

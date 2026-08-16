@@ -304,7 +304,11 @@ describe("provider-lando RuntimeProvider contract", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
+            podmanApi: fake.api,
+          }),
         ),
       ),
     );
@@ -320,6 +324,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         Effect.provide(
           makeProviderLayer({
             sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
             podmanApi: makeDataPlaneFakeApi().api,
           }),
         ),
@@ -339,7 +344,11 @@ describe("provider-lando RuntimeProvider contract", () => {
         factory: () =>
           RuntimeProvider.pipe(
             Effect.provide(
-              makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+              makeProviderLayer({
+                sanitizeAppliedPlan: stripHostProxyRunLando,
+                platform: "linux",
+                podmanApi: fake.api,
+              }),
             ),
           ),
         observations: {
@@ -360,6 +369,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         Effect.provide(
           makeProviderLayer({
             sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
             podmanApi: makeDataPlaneFakeApi({ failCopyTo: true }).api,
           }),
         ),
@@ -396,6 +406,7 @@ describe("provider-lando RuntimeProvider contract", () => {
           Effect.provide(
             makeProviderLayer({
               sanitizeAppliedPlan: stripHostProxyRunLando,
+              platform: "linux",
               podmanApi: makePodmanApiClient(socketPath ?? ""),
             }),
           ),
@@ -407,8 +418,8 @@ describe("provider-lando RuntimeProvider contract", () => {
     60_000,
   );
 
-  test("matrix: covers linux / darwin / win32 via fake Podman API", async () => {
-    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+  test("matrix: covers every host identity via fake Podman API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl") =>
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
@@ -426,7 +437,7 @@ describe("provider-lando RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
-          { platform: "wsl", supported: false, skipReason: "provider-lando targets native Windows, not WSL" },
+          { platform: "wsl", supported: true, factory: () => buildProvider("wsl") },
         ],
       }),
     );
@@ -436,7 +447,7 @@ describe("provider-lando RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
-      "wsl:skipped",
+      "wsl:passed",
     ]);
   });
 });

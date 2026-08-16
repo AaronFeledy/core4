@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { ServiceName } from "@lando/sdk/schema";
+
 import { resolveLandofileIncludes } from "../src/includes.ts";
 import { makeTestPublicationPort } from "./support.ts";
 
@@ -56,6 +58,6 @@ describe("npm include recipe-source port", () => {
 
     // Then
     expect(packageSpecs).toEqual(["@acme/fragments@next"]);
-    expect(result.services?.web?.type).toBe("node");
+    expect(result.services?.[ServiceName.make("web")]?.type).toBe("node");
   });
 });

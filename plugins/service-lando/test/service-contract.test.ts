@@ -92,10 +92,10 @@ describe("service catalog per-type checklist × composition contract suite", () 
           runServiceCompositionContract({
             serviceType: entry.serviceType,
             landofileService: entry.landofileService,
-            serviceName: entry.serviceName,
             appName: "myapp",
             appRoot: "/srv/apps/myapp",
             providerId: ProviderId.make("lando"),
+            ...(entry.serviceName === undefined ? {} : { serviceName: entry.serviceName }),
           }),
         ),
       ).resolves.toBeUndefined();

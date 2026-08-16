@@ -84,7 +84,11 @@ const crc32Table = Array.from({ length: 256 }, (_, n) => {
 
 const crc32 = (bytes: Uint8Array): number => {
   let c = 0xffffffff;
-  for (const byte of bytes) c = crc32Table[(c ^ byte) & 0xff] ^ (c >>> 8);
+  for (const byte of bytes) {
+    const tableValue = crc32Table[(c ^ byte) & 0xff];
+    if (tableValue === undefined) throw new Error("CRC32 table lookup failed");
+    c = tableValue ^ (c >>> 8);
+  }
   return (c ^ 0xffffffff) >>> 0;
 };
 

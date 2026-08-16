@@ -63,7 +63,7 @@ const EXPECTED_TAGS = [
   { tag: Downloader, key: "@lando/core/Downloader", methods: ["download"] },
   { tag: LandofileService, key: "@lando/core/LandofileService", methods: ["discover"] },
   { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
-  { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build"] },
+  { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build", "buildApp"] },
   { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load", "loadServiceType"] },
   {
     tag: PluginTrustStore,
@@ -152,7 +152,7 @@ describe("Effect service tags", () => {
       ["download"],
       ["discover"],
       ["plan"],
-      ["build"],
+      ["build", "buildApp"],
       ["list", "load", "loadServiceType"],
       [
         "read",
@@ -240,6 +240,7 @@ describe("Effect service tags", () => {
 
     const buildOrchestrator: Context.Tag.Service<typeof BuildOrchestrator> = {
       build: (plan) => Effect.succeed(plan),
+      buildApp: () => Effect.void,
     };
 
     const appPlan: AppPlan = {
@@ -271,6 +272,7 @@ describe("Effect service tags", () => {
     expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
     expect(Effect.isEffect(shellRunner.exec("echo ok"))).toBe(true);
     expect(Effect.isEffect(buildOrchestrator.build(appPlan))).toBe(true);
+    expect(Effect.isEffect(buildOrchestrator.buildApp(appPlan))).toBe(true);
   });
 
   test("method failure channels use SDK tagged errors", () => {
@@ -299,6 +301,9 @@ describe("Effect service tags", () => {
       >(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof BuildOrchestrator>["build"]>>>
+      >(true),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof BuildOrchestrator>["buildApp"]>>>
       >(true),
       assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof PluginRegistry>["list"]>>>(true),
       assertTaggedFailure<

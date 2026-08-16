@@ -1,0 +1,11 @@
+---
+interface Props {
+  readonly name: string;
+  readonly value: string;
+  readonly display?: string;
+}
+
+const { value, display } = Astro.props;
+---
+
+<code class="lando-variable">{display ?? value}</code>

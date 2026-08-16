@@ -5,16 +5,17 @@ import { MINIMUM_PODMAN_VERSION, type PodmanApiClient } from "@lando/provider-la
 import { makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+import { withPing } from "./podman-api-fixtures.ts";
 
 const recordingApi = (info: unknown): { readonly api: PodmanApiClient; readonly calls: string[] } => {
   const calls: string[] = [];
   return {
-    api: {
+    api: withPing({
       info: Effect.sync(() => {
         calls.push("info");
         return info;
       }),
-    },
+    }),
     calls,
   };
 };

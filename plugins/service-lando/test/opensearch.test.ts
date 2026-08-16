@@ -12,6 +12,7 @@ import {
   opensearchServiceType,
 } from "../src/services/opensearch.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -90,7 +91,7 @@ describe("opensearch ServiceType", () => {
         kind: "ref",
         ref: "opensearchproject/opensearch:2.18.0",
       });
-      expect(plan.endpoints[0]?.port).toBe(19200);
+      expect(firstEndpointPort(plan)).toBe(19200);
       expect(plan.environment["http.port"]).toBe("19200");
     });
 

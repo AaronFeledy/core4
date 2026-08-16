@@ -1,15 +1,32 @@
 import { Effect, Layer, Schema } from "effect";
 
-import { type CacheError, ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
+import {
+  type CacheError,
+  type CommandAliasConflictError,
+  type CommandAliasTargetError,
+  ToolingCompileError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 
-import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
+import {
+  type RunToolingResult,
+  runTooling,
+  runToolingRedactionTokens,
+} from "@lando/engine/operations/tooling";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import { renderRunToolingResult } from "./commands/tooling";
-import { resetActiveCommandInvocation, runCompiledCommand, setActiveCommandId } from "./compiled-runtime";
+import {
+  activeRendererMode,
+  activeResultFormat,
+  resetActiveCommandInvocation,
+  runCompiledCommand,
+  setActiveCommandId,
+} from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
+import { renderPreCommandFailure } from "./spec/command-boundary";
+import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
 const ToolingResultSchema = Schema.Struct({
   tool: Schema.String,
@@ -24,9 +41,12 @@ const dynamicToolingOptions = {
   renderEvents: true,
   plainTaskEvents: "detail-only",
   resultSchema: ToolingResultSchema,
+  redactionTokens: runToolingRedactionTokens,
   successExitCode: (result: RunToolingResult) => result.exitCode,
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
 } as const;
+
+const assertNever = (value: never): never => value;
 
 const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<string>): void => {
   const commandId = `app:${name}`;
@@ -52,7 +72,7 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   );
 };
 
-export const runDynamicBunShellTooling = (
+const runDynamicBunShellTooling = (
   name: string,
   argv: ReadonlyArray<string>,
   appRoot: string,
@@ -84,13 +104,24 @@ export const runDynamicBunShellTooling = (
   );
 };
 
-export const runDynamicToolingFailure = (
+const runDynamicToolingFailure = (
   name: string,
   argv: ReadonlyArray<string>,
-  error: ToolingCompileError | CacheError,
+  error: ToolingCompileError | CacheError | CommandAliasConflictError | CommandAliasTargetError,
 ): Promise<void> => {
   prepareDynamicToolingInvocation(name, argv);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
+};
+
+export const renderAliasResolutionFailure = async (error: unknown): Promise<void> => {
+  const commandId = "cli:alias-resolution";
+  setActiveCommandId(commandId);
+  await renderPreCommandFailure({
+    commandId,
+    error,
+    rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+  });
 };
 
 export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<boolean> => {
@@ -99,25 +130,35 @@ export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<
   const name = toolingName(token);
   if (name === undefined) return false;
 
-  const resolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
+  const resolution = await Effect.runPromise(Effect.either(resolveToolingRoute(token)));
   if (resolution._tag === "Left") {
     await runDynamicToolingFailure(name, argv.slice(1), resolution.left);
     return true;
   }
 
-  const route = resolution.right;
+  return routeResolvedTooling(resolution.right, argv.slice(1));
+};
+
+export const routeResolvedTooling = async (
+  route: ToolingRoute,
+  argv: ReadonlyArray<string>,
+): Promise<boolean> => {
   switch (route._tag) {
     case "not-tooling":
+    case "built-in":
+    case "alias-disabled":
       return false;
     case "cache-miss":
     case "unknown-tooling":
-      await runDynamicToolingFailure(route.name, route.argv, toolingRouteError(route));
+      await runDynamicToolingFailure(route.name, argv, toolingRouteError(route));
       return true;
     case "bun-script":
-      await runDynamicBunShellTooling(route.name, route.argv, route.appRoot);
+      await runDynamicBunShellTooling(route.name, argv, route.appRoot);
       return true;
     case "tooling":
-      await runDynamicTooling([route.name, ...route.argv]);
+      await runDynamicTooling([route.name, ...argv]);
       return true;
+    default:
+      return assertNever(route);
   }
 };

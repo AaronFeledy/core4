@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
-import { makeTestDownloader } from "@lando/core/testing";
+import { makeTestDownloader, makeTestStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, Downloader, LogFileHelperAssets, PathsService } from "@lando/sdk/services";
 
 import { manifest, plugin } from "../src/index.ts";
@@ -18,7 +20,9 @@ describe("provider-lando plugin descriptor", () => {
 
     // When: the exported descriptor is inspected by the plugin loader.
     const runtimeProviderIds = Array.from(plugin.runtimeProviders?.keys() ?? [], String);
-    const runtimeProvider = plugin.runtimeProviders?.get(expectedProviderIds[0] ?? "missing");
+    const runtimeProvider = plugin.runtimeProviders?.get(
+      ProviderId.make(expectedProviderIds[0] ?? "missing"),
+    );
 
     // Then: its identity and runtime-provider contribution exactly match the manifest.
     expect(plugin.name).toBe(manifest.name);
@@ -37,21 +41,28 @@ describe("provider-lando plugin descriptor", () => {
     expect(maintainerIds).toEqual(["lando-runtime-service"]);
   });
 
+  test("contributes the WSL root mount propagation doctor check", () => {
+    // Given: provider-lando's exported plugin descriptor.
+
+    // When: doctor contributions are inspected.
+    const doctorCheckIds = plugin.doctorChecks?.map((check) => check.id);
+
+    // Then: the WSL propagation check is wired into the plugin.
+    expect(doctorCheckIds).toEqual(["wsl-root-mount-propagation"]);
+  });
+
   test("builds the existing provider availability and setup surface when services are provided", async () => {
     // Given: the SDK services required by a runtime-provider factory and plugin-scoped state.
     const paths = makeLandoPaths({ userDataRoot: "/tmp/provider-lando-plugin-descriptor" });
     const downloader = Effect.runSync(makeTestDownloader()).service;
+    const stateStore = makeTestStateStore().service;
     const ctx: LandoPluginContext = {
       id: manifest.name,
       managedFiles: { pluginId: manifest.name },
-      stateStore: {
-        open: () =>
-          Effect.succeed({
-            get: Effect.succeed(null),
-            set: () => Effect.void,
-          }),
-        withLock: (_key, body) => body,
-      },
+      stateStore: makePluginStateStore(
+        stateStore,
+        AbsolutePath.make("/tmp/provider-lando-plugin-descriptor/state"),
+      ),
       events: { publishRender: () => Effect.void },
     };
     const services = Layer.mergeAll(

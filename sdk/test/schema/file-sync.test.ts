@@ -84,6 +84,9 @@ describe("FileSyncEngineCapabilities", () => {
     expect(jsonSchema).toBeDefined();
     const fromRegistry = getJsonSchema("FileSyncEngineCapabilities");
     expect(fromRegistry).toBeDefined();
+    if (typeof fromRegistry !== "object" || fromRegistry === null || !("$schema" in fromRegistry)) {
+      throw new Error("missing FileSyncEngineCapabilities schema");
+    }
     expect(fromRegistry.$schema).toBe("http://json-schema.org/draft-07/schema#");
   });
 });
@@ -160,6 +163,9 @@ describe("FileSyncSessionSpec", () => {
   test("produces stable JSON Schema output for the snapshot gate", () => {
     const fromRegistry = getJsonSchema("FileSyncSessionSpec");
     expect(fromRegistry).toBeDefined();
+    if (typeof fromRegistry !== "object" || fromRegistry === null || !("$schema" in fromRegistry)) {
+      throw new Error("missing FileSyncSessionSpec schema");
+    }
     expect(fromRegistry.$schema).toBe("http://json-schema.org/draft-07/schema#");
   });
 });
@@ -167,7 +173,7 @@ describe("FileSyncSessionSpec", () => {
 describe("FileSyncSessionRef", () => {
   test("is a branded string that round-trips through encode/decode", () => {
     const ref = FileSyncSessionRef.make("myapp-web-app-root");
-    expect(ref).toBe("myapp-web-app-root");
+    expect(ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
 
     const decoded = Schema.decodeUnknownEither(FileSyncSessionRef)("myapp-web-app-root");
     expect(Either.isRight(decoded)).toBe(true);
@@ -188,7 +194,7 @@ describe("FileSyncSessionInfo", () => {
     expect(Either.isRight(decoded)).toBe(true);
     if (Either.isRight(decoded)) {
       expect(decoded.right.status).toBe("paused");
-      expect(decoded.right.ref).toBe("myapp-web-app-root");
+      expect(decoded.right.ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
       expect(decoded.right.service).toBe(ServiceName.make("web"));
     }
   });

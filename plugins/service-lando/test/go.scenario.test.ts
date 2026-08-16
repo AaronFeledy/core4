@@ -4,6 +4,7 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { runTooling } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
+  AbsolutePath,
   type AppPlan,
   LandofileShape,
   type ProviderCapabilities,
@@ -16,8 +17,10 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
@@ -68,6 +71,7 @@ const makeProvider = (
   const calls: ExecCall[] = [];
   let i = 0;
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: providerId,
     displayName: "Fake Lando",
     version: "0.0.0",
@@ -140,6 +144,7 @@ const makeToolingLayer = (options: {
     landofileLayer,
     plannerLayer,
     registryLayer,
+    EventServiceLive,
     ProviderExecToolingEngineLive,
     emptyConfigServiceLayer,
   );
@@ -249,7 +254,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
           { name: "go", args: ["version"] },
           {
             plan: appPlan,
-            root: process.cwd(),
+            root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: appPlan.id, root: appPlan.root },
             landofile: staleLandofile,
           },

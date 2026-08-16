@@ -10,6 +10,7 @@ import {
   GlobalConfig,
   IncludeEntry,
   LandofileShape,
+  PortablePath,
   ProviderId,
   RemoteConfig,
   ServiceConfig,
@@ -38,6 +39,39 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test("LandofileShape strictly decodes and round-trips per-app command aliases", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      commandAliases: {
+        enabled: true,
+        disabled: ["stop", "scratch:gc"],
+        custom: { hi: "app:greet", start: "app:wrapped-start" },
+      },
+    };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
+    const encoded = Schema.encodeUnknownSync(LandofileShape)(decoded);
+
+    // Then
+    expect(encoded.commandAliases).toEqual(input.commandAliases);
+  });
+
+  test("LandofileShape rejects unknown command alias policy keys", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      commandAliases: { enabled: true, unknown: "nope" },
+    };
+
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
   test('IncludeEntry decodes kind: "compose"', () => {
     // Given
     const input = { source: "./f.yml", kind: "compose" };
@@ -599,6 +633,58 @@ describe("ServiceConfig — ports numeric coercion (bugbot PR#28 finding 2)", ()
 });
 
 describe("LandofileShape — tooling: Alpha schema", () => {
+  test("strictly decodes and round-trips tooling defaults with task env and dir overrides", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      toolingDefaults: {
+        service: "appserver",
+        dir: "/app",
+        env: { APP_ENV: "development", DEBUG: false },
+        vars: { MODE: "default", RETRIES: 3 },
+      },
+      tooling: {
+        build: {
+          cmd: "make",
+          dir: "/app/frontend",
+          env: { APP_ENV: "test", CI: true },
+        },
+      },
+    };
+
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input, {
+      onExcessProperty: "error",
+    });
+    const encoded = Schema.encodeUnknownSync(LandofileShape)(decoded);
+
+    // Then
+    expect(decoded.toolingDefaults).toEqual({
+      ...input.toolingDefaults,
+      dir: PortablePath.make("/app"),
+    });
+    expect(decoded.tooling?.build?.dir).toBe(PortablePath.make("/app/frontend"));
+    expect(decoded.tooling?.build?.env).toEqual({ APP_ENV: "test", CI: true });
+    expect(encoded).toEqual(input);
+  });
+
+  test("strict decoding rejects unknown tooling defaults fields", () => {
+    // Given
+    const input = { toolingDefaults: { service: "appserver", method: "checksum" } };
+
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, {
+      onExcessProperty: "error",
+    });
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((row) => row.path.join(".") === "toolingDefaults.method")).toBe(true);
+    }
+  });
+
   test("decodes tooling tasks with cmd, cmds, service, description, and summary", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",

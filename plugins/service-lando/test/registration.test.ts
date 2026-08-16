@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { AppPlanner, PluginRegistry } from "@lando/core/services";
-import { AppPlan, type LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { services } from "../src/index.ts";
+import { firstEndpointPort } from "./support/endpoint.ts";
 
 const providerCapabilities = {
   artifactBuild: true,
@@ -116,8 +117,8 @@ describe("@lando/service-lando registration", () => {
       name: "php-app",
       runtime: 4,
       services: {
-        [ServiceName.make("web")]: { type: "php:8.2", webroot: "/app/web" },
-        [ServiceName.make("api")]: { type: "php:8.3", webroot: "/app/public" },
+        [ServiceName.make("web")]: { type: "php:8.2", webroot: PortablePath.make("/app/web") },
+        [ServiceName.make("api")]: { type: "php:8.3", webroot: PortablePath.make("/app/public") },
       },
     });
 
@@ -157,12 +158,12 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("python:3.12");
     expect(web.environment.DJANGO_SETTINGS_MODULE).toBe("config.settings");
     expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
-    expect(web.endpoints[0]?.port).toBe(8000);
+    expect(firstEndpointPort(web)).toBe(8000);
 
     expect(api.type).toBe("python:3.12");
     expect(api.environment.FLASK_APP).toBe("app");
     expect(api.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000"]);
-    expect(api.endpoints[0]?.port).toBe(5000);
+    expect(firstEndpointPort(api)).toBe(5000);
   });
 
   test("AppPlanner rejects unsupported python versions with Python-family remediation", async () => {
@@ -204,7 +205,7 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.RAILS_ENV).toBe("development");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/public");
     expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
-    expect(web.endpoints[0]?.port).toBe(3000);
+    expect(firstEndpointPort(web)).toBe(3000);
 
     expect(api.type).toBe("ruby:3.3");
     expect(api.environment.LANDO_WEBROOT).toBe("/app");
@@ -242,12 +243,12 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.GOCACHE).toBe("/root/.cache/go-build");
     expect(web.environment.CGO_ENABLED).toBe("0");
     expect(web.environment.LANDO_APP_ROOT).toBe("/app");
-    expect(web.endpoints[0]?.port).toBe(8080);
+    expect(firstEndpointPort(web)).toBe(8080);
     expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
 
     expect(api.type).toBe("go:1.23");
     expect(api.environment.LANDO_SERVICE_TYPE).toBe("go:1.23");
-    expect(api.endpoints[0]?.port).toBe(8080);
+    expect(firstEndpointPort(api)).toBe(8080);
   });
 
   test("AppPlanner rejects unsupported Go versions with Go-family remediation", async () => {

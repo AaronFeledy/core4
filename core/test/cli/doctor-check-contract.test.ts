@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
@@ -49,10 +50,13 @@ const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
   };
 };
 
-const buildLayers = (provider: RuntimeProviderShape): Layer.Layer<ConfigService | RuntimeProviderRegistry> =>
-  Layer.merge(
+const buildLayers = (
+  provider: RuntimeProviderShape,
+): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry> =>
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
 const mapSeverity = (severity: DoctorCheck["severity"]): DoctorCheckIssue["severity"] =>

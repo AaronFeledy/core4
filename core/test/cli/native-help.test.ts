@@ -12,18 +12,12 @@ import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
-type RunResult = {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-};
-
 type RunOptions = {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
 };
 
-const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}): Promise<RunResult> => {
+const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}) => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...argv],
     cwd: options.cwd ?? repoRoot,

@@ -56,6 +56,7 @@ import {
   PluginManifest,
   type ProviderCapabilities,
   ProviderId,
+  hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
   type AppSelector,
@@ -127,9 +128,6 @@ export interface ResolvePodmanSocketOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-const platformFromProcess = (): HostPlatform =>
-  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
-
 const stripUnixPrefix = (value: string): string =>
   value.startsWith("unix://") ? value.slice("unix://".length) : value;
 
@@ -197,7 +195,7 @@ const macosPodmanDesktopSocket = (home: string, machineName: string): string =>
 const windowsPodmanDesktopSocket = (machineName: string): string => `npipe://./pipe/${machineName}`;
 
 export interface DiscoverPodmanDesktopSocketsOptions {
-  readonly platform?: HostPlatform;
+  readonly platform: HostPlatform;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -211,13 +209,13 @@ export interface DiscoverPodmanDesktopSocketsOptions {
  * `$XDG_RUNTIME_DIR/podman/podman.sock` and is covered by `resolvePodmanSocket`.
  */
 export const discoverPodmanDesktopSockets = (
-  options: DiscoverPodmanDesktopSocketsOptions = {},
+  options: DiscoverPodmanDesktopSocketsOptions,
 ): ReadonlyArray<string> => {
-  const platform = options.platform ?? platformFromProcess();
+  const family = hostPlatformFamily(options.platform);
   const env = options.env ?? process.env;
-  if (platform === "linux") return [];
+  if (family === "linux") return [];
 
-  if (platform === "darwin") {
+  if (family === "darwin") {
     const home = env.HOME;
     if (home === undefined || home.length === 0) return [];
     const overrideMachine = resolvePodmanDesktopMachine(env);
@@ -240,10 +238,11 @@ const defaultPodmanSocket = (
   platform: HostPlatform,
   env: Readonly<Record<string, string | undefined>>,
 ): string => {
-  if (platform === "linux") {
+  const family = hostPlatformFamily(platform);
+  if (family === "linux") {
     return `${linuxRootlessRuntimeDir(env)}/podman/podman.sock`;
   }
-  if (platform === "darwin") {
+  if (family === "darwin") {
     return discoverPodmanDesktopSockets({ platform, env })[0] ?? "/var/run/podman/podman.sock";
   }
   return windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env));
@@ -257,28 +256,33 @@ const defaultPodmanSocket = (
  * 3. `DOCKER_HOST` env override (Podman's libpod is Docker-Engine-API-compatible).
  * 4. Platform default (`$XDG_RUNTIME_DIR/podman/podman.sock` on Linux).
  */
-export const resolvePodmanSocket = (options: ResolvePodmanSocketOptions = {}): string => {
+export const resolvePodmanSocket = (options: ResolvePodmanSocketOptions): string => {
   const env = options.env ?? process.env;
   if (options.socketPath !== undefined) return options.socketPath;
   if (env.LANDO_TEST_PODMAN_SOCKET !== undefined) return env.LANDO_TEST_PODMAN_SOCKET;
   if (env.DOCKER_HOST !== undefined) return stripUnixPrefix(env.DOCKER_HOST);
-  const platform = options.platform ?? platformFromProcess();
-  return defaultPodmanSocket(platform, env);
+  if (options.platform === undefined) {
+    throw new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: "provider-podman socket resolution requires the resolved host platform.",
+    });
+  }
+  return defaultPodmanSocket(options.platform, env);
 };
 
 const bindMountPerformanceForPlatform = (
   platform: HostPlatform,
 ): ProviderCapabilities["bindMountPerformance"] => {
-  if (platform === "linux") return "native";
-  if (platform === "darwin" || platform === "win32") return "slow";
-  return "none";
+  const family = hostPlatformFamily(platform);
+  return family === "linux" ? "native" : "slow";
 };
 
 type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
 type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
 
 const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
-  platform === "win32" ? "host.containers.internal" : undefined;
+  hostPlatformFamily(platform) === "win32" ? "host.containers.internal" : undefined;
 
 const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
   if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
@@ -323,7 +327,7 @@ export const podmanCapabilitiesForPlatform = (
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
 ): ProviderCapabilities =>
   buildProviderCapabilities({
-    bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
+    bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
@@ -463,10 +467,11 @@ const unsupportedSocket = (
   platform: HostPlatform,
   socketPath: string,
 ): UnsupportedPodmanSocketError | undefined => {
+  const family = hostPlatformFamily(platform);
   if (
     socketPath.includes("://") &&
     !socketPath.startsWith("unix://") &&
-    !(platform === "win32" && socketPath.startsWith("npipe:"))
+    !(family === "win32" && socketPath.startsWith("npipe:"))
   ) {
     return new UnsupportedPodmanSocketError(socketPath);
   }
@@ -573,7 +578,17 @@ export const makeRuntimeProvider = (
   options: ProviderLayerOptions = {},
 ): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
   const plans = new Map<string, AppPlan>();
-  const platform = options.platform ?? platformFromProcess();
+  if (options.platform === undefined) {
+    return Effect.fail(
+      new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation: "select",
+        message: "provider-podman construction requires the resolved host platform.",
+      }),
+    );
+  }
+  const platform = options.platform;
+  const family = hostPlatformFamily(platform);
   const effectiveEnv = options.env ?? process.env;
   let socketPath: string;
   try {
@@ -592,7 +607,7 @@ export const makeRuntimeProvider = (
   const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
 
   let desktopMachineName: string | undefined;
-  if (platform === "darwin" || platform === "win32") {
+  if (family === "darwin" || family === "win32") {
     // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
     // ProviderUnavailableError instead of throwing synchronously inside the
     // Effect.mapError below (which would become a Cause.Die defect).
@@ -642,9 +657,9 @@ export const makeRuntimeProvider = (
     Effect.mapError((cause) => {
       if (cause instanceof PodmanServerVersionUnsupportedError) return cause;
       if (cause instanceof ProviderUnavailableError) {
-        if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
+        if ((family === "darwin" || family === "win32") && isLikelyMachineNotRunning(cause)) {
           return new PodmanMachineNotRunningError({
-            platform,
+            platform: family,
             machineName: desktopMachineName ?? resolvePodmanDesktopMachine(effectiveEnv),
             socketPath,
             cause,
@@ -923,6 +938,7 @@ export const plugin = definePlugin({
             const assets = yield* LogFileHelperAssets;
             const logFileHelperPayloads = yield* assets.payloads;
             return yield* makeRuntimeProvider({
+              platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
               logFileHelperPayloads,

@@ -160,6 +160,9 @@ export const parseReleaseOptions = (args: ReadonlyArray<string>): ReleaseCliOpti
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) {
+      throw new Error("Unexpected empty release argument.");
+    }
     if (arg === "--") continue;
 
     if (arg.startsWith("--through-stage=")) {
@@ -187,7 +190,10 @@ export const parseReleaseOptions = (args: ReadonlyArray<string>): ReleaseCliOpti
     target = nextTarget;
   }
 
-  return { target: target ?? "all", throughStage };
+  return {
+    target: target ?? "all",
+    ...(throughStage === undefined ? {} : { throughStage }),
+  };
 };
 
 const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolean => {
@@ -1514,7 +1520,12 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
 const SECRET_ARGV_FLAGS: ReadonlySet<string> = new Set(["/p"]);
 
 export const redactReleaseCommand = (cmd: ReadonlyArray<string>): string =>
-  cmd.map((arg, index) => (index > 0 && SECRET_ARGV_FLAGS.has(cmd[index - 1]) ? "***" : arg)).join(" ");
+  cmd
+    .map((arg, index) => {
+      const previousArg = index === 0 ? undefined : cmd[index - 1];
+      return previousArg !== undefined && SECRET_ARGV_FLAGS.has(previousArg) ? "***" : arg;
+    })
+    .join(" ");
 
 const defaultRunner: ReleaseRunner = {
   spawn: async ({ cmd }) => {

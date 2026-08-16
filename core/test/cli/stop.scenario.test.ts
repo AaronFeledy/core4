@@ -10,13 +10,14 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  FileSyncSessionRef,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import type { FileSyncSessionInfo, FileSyncSessionRef } from "@lando/core/schema";
+import type { FileSyncSessionInfo } from "@lando/core/schema";
 import {
   AppPlanner,
   EventService,
@@ -32,6 +33,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -101,8 +103,8 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
       : [],
   endpoints:
     name === "web"
-      ? [{ port: 3000, protocol: "http", name: "http" }]
-      : [{ port: 5432, protocol: "tcp", name: "database" }],
+      ? [{ _tag: "internal" as const, port: 3000, protocol: "http" as const, name: "http" }]
+      : [{ _tag: "internal" as const, port: 5432, protocol: "tcp" as const, name: "database" }],
   routes: [],
   dependsOn:
     name === "web"
@@ -124,7 +126,7 @@ const plan: AppPlan = {
   services: { [web.name]: web, [database.name]: database },
   routes: [],
   networks: [],
-  stores: [{ name: "test_stop_database_data", scope: "app" }],
+  stores: [{ kind: "data" as const, name: "test_stop_database_data", scope: "app" as const }],
   fileSync: [],
   metadata,
   extensions: {},
@@ -166,6 +168,7 @@ const makeStopLayer = (
   const stopped = new Set<ServiceName>();
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
@@ -363,7 +366,7 @@ describe("lando stop", () => {
       },
       isAvailable: Effect.succeed(false),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -378,6 +381,7 @@ describe("lando stop", () => {
       streamEvents: () => Stream.empty,
     };
     const fakeProvider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -468,7 +472,7 @@ describe("lando stop", () => {
       },
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -503,8 +507,8 @@ describe("lando stop", () => {
 
   test("continues provider cleanup when file-sync session termination fails", async () => {
     const existingRefs: ReadonlyArray<FileSyncSessionRef> = [
-      "session-web-app-mount",
-      "session-web-cache-mount",
+      FileSyncSessionRef.make("session-web-app-mount"),
+      FileSyncSessionRef.make("session-web-cache-mount"),
     ];
     const existing: ReadonlyArray<FileSyncSessionInfo> = existingRefs.map((ref, index) => ({
       ref,
@@ -527,7 +531,7 @@ describe("lando stop", () => {
       },
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -606,6 +610,7 @@ describe("lando stop", () => {
       streamEvents: () => Stream.empty,
     };
     const fakeProvider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",

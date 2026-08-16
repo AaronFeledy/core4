@@ -416,6 +416,10 @@ describe("HttpClientLive network trust", () => {
     const config: GlobalConfig = {
       defaultProviderId: ProviderId.make("lando"),
       telemetry: { enabled: false },
+      allowLoadOutsideRoot: false,
+      loadMaxFileBytes: 1_048_576,
+      loadMaxFilesPerExpression: 16,
+      loadMaxRecursionDepth: 4,
       network: {
         proxy: { https: "http://config-proxy:3128", noProxy: [], injectIntoServices: false },
         ca: { certs: [caPath], trustHost: true, injectIntoServices: true },
@@ -450,6 +454,10 @@ describe("HttpClientLive network trust", () => {
     const config: GlobalConfig = {
       defaultProviderId: ProviderId.make("lando"),
       telemetry: { enabled: false },
+      allowLoadOutsideRoot: false,
+      loadMaxFileBytes: 1_048_576,
+      loadMaxFilesPerExpression: 16,
+      loadMaxRecursionDepth: 4,
       network: { ca: { certs: [missing], trustHost: true, injectIntoServices: true } },
     };
     const configLayer = Layer.succeed(ConfigService, {
@@ -487,6 +495,10 @@ describe("HttpClientLive network trust", () => {
     const config: GlobalConfig = {
       defaultProviderId: ProviderId.make("lando"),
       telemetry: { enabled: false },
+      allowLoadOutsideRoot: false,
+      loadMaxFileBytes: 1_048_576,
+      loadMaxFilesPerExpression: 16,
+      loadMaxRecursionDepth: 4,
     };
     const configLayer = Layer.succeed(ConfigService, {
       load: Effect.succeed(config),

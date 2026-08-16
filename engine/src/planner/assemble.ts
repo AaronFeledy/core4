@@ -68,6 +68,7 @@ import {
   assertComposeServiceFieldsSupported,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
+import { attachEffectiveTooling, compileEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
@@ -349,6 +350,13 @@ export const planApp = (
     }
 
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
+    const effectiveTooling = compileEffectiveTooling({
+      landofile,
+      services: resolvedServices.map((entry) => ({
+        name: entry.name,
+        ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
+      })),
+    });
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
@@ -365,6 +373,7 @@ export const planApp = (
             serviceType: entry.serviceType.id,
             base: entry.resolution.base,
             normalizedConfig: entry.resolution.normalizedConfig,
+            tooling: entry.resolution.tooling ?? {},
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             envFileInputs: entry.envFileInputs,
@@ -396,7 +405,7 @@ export const planApp = (
         yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-        return cached;
+        return attachEffectiveTooling(cached, effectiveTooling);
       }
     }
 
@@ -473,32 +482,35 @@ export const planApp = (
       ...(finalized.routes.length > 0 ? ["traefik"] : []),
       ...appFeatureResult.requires.globalServices,
     ];
-    const plan = yield* decodeAppPlan(appRoot, {
-      id: appId,
-      name: appName,
-      slug: appSlug,
-      root: AbsolutePath.make(appRoot),
-      provider,
-      services: finalized.services,
-      routes: finalized.routes,
-      networks,
-      ...(networking !== undefined ? { networking } : {}),
-      stores: finalized.stores,
-      fileSync: finalized.fileSync,
-      metadata: encodedMetadata,
-      extensions:
-        hostProxyExtension === undefined && !hasComposeProjectExtension
+    const plan = attachEffectiveTooling(
+      yield* decodeAppPlan(appRoot, {
+        id: appId,
+        name: appName,
+        slug: appSlug,
+        root: AbsolutePath.make(appRoot),
+        provider,
+        services: finalized.services,
+        routes: finalized.routes,
+        networks,
+        ...(networking !== undefined ? { networking } : {}),
+        stores: finalized.stores,
+        fileSync: finalized.fileSync,
+        metadata: encodedMetadata,
+        extensions:
+          hostProxyExtension === undefined && !hasComposeProjectExtension
+            ? {}
+            : {
+                ...(hostProxyExtension === undefined
+                  ? {}
+                  : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+                ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+              },
+        ...(requiredGlobalServices.length === 0
           ? {}
-          : {
-              ...(hostProxyExtension === undefined
-                ? {}
-                : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
-              ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
-            },
-      ...(requiredGlobalServices.length === 0
-        ? {}
-        : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-    });
+          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
+      }),
+      effectiveTooling,
+    );
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);

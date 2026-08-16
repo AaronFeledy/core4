@@ -63,11 +63,7 @@ const SERVICE_CONFIG_KEYS = new Set([
 const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   key: string;
   description: string;
-}> = [
-  { key: "toolingDefaults", description: "Tooling defaults" },
-  { key: "events", description: "Events-as-tasks" },
-  { key: "commandAliases", description: "Top-level command aliases" },
-];
+}> = [{ key: "events", description: "Events-as-tasks" }];
 
 const scanForBetaTopLevelKey = (parsed: unknown): { key: string; description: string } | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;

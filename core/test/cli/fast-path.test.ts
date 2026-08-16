@@ -236,4 +236,28 @@ describe("exhaustive level-none fast paths", () => {
       expect(result.exitCode).not.toBe(0);
     },
   );
+
+  test("recipes list stays cold-path inside an app tree without alias overrides", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-fast-path-app-"));
+    try {
+      await Bun.write(join(appRoot, ".lando.yml"), "name: fast-path-app\n");
+      const proc = Bun.spawn({
+        cmd: [process.execPath, "--preload", canaryPreload, binaryEntry, "recipes", "list"],
+        cwd: appRoot,
+        env: { ...process.env },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      expect(stderr).not.toContain("FAST_PATH_CANARY");
+      expect(exitCode).toBe(0);
+      expect(stdout).toStartWith("Bundled recipes (");
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,15 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import type { PluginManifest } from "@lando/sdk/schema";
+import { type PluginManifest, ServiceName } from "@lando/sdk/schema";
 
 import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
 import {
   invalidatePluginCommandCache,
+  readFreshAppCommandCacheForCwd,
   readPluginCommandCache,
+  writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
 import { pluginCommandCachePath } from "@lando/engine/cache/paths";
@@ -197,6 +199,35 @@ describe("writePluginCommandCacheStrict modules default", () => {
 
       // Then
       expect(await Effect.runPromise(readPluginCommandCache({ modules, cacheRoot }))).toBeNull();
+    });
+  });
+
+  test("invalidation also removes service-derived app tooling caches", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "service-app");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: service-app\nservices:\n  app:\n    type: node\n");
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({
+          landofile: {
+            name: "service-app",
+            services: { [ServiceName.make("app")]: { type: "node" } },
+          },
+          entries: [{ id: "app:node", summary: "Node tooling", hidden: false, service: "app" }],
+          cwd: appRoot,
+          cacheRoot,
+        }),
+      );
+      expect(
+        await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot })),
+      ).not.toBeNull();
+
+      // When
+      await Effect.runPromise(invalidatePluginCommandCache({ cacheRoot }));
+
+      // Then
+      expect(await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }))).toBeNull();
     });
   });
 });

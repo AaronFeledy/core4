@@ -53,8 +53,8 @@ describe("landoNetworkingPlan builder", () => {
     expect(plan.perAppBridge).toEqual({ name: "lando-shop", driver: "bridge" });
     expect(plan.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
     expect(plan.sharedNetworkMembership?.aliases).toEqual({
-      web: ["web.shop.internal"],
-      db: ["db.shop.internal"],
+      [ServiceName.make("web")]: ["web.shop.internal"],
+      [ServiceName.make("db")]: ["db.shop.internal"],
     });
   });
 
@@ -67,7 +67,7 @@ describe("landoNetworkingPlan builder", () => {
     });
 
     expect(plan.sharedNetworkMembership?.aliases).toEqual({
-      mailpit: ["mailpit.global.internal", "smtp.global.internal"],
+      [ServiceName.make("mailpit")]: ["mailpit.global.internal", "smtp.global.internal"],
     });
   });
 

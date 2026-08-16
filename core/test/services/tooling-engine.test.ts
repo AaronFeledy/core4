@@ -18,6 +18,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 
@@ -116,6 +117,7 @@ const makeFakeProvider = (
       ? responses(index)
       : (responses[index] ?? { exitCode: 0, stdout: "", stderr: "" });
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: providerId,
     displayName: "Fake provider",
     version: "0.0.0",
@@ -229,10 +231,11 @@ describe("ProviderExecToolingEngineLive", () => {
         source: AbsolutePath.make("/workspace/drupal"),
         target: PortablePath.make("/app"),
         readOnly: false,
+        realization: "passthrough",
         excludes: [],
         includes: [],
       },
-    };
+    } satisfies ServicePlan;
     const plan = makePlan([service]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
     const invocation: ToolingInvocation = {

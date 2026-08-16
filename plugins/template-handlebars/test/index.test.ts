@@ -22,7 +22,7 @@ describe("@lando/template-handlebars plugin exports", () => {
   });
 
   test("manifest declares the handlebars templateEngines contribution", () => {
-    expect(manifest.name).toBe("@lando/template-handlebars");
+    expect(String(manifest.name)).toBe("@lando/template-handlebars");
     expect(manifest.api).toBe(4);
     expect(manifest.contributes?.templateEngines).toEqual(["handlebars"]);
   });

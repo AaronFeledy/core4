@@ -64,6 +64,22 @@ describe("provider-lando capabilities", () => {
     expect(windows.composeProjectFields).toBeUndefined();
   });
 
+  test("keeps WSL identity while using Linux-family capabilities", async () => {
+    // Given: a provider constructed with WSL identity.
+    // When: the runtime provider is resolved.
+    const runtimeProvider = await resolveRuntimeProvider({
+      platform: "wsl",
+      podmanApi: podmanApiForArch("x64"),
+    });
+
+    // Then: identity remains WSL and behavior matches Linux.
+    expect(runtimeProvider.platform).toBe("wsl");
+    expect(runtimeProvider.capabilities).toEqual({
+      ...mvpProviderCapabilities("linux", "x64"),
+      serviceLogSources: false,
+    });
+  });
+
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
     expect(linuxMvpCapabilities.hostProxy).toBeUndefined();
     expect(macosMvpCapabilities.hostProxy).toBeUndefined();

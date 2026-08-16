@@ -23,6 +23,10 @@ export const installEngineComposition = (inputs: EngineCompositionInputs): void 
   globalThis.__landoEngineCompositionInputs = inputs;
 };
 
+export const installEngineCompositionIfAbsent = (inputs: EngineCompositionInputs): void => {
+  globalThis.__landoEngineCompositionInputs ??= inputs;
+};
+
 const requireComposition = (): EngineCompositionInputs => {
   const installed = globalThis.__landoEngineCompositionInputs;
   if (installed !== undefined) return installed;

@@ -20,3 +20,15 @@ export class CommandAliasConflictError extends Schema.TaggedError<CommandAliasCo
     remediation: Schema.String,
   },
 ) {}
+
+/** A per-app custom alias points at no registered built-in or cached app command. */
+export class CommandAliasTargetError extends Schema.TaggedError<CommandAliasTargetError>()(
+  "CommandAliasTargetError",
+  {
+    message: Schema.String,
+    alias: Schema.String,
+    target: Schema.String,
+    closeMatches: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}

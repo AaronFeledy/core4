@@ -114,6 +114,7 @@ const makeLayer = (rawLine: string) => {
     platform: "linux",
     capabilities,
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),

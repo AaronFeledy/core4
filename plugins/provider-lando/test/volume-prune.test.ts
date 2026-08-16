@@ -15,7 +15,9 @@ import type { PodmanApiClient, VolumeFilterMap } from "@lando/provider-lando";
 const decodeFilters = (path: string): Record<string, ReadonlyArray<string>> => {
   const match = path.match(/[?&]filters=([^&]+)/);
   if (match === null) throw new Error(`no filters query in ${path}`);
-  return JSON.parse(decodeURIComponent(match[1])) as Record<string, ReadonlyArray<string>>;
+  const encoded = match[1];
+  if (encoded === undefined) throw new Error(`empty filters query in ${path}`);
+  return JSON.parse(decodeURIComponent(encoded)) as Record<string, ReadonlyArray<string>>;
 };
 
 const requestClient = (response: { status: number; body: string }): PodmanApiClient & {

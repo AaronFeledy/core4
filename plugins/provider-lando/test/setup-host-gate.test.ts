@@ -63,6 +63,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
     const error = failure.value;
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error).toBeInstanceOf(IntelMacUnsupportedError);
+    if (!(error instanceof ProviderUnavailableError)) return;
     expect(error._tag).toBe("ProviderUnavailableError");
     expect(error.providerId).toBe("lando");
     expect(error.operation).toBe("setup");

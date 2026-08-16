@@ -24,19 +24,19 @@ const basePayload = {
 };
 
 const openUrlEvents = [
-  ["pre-open-url", PreOpenUrlEvent],
-  ["post-open-url", PostOpenUrlEvent],
+  ["pre-open-url", Schema.decodeUnknownEither(PreOpenUrlEvent)],
+  ["post-open-url", Schema.decodeUnknownEither(PostOpenUrlEvent)],
 ] as const;
 
 describe("open-url events", () => {
-  for (const [tag, schema] of openUrlEvents) {
+  for (const [tag, decode] of openUrlEvents) {
     test(`${tag} round-trips through its schema`, () => {
-      const decoded = Schema.decodeUnknownEither(schema)({ _tag: tag, ...basePayload });
-      expect(Either.isRight(decoded)).toBe(true);
-      if (Either.isRight(decoded)) {
-        expect(decoded.right._tag).toBe(tag);
+      const decoded = decode({ _tag: tag, ...basePayload });
+      expect(decoded._tag).toBe("Right");
+      if (decoded._tag === "Right") {
+        expect(String(decoded.right._tag)).toBe(tag);
         expect(decoded.right.url).toBe("https://web.myapp.lndo.site");
-        expect(decoded.right.app.id).toBe("myapp");
+        expect(String(decoded.right.app.id)).toBe("myapp");
       }
     });
 
@@ -45,7 +45,7 @@ describe("open-url events", () => {
       expect(Either.isRight(decoded)).toBe(true);
       if (Either.isRight(decoded)) {
         const event: LandoEvent = decoded.right;
-        expect(event._tag).toBe(tag);
+        expect(String(event._tag)).toBe(tag);
       }
     });
   }

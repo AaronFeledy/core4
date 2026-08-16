@@ -63,11 +63,11 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
       name: serviceName,
       service: args.service,
       appRoot: args.appRoot,
-      appName: args.appName,
-      provider: args.provider,
-      primary: args.primary,
       metadata: args.metadata,
-      host: args.host,
+      ...(args.appName === undefined ? {} : { appName: args.appName }),
+      ...(args.provider === undefined ? {} : { provider: args.provider }),
+      ...(args.primary === undefined ? {} : { primary: args.primary }),
+      ...(args.host === undefined ? {} : { host: args.host }),
     }),
   );
 

@@ -65,7 +65,7 @@ export interface ConfigTranslatorContractHarness {
    * Optional: an options schema and an invalid options value. When supplied the
    * suite asserts invalid options are rejected before `translate` runs.
    */
-  readonly optionsSchema?: Schema.Schema<unknown, unknown>;
+  readonly optionsSchema?: Schema.Schema.AnyNoContext;
   /** Optional: an options value that must fail `optionsSchema` decode. */
   readonly invalidOptions?: unknown;
   /**
@@ -299,7 +299,7 @@ export interface RouteFilterContractHarness<Route, Options> {
   /** The built-in/plugin filter id (e.g. `rewritePath`). */
   readonly id: string;
   /** The filter's option schema. */
-  readonly schema: Schema.Schema<Options, unknown>;
+  readonly schema: Schema.Schema.AnyNoContext;
   /** A valid options value the schema accepts. */
   readonly validOptions: Options;
   /** An options value the schema must reject. */

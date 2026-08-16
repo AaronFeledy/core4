@@ -45,6 +45,8 @@ describe("provider-lando runtime path resolution", () => {
           rootlessProbes: {
             probe: () => ({
               subidConfigured: true,
+              subidRangeSufficient: true,
+              subidRangesDisjoint: true,
               hasUidmapTools: true,
               cgroupsV2Delegated: true,
               hasXdgRuntimeDir: true,
@@ -96,6 +98,8 @@ describe("provider-lando runtime path resolution", () => {
           rootlessProbes: {
             probe: () => ({
               subidConfigured: true,
+              subidRangeSufficient: true,
+              subidRangesDisjoint: true,
               hasUidmapTools: true,
               cgroupsV2Delegated: true,
               hasXdgRuntimeDir: true,

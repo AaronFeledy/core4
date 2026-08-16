@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { ServiceFeatureContext } from "@lando/sdk/services";
@@ -21,6 +22,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addMount() {},
     setAppMount() {},
     addBuildStep() {},
+    addExtension() {},
     addStorage() {},
     addEndpoint() {},
     addDependency() {},

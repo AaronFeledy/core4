@@ -45,7 +45,7 @@ const service: ServicePlan = {
   },
   mounts: [],
   storage: [],
-  endpoints: [{ port: 31080, protocol: "http", name: "http" }],
+  endpoints: [{ _tag: "internal", port: 31080, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -91,13 +91,15 @@ const stoppedInspectBody = (health?: string): string =>
   });
 
 const apiFromResponses = (responses: ReadonlyArray<PodmanHttpResponse>) => {
+  const firstResponse = responses[0];
+  if (firstResponse === undefined) throw new TypeError("at least one Podman response is required");
   let calls = 0;
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: () =>
       Effect.sync(() => {
-        const response = responses[Math.min(calls, responses.length - 1)];
+        const response = responses[Math.min(calls, responses.length - 1)] ?? firstResponse;
         calls += 1;
         return response;
       }),

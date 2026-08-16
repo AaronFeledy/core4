@@ -30,6 +30,7 @@ import { join as hostJoin } from "node:path";
 // Type-only: keeps `effect` off the level-`none` cold-start fast path. The
 // canonical shapes live in `@lando/sdk/services`; this module owns only the
 // runtime resolvers and re-exports the types for `@lando/paths` consumers.
+import type { HostPlatform } from "@lando/sdk/schema";
 import type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
@@ -82,9 +83,8 @@ const makeConfigReader = (confRoot: string): ((key: string) => string | undefine
  * (option → env → default); `config.yml` is then located from it, and a
  * `userConfRoot` value inside `config.yml` never relocates that load.
  */
-export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => {
+const resolveLandoRootsForPlatform = (overrides: RootOverrides, platform: HostPlatform): LandoRoots => {
   const env = overrides.env ?? process.env;
-  const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   const defaults = platformDefaults(platform, overrides);
 
   const envConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT);
@@ -130,6 +130,12 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
   };
 };
 
+export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => {
+  const env = overrides.env ?? process.env;
+  const platform = normalizeHostPlatform({ platform: overrides.platform, env });
+  return resolveLandoRootsForPlatform(overrides, platform);
+};
+
 // --- app-name sanitization + app-root fingerprint ----------------------------
 
 export const sanitizeAppName = (appName: string): string => {
@@ -157,7 +163,7 @@ const appRootFingerprint = (appRoot: string): string =>
 export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
   const env = overrides.env ?? process.env;
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
-  const roots = resolveLandoRoots(overrides);
+  const roots = resolveLandoRootsForPlatform(overrides, platform);
   const j = joinFor(platform);
 
   const { userConfRoot, userCacheRoot, userDataRoot, systemPluginRoot } = roots;

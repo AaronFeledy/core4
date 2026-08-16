@@ -5,7 +5,7 @@ import { ENGINE_ID, PLUGIN_NAME, engine, makeEngineLayer, manifest } from "../sr
 
 describe("@lando/file-sync-mutagen manifest", () => {
   test("decodes against the SDK PluginManifest schema with the mutagen contribution", () => {
-    expect(manifest.name).toBe(PLUGIN_NAME);
+    expect(String(manifest.name)).toBe(String(PLUGIN_NAME));
     expect(manifest.api).toBe(4);
     expect(manifest.enabled).toBe(true);
     expect(manifest.contributes?.fileSyncEngines).toEqual([ENGINE_ID]);

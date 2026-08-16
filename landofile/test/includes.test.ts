@@ -1,10 +1,11 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 import { Effect } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
 import { resolveLandofileIncludes } from "../src/includes.ts";
@@ -13,6 +14,7 @@ import type {
   NpmIncludeExtractor,
   NpmIncludeFetcher,
   NpmIncludeRecipeSource,
+  ResolveIncludesError,
 } from "../src/includes.ts";
 import { makeTestLandofilePorts } from "./support.ts";
 
@@ -21,6 +23,14 @@ const resolveEffect = (landofile: LandofileShape, appRoot: string, cacheRoot: st
 
 const runResolve = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
   Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot));
+
+const serviceType = (landofile: LandofileShape, name: string) =>
+  landofile.services?.[ServiceName.make(name)]?.type;
+
+const includeErrorKind = (error: ResolveIncludesError): string => {
+  if (error._tag !== "LandofileIncludeError") throw new Error(`expected include error, got ${error._tag}`);
+  return error.kind;
+};
 
 const exists = (path: string) =>
   stat(path).then(
@@ -60,12 +70,19 @@ describe("resolveLandofileIncludes", () => {
     await writeFile(join(appRoot, "fragment.yml"), "services:\n  api:\n    type: node\n", "utf8");
 
     const result = await runResolve(
-      { name: "demo", includes: ["./fragment.yml"], services: { api: { primary: true } } },
+      {
+        name: "demo",
+        includes: ["./fragment.yml"],
+        services: { [ServiceName.make("api")]: { primary: true } },
+      },
       appRoot,
       cacheRoot,
     );
 
-    expect(result).toEqual({ name: "demo", services: { api: { type: "node", primary: true } } });
+    expect(result).toEqual({
+      name: "demo",
+      services: { [ServiceName.make("api")]: { type: "node", primary: true } },
+    });
     expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
   });
 
@@ -96,7 +113,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
-    expect(result.services?.database?.type).toBe("postgres");
+    expect(serviceType(result, "database")).toBe("postgres");
     expect(written).toContain("source: github:acme/fragments");
     expect(written).toContain("resolved: abc123");
     expect(written).toMatch(/checksum: [0-9a-f]{64}/);
@@ -126,7 +143,7 @@ describe("resolveLandofileIncludes", () => {
       }),
     );
 
-    expect(result.services?.database?.type).toBe("postgres");
+    expect(serviceType(result, "database")).toBe("postgres");
     expect(await readFile(path, "utf8")).toBe(locked);
   });
 
@@ -189,8 +206,8 @@ describe("resolveLandofileIncludes", () => {
         deps: { gitCloner: cloner },
       }),
     );
-    expect(result.services?.db?.type).toBe("postgres");
-    expect(result.services?.cache?.type).toBe("redis");
+    expect(serviceType(result, "db")).toBe("postgres");
+    expect(serviceType(result, "cache")).toBe("redis");
 
     const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
     expect(written).toContain("source: github:acme/fragments/db.yml");
@@ -205,7 +222,7 @@ describe("resolveLandofileIncludes", () => {
         deps: { gitCloner: cloner },
       }),
     );
-    expect(second.services?.db?.type).toBe("postgres");
+    expect(serviceType(second, "db")).toBe("postgres");
     expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(written);
   });
 
@@ -240,7 +257,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
-    expect(result.services?.web?.type).toBe("node");
+    expect(serviceType(result, "web")).toBe("node");
     expect(written).toContain("source: npm:@acme/fragments/fragments/web.yml");
     expect(written).toContain("resolved: 1.2.3");
   });
@@ -255,7 +272,9 @@ describe("resolveLandofileIncludes", () => {
 
     const result = await runResolve({ includes: ["./parent.yml"] }, appRoot, cacheRoot);
 
-    expect(result).toEqual({ services: { api: { type: "node", primary: true } } });
+    expect(result).toEqual({
+      services: { [ServiceName.make("api")]: { type: "node", primary: true } },
+    });
   });
 
   test("rejects include cycles", async () => {
@@ -267,7 +286,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     expect(error._tag).toBe("LandofileIncludeError");
-    expect(error.kind).toBe("cycle");
+    expect(includeErrorKind(error)).toBe("cycle");
   });
 
   test("rejects include recursion past max depth", async () => {
@@ -292,7 +311,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     expect(error._tag).toBe("LandofileIncludeError");
-    expect(error.kind).toBe("max-depth");
+    expect(includeErrorKind(error)).toBe("max-depth");
   });
 
   test("rejects local includes outside the app root", async () => {
@@ -304,7 +323,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     expect(error._tag).toBe("LandofileIncludeError");
-    expect(error.kind).toBe("outside-root");
+    expect(includeErrorKind(error)).toBe("outside-root");
   });
 
   test("rejects a git fragment path that escapes the cloned repo via a symlink", async () => {
@@ -332,7 +351,7 @@ describe("resolveLandofileIncludes", () => {
       );
 
       expect(error._tag).toBe("LandofileIncludeError");
-      expect(error.kind).toBe("outside-root");
+      expect(includeErrorKind(error)).toBe("outside-root");
       expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
     } finally {
       await rm(secretDir, { recursive: true, force: true });
@@ -351,7 +370,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     expect(error._tag).toBe("LandofileIncludeError");
-    expect(error.kind).toBe("forbidden-field");
+    expect(includeErrorKind(error)).toBe("forbidden-field");
   });
 
   test("records absolute local include paths for nested fragments", async () => {

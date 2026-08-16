@@ -309,6 +309,8 @@ describe("scripts/install.sh", () => {
       fixtures.push(await createReleaseFixture(root, channel));
     }
     const { gpgPath, logPath } = await createFakeGpg(root);
+    const [firstFixture] = fixtures;
+    if (firstFixture === undefined) throw new Error("expected at least one release fixture");
 
     for (const channel of ["stable", "next", "dev"] as const) {
       const installDir = join(root, channel, "install");
@@ -316,7 +318,7 @@ describe("scripts/install.sh", () => {
         GPG_LOG: logPath,
         LANDO_INSTALL_GPG: gpgPath,
         LANDO_CHANNEL: channel,
-        LANDO_INSTALL_BASE_URL: fileUrl(fixtures[0].channelRoot),
+        LANDO_INSTALL_BASE_URL: fileUrl(firstFixture.channelRoot),
         LANDO_INSTALL_DIR: installDir,
         LANDO_INSTALL_OS: "Linux",
         LANDO_INSTALL_ARCH: "x86_64",

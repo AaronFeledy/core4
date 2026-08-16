@@ -6,7 +6,7 @@ import { Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
@@ -141,7 +141,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
       id: "provider-lando-runtime-ready",
       policy: deps.readinessPolicy ?? defaultRuntimeReadinessPolicy,
     },
-    deps.platform === "win32"
+    hostPlatformFamily(deps.platform) === "win32"
       ? deps.podmanApi.ping.pipe(Effect.andThen(deps.podmanApi.info), Effect.asVoid)
       : deps.podmanApi.ping,
   ).pipe(
@@ -155,7 +155,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
                   providerId: "lando",
                   operation: "setup",
                   message:
-                    deps.platform === "win32"
+                    hostPlatformFamily(deps.platform) === "win32"
                       ? `The Lando runtime service did not become reachable at ${deps.socketPath} after launch.`
                       : "The Lando runtime service did not become reachable after launch.",
                   remediation:
@@ -262,13 +262,14 @@ const ensureMachineRuntime = (
 };
 
 export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {
-  if (deps.platform === "darwin") {
+  const family = hostPlatformFamily(deps.platform);
+  if (family === "darwin") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("darwin"))
       : ensureMachineRuntime(deps, ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
   }
 
-  if (deps.platform === "win32") {
+  if (family === "win32") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("win32"))
       : ensureMachineRuntime(deps, ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));

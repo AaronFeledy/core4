@@ -71,6 +71,7 @@ describe("provider-podman capabilities", () => {
     expect(podmanCapabilitiesForPlatform("linux")).toEqual(linuxPodmanCapabilities);
     expect(podmanCapabilitiesForPlatform("darwin")).toEqual(macosPodmanCapabilities);
     expect(podmanCapabilitiesForPlatform("win32")).toEqual(windowsPodmanCapabilities);
+    expect(podmanCapabilitiesForPlatform("wsl")).toEqual(linuxPodmanCapabilities);
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
@@ -130,6 +131,12 @@ describe("provider-podman socket discovery", () => {
 
   test("falls back to $XDG_RUNTIME_DIR/podman/podman.sock on Linux", () => {
     expect(resolvePodmanSocket({ platform: "linux", env: { XDG_RUNTIME_DIR: "/run/user/1000" } })).toBe(
+      "/run/user/1000/podman/podman.sock",
+    );
+  });
+
+  test("uses Linux-family socket discovery for WSL", () => {
+    expect(resolvePodmanSocket({ platform: "wsl", env: { XDG_RUNTIME_DIR: "/run/user/1000" } })).toBe(
       "/run/user/1000/podman/podman.sock",
     );
   });
@@ -306,6 +313,18 @@ describe("provider-podman RuntimeProvider layer", () => {
     ]);
     expect(windowsProvider.capabilities).toEqual({
       ...podmanCapabilitiesForPlatform("win32", [{ os: "linux", arch: "arm64" }]),
+      serviceLogSources: false,
+    });
+  });
+
+  test("keeps WSL identity while using Linux-family behavior", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "wsl", env: {}, podmanApi: podmanApiForArch("x64") }),
+    );
+
+    expect(provider.platform).toBe("wsl");
+    expect(provider.capabilities).toEqual({
+      ...podmanCapabilitiesForPlatform("linux", [{ os: "linux", arch: "x64" }]),
       serviceLogSources: false,
     });
   });

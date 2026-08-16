@@ -159,7 +159,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), registryCalls),
         fetcher: fetcherFor(bytes, fetchCalls),
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(result.pluginName).toBe("@lando/plugin-php");
@@ -211,7 +211,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -234,7 +234,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -276,7 +276,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     const registry = JSON.parse(await readFile(join(pluginsRoot, "registry.json"), "utf8"));
@@ -316,7 +316,7 @@ describe("meta:plugin:add command", () => {
             return { exitCode: 0 };
           },
         },
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(result.pluginName).toBe("@lando/plugin-postinstall");
@@ -513,7 +513,7 @@ describe("meta:plugin:add command", () => {
           versions: {},
         }),
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -531,18 +531,22 @@ describe("meta:plugin:add command", () => {
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        registryClient: clientFor({
-          "dist-tags": { latest: "1.2.3" },
-          versions: {
-            "1.2.3": {
-              dist: {
-                integrity: "sha512-test",
+        registryClient: clientFor(
+          JSON.parse(
+            JSON.stringify({
+              "dist-tags": { latest: "1.2.3" },
+              versions: {
+                "1.2.3": {
+                  dist: {
+                    integrity: "sha512-test",
+                  },
+                },
               },
-            },
-          },
-        } as NpmPackument),
+            }),
+          ),
+        ),
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -570,10 +574,10 @@ describe("meta:plugin:add command", () => {
     } as const;
 
     const first = await Effect.runPromise(
-      pluginAdd(common).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      pluginAdd(common).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     const second = await Effect.runPromise(
-      pluginAdd(common).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      pluginAdd(common).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(first.entry).toBe(join(pluginsRoot, "@lando/plugin-php", "2.0.0"));
@@ -599,7 +603,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-bad", bytes, "0.0.1")),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -638,7 +642,7 @@ describe("meta:plugin:add command", () => {
           },
         },
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -664,7 +668,7 @@ describe("meta:plugin:add command", () => {
           },
         },
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -691,7 +695,7 @@ describe("meta:plugin:add command", () => {
         trust: true,
         spawner,
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(result.pluginName).toBe("@lando/plugin-php");
     expect(result.pluginVersion).toBe("1.2.3");
@@ -720,7 +724,7 @@ describe("meta:plugin:add command", () => {
         trust: true,
         spawner,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
@@ -756,7 +760,7 @@ describe("meta:plugin:add command", () => {
         trust: true,
         spawner,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
@@ -783,7 +787,7 @@ describe("meta:plugin:add command", () => {
         nonInteractive: true,
         spawner,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
@@ -810,6 +814,9 @@ describe("meta:plugin:add command", () => {
     const interaction: InteractionPrompter = {
       promptAll: async () => ({}),
       confirm: async () => true,
+      select: async () => {
+        throw new Error("unexpected select");
+      },
     };
     const result = await Effect.runPromise(
       pluginAdd({
@@ -817,7 +824,7 @@ describe("meta:plugin:add command", () => {
         spawner,
         interaction,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(result.trustSource).toBe("prompt");
   });
@@ -846,7 +853,7 @@ describe("meta:plugin:add command", () => {
         spawner,
         prompter,
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(first.trustSource).toBe("prompt");
     expect(promptCalls).toBe(1);
@@ -858,7 +865,7 @@ describe("meta:plugin:add command", () => {
         spawner,
         prompter,
         trustStore,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(second.trustSource).toBe("session");
     expect(promptCalls).toBe(1);
@@ -881,7 +888,7 @@ describe("meta:plugin:add command", () => {
         spawner,
         prompter,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
@@ -914,7 +921,7 @@ describe("meta:plugin:add command", () => {
         spawner,
         prompter,
         trustStore: new Set<string>(),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(result.trustSource).toBe("prompt");
     expect(promptCalls).toBe(1);

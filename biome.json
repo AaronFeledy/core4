@@ -17,7 +17,8 @@
       "*.tsbuildinfo",
       "**/*.tsbuildinfo",
       "bun.lock",
-      "vendor/compose/compose-spec.json"
+      "vendor/compose/compose-spec.json",
+      "docs/test/fixtures/transcripts/corrupt/invalid-json.json"
     ]
   },
   "formatter": {
@@ -55,5 +56,18 @@
   },
   "organizeImports": {
     "enabled": true
-  }
+  },
+  "overrides": [
+    {
+      "include": ["**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    }
+  ]
 }

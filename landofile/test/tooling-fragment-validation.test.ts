@@ -50,7 +50,7 @@ describe("tooling fragment validation", () => {
   });
 
   test("a nested toolingIncludes entry names the unsupported field it declares", async () => {
-    // Given a fragment whose nested include authors the pre-Beta-1 dir: field
+    // Given a fragment whose nested include authors the unsupported dir: field
     await writeFile(join(appRoot, "tasks.yml"), "tooling:\n  build:\n    cmd: build\n", "utf8");
     await writeFile(
       join(appRoot, "parent.yml"),
@@ -85,6 +85,25 @@ describe("tooling fragment validation", () => {
     // Then the fragment shape contract owns the failure instead of the Compose rejection surface
     expect(error._tag).toBe("LandofileIncludeError");
     if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
+  });
+
+  test("a tooling fragment rejects top-level toolingDefaults", async () => {
+    // Given
+    await writeFile(
+      join(appRoot, "parent.yml"),
+      ["toolingDefaults:", "  service: appserver", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+      "utf8",
+    );
+
+    // When
+    const error = await failure({ toolingIncludes: { docs: { file: "./parent.yml" } } }, appRoot);
+
+    // Then
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("forbidden-field");
+      expect(error.message).toContain('"toolingDefaults"');
+    }
   });
 
   test("a tooling fragment rejects a bare nested include", async () => {

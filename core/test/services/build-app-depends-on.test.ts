@@ -228,7 +228,8 @@ test("keeps gate nodes out of the task tree, its counts, and every build-step ev
     // Then
     const treeStart = events.find((event) => event._tag === "task.tree.start");
     if (treeStart?._tag !== "task.tree.start") throw new TypeError("task tree start event is missing");
-    expect([...treeStart.children]).toEqual(["web:app:install", "cache:app:install"]);
+    if (!Array.isArray(treeStart.children)) throw new TypeError("task tree children are missing");
+    expect(treeStart.children).toEqual(["web:app:install", "cache:app:install"]);
     const gatePattern = /:(running|healthy|completed)$/u;
     expect(
       events.filter((event) => "taskId" in event && gatePattern.test(String(event.taskId))),
@@ -239,6 +240,9 @@ test("keeps gate nodes out of the task tree, its counts, and every build-step ev
     expect(buildStepEvents.every((event) => stepBuildKeys.has(String(event.buildKey)))).toBe(true);
     const treeComplete = events.find((event) => event._tag === "task.tree.complete");
     if (treeComplete?._tag !== "task.tree.complete") throw new TypeError("tree complete event is missing");
+    if (typeof treeComplete.succeeded !== "number" || typeof treeComplete.failed !== "number") {
+      throw new TypeError("tree complete counts are missing");
+    }
     expect(treeComplete.succeeded + treeComplete.failed).toBe(2);
   });
 });

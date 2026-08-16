@@ -5,29 +5,36 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Layer, Schema } from "effect";
+import { Cause, type Context, Effect, Exit, Layer, Schema } from "effect";
 
 import {
   CertificateAuthority,
   ConfigService,
+  Downloader,
   FileSyncEngine,
   HostProxyService,
+  InteractionService,
   type InteractionServiceShape,
   PrivilegeService,
   ProxyService,
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/core/testing";
+import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeHttpClientLive } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import type { HttpClient } from "@lando/http-client/service";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
-import { InteractionCancelledError, InteractionUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { InteractionCancelledError, InteractionUnavailableError, ProxySetupError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  type AppPlan,
+  GlobalConfig,
+  ProviderId,
+  type ProviderSetupPlan,
+} from "@lando/sdk/schema";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
@@ -51,13 +58,13 @@ import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-regis
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const makeConfigService = (
-  overrides: Partial<GlobalConfig> = {},
+  overrides: Partial<typeof GlobalConfig.Encoded> = {},
 ): Context.Tag.Service<typeof ConfigService> => {
-  const config: GlobalConfig = {
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
     ...overrides,
-  };
+  });
   const load = Effect.succeed(config);
   return { load, get: (key) => Effect.map(load, (c) => c[key]) };
 };
@@ -67,14 +74,19 @@ const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
   return Promise.resolve(new Response(null, { status: 204 }));
 }) as unknown as typeof fetch;
 
+const testDownloader = Effect.runSync(makeTestDownloader());
+const testInteraction = makeTestInteractionService({ answers: { provider: "lando" } });
+
 const buildSetupLayers = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
-  configOverrides: Partial<GlobalConfig> = {},
+  configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
   httpFetch: typeof fetch = okProbeFetch,
-): Layer.Layer<ConfigService | RuntimeProviderRegistry | HttpClient> =>
+) =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
+    Layer.succeed(Downloader, testDownloader.service),
+    Layer.succeed(InteractionService, testInteraction.service),
     makeHttpClientLive(httpFetch),
   );
 
@@ -92,16 +104,8 @@ const buildSetupLayersWithHostIntegrations = (
     readonly ssh: Context.Tag.Service<typeof SshService>;
     readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
   },
-  configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<
-  | ConfigService
-  | RuntimeProviderRegistry
-  | HttpClient
-  | CertificateAuthority
-  | ProxyService
-  | SshService
-  | FileSyncEngine
-> =>
+  configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
+) =>
   Layer.mergeAll(
     buildSetupLayers(registry, configOverrides),
     Layer.succeed(CertificateAuthority, services.ca),
@@ -113,9 +117,8 @@ const buildSetupLayersWithHostIntegrations = (
 const buildSetupLayersWithPrivilege = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
   privilege: Context.Tag.Service<typeof PrivilegeService>,
-  configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<ConfigService | RuntimeProviderRegistry | HttpClient | PrivilegeService> =>
-  Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
+  configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
+) => Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
@@ -353,7 +356,10 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (_plan, options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
+      setup: (
+        _plan: ProviderSetupPlan,
+        options: { readonly force: boolean; readonly runtimeBundleUrl?: string },
+      ) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -377,7 +383,7 @@ describe("meta:setup command", () => {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
     );
@@ -396,7 +402,10 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (_plan, options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
+      setup: (
+        _plan: ProviderSetupPlan,
+        options: { readonly setupFlags?: Readonly<Record<string, unknown>> },
+      ) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -451,7 +460,7 @@ describe("meta:setup command", () => {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
     );
@@ -826,7 +835,14 @@ describe("meta:setup command", () => {
       };
       const proxy = {
         ...makeTestProxyService(),
-        setup: () => Effect.fail(new Error("proxy failed HTTP_PROXY_PASSWORD=super-secret")),
+        setup: () =>
+          Effect.fail(
+            new ProxySetupError({
+              message: "proxy failed HTTP_PROXY_PASSWORD=super-secret",
+              proxyId: "test-proxy",
+              remediation: "Rerun `lando setup` once the proxy is reachable.",
+            }),
+          ),
       };
 
       const exit = await Effect.runPromiseExit(
@@ -889,7 +905,14 @@ describe("meta:setup command", () => {
       };
       const failingProxy = {
         ...makeTestProxyService(),
-        setup: () => Effect.fail(new Error("proxy interrupted")),
+        setup: () =>
+          Effect.fail(
+            new ProxySetupError({
+              message: "proxy interrupted",
+              proxyId: "test-proxy",
+              remediation: "Rerun `lando setup` once the proxy is reachable.",
+            }),
+          ),
       };
 
       const firstExit = await Effect.runPromiseExit(
@@ -959,7 +982,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (_plan, options: unknown) =>
+      setup: (_plan: ProviderSetupPlan, options: unknown) =>
         Effect.sync(() => {
           providerSetupOptions.push(options);
         }),
@@ -982,7 +1005,7 @@ describe("meta:setup command", () => {
         Effect.provide(
           Layer.mergeAll(
             buildSetupLayersWithPrivilege(registry, privilege, {
-              userDataRoot: "/tmp/Lando User's Data",
+              userDataRoot: AbsolutePath.make("/tmp/Lando User's Data"),
             }),
             Layer.succeed(CertificateAuthority, ca),
           ),
@@ -1018,13 +1041,13 @@ describe("meta:setup command", () => {
     };
 
     await Effect.runPromise(
-      setupSpec
-        .run({ installDir: "/opt/lando", flags: { "skip-shell-integration": true } })
-        .pipe(
-          Effect.provide(
-            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
-          ),
+      setupSpec.run({ installDir: "/opt/lando", flags: { "skip-shell-integration": true } }).pipe(
+        Effect.provide(
+          buildSetupLayersWithPrivilege(registry, privilege, {
+            userDataRoot: AbsolutePath.make("/tmp/lando-data"),
+          }),
         ),
+      ),
     );
 
     expect(elevated).toEqual([]);
@@ -1047,13 +1070,13 @@ describe("meta:setup command", () => {
     };
 
     await Effect.runPromise(
-      setupSpec
-        .run({ installDir: "/opt/lando", flags: { "no-interactive": true } })
-        .pipe(
-          Effect.provide(
-            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
-          ),
+      setupSpec.run({ installDir: "/opt/lando", flags: { "no-interactive": true } }).pipe(
+        Effect.provide(
+          buildSetupLayersWithPrivilege(registry, privilege, {
+            userDataRoot: AbsolutePath.make("/tmp/lando-data"),
+          }),
         ),
+      ),
     );
 
     expect(elevated).toEqual([]);
@@ -1091,9 +1114,13 @@ describe("meta:setup command", () => {
         }>;
       };
       const shellSteps = readiness.steps.filter((step) => step.id === "shell");
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
       const failure = Cause.failureOption(exit.cause);
       expect(failure._tag).toBe("Some");
-      expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
+      expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
+        "ShellProfileIntegrationError",
+      );
       expect(shellSteps).toHaveLength(1);
       expect(shellSteps[0]).toEqual(
         expect.objectContaining({
@@ -1122,7 +1149,7 @@ describe("meta:setup command", () => {
         ...TestRuntimeProvider,
         id: "lando",
         capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
-        setup: (_plan, options: { readonly network?: unknown }) =>
+        setup: (_plan: ProviderSetupPlan, options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
             calls.push("provider");
@@ -1171,7 +1198,7 @@ describe("meta:setup command", () => {
                     },
                     ca: { certs: [], trustHost: true },
                   },
-                } as Partial<GlobalConfig>,
+                },
               ),
             ),
           ),
@@ -1289,7 +1316,7 @@ describe("meta:setup command", () => {
             Effect.provide(
               buildSetupLayers(registry, {
                 network: { ca: { certs: [configCert], trustHost: true } },
-              } as Partial<GlobalConfig>),
+              }),
             ),
           ),
       );
@@ -1312,7 +1339,7 @@ describe("meta:setup command", () => {
           Effect.provide(
             buildSetupLayers(testRuntimeProviderRegistry, {
               network: { ca: { certs: [corporateCert], trustHost: true } },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
       );
@@ -1339,7 +1366,7 @@ describe("meta:setup command", () => {
           Effect.provide(
             buildSetupLayers(testRuntimeProviderRegistry, {
               network: { ca: { certs: [corporateCert, partnerCert], trustHost: true } },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
       );
@@ -1363,7 +1390,7 @@ describe("meta:setup command", () => {
           Effect.provide(
             buildSetupLayers(testRuntimeProviderRegistry, {
               network: { ca: { certs: [corporateCert], trustHost: true, injectIntoServices: false } },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
       );
@@ -1477,7 +1504,7 @@ describe("meta:setup command", () => {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>,
+            },
             fetcher as unknown as typeof fetch,
           ),
         ),
@@ -1514,7 +1541,7 @@ describe("meta:setup command", () => {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>,
+            },
             (() => {
               throw new Error("connect ETIMEDOUT github.com");
             }) as unknown as typeof fetch,
@@ -1585,8 +1612,8 @@ describe("meta:setup command", () => {
       )) as unknown as typeof fetch;
     const exit = await Effect.runPromiseExit(
       defaultSetupNetworkTrustProbe({
-        proxy: { https: "http://proxy.example:8080", noProxy: [] },
-        ca: { trustHost: true, certs: [], loadedCerts: [] },
+        proxy: { https: "http://proxy.example:8080", noProxy: [], injectIntoServices: false },
+        ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
       }).pipe(Effect.provide(makeHttpClientLive(probeFetch))),
     );
 
@@ -1607,8 +1634,8 @@ describe("meta:setup command", () => {
 
     await Effect.runPromise(
       defaultSetupNetworkTrustProbe({
-        proxy: { noProxy: [] },
-        ca: { trustHost: false, certs: [], loadedCerts: [] },
+        proxy: { noProxy: [], injectIntoServices: false },
+        ca: { trustHost: false, certs: [], loadedCerts: [], injectIntoServices: true },
       }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
     );
 
@@ -1624,8 +1651,8 @@ describe("meta:setup command", () => {
 
     await Effect.runPromise(
       defaultSetupNetworkTrustProbe({
-        proxy: { noProxy: [] },
-        ca: { trustHost: true, certs: [], loadedCerts: [] },
+        proxy: { noProxy: [], injectIntoServices: false },
+        ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
       }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
     );
 
@@ -1658,7 +1685,7 @@ describe("meta:setup command", () => {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>,
+            },
             (() =>
               Promise.resolve(
                 new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
@@ -1708,7 +1735,7 @@ describe("meta:setup command", () => {
           Effect.provide(
             buildSetupLayers(registry, {
               network: { ca: { certs: [missingCert], trustHost: true } },
-            } as Partial<GlobalConfig>),
+            }),
           ),
         ),
       );
@@ -1825,7 +1852,7 @@ describe("meta:setup command", () => {
 
   test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
     const calls: string[] = [];
-    const caSetupOptions: Array<{ readonly skipTrustInstall?: boolean }> = [];
+    const caSetupOptions: Array<{ readonly force: boolean; readonly skipTrustInstall?: boolean }> = [];
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -2093,7 +2120,11 @@ describe("meta:setup command", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        platform: "linux",
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.void,
+        },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
@@ -2139,7 +2170,11 @@ describe("meta:setup command", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        platform: "linux",
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.void,
+        },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
@@ -2206,7 +2241,11 @@ describe("meta:setup command", () => {
       const recorder = recordingPrompter("podman");
       const chosen = await Effect.runPromise(
         maybeSelectSetupProvider({
-          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          resolution: {
+            providerId: ProviderId.make("lando"),
+            source: "default",
+            inputs: { capabilityDefault: ProviderId.make("lando") },
+          },
           yes: false,
           nonInteractive: false,
           skipProvider: false,
@@ -2229,7 +2268,11 @@ describe("meta:setup command", () => {
 
       const exit = await Effect.runPromiseExit(
         maybeSelectSetupProvider({
-          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          resolution: {
+            providerId: ProviderId.make("lando"),
+            source: "default",
+            inputs: { capabilityDefault: ProviderId.make("lando") },
+          },
           yes: false,
           nonInteractive: false,
           skipProvider: false,
@@ -2261,7 +2304,11 @@ describe("meta:setup command", () => {
 
       const chosen = await Effect.runPromise(
         maybeSelectSetupProvider({
-          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          resolution: {
+            providerId: ProviderId.make("lando"),
+            source: "default",
+            inputs: { capabilityDefault: ProviderId.make("lando") },
+          },
           yes: false,
           nonInteractive: false,
           skipProvider: false,
@@ -2276,7 +2323,11 @@ describe("meta:setup command", () => {
       const recorder = recordingPrompter("podman");
       const chosen = await Effect.runPromise(
         maybeSelectSetupProvider({
-          resolution: { providerId: ProviderId.make("docker"), source: "flag" },
+          resolution: {
+            providerId: ProviderId.make("docker"),
+            source: "flag",
+            inputs: { flag: ProviderId.make("docker"), capabilityDefault: ProviderId.make("lando") },
+          },
           yes: false,
           nonInteractive: false,
           skipProvider: false,
@@ -2296,7 +2347,11 @@ describe("meta:setup command", () => {
         const recorder = recordingPrompter("podman");
         const chosen = await Effect.runPromise(
           maybeSelectSetupProvider({
-            resolution: { providerId: ProviderId.make("lando"), source: "default" },
+            resolution: {
+              providerId: ProviderId.make("lando"),
+              source: "default",
+              inputs: { capabilityDefault: ProviderId.make("lando") },
+            },
             ...gate,
             interaction: recorder.prompter,
           }),
@@ -2307,7 +2362,7 @@ describe("meta:setup command", () => {
     });
 
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
-      const observed: { providerId?: string } = {};
+      const observed: { providerId?: string | undefined } = {};
       const registry = {
         list: Effect.succeed([
           ProviderId.make("lando"),

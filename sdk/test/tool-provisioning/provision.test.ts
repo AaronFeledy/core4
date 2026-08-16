@@ -67,6 +67,15 @@ describe("resolveHostKey", () => {
     expect(resolveHostKey("darwin", "arm64")).toBe("darwin-arm64");
     expect(resolveHostKey("win32", "x64")).toBe("win32-x64");
   });
+
+  test("uses Linux artifacts for a WSL host", () => {
+    // Given: a WSL host identity and a supported architecture.
+    // When: the artifact key is resolved.
+    const key = resolveHostKey("wsl", "arm64");
+
+    // Then: the key uses the published Linux artifact family.
+    expect(key).toBe("linux-arm64");
+  });
 });
 
 const manifestFor = (key: string, entry: Record<string, unknown>): ToolManifest =>

@@ -76,6 +76,11 @@ export interface ServiceTypeResolution {
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
   readonly logSources?: ReadonlyArray<LogSource>;
+  /**
+   * Tooling tasks contributed by this service type. In the final task map,
+   * task, include, and recipe values win while app defaults fill missing
+   * service/directory values and merge below environment/variable keys.
+   */
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
   readonly metadata?: Record<string, unknown>;
 }

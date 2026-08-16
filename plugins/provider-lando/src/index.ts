@@ -21,6 +21,7 @@ import {
   PluginManifest,
   ProviderId,
   type ProviderSetupPlan,
+  hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
@@ -79,12 +80,14 @@ import {
   makeSystemPodmanMachineRunner,
   setupProviderLando,
 } from "./setup.ts";
+import { runSmokeReadinessProbe } from "./smoke-probe.ts";
 import {
   type LinuxHostRelease,
   applyApprovedProviderSetupPlan,
   inspectUidmapSetupPlan,
   readLinuxHostRelease,
 } from "./uidmap-provision.ts";
+import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
   appliedPlanPath,
@@ -207,6 +210,23 @@ export type {
 } from "./setup.ts";
 export { parsePodmanVersionNumbers, podmanVersionMeetsFloor } from "./version-floor.ts";
 export type { PodmanVersionNumbers } from "./version-floor.ts";
+export {
+  makeWslMountPropagationCheck,
+  parseRootMountPropagation,
+} from "./wsl-mount-propagation.ts";
+export type {
+  RootMountPropagation,
+  WslMountPropagationReaders,
+} from "./wsl-mount-propagation.ts";
+export {
+  DEFAULT_BASE_IMAGE,
+  ProviderLandoSmokeError,
+  runBuildSmokeProbe,
+  runContainerSmokeProbe,
+  runHealthSmokeProbe,
+  runSmokeReadinessProbe,
+} from "./smoke-probe.ts";
+export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe.ts";
 
 export {
   ProviderBundleChecksumError,
@@ -268,21 +288,6 @@ const makeNoPlanError = (appId: AppId, operation: string) =>
       "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
   });
 
-const currentHostPlatform = (): HostPlatform | undefined => {
-  if (process.platform === "darwin" || process.platform === "linux" || process.platform === "win32") {
-    return process.platform;
-  }
-  return undefined;
-};
-
-const unsupportedHostPlatformError = () =>
-  new ProviderUnavailableError({
-    providerId: "lando",
-    operation: "setup",
-    message: `provider-lando does not support host platform ${process.platform}.`,
-    remediation: "Run `lando setup` on Linux, macOS, or Windows, or select another runtime provider.",
-  });
-
 const probeRuntimeSocketStatus = (podmanApi?: PodmanApiClient): Effect.Effect<RuntimeServiceStatus> => {
   if (podmanApi === undefined) {
     return Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false });
@@ -314,7 +319,7 @@ export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
-  readonly platform?: HostPlatform;
+  readonly platform: HostPlatform;
   readonly arch?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
@@ -332,6 +337,7 @@ export interface ProviderLayerOptions {
   readonly rootlessProbes?: RootlessProbes;
   readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
+  readonly smokeRetryPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
@@ -353,15 +359,13 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
 export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
-  const platform = options.platform ?? currentHostPlatform();
-  if (platform === undefined) {
-    return Effect.fail(unsupportedHostPlatformError());
-  }
+  const platform = options.platform;
+  const family = hostPlatformFamily(platform);
   const externalSocketPath = options.socketPath;
   const managedSocketPath =
     options.providerSocketPath === undefined
       ? undefined
-      : platform === "win32"
+      : family === "win32"
         ? WINDOWS_MANAGED_MACHINE_PIPE
         : options.providerSocketPath;
   const socketPath = externalSocketPath ?? managedSocketPath;
@@ -372,7 +376,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
+  const arch = options.arch ?? process.arch;
   const podmanBin =
     runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
@@ -382,7 +386,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   let bundleVersion: string | undefined;
   const machineRunner =
     options.podmanMachine ??
-    (platform === "linux" || runtimeBinDir === undefined
+    (family === "linux" || runtimeBinDir === undefined
       ? undefined
       : makeSystemPodmanMachineRunner(managedRuntimePodmanArgv0(runtimeBinDir, platform), "lando", platform));
   const artifactDownloadMissing = (): ProviderUnavailableError =>
@@ -573,7 +577,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
       planSetup: () =>
-        shouldManageRuntime && platform === "linux"
+        shouldManageRuntime && family === "linux"
           ? inspectUidmapSetupPlan({
               platform,
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
@@ -582,6 +586,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
         Effect.gen(function* () {
+          const smokeEnabled = Reflect.get(setupOptions.setupFlags ?? {}, "smoke") === true;
           const result = yield* setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
@@ -607,6 +612,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(options.runtimeConfigDir === undefined ? {} : { runtimeConfigDir: options.runtimeConfigDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
+            ...(smokeEnabled && canEnsure ? { smoke: true } : {}),
             ...(canEnsure
               ? {
                   managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
@@ -626,6 +632,19 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                         ),
                       );
                       yield* ensureEffectFor(progress, progress.runtimeBundleVersion);
+                      if (smokeEnabled) {
+                        yield* progress.run(
+                          "smoke",
+                          Effect.scoped(
+                            runSmokeReadinessProbe({
+                              podmanApi,
+                              ...(options.smokeRetryPolicy === undefined
+                                ? {}
+                                : { retryPolicy: options.smokeRetryPolicy }),
+                            }),
+                          ),
+                        );
+                      }
                     }),
                 }
               : { readinessCheck: ensureEffect }),
@@ -882,6 +901,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
           description: "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
           type: "option",
         },
+        {
+          name: "smoke",
+          description: "Verify container run, image build, and healthcheck operations during setup.",
+          type: "boolean",
+        },
       ],
     },
   },
@@ -891,6 +915,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
+  doctorChecks: [makeWslMountPropagationCheck()],
   hostMaintainers: [
     {
       id: "lando-runtime-service",
@@ -910,8 +935,9 @@ export const plugin = definePlugin({
             const logFileHelperAssets = yield* LogFileHelperAssets;
             const appPlanSanitizer = yield* AppPlanSanitizer;
             const logFileHelperPayloads = yield* logFileHelperAssets.payloads;
-            const runtimeState = yield* makePluginRuntimeState(ctx, paths, manifest.name);
+            const runtimeState = yield* makePluginRuntimeState(ctx);
             return yield* makeRuntimeProvider({
+              platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
               runtimeBinDir: paths.runtimeBinDir,

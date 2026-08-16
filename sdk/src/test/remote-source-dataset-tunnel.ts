@@ -30,7 +30,11 @@ export interface RemoteSourceContractObservations {
 }
 
 export interface RemoteSourceEgressRecord {
-  readonly request: { readonly url: string; readonly allowFileSource?: boolean; readonly headers?: unknown };
+  readonly request: {
+    readonly url: string;
+    readonly allowFileSource?: boolean | undefined;
+    readonly headers?: unknown;
+  };
 }
 
 export interface RemoteSourceToolProvisionRecord {

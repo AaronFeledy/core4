@@ -24,7 +24,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Commands
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
-- Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
+- Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` typechecks non-docs test trees through the referenced aggregate test project. The Astro-owned `docs/**` tree stays outside that aggregate and uses `docs:check` plus `docs:test`.
 - Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:boundaries`, `check:guide-coverage`, `check:guide-drift`, `check:public-transcripts`, `check:telemetry-inventory`, or `lint:guides`. Debug one boundary rule with `bun run scripts/check-boundaries.ts <rule-id>`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.
@@ -85,7 +85,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Before writing or editing docs, guides, recipe READMEs, or other user-facing prose, load the `lando-write-docs` skill (`.agents/skills/lando-write-docs/SKILL.md`). It owns voice, page shape, and prose-first executable-guide rules.
 - Executable guides are prose-first MDX: Markdown is the reader surface; `<Run>`/`<Verify>` wrap real harness execution only. No documentation-only `<Variable>` scenarios.
-- Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass (require success and a positive test count). Full sequence: `docs/ci-runbook.md`.
+- Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass (require success and a positive test count). Full sequence: `docs/contributing/ci.md`.
 - If a guide, recipe README, or guide-owned CLI surface changes, run `bun run lint:guides` and any relevant coverage/transcript/drift gates.
 - `recipes/<id>/README.mdx` feeds both guide-scenario generation and committed scaffold README generation, so it must remain executable-guide-valid, not just readable prose.
 

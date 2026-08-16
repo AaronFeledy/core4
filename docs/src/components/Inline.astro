@@ -1,0 +1,20 @@
+---
+import { componentFramePropsFor } from "./component-frame.ts";
+
+interface Props {
+  readonly code: string;
+  readonly lang?: string;
+  readonly justification: string;
+  readonly [key: string]: unknown;
+}
+
+const { code, lang = "ts" } = Astro.props;
+const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inline");
+---
+
+<div class="lando-inline" {...dataAttributes}>
+  <pre><code class={`language-${lang}`}>{code}</code></pre>
+  {frame?.resultSummary && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
+  {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
+  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
+</div>

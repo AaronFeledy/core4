@@ -19,6 +19,7 @@
     "http-client",
     "managed-file",
     "engine",
+    "docs",
     "plugins/*"
   ],
   "engines": {
@@ -34,6 +35,7 @@
     "build": "bun run --filter='*' build",
     "test": "bun run scripts/test-shards.ts",
     "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:unit:isolation": "bun --no-orphans test core/test/cli/doctor.test.ts core/test/cli/doctor-report.test.ts core/test/cli/doctor-plugin-metadata.test.ts core/test/codegen/guide-scenarios.test.ts core/test/plugins/bundled.test.ts plugins/provider-lando/test/plugin-descriptor.test.ts plugins/provider-lando/test/package.test.ts",
     "test:unit:shard": "bun run scripts/test-shards.ts --run",
     "test:changed": "bun test --changed",
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
@@ -47,6 +49,11 @@
     "codegen:check": "bun run codegen && bun run check:codegen-drift",
     "codegen:guide-scenarios": "bun run scripts/build-guide-scenarios.ts",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
+    "docs:build": "bun run codegen && bun run --filter='@lando/docs' build",
+    "docs:dev": "bun run --filter='@lando/docs' dev",
+    "docs:preview": "bun run --filter='@lando/docs' preview",
+    "docs:check": "bun run --filter='@lando/docs' check",
+    "docs:test": "bun --no-orphans test docs/test --path-ignore-patterns='**/*.integration.test.ts'",
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
     "check:boundaries": "bun run scripts/check-boundaries.ts --all",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { ConfigError } from "@lando/core/errors";
+import { ProviderId } from "@lando/core/schema";
 import { ConfigService } from "@lando/core/services";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 
@@ -88,7 +89,7 @@ describe("ConfigServiceLive", () => {
 
       const config = await loadConfig();
 
-      expect(config.defaultProviderId).toBe("docker");
+      expect(config.defaultProviderId).toBe(ProviderId.make("docker"));
       expect(config.telemetry.enabled).toBe(true);
     });
   });

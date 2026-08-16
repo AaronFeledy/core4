@@ -1,3 +1,8 @@
+---
+title: Alpha install and bug reports
+description: How to install the Lando 4 Alpha prerelease and where to file bug reports with the right diagnostic files attached.
+---
+
 # Alpha install and bug reports
 
 This Alpha supports two install paths:

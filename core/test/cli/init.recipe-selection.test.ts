@@ -7,7 +7,7 @@ import { Readable, Writable } from "node:stream";
 import { Effect } from "effect";
 
 import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
-import type { ConfirmSpec, PromptAnswers } from "@lando/sdk/services";
+import type { ConfirmSpec, PromptAnswers, SelectSpec } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
@@ -36,9 +36,17 @@ const serviceBackedPrompter = (
   const service = makeInteractionService({ stdin, stdout, stderr });
   return {
     promptAll: (specs: ReadonlyArray<PromptSpec>, options?: PromptBatchOptions) =>
-      Effect.runPromise(Effect.scoped(service.promptAll(specs, { ...options, mode: "interactive" }))),
+      Effect.runPromise(
+        Effect.scoped(
+          options === undefined
+            ? service.promptAll(specs, { mode: "interactive" })
+            : service.promptAll(specs, { ...options, mode: "interactive" }),
+        ),
+      ),
     confirm: (spec: ConfirmSpec) =>
       Effect.runPromise(Effect.scoped(service.confirm({ ...spec, mode: "interactive" }))),
+    select: <A extends string | number | boolean>(spec: SelectSpec<A>) =>
+      Effect.runPromise(Effect.scoped(service.select({ ...spec, mode: "interactive" }))),
   };
 };
 
@@ -46,7 +54,8 @@ const fakePrompter = (answersByName: Readonly<Record<string, string>>) => {
   const calls: Array<{ specs: ReadonlyArray<PromptSpec>; options?: PromptBatchOptions }> = [];
   const prompter: InteractionPrompter = {
     promptAll: async (specs, options) => {
-      calls.push({ specs, options });
+      if (options === undefined) calls.push({ specs });
+      else calls.push({ specs, options });
       const out: Record<string, string> = {};
       for (const spec of specs) {
         const explicit = options?.answers?.[spec.name];
@@ -55,6 +64,7 @@ const fakePrompter = (answersByName: Readonly<Record<string, string>>) => {
       return out as PromptAnswers;
     },
     confirm: async () => true,
+    select: async <A extends string | number | boolean>() => "" as A,
   };
   return { prompter, calls };
 };

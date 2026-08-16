@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const runbookPath = resolve(repoRoot, "docs/ci-runbook.md");
+const runbookPath = resolve(repoRoot, "docs/contributing/ci.md");
 const readmePath = resolve(repoRoot, "README.md");
-const betaDecisionsPath = resolve(repoRoot, "docs/beta-1-decisions.md");
+const betaDecisionsPath = resolve(repoRoot, "docs/contributing/decisions.md");
 const rootPackagePath = resolve(repoRoot, "package.json");
 const corePackagePath = resolve(repoRoot, "core/package.json");
 const bunVersionPath = resolve(repoRoot, ".bun-version");
@@ -216,11 +216,11 @@ describe("ci runbook", () => {
     const readme = await readText(readmePath);
     const templates = await listPrTemplates();
 
-    expect(readme).toContain("docs/ci-runbook.md");
+    expect(readme).toContain("docs/contributing/ci.md");
     expect(templates.length).toBeGreaterThan(0);
 
     for (const template of templates) {
-      expect(await readText(template)).toContain("docs/ci-runbook.md");
+      expect(await readText(template)).toContain("docs/contributing/ci.md");
     }
   });
 });

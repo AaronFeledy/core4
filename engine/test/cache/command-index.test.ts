@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
+import { type LandofileShape, PortablePath } from "@lando/sdk/schema";
+
 import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_SCHEMA_VERSION,
   PLUGIN_COMMAND_MAGIC,
   decodeAppCommandIndex,
   decodePluginCommandIndex,
+  deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
 } from "../../src/cache/command-index.ts";
@@ -136,5 +139,53 @@ describe("encodePluginCommandIndex / decodePluginCommandIndex", () => {
       entries: [],
     });
     expect(decodePluginCommandIndex(appBytes)).toBeNull();
+  });
+});
+
+describe("deriveAppCommandToolingFingerprint", () => {
+  const baseLandofile = {
+    name: "myapp",
+    tooling: { hello: { cmd: "echo hi" } },
+  } satisfies LandofileShape;
+
+  test("changes when only toolingDefaults is added or removed", () => {
+    // Given
+    const withoutDefaults = baseLandofile;
+    const withDefaults = {
+      ...baseLandofile,
+      toolingDefaults: { service: "appserver", dir: PortablePath.make("/app") },
+    } satisfies LandofileShape;
+
+    // When
+    const noDefaultsFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
+    const defaultsFingerprint = deriveAppCommandToolingFingerprint(withDefaults);
+    const restoredFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
+
+    // Then
+    expect(defaultsFingerprint).not.toBe(noDefaultsFingerprint);
+    expect(restoredFingerprint).toBe(noDefaultsFingerprint);
+  });
+
+  test("is stable across toolingDefaults property insertion order", () => {
+    // Given
+    const first: LandofileShape = {
+      ...baseLandofile,
+      toolingDefaults: {
+        service: "appserver",
+        env: { A: "1", B: "2" },
+        dir: PortablePath.make("/app"),
+      },
+    };
+    const second: LandofileShape = {
+      ...baseLandofile,
+      toolingDefaults: {
+        dir: PortablePath.make("/app"),
+        env: { B: "2", A: "1" },
+        service: "appserver",
+      },
+    };
+
+    // When / Then
+    expect(deriveAppCommandToolingFingerprint(first)).toBe(deriveAppCommandToolingFingerprint(second));
   });
 });

@@ -26,13 +26,10 @@ describe("expectEvent", () => {
     }
   });
 
-  test("keeps the default timeout when options explicitly pass timeout: undefined", async () => {
+  test("keeps the default timeout when passed an empty options object", async () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const waiter = yield* expectEvent("download-progress", { timeout: undefined }).pipe(
-          Effect.exit,
-          Effect.fork,
-        );
+        const waiter = yield* expectEvent("download-progress", {}).pipe(Effect.exit, Effect.fork);
         yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(waiter);
       }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),

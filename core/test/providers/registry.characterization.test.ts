@@ -4,7 +4,7 @@ import "../../src/runtime/engine-composition.ts";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
-import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -52,15 +52,10 @@ const buildDependencyLayer = (
   | PathsService
   | StateStore
 > => {
-  const config: GlobalConfig = {
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
     telemetry: { enabled: false },
-    ...(options.defaultProviderId === undefined
-      ? {}
-      : {
-          defaultProviderId:
-            options.defaultProviderId === null ? null : ProviderId.make(options.defaultProviderId),
-        }),
-  };
+    ...(options.defaultProviderId === undefined ? {} : { defaultProviderId: options.defaultProviderId }),
+  });
   const load = Effect.succeed(config);
   const configService: Context.Tag.Service<typeof ConfigService> = {
     load,

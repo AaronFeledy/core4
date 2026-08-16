@@ -12,19 +12,15 @@ import {
   type AppPlan,
   LandofileShape,
   PortablePath,
+  type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  LandofileService,
-  type ProviderCapabilities,
-  RuntimeProvider,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
 
@@ -163,6 +159,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata,
           extensions: {},
         };
@@ -171,7 +168,11 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
         const provider = await Effect.runPromise(
           RuntimeProvider.pipe(
             Effect.provide(
-              makeProviderLayer({ podmanApi: api, sanitizeAppliedPlan: stripHostProxyRunLando }),
+              makeProviderLayer({
+                platform: "linux",
+                podmanApi: api,
+                sanitizeAppliedPlan: stripHostProxyRunLando,
+              }),
             ),
           ),
         );
@@ -200,6 +201,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
               select: () => Effect.succeed(provider),
             }),
             ProviderExecToolingEngineLive,
+            EventServiceLive,
             emptyConfigServiceLayer,
           );
 

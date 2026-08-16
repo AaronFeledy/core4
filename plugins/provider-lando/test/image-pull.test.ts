@@ -20,6 +20,7 @@ import {
 } from "@lando/provider-lando";
 import type { PodmanApiClient } from "@lando/provider-lando";
 import { type EventService, RuntimeProvider } from "@lando/sdk/services";
+import { type PullFailureKind, classifyPullFailure } from "../src/image-pull.ts";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const FIXED = DateTime.unsafeMake("2026-07-08T03:30:00Z");
@@ -139,6 +140,29 @@ describe("parseImagePullFrame", () => {
   });
 });
 
+describe("classifyPullFailure", () => {
+  const cases: ReadonlyArray<{
+    readonly message: string;
+    readonly expected: PullFailureKind;
+  }> = [
+    { message: "UNAUTHORIZED: access denied", expected: "registry-auth" },
+    { message: "authentication required", expected: "registry-auth" },
+    { message: "registry request failed with status 401", expected: "registry-auth" },
+    { message: "unable to retrieve auth token", expected: "registry-auth" },
+    { message: "invalid username/password", expected: "registry-auth" },
+    { message: "manifest unknown", expected: "generic" },
+    { message: "no such host", expected: "generic" },
+    { message: "connection refused", expected: "generic" },
+    { message: "", expected: "generic" },
+  ];
+
+  for (const { message, expected } of cases) {
+    test(`classifies ${JSON.stringify(message)} as ${expected}`, () => {
+      expect(classifyPullFailure(message)).toBe(expected);
+    });
+  }
+});
+
 describe("pullImage", () => {
   test("publishes a redacted ImagePullProgressEvent per progress frame that decodes against LandoEvent", async () => {
     const { events, exit } = await runPull("docker.io/library/alpine:3.20.3", [
@@ -203,9 +227,19 @@ describe("pullImage", () => {
       ).pipe(Effect.flip),
     );
     expect(value).toBeInstanceOf(ProviderUnavailableError);
-    expect((value as ProviderUnavailableError).operation).toBe("pullImage");
-    expect((value as ProviderUnavailableError).message).not.toContain("s3cr3tPass");
-    expect(JSON.stringify((value as ProviderUnavailableError).details ?? {})).not.toContain("s3cr3tPass");
+    if (!(value instanceof ProviderUnavailableError)) return;
+    expect(value.operation).toBe("pullImage");
+    expect(value.remediation).toContain("${XDG_RUNTIME_DIR}/containers/auth.json");
+    expect(value.remediation).toContain("$REGISTRY_AUTH_FILE");
+    expect(value.remediation).toContain("$DOCKER_CONFIG");
+    expect(value.remediation).toContain("~/.docker/config.json");
+    expect(value.remediation).toContain("`podman logout --all`");
+    expect(value.remediation).toContain("`docker logout`");
+    expect(value.remediation).toContain("auths");
+    expect(value.details).toMatchObject({ failureKind: "registry-auth" });
+    const serialized = JSON.stringify({ message: value.message, details: value.details });
+    expect(serialized).not.toContain("s3cr3tPass");
+    expect(serialized).toContain("https://[redacted]@registry.internal");
   });
 
   test("propagates a transport non-2xx ProviderUnavailableError unchanged", async () => {

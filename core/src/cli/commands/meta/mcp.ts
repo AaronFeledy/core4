@@ -19,7 +19,11 @@ import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
 import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
-import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
+import {
+  type RunToolingResult,
+  runTooling,
+  runToolingRedactionTokens,
+} from "@lando/engine/operations/tooling";
 import type { RedactionService } from "@lando/redaction/service";
 import type { McpCommandEntry } from "../../../mcp/registry";
 import {
@@ -103,6 +107,7 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
   },
   resultSchema: ToolingMcpResultSchema,
   run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+  redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
   render: (result) => renderRunToolingResult(result as RunToolingResult),
 });
 

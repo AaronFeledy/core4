@@ -55,6 +55,7 @@ describe("compose schema diff reporter", () => {
     next.properties = { ...omitKey(root, "version"), configs: { type: "object" } };
     const defs = next.$defs as Record<string, Record<string, unknown>>;
     const service = defs.service;
+    if (service === undefined) throw new Error("expected a service definition in the compose schema");
     const serviceProps = service.properties as Record<string, unknown>;
     service.properties = { ...omitKey(serviceProps, "image"), restart: { type: "string" } };
     return next;
