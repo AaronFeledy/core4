@@ -1202,7 +1202,7 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: [ubuntu-24.04, ubuntu-26.04]");
     expect(workflow).toContain("runs-on: windows-2022");
     expect(workflow).toContain(
-      "--target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --minify --sourcemap=external",
+      "--target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version \"$VERSION\" --minify --sourcemap=external",
     );
     expect(workflow).toContain(
       "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
