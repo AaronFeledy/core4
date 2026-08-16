@@ -15,49 +15,75 @@ const makeListDiscoveredApps = (): ((
   userCacheRoot: string,
 ) => Promise<ReadonlyArray<DiscoveredApp>>) => {
   return async (userDataRoot: string, userCacheRoot: string): Promise<ReadonlyArray<DiscoveredApp>> => {
-    const { listServices } = await import("../../commands/list");
-    const { Effect } = await import("effect");
-    const { ConfigService } = await import("@lando/sdk/services");
-    const { ConfigServiceLive } = await import("@lando/engine/config/service");
-    const list = await Effect.runPromise(
-      listServices({ userDataRoot, userCacheRoot }).pipe(Effect.provide(ConfigServiceLive)),
-    );
-    return list.apps
-      .filter((app) => app.providerId !== "cache")
-      .map((app) => ({
-        appId: app.appId,
-        appName: app.appName,
-        providerId: app.providerId,
-        appRoot: app.appRoot,
-        services: app.services,
-      }));
-  };
-};
-
-const makeDestroyDiscoveredApps = (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) => {
-  return async (apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
-    const { Effect } = await import("effect");
-    const { RuntimeProviderRegistry } = await import("@lando/sdk/services");
-    const { RuntimeProviderRegistryLive } = await import("@lando/engine/providers/registry");
-    const { ConfigServiceLive } = await import("@lando/engine/config/service");
-
-    for (const app of apps) {
+    try {
+      const { readdir, readFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      
+      const providersRoot = join(userDataRoot, "providers");
+      const apps: DiscoveredApp[] = [];
+      
+      // Read apps from provider-docker
       try {
-        await Effect.runPromise(
-          Effect.gen(function* () {
-            const registry = yield* RuntimeProviderRegistry;
-            const provider = yield* registry.getById(app.providerId);
-            // Destroy with volumes=true to fully clean up
-            yield* provider.destroy({ app: app.appId }, { volumes: true, removeState: true });
-          }).pipe(Effect.provide(RuntimeProviderRegistryLive), Effect.provide(ConfigServiceLive)),
-        );
+        const dockerAppsDir = join(providersRoot, "provider-docker", "apps");
+        const entries = await readdir(dockerAppsDir);
+        for (const entry of entries) {
+          if (!entry.endsWith(".json")) continue;
+          try {
+            const content = await readFile(join(dockerAppsDir, entry), "utf8");
+            const envelope = JSON.parse(content) as { plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> } };
+            if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
+              apps.push({
+                appId: envelope.plan.id,
+                appName: envelope.plan.name ?? envelope.plan.id,
+                providerId: "docker",
+                appRoot: envelope.plan.root,
+                services: Object.keys(envelope.plan.services),
+              });
+            }
+          } catch {
+            // Skip corrupt files
+          }
+        }
       } catch {
-        // Best-effort: continue with other apps even if one fails
-        continue;
+        // Skip if directory doesn't exist
       }
+      
+      // Read apps from provider-lando (Podman)
+      try {
+        const landoAppsDir = join(providersRoot, "provider-lando", "apps");
+        const entries = await readdir(landoAppsDir);
+        for (const entry of entries) {
+          if (!entry.endsWith(".json")) continue;
+          try {
+            const content = await readFile(join(landoAppsDir, entry), "utf8");
+            const envelope = JSON.parse(content) as { plan?: { id?: string; name?: string; root?: string; services?: Record<string, unknown> } };
+            if (envelope.plan?.id && envelope.plan.root && envelope.plan.services) {
+              apps.push({
+                appId: envelope.plan.id,
+                appName: envelope.plan.name ?? envelope.plan.id,
+                providerId: "lando",
+                appRoot: envelope.plan.root,
+                services: Object.keys(envelope.plan.services),
+              });
+            }
+          } catch {
+            // Skip corrupt files
+          }
+        }
+      } catch {
+        // Skip if directory doesn't exist
+      }
+      
+      return apps;
+    } catch {
+      return [];
     }
   };
 };
+
+// Note: destroyDiscoveredApps removed - uninstall --purge will now just warn about
+// running apps and suggest the user run `lando poweroff` first. Automatic destruction
+// requires complex provider wiring that increases the cold-start penalty.
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -80,7 +106,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     keepData: flags["keep-data"] === true && !purge,
     purge,
     listDiscoveredApps: makeListDiscoveredApps(),
-    destroyDiscoveredApps: makeDestroyDiscoveredApps(),
+    // destroyDiscoveredApps removed - uninstall will just warn about running apps
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),

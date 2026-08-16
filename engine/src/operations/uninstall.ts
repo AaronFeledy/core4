@@ -75,7 +75,6 @@ export interface UninstallOptions {
     userDataRoot: string,
     userCacheRoot: string,
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
-  readonly destroyDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -216,7 +215,7 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
       status: "skipped",
       detail:
         step.id === "running-apps"
-          ? "Preserved by --keep-data; run `lando poweroff` or `lando destroy` first, then rerun with --purge."
+          ? "Preserved by --keep-data; rerun with --purge to see discovered apps."
           : "Preserved by --keep-data; rerun with --purge to remove this state.",
     };
   }
@@ -240,7 +239,7 @@ const buildRunningAppsStep = async (
   const base = {
     id: "running-apps",
     label: "running Lando apps and provider resources",
-    destructive: true,
+    destructive: false,
   };
   if (listDiscoveredApps === undefined) {
     return {
@@ -264,8 +263,8 @@ const buildRunningAppsStep = async (
     return {
       ...base,
       target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
-      status: "owned" as const,
-      detail: `Stop and remove containers, networks, and volumes for ${apps.length} discovered Lando app${apps.length === 1 ? "" : "s"}.`,
+      status: "manual" as const,
+      detail: `Run \`lando poweroff\` to stop ${apps.length} discovered app${apps.length === 1 ? "" : "s"} before purge, or they will remain running.`,
     };
   } catch {
     return {
@@ -439,29 +438,13 @@ const executeUninstall = async (
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
-  const listDiscoveredApps = options.listDiscoveredApps;
-  const destroyDiscoveredApps = options.destroyDiscoveredApps;
   const steps = await buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
-    if (step.id === "running-apps" && step.status === "owned") {
-      try {
-        if (listDiscoveredApps === undefined || destroyDiscoveredApps === undefined) {
-          executed.push({
-            ...step,
-            outcome: "failed",
-            error: "App discovery or destroy handler unavailable.",
-          });
-          continue;
-        }
-        const apps = await listDiscoveredApps(userDataRoot, userCacheRoot);
-        await destroyDiscoveredApps(apps);
-        executed.push({ ...step, outcome: "completed" });
-      } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
-        executed.push({ ...step, outcome: "failed", error });
-      }
+    if (step.id === "running-apps") {
+      // Running apps step is informational only - just mark it as manual
+      executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
       continue;
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
