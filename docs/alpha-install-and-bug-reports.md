@@ -66,21 +66,47 @@ bun run build
 bun run core/src/cli/index.ts --version
 ```
 
-## Known setup limitation
+## Setting up the managed Podman provider
 
-The default provider (`@lando/provider-lando`) resolves its Podman runtime bundle from a manifest whose committed entries are placeholders (404 URLs + zeroed checksums). End-to-end `lando setup` cannot complete with the default provider yet.
+Lando v4 uses a managed Podman provider by default. On Debian/Ubuntu systems, you need to ensure rootless Podman prerequisites are met:
 
-**Workaround:** Use system Docker as your provider:
-
+**Required packages:**
 ```bash
-# Set provider to docker before running setup
-export LANDO_PROVIDER=docker
-lando setup
-# Or pass the flag each time:
-lando --provider=docker start
+sudo apt-get update
+sudo apt-get install -y uidmap fuse-overlayfs
 ```
 
-Or build a local runtime bundle and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it (see `scripts/build-runtime-bundle.ts`).
+**UID/GID subranges** (for user namespaces):
+```bash
+# Check if already configured
+grep "^$(id -un):" /etc/subuid /etc/subgid
+
+# If missing, add entries
+echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+```
+
+**Kernel configuration:**
+```bash
+# Allow unprivileged port binding
+sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+
+# Allow unprivileged user namespaces (if AppArmor restricts them)
+if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+  sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+fi
+```
+
+**Cgroups v2** must be enabled (the default on Ubuntu 22.04+). Verify with:
+```bash
+grep cgroup2 /proc/mounts
+```
+
+**XDG directories:** Lando respects `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME`. If unset, it defaults to `~/.local/share/lando`, `~/.config/lando`, and `~/.cache/lando`.
+
+Once prerequisites are met, run `lando setup` to install and configure the managed Podman runtime.
+
+**Note on local bundle testing:** The committed runtime bundle manifest currently points at placeholder URLs. To test the full setup flow, build a local bundle with `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it. Users who already have Docker installed may use `--provider=docker` if they prefer, but the managed Podman provider is the primary path.
 
 ## Installers and update manifests (not yet available)
 
