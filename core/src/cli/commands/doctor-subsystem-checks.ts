@@ -38,10 +38,10 @@ export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFai
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
 
-const manualSetupSolution = (description: string): DoctorSolution => ({
+const manualSetupSolution = (description: string, command = "lando setup"): DoctorSolution => ({
   kind: "manual",
   description,
-  command: "lando setup",
+  command,
 });
 
 const automaticFixSolution = (description: string): DoctorSolution => ({
@@ -59,6 +59,10 @@ export interface SubsystemSpec {
    */
   readonly manualRemediation: string;
   /**
+   * Command shown for manual remediation (defaults to "lando setup").
+   */
+  readonly manualCommand?: string;
+  /**
    * Remediation advertised for a degraded `automatic` subsystem in read-only
    * mode (before `--fix` is run).
    */
@@ -72,6 +76,7 @@ export const PROXY_SPEC: SubsystemSpec = {
     "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
   manualRemediation:
     "The HTTPS reverse proxy is not available in this Alpha release. Run `lando global:install` to install the global app with Traefik, then start it to enable HTTPS routing.",
+  manualCommand: "lando global:install",
 };
 
 export const CERTS_SPEC: SubsystemSpec = {
@@ -127,11 +132,11 @@ const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
 const degradedSolution = (spec: SubsystemSpec, serviceId: string): DoctorSolution => {
   // Unavailable services are not implemented yet, don't advertise automatic fix
   if (serviceId === "unavailable") {
-    return manualSetupSolution(spec.manualRemediation);
+    return manualSetupSolution(spec.manualRemediation, spec.manualCommand);
   }
   return spec.recovery === "automatic" && spec.automaticRemediation !== undefined
     ? automaticFixSolution(spec.automaticRemediation)
-    : manualSetupSolution(spec.manualRemediation);
+    : manualSetupSolution(spec.manualRemediation, spec.manualCommand);
 };
 
 export const classifySubsystemFailure = (
@@ -149,7 +154,11 @@ export const classifySubsystemFailure = (
   });
 };
 
-export const subsystemFailureDiagnostic = (subsystem: string, serviceId: string, cause?: unknown): DoctorSubsystemFailure => {
+export const subsystemFailureDiagnostic = (
+  subsystem: string,
+  serviceId: string,
+  cause?: unknown,
+): DoctorSubsystemFailure => {
   const diagnostic = classifySubsystemFailure(subsystem, serviceId, cause);
   if (diagnostic !== undefined) return diagnostic;
   return new DoctorSubsystemFailure({
@@ -188,7 +197,7 @@ export const buildDegradedCheck = (
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
     const serviceId = baseContext.subsystemId ?? "unknown";
-    
+
     if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
       const fixCommand = `${spec.name}.setup`;
       const result = yield* Effect.either(runSetup());
@@ -214,7 +223,7 @@ export const buildDegradedCheck = (
           fixExitCode: "1",
           fixError: errorMessage(result.left),
         },
-        solutions: [manualSetupSolution(spec.manualRemediation)],
+        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
       };
     }
 
@@ -225,11 +234,12 @@ export const buildDegradedCheck = (
         severity: "warn",
         recovery: spec.recovery,
         context: { ...baseContext, fixOutcome: "skipped-manual" },
-        solutions: [manualSetupSolution(spec.manualRemediation)],
+        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
       };
     }
 
-    const diagnostic = cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
+    const diagnostic =
+      cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
     return {
       name: spec.name,
       status: "warn",

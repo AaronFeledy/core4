@@ -62,7 +62,7 @@ export const readLinuxHostRelease = (): LinuxHostRelease | undefined => {
 };
 
 const manualUidmapRemediation =
-  "Install newuidmap and newgidmap using the host's trusted package manager, then rerun `lando setup`. To use the bundled Lando-managed runtime instead, run `lando setup` (the default) or `lando setup --provider=lando`. To skip the managed runtime and use system Docker, run `lando setup --provider=docker`.";
+  "Install newuidmap and newgidmap using the host's trusted package manager (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`. To skip the managed runtime and use system Docker instead, run `lando setup --provider=docker`.";
 
 export const inspectUidmapSetupPlan = (
   input: UidmapInspection,
@@ -70,7 +70,7 @@ export const inspectUidmapSetupPlan = (
   if (input.probes.probe().hasUidmapTools) {
     return Effect.succeed({ providerId: PROVIDER_ID, changes: [] });
   }
-  
+
   // Only Ubuntu can be auto-provisioned
   if (
     hostPlatformFamily(input.platform) !== "linux" ||

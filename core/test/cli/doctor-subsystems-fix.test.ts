@@ -69,7 +69,12 @@ describe("subsystem failure-recovery classification", () => {
       const solution = check?.solutions[0];
       // Unavailable services show manual solutions, not automatic
       expect(solution?.kind).toBe("manual");
-      expect(solution?.command).toBe("lando setup");
+      // Proxy uses lando global:install, SSH uses lando setup
+      if (name === "proxy") {
+        expect(solution?.command).toBe("lando global:install");
+      } else {
+        expect(solution?.command).toBe("lando setup");
+      }
     }
   });
 
@@ -170,7 +175,12 @@ describe("doctor --fix recovery", () => {
       expect(check?.context.fixError?.length).toBeGreaterThan(0);
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
-      expect(solution?.command).toBe("lando setup");
+      // Proxy uses lando global:install, SSH uses lando setup
+      if (name === "proxy") {
+        expect(solution?.command).toBe("lando global:install");
+      } else {
+        expect(solution?.command).toBe("lando setup");
+      }
     }
   });
 
