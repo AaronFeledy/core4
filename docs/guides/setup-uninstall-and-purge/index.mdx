@@ -71,6 +71,22 @@ automatically — the plan prints exact manual removal steps for it instead.
     <Step name="purge-cleans-up">
       <Run command="lando uninstall --yes --purge" />
     </Step>
+    <Step name="verify-no-lando-containers">
+      <Verify
+        command="podman ps -a --filter label=dev.lando.app=purge-demo --format '{{.Names}}' 2>/dev/null || echo 'runtime-unavailable'"
+        expect={{
+          stdout: { regex: "^$|runtime-unavailable" }
+        }}
+      />
+    </Step>
+    <Step name="verify-no-lando3-containers">
+      <Verify
+        command="podman ps -a --filter label=com.lando.app=purge-demo --format '{{.Names}}' 2>/dev/null || echo 'runtime-unavailable'"
+        expect={{
+          stdout: { regex: "^$|runtime-unavailable" }
+        }}
+      />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>

@@ -20,7 +20,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-01 | US-079 | @lando/provider-podman on macOS via Podman Desktop | `docs/guides/setup/provider-podman-macos.mdx` | Shipped |
 | PRD-01 | US-079 | @lando/provider-podman on Windows via Podman Desktop | `docs/guides/setup/provider-podman-windows.mdx` | Shipped |
 | PRD-01 | US-082 | provider selection precedence + conflict diagnostics | `docs/guides/setup/provider-selection.mdx` | Shipped |
-| PRD-01 | US-205, US-206 | safe uninstall and purge choices | `docs/guides/setup/uninstall-and-purge.mdx` | Shipped |
+| PRD-01 | US-205, US-206 | safe uninstall and purge choices | `docs/guides/setup-uninstall-and-purge/index.mdx` | Shipped |
 | PRD-01 | US-207 | source and compiled setup conformance through one native dispatcher | `docs/guides/setup/compiled-binary-setup-parity.mdx` | Shipped |
 | PRD-02 | US-210 | Provider setup default UX | `docs/guides/setup/provider-auto-setup.mdx` | Shipped |
 | PRD-02 | US-211 | Compose subset compatibility matrix | `docs/guides/config/compose-compatibility.mdx` | Shipped |
