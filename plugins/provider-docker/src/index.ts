@@ -39,8 +39,8 @@ import {
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import { definePlugin } from "@lando/sdk/plugins";
 import {
-  type AppPlan,
   AppId,
+  type AppPlan,
   type HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -953,20 +953,33 @@ const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<v
 
 const pullImage = (api: DockerApiClient, imageRef: string) =>
   Effect.gen(function* () {
-    // Pull the image using Docker API
+    // Pull the image using Docker API - returns NDJSON stream
     const response = yield* request(api, "pullArtifact", {
       method: "POST",
       path: `/images/create?fromImage=${encodeURIComponent(imageRef)}`,
     });
 
+    // Docker returns HTTP 200 even on error - need to check NDJSON body for errors
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
-        unavailable(
-          "pullArtifact",
-          `Docker image pull failed with HTTP ${response.status}.`,
-          response,
-        ),
+        unavailable("pullArtifact", `Docker image pull failed with HTTP ${response.status}.`, response),
       );
+    }
+
+    // Parse NDJSON response for errors
+    const lines = response.body.split("\n").filter((line) => line.trim().length > 0);
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as { error?: string; errorDetail?: { message?: string } };
+        if (parsed.error !== undefined || parsed.errorDetail !== undefined) {
+          const errorMessage = parsed.errorDetail?.message ?? parsed.error ?? "Unknown error";
+          yield* Effect.fail(
+            unavailable("pullArtifact", `Docker image pull failed: ${errorMessage}`, parsed),
+          );
+        }
+      } catch {
+        // Ignore JSON parse errors in NDJSON stream
+      }
     }
 
     // Inspect the image to get its digest
@@ -998,11 +1011,8 @@ interface DiscoveredContainer {
   readonly id: string;
   readonly name: string;
   readonly labels: Readonly<Record<string, string>>;
-  readonly state: {
-    readonly Running?: boolean;
-    readonly Status?: string;
-    readonly StartedAt?: string;
-  };
+  readonly state: string;
+  readonly startedAt?: string;
 }
 
 const discoverContainers = (api: DockerApiClient, labelFilter?: string) =>
@@ -1027,42 +1037,43 @@ const discoverContainers = (api: DockerApiClient, labelFilter?: string) =>
     const body = yield* parseJson(response, "list");
     const containers = Array.isArray(body) ? body : [];
 
-    return containers.map((container: unknown): DiscoveredContainer | undefined => {
-      if (typeof container !== "object" || container === null) return undefined;
-      const obj = container as {
-        Id?: unknown;
-        Names?: unknown;
-        Labels?: unknown;
-        State?: unknown;
-      };
+    return containers
+      .map((container: unknown): DiscoveredContainer | undefined => {
+        if (typeof container !== "object" || container === null) return undefined;
+        const obj = container as {
+          Id?: unknown;
+          Names?: unknown;
+          Labels?: unknown;
+          State?: unknown;
+          Status?: unknown;
+        };
 
-      if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
-      const name = obj.Names[0];
-      if (typeof name !== "string") return undefined;
+        if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
+        const name = obj.Names[0];
+        if (typeof name !== "string") return undefined;
 
-      const labels =
-        typeof obj.Labels === "object" && obj.Labels !== null
-          ? (obj.Labels as Record<string, unknown>)
-          : {};
+        const labels =
+          typeof obj.Labels === "object" && obj.Labels !== null
+            ? (obj.Labels as Record<string, unknown>)
+            : {};
 
-      const state =
-        typeof obj.State === "object" && obj.State !== null
-          ? (obj.State as {
-              Running?: boolean;
-              Status?: string;
-              StartedAt?: string;
-            })
-          : {};
+        // In /containers/json, State is a string like "running" or "exited"
+        const state = typeof obj.State === "string" ? obj.State : "unknown";
 
-      return {
-        id: obj.Id,
-        name: name.startsWith("/") ? name.slice(1) : name,
-        labels: Object.fromEntries(
-          Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-        ),
-        state,
-      };
-    }).filter((container): container is DiscoveredContainer => container !== undefined);
+        // Status contains more info like "Up 5 minutes"
+        const status = typeof obj.Status === "string" ? obj.Status : undefined;
+
+        return {
+          id: obj.Id,
+          name: name.startsWith("/") ? name.slice(1) : name,
+          labels: Object.fromEntries(
+            Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          ),
+          state,
+          ...(status === undefined ? {} : { startedAt: status }),
+        };
+      })
+      .filter((container): container is DiscoveredContainer => container !== undefined);
   });
 
 interface TouchedContainer {
@@ -1553,7 +1564,7 @@ const logs = (
 const logsWithoutPlan = (
   containerNameOrId: string,
   serviceName: ServiceName,
-  target: LogTarget,
+  _target: LogTarget,
   options: Partial<LogOptions>,
   runtime: LogsRuntime,
 ): Stream.Stream<LogChunk, ProviderError> => {
@@ -1728,19 +1739,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           // Plan not available - discover container by labels
           return Stream.fromEffect(
             discoverContainers(dockerApi, "dev.lando.app").pipe(
-              Effect.map((containers) => {
+              Effect.flatMap((containers) => {
                 const container = containers.find(
                   (c) =>
                     c.labels["dev.lando.app"] === target.app &&
                     c.labels["dev.lando.service"] === target.service,
                 );
                 if (container === undefined) {
-                  throw unavailable(
-                    "logs",
-                    `Container for app ${target.app} service ${target.service} not found.`,
+                  return Effect.fail(
+                    unavailable(
+                      "logs",
+                      `Container for app ${target.app} service ${target.service} not found.`,
+                    ),
                   );
                 }
-                return container;
+                return Effect.succeed(container);
               }),
             ),
           ).pipe(
@@ -1757,40 +1770,74 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         },
         list: (filter) =>
           discoverContainers(dockerApi, "dev.lando.app").pipe(
-            Effect.map((containers) =>
-              containers
-                .filter((container) => {
+            Effect.flatMap((containers) =>
+              Effect.forEach(
+                containers.filter((container) => {
                   const appId = container.labels["dev.lando.app"];
                   return (
                     appId !== undefined &&
                     (filter.app === undefined || appId === filter.app) &&
                     container.labels["dev.lando.scratch"] !== "TRUE"
                   );
-                })
-                .map((container): ServiceRuntimeInfo => {
-                  const appId = container.labels["dev.lando.app"] ?? "";
-                  const serviceName = container.labels["dev.lando.service"] ?? "";
-                  const isRunning = container.state.Running === true || container.state.Status === "running";
-                  const status = isRunning ? "running" : "stopped";
-                  const startedAtText = container.state.StartedAt;
-                  const startedAt =
-                    startedAtText === undefined || startedAtText.startsWith("0001-")
-                      ? undefined
-                      : new Date(startedAtText);
-
-                  return {
-                    app: AppId.make(appId),
-                    service: ServiceName.make(serviceName),
-                    providerId: ProviderId.make(PROVIDER_ID),
-                    status,
-                    state: status,
-                    containerId: container.id,
-                    endpoints: [],
-                    ...(startedAt === undefined || Number.isNaN(startedAt.getTime())
-                      ? {}
-                      : { lastStartedAt: startedAt }),
-                  };
                 }),
+                (container) =>
+                  Effect.gen(function* () {
+                    const appId = container.labels["dev.lando.app"] ?? "";
+                    const serviceName = container.labels["dev.lando.service"] ?? "";
+                    const isRunning = container.state === "running";
+                    const status = isRunning ? "running" : "stopped";
+
+                    // Inspect container to get endpoints
+                    const inspectResponse = yield* request(dockerApi, "list", {
+                      method: "GET",
+                      path: `/containers/${encodeURIComponent(container.name)}/json`,
+                    });
+
+                    let endpoints: ServiceRuntimeInfo["endpoints"] = [];
+                    if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
+                      const inspectBody = yield* parseJson(inspectResponse, "list");
+                      if (
+                        typeof inspectBody === "object" &&
+                        inspectBody !== null &&
+                        "NetworkSettings" in inspectBody
+                      ) {
+                        const networkSettings = inspectBody.NetworkSettings as {
+                          Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+                        };
+                        const ports = networkSettings.Ports ?? {};
+                        endpoints = Object.entries(ports)
+                          .flatMap(([containerPort, bindings]) => {
+                            if (bindings === null || bindings === undefined) return [];
+                            return bindings.map((binding) => {
+                              const [portNum, protocol] = containerPort.split("/");
+                              return {
+                                _tag: "published" as const,
+                                port: Number.parseInt(portNum ?? "0", 10),
+                                protocol: (protocol === "udp" ? "udp" : "http") as "http" | "udp",
+                                name: containerPort,
+                                publication: {
+                                  bindAddress: binding.HostIp ?? "0.0.0.0",
+                                  hostPort: Number.parseInt(binding.HostPort ?? "0", 10),
+                                },
+                              };
+                            });
+                          })
+                          .filter((endpoint) => endpoint.port > 0 && endpoint.publication.hostPort > 0);
+                      }
+                    }
+
+                    return {
+                      app: AppId.make(appId),
+                      service: ServiceName.make(serviceName),
+                      providerId: ProviderId.make(PROVIDER_ID),
+                      status,
+                      state: status,
+                      containerId: container.id,
+                      endpoints,
+                      ...(container.startedAt !== undefined ? {} : {}),
+                    };
+                  }),
+              ),
             ),
           ),
         snapshotVolume: dataPlane.snapshotVolume,

@@ -279,7 +279,8 @@ const makeFakeApi = () => {
           const containers = Array.from(existing).map((name) => ({
             Id: `${name}-id`,
             Names: [`/${name}`],
-            State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+            State: running.has(name) ? "running" : "exited",
+            Status: running.has(name) ? "Up 5 minutes" : "Exited (0) 2 minutes ago",
             Labels: {
               "dev.lando.app": appId,
               "dev.lando.service": serviceName,
@@ -620,7 +621,8 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           const containers = Array.from(existing).map((name) => ({
             Id: `${name}-id`,
             Names: [`/${name}`],
-            State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+            State: running.has(name) ? "running" : "exited",
+            Status: running.has(name) ? "Up 5 minutes" : "Exited (0) 2 minutes ago",
             Labels: {
               "dev.lando.app": appId,
               "dev.lando.service": name.includes("-db") ? dbServiceName : serviceName,
