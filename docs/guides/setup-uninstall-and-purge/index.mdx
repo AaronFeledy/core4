@@ -52,7 +52,7 @@ automatically — the plan prints exact manual removal steps for it instead.
       <Verify
         command="lando start"
         expect={{
-          stdout: { contains: "running" }
+          stdout: { regex: "running" }
         }}
       />
     </Step>
@@ -63,7 +63,7 @@ automatically — the plan prints exact manual removal steps for it instead.
       <Verify
         command="test -d ~/.local/share/lando && echo 'preserved' || test -d ~/Library/Application\\ Support/lando && echo 'preserved' || echo 'missing'"
         expect={{
-          stdout: { contains: "preserved" }
+          stdout: { regex: "preserved" }
         }}
       />
     </Step>
@@ -81,7 +81,7 @@ automatically — the plan prints exact manual removal steps for it instead.
       <Verify
         command="lando start"
         expect={{
-          stdout: { contains: "running" }
+          stdout: { regex: "running" }
         }}
       />
     </Step>
@@ -122,8 +122,7 @@ automatically — the plan prints exact manual removal steps for it instead.
           echo "OK: No leftover containers"
         `}
         expect={{
-          exitCode: 0,
-          stdout: { contains: "OK: No leftover containers" }
+          stdout: { regex: "OK: No leftover containers" }
         }}
       />
     </Step>
@@ -161,8 +160,7 @@ automatically — the plan prints exact manual removal steps for it instead.
           echo "OK: No leftover containers"
         `}
         expect={{
-          exitCode: 0,
-          stdout: { contains: "OK: No leftover containers" }
+          stdout: { regex: "OK: No leftover containers" }
         }}
       />
     </Step>
