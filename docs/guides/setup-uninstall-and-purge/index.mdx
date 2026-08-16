@@ -1,9 +1,10 @@
 ---
 id: setup-uninstall-and-purge
 provider: test
+defaultLayer: e2e
 platforms: [darwin, linux, win32]
 timeout: 120000
-tags: [beta, docs, setup, uninstall]
+tags: [beta, docs, setup, uninstall, "@smoke"]
 ---
 
 # Uninstall and purge
@@ -54,6 +55,14 @@ automatically — the plan prints exact manual removal steps for it instead.
     <Step name="uninstall-keep-data">
       <Run command="lando uninstall --yes --keep-data" />
     </Step>
+    <Step name="verify-data-preserved">
+      <Verify
+        command="test -d ~/.local/share/lando && echo 'preserved' || test -d ~/Library/Application\\ Support/lando && echo 'preserved' || echo 'missing'"
+        expect={{
+          stdout: { contains: "preserved" }
+        }}
+      />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -73,17 +82,79 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="verify-no-lando-containers">
       <Verify
-        command="podman ps -a --filter label=dev.lando.app=purge-demo --format '{{.Names}}' 2>/dev/null || echo 'runtime-unavailable'"
+        command={`
+          errors=0
+          podman_out=""
+          docker_out=""
+          
+          if podman ps -a --filter label=dev.lando.app --format '{{.Names}}' 2>/dev/null; then
+            podman_out=$(podman ps -a --filter label=dev.lando.app --format '{{.Names}}' 2>/dev/null)
+          else
+            errors=$((errors + 1))
+          fi
+          
+          if docker ps -a --filter label=dev.lando.app --format '{{.Names}}' 2>/dev/null; then
+            docker_out=$(docker ps -a --filter label=dev.lando.app --format '{{.Names}}' 2>/dev/null)
+          else
+            errors=$((errors + 1))
+          fi
+          
+          if [ $errors -eq 2 ]; then
+            echo "ERROR: Neither podman nor docker available" >&2
+            exit 1
+          fi
+          
+          if [ -n "$podman_out" ] || [ -n "$docker_out" ]; then
+            echo "ERROR: Found leftover containers" >&2
+            echo "Podman: $podman_out" >&2
+            echo "Docker: $docker_out" >&2
+            exit 1
+          fi
+          
+          echo "OK: No leftover containers"
+        `}
         expect={{
-          stdout: { regex: "^$|runtime-unavailable" }
+          exitCode: 0,
+          stdout: { contains: "OK: No leftover containers" }
         }}
       />
     </Step>
     <Step name="verify-no-lando3-containers">
       <Verify
-        command="podman ps -a --filter label=com.lando.app=purge-demo --format '{{.Names}}' 2>/dev/null || echo 'runtime-unavailable'"
+        command={`
+          errors=0
+          podman_out=""
+          docker_out=""
+          
+          if podman ps -a --filter label=com.lando.app --format '{{.Names}}' 2>/dev/null; then
+            podman_out=$(podman ps -a --filter label=com.lando.app --format '{{.Names}}' 2>/dev/null)
+          else
+            errors=$((errors + 1))
+          fi
+          
+          if docker ps -a --filter label=com.lando.app --format '{{.Names}}' 2>/dev/null; then
+            docker_out=$(docker ps -a --filter label=com.lando.app --format '{{.Names}}' 2>/dev/null)
+          else
+            errors=$((errors + 1))
+          fi
+          
+          if [ $errors -eq 2 ]; then
+            echo "ERROR: Neither podman nor docker available" >&2
+            exit 1
+          fi
+          
+          if [ -n "$podman_out" ] || [ -n "$docker_out" ]; then
+            echo "ERROR: Found leftover containers" >&2
+            echo "Podman: $podman_out" >&2
+            echo "Docker: $docker_out" >&2
+            exit 1
+          fi
+          
+          echo "OK: No leftover containers"
+        `}
         expect={{
-          stdout: { regex: "^$|runtime-unavailable" }
+          exitCode: 0,
+          stdout: { contains: "OK: No leftover containers" }
         }}
       />
     </Step>
