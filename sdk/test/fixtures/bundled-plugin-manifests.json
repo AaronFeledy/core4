@@ -330,6 +330,15 @@
             },
             "summary": "Global SSH agent sidecar"
           }
+        ],
+        "sshServices": [
+          {
+            "defaultFor": {
+              "platform": ["darwin", "linux", "win32"]
+            },
+            "id": "sidecar",
+            "module": "./src/ssh-service.ts"
+          }
         ]
       },
       "description": "SSH agent sidecar for forwarding SSH keys into app networks.",

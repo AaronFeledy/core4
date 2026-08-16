@@ -1,6 +1,11 @@
 import type { Effect, Layer } from "effect";
 
-import type { ProviderCapabilityError, ProviderUnavailableError, ProxyError } from "../errors/index.ts";
+import type {
+  ProviderCapabilityError,
+  ProviderUnavailableError,
+  ProxyError,
+  SshError,
+} from "../errors/index.ts";
 import type { RendererContribution } from "../renderer/index.ts";
 import type {
   HostPlatform,
@@ -24,6 +29,7 @@ import type {
   RuntimeProviderShape,
   ServiceFeatureDefinition,
   ServiceType,
+  SshService,
 } from "../services/index.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
 import type { TemplateEngine } from "../template/index.ts";
@@ -94,6 +100,11 @@ export type ProxyServiceContributionLayer = Layer.Layer<
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
+export type SshServiceContributionLayer = Layer.Layer<
+  SshService,
+  SshError,
+  FileSystem | GlobalAppService | PathsService
+>;
 export type GlobalServiceContributionEffect = Effect.Effect<ServiceConfig, unknown, never>;
 export type LoggerContributionLayer = Layer.Layer<never, unknown, unknown>;
 
@@ -107,6 +118,7 @@ export interface LandoPluginModule {
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
   readonly proxyServices?: ReadonlyMap<string, ProxyServiceContributionLayer>;
+  readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;
   readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;

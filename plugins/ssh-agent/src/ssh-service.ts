@@ -13,7 +13,6 @@ const setupError = (cause: unknown): SshError =>
   new SshError({
     message: "SSH agent sidecar setup failed.",
     sshId: SSH_SIDECAR_ID,
-    remediation: "Check the global app status and ensure the runtime provider is available.",
     cause,
   });
 
@@ -28,22 +27,22 @@ export const sshService = Layer.effect(
       id: SSH_SIDECAR_ID,
       setup: (_options) =>
         Effect.gen(function* () {
-          // Ensure the SSH agent sidecar global service is running
-          // This starts the real ssh-agent in the container
-          yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
-
-          // Create the SSH sockets directory if it doesn't exist
-          const sshDir = `${paths.userDataRoot}/ssh`;
+          // Create the SSH sockets directory BEFORE starting the sidecar
+          // (the bind mount needs this directory to exist)
+          const sshDir = `${paths.roots.userDataRoot}/ssh`;
           const exists = yield* fileSystem.exists(sshDir);
           if (!exists) {
             yield* fileSystem.mkdir(sshDir);
           }
+
+          // Now start the SSH agent sidecar global service
+          yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
         }).pipe(Effect.mapError(setupError)),
       getAgentSocket: (appId) =>
         Effect.succeed({
           // The socket is created by ssh-agent running in the sidecar
           // and exposed via the mounted volume
-          socketPath: `${paths.userDataRoot}/ssh/ssh-agent.sock`,
+          socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,
           appId,
         }),
     };

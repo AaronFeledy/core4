@@ -2,13 +2,13 @@ import { Context, Effect, Either, Layer } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import type { SshService } from "@lando/sdk/services";
+import type { FileSystem, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "../../composition.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import { SshServiceUnavailableLive } from "./api.ts";
 
-export type SshServiceLayer = Layer.Layer<SshService, SshError>;
+export type SshServiceLayer = Layer.Layer<SshService, SshError, FileSystem | GlobalAppService | PathsService>;
 
 export interface SshServiceRegistration {
   readonly id: string;
@@ -36,7 +36,6 @@ const selectionError = (message: string, sshId: string): SshError =>
   new SshError({
     message,
     sshId,
-    remediation: "Install an SshService plugin or configure `defaultSshService` to an installed id.",
   });
 
 const registrationsFromModules = (
@@ -55,8 +54,6 @@ const registrationsFromModules = (
             new SshError({
               message: `SSH service descriptor does not export ${contribution.id}.`,
               sshId: contribution.id,
-              remediation:
-                "Repair the plugin sshServices map and regenerate the BUNDLED_PLUGIN_MODULES descriptor table.",
             }),
           )
         : Effect.succeed({
