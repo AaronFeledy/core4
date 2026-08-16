@@ -47,7 +47,7 @@ export interface ResolvedToolingCommandStepLeaf extends ResolvedLeafBase {
   readonly kind: "command";
   readonly command: string;
   readonly flags: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly args: ReadonlyArray<string>;
+  readonly args: Readonly<Record<string, ToolingVarLiteral>>;
   readonly raw: ReadonlyArray<string>;
 }
 
@@ -214,7 +214,7 @@ const resolveCommand = (leaf: ToolingCommandStepLeaf, context: ExpressionContext
   Effect.gen(function* () {
     const command = yield* resolveString(leaf.command, context);
     const flags = yield* resolveScalarRecord(leaf.flags, context);
-    const args = yield* Effect.forEach(leaf.args, (value) => resolveString(value, context));
+    const args = yield* resolveScalarRecord(leaf.args, context);
     const raw = yield* Effect.forEach(leaf.raw, (value) => resolveString(value, context));
     return {
       kind: "command" as const,

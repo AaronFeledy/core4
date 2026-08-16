@@ -187,6 +187,37 @@ describe("runToolingStepProgram conditions and leaves", () => {
     ]);
   });
 
+  test("resolves canonical command arguments as a scalar named record", async () => {
+    // Given
+    const observed: Array<Readonly<Record<string, unknown>>> = [];
+    const tools = harness();
+    const runners: ToolingStepRunners<LeafFailure, string> = {
+      ...tools.runners,
+      runCommand: (leaf) =>
+        Effect.sync(() => {
+          observed.push(leaf.args);
+          return leaf.command;
+        }),
+    };
+    const program = await Effect.runPromise(
+      compileEventStepProgram([
+        {
+          command: "info",
+          args: { target: "{{ vars.target }}", retries: 2, enabled: true },
+        },
+      ]),
+    );
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      runToolingStepProgram(program, { vars: { target: "appserver" } }, runners),
+    );
+
+    // Then
+    expect(exit._tag).toBe("Success");
+    expect(observed).toEqual([{ target: "appserver", retries: 2, enabled: true }]);
+  });
+
   test("expands lists and matrices deterministically and treats an empty axis as zero iterations", async () => {
     // Given
     const tools = harness();
