@@ -50,14 +50,14 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="start">
       <Verify
-        command="cd keep-data-demo && lando start"
+        command="lando start"
         expect={{
           stdout: { contains: "running" }
         }}
       />
     </Step>
     <Step name="uninstall-keep-data">
-      <Run command="cd keep-data-demo && lando uninstall --yes --keep-data" />
+      <Run command="lando uninstall --yes --keep-data" />
     </Step>
     <Step name="verify-data-preserved">
       <Verify
@@ -69,7 +69,7 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="cd keep-data-demo && lando destroy -y" />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 
@@ -79,14 +79,14 @@ automatically — the plan prints exact manual removal steps for it instead.
     </Step>
     <Step name="start-app">
       <Verify
-        command="cd purge-demo && lando start"
+        command="lando start"
         expect={{
           stdout: { contains: "running" }
         }}
       />
     </Step>
     <Step name="purge-cleans-up">
-      <Run command="cd purge-demo && lando uninstall --yes --purge" />
+      <Run command="lando uninstall --yes --purge" />
     </Step>
     <Step name="verify-no-lando-containers">
       <Verify
