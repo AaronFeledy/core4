@@ -49,8 +49,8 @@ automatically — the plan prints exact manual removal steps for it instead.
       <Run command="lando init --recipe node-api --name keep-data-demo --yes" />
     </Step>
     <Step name="start">
-      <Run command="lando start" />
       <Verify
+        command="lando start"
         expect={{
           exitCode: 0,
           stdout: { contains: "running" }
@@ -79,8 +79,8 @@ automatically — the plan prints exact manual removal steps for it instead.
       <Run command="lando init --recipe node-api --name purge-demo --yes" />
     </Step>
     <Step name="start-app">
-      <Run command="lando start" />
       <Verify
+        command="lando start"
         expect={{
           exitCode: 0,
           stdout: { contains: "running" }
