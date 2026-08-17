@@ -9,14 +9,14 @@
  */
 import { Effect, Layer, Option } from "effect";
 
+import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "@lando/sdk/command-result";
+import type { RendererContribution } from "@lando/sdk/renderer";
+import type { CommandResultFormat } from "@lando/sdk/schema";
 import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
-import type { ResultFormat } from "./format-flags";
-import type { RendererMode } from "./renderer-selection";
-import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers";
-import { type RendererIO, createStdioRendererIO } from "./renderer/io";
+import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import {
   makeJsonNotificationRendererLive,
   makeJsonRendererLive,
@@ -26,11 +26,13 @@ import {
   makePlainTaskDetailRendererLive,
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
-} from "./renderer/runtime";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode";
+} from "./runtime.ts";
+
+type RendererMode = "lando" | "json" | "plain" | "verbose";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
+  landoRenderer: RendererContribution,
   io: RendererIO = createStdioRendererIO(),
 ): Layer.Layer<Renderer> => {
   switch (mode) {
@@ -46,13 +48,14 @@ export const makeRendererServiceLiveForMode = (
 };
 
 export interface RendererEventConsumerOptions {
+  readonly landoRenderer: RendererContribution;
   readonly plainTaskEvents?: "detail-only";
 }
 
 export const makeRendererEventConsumerLiveForMode = (
   mode: RendererMode,
-  io: RendererIO = createStdioRendererIO(),
-  options: RendererEventConsumerOptions = {},
+  io: RendererIO,
+  options: RendererEventConsumerOptions,
 ): Layer.Layer<never, never, EventService> => {
   switch (mode) {
     case "json":
@@ -64,19 +67,24 @@ export const makeRendererEventConsumerLiveForMode = (
     case "verbose":
       return makeVerboseRendererLive(io);
     case "lando":
-      return landoRenderer.makeEventConsumer(io);
+      return options.landoRenderer.makeEventConsumer(io);
   }
 };
 
 export const makeRendererNotificationConsumerLiveForMode = (
   mode: RendererMode,
+  landoRenderer: RendererContribution,
   io: RendererIO,
 ): Layer.Layer<never, never, EventService> | undefined => {
   switch (mode) {
     case "json":
       return makeJsonNotificationRendererLive(io);
     case "lando":
-      return makeBundledLandoNotificationConsumer(io);
+      return landoRenderer.makeEventConsumer({
+        writeStdout: () => {},
+        writeStderr: () => {},
+        ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
+      });
     case "plain":
     case "verbose":
       return undefined;
@@ -120,7 +128,7 @@ export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
 export const makeStreamFrameSinkLive = (
-  format: ResultFormat,
+  format: CommandResultFormat,
 ): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
   Layer.effect(
     StreamFrameSink,

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+import { formatSummary } from "@lando/renderer/summary";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
@@ -11,8 +13,6 @@ import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-sta
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
-import { formatSummary } from "../../src/cli/renderer/summary.ts";
 import type { InfoAppResult } from "../../src/testing/engine-layers";
 import type { UninstallResult } from "../../src/testing/engine-layers";
 

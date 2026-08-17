@@ -3,10 +3,10 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
 import { RedactionServiceLive } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeEnvSecretStoreLive } from "../../src/testing/engine-layers";
 
 const secretEnv = { LANDO_SECRET_AC6: "ac6secretvalue" };

@@ -1,4 +1,4 @@
-import { stdin, stdout } from "node:process";
+import { stdin } from "node:process";
 import { Effect, Schema } from "effect";
 
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
@@ -10,6 +10,7 @@ import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-pr
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import type { RootOverrides } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
+import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
 import { runOpenForHostProxy } from "./dispatch";
@@ -86,8 +87,9 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       process.once("SIGINT", shutdown);
       void session.closed.then(resolveShutdown);
       yield* Effect.sync(() => {
-        stdout.write(
-          `${JSON.stringify({
+        writeStdioLine(
+          "stdout",
+          JSON.stringify({
             _tag: "ready",
             appId: session.appId,
             sessionId: session.sessionId,
@@ -98,29 +100,11 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
             ...(session.containerUrl === undefined ? {} : { containerUrl: session.containerUrl }),
             shimPath: session.shimPath,
             transport: session.transport,
-          })}\n`,
+          }),
         );
-        detachHostProxyWorkerStdio();
+        detachStdioWrites();
       });
       yield* Effect.promise(() => shutdownComplete);
     }).pipe(Effect.provide(runtime)),
   );
-};
-
-const detachHostProxyWorkerStdio = (): void => {
-  const sink: typeof stdout.write = ((
-    _chunk: string | Uint8Array,
-    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
-    callback?: (error?: Error | null) => void,
-  ) => {
-    if (typeof encodingOrCallback === "function") encodingOrCallback(null);
-    else if (typeof callback === "function") callback(null);
-    return true;
-  }) as typeof stdout.write;
-  try {
-    stdout.write = sink;
-    process.stderr.write = sink;
-  } catch {
-    return;
-  }
 };

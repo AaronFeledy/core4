@@ -20,6 +20,7 @@ import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import type { RendererIO } from "@lando/renderer/io";
 import { landoSpecForId } from "./compiled-argv";
 import {
   type CompiledCommandInput,
@@ -31,7 +32,6 @@ import {
 } from "./compiled-session";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
-import type { RendererIO } from "./renderer/io";
 import { EmptyResultSchema } from "./spec/command-base";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;

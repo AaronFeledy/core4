@@ -16,12 +16,12 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 import { DataMoverLive } from "../../src/testing/engine-layers.ts";

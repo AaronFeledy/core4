@@ -23,6 +23,7 @@ import { appShare, appShareList, appShareStop } from "@lando/engine/operations/s
 import { startApp } from "@lando/engine/operations/start";
 import { stopApp } from "@lando/engine/operations/stop";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import type { RendererIO } from "@lando/renderer/io";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { appConfigOptionsFromInput } from "../command-specs/app/config";
 import { logsFollowFromInput, logsOptionsFromInput } from "../command-specs/app/logs";
@@ -92,7 +93,6 @@ import {
   runWithProcessAbortSignal,
 } from "../compiled-runtime";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
-import type { RendererIO } from "../renderer/io";
 
 type DestroyCommandServices =
   | import("@lando/sdk/services").AppPlanner

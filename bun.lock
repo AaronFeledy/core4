@@ -41,6 +41,7 @@
         "@lando/managed-file": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
+        "@lando/renderer": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
         "@lando/telemetry": "workspace:*",
@@ -279,6 +280,16 @@
       "name": "@lando/redaction",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
+    "renderer": {
+      "name": "@lando/renderer",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/engine": "workspace:*",
+        "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
@@ -582,6 +593,8 @@
     "@lando/proxy-traefik": ["@lando/proxy-traefik@workspace:plugins/proxy-traefik"],
 
     "@lando/redaction": ["@lando/redaction@workspace:redaction"],
+
+    "@lando/renderer": ["@lando/renderer@workspace:renderer"],
 
     "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
 

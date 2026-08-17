@@ -25,6 +25,8 @@ import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
 import { StateStoreLive } from "@lando/state-store/service";
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
@@ -40,8 +42,6 @@ import {
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { CacheServiceLive } from "../../src/testing/engine-layers.ts";

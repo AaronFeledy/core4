@@ -20,6 +20,7 @@
     "managed-file",
     "data-mover",
     "telemetry",
+    "renderer",
     "engine",
     "docs",
     "plugins/*"

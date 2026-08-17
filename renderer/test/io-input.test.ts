@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createBufferedRendererIO, createStdioRendererIO } from "../../src/cli/renderer/io.ts";
+import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 
 const makeStdin = (initiallyPaused: boolean, initiallyRaw: boolean) => {
   let paused = initiallyPaused;

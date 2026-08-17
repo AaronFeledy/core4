@@ -6,6 +6,15 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
+import {
+  makeRendererEventConsumerLiveForMode,
+  makeRendererNotificationConsumerLiveForMode,
+  makeRendererServiceLiveForMode,
+  makeStreamFrameSinkLive,
+  writeDiagnosticLine,
+  writeResultLine,
+} from "@lando/renderer/output";
 import {
   type CliInvocationSnapshot,
   runCommandLifecycle,
@@ -15,27 +24,9 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
-import {
-  makeRendererEventConsumerLiveForMode,
-  makeRendererNotificationConsumerLiveForMode,
-  makeRendererServiceLiveForMode,
-  makeStreamFrameSinkLive,
-  writeDiagnosticLine,
-  writeResultLine,
-} from "./renderer-output";
 import type { RendererMode } from "./renderer-selection";
-import { type RendererIO, createStdioRendererIO } from "./renderer/io";
+import { landoRenderer } from "./renderer/bundled-renderers";
 
-export {
-  type RendererEventConsumerOptions,
-  emitOptionalStderr,
-  emitOptionalStdout,
-  makeRendererEventConsumerLiveForMode,
-  makeRendererServiceLiveForMode,
-  writeDiagnosticLine,
-  writeResultLine,
-  writeStdout,
-} from "./renderer-output";
 export {
   type ResolveCliDeprecationWarningsOptions,
   type ResolveCliDeprecationWarningsResult,
@@ -96,7 +87,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     columns: io.terminalColumns,
     isTTY: io.isTTY === true,
   };
-  const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, io);
+  const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, landoRenderer, io);
   const commandWarnings = makeCommandWarnings(renderContext.format === "json");
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
   const failureDiagnosticsLayer = Layer.mergeAll(
@@ -216,10 +207,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     if (!(streamingJson && !liveStreaming)) {
       if (options.renderEvents === true) {
         eventConsumerLayer = makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+          landoRenderer,
           ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
         });
       } else {
-        eventConsumerLayer = makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+        eventConsumerLayer = makeRendererNotificationConsumerLiveForMode(
+          options.rendererMode,
+          landoRenderer,
+          io,
+        );
       }
     }
     const executeWithEventConsumer =

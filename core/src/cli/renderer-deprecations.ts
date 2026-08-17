@@ -13,7 +13,7 @@ import type { DeprecationUse } from "@lando/sdk/schema";
 import { DeprecationService, Renderer } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { encodeStreamEventFrame } from "./result-encode";
+import { encodeStreamEventFrame } from "@lando/sdk/command-result";
 
 export interface ResolveCliDeprecationWarningsOptions {
   readonly argv: ReadonlyArray<string>;

@@ -20,6 +20,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./app": "./src/app/index.ts",
+    "./command-result": "./src/command-result/index.ts",
     "./schema": "./src/schema/index.ts",
     "./docs/components": "./src/docs/components/index.ts",
     "./errors": "./src/errors/index.ts",

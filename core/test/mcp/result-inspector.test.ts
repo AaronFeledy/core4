@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import { buildCommandResultEnvelope, identityRedactor } from "../../src/cli/result-encode.ts";
+import { buildCommandResultEnvelope, identityRedactor } from "@lando/sdk/command-result";
 import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "../../src/mcp/result-inspector.ts";
 
 test("omits a hidden accessor before result-schema encoding", async () => {

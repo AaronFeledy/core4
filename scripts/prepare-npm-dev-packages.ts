@@ -22,6 +22,7 @@ export const releasePackageWorkspaces: ReadonlyArray<string> = [
   "data-mover",
   "telemetry",
   "engine",
+  "renderer",
   "core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.path),
 ];
@@ -38,6 +39,7 @@ export const releasePackageNames: ReadonlyArray<string> = [
   "@lando/data-mover",
   "@lando/telemetry",
   "@lando/engine",
+  "@lando/renderer",
   "@lando/core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.name),
 ];

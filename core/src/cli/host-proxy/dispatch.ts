@@ -9,8 +9,8 @@ import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";
 
+import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
-import { buildCommandResultEnvelope } from "../result-encode";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
 
 const redactCommandEnvelope = (

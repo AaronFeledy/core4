@@ -5,7 +5,7 @@
  * after setup completes, mapping the file-sync status into a tone and a
  * human-readable line.
  */
-import type { SummaryDocument, SummaryTone } from "../../renderer/summary";
+import type { SummaryDocument, SummaryTone } from "@lando/renderer/summary";
 
 export const fileSyncStatusLine = (status: string): string => {
   switch (status) {

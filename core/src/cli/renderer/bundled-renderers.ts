@@ -1,4 +1,4 @@
-import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
+import type { RendererContribution } from "@lando/sdk/renderer";
 
 import { BUNDLED_RENDERER_MODULES } from "../../plugins/generated/renderers";
 
@@ -28,12 +28,3 @@ export const resolveBundledRenderer = (id: string): RendererContribution => {
 };
 
 export const landoRenderer: RendererContribution = resolveBundledRenderer("lando");
-
-export const makeBundledLandoNotificationConsumer = (
-  io: RendererIO,
-): ReturnType<RendererContribution["makeEventConsumer"]> =>
-  landoRenderer.makeEventConsumer({
-    writeStdout: () => {},
-    writeStderr: () => {},
-    ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
-  });

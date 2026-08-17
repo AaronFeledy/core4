@@ -38,6 +38,9 @@
       "path": "../telemetry"
     },
     {
+      "path": "../renderer"
+    },
+    {
       "path": "../landofile"
     },
     {

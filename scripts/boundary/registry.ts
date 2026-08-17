@@ -87,7 +87,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: rendererRule,
     seamJustification:
-      "Package ownership cannot enforce output routing; after extraction the rule retains direct-write scanning with only the compiled shell fast path carved out.",
+      "The @lando/renderer seam owns terminal writes; the owner-excluding rule scans all runtime consumers plus core/bin for direct or aliased console/process write access because package-DAG cannot enforce call-site output routing.",
   },
   {
     rule: specReferenceRule,

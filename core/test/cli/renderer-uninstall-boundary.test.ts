@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import { Layer } from "effect";
 
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { renderUninstallResult } from "../../src/cli/commands/uninstall.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { uninstall } from "../../src/testing/engine-layers";
 
 const isolatedOptions = (root: string) => ({

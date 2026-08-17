@@ -28,6 +28,7 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
   "core/test/**/*.test.ts",
   "data-mover/test/**/*.test.ts",
   "telemetry/test/**/*.test.ts",
+  "renderer/test/**/*.test.ts",
   "engine/test/**/*.test.ts",
   "container-runtime/test/**/*.test.ts",
   "http-client/test/**/*.test.ts",

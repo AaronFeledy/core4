@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_VERBOSE_TTY } from "@lando/sdk/renderer";
 
-import type { RendererIO } from "../../src/cli/renderer/io.ts";
-import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "../../src/cli/renderer/runtime.ts";
+import type { RendererIO } from "@lando/renderer/io";
+import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "@lando/renderer/runtime";
 
 const io = (isTTY: boolean): RendererIO => ({
   writeStdout: () => undefined,
