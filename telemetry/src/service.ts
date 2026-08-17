@@ -2,7 +2,6 @@ import { Context, Duration, Effect, Layer, Option, Queue, type Scope, Stream } f
 
 import { Telemetry } from "@lando/sdk/services";
 
-import { makeLibraryTelemetry } from "../runtime/bootstrap-layer-support.ts";
 import { redactTelemetryData } from "./redaction.ts";
 
 export interface TelemetryRecord {
@@ -27,6 +26,11 @@ export interface TelemetryTransportOptions {
 
 const DEFAULT_CAPACITY = 256;
 const DEFAULT_FLUSH_BUDGET_MILLIS = 2000;
+
+const makeDisabledTelemetry = (): Context.Tag.Service<typeof Telemetry> => ({
+  enabled: false,
+  record: () => Effect.void,
+});
 
 const dispatchRecord = (
   sinks: ReadonlyArray<TelemetrySink>,
@@ -95,4 +99,4 @@ export const makeTelemetryLayer = (
           ),
         ),
       )
-    : Layer.succeed(Telemetry, makeLibraryTelemetry(false));
+    : Layer.succeed(Telemetry, makeDisabledTelemetry());

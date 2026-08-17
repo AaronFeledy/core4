@@ -2,13 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { Telemetry } from "@lando/sdk/services";
-
 import {
   type TelemetryRecord,
   type TelemetrySink,
   TelemetrySinks,
   makeTelemetryLayer,
-} from "../../src/telemetry/service.ts";
+} from "@lando/telemetry/service";
 
 const capturingSink = (id = "capture") => {
   const records: Array<TelemetryRecord> = [];

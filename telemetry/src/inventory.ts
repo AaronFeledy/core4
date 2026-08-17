@@ -71,7 +71,7 @@ export const TELEMETRY_EVENTS = {
     description:
       "Records the categorized result of a `lando update` self-update attempt. Emitted once per update run, including failures.",
     owner: "@lando/core",
-    trigger: "engine/src/telemetry/events.ts:recordUpdateOutcomeTelemetry (via lando update)",
+    trigger: "telemetry/src/events.ts:recordUpdateOutcomeTelemetry (via lando update)",
     scope: "cli-only",
     fields: [
       { name: "version", type: "string", description: "Currently running Lando version." },

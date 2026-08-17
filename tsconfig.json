@@ -30,6 +30,9 @@
       "path": "./data-mover"
     },
     {
+      "path": "./telemetry"
+    },
+    {
       "path": "./engine"
     },
     {

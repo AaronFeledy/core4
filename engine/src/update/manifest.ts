@@ -14,11 +14,11 @@ import {
   UpdateManifestSchema,
 } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";
+import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { ConfigServiceLive } from "../services/config";
 import { EventServiceLive } from "../services/event-service";
-import { updateOutcomeFromError } from "../telemetry/events";
 import {
   UpdateDowngradeError,
   UpdateManifestReplayError,
