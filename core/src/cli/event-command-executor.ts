@@ -13,7 +13,6 @@ import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-life
 import { notImplementedErrorForSpec } from "./deferred-commands";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
-import { DEFAULT_RESULT_FORMAT } from "./format-flags";
 import { DEFAULT_RENDERER_MODE, isRendererMode } from "./renderer-selection";
 
 let eventCommandEntries: ReadonlyArray<BuiltInCommandEntry> = [];
@@ -96,7 +95,7 @@ export const makeEventCommandExecutor = (
           const renderer = yield* Renderer;
           const rendered = render(exit.value, input, {
             mode: isRendererMode(renderer.id) ? renderer.id : DEFAULT_RENDERER_MODE,
-            format: DEFAULT_RESULT_FORMAT,
+            format: "text",
             columns: undefined,
             isTTY: renderer.capabilities.interactive,
           });
