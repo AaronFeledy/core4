@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `engine/src/data-mover/generated/provider-images.ts`: the pinned
+ * Regenerate `data-mover/src/generated/provider-images.ts`: the pinned
  * `{ image, digest }` manifest for provider images Lando provisions at the
  * provider-image layer.
  *
@@ -11,12 +11,13 @@
  * Drift gate: re-run + `git diff --exit-code` on the output. The generated TS
  * is byte-stable for a given pinned image/digest table.
  */
-import { resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "engine/src/data-mover/generated/provider-images.ts");
+const OUTPUT = resolve(REPO_ROOT, "data-mover/src/generated/provider-images.ts");
 
 export interface ProviderImageEntry {
   readonly image: string;
@@ -86,6 +87,7 @@ export const providerImages = ${JSON.stringify(sorted, null, 2)} as const satisf
 
 const main = async (): Promise<void> => {
   const contents = renderProviderImages(PROVIDER_IMAGES);
+  await mkdir(dirname(OUTPUT), { recursive: true });
   await Bun.write(OUTPUT, contents);
   await formatGeneratedPaths([OUTPUT]);
   console.log(

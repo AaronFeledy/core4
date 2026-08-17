@@ -14,9 +14,7 @@ import {
 import { CapabilityError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import { AppPlanner, AppPlannerLive } from "@lando/engine/services/planner";
+import { AppPlanner, AppPlannerLive, loadLandofileFile, makePluginRegistryLive } from "@lando/core/testing";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";

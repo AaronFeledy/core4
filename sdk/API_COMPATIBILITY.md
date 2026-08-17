@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
   reloading or planning through those bound App-handle methods. `ShareAppError` additively includes
@@ -23,10 +24,12 @@
 - `ComposeServiceFieldKey` changes pre-ship from `networks | configs | secrets | profiles | x-*` to `networks | configs | secrets | profiles | labels`. `composeServiceFields` is now a native-tier fail-closed refinement matching `composeKnobs`: non-empty declarations require `composeSpec: "native"`. Service-level `x-*` values remain losslessly preserved inert metadata outside the capability surface.
 - `@lando/sdk/schema` additively exports `ComposePreservedPathKey` and `ComposePreservedPathCapabilities`, and `ProviderCapabilities` additively gains optional `composePreservedPaths`. This fail-closed exact-path refinement covers matrix-preserved Compose service descendants outside the `composeKnobs` and `composeServiceFields` families (`depends_on.*.restart` and `healthcheck.start_interval`). Omitting it is equivalent to `{ supported: [] }`; `composeSpec: "native"` alone never implies support. No internal field map or base struct is exported.
 - `@lando/sdk/schema` additively exports `ComposeProjectFieldKey` and `ComposeProjectFieldCapabilities`, and `ProviderCapabilities` additively gains optional `composeProjectFields`. This native-tier fail-closed refinement covers preserved top-level Compose `configs` and `secrets`; omission means no support, while top-level `x-*` remains losslessly preserved inert metadata outside the capability surface.
+- `PluginContribution.sshServices` is a new additive optional field for contributing `SshService` implementations. The `SshServiceContribution` schema includes `id`, optional `name`, `defaultFor` (app sshAgent: true), and the type-only Layer. The bundled `@lando/ssh-agent` plugin contributes the default SSH agent sidecar.
 
 - `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
 - `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
+- `InstallUidmapHostChange` schema is widened to accept flexible `distribution: String` and `version: String` (previously hardcoded to `Literal("ubuntu")` and `Literal("26.04")`). Supported distributions are Ubuntu and Debian via apt-get. `ProviderSetupHostChange` union additively includes `ProvisionSubuidHostChange`, `ProvisionSubgidHostChange`, and `ProvisionCgroupsDelegationHostChange` for missing-only prerequisite provisioning (add subuid/subgid ranges when user has none, create systemd cgroups delegation drop-in when absent, never overwrite existing config). Error schemas `ProviderSetupConsentDeniedError`, `ProviderSetupPrivilegeUnavailableError`, and `ProviderSetupProvisioningError` have widened `change` literals to accept all four change types (`"install-uidmap" | "provision-subuid" | "provision-subgid" | "provision-cgroups-delegation"`), and `ProviderSetupProvisioningError.stage` additively includes `"provision"` and `"reload"` for the extended provisioning workflow stages.
 - `EndpointInput` and `EndpointPlan` are now explicit `_tag: "internal" | "published"` unions. Published network endpoints carry `publication: { bindAddress?, hostPort? }`; internal endpoints are never host-visible, Unix sockets cannot be published, and runtime-assigned ports belong to endpoint materialization output. `RoutePlan.backend` is planner-resolved. The schema barrel additively exports `BindAddress`, `PortNumber`, `InternalEndpoint`, and `PublishedEndpoint`.
 - `@lando/sdk/errors` additively exports `PublicationUnsupportedError` for plan-time rejection when a provider cannot satisfy explicit endpoint publication intent.
 
@@ -285,6 +288,9 @@
 - `PluginTrustState`
 - `PortablePath`
 - `ProviderExtensionConfig`
+- `ProvisionCgroupsDelegationHostChange`
+- `ProvisionSubgidHostChange`
+- `ProvisionSubuidHostChange`
 - `ProviderSetupHostChange`
 - `ProviderSetupPlan`
 - `ProxyApplyResult`
@@ -321,6 +327,7 @@
 - `ServiceDependencyCondition`
 - `SkipProps`
 - `SshAgentConfig`
+- `SshServiceContribution`
 - `StepProps`
 - `StorageInput`
 - `StorageScope`

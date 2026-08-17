@@ -20,9 +20,8 @@ import {
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
-import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
+import { EventServiceLive, ProviderExecToolingEngineLive } from "@lando/core/testing";
+import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("gointtest");

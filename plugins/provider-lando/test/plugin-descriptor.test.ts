@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
 import { makeTestDownloader, makeTestStateStore } from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makePluginStateStore } from "@lando/core/testing";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, Downloader, LogFileHelperAssets, PathsService } from "@lando/sdk/services";

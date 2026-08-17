@@ -5,8 +5,8 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
+import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
-import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";

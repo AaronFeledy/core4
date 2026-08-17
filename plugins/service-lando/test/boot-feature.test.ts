@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import { composeService } from "@lando/engine/services/feature";
+import { composeService } from "@lando/core/testing";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const FeatureExtension = Schema.Struct({

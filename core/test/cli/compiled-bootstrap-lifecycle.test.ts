@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   clearActiveCommandInvocation,
   resetActiveCommandInvocation,
@@ -10,7 +11,6 @@ import {
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
 

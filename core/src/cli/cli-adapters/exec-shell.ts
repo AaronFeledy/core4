@@ -2,6 +2,7 @@ import { NotImplementedError } from "@lando/sdk/errors";
 
 import { execApp } from "@lando/engine/operations/exec";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { renderExecAppResult } from "../commands/exec";
 import { renderShellAppResult, shellApp } from "../commands/shell";
@@ -11,7 +12,6 @@ import {
   rejectInvalidInvocation,
   runCompiledCommand,
 } from "../compiled-runtime";
-import { withOptionalStderrOutput } from "../renderer-output";
 
 interface ParsedExecArgv {
   readonly service?: string;

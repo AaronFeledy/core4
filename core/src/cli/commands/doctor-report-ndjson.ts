@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
 import { renderDoctorResultAsNdjson } from "./doctor";
 import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app";
 import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp";

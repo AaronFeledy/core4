@@ -1,14 +1,14 @@
 import type { InfoAppResult, InfoLogSource, InfoServiceStatus } from "@lando/sdk/app";
 
-import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext } from "../renderer-boundary";
 import {
   type SummaryDocument,
   type SummaryRow,
   type SummaryTone,
   formatSummary,
   worstSummaryTone,
-} from "../renderer/summary";
+} from "@lando/renderer/summary";
+import type { RenderContext } from "../renderer-boundary";
+import { isDecoratedContext } from "../renderer-boundary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
   readonly hostProxy?: {

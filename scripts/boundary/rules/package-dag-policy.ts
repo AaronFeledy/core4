@@ -52,6 +52,15 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/redaction"],
     devDependencies: [],
   },
+  "@lando/data-mover": {
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/landofile", "@lando/redaction"],
+    devDependencies: ["@lando/state-store"],
+  },
+  "@lando/telemetry": { dependencies: ["@lando/sdk"], devDependencies: [] },
+  "@lando/renderer": {
+    dependencies: ["@lando/sdk", "@lando/engine", "@lando/redaction"],
+    devDependencies: [],
+  },
   "@lando/landofile": {
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
     devDependencies: [],
@@ -65,6 +74,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/landofile",
       "@lando/redaction",
       "@lando/http-client",
+      "@lando/telemetry",
     ],
     devDependencies: [],
   },
@@ -79,17 +89,18 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/provider-podman": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/provider-lando"],
-    devDependencies: [],
+    devDependencies: ["@lando/core"],
   },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/paths"],
+    devDependencies: ["@lando/core", "@lando/paths"],
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/core"],
+    devDependencies: ["@lando/core", "@lando/provider-docker", "@lando/provider-lando"],
   },
+  "@lando/ssh-agent": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
 };

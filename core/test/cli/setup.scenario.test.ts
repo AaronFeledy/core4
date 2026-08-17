@@ -19,9 +19,9 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeHttpClientLive } from "@lando/http-client/live";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
+import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
 
 interface EventSink {
   readonly events: LandoEvent[];

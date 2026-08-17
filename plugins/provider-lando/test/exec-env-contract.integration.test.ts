@@ -12,9 +12,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
-import { nodeLtsServiceType } from "@lando/service-lando";
-import { composeServicePlan } from "../../service-lando/test/support/compose-harness.ts";
+import { nodeLtsServiceType, serviceFeatures } from "@lando/service-lando";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -45,6 +45,7 @@ const planNodeService = (): Promise<ServicePlan> => {
     serviceName: "web",
     metadata,
     host,
+    featureDefinitions: serviceFeatures,
   });
 };
 

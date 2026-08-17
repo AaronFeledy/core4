@@ -10,10 +10,10 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);

@@ -10,14 +10,16 @@ interface ProviderSetupAuthorizationOptions {
   readonly interaction: InteractionServiceShape | undefined;
 }
 
-const consentDenied = (plan: ProviderSetupPlan): ProviderSetupConsentDeniedError =>
-  new ProviderSetupConsentDeniedError({
+const consentDenied = (plan: ProviderSetupPlan): ProviderSetupConsentDeniedError => {
+  const changesList = plan.changes.map((c) => c._tag).join(", ");
+  return new ProviderSetupConsentDeniedError({
     providerId: plan.providerId,
-    change: "install-uidmap",
-    message: "Installing Ubuntu's uidmap package requires explicit consent.",
+    change: plan.changes[0]?._tag ?? "install-uidmap",
+    message: `Installing or provisioning prerequisites (${changesList}) requires explicit consent.`,
     remediation:
-      "Rerun `lando setup --yes --no-interactive` to approve this fixed host change, or install uidmap manually.",
+      "Rerun `lando setup --yes --no-interactive` to approve these privileged host changes, or configure prerequisites manually.",
   });
+};
 
 export const authorizeProviderSetupPlan = (
   plan: ProviderSetupPlan,
@@ -26,10 +28,15 @@ export const authorizeProviderSetupPlan = (
   if (plan.changes.length === 0 || options.yes) return Effect.succeed(plan);
   if (options.nonInteractive || options.interaction === undefined) return Effect.fail(consentDenied(plan));
 
+  const changesSummary =
+    plan.changes.length === 1
+      ? (plan.changes[0]?.reason ?? "Allow the planned provider host change?")
+      : `${plan.changes.length} host changes:\n${plan.changes.map((c) => `  - ${c.reason}`).join("\n")}\n\nApprove all changes?`;
+
   return Effect.scoped(
     options.interaction.confirm({
-      name: "provider-setup-install-uidmap",
-      message: plan.changes[0]?.reason ?? "Allow the planned provider host change?",
+      name: "provider-setup-consent",
+      message: changesSummary,
       default: false,
     }),
   ).pipe(Effect.flatMap((approved) => (approved ? Effect.succeed(plan) : Effect.fail(consentDenied(plan)))));

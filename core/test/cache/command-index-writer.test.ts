@@ -6,17 +6,17 @@ import { Effect } from "effect";
 
 import { type PluginManifest, ServiceName } from "@lando/sdk/schema";
 
-import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { decodePluginCommandIndex } from "../../src/testing/engine-layers.ts";
 import {
   invalidatePluginCommandCache,
   readFreshAppCommandCacheForCwd,
   readPluginCommandCache,
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
-} from "@lando/engine/cache/command-index-writer";
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
-import { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
-import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+} from "../../src/testing/engine-layers.ts";
+import { pluginCommandCachePath } from "../../src/testing/engine-layers.ts";
+import { mergeDiscoveredPlugins } from "../../src/testing/engine-layers.ts";
 
 const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
   name: name as PluginManifest["name"],

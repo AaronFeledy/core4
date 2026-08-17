@@ -157,6 +157,30 @@ export const ProxyServiceContribution = Schema.Struct({
 });
 export type ProxyServiceContribution = typeof ProxyServiceContribution.Type;
 
+export const SshServiceContribution = Schema.Struct({
+  id: Schema.propertySignature(Schema.String).annotations({
+    description: "Unique SshService implementation id.",
+  }),
+  module: Schema.propertySignature(Schema.String).annotations({
+    description: "Contained plugin module exporting the SshService Layer.",
+  }),
+  defaultFor: Schema.optional(
+    Schema.Struct({
+      platform: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ).annotations({ description: "Host matchers that nominate this implementation as a default." }),
+  enabledByDefault: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this contribution starts enabled after installation.",
+  }),
+  summary: Schema.optional(Schema.String).annotations({
+    description: "One-line implementation description for listings and diagnostics.",
+  }),
+  deprecated: Schema.optional(DeprecationNotice).annotations({
+    description: "Optional lifecycle notice for this contribution.",
+  }),
+});
+export type SshServiceContribution = typeof SshServiceContribution.Type;
+
 export const PluginSetupFlagContribution = Schema.Struct({
   name: Schema.String,
   type: Schema.Literal("boolean", "option"),
@@ -183,6 +207,9 @@ export const PluginContribution = Schema.Struct({
   providers: Schema.optional(Schema.Array(ContributionRef)),
   proxyServices: Schema.optional(Schema.Array(ProxyServiceContribution)).annotations({
     description: "ProxyService implementations registered by this plugin.",
+  }),
+  sshServices: Schema.optional(Schema.Array(SshServiceContribution)).annotations({
+    description: "SshService implementations registered by this plugin.",
   }),
   /** Logger ids registered. */
   loggers: Schema.optional(Schema.Array(ContributionRef)),

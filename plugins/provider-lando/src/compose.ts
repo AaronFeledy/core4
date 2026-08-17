@@ -228,10 +228,11 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         depends_on: serviceDependsOn(service),
         labels: commonContainerLabels(plan, service),
         networks: Object.fromEntries(
-          networkNames.map((networkName) => [
-            networkName,
-            networkName === sharedName ? { aliases: landoServiceNetworkAliases(plan, service) } : {},
-          ]),
+          networkNames.map((networkName) => {
+            const aliases =
+              networkName === sharedName ? landoServiceNetworkAliases(plan, service) : [service.name];
+            return [networkName, aliases.length > 0 ? { aliases } : {}];
+          }),
         ),
       }),
     ]),

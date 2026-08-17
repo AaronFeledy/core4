@@ -13,8 +13,8 @@ import {
 } from "@lando/sdk/events";
 
 import { renderPlainLine } from "@lando/renderer-lando/format";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { drainRendererSync, renderJson, renderPlain } from "../../src/cli/renderer/runtime.ts";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { drainRendererSync, renderJson, renderPlain } from "@lando/renderer/runtime";
 
 const fixturePath = resolve(import.meta.dirname, "fixtures/renderer.init-progress.ndjson");
 const fixtureContent = readFileSync(fixturePath, "utf8");

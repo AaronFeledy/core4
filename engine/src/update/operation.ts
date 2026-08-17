@@ -7,8 +7,8 @@ import { Effect } from "effect";
 import type { LandoCommandError } from "@lando/sdk/errors";
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../telemetry/events";
-import { scrubTelemetryValue } from "../telemetry/redaction";
+import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
+import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { CORE_VERSION } from "../version";
 import {
   type UpdateError,

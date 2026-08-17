@@ -567,7 +567,7 @@ describe("ci workflow codegen", () => {
       );
       expect(workflow).toContain("sudo apt-get install -y strace iproute2");
       expect(workflow).toContain("sudo env");
-      expect(workflow).toContain("unshare --net sh -c");
+      expect(workflow).toContain("unshare --net bash -c");
       expect(workflow).toContain("strace -f -e trace=network");
       expect(workflow).toContain("first-launch.network.log");
       expect(workflow).toContain("awk '/connect\\(/ && $0 !~ /(127\\.|::1|AF_UNIX)/");

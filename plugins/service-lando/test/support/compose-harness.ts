@@ -9,14 +9,15 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
-import { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
-import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
-import { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
 import {
+  type ComposeServiceFeature,
+  L337_BASE_DEFAULT_FEATURE_IDS,
+  LANDO_BASE_DEFAULT_FEATURE_IDS,
   applyAuthoredAppMount,
   applyAuthoredHealthcheck,
+  composeService,
   mergeDefaultExcludes,
-} from "@lando/engine/services/planner";
+} from "@lando/core/testing";
 import { serviceFeatures } from "../../src/features/index.ts";
 
 export interface ComposeServicePlanArgs {

@@ -1,18 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
+import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
-import {
-  makeRendererServiceLiveForMode,
-  resolveCliDeprecationWarnings,
-  runWithRendererHandling,
-  writeDiagnosticLine,
-  writeResultLine,
-} from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import { DeprecationServiceLive } from "../../src/testing/engine-layers";
 
 beforeEach(() => {
   process.exitCode = undefined;
@@ -29,7 +25,9 @@ describe("makeRendererServiceLiveForMode", () => {
         Effect.gen(function* () {
           const renderer = yield* Renderer;
           return renderer.id;
-        }).pipe(Effect.provide(makeRendererServiceLiveForMode(mode, createBufferedRendererIO()))),
+        }).pipe(
+          Effect.provide(makeRendererServiceLiveForMode(mode, landoRenderer, createBufferedRendererIO())),
+        ),
       );
       expect(id).toBe(mode);
     });
@@ -468,7 +466,9 @@ describe("write helpers", () => {
   test("writeResultLine appends a newline to stdout", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(
-      writeResultLine("hello").pipe(Effect.provide(makeRendererServiceLiveForMode("lando", io))),
+      writeResultLine("hello").pipe(
+        Effect.provide(makeRendererServiceLiveForMode("lando", landoRenderer, io)),
+      ),
     );
     expect(io.stdout()).toBe("hello\n");
   });
@@ -476,7 +476,9 @@ describe("write helpers", () => {
   test("writeDiagnosticLine appends a newline to stderr", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(
-      writeDiagnosticLine("oops").pipe(Effect.provide(makeRendererServiceLiveForMode("json", io))),
+      writeDiagnosticLine("oops").pipe(
+        Effect.provide(makeRendererServiceLiveForMode("json", landoRenderer, io)),
+      ),
     );
     expect(io.stderr()).toBe("oops\n");
   });

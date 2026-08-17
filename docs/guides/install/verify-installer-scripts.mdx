@@ -7,22 +7,27 @@ tags: [beta, docs, installer]
 
 # Verify the installer scripts
 
-Don't pipe an installer to your shell blind. Both installer scripts publish
-detached signatures you can check first.
+> **Alpha status:** The published installer URLs described below are **not yet
+> available**. The host `get.lando.dev` is not yet serving v4 installers. See
+> [alpha install and bug reports](../../alpha-install-and-bug-reports.md) for
+> current install options.
 
-## Published URLs
+Don't pipe an installer to your shell blind. Both installer scripts will publish
+detached signatures you can check first once they're available.
+
+## Published URLs (not yet live)
 
 | Script | URL |
 | --- | --- |
 | POSIX installer | `https://get.lando.dev/install.sh` |
 | Windows installer | `https://get.lando.dev/install.ps1` |
 
-Each script's detached signature is published next to it, at the same URL
+Each script's detached signature will be published next to it, at the same URL
 with `.sig` appended: `install.sh.sig` and `install.ps1.sig`.
 
 ## Verify before running
 
-Release notes include the exact `cosign` command for each installer script:
+Release notes will include the exact `cosign` command for each installer script:
 
 ```sh
 cosign verify-blob --signature <script>.sig --certificate <script>.crt <script>

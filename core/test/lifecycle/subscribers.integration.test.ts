@@ -11,12 +11,11 @@ import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PluginRegistry } from "@lando/sdk/services";
 
-import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { RedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import {
   McpRuntimeConfig,
   type McpRuntimeConfigShape,
@@ -26,6 +25,7 @@ import {
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { makeBootstrapLifecycleTracker } from "../../src/testing/engine-layers.ts";
 
 const roots: string[] = [];
 const repoRoot = resolve(import.meta.dirname, "../../..");

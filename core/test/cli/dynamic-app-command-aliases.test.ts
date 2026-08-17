@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { decodeAppCommandIndex } from "@lando/engine/cache/command-index";
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { decodeAppCommandIndex } from "../../src/testing/engine-layers.ts";
+import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers.ts";
+import { appToolingCompilationCachePath } from "../../src/testing/engine-layers.ts";
 
 interface CacheFixtureOptions {
   readonly sourceName: string;

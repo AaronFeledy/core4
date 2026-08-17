@@ -44,6 +44,14 @@ export const UninstallPlanStepSchema = Schema.Struct({
   error: Schema.optional(Schema.String),
 });
 
+export interface DiscoveredApp {
+  readonly appId: string;
+  readonly appName: string;
+  readonly providerId: string;
+  readonly appRoot: string;
+  readonly services: ReadonlyArray<string>;
+}
+
 export interface UninstallOptions {
   readonly dryRun?: boolean;
   readonly yes?: boolean;
@@ -51,6 +59,7 @@ export interface UninstallOptions {
   readonly purge?: boolean;
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
+  readonly userConfRoot?: string;
   readonly execPath?: string;
   readonly exists?: (path: string) => boolean;
   readonly remove?: (path: string) => Promise<void>;
@@ -62,6 +71,11 @@ export interface UninstallOptions {
     userDataRoot: string,
   ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
   readonly teardownHostProxySessions?: (userDataRoot: string) => Promise<void>;
+  readonly listDiscoveredApps?: (
+    userDataRoot: string,
+    userCacheRoot: string,
+  ) => Promise<ReadonlyArray<DiscoveredApp>>;
+  readonly cleanupDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -117,7 +131,14 @@ const installedBinaryStatus = (execPath: string, userDataRoot: string): Uninstal
   return compareBinaryPath.startsWith(`${compareBinDir}/`) ? "owned" : "user-owned";
 };
 
-const keepDataProtectedStepIds = new Set(["global-app-state", "caches", "user-data-root", "user-cache-root"]);
+const keepDataProtectedStepIds = new Set([
+  "global-app-state",
+  "caches",
+  "user-data-root",
+  "user-cache-root",
+  "running-apps",
+  "user-conf-root",
+]);
 
 const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot, "uninstall", "report.json");
 
@@ -127,6 +148,26 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 };
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
+
+// Rootless Podman runtime directories contain subuid-owned files that a plain
+// rm cannot delete (EACCES/EPERM). Retry inside podman's user namespace on
+// Linux before giving up; rethrow the original failure when that is not
+// possible so the step reports the real cause.
+const defaultRemoveRuntimeDir = async (path: string): Promise<void> => {
+  try {
+    await defaultRemove(path);
+  } catch (cause) {
+    if (process.platform !== "linux") throw cause;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      await execFileAsync("podman", ["unshare", "rm", "-rf", path], { timeout: 30_000 });
+    } catch {
+      throw cause;
+    }
+  }
+};
 
 const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
@@ -193,7 +234,10 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
     return {
       ...step,
       status: "skipped",
-      detail: "Preserved by --keep-data; rerun with --purge to remove this state.",
+      detail:
+        step.id === "running-apps"
+          ? "Preserved by --keep-data; rerun with --purge to check for running apps."
+          : "Preserved by --keep-data; rerun with --purge to remove this state.",
     };
   }
   if (step.id === "installed-binary" && step.status === "user-owned") {
@@ -205,12 +249,63 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
   return step;
 };
 
-export const buildUninstallPlan = (
+const buildRunningAppsStep = async (
+  userDataRoot: string,
+  userCacheRoot: string,
+  listDiscoveredApps?: (userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>,
+): Promise<UninstallPlanStep> => {
+  const base = {
+    id: "running-apps",
+    label: "running Lando apps and provider resources",
+    destructive: true,
+  };
+  if (listDiscoveredApps === undefined) {
+    // Fail closed: cannot verify safety, so refuse to proceed
+    return {
+      ...base,
+      target: "Lando apps",
+      status: "user-owned" as const,
+      detail:
+        "Cannot verify whether Lando apps are running; discovery failed (container runtime unavailable). Uninstall cannot proceed safely.",
+    };
+  }
+  try {
+    const apps = await listDiscoveredApps(userDataRoot, userCacheRoot);
+    if (apps.length === 0) {
+      return {
+        ...base,
+        target: "Lando apps",
+        status: "owned" as const,
+        detail:
+          "No running Lando apps found. Will clean up any leftover Lando-labeled containers and resources.",
+      };
+    }
+    const appList = apps.map((app) => app.appId).join(", ");
+    return {
+      ...base,
+      target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
+      status: "owned" as const,
+      detail: `Found ${apps.length} running Lando app${apps.length === 1 ? "" : "s"}. Will stop and remove ${apps.length === 1 ? "it" : "them"} along with unused Lando networks and volumes.`,
+    };
+  } catch (cause) {
+    // Fail closed: discovery failed, cannot verify safety
+    const error = cause instanceof Error ? cause.message : String(cause);
+    return {
+      ...base,
+      target: "Lando apps",
+      status: "user-owned" as const,
+      detail: `Cannot verify whether Lando apps are running; discovery failed: ${error}. Uninstall cannot proceed safely.`,
+    };
+  }
+};
+
+export const buildUninstallPlan = async (
   options: UninstallOptions = {},
   mode?: UninstallMode,
-): ReadonlyArray<UninstallPlanStep> => {
+): Promise<ReadonlyArray<UninstallPlanStep>> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+  const userConfRoot = options.userConfRoot ?? makeLandoPaths({ userDataRoot }).roots.userConfRoot;
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
   const classifyMachine = options.readManagedProviderMachine ?? classifyManagedProviderMachine;
@@ -223,7 +318,16 @@ export const buildUninstallPlan = (
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
 
+  // keep-data never touches app state, so skip container-runtime discovery
+  // entirely; stepWithMode marks the step as preserved.
+  const runningAppsStep = await buildRunningAppsStep(
+    userDataRoot,
+    userCacheRoot,
+    mode === "keep-data" ? undefined : options.listDiscoveredApps,
+  );
+
   const steps: ReadonlyArray<UninstallPlanStep> = [
+    runningAppsStep,
     {
       id: "runtime-service",
       label: "managed runtime service",
@@ -307,6 +411,14 @@ export const buildUninstallPlan = (
       detail: "Remove clearly delimited Lando shellenv blocks from shell profiles.",
     },
     {
+      id: "user-conf-root",
+      label: "user config root",
+      target: userConfRoot,
+      destructive: true,
+      status: pathStatus(userConfRoot, exists),
+      detail: "Remove Lando user config directory.",
+    },
+    {
       id: "user-data-root",
       label: "user data root",
       target: userDataRoot,
@@ -347,17 +459,55 @@ const executeUninstall = async (
   hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
+  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
+  const exists = options.exists ?? ((path: string) => existsSync(path));
   const teardownRuntimeService =
     options.teardownRuntimeService ??
     ((root: string) => defaultTeardownRuntimeService(hostMaintenanceRegistry, root));
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
-  const steps = buildUninstallPlan(options, mode);
+  const steps = await buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
+    if (step.id === "running-apps") {
+      // This step's target is a description, never a filesystem path; it must
+      // not fall through to remove(step.target).
+      if (step.status === "user-owned") {
+        // Discovery failed or unavailable - fail closed
+        executed.push({
+          ...step,
+          outcome: "failed",
+          error: step.detail ?? "Cannot verify running apps; uninstall cannot proceed safely.",
+        });
+        // Abort immediately: do not process any remaining destructive steps
+        break;
+      }
+      if (step.status !== "owned") {
+        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+        continue;
+      }
+      // Discovery succeeded: re-list for a fresh snapshot, then sweep leftover
+      // Lando containers, networks, and volumes even when no app is running.
+      try {
+        const apps =
+          options.listDiscoveredApps === undefined
+            ? []
+            : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
+        if (options.cleanupDiscoveredApps !== undefined) {
+          await options.cleanupDiscoveredApps(apps);
+        }
+        executed.push({ ...step, outcome: "completed" });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+        // If cleanup fails, abort to prevent orphaning resources
+        break;
+      }
+      continue;
+    }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {
         await teardownHostProxySessions(userDataRoot);
@@ -386,7 +536,19 @@ const executeUninstall = async (
         executed.push({ ...step, outcome: "completed" });
         continue;
       }
-      await remove(step.target);
+      if (step.id === "runtime-service") {
+        await (options.remove ?? defaultRemoveRuntimeDir)(step.target);
+        // Verify removal: lingering mounts or processes can survive a
+        // successful-looking rm and would leave the runtime half-removed.
+        if (exists(step.target)) {
+          throw new Error(
+            `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
+          );
+        }
+      } else {
+        await remove(step.target);
+      }
+
       executed.push({ ...step, outcome: "completed" });
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : String(cause);
@@ -431,11 +593,12 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
     const mode = requestedMode ?? "keep-data";
     if (!dryRun && yes)
       return yield* Effect.promise(() => executeUninstall(options, mode, hostMaintenanceRegistry));
+    const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
     return {
       dryRun,
       refused: !dryRun && !yes,
       mode,
       failed: false,
-      steps: buildUninstallPlan(options, mode),
+      steps,
     };
   });

@@ -170,10 +170,32 @@ jobs:
       - name: Confirm generated schema reference is published
         run: test -f docs/dist/reference/schemas/app-plan/index.html
 
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
       - name: Report job timing
         if: always()
         run: |
           echo "::notice title=ci-timing::docs-build completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [docs-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   test-isolation-linux-x64:
     runs-on: ubuntu-24.04
@@ -868,7 +890,8 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -931,7 +954,8 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -994,7 +1018,8 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -1057,7 +1082,8 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -1124,7 +1150,8 @@ jobs:
         run: |
           mkdir -p dist
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Smoke test binary

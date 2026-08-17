@@ -1,4 +1,5 @@
 ---
+import { isPlaceholderResultSummary } from "../lib/is-placeholder.ts";
 import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
@@ -17,6 +18,7 @@ const displayedCode = displayCode ?? command ?? shell ?? code ?? "";
 const language = runtime === "library" ? "ts" : "sh";
 const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "run");
 const renderedCommand = frame?.commandDisplay ?? displayedCode;
+const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
 <div
@@ -26,7 +28,7 @@ const renderedCommand = frame?.commandDisplay ?? displayedCode;
   {...dataAttributes}
 >
   <pre><code class={`language-${language}`}>{renderedCommand}</code></pre>
-  {frame?.resultSummary && (
+  {showCapturedOutput && (
     <figure class="lando-frame-output">
       <figcaption>Captured output</figcaption>
       <pre><code>{frame.resultSummary}</code></pre>

@@ -39,7 +39,7 @@ import {
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import { definePlugin } from "@lando/sdk/plugins";
 import {
-  type AppId,
+  AppId,
   type AppPlan,
   type HostPlatform,
   PluginManifest,
@@ -70,6 +70,7 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
 import { waitForExit } from "./wait-for-exit.ts";
 
@@ -488,6 +489,7 @@ export const dockerCapabilitiesForHost = (
   buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
+    artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
     volumeSnapshot: "copy",
     serviceFileCopy: "native",
@@ -711,7 +713,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
   containerCreateBodyFragment(plan, service, {
     labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
     hostConfig: hostConfig(plan, service),
-    networkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
+    networkingConfig: { EndpointsConfig: { [networkName(plan)]: { Aliases: [service.name] } } },
     onMissingArtifact: (artifact) => {
       throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
         artifact,
@@ -742,8 +744,7 @@ export const renderCompose = (plan: AppPlan): string => {
       const networks = [
         "    networks:",
         ...networkNames(plan).flatMap((name) => {
-          if (name !== sharedNetwork) return [`      ${name}:`];
-          const aliases = serviceNetworkAliases(plan, service);
+          const aliases = name === sharedNetwork ? serviceNetworkAliases(plan, service) : [service.name];
           return aliases.length === 0
             ? [`      ${name}:`]
             : [`      ${name}:`, "        aliases:", ...aliases.map((alias) => `          - "${alias}"`)];
@@ -949,6 +950,131 @@ const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<v
   request(api, "destroy", { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
     Effect.catchAll(() => Effect.void),
   );
+
+const pullImage = (api: DockerApiClient, imageRef: string) =>
+  Effect.gen(function* () {
+    // Pull the image using Docker API - returns NDJSON stream
+    const response = yield* request(api, "pullArtifact", {
+      method: "POST",
+      path: `/images/create?fromImage=${encodeURIComponent(imageRef)}`,
+    });
+
+    // Docker returns HTTP 200 even on error - need to check NDJSON body for errors
+    if (response.status < 200 || response.status >= 300) {
+      yield* Effect.fail(
+        unavailable("pullArtifact", `Docker image pull failed with HTTP ${response.status}.`, response),
+      );
+    }
+
+    // Parse NDJSON response for errors
+    const lines = response.body.split("\n").filter((line) => line.trim().length > 0);
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as { error?: string; errorDetail?: { message?: string } };
+        if (parsed.error !== undefined || parsed.errorDetail !== undefined) {
+          const errorMessage = parsed.errorDetail?.message ?? parsed.error ?? "Unknown error";
+          yield* Effect.fail(
+            unavailable("pullArtifact", `Docker image pull failed: ${errorMessage}`, parsed),
+          );
+        }
+      } catch {
+        // Ignore JSON parse errors in NDJSON stream
+      }
+    }
+
+    // Inspect the image to get its digest
+    const inspectResponse = yield* request(api, "pullArtifact", {
+      method: "GET",
+      path: `/images/${encodeURIComponent(imageRef)}/json`,
+    });
+
+    if (inspectResponse.status < 200 || inspectResponse.status >= 300) {
+      // Image was pulled but inspection failed - still return success with no digest
+      return { ref: imageRef };
+    }
+
+    const inspectBody = yield* parseJson(inspectResponse, "pullArtifact");
+    const digest =
+      typeof inspectBody === "object" &&
+      inspectBody !== null &&
+      "RepoDigests" in inspectBody &&
+      Array.isArray(inspectBody.RepoDigests) &&
+      inspectBody.RepoDigests.length > 0 &&
+      typeof inspectBody.RepoDigests[0] === "string"
+        ? (inspectBody.RepoDigests[0] as string).split("@")[1]
+        : undefined;
+
+    return { ref: imageRef, ...(digest === undefined ? {} : { digest }) };
+  });
+
+interface DiscoveredContainer {
+  readonly id: string;
+  readonly name: string;
+  readonly labels: Readonly<Record<string, string>>;
+  readonly state: string;
+  readonly startedAt?: string;
+}
+
+const discoverContainers = (api: DockerApiClient, labelFilter?: string) =>
+  Effect.gen(function* () {
+    const filters = labelFilter === undefined ? {} : { label: [labelFilter] };
+    const params = new URLSearchParams({
+      all: "true",
+      filters: JSON.stringify(filters),
+    });
+
+    const response = yield* request(api, "list", {
+      method: "GET",
+      path: `/containers/json?${params}` as `/${string}`,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      yield* Effect.fail(
+        unavailable("list", `Docker container list failed with HTTP ${response.status}.`, response),
+      );
+    }
+
+    const body = yield* parseJson(response, "list");
+    const containers = Array.isArray(body) ? body : [];
+
+    return containers
+      .map((container: unknown): DiscoveredContainer | undefined => {
+        if (typeof container !== "object" || container === null) return undefined;
+        const obj = container as {
+          Id?: unknown;
+          Names?: unknown;
+          Labels?: unknown;
+          State?: unknown;
+          Status?: unknown;
+        };
+
+        if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
+        const name = obj.Names[0];
+        if (typeof name !== "string") return undefined;
+
+        const labels =
+          typeof obj.Labels === "object" && obj.Labels !== null
+            ? (obj.Labels as Record<string, unknown>)
+            : {};
+
+        // In /containers/json, State is a string like "running" or "exited"
+        const state = typeof obj.State === "string" ? obj.State : "unknown";
+
+        // Status contains more info like "Up 5 minutes"
+        const status = typeof obj.Status === "string" ? obj.Status : undefined;
+
+        return {
+          id: obj.Id,
+          name: name.startsWith("/") ? name.slice(1) : name,
+          labels: Object.fromEntries(
+            Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          ),
+          state,
+          ...(status === undefined ? {} : { startedAt: status }),
+        };
+      })
+      .filter((container): container is DiscoveredContainer => container !== undefined);
+  });
 
 interface TouchedContainer {
   readonly name: string;
@@ -1435,6 +1561,39 @@ const logs = (
   });
 };
 
+const logsWithoutPlan = (
+  containerNameOrId: string,
+  serviceName: ServiceName,
+  _target: LogTarget,
+  options: Partial<LogOptions>,
+  runtime: LogsRuntime,
+): Stream.Stream<LogChunk, ProviderError> => {
+  const query = new URLSearchParams({
+    stdout: "true",
+    stderr: "true",
+    follow: String(options.follow ?? true),
+    timestamps: "true",
+  });
+  if (options.tail !== undefined) {
+    query.set("tail", String(options.tail));
+  }
+  if (options.since !== undefined) {
+    query.set("since", options.since);
+  }
+
+  return Stream.suspend(() => {
+    const decodeChunk = makeRuntimeLogDecoder({
+      parseLine: (streamName, line) => parseLogLine({ name: serviceName } as ServicePlan, streamName, line),
+    });
+    const consoleStream = stream(runtime.api, "logs", {
+      method: "GET",
+      path: `/containers/${encodeURIComponent(containerNameOrId)}/logs?${query}`,
+    }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+
+    return consoleStream;
+  });
+};
+
 const makeUnavailable = (operation: string) =>
   unavailable(operation, `provider-docker does not implement ${operation} yet.`);
 
@@ -1507,7 +1666,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),
         buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
-        pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
+        pullArtifact: (spec) =>
+          pullImage(dockerApi, spec.ref).pipe(
+            Effect.map((result) => ({
+              providerId: ProviderId.make(PROVIDER_ID),
+              ref: result.ref,
+              ...(result.digest === undefined ? {} : { digest: result.digest }),
+            })),
+          ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
           bringUp(plan, dockerApi, applyOptions.signal).pipe(
@@ -1552,22 +1718,49 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         runStream: dataPlane.runStream,
         logs: (target, logOptions) => {
           const plan = resolvePlan(target);
-          if (plan === undefined) return Stream.fail(makeUnavailable("logs"));
-          const service = plan.services[target.service];
-          const logFileAccess =
-            options.logFileAccess ??
-            (service === undefined || logFileHelperPayload === undefined
-              ? undefined
-              : makeDockerLogFileAccess({
-                  providerId: PROVIDER_ID,
-                  api: dockerApi,
-                  container: containerName(plan, service),
-                  helperPayload: logFileHelperPayload,
-                }));
-          return logs(plan, target, logOptions, {
-            api: dockerApi,
-            ...(logFileAccess === undefined ? {} : { logFileAccess }),
-          });
+          if (plan !== undefined) {
+            const service = plan.services[target.service];
+            const logFileAccess =
+              options.logFileAccess ??
+              (service === undefined || logFileHelperPayload === undefined
+                ? undefined
+                : makeDockerLogFileAccess({
+                    providerId: PROVIDER_ID,
+                    api: dockerApi,
+                    container: containerName(plan, service),
+                    helperPayload: logFileHelperPayload,
+                  }));
+            return logs(plan, target, logOptions, {
+              api: dockerApi,
+              ...(logFileAccess === undefined ? {} : { logFileAccess }),
+            });
+          }
+
+          // Plan not available - discover container by labels
+          return Stream.fromEffect(
+            discoverContainers(dockerApi, "dev.lando.app").pipe(
+              Effect.flatMap((containers) => {
+                const container = containers.find(
+                  (c) =>
+                    c.labels["dev.lando.app"] === target.app &&
+                    c.labels["dev.lando.service"] === target.service,
+                );
+                if (container === undefined) {
+                  return Effect.fail(
+                    unavailable(
+                      "logs",
+                      `Container for app ${target.app} service ${target.service} not found.`,
+                    ),
+                  );
+                }
+                return Effect.succeed(container);
+              }),
+            ),
+          ).pipe(
+            Stream.flatMap((container) =>
+              logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+            ),
+          );
         },
         inspect: (target) => {
           const plan = resolvePlan(target);
@@ -1576,16 +1769,77 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             : inspectService(plan, target, dockerApi);
         },
         list: (filter) =>
-          Effect.forEach(Array.from(plans.values()), (plan) =>
-            Effect.forEach(Object.values(plan.services), (service) =>
-              inspectService(plan, { app: plan.id, service: service.name }, dockerApi),
-            ),
-          ).pipe(
-            Effect.map((snapshots) => snapshots.flat()),
-            Effect.map((snapshots) =>
-              filter.app === undefined
-                ? snapshots
-                : snapshots.filter((snapshot) => snapshot.app === filter.app),
+          discoverContainers(dockerApi, "dev.lando.app").pipe(
+            Effect.flatMap((containers) =>
+              Effect.forEach(
+                containers.filter((container) => {
+                  const appId = container.labels["dev.lando.app"];
+                  return (
+                    appId !== undefined &&
+                    (filter.app === undefined || appId === filter.app) &&
+                    container.labels["dev.lando.scratch"] !== "TRUE"
+                  );
+                }),
+                (container) =>
+                  Effect.gen(function* () {
+                    const appId = container.labels["dev.lando.app"] ?? "";
+                    const serviceName = container.labels["dev.lando.service"] ?? "";
+                    const isRunning = container.state === "running";
+                    const status = isRunning ? "running" : "stopped";
+
+                    // Inspect container to get endpoints
+                    const inspectResponse = yield* request(dockerApi, "list", {
+                      method: "GET",
+                      path: `/containers/${encodeURIComponent(container.name)}/json`,
+                    });
+
+                    let endpoints: ServiceRuntimeInfo["endpoints"] = [];
+                    if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
+                      const inspectBody = yield* parseJson(inspectResponse, "list");
+                      if (
+                        typeof inspectBody === "object" &&
+                        inspectBody !== null &&
+                        "NetworkSettings" in inspectBody
+                      ) {
+                        const networkSettings = inspectBody.NetworkSettings as {
+                          Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+                        };
+                        const ports = networkSettings.Ports ?? {};
+                        endpoints = Object.entries(ports)
+                          .flatMap(([containerPort, bindings]) => {
+                            if (bindings === null || bindings === undefined) return [];
+                            return bindings.map((binding) => {
+                              const [portNum, protocol] = containerPort.split("/");
+                              return {
+                                _tag: "published" as const,
+                                port: Number.parseInt(portNum ?? "0", 10),
+                                protocol: (protocol === "udp" ? "udp" : "http") as "http" | "udp",
+                                name: containerPort,
+                                publication: {
+                                  bindAddress: binding.HostIp ?? "0.0.0.0",
+                                  hostPort: Number.parseInt(binding.HostPort ?? "0", 10),
+                                },
+                              };
+                            });
+                          })
+                          .filter((endpoint) => endpoint.port > 0 && endpoint.publication.hostPort > 0);
+                      }
+                    }
+
+                    return {
+                      app: AppId.make(appId),
+                      service: ServiceName.make(serviceName),
+                      providerId: ProviderId.make(PROVIDER_ID),
+                      status,
+                      state: status,
+                      containerId: container.id,
+                      endpoints,
+                      ...(container.startedAt === undefined
+                        ? {}
+                        : { lastStartedAt: new Date(container.startedAt) }),
+                    };
+                  }),
+              ),
             ),
           ),
         snapshotVolume: dataPlane.snapshotVolume,
@@ -1643,4 +1897,5 @@ export const plugin = definePlugin({
       },
     ],
   ]),
+  doctorChecks: [makeIptablesForwardCheck()],
 });

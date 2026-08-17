@@ -11,6 +11,7 @@ type MapSlot =
   | "templateEngines"
   | "certificateAuthorities"
   | "proxyServices"
+  | "sshServices"
   | "globalServices"
   | "serviceTypes"
   | "serviceFeatures"
@@ -31,6 +32,7 @@ export interface PluginCapabilityIndex {
   readonly templateEngines: SlotMap<"templateEngines">;
   readonly certificateAuthorities: SlotMap<"certificateAuthorities">;
   readonly proxyServices: SlotMap<"proxyServices">;
+  readonly sshServices: SlotMap<"sshServices">;
   readonly globalServices: SlotMap<"globalServices">;
   readonly serviceTypes: SlotMap<"serviceTypes">;
   readonly serviceFeatures: SlotMap<"serviceFeatures">;
@@ -194,6 +196,7 @@ const computePluginCapabilityIndex = (
   const templateEngines = mutableMapFor<"templateEngines">();
   const certificateAuthorities = mutableMapFor<"certificateAuthorities">();
   const proxyServices = mutableMapFor<"proxyServices">();
+  const sshServices = mutableMapFor<"sshServices">();
   const globalServices = mutableMapFor<"globalServices">();
   const serviceTypes = mutableMapFor<"serviceTypes">();
   const serviceFeatures = mutableMapFor<"serviceFeatures">();
@@ -220,6 +223,7 @@ const computePluginCapabilityIndex = (
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
       add(certificateAuthorities, module.certificateAuthorities ?? [], "certificateAuthorities"),
       add(proxyServices, module.proxyServices ?? [], "proxyServices"),
+      add(sshServices, module.sshServices ?? [], "sshServices"),
       add(globalServices, module.globalServices ?? [], "globalServices"),
       add(serviceTypes, module.serviceTypes ?? [], "serviceTypes"),
       add(serviceFeatures, module.serviceFeatures ?? [], "serviceFeatures"),
@@ -248,6 +252,7 @@ const computePluginCapabilityIndex = (
     templateEngines,
     certificateAuthorities,
     proxyServices,
+    sshServices,
     globalServices,
     serviceTypes,
     serviceFeatures,

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { ComposeServiceKnobKey } from "@lando/sdk/schema";
-import { KNOB_FIXTURES } from "../../provider-lando/test/compose-knobs-fixtures.ts";
+import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 
 const PLATFORMS = ["linux", "darwin", "win32"] as const;
 const PROVIDERS = [

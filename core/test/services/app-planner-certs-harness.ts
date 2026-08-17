@@ -5,11 +5,11 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
 
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 
 export type AppPlannerCertsTestCa = ReturnType<typeof makeTestCertificateAuthority>;
 

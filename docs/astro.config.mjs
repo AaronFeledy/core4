@@ -13,6 +13,8 @@ import { sidebar } from "./src/sidebar.ts";
 const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
 export default defineConfig({
+  site: "https://aaronfeledy.github.io",
+  base: "/core4/",
   markdown: {
     processor: unified({ remarkPlugins: [remarkGuideContext, remarkDropLeadingHeading] }),
   },

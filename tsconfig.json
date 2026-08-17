@@ -27,6 +27,15 @@
       "path": "./managed-file"
     },
     {
+      "path": "./data-mover"
+    },
+    {
+      "path": "./telemetry"
+    },
+    {
+      "path": "./renderer"
+    },
+    {
       "path": "./engine"
     },
     {

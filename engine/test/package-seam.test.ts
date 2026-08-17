@@ -110,6 +110,7 @@ describe("Engine package seam", () => {
       ["@lando/redaction", "workspace:*"],
       ["@lando/sdk", "workspace:*"],
       ["@lando/state-store", "workspace:*"],
+      ["@lando/telemetry", "workspace:*"],
     ]);
     expect(workspaceDevDependencies).toEqual([]);
     expect(workspacePeerDependencies).toEqual([]);

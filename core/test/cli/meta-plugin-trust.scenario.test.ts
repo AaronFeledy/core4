@@ -8,8 +8,6 @@ import { Effect, Layer, Schema } from "effect";
 import { PluginTrustState } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
@@ -20,6 +18,8 @@ import {
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
 } from "../../src/cli/commands/plugin-trust.ts";
+import { writePluginCommandCacheStrict } from "../../src/testing/engine-layers";
+import { makePluginTrustStore } from "../../src/testing/engine-layers";
 
 let userConfRoot: string;
 

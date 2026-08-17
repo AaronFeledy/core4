@@ -1,5 +1,5 @@
 import type { ConfigResult } from "@lando/engine/operations/config";
-import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/engine/telemetry/policy";
+import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/telemetry/policy";
 
 const formatYaml = (value: unknown, indent = 0): string => {
   const prefix = " ".repeat(indent);

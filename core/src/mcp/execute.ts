@@ -11,8 +11,8 @@ import { Cause, type Context, Effect, type Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle";
-import type { CommandResultOutcome } from "../cli/result-encode";
 import type { McpExecute } from "./dispatch";
 
 export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effect<CommandResultOutcome> => {

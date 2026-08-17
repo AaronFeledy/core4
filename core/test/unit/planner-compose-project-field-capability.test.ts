@@ -10,8 +10,8 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 
 const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-project-field-")));

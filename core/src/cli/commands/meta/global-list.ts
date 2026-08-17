@@ -6,8 +6,8 @@ import { type Logger, PluginRegistry } from "@lando/sdk/services";
 
 import { LoggerLive } from "@lando/engine/logging/service";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
-import { type SummaryDocument, formatSummary } from "../../renderer/summary";
 
 export type GlobalServiceListState = "enabled" | "disabled" | "blocked";
 

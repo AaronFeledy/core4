@@ -11,7 +11,7 @@ import {
   EventDispatchControl,
   makeEventRuntimeLive,
   makeEventServiceLive,
-} from "@lando/engine/services/event-service";
+} from "../../src/testing/engine-layers.ts";
 
 const progressEvent = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({

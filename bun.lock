@@ -34,19 +34,36 @@
       },
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/data-mover": "workspace:*",
         "@lando/engine": "workspace:*",
         "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/managed-file": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
+        "@lando/renderer": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
+        "@lando/telemetry": "workspace:*",
         "effect": "^3.21.2",
         "semver": "^7.8.5",
       },
       "devDependencies": {
         "@types/semver": "^7.7.1",
+      },
+    },
+    "data-mover": {
+      "name": "@lando/data-mover",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/landofile": "workspace:*",
+        "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+      "devDependencies": {
+        "@lando/state-store": "workspace:*",
       },
     },
     "docs": {
@@ -75,6 +92,7 @@
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
+        "@lando/telemetry": "workspace:*",
         "effect": "^3.21.2",
         "semver": "^7.8.5",
       },
@@ -188,6 +206,9 @@
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
+      "devDependencies": {
+        "@lando/core": "workspace:*",
+      },
     },
     "plugins/proxy-traefik": {
       "name": "@lando/proxy-traefik",
@@ -207,6 +228,7 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
+        "@lando/core": "workspace:*",
         "@lando/paths": "workspace:*",
       },
     },
@@ -218,9 +240,19 @@
       },
       "devDependencies": {
         "@lando/core": "workspace:*",
+        "@lando/provider-docker": "workspace:*",
+        "@lando/provider-lando": "workspace:*",
       },
       "peerDependencies": {
         "@lando/sdk": "workspace:*",
+      },
+    },
+    "plugins/ssh-agent": {
+      "name": "@lando/ssh-agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.12.5",
       },
     },
     "plugins/template-handlebars": {
@@ -252,6 +284,16 @@
         "effect": "^3.21.2",
       },
     },
+    "renderer": {
+      "name": "@lando/renderer",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/engine": "workspace:*",
+        "@lando/redaction": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "sdk": {
       "name": "@lando/sdk",
       "version": "0.0.0",
@@ -268,6 +310,14 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
+    "telemetry": {
+      "name": "@lando/telemetry",
+      "version": "0.0.0",
+      "dependencies": {
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
@@ -514,6 +564,8 @@
 
     "@lando/core": ["@lando/core@workspace:core"],
 
+    "@lando/data-mover": ["@lando/data-mover@workspace:data-mover"],
+
     "@lando/docs": ["@lando/docs@workspace:docs"],
 
     "@lando/engine": ["@lando/engine@workspace:engine"],
@@ -542,13 +594,19 @@
 
     "@lando/redaction": ["@lando/redaction@workspace:redaction"],
 
+    "@lando/renderer": ["@lando/renderer@workspace:renderer"],
+
     "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
 
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
 
     "@lando/service-lando": ["@lando/service-lando@workspace:plugins/service-lando"],
 
+    "@lando/ssh-agent": ["@lando/ssh-agent@workspace:plugins/ssh-agent"],
+
     "@lando/state-store": ["@lando/state-store@workspace:state-store"],
+
+    "@lando/telemetry": ["@lando/telemetry@workspace:telemetry"],
 
     "@lando/template-handlebars": ["@lando/template-handlebars@workspace:plugins/template-handlebars"],
 

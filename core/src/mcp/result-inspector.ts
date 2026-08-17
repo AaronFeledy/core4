@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { CommandResultOutcome } from "../cli/result-encode";
+import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { isRuntimeProxy } from "./runtime-proxy";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 

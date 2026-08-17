@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makePluginStateStore } from "@lando/core/testing";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import {

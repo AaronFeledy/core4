@@ -6,8 +6,8 @@ import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
-import { logsAppForTarget } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
+import { logsAppForTarget } from "../../src/testing/engine-layers";
 
 import {
   AbsolutePath,
@@ -21,9 +21,9 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

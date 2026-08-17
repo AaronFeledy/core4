@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, Effect, Exit } from "effect";
 
-import { update } from "@lando/engine/operations/update";
+import { LandoCommandError } from "@lando/sdk/errors";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { update } from "../../src/testing/engine-layers.ts";
 import {
   TELEMETRY_EVENT_INVENTORY,
   type UpdateOutcome,
   recordUpdateOutcomeTelemetry,
   updateOutcomeFromError,
-} from "@lando/engine/telemetry/events";
-import { LandoCommandError } from "@lando/sdk/errors";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+} from "../../src/testing/engine-layers.ts";
 
 const makeTelemetry = () => {
   const records: Array<{ readonly event: string; readonly data: Readonly<Record<string, unknown>> }> = [];

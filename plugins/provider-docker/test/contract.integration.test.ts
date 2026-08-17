@@ -274,6 +274,20 @@ const makeFakeApi = () => {
             }),
           };
         }
+        if (request.path.startsWith("/containers/json?")) {
+          // Handle container list for discovery
+          const containers = Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Status: running.has(name) ? "Up 5 minutes" : "Exited (0) 2 minutes ago",
+            Labels: {
+              "dev.lando.app": appId,
+              "dev.lando.service": serviceName,
+            },
+          }));
+          return { status: 200, body: JSON.stringify(containers) };
+        }
 
         return {
           status: 500,
@@ -601,6 +615,20 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
             }),
           };
+        }
+        if (request.path.startsWith("/containers/json?")) {
+          // Handle container list for discovery
+          const containers = Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Status: running.has(name) ? "Up 5 minutes" : "Exited (0) 2 minutes ago",
+            Labels: {
+              "dev.lando.app": appId,
+              "dev.lando.service": name.includes("-db") ? dbServiceName : serviceName,
+            },
+          }));
+          return { status: 200, body: JSON.stringify(containers) };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -1176,7 +1204,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(compose).toContain("      custom-app-net:");
     expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
-    expect(compose).not.toContain("aliases:");
+    expect(compose).toContain("aliases:");
     expect(compose).not.toContain("lando_bridge_network");
   });
 

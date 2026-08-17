@@ -14,8 +14,8 @@ import {
 } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { EventServiceLive } from "@lando/engine/services/event-service";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { waitForEvent } from "../../src/testing/events.ts";
 
 const appRefFixture = {
