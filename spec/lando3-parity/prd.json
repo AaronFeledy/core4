@@ -79,7 +79,7 @@
         "Subscribers execute at correct points of the §3 standard sequences in declaration order through the shared tooling graph compiler and ToolingEngine: service-targeted steps use providerExec by default, while service: :host steps use ShellRunnerBunLive/Bun.$ per §3.4 and §8.6. Host steps must not synthesize sh -c, invoke an external system shell, or re-encode argv as a literal shell string; no new execution path.",
         "Failing pre-* subscriber aborts the operation with tagged error (step identity + output tail); post-* failures surface as warnings per spec.",
         "Step output routes through Renderer as task detail; event-bus publication with redaction.",
-        "Recipe- and service-type-contributed event tasks merge below user entries per §6.11.3 precedence.",
+        "Event steps come only from the resolved Landofile top-level events: map (§7.2 merge, including events from includes: fragments per §7.7), in authored declaration order. No runtime recipe or service-type event-contribution surface is introduced: §6.11.3 is tooling-only and §8.8 recipes are inert after init, so ServiceTypeResolution gains no events field and the planner performs no recipe or service-type event merge (adjudicated 2026-08-17: prior wording generalized tooling precedence to events).",
         "New docs/guides/landofile/events.mdx with failure-path hidden scenario; coverage/INDEX updated; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],

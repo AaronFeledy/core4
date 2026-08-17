@@ -295,3 +295,17 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Tagged error values carrying rich fields are not user-visible by themselves; `core/src/cli/bug-report.ts` per-tag extra-field extraction is where step identity and output tails become part of the CLI failure footer.
   - When wrapping a validation cause in a broader tagged error, fold the cause message and remediation into the wrapper message; downstream failure rendering only reads the outermost message.
 ---
+
+## 2026-08-17 14:28 CDT - US-565 Adjudication
+- Contradiction: US-565 AC 6 said "Recipe- and service-type-contributed event tasks merge below user entries per §6.11.3 precedence." The 2026-08-16 04:26 Review and 05:16 Drift Audit treated service-derived event merging as in scope, and Build added a plan-time service-event merge. The adjudication trigger rejected the same AC as requiring an out-of-scope runtime recipe contribution surface. Normative §6.11.3 defines only `ServiceTypeResolution.tooling` and its user > recipe > service-type tooling precedence; the normative interface has no `events` field. §8.8 removes runtime recipe expansion and makes recipes one-shot scaffolds inert after init, while §8.5.7 scopes events-as-tasks to the resolved Landofile `events:` map. The AC had generalized a tooling-only precedence rule to an event-contribution surface the normative contract does not define.
+- Decision: narrowed US-565 AC 6 in `prd.json` to event steps present in the resolved Landofile top-level `events:` map, including ordinary §7.2/§7.7 merged fragments, with authored declaration order preserved. It now explicitly excludes runtime recipe and service-type event contributions, an `events` field on `ServiceTypeResolution`, and a planner-side contribution merge. The branch's service-event merge, SDK event-contribution field and compatibility note, and guide promise of lower-precedence service-type contributions are excision targets for the next Build/Review cycle. `passes` is unchanged.
+- Follow-up story (if created): none; no normative runtime event-contribution surface exists to own — §6.11.3 contributes tooling only and §8.8 makes recipes inert after init.
+---
+
+## 2026-08-17 15:05 CDT - US-565 Build (adjudication excision)
+- Excised the service-type event-contribution surface per the same-day adjudication: effective events now compile solely from the resolved Landofile top-level `events:` map, `ServiceTypeResolution` no longer carries an `events` field (SDK compatibility note updated to match), the planner performs no service-event merge and no longer keys the plan cache on per-service events, and the events guide no longer promises lower-precedence service-type contributions.
+- The restart scenario that exercised the merge now proves authored events run in lifecycle order exactly once; the planner test proves compilation is authored-only.
+- Verification: typecheck, lint, boundaries, guide lint/coverage/public transcripts, and the two-scenario executable events guide passed; 138 focused planner/event/init/restart/landofile/start/stop tests passed with positive counts. Schema compatibility reports only the pre-existing main-side sshServices/ProviderSetupPlan drift.
+- **Learnings for future iterations:**
+  - When an adjudication names excision targets, grep for every consumer of the excised field first (planner wiring, cache-key inputs, tests, guide prose, API_COMPATIBILITY notes) — the cache-key serviceInputs entry was easy to miss and would have silently kept stale keys.
+---
