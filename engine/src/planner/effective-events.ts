@@ -1,10 +1,5 @@
 import type { AppPlan, LandofileEvents, LandofileShape } from "@lando/sdk/schema";
 
-interface EventServiceContribution {
-  readonly name: string;
-  readonly events?: LandofileEvents;
-}
-
 const effectiveEventsByPlan = new WeakMap<AppPlan, LandofileEvents>();
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -14,19 +9,7 @@ const sortedEvents = (events: LandofileEvents): LandofileEvents =>
 
 export const compileEffectiveEvents = (input: {
   readonly landofile: Pick<LandofileShape, "events">;
-  readonly services: ReadonlyArray<EventServiceContribution>;
-}): LandofileEvents => {
-  const merged: Record<string, LandofileEvents[keyof LandofileEvents]> = { ...input.landofile.events };
-  for (const service of [...input.services].sort((left, right) => compareOrdinal(left.name, right.name))) {
-    for (const [name, steps] of Object.entries(service.events ?? {}).sort(([left], [right]) =>
-      compareOrdinal(left, right),
-    )) {
-      if (steps === undefined) continue;
-      merged[name] = [...(merged[name] ?? []), ...steps];
-    }
-  }
-  return sortedEvents(merged);
-};
+}): LandofileEvents => sortedEvents({ ...input.landofile.events });
 
 export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents): AppPlan => {
   const sorted = sortedEvents(events);

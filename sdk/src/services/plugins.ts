@@ -7,7 +7,6 @@ import type {
   ServiceTypeError,
 } from "../errors/index.ts";
 import type {
-  LandofileEvents,
   LogSource,
   PlanMetadata,
   PluginManifest,
@@ -83,7 +82,6 @@ export interface ServiceTypeResolution {
    * service/directory values and merge below environment/variable keys.
    */
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
-  readonly events?: LandofileEvents;
   readonly metadata?: Record<string, unknown>;
 }
 

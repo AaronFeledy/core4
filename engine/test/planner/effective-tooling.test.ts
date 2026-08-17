@@ -137,20 +137,21 @@ describe("compileEffectiveTooling", () => {
 });
 
 describe("compileEffectiveEvents", () => {
-  test("authored event steps precede every lexicographically ordered service contribution", () => {
+  test("effective events come only from the resolved landofile events map in authored order", () => {
     // Given / When
     const events = compileEffectiveEvents({
-      landofile: { events: { "pre-start": ["echo authored"] } },
-      services: [
-        { name: "zeta", events: { "pre-start": ["echo zeta"], "post-start": ["echo zeta post"] } },
-        { name: "alpha", events: { "pre-start": ["echo alpha"], "post-start": ["echo alpha post"] } },
-      ],
+      landofile: {
+        events: {
+          "pre-start": ["echo first", "echo second"],
+          "post-start": ["echo after"],
+        },
+      },
     });
 
     // Then
     expect(events).toEqual({
-      "post-start": ["echo alpha post", "echo zeta post"],
-      "pre-start": ["echo authored", "echo alpha", "echo zeta"],
+      "post-start": ["echo after"],
+      "pre-start": ["echo first", "echo second"],
     });
   });
 

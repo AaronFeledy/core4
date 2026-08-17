@@ -259,7 +259,7 @@ const makeRestartLayer = (
 };
 
 describe("lando restart", () => {
-  test("user events run before service-type contributions and lifecycle order occurs once", async () => {
+  test("authored events run in lifecycle order exactly once across restart", async () => {
     // Given
     const effective = compileEffectiveEvents({
       landofile: {
@@ -270,17 +270,6 @@ describe("lando restart", () => {
           "post-start": ["echo user-post-start"],
         },
       },
-      services: [
-        {
-          name: "web",
-          events: {
-            "pre-stop": ["echo service-pre-stop"],
-            "post-stop": ["echo service-post-stop"],
-            "pre-start": ["echo service-pre-start"],
-            "post-start": ["echo service-post-start"],
-          },
-        },
-      ],
     });
     const eventPlan = attachEffectiveEvents({ ...plan }, effective);
     const harness = makeRestartLayer({ plannedApp: eventPlan });
@@ -292,7 +281,7 @@ describe("lando restart", () => {
     expect(
       harness.events.filter((event) => ["pre-stop", "post-stop", "pre-start", "post-start"].includes(event)),
     ).toEqual(["pre-stop", "post-stop", "pre-start", "post-start"]);
-    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(8);
+    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(4);
   });
   test("destroys then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();

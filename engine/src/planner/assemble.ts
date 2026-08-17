@@ -358,13 +358,7 @@ export const planApp = (
         ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
       })),
     });
-    const effectiveEvents = compileEffectiveEvents({
-      landofile,
-      services: resolvedServices.map((entry) => ({
-        name: entry.name,
-        ...(entry.resolution.events === undefined ? {} : { events: entry.resolution.events }),
-      })),
-    });
+    const effectiveEvents = compileEffectiveEvents({ landofile });
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
@@ -382,7 +376,6 @@ export const planApp = (
             base: entry.resolution.base,
             normalizedConfig: entry.resolution.normalizedConfig,
             tooling: entry.resolution.tooling ?? {},
-            events: entry.resolution.events ?? {},
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             envFileInputs: entry.envFileInputs,
