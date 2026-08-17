@@ -79,11 +79,34 @@ describe("machine-output boundary lint gate", () => {
       );
       await write(
         root,
-        "core/src/cli/result-encode.ts",
+        "sdk/src/command-result/index.ts",
         "export const encode = (envelope: { apiVersion: string; command: string; ok: boolean; result: unknown }) => JSON.stringify(envelope);\n",
       );
 
       expect(await checkMachineOutput({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("flags direct command-envelope serialization inside the MCP package", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      // Given: an MCP consumer bypasses the canonical SDK command-result encoder
+      await write(
+        root,
+        "mcp/src/unsafe-envelope.ts",
+        'export const encode = () => JSON.stringify({ apiVersion: "v4", command: "app:info", ok: true, result: {} });\n',
+      );
+
+      // When
+      const result = await checkMachineOutput({ root });
+
+      // Then
+      expect(result.ok).toBe(false);
+      expect(offenderStrings(root, result)).toEqual([
+        "mcp/src/unsafe-envelope.ts:1:JSON.stringify(<command-result-envelope>)",
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

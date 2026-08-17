@@ -24,23 +24,19 @@ import {
   runTooling,
   runToolingRedactionTokens,
 } from "@lando/engine/operations/tooling";
+import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "@lando/mcp/allowlist";
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
+import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
+import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
+import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
+import { McpTransport } from "@lando/mcp/transport";
 import type { RedactionService } from "@lando/redaction/service";
-import type { McpCommandEntry } from "../../../mcp/registry";
-import {
-  McpRuntimeConfig,
-  type McpRuntimeConfigShape,
-  McpService,
-  McpServiceLive,
-} from "../../../mcp/service";
-import { mcpServeStartupError } from "../../../mcp/stdio-limits";
-import { makeStdioMcpTransport } from "../../../mcp/stdio-transport";
-import { McpTransport } from "../../../mcp/transport";
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../allowlists/mcp";
+import { McpServiceLive } from "../../../mcp-command-executor";
 import type { RendererMode } from "../../bug-report";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { ResultFormat } from "../../format-flags";
-import { MCP_DEFAULT_ALLOWLIST } from "../../generated/mcp-allowlist";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { renderRunToolingResult } from "../tooling";
@@ -62,7 +58,7 @@ export interface ResolvedMcpOptions {
   readonly maxConcurrent?: number | undefined;
 }
 
-export { classifyMcpServeStartup } from "../../../mcp/stdio-limits";
+export { classifyMcpServeStartup } from "@lando/mcp/stdio-limits";
 
 /** The injected command registry the catalog + dispatch project from. */
 export interface McpCommandRegistry {
@@ -129,7 +125,7 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
 };
 
 export const mcpRegistryFromBuiltIns = (
-  entries: ReadonlyArray<{ readonly spec: LandoCommandSpec }>,
+  entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
   commandEntries: entries.flatMap(({ spec }) => {
     assertMcpAllowlistSafe(spec);

@@ -36,7 +36,7 @@ const runtimeBrainDirectories = [
 ] as const;
 
 const coreShellDirectories = new Set(["cli", "docs", "interaction", "mcp", "recipes", "testing"]);
-const coreRootFiles = new Set(["index.ts", "version.ts"]);
+const coreRootFiles = new Set(["index.ts", "mcp-command-executor.ts", "version.ts"]);
 const coreRuntimeAllowlist = new Set([
   "app/index.ts",
   "app/resolve.ts",

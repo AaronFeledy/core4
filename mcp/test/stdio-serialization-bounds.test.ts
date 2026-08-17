@@ -3,8 +3,8 @@ import { Effect, Option } from "effect";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
-import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
-import { makeStdioMcpTransport } from "../../src/mcp/stdio-transport.ts";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
+import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
 import { expectPolledMcpTransportFailure } from "./stdio-transport-test-support.ts";
 
 const encoder = new TextEncoder();

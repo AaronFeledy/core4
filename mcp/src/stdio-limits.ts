@@ -4,7 +4,7 @@ import { Duration } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { ResultFormat } from "../cli/format-flags";
+import type { CommandResultFormat } from "@lando/sdk/schema";
 
 export const MAX_FRAME_BYTES = 1_048_576;
 export const MAX_PARTIAL_BUFFER_BYTES = 1_048_576;
@@ -29,7 +29,7 @@ export interface McpStdioEndpointCapability {
 }
 
 export interface McpServeStartupInput {
-  readonly resultFormat: ResultFormat;
+  readonly resultFormat: CommandResultFormat;
   readonly stdin: McpStdioEndpointCapability;
   readonly stdout: McpStdioEndpointCapability;
 }
@@ -72,7 +72,7 @@ const inspectMcpStdioEndpoint = (fd: number): McpStdioEndpointCapability => {
   }
 };
 
-export const mcpServeStartupError = (resultFormat: ResultFormat): McpTransportError | undefined =>
+export const mcpServeStartupError = (resultFormat: CommandResultFormat): McpTransportError | undefined =>
   resultFormat !== "text"
     ? classifyMcpServeStartup({
         resultFormat,

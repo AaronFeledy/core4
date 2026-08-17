@@ -13,7 +13,7 @@ const BOOTSTRAP_MODULES = [
   },
   {
     content: "export const MCP_DEFAULT_ALLOWLIST: ReadonlyArray<string> = [];\n",
-    path: "core/src/cli/generated/mcp-allowlist.ts",
+    path: "mcp/src/generated/mcp-allowlist.ts",
   },
   {
     content: "export const HOST_PROXY_RUNLANDO_ALLOWLIST: ReadonlyArray<string> = [];\n",

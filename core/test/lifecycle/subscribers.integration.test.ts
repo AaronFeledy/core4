@@ -11,18 +11,14 @@ import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PluginRegistry } from "@lando/sdk/services";
 
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
+import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import {
-  McpRuntimeConfig,
-  type McpRuntimeConfigShape,
-  McpService,
-  McpServiceLive,
-} from "../../src/mcp/service.ts";
-import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
+import { McpServiceLive } from "../../src/mcp-command-executor.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { makeBootstrapLifecycleTracker } from "../../src/testing/engine-layers.ts";

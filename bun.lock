@@ -39,6 +39,7 @@
         "@lando/http-client": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/managed-file": "workspace:*",
+        "@lando/mcp": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
         "@lando/renderer": "workspace:*",
@@ -130,6 +131,16 @@
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
+    "mcp": {
+      "name": "@lando/mcp",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/engine": "workspace:*",
+        "@lando/redaction": "workspace:*",
+        "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
     },
@@ -579,6 +590,8 @@
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 
     "@lando/managed-file": ["@lando/managed-file@workspace:managed-file"],
+
+    "@lando/mcp": ["@lando/mcp@workspace:mcp"],
 
     "@lando/notify-lando": ["@lando/notify-lando@workspace:plugins/notify-lando"],
 

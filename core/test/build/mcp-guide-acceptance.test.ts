@@ -114,7 +114,7 @@ describe("MCP executable guide", () => {
 
     const transcript = buildPublicTranscript(guide, conversation, undefined);
     expect(transcript?.runtime).toBe("library");
-    expect(JSON.stringify(transcript)).not.toContain("../../../../../core/src/mcp");
+    expect(JSON.stringify(transcript)).not.toContain("../../../../../mcp/src");
 
     const boundedTranscript = buildPublicTranscript(
       guide,
