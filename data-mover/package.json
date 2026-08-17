@@ -1,0 +1,44 @@
+{
+  "name": "@lando/data-mover",
+  "description": "Private data movement and volume snapshot implementation for Lando runtimes.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lando-community/core4.git",
+    "directory": "data-mover"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./service": "./src/service.ts",
+    "./testing": "./src/testing.ts",
+    "./provider-images": "./src/generated/provider-images.ts"
+  },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "data-mover", "volume-snapshot"],
+  "dependencies": {
+    "@lando/landofile": "workspace:*",
+    "@lando/paths": "workspace:*",
+    "@lando/redaction": "workspace:*",
+    "@lando/sdk": "workspace:*",
+    "effect": "^3.21.2"
+  },
+  "devDependencies": {
+    "@lando/state-store": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo",
+    "test": "bun test ./test",
+    "typecheck": "tsc -b"
+  }
+}

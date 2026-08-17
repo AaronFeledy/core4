@@ -11,7 +11,7 @@ test/scenarios/generated/guides/**
 
 # Derived bake-time TypeScript
 /core/src/cli/generated/
-/engine/src/data-mover/generated/provider-images.ts
+/data-mover/src/generated/provider-images.ts
 /core/src/plugins/generated/
 /core/src/recipes/bundled.ts
 /core/src/runtime/generated/layers/

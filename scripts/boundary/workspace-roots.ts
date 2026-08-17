@@ -11,6 +11,7 @@
  */
 export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
   "core/src",
+  "data-mover/src",
   "engine/src",
   "http-client/src",
   "landofile/src",
@@ -28,6 +29,7 @@ export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
 export const ALL_PACKAGE_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
+  "data-mover/src",
   "docs/src",
   "engine/src",
   "http-client/src",
@@ -51,6 +53,7 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  */
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
+  "data-mover/src",
   "engine/src",
   "http-client/src",
   "landofile/src",
@@ -69,6 +72,7 @@ export const ALL_PACKAGE_WALK_ROOTS = [
 export const NON_PLUGIN_SOURCE_ROOTS = [
   "container-runtime/src",
   "core/src",
+  "data-mover/src",
   "docs/src",
   "engine/src",
   "http-client/src",

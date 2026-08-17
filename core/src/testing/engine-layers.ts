@@ -59,12 +59,12 @@ export {
 } from "@lando/engine/config-write/write-core";
 export { AGENT_CONTEXT_ENV_ALLOWLIST, resolveAgentContextEnv } from "@lando/engine/config/agent-env";
 export { managedFileLedger } from "@lando/engine/config/roots";
-export { providerImages } from "@lando/engine/data-mover/generated/provider-images";
+export { providerImages } from "@lando/data-mover/provider-images";
 export {
   __testOnlyEncodeTarOctal,
   __testOnlyUnarchivePayloadWithCap,
   DataMoverLive,
-} from "@lando/engine/data-mover/service";
+} from "@lando/data-mover/service";
 export { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 export { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 export { GlobalAppServiceLive } from "@lando/engine/global-app/service";

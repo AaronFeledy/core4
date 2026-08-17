@@ -108,7 +108,7 @@ export const renderProvider = (): string =>
     'import { EventService, RuntimeProvider } from "@lando/sdk/services";',
     'import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";',
     'import { bundledPluginModules } from "@lando/engine/composition";',
-    'import { DataMoverLive } from "@lando/engine/data-mover/service";',
+    'import { DataMoverLive } from "@lando/data-mover/service";',
     'import { GlobalAppServiceLive } from "@lando/engine/global-app/service";',
     'import { GlobalAppRuntimeLive } from "@lando/engine/global-app/runtime";',
     'import { CertificateAuthorityResolverLive } from "@lando/engine/plugins/certificate-authority-resolver";',
