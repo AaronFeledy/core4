@@ -99,7 +99,12 @@ export {
   runTooling,
   validateToolingArguments,
 } from "@lando/engine/operations/tooling";
-export { buildUninstallPlan, uninstall, type UninstallResult } from "@lando/engine/operations/uninstall";
+export {
+  buildUninstallPlan,
+  type DiscoveredApp,
+  uninstall,
+  type UninstallResult,
+} from "@lando/engine/operations/uninstall";
 export {
   buildWindowsReplacementScript,
   defaultFetchManifestBytes,

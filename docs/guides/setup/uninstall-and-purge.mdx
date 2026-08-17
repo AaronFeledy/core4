@@ -26,24 +26,35 @@ uninstall --yes --keep-data
 uninstall --yes --purge
 ```
 
-**Important:** `--purge` will fail with a non-zero exit code if any Lando
-apps are still running. Stop all apps first:
+With `--purge`, Lando cleans up its container-runtime leftovers before it
+deletes anything on disk:
+
+- Stops and removes Lando-labeled containers (`dev.lando.app`, plus
+  `com.lando.app` for Lando 3 leftovers) in Docker and Podman
+- Prunes unused Lando networks (`dev.lando.network=true`)
+- Prunes unused Lando volumes (`dev.lando.volume=true`)
+
+When that cleanup succeeds, `--purge` then removes:
+
+- User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
+- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
+- User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
+
+**If Lando cannot query a container runtime** — neither Docker nor Podman
+is available, or a query fails — `--purge` fails closed: it exits non-zero
+and deletes no data. Uninstall never orphans running containers by
+deleting state while they are still up.
+
+You can still stop or destroy apps yourself first; purge just no longer
+depends on it:
 
 ```sh
-# Stop all apps (preserves containers/volumes for restart)
+# Stop all apps before uninstalling, if you prefer a tidy shutdown
 lando poweroff
-
-# Or destroy specific apps (removes containers and volumes)
-lando destroy --volumes
 
 # Then purge Lando
 lando uninstall --yes --purge
 ```
-
-When `--purge` succeeds, it has removed:
-- User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
-- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
-- User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
 A binary outside Lando's managed bin directory is never removed
 automatically — the plan prints exact manual removal steps for it instead.

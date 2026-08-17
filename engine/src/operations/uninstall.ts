@@ -75,6 +75,7 @@ export interface UninstallOptions {
     userDataRoot: string,
     userCacheRoot: string,
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
+  readonly cleanupDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -147,6 +148,26 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 };
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
+
+// Rootless Podman runtime directories contain subuid-owned files that a plain
+// rm cannot delete (EACCES/EPERM). Retry inside podman's user namespace on
+// Linux before giving up; rethrow the original failure when that is not
+// possible so the step reports the real cause.
+const defaultRemoveRuntimeDir = async (path: string): Promise<void> => {
+  try {
+    await defaultRemove(path);
+  } catch (cause) {
+    if (process.platform !== "linux") throw cause;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      await execFileAsync("podman", ["unshare", "rm", "-rf", path], { timeout: 30_000 });
+    } catch {
+      throw cause;
+    }
+  }
+};
 
 const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
@@ -239,11 +260,13 @@ const buildRunningAppsStep = async (
     destructive: true,
   };
   if (listDiscoveredApps === undefined) {
+    // Fail closed: cannot verify safety, so refuse to proceed
     return {
       ...base,
       target: "Lando apps",
-      status: "skipped" as const,
-      detail: "Unable to list running apps; provider registry unavailable.",
+      status: "user-owned" as const,
+      detail:
+        "Cannot verify whether Lando apps are running; discovery failed (container runtime unavailable). Uninstall cannot proceed safely.",
     };
   }
   try {
@@ -252,23 +275,26 @@ const buildRunningAppsStep = async (
       return {
         ...base,
         target: "Lando apps",
-        status: "skipped" as const,
-        detail: "No running Lando apps found.",
+        status: "owned" as const,
+        detail:
+          "No running Lando apps found. Will clean up any leftover Lando-labeled containers and resources.",
       };
     }
     const appList = apps.map((app) => app.appId).join(", ");
     return {
       ...base,
       target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
-      status: "user-owned" as const,
-      detail: `Uninstall cannot proceed while ${apps.length} Lando app${apps.length === 1 ? " is" : "s are"} running. Run \`lando poweroff\` first, then retry uninstall.`,
+      status: "owned" as const,
+      detail: `Found ${apps.length} running Lando app${apps.length === 1 ? "" : "s"}. Will stop and remove ${apps.length === 1 ? "it" : "them"} along with unused Lando networks and volumes.`,
     };
-  } catch {
+  } catch (cause) {
+    // Fail closed: discovery failed, cannot verify safety
+    const error = cause instanceof Error ? cause.message : String(cause);
     return {
       ...base,
       target: "Lando apps",
-      status: "skipped" as const,
-      detail: "Unable to discover running apps; provider may be unavailable.",
+      status: "user-owned" as const,
+      detail: `Cannot verify whether Lando apps are running; discovery failed: ${error}. Uninstall cannot proceed safely.`,
     };
   }
 };
@@ -292,7 +318,13 @@ export const buildUninstallPlan = async (
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
 
-  const runningAppsStep = await buildRunningAppsStep(userDataRoot, userCacheRoot, options.listDiscoveredApps);
+  // keep-data never touches app state, so skip container-runtime discovery
+  // entirely; stepWithMode marks the step as preserved.
+  const runningAppsStep = await buildRunningAppsStep(
+    userDataRoot,
+    userCacheRoot,
+    mode === "keep-data" ? undefined : options.listDiscoveredApps,
+  );
 
   const steps: ReadonlyArray<UninstallPlanStep> = [
     runningAppsStep,
@@ -427,7 +459,9 @@ const executeUninstall = async (
   hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
+  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
+  const exists = options.exists ?? ((path: string) => existsSync(path));
   const teardownRuntimeService =
     options.teardownRuntimeService ??
     ((root: string) => defaultTeardownRuntimeService(hostMaintenanceRegistry, root));
@@ -438,15 +472,41 @@ const executeUninstall = async (
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
-    if (step.id === "running-apps" && step.status === "user-owned") {
-      // Running apps block uninstall - mark as failed and abort
-      executed.push({
-        ...step,
-        outcome: "failed",
-        error: step.detail ?? "Uninstall cannot proceed while Lando apps are running.",
-      });
-      // Abort immediately: do not process any remaining destructive steps
-      break;
+    if (step.id === "running-apps") {
+      // This step's target is a description, never a filesystem path; it must
+      // not fall through to remove(step.target).
+      if (step.status === "user-owned") {
+        // Discovery failed or unavailable - fail closed
+        executed.push({
+          ...step,
+          outcome: "failed",
+          error: step.detail ?? "Cannot verify running apps; uninstall cannot proceed safely.",
+        });
+        // Abort immediately: do not process any remaining destructive steps
+        break;
+      }
+      if (step.status !== "owned") {
+        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+        continue;
+      }
+      // Discovery succeeded: re-list for a fresh snapshot, then sweep leftover
+      // Lando containers, networks, and volumes even when no app is running.
+      try {
+        const apps =
+          options.listDiscoveredApps === undefined
+            ? []
+            : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
+        if (options.cleanupDiscoveredApps !== undefined) {
+          await options.cleanupDiscoveredApps(apps);
+        }
+        executed.push({ ...step, outcome: "completed" });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+        // If cleanup fails, abort to prevent orphaning resources
+        break;
+      }
+      continue;
     }
     if (step.id === "host-proxy-sessions" && step.status === "owned") {
       try {
@@ -476,7 +536,19 @@ const executeUninstall = async (
         executed.push({ ...step, outcome: "completed" });
         continue;
       }
-      await remove(step.target);
+      if (step.id === "runtime-service") {
+        await (options.remove ?? defaultRemoveRuntimeDir)(step.target);
+        // Verify removal: lingering mounts or processes can survive a
+        // successful-looking rm and would leave the runtime half-removed.
+        if (exists(step.target)) {
+          throw new Error(
+            `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
+          );
+        }
+      } else {
+        await remove(step.target);
+      }
+
       executed.push({ ...step, outcome: "completed" });
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : String(cause);
