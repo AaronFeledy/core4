@@ -218,6 +218,43 @@ describe("runToolingStepProgram conditions and leaves", () => {
     expect(observed).toEqual([{ target: "appserver", retries: 2, enabled: true }]);
   });
 
+  test("resolves repeatable command inputs element-wise while preserving array shape", async () => {
+    // Given
+    const observed: Array<{
+      readonly flags: Readonly<Record<string, unknown>>;
+      readonly args: Readonly<Record<string, unknown>>;
+    }> = [];
+    const tools = harness();
+    const runners: ToolingStepRunners<LeafFailure, string> = {
+      ...tools.runners,
+      runCommand: (leaf) =>
+        Effect.sync(() => {
+          observed.push({ flags: leaf.flags, args: leaf.args });
+          return leaf.command;
+        }),
+    };
+    const program = await Effect.runPromise(
+      compileEventStepProgram([
+        {
+          command: "info",
+          flags: { tag: ["alpha", "{{ vars.tag }}"] },
+          args: { services: ["{{ vars.service }}", "database"] },
+        },
+      ]),
+    );
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      runToolingStepProgram(program, { vars: { tag: "beta", service: "appserver" } }, runners),
+    );
+
+    // Then
+    expect(exit._tag).toBe("Success");
+    expect(observed).toEqual([
+      { flags: { tag: ["alpha", "beta"] }, args: { services: ["appserver", "database"] } },
+    ]);
+  });
+
   test("expands lists and matrices deterministically and treats an empty axis as zero iterations", async () => {
     // Given
     const tools = harness();

@@ -5,18 +5,32 @@ import { join } from "node:path";
 
 import { Cause, Context, DateTime, Effect, Exit, Queue, Schema, Stream } from "effect";
 
+import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
+import {
+  EventService,
+  type EventServiceShape,
+  type LandoEvent,
+  Renderer,
+  RuntimeProviderRegistry,
+  ShellRunner,
+  ToolingEngine,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { runAppEvent } from "@lando/engine/operations/events";
 import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
+import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import {
@@ -78,6 +92,12 @@ const makeHarness = (): Harness => {
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
+      Context.add(
+        ShellRunner,
+        makeShellRunnerService(() => {
+          throw new TypeError("Interactive shell IO was not expected in this test.");
+        }),
+      ),
     ),
   };
 };
@@ -99,7 +119,16 @@ const entryFor = (
       return Promise.resolve();
     }
   }
-  return { command: TestCommand, spec, status: { kind: "implemented" } };
+  return {
+    command: TestCommand,
+    spec: {
+      ...spec,
+      flags: TestCommand.flags,
+      args: TestCommand.args,
+      strict: spec.strict ?? TestCommand.strict,
+    },
+    status: { kind: "implemented" },
+  };
 };
 
 const executorFor = (entry: BuiltInCommandEntry, harness: Harness) =>
@@ -252,6 +281,35 @@ describe("EventCommandExecutorLive", () => {
     expect(harness.presentation).toEqual(["stdout:done:plain\n"]);
     expect(renderedInput).toMatchObject({ flags: { label: "rendered" } });
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+  });
+
+  test("redacts supplied tokens from canonical host shell lifecycle events", async () => {
+    // Given
+    const harness = makeHarness();
+    const secret = "canonical-host-shell-secret";
+    const spec = testSpec(() =>
+      ShellRunner.pipe(Effect.flatMap((shell) => shell.exec(`printf '${secret}'`))),
+    );
+    const input = {
+      command: spec.id,
+      flags: {},
+      args: {},
+      argv: [],
+      cwd: "/workspace/demo",
+      redactionTokens: [secret],
+    } as const;
+
+    // When
+    await Effect.runPromise(executorFor(entryFor(spec), harness).run(input));
+
+    // Then
+    const shellEvents = harness.events.filter(
+      (event) => event._tag === "pre-shell-exec" || event._tag === "post-shell-exec",
+    );
+    const payload = JSON.stringify(shellEvents);
+    expect(shellEvents.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
+    expect(payload).not.toContain(secret);
+    expect(payload).toContain("[redacted]");
   });
 
   test("preserves a tagged target failure", async () => {
@@ -488,6 +546,241 @@ describe("EventCommandExecutorLive", () => {
     expect(Exit.isFailure(unknownFlag)).toBe(true);
   });
 
+  test("validates required arguments, flag values, and strict raw input", async () => {
+    // Given
+    const harness = makeHarness();
+    const executor = executorFor(
+      entryFor(
+        testSpec(() => Effect.void),
+        {
+          flags: {
+            count: Flags.integer({ required: true }),
+            enabled: Flags.boolean(),
+            mode: Flags.string({ options: ["safe", "fast"] }),
+          },
+          args: { target: Args.string({ required: true }) },
+        },
+      ),
+      harness,
+    );
+
+    // When
+    const cases = [
+      { flags: { count: 1, mode: "safe" }, args: {}, argv: [] },
+      { flags: { count: "many", mode: "safe" }, args: { target: "app" }, argv: [] },
+      { flags: { count: 1, enabled: "yes", mode: "safe" }, args: { target: "app" }, argv: [] },
+      { flags: { count: 1, mode: "unsafe" }, args: { target: "app" }, argv: [] },
+      { flags: { count: 1, mode: "safe" }, args: { target: "app" }, argv: ["extra"] },
+    ];
+    const exits = await Promise.all(
+      cases.map((input) =>
+        Effect.runPromiseExit(
+          executor.run({ command: "meta:test:event-command", ...input, cwd: process.cwd() }),
+        ),
+      ),
+    );
+
+    // Then
+    expect(exits.every(Exit.isFailure)).toBe(true);
+    expect(
+      exits.map((exit) => (Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "success")),
+    ).toEqual([
+      expect.stringContaining("Missing required argument target"),
+      expect.stringContaining("flag count"),
+      expect.stringContaining("flag enabled"),
+      expect.stringContaining("must be one of"),
+      expect.stringContaining("does not accept raw arguments"),
+    ]);
+  });
+
+  test("discovers and executes a plugin command loader from the production graph", async () => {
+    // Given
+    const harness = makeHarness();
+    let ran = false;
+    const manifest = Schema.decodeSync((await import("@lando/sdk/schema")).PluginManifest)({
+      name: "@example/commands",
+      version: "1.0.0",
+      api: 4,
+      contributes: { commands: ["meta:example:hello"] },
+    });
+    const module = {
+      name: manifest.name,
+      manifest,
+      commands: new Map([
+        [
+          "meta:example:hello",
+          async () => ({
+            id: "meta:example:hello",
+            summary: "Hello from a plugin.",
+            namespace: "meta" as const,
+            bootstrap: "plugins" as const,
+            resultSchema: Schema.Unknown,
+            run: () =>
+              Effect.sync(() => {
+                ran = true;
+              }),
+          }),
+        ],
+      ]),
+    };
+    const context = Context.add(harness.context, PluginContributionGraph, {
+      plugins: [{ source: "explicit", manifest, entry: module, module }],
+      certificateAuthorities: [],
+      commands: [
+        {
+          id: "meta:example:hello",
+          pluginName: String(manifest.name),
+          source: "explicit",
+          load:
+            module.commands.get("meta:example:hello") ??
+            (() => Promise.reject(new TypeError("missing loader"))),
+        },
+      ],
+      hostContext: Context.empty(),
+    });
+
+    // When
+    await Effect.runPromise(
+      makeEventCommandExecutor(context).run({
+        command: "meta:example:hello",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then
+    expect(ran).toBe(true);
+    expect(harness.events.map((event) => event._tag)).toEqual([
+      "cli-meta:example:hello-init",
+      "cli-meta:example:hello-run",
+    ]);
+  });
+
+  test("executes an effective tooling canonical id through ToolingEngine", async () => {
+    // Given
+    const harness = makeHarness();
+    const plan = attachEffectiveTooling(
+      { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+      { lint: { cmd: "bun run lint" } },
+    );
+    const invocations: string[] = [];
+    const context = harness.context.pipe(
+      Context.add(RuntimeProviderRegistry, {
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+      Context.add(ToolingEngine, {
+        id: "test",
+        run: (invocation) =>
+          Effect.sync(() => {
+            invocations.push(invocation.tool);
+            return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+          }),
+      }),
+    );
+    const input = {
+      command: "app:lint",
+      flags: {},
+      args: {},
+      argv: [],
+      cwd: process.cwd(),
+      plan,
+    };
+
+    // When
+    await Effect.runPromise(makeEventCommandExecutor(context).run(input));
+
+    // Then
+    expect(invocations).toEqual(["lint"]);
+  });
+
+  test("rejects an unknown built-in canonical id with a tagged lookup error naming close matches", async () => {
+    // Given
+    const harness = makeHarness();
+    const executor = executorFor(entryFor(testSpec(() => Effect.void)), harness);
+
+    // When
+    const missing = await Effect.runPromiseExit(
+      executor.run({
+        command: "meta:test:event-commnd",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then
+    expect(Exit.isFailure(missing)).toBe(true);
+    expect(Exit.isFailure(missing) ? Cause.squash(missing.cause) : undefined).toMatchObject({
+      _tag: "ToolingCommandLookupError",
+      target: "meta:test:event-commnd",
+      targetKind: "built-in",
+      remediation: expect.stringContaining("meta:test:event-command"),
+    });
+  });
+
+  test("reports an unknown tooling canonical id against the effective tooling registry", async () => {
+    // Given
+    const harness = makeHarness();
+    const plan = attachEffectiveTooling(
+      { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+      { lint: { cmd: "bun run lint" } },
+    );
+
+    // When
+    const missing = await Effect.runPromiseExit(
+      makeEventCommandExecutor(harness.context, []).run({
+        command: "app:lnt",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+        plan,
+      }),
+    );
+
+    // Then
+    expect(Exit.isFailure(missing)).toBe(true);
+    expect(Exit.isFailure(missing) ? Cause.squash(missing.cause) : undefined).toMatchObject({
+      _tag: "ToolingCommandLookupError",
+      target: "app:lnt",
+      targetKind: "tooling",
+      remediation: expect.stringContaining("app:lint"),
+    });
+  });
+
+  test("rejects a bare tooling name because command steps accept canonical ids only", async () => {
+    // Given
+    const harness = makeHarness();
+    const plan = attachEffectiveTooling(
+      { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+      { lint: { cmd: "bun run lint" } },
+    );
+
+    // When
+    const bare = await Effect.runPromiseExit(
+      makeEventCommandExecutor(harness.context, []).run({
+        command: "lint",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+        plan,
+      }),
+    );
+
+    // Then
+    expect(Exit.isFailure(bare)).toBe(true);
+    expect(Exit.isFailure(bare) ? Cause.squash(bare.cause) : undefined).toMatchObject({
+      _tag: "ToolingCommandLookupError",
+      target: "lint",
+    });
+  });
+
   test("rejects an unknown named canonical command argument", async () => {
     // Given
     const harness = makeHarness();
@@ -513,8 +806,11 @@ describe("EventCommandExecutorLive", () => {
     // Then
     expect(Exit.isFailure(unknownArg)).toBe(true);
     expect(Exit.isFailure(unknownArg) ? Cause.squash(unknownArg.cause) : undefined).toMatchObject({
-      _tag: "ToolingCompileError",
-      tool: "meta:test:event-command",
+      _tag: "CommandInputValidationError",
+      target: "meta:test:event-command",
+      field: "bogus",
+      kind: "arg",
+      reason: "unknown",
     });
   });
 
@@ -558,20 +854,23 @@ describe("EventCommandExecutorLive", () => {
     let captured:
       | { readonly parsedArgv: ReadonlyArray<string>; readonly args: Record<string, unknown> }
       | undefined;
-    const spec = testSpec((input) =>
-      Effect.sync(() => {
-        if (typeof input === "object" && input !== null && "argv" in input && "args" in input) {
-          captured = {
-            parsedArgv: extractSpecParsedArgv(input),
-            args:
-              typeof input.args === "object" && input.args !== null
-                ? Object.fromEntries(Object.entries(input.args))
-                : {},
-          };
-        }
-        return "done";
-      }),
-    );
+    const spec = {
+      ...testSpec((input) =>
+        Effect.sync(() => {
+          if (typeof input === "object" && input !== null && "argv" in input && "args" in input) {
+            captured = {
+              parsedArgv: extractSpecParsedArgv(input),
+              args:
+                typeof input.args === "object" && input.args !== null
+                  ? Object.fromEntries(Object.entries(input.args))
+                  : {},
+            };
+          }
+          return "done";
+        }),
+      ),
+      strict: false,
+    } satisfies LandoCommandSpec;
     const executor = executorFor(entryFor(spec, { args: { target: Args.string() } }), harness);
 
     // When
@@ -587,6 +886,234 @@ describe("EventCommandExecutorLive", () => {
 
     // Then
     expect(captured).toEqual({ args: { target: "named" }, parsedArgv: ["--", "raw", "tail"] });
+  });
+
+  test("parses every occurrence of a multiple canonical flag in order", async () => {
+    // Given
+    const harness = makeHarness();
+    let captured: unknown;
+    const spec = testSpec((input) =>
+      Effect.sync(() => {
+        captured = input;
+      }),
+    );
+    const executor = executorFor(
+      entryFor(spec, {
+        flags: {
+          label: Flags.string({
+            multiple: true,
+            parse: async (value) => value.toUpperCase(),
+          }),
+        },
+      }),
+      harness,
+    );
+
+    // When
+    await Effect.runPromise(
+      executor.run({
+        command: spec.id,
+        flags: { label: ["first", "second"] },
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then
+    expect(captured).toMatchObject({ flags: { label: ["FIRST", "SECOND"] } });
+  });
+
+  test("normalizes all primitive command input kinds and preserves declaration order", async () => {
+    // Given
+    const spec = {
+      id: "meta:test:parser",
+      summary: "Parser fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      strict: false,
+      flags: {
+        decimal: { type: "number" },
+        integer: { type: "option", valueType: "integer" },
+        enabled: { type: "boolean" },
+        mode: { type: "option", options: ["SAFE", "FAST"], parse: (value) => value.toUpperCase() },
+        labels: { type: "option", multiple: true, parse: async (value) => `[${value}]` },
+      },
+      args: {
+        target: { type: "option" },
+        paths: { type: "option", multiple: true },
+      },
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+
+    // When
+    const input = await Effect.runPromise(
+      validateEventCommandInput(spec, {
+        flags: { labels: ["one", "two"], mode: "safe", enabled: false, integer: 4, decimal: 1.25 },
+        args: { paths: ["a", "b"], target: "app" },
+        raw: ["--", "tail"],
+      }),
+    );
+
+    // Then
+    expect(input).toEqual({
+      argv: ["--", "tail"],
+      parsedArgv: ["--", "tail"],
+      flags: { decimal: 1.25, integer: 4, enabled: false, mode: "SAFE", labels: ["[one]", "[two]"] },
+      args: { target: "app", paths: ["a", "b"] },
+    });
+    expect(Object.keys(input.flags)).toEqual(["decimal", "integer", "enabled", "mode", "labels"]);
+    expect(Object.keys(input.args)).toEqual(["target", "paths"]);
+    expect(Object.getPrototypeOf(input.flags)).toBeNull();
+    expect(Object.getPrototypeOf(input.args)).toBeNull();
+  });
+
+  test("uses defaults only when a command input field is absent", async () => {
+    // Given
+    const spec = {
+      id: "meta:test:defaults",
+      summary: "Default fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      flags: {
+        enabled: { type: "boolean", default: false },
+        retries: { type: "option", valueType: "integer", default: 0 },
+        label: { type: "option", default: "" },
+      },
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+
+    // When
+    const input = await Effect.runPromise(validateEventCommandInput(spec, { flags: {}, args: {}, raw: [] }));
+
+    // Then
+    expect(input.flags).toEqual({ enabled: false, retries: 0, label: "" });
+  });
+
+  test("rejects an explicitly undefined field instead of replacing it with its default", async () => {
+    // Given
+    const spec = {
+      id: "meta:test:defaults",
+      summary: "Default fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      flags: { enabled: { type: "boolean", default: true } },
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(validateEventCommandInput(spec, { flags: { enabled: undefined }, args: {}, raw: [] })),
+    );
+
+    // Then
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: spec.id,
+      field: "enabled",
+      kind: "flag",
+      reason: "type",
+    });
+  });
+
+  test("rejects non-finite, fractional integer, loose boolean, cardinality, option, and parser failures", async () => {
+    // Given
+    const rejectingParser = new EventCommandTestError({ message: "parser rejected value" });
+    const spec = {
+      id: "meta:test:invalid-input",
+      summary: "Invalid input fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      flags: {
+        decimal: { type: "number" },
+        integer: { type: "option", valueType: "integer" },
+        enabled: { type: "boolean" },
+        mode: { type: "option", options: ["safe"] },
+        single: { type: "option" },
+        multiple: { type: "option", multiple: true },
+        parsed: {
+          type: "option",
+          parse: async () => Promise.reject(rejectingParser),
+        },
+      },
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+    const cases = [
+      { field: "decimal", value: Number.NaN, reason: "type" },
+      { field: "decimal", value: Number.POSITIVE_INFINITY, reason: "type" },
+      { field: "integer", value: 1.5, reason: "type" },
+      { field: "enabled", value: "true", reason: "type" },
+      { field: "mode", value: "fast", reason: "option" },
+      { field: "single", value: ["one"], reason: "type" },
+      { field: "multiple", value: "one", reason: "type" },
+      { field: "parsed", value: "bad", reason: "parse" },
+    ] as const;
+
+    // When
+    const errors = await Promise.all(
+      cases.map(({ field, value }) =>
+        Effect.runPromise(
+          Effect.flip(validateEventCommandInput(spec, { flags: { [field]: value }, args: {}, raw: [] })),
+        ),
+      ),
+    );
+
+    // Then
+    expect(errors.map(({ field, reason, cause }) => ({ field, reason, cause }))).toEqual(
+      cases.map(({ field, reason }) => ({
+        field,
+        reason,
+        ...(field === "parsed" ? { cause: rejectingParser } : { cause: undefined }),
+      })),
+    );
+  });
+
+  test("rejects own keys that exist only on Object.prototype", async () => {
+    // Given
+    const spec = {
+      id: "meta:test:prototype",
+      summary: "Prototype fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      flags: {},
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+    const flags = Object.assign(Object.create(null), { toString: "owned" });
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(validateEventCommandInput(spec, { flags, args: {}, raw: [] })),
+    );
+
+    // Then
+    expect(error).toMatchObject({ field: "toString", kind: "flag", reason: "unknown" });
+  });
+
+  test("ignores inherited input keys", async () => {
+    // Given
+    const spec = {
+      id: "meta:test:prototype",
+      summary: "Prototype fixture.",
+      namespace: "meta",
+      bootstrap: "none",
+      flags: { label: { type: "option", required: true } },
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    } satisfies ExecutableCommandSpec;
+    const flags = Object.create({ inherited: "ignored" });
+    Object.defineProperty(flags, "label", { value: "owned", enumerable: true });
+
+    // When
+    const input = await Effect.runPromise(validateEventCommandInput(spec, { flags, args: {}, raw: [] }));
+
+    // Then
+    expect(input.flags).toEqual({ label: "owned" });
+    expect(Object.hasOwn(input.flags, "inherited")).toBe(false);
   });
 });
 

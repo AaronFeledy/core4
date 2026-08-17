@@ -7,6 +7,7 @@ import { type ProgressEmitter, publishTaskDetail } from "./progress.ts";
 
 export interface StartManagedScope {
   readonly scope: Scope.CloseableScope;
+  readonly onStopped?: Effect.Effect<void>;
   readonly onScopeClosedByStartApp?: Effect.Effect<void>;
 }
 

@@ -1,79 +1,25 @@
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 
-import { type LandofileExpressionParseError, ToolingStepConditionError } from "@lando/sdk/errors";
+import { ToolingStepConditionError } from "@lando/sdk/errors";
+import { type ExpressionContext, evaluateTemplate, parseExpression } from "@lando/sdk/expressions";
 import {
-  type ExpressionContext,
-  type LandofileExpressionEvaluationError,
-  evaluateTemplate,
-  parseExpression,
-} from "@lando/sdk/expressions";
-import { PortablePath, type ToolingTaskShape, type ToolingVarLiteral } from "@lando/sdk/schema";
+  type EventCommandInputValue,
+  PortablePath,
+  type ToolingTaskShape,
+  type ToolingVarLiteral,
+} from "@lando/sdk/schema";
 
+import { runToolingStepProgramWith } from "./step-executor.ts";
 import type {
   ToolingCmdStepLeaf,
   ToolingCommandStepLeaf,
-  ToolingStepIteration,
   ToolingStepLeaf,
-  ToolingStepNode,
   ToolingStepProgram,
-  ToolingStepSelector,
   ToolingTaskStepLeaf,
 } from "./step-program.ts";
+import type { ToolingStepExpressionError, ToolingStepRunners } from "./step-runner-types.ts";
 
 const EXPRESSION_FILE = "<tooling-step>";
-
-interface ResolvedLeafBase {
-  readonly authoredIndex: number;
-  readonly silent: boolean;
-  readonly ignoreError: boolean;
-}
-
-export interface ResolvedToolingCmdStepLeaf extends ResolvedLeafBase {
-  readonly kind: "cmd";
-  readonly command: string;
-  readonly service?: string;
-  readonly env?: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly user?: string;
-  readonly dir?: PortablePath;
-}
-
-export interface ResolvedToolingTaskStepLeaf extends ResolvedLeafBase {
-  readonly kind: "task";
-  readonly task: string;
-  readonly vars: Readonly<Record<string, unknown>>;
-}
-
-export interface ResolvedToolingCommandStepLeaf extends ResolvedLeafBase {
-  readonly kind: "command";
-  readonly command: string;
-  readonly flags: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly args: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly raw: ReadonlyArray<string>;
-}
-
-export type ResolvedToolingStepLeaf =
-  | ResolvedToolingCmdStepLeaf
-  | ResolvedToolingTaskStepLeaf
-  | ResolvedToolingCommandStepLeaf;
-
-export interface ToolingStepPresentation<A> {
-  readonly leaf: ResolvedToolingStepLeaf;
-  readonly context: ExpressionContext;
-  readonly result: A;
-}
-
-export interface ToolingStepRunners<E, A> {
-  readonly runCmd: (leaf: ResolvedToolingCmdStepLeaf, context: ExpressionContext) => Effect.Effect<A, E>;
-  readonly runTask: (leaf: ResolvedToolingTaskStepLeaf, context: ExpressionContext) => Effect.Effect<A, E>;
-  readonly runCommand: (
-    leaf: ResolvedToolingCommandStepLeaf,
-    context: ExpressionContext,
-  ) => Effect.Effect<A, E>;
-  readonly present: (presentation: ToolingStepPresentation<A>) => Effect.Effect<void, E>;
-  readonly mapLeafError?: (leaf: ToolingStepLeaf, error: unknown) => E;
-}
-
-type ToolingStepExpressionError = LandofileExpressionParseError | LandofileExpressionEvaluationError;
 
 const resolve = (
   value: string,
@@ -101,6 +47,26 @@ const resolveRecord = (
 ): Effect.Effect<Readonly<Record<string, unknown>>, ToolingStepExpressionError> =>
   Effect.forEach(Object.entries(values), ([name, value]) =>
     resolveLiteral(value, context).pipe(Effect.map((resolved) => [name, resolved] as const)),
+  ).pipe(Effect.map(Object.fromEntries));
+
+/** `Array.isArray` alone leaves `readonly string[]` in the scalar branch. */
+const isRepeatableInput = (value: EventCommandInputValue): value is ReadonlyArray<string> =>
+  Array.isArray(value);
+
+const resolveCommandValue = (
+  value: EventCommandInputValue,
+  context: ExpressionContext,
+): Effect.Effect<unknown, ToolingStepExpressionError> =>
+  isRepeatableInput(value)
+    ? Effect.forEach(value, (entry) => resolve(entry, context))
+    : resolveLiteral(value, context);
+
+const resolveCommandRecord = (
+  values: Readonly<Record<string, EventCommandInputValue>>,
+  context: ExpressionContext,
+): Effect.Effect<Readonly<Record<string, unknown>>, ToolingStepExpressionError> =>
+  Effect.forEach(Object.entries(values), ([name, value]) =>
+    resolveCommandValue(value, context).pipe(Effect.map((resolved) => [name, resolved] as const)),
   ).pipe(Effect.map(Object.fromEntries));
 
 const resolveScalarRecord = (
@@ -158,7 +124,7 @@ const conditionError = (condition: string, cause?: unknown) =>
     ...(cause === undefined ? {} : { cause }),
   });
 
-const conditionAllows = (
+export const conditionAllows = (
   condition: ToolingStepLeaf["condition"],
   context: ExpressionContext,
 ): Effect.Effect<boolean, ToolingStepConditionError> => {
@@ -213,8 +179,8 @@ const resolveTask = (leaf: ToolingTaskStepLeaf, context: ExpressionContext) =>
 const resolveCommand = (leaf: ToolingCommandStepLeaf, context: ExpressionContext) =>
   Effect.gen(function* () {
     const command = yield* resolveString(leaf.command, context);
-    const flags = yield* resolveScalarRecord(leaf.flags, context);
-    const args = yield* resolveScalarRecord(leaf.args, context);
+    const flags = yield* resolveCommandRecord(leaf.flags, context);
+    const args = yield* resolveCommandRecord(leaf.args, context);
     const raw = yield* Effect.forEach(leaf.raw, (value) => resolveString(value, context));
     return {
       kind: "command" as const,
@@ -228,7 +194,7 @@ const resolveCommand = (leaf: ToolingCommandStepLeaf, context: ExpressionContext
     };
   });
 
-const resolveLeaf = (leaf: ToolingStepLeaf, context: ExpressionContext) => {
+export const resolveLeaf = (leaf: ToolingStepLeaf, context: ExpressionContext) => {
   switch (leaf.kind) {
     case "cmd":
       return resolveCmd(leaf, context).pipe(Effect.map((resolved) => ({ leaf: resolved, context })));
@@ -239,121 +205,17 @@ const resolveLeaf = (leaf: ToolingStepLeaf, context: ExpressionContext) => {
   }
 };
 
-const matrixItems = (axes: Extract<ToolingStepSelector, { readonly kind: "matrix" }>["axes"]) => {
-  let items: ReadonlyArray<Readonly<Record<string, ToolingVarLiteral>>> = [{}];
-  for (const [name, values] of axes) {
-    items = items.flatMap((item) => values.map((value) => ({ ...item, [name]: value })));
-  }
-  return items;
-};
-
-const selectorIterations = (
-  selector: ToolingStepSelector,
-  context: ExpressionContext,
-): Effect.Effect<ReadonlyArray<ToolingStepIteration>> => {
-  if (selector.kind === "list") {
-    return Effect.succeed(
-      selector.values.map((item, key) => ({ context: { ...context, item, key }, item, key })),
-    );
-  }
-  if (selector.kind === "matrix") {
-    return Effect.succeed(
-      matrixItems(selector.axes).map((item, key) => ({ context: { ...context, item, key }, item, key })),
-    );
-  }
-  const selected = context.vars?.[selector.name];
-  if (Array.isArray(selected)) {
-    return Effect.succeed(selected.map((item, key) => ({ context: { ...context, item, key }, item, key })));
-  }
-  if (typeof selected === "object" && selected !== null) {
-    return Effect.succeed(
-      Object.entries(selected)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-        .map(([key, item]) => ({ context: { ...context, item, key }, item, key })),
-    );
-  }
-  return Effect.succeed([]);
-};
-
-const executeResolved = <E, A>(
-  leaf: ResolvedToolingStepLeaf,
-  context: ExpressionContext,
-  runners: ToolingStepRunners<E, A>,
-): Effect.Effect<void, E> => {
-  const run = (() => {
-    switch (leaf.kind) {
-      case "cmd":
-        return runners.runCmd(leaf, context);
-      case "task":
-        return runners.runTask(leaf, context);
-      case "command":
-        return runners.runCommand(leaf, context);
-    }
-  })();
-  const presented = run.pipe(
-    Effect.flatMap((result) => (leaf.silent ? Effect.void : runners.present({ leaf, context, result }))),
-  );
-  return leaf.ignoreError ? presented.pipe(Effect.catchAll(() => Effect.void)) : presented;
-};
-
 export const runToolingStepProgram = <E, A>(
   program: ToolingStepProgram,
   context: ExpressionContext,
   runners: ToolingStepRunners<E, A>,
-): Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError> =>
-  Effect.uninterruptibleMask((restore) =>
-    Effect.gen(function* () {
-      const deferred: Array<Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError>> =
-        [];
-      const executeLeaf = (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) =>
-        Effect.gen(function* () {
-          if (checkCondition && !(yield* conditionAllows(leaf.condition, leafContext))) return;
-          const resolved = yield* resolveLeaf(leaf, leafContext);
-          yield* executeResolved(resolved.leaf, resolved.context, runners);
-        }).pipe(
-          Effect.catchAll((error) =>
-            runners.mapLeafError === undefined
-              ? Effect.fail(error)
-              : Effect.fail(runners.mapLeafError(leaf, error)),
-          ),
-        );
-      const executeNode = (
-        node: ToolingStepNode,
-        nodeContext: ExpressionContext,
-      ): Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError> => {
-        if (node.kind === "leaf") return executeLeaf(node.leaf, nodeContext, true);
-        if (node.kind === "defer") {
-          return conditionAllows(node.leaf.condition, nodeContext).pipe(
-            Effect.flatMap((allowed) =>
-              Effect.sync(() => {
-                if (allowed) deferred.push(executeLeaf(node.leaf, nodeContext, false));
-              }),
-            ),
-          );
-        }
-        return selectorIterations(node.selector, nodeContext).pipe(
-          Effect.flatMap((iterations) =>
-            Effect.forEach(
-              iterations,
-              ({ context: iterationContext }) => executeNode(node.body, iterationContext),
-              { discard: true },
-            ),
-          ),
-        );
-      };
-      const bodyExit = yield* Effect.exit(
-        restore(Effect.forEach(program.nodes, (node) => executeNode(node, context), { discard: true })),
-      );
-      let deferredFailure:
-        | Exit.Exit<void, E | ToolingStepConditionError | ToolingStepExpressionError>
-        | undefined;
-      for (const finalizer of deferred.reverse()) {
-        const exit = yield* Effect.exit(finalizer);
-        if (deferredFailure === undefined && Exit.isFailure(exit)) deferredFailure = exit;
-      }
-      if (Exit.isFailure(bodyExit)) return yield* Effect.failCause(bodyExit.cause);
-      if (deferredFailure !== undefined && Exit.isFailure(deferredFailure)) {
-        return yield* Effect.failCause(deferredFailure.cause);
-      }
-    }),
-  );
+) => runToolingStepProgramWith(program, context, runners, { conditionAllows, resolveLeaf });
+
+export type {
+  ResolvedToolingCmdStepLeaf,
+  ResolvedToolingCommandStepLeaf,
+  ResolvedToolingStepLeaf,
+  ResolvedToolingTaskStepLeaf,
+  ToolingStepExpressionError,
+  ToolingStepRunners,
+} from "./step-runner-types.ts";

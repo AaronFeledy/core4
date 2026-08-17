@@ -74,9 +74,9 @@
       "title": "events: (events-as-tasks)",
       "description": "As a user, I can declare events: entries (pre-start, post-start, post-rebuild, ...) whose steps run as tooling-style tasks at matching lifecycle points — the v4 analog of v3 hooks.",
       "acceptanceCriteria": [
-        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the §8.5 events map (same step types as cmds:, service targeting, canonical-command calls).",
+        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the full §8.5 events map and §8.5.2 step contract (same step types as cmds: and service targeting). Per §8.5.2.1, command: steps resolve built-in, plugin-contributed, and tooling canonical ids and validate flags, args, and raw against the target LandoCommandSpec at compile time for literal values and invocation time for expression-resolved values.",
         "Event names validate against the §3/§11 app-scoped lifecycle taxonomy; unknown names fail closed at plan time listing valid names.",
-        "Subscribers execute at correct points of the §3 standard sequences in declaration order through the tooling engine; no new execution path.",
+        "Subscribers execute at correct points of the §3 standard sequences in declaration order through the shared tooling graph compiler and ToolingEngine: service-targeted steps use providerExec by default, while service: :host steps use ShellRunnerBunLive/Bun.$ per §3.4 and §8.6. Host steps must not synthesize sh -c, invoke an external system shell, or re-encode argv as a literal shell string; no new execution path.",
         "Failing pre-* subscriber aborts the operation with tagged error (step identity + output tail); post-* failures surface as warnings per spec.",
         "Step output routes through Renderer as task detail; event-bus publication with redaction.",
         "Recipe- and service-type-contributed event tasks merge below user entries per §6.11.3 precedence.",
@@ -84,7 +84,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

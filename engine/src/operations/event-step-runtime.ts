@@ -53,6 +53,7 @@ interface EventRuntimeOptions {
   ) => Effect.Effect<EventRedactionScope>;
   readonly runCanonical: (
     leaf: ResolvedToolingCommandStepLeaf,
+    redactionTokens: ReadonlyArray<string>,
   ) => Effect.Effect<ToolingEngineResult, unknown>;
 }
 
@@ -266,8 +267,8 @@ export const makeEventStepRunners = (
         Effect.suspend(() => {
           const startedAt = Date.now();
           return options.redactorFor([leaf.flags]).pipe(
-            Effect.flatMap(({ redactor }) =>
-              options.runCanonical(leaf).pipe(
+            Effect.flatMap(({ redactor, redactionTokens }) =>
+              options.runCanonical(leaf, redactionTokens).pipe(
                 Effect.mapError((error) =>
                   error instanceof LandofileEventLifecycleReentryError
                     ? error

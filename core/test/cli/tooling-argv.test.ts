@@ -14,6 +14,7 @@ describe("buildToolingInvocation", () => {
 
     // Then
     expect(invocation.commands).toEqual([["sh", "-c", 'vendor/bin/drush "$@"', "lando-tooling", ...args]]);
+    expect(invocation.hostSteps).toEqual([{ kind: "shell", source: "vendor/bin/drush", argv: args }]);
   });
 
   test("passes arguments only to the final command in a string command sequence", () => {
@@ -28,6 +29,10 @@ describe("buildToolingInvocation", () => {
       ["sh", "-c", 'composer validate "$@"', "lando-tooling"],
       ["sh", "-c", 'vendor/bin/drush "$@"', "lando-tooling", "status", "--field=bootstrap"],
     ]);
+    expect(invocation.hostSteps).toEqual([
+      { kind: "shell", source: "composer validate", argv: [] },
+      { kind: "shell", source: "vendor/bin/drush", argv: ["status", "--field=bootstrap"] },
+    ]);
   });
 
   test("keeps array-form commands as direct argv", () => {
@@ -39,6 +44,9 @@ describe("buildToolingInvocation", () => {
 
     // Then
     expect(invocation.commands).toEqual([["php", "-r", "echo $argv[1];", "two words", ""]]);
+    expect(invocation.hostSteps).toEqual([
+      { kind: "argv", argv: ["php", "-r", "echo $argv[1];", "two words", ""] },
+    ]);
   });
 
   test("uses the folded task dir as the invocation cwd", () => {

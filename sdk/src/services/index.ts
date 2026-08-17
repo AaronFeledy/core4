@@ -111,6 +111,7 @@ import type {
   SecretNotFoundError,
   ServiceTypeCollisionError,
   ShellExecError,
+  ToolingCompileError,
   ToolingExecError,
   ToolingIncludeCycleError,
 } from "../errors/index.ts";
@@ -719,7 +720,7 @@ export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngin
       invocation: ToolingInvocation,
       plan: AppPlan,
       provider: RuntimeProviderShape,
-    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingExecError>;
+    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
 >() {}
 

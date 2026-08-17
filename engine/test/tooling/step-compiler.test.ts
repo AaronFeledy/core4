@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Ref } from "effect";
 
-import { ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
+import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
 
-import { compileEventStepProgram, compileSimpleToolingTaskProgram } from "../../src/tooling/step-compiler.ts";
+import {
+  EventStepCompileError,
+  compileEventStepProgram,
+  compileSimpleToolingTaskProgram,
+} from "../../src/tooling/step-compiler.ts";
+import type { ToolingCommandStepLeaf } from "../../src/tooling/step-program.ts";
 
 describe("compileEventStepProgram", () => {
   test("compiles all six authored step kinds with strict top-level indexes", async () => {
@@ -78,7 +83,9 @@ describe("compileEventStepProgram", () => {
         expect(exit.cause._tag).toBe("Fail");
         if (exit.cause._tag === "Fail") {
           expect(exit.cause.error.cause).toBeInstanceOf(ToolingStepSelectorUnavailableError);
-          expect(exit.cause.error.cause.selector).toBe(selector);
+          if (exit.cause.error.cause instanceof ToolingStepSelectorUnavailableError) {
+            expect(exit.cause.error.cause.selector).toBe(selector);
+          }
         }
       }
     });
@@ -98,6 +105,112 @@ describe("compileEventStepProgram", () => {
       kind: "task",
       cause: { _tag: "ToolingStepSelectorUnavailableError", selector: "sources" },
     });
+  });
+
+  test("validates literal canonical command inputs at compile time", async () => {
+    // Given
+    const validated = await Effect.runPromise(Ref.make(0));
+    const validateCommand = (leaf: ToolingCommandStepLeaf) =>
+      Effect.gen(function* () {
+        yield* Ref.update(validated, (count) => count + 1);
+        expect(leaf.command).toBe("info");
+        expect(leaf.args).toEqual({ target: "app" });
+        expect(leaf.flags).toEqual({ format: "json" });
+      });
+
+    // When
+    await Effect.runPromise(
+      compileEventStepProgram(
+        [{ command: "info", args: { target: "app" }, flags: { format: "json" } }],
+        validateCommand,
+      ),
+    );
+
+    // Then
+    expect(await Effect.runPromise(Ref.get(validated))).toBe(1);
+  });
+
+  test("defers target validation when any command input has a dynamic expression segment", async () => {
+    // Given — shell params and secret refs must defer (not only `{{ ... }}`)
+    const cases: ReadonlyArray<EventStep> = [
+      { command: "{{ vars.cmd }}" },
+      { command: "info", args: { target: "${TARGET}" } },
+      { command: "info", flags: { token: "${secret:API_KEY}" } },
+      { command: "info", raw: ["${EXTRA}"] },
+    ];
+
+    for (const step of cases) {
+      const validated = await Effect.runPromise(Ref.make(0));
+      const validateCommand = () =>
+        Effect.gen(function* () {
+          yield* Ref.update(validated, (count) => count + 1);
+        });
+
+      // When
+      const program = await Effect.runPromise(compileEventStepProgram([step], validateCommand));
+
+      // Then
+      expect(program.nodes).toHaveLength(1);
+      expect(await Effect.runPromise(Ref.get(validated))).toBe(0);
+    }
+  });
+
+  test("rejects an expression syntax error in a later input after an earlier dynamic segment", async () => {
+    // Given
+    const step: EventStep = {
+      command: "{{ vars.cmd }}",
+      args: { target: "{{ vars.target" },
+    };
+
+    // When
+    const error = await Effect.runPromise(Effect.flip(compileEventStepProgram([step], () => Effect.void)));
+
+    // Then
+    expect(error).toBeInstanceOf(EventStepCompileError);
+    expect(error).toMatchObject({
+      _tag: "EventStepCompileError",
+      authoredIndex: 0,
+      kind: "command",
+      cause: { _tag: "ToolingCompileError", tool: "{{ vars.cmd }}" },
+    });
+    expect(error.cause).toBeInstanceOf(ToolingCompileError);
+  });
+
+  test("treats escaped shell forms as compile-time literals", async () => {
+    // Given
+    const validated = await Effect.runPromise(Ref.make(0));
+    const validateCommand = () =>
+      Effect.gen(function* () {
+        yield* Ref.update(validated, (count) => count + 1);
+      });
+
+    // When — `$${VAR}` escapes to a literal `${VAR}` segment
+    await Effect.runPromise(
+      compileEventStepProgram([{ command: "info", args: { target: "$${VAR}" } }], validateCommand),
+    );
+
+    // Then
+    expect(await Effect.runPromise(Ref.get(validated))).toBe(1);
+  });
+
+  test("treats non-string command inputs as compile-time literals", async () => {
+    // Given
+    const validated = await Effect.runPromise(Ref.make(0));
+    const validateCommand = () =>
+      Effect.gen(function* () {
+        yield* Ref.update(validated, (count) => count + 1);
+      });
+
+    // When
+    await Effect.runPromise(
+      compileEventStepProgram(
+        [{ command: "info", flags: { verbose: true }, args: { count: 2 } }],
+        validateCommand,
+      ),
+    );
+
+    // Then
+    expect(await Effect.runPromise(Ref.get(validated))).toBe(1);
   });
 });
 

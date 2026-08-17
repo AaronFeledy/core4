@@ -12,8 +12,11 @@ export interface AppLifecycle {
   readonly current: Effect.Effect<Scope.CloseableScope | undefined>;
   readonly closeCurrent: Effect.Effect<void>;
   readonly installFresh: Effect.Effect<Scope.CloseableScope>;
+  readonly stageFresh: Effect.Effect<Scope.CloseableScope>;
+  readonly replaceCurrent: (scope: Scope.CloseableScope) => Effect.Effect<void>;
   readonly forgetIfCurrent: (scope: Scope.CloseableScope) => Effect.Effect<void>;
   readonly discardIfCurrent: (scope: Scope.CloseableScope) => Effect.Effect<void>;
+  readonly discard: (scope: Scope.CloseableScope) => Effect.Effect<void>;
 }
 
 export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLifecycle> =>
@@ -34,6 +37,17 @@ export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLif
       Effect.uninterruptible,
     );
 
+    const stageFresh: Effect.Effect<Scope.CloseableScope> = Scope.fork(
+      handleScope,
+      ExecutionStrategy.sequential,
+    ).pipe(Effect.uninterruptible);
+
+    const replaceCurrent = (scope: Scope.CloseableScope): Effect.Effect<void> =>
+      Ref.getAndSet(current, scope).pipe(
+        Effect.flatMap((prev) => (prev === undefined ? Effect.void : Scope.close(prev, Exit.void))),
+        Effect.uninterruptible,
+      );
+
     const forgetIfCurrent = (scope: Scope.CloseableScope): Effect.Effect<void> =>
       Ref.get(current).pipe(
         Effect.flatMap((value) => (value === scope ? Ref.set(current, undefined) : Effect.void)),
@@ -50,12 +64,25 @@ export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLif
         Effect.uninterruptible,
       );
 
+    const discard = (scope: Scope.CloseableScope): Effect.Effect<void> =>
+      Ref.get(current).pipe(
+        Effect.flatMap((value) =>
+          (value === scope ? Ref.set(current, undefined) : Effect.void).pipe(
+            Effect.zipRight(Scope.close(scope, Exit.void)),
+          ),
+        ),
+        Effect.uninterruptible,
+      );
+
     return {
       serialize: (effect) => mutex.withPermits(1)(effect),
       current: Ref.get(current),
       closeCurrent,
       installFresh,
+      stageFresh,
+      replaceCurrent,
       forgetIfCurrent,
       discardIfCurrent,
+      discard,
     };
   });

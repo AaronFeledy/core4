@@ -107,32 +107,32 @@ export const makeAppHandle = (
     restart: (options?: RestartAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
-          yield* lifecycle.closeCurrent;
-          const scope = yield* lifecycle.installFresh;
+          const scope = yield* lifecycle.stageFresh;
           return yield* ops
             .restartApp(options, target, {
               scope,
+              onStopped: lifecycle.replaceCurrent(scope),
               onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
             })
             .pipe(
               Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+              Effect.onError(() => lifecycle.discard(scope)),
             );
         }),
       ),
     rebuild: (options?: RebuildAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
-          yield* lifecycle.closeCurrent;
-          const scope = yield* lifecycle.installFresh;
+          const scope = yield* lifecycle.stageFresh;
           return yield* ops
             .rebuildApp(options, target, {
               scope,
+              onStopped: lifecycle.replaceCurrent(scope),
               onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
             })
             .pipe(
               Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+              Effect.onError(() => lifecycle.discard(scope)),
             );
         }),
       ),

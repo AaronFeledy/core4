@@ -60,6 +60,27 @@ describe("makeShellRunnerLive", () => {
     }
   });
 
+  test("forwards argv structurally without evaluating shell metacharacters", async () => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-runner-argv-"));
+    const argv = ["two words", "", "$(touch unwanted)", "it's-safe"];
+
+    try {
+      // When
+      const result = await execShell("printf '<%s>\\n'", { cwd, argv });
+
+      // Then
+      expect(result).toEqual({
+        exitCode: 0,
+        stdout: "<two words>\n<>\n<$(touch unwanted)>\n<it's-safe>\n",
+        stderr: "",
+      });
+      expect(await Bun.file(join(cwd, "unwanted")).exists()).toBe(false);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("fails with ShellExecError for invalid shell syntax", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(ShellRunner, (shellRunner) => shellRunner.exec("echo &&")).pipe(

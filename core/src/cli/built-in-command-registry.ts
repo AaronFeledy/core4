@@ -115,10 +115,16 @@ export type BuiltInCommandEntry = {
 };
 
 const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
-  const plan = command.landoSpec.deferred;
+  const spec = {
+    ...command.landoSpec,
+    flags: { ...command.baseFlags, ...command.flags },
+    args: command.args,
+    strict: command.strict,
+  };
+  const plan = spec.deferred;
   return {
     command,
-    spec: command.landoSpec,
+    spec,
     status: plan === undefined ? { kind: "implemented" } : { kind: "deferred", plan },
   };
 };

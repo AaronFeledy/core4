@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -8,6 +8,7 @@ import { PluginManifest } from "@lando/sdk/schema";
 import {
   type LoadedPluginContribution,
   mergeLoadedPluginSources,
+  pluginCommandCandidates,
 } from "@lando/engine/plugins/contribution-graph";
 import { systemPluginsFromModules } from "@lando/engine/plugins/plugin-discovery";
 
@@ -61,5 +62,42 @@ describe("plugin contribution source merge", () => {
 
     // Then
     expect(plugin?.source).toBe("bundled");
+  });
+
+  test("projects executable command loaders from a real plugin descriptor", async () => {
+    // Given
+    const manifest = Schema.decodeSync(PluginManifest)({
+      name: "@example/commands",
+      version: "1.0.0",
+      api: 4,
+      contributes: { commands: ["meta:example:hello"] },
+    });
+    const module = definePlugin({
+      name: manifest.name,
+      manifest,
+      commands: new Map([
+        [
+          "meta:example:hello",
+          async () => ({
+            id: "meta:example:hello",
+            summary: "Hello.",
+            namespace: "meta" as const,
+            bootstrap: "plugins" as const,
+            resultSchema: Schema.Unknown,
+            run: () => Effect.void,
+          }),
+        ],
+      ]),
+    });
+
+    // When
+    const candidates = pluginCommandCandidates([{ source: "explicit", manifest, entry: module, module }]);
+
+    // Then
+    expect(Either.isRight(candidates)).toBe(true);
+    if (Either.isRight(candidates)) {
+      expect(candidates.right.map(({ id }) => id)).toEqual(["meta:example:hello"]);
+      expect((await candidates.right[0]?.load())?.id).toBe("meta:example:hello");
+    }
   });
 });

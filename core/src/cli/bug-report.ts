@@ -147,6 +147,18 @@ const extractExtraTagFields = (
       if (value !== undefined) out.push([field, value]);
     }
   }
+  if (tag === "LandofileEventStepFailedError") {
+    const event = asString(record.event);
+    if (event !== undefined) out.push(["event", event]);
+    const index = record.index;
+    if (typeof index === "number") out.push(["step", String(index + 1)]);
+    const kind = asString(record.kind);
+    if (kind !== undefined) out.push(["kind", kind]);
+    const service = asString(record.service);
+    if (service !== undefined) out.push(["service", service]);
+    const outputTail = asString(record.outputTail);
+    if (outputTail !== undefined && outputTail.length > 0) out.push(["outputTail", outputTail]);
+  }
   if (tag === "ComposeKeyRejectedError") {
     for (const field of ["source", "service", "keyPath"] as const) {
       const value = asString(record[field]);

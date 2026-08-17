@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit } from "effect";
 
 import {
   AbsolutePath,
@@ -13,7 +13,13 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { type RuntimeProviderShape, ToolingEngine, type ToolingInvocation } from "@lando/sdk/services";
+import {
+  type RuntimeProviderShape,
+  type ShellCommandOptions,
+  type ShellRunner,
+  ToolingEngine,
+  type ToolingInvocation,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
@@ -21,6 +27,7 @@ import {
   evaluateHostVar,
   resolveScriptPath,
   runHostScript,
+  runHostToolingWith,
 } from "@lando/engine/services/host-tooling-engine";
 
 const providerId = ProviderId.make("lando");
@@ -130,6 +137,29 @@ const runEngine = (invocation: ToolingInvocation, plan: AppPlan) =>
     Effect.provide(HostToolingEngineLive),
   );
 
+type ShellExecCall = {
+  readonly source: string;
+  readonly argv: ReadonlyArray<string>;
+};
+
+const makeRecordingShell = (): {
+  readonly shell: Context.Tag.Service<typeof ShellRunner>;
+  readonly calls: () => ReadonlyArray<ShellExecCall>;
+} => {
+  const calls: ShellExecCall[] = [];
+  const shell: Context.Tag.Service<typeof ShellRunner> = {
+    exec: (source: string, options?: ShellCommandOptions) =>
+      Effect.sync(() => {
+        calls.push({ source, argv: options?.argv ?? [] });
+        return { exitCode: 0, stdout: "recorded", stderr: "" };
+      }),
+    run: (source, options) => shell.exec(source, options),
+    runScript: () => Effect.die("not used"),
+    interactive: () => Effect.die("not used"),
+  };
+  return { shell, calls: () => calls };
+};
+
 describe("HostToolingEngineLive", () => {
   test("layer registers engine id 'host'", async () => {
     const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(HostToolingEngineLive)));
@@ -141,6 +171,7 @@ describe("HostToolingEngineLive", () => {
     const invocation: ToolingInvocation = {
       tool: "echo-hi",
       commands: [["sh", "-c", "printf hi"]],
+      hostSteps: [{ kind: "shell", source: "printf hi", argv: [] }],
     };
 
     const result = await Effect.runPromise(runEngine(invocation, plan));
@@ -158,6 +189,7 @@ describe("HostToolingEngineLive", () => {
       tool: "echo-declared",
       service: ":host",
       commands: [["sh", "-c", "printf ok"]],
+      hostSteps: [{ kind: "shell", source: "printf ok", argv: [] }],
     };
 
     const result = await Effect.runPromise(runEngine(invocation, plan));
@@ -172,6 +204,11 @@ describe("HostToolingEngineLive", () => {
         ["sh", "-c", "printf 'first\\n'"],
         ["sh", "-c", "printf 'before-fail\\n' && exit 7"],
         ["sh", "-c", "printf 'never\\n'"],
+      ],
+      hostSteps: [
+        { kind: "shell", source: "printf 'first\\n'", argv: [] },
+        { kind: "shell", source: "printf 'before-fail\\n' && exit 7", argv: [] },
+        { kind: "shell", source: "printf 'never\\n'", argv: [] },
       ],
     };
 
@@ -190,6 +227,7 @@ describe("HostToolingEngineLive", () => {
         tool: "read-marker",
         cwd,
         commands: [["sh", "-c", "cat marker.txt"]],
+        hostSteps: [{ kind: "shell", source: "cat marker.txt", argv: [] }],
       };
 
       const result = await Effect.runPromise(runEngine(invocation, plan));
@@ -207,6 +245,7 @@ describe("HostToolingEngineLive", () => {
       tool: "echo-env",
       env: { LANDO_TEST_HOST_ENV: "from-invocation" },
       commands: [["sh", "-c", 'printf %s "$LANDO_TEST_HOST_ENV"']],
+      hostSteps: [{ kind: "shell", source: 'printf %s "$LANDO_TEST_HOST_ENV"', argv: [] }],
     };
 
     const result = await Effect.runPromise(runEngine(invocation, plan));
@@ -215,7 +254,7 @@ describe("HostToolingEngineLive", () => {
     expect(result.stdout).toBe("from-invocation");
   });
 
-  test("fails with ToolingExecError when the invocation has no commands", async () => {
+  test("fails closed when the invocation has no structural host steps", async () => {
     const plan = makePlan([baseServicePlan("web", true)]);
     const invocation: ToolingInvocation = {
       tool: "empty",
@@ -231,10 +270,162 @@ describe("HostToolingEngineLive", () => {
         expect(failure.value._tag).toBe("ToolingExecError");
         if (failure.value._tag === "ToolingExecError") {
           expect(failure.value.tool).toBe("empty");
-          expect(failure.value.message).toContain("no commands");
+          expect(failure.value.message).toContain("structural host steps");
         }
       }
     }
+  });
+
+  test("decodes commands-only normalized sh -c arrays into structural shell without spawning sh", async () => {
+    // Given a legacy commands form with the lando-tooling marker and appended $@ sentinel
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "normalized-shell",
+      commands: [["sh", "-c", 'printf %s "$@"', "lando-tooling", "hello"]],
+    };
+
+    // When the host engine runs with only commands (no hostSteps)
+    const result = await Effect.runPromise(
+      runHostToolingWith(recording.shell, invocation, plan, stubProvider),
+    );
+
+    // Then it decodes to structural Bun Shell source/argv and never launches sh -c
+    expect(result.exitCode).toBe(0);
+    expect(recording.calls()).toEqual([{ source: "printf %s", argv: ["hello"] }]);
+  });
+
+  test("does not strip the $@ sentinel without the lando-tooling marker", async () => {
+    // Given a plain sh -c array whose source ends with the sentinel text but lacks the marker
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "no-marker",
+      commands: [["sh", "-c", 'echo "$@"']],
+    };
+
+    // When decoded without the lando-tooling marker, the sentinel stays and is treated as authored $@
+    const exit = await Effect.runPromiseExit(
+      runHostToolingWith(recording.shell, invocation, plan, stubProvider),
+    );
+
+    // Then positional rejection fires (proves we did not strip to bare `echo`) and shell is never invoked
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("ToolingCompileError");
+      }
+    }
+    expect(recording.calls()).toEqual([]);
+  });
+
+  test("decodes plain argv command arrays into argv host steps", async () => {
+    // Given a commands-only argv array (not sh -c)
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "argv-only",
+      commands: [["printf", "%s", "from-argv"]],
+    };
+
+    // When the host engine falls back to commands
+    await Effect.runPromise(runHostToolingWith(recording.shell, invocation, plan, stubProvider));
+
+    // Then the step is argv-shaped (empty shell source, full argv)
+    expect(recording.calls()).toEqual([{ source: "", argv: ["printf", "%s", "from-argv"] }]);
+  });
+
+  test("prefers explicit hostSteps over commands when both are present", async () => {
+    // Given both structural hostSteps and a conflicting commands array
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "host-steps-win",
+      commands: [["sh", "-c", "printf from-commands"]],
+      hostSteps: [{ kind: "shell", source: "printf from-host-steps", argv: [] }],
+    };
+
+    // When the host engine runs
+    await Effect.runPromise(runHostToolingWith(recording.shell, invocation, plan, stubProvider));
+
+    // Then only hostSteps execute
+    expect(recording.calls()).toEqual([{ source: "printf from-host-steps", argv: [] }]);
+  });
+
+  test("rejects authored positional references decoded from normalized commands", async () => {
+    // Given a normalized sh -c command whose authored source uses $1
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "positional-cmd",
+      commands: [["sh", "-c", "echo $1", "lando-tooling", "arg"]],
+    };
+
+    // When the host engine tries to run it
+    const exit = await Effect.runPromiseExit(
+      runHostToolingWith(recording.shell, invocation, plan, stubProvider),
+    );
+
+    // Then compile fails closed and shell is never invoked
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("ToolingCompileError");
+        if (failure.value._tag === "ToolingCompileError") {
+          expect(failure.value.message).toContain("positional");
+        }
+      }
+    }
+    expect(recording.calls()).toEqual([]);
+  });
+
+  test("rejects authored positional references on explicit hostSteps", async () => {
+    // Given an explicit shell host step with $@
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const invocation: ToolingInvocation = {
+      tool: "positional-step",
+      commands: [],
+      hostSteps: [{ kind: "shell", source: 'printf %s "$@"', argv: ["x"] }],
+    };
+
+    // When run
+    const exit = await Effect.runPromiseExit(
+      runHostToolingWith(recording.shell, invocation, plan, stubProvider),
+    );
+
+    // Then compile rejects positional shell binding
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("ToolingCompileError");
+      }
+    }
+    expect(recording.calls()).toEqual([]);
+  });
+
+  test("runs commands-only plain sh -c through the live host engine", async () => {
+    // Given contract-style commands without hostSteps
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const invocation: ToolingInvocation = {
+      tool: "commands-only",
+      commands: [
+        ["sh", "-c", "printf one"],
+        ["sh", "-c", "printf two"],
+      ],
+    };
+
+    // When
+    const result = await Effect.runPromise(runEngine(invocation, plan));
+
+    // Then structural Bun Shell executes both steps
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("onetwo");
   });
 
   test("wraps shell launch failures as ToolingExecError carrying a ShellExecError cause", async () => {
@@ -242,6 +433,7 @@ describe("HostToolingEngineLive", () => {
     const invocation: ToolingInvocation = {
       tool: "bad-syntax",
       commands: [["sh", "-c", "echo &&"]],
+      hostSteps: [{ kind: "shell", source: "echo &&", argv: [] }],
     };
 
     const result = await Effect.runPromiseExit(runEngine(invocation, plan));

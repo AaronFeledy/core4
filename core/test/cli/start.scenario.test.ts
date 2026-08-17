@@ -962,6 +962,8 @@ describe("lando start", () => {
     const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.events).toEqual([
+      "pre-init",
+      "post-init",
       "pre-app-start",
       "pre-start",
       "task.tree.start",

@@ -68,6 +68,7 @@ export const restartApp = (
     const plan = resolvedTarget.plan;
     yield* runAppInitEvents(plan);
     yield* stopAppWithPlan({}, resolvedTarget);
+    yield* managed?.onStopped ?? Effect.void;
     return yield* compensateFailure(
       startApp(
         {

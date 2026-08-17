@@ -702,14 +702,21 @@ export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
 
 const EventStepCondition = Schema.Union(Schema.String, Schema.Boolean);
 
+/**
+ * Scalar literal or homogeneous string array for a canonical `command:` flag/arg.
+ * Arrays support `multiple` inputs; mixed types, objects, and non-string arrays fail closed.
+ */
+export const EventCommandInputValue = Schema.Union(ToolingVarLiteral, Schema.Array(Schema.String));
+export type EventCommandInputValue = typeof EventCommandInputValue.Type;
+
 export const EventCommandStep = Schema.Struct({
   cmd: Schema.optional(Schema.Never),
   task: Schema.optional(Schema.Never),
   command: Schema.String,
   defer: Schema.optional(Schema.Never),
   for: Schema.optional(Schema.Never),
-  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
-  args: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
+  args: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
   raw: Schema.optional(Schema.Array(Schema.String)),
   ignoreError: Schema.optional(Schema.Boolean),
   if: Schema.optional(EventStepCondition),

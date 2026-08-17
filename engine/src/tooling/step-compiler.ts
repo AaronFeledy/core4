@@ -1,6 +1,7 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Either } from "effect";
 
-import { ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
+import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
+import { parseExpressionEither } from "@lando/sdk/expressions";
 import type { EventForSelector, EventStep, ToolingVarLiteral } from "@lando/sdk/schema";
 
 import type {
@@ -19,7 +20,7 @@ export class EventStepCompileError extends Data.TaggedError("EventStepCompileErr
   readonly message: string;
   readonly authoredIndex: number;
   readonly kind: ToolingStepLeaf["kind"];
-  readonly cause: ToolingStepSelectorUnavailableError;
+  readonly cause: ToolingStepSelectorUnavailableError | ToolingCompileError;
 }> {}
 
 const leafNode = (leaf: ToolingStepLeaf): ToolingStepLeafNode => ({
@@ -128,11 +129,53 @@ const compileNode = (
   return Effect.succeed(leafNode(compileLeaf(step, authoredIndex)));
 };
 
+/** Non-string scalars are compile-time literals; strings are dynamic when any segment is not LiteralSegment. */
+const commandInputHasDynamicExpression = (
+  value: unknown,
+  tool: string,
+): Effect.Effect<boolean, ToolingCompileError> => {
+  if (typeof value !== "string") return Effect.succeed(false);
+  const parsed = parseExpressionEither(value, { filePath: "<event-step-command>" });
+  if (Either.isLeft(parsed)) {
+    return Effect.fail(
+      new ToolingCompileError({
+        message: parsed.left.message,
+        tool,
+        remediation: parsed.left.remediation,
+        cause: parsed.left,
+      }),
+    );
+  }
+  return Effect.succeed(parsed.right.segments.some((segment) => segment.kind !== "LiteralSegment"));
+};
+
+const commandLeafHasDynamicInput = (
+  leaf: ToolingCommandStepLeaf,
+): Effect.Effect<boolean, ToolingCompileError> => {
+  const values: ReadonlyArray<unknown> = [
+    leaf.command,
+    ...Object.values(leaf.flags),
+    ...Object.values(leaf.args),
+    ...leaf.raw,
+  ];
+  return Effect.reduce(values, false, (found, value) =>
+    commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
+  );
+};
+
 export const compileEventStepProgram = (
   steps: ReadonlyArray<EventStep>,
+  validateCommand?: (leaf: ToolingCommandStepLeaf) => Effect.Effect<void, ToolingCompileError>,
 ): Effect.Effect<ToolingStepProgram, EventStepCompileError> =>
   Effect.forEach(steps, (step, authoredIndex) =>
     compileNode(step, authoredIndex).pipe(
+      Effect.tap((node) => {
+        const leaf = node.kind === "for" ? node.body.leaf : node.leaf;
+        if (leaf.kind !== "command" || validateCommand === undefined) return Effect.void;
+        return commandLeafHasDynamicInput(leaf).pipe(
+          Effect.flatMap((dynamic) => (dynamic ? Effect.void : validateCommand(leaf))),
+        );
+      }),
       Effect.mapError(
         (cause) =>
           new EventStepCompileError({

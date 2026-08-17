@@ -1,5 +1,5 @@
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { ToolingVarLiteral } from "@lando/sdk/schema";
+import type { EventCommandInputValue, ToolingVarLiteral } from "@lando/sdk/schema";
 
 export type ToolingStepCondition = boolean | string;
 
@@ -28,8 +28,9 @@ export interface ToolingTaskStepLeaf extends ToolingStepLeafBase {
 export interface ToolingCommandStepLeaf extends ToolingStepLeafBase {
   readonly kind: "command";
   readonly command: string;
-  readonly flags: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly args: Readonly<Record<string, ToolingVarLiteral>>;
+  /** Scalar literals, or homogeneous string arrays for repeatable target inputs. */
+  readonly flags: Readonly<Record<string, EventCommandInputValue>>;
+  readonly args: Readonly<Record<string, EventCommandInputValue>>;
   readonly raw: ReadonlyArray<string>;
 }
 

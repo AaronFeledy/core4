@@ -2,9 +2,20 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Schema } from "effect";
 
-import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
+import {
+  type ExecutableCommandInput,
+  type ExecutableCommandRenderContext,
+  type ExecutableCommandSpec,
+  type LandoPluginModule,
+  definePlugin,
+} from "@lando/sdk/plugins";
 import { PluginManifest, ProviderId } from "@lando/sdk/schema";
 import { CertificateAuthority } from "@lando/sdk/services";
+import type { LandoCommandSpec } from "../../../core/src/cli/spec/command-spec.ts";
+
+type Extends<A, B> = [A] extends [B] ? true : false;
+type ExpectTrue<T extends true> = T;
+type ExpectFalse<T extends false> = T;
 
 const manifest = Schema.decodeSync(PluginManifest)({
   name: "@lando/test-plugin-module",
@@ -70,5 +81,94 @@ describe("definePlugin", () => {
     });
 
     expect(descriptor.certificateAuthorities?.get("test-ca")).toBe(caLayer);
+  });
+});
+
+describe("ExecutableCommandSpec contract", () => {
+  test("accepts a plugin cspace topic namespace and Effect-only render hook", async () => {
+    // Given — type-level: cspace topic assignable; render is Effect(context) only
+    type PluginDbSpec = {
+      readonly id: "db:import";
+      readonly summary: "Import a database dump.";
+      readonly namespace: "db";
+      readonly bootstrap: "app";
+      readonly run: (input: ExecutableCommandInput) => Effect.Effect<string, never, never>;
+      readonly resultSchema: typeof Schema.String;
+      readonly render: (context: ExecutableCommandRenderContext<string>) => Effect.Effect<void, never, never>;
+    };
+    type _cspaceOk = ExpectTrue<Extends<PluginDbSpec, ExecutableCommandSpec<string, never, never>>>;
+    type _renderOk = ExpectTrue<
+      Extends<
+        NonNullable<ExecutableCommandSpec<string, never, never>["render"]>,
+        (context: ExecutableCommandRenderContext<string>) => Effect.Effect<void, never, never>
+      >
+    >;
+    // Legacy string render is NOT part of the SDK contract
+    type LegacyStringRender = (result: string, input?: unknown, ctx?: unknown) => string | undefined;
+    type _noStringRender = ExpectFalse<
+      Extends<LegacyStringRender, NonNullable<ExecutableCommandSpec<string>["render"]>>
+    >;
+
+    let captured: ExecutableCommandRenderContext<string> | undefined;
+    const spec: ExecutableCommandSpec<string, never, never> = {
+      id: "db:import",
+      summary: "Import a database dump.",
+      namespace: "db",
+      bootstrap: "app",
+      resultSchema: Schema.String,
+      run: () => Effect.succeed("ok"),
+      render: (context) =>
+        Effect.sync(() => {
+          captured = context;
+        }),
+    };
+
+    // When
+    await Effect.runPromise(
+      spec.render?.({
+        input: { argv: [], parsedArgv: [], flags: {}, args: {} },
+        result: "ok",
+        stdout: "out\n",
+        stderr: "err\n",
+        exitCode: 0,
+      }) ?? Effect.void,
+    );
+
+    // Then
+    expect(spec.namespace).toBe("db");
+    expect(captured).toEqual({
+      input: { argv: [], parsedArgv: [], flags: {}, args: {} },
+      result: "ok",
+      stdout: "out\n",
+      stderr: "err\n",
+      exitCode: 0,
+    });
+  });
+
+  test("keeps LandoCommandSpec namespace narrowed to core namespaces", () => {
+    // Given — built-in specs must not accept a plugin cspace topic
+    type BuiltInWithCspace = {
+      readonly id: "db:import";
+      readonly summary: "nope";
+      readonly namespace: "db";
+      readonly bootstrap: "app";
+      readonly run: (input: never) => Effect.Effect<void, never, never>;
+      readonly resultSchema: typeof Schema.Unknown;
+    };
+    type _builtInRejectsCspace = ExpectFalse<Extends<BuiltInWithCspace, LandoCommandSpec>>;
+
+    const builtIn: LandoCommandSpec = {
+      id: "app:start",
+      summary: "Start the current Lando app.",
+      namespace: "app",
+      bootstrap: "app",
+      resultSchema: Schema.Unknown,
+      run: () => Effect.void,
+    };
+
+    // Then — core string render remains on LandoCommandSpec only
+    const rendered = builtIn.render?.({ ok: true }, undefined, undefined);
+    expect(builtIn.namespace).toBe("app");
+    expect(rendered).toBeUndefined();
   });
 });

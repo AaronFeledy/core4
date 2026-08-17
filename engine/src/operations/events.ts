@@ -16,6 +16,7 @@ import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
+import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { makeEventStepRunners } from "./event-step-runtime.ts";
@@ -84,7 +85,11 @@ const eventError = (
   });
 };
 
-const runCanonicalCommand = (plan: AppPlan, leaf: ResolvedToolingCommandStepLeaf) =>
+const runCanonicalCommand = (
+  plan: AppPlan,
+  leaf: ResolvedToolingCommandStepLeaf,
+  redactionTokens: ReadonlyArray<string>,
+) =>
   Effect.gen(function* () {
     const executor = yield* Effect.serviceOption(EventCommandExecutor);
     if (Option.isNone(executor)) {
@@ -108,6 +113,8 @@ const runCanonicalCommand = (plan: AppPlan, leaf: ResolvedToolingCommandStepLeaf
         argv: leaf.raw,
         cwd: String(plan.root),
         silent: leaf.silent,
+        plan,
+        redactionTokens,
       })
       .pipe(Effect.locally(activeEventFrames, invokingFrames));
     return { ...result, tool: leaf.command, service: ":lando" };
@@ -177,7 +184,36 @@ export const runAppEvent = (
           })
           .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
       };
-      const program = yield* compileEventStepProgram(steps).pipe(
+      const commandExecutor = yield* Effect.serviceOption(EventCommandExecutor);
+      const validateCommand =
+        Option.isSome(commandExecutor) && commandExecutor.value.validate !== undefined
+          ? (leaf: ToolingCommandStepLeaf) =>
+              commandExecutor.value
+                .validate?.({
+                  command: leaf.command,
+                  flags: leaf.flags,
+                  args: leaf.args,
+                  argv: leaf.raw,
+                  cwd: String(plan.root),
+                  silent: leaf.silent,
+                  plan,
+                })
+                .pipe(
+                  Effect.mapError((cause) => {
+                    if (cause instanceof ToolingCompileError) return cause;
+                    const detail = cause instanceof Error ? cause.message : String(cause);
+                    const remediation = (cause as { readonly remediation?: unknown } | null)?.remediation;
+                    const suffix =
+                      typeof remediation === "string" && remediation.length > 0 ? ` ${remediation}` : "";
+                    return new ToolingCompileError({
+                      message: `Failed to validate canonical command ${leaf.command}: ${detail}${suffix}`,
+                      tool: leaf.command,
+                      cause,
+                    });
+                  }),
+                ) ?? Effect.void
+          : undefined;
+      const program = yield* compileEventStepProgram(steps, validateCommand).pipe(
         Effect.mapError((error) => eventError(error, event, first, redactor)),
       );
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
@@ -191,7 +227,7 @@ export const runAppEvent = (
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,
-          runCanonical: (leaf) => runCanonicalCommand(plan, leaf),
+          runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
       ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
     }).pipe(Effect.locally(activeEventFrames, [...active, { event }]));

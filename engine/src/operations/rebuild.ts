@@ -81,6 +81,7 @@ export const rebuildApp = (
     yield* events.publish(preRebuild);
     yield* runAppEvent(plan, "pre-rebuild", preRebuild);
     yield* stopAppWithPlan({}, resolvedTarget);
+    yield* managed?.onStopped ?? Effect.void;
     const start = yield* compensateFailure(
       startApp(
         {

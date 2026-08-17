@@ -112,7 +112,13 @@ const redactShellError = (options: ShellCommandOptions | undefined, error: Shell
   });
 
 const execShell = async (command: string, options?: ShellCommandOptions): Promise<ProcessResult> => {
-  let shell = $`${{ raw: command }}`.quiet().nothrow();
+  let shell = (
+    options?.argv === undefined || options.argv.length === 0
+      ? $`${{ raw: command }}`
+      : $`${{ raw: command }} ${options.argv}`
+  )
+    .quiet()
+    .nothrow();
 
   if (options?.cwd !== undefined) {
     shell = shell.cwd(options.cwd);

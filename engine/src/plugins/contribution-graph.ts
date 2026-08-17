@@ -1,7 +1,11 @@
 import { Context, Effect, Either, Layer, Option, Scope } from "effect";
 
 import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
-import type { CertificateAuthorityContributionLayer, LandoPluginModule } from "@lando/sdk/plugins";
+import type {
+  CertificateAuthorityContributionLayer,
+  ExecutableCommandLoader,
+  LandoPluginModule,
+} from "@lando/sdk/plugins";
 import type { CertificateAuthorityContribution, ResolvedPluginInput } from "@lando/sdk/schema";
 import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
 
@@ -34,9 +38,17 @@ export interface GraphCertificateAuthorityCandidate {
   readonly acquisition: CertificateAuthorityAcquisition;
 }
 
+export interface GraphCommandCandidate {
+  readonly id: string;
+  readonly pluginName: string;
+  readonly source: PluginContributionSource;
+  readonly load: ExecutableCommandLoader;
+}
+
 export interface PluginContributionGraphShape {
   readonly plugins: ReadonlyArray<LoadedPluginContribution>;
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
+  readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
 }
 
@@ -112,6 +124,65 @@ const manifestCandidates = (
     }),
   );
 
+const commandLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string, ExecutableCommandLoader> => {
+  const direct = plugin.entry?.commands ?? plugin.module?.commands;
+  if (direct instanceof Map) return direct;
+  const nested = plugin.module !== undefined && "plugin" in plugin.module ? plugin.module.plugin : undefined;
+  if (
+    typeof nested === "object" &&
+    nested !== null &&
+    "commands" in nested &&
+    nested.commands instanceof Map
+  ) {
+    return nested.commands;
+  }
+  return new Map();
+};
+
+export const pluginCommandCandidates = (
+  plugins: ReadonlyArray<LoadedPluginContribution>,
+): Either.Either<ReadonlyArray<GraphCommandCandidate>, PluginDescriptorMismatchError> => {
+  const candidates: GraphCommandCandidate[] = [];
+  const owners = new Map<string, string>();
+  for (const plugin of plugins) {
+    const declared = (plugin.manifest.contributes?.commands ?? []).map((value) =>
+      typeof value === "string" ? value : value.id,
+    );
+    const loaders = commandLoaders(plugin);
+    const provided = [...loaders.keys()];
+    if (declared.length !== provided.length || declared.some((id) => !loaders.has(id))) {
+      return Either.left(
+        new PluginDescriptorMismatchError({
+          pluginName: String(plugin.manifest.name),
+          kind: "commands",
+          declared,
+          provided,
+          message: `Plugin ${String(plugin.manifest.name)} manifest and descriptor disagree for commands.`,
+          remediation: `Align ${String(plugin.manifest.name)}'s manifest command ids with its executable command loaders.`,
+        }),
+      );
+    }
+    for (const [id, load] of loaders) {
+      const owner = owners.get(id);
+      if (owner !== undefined) {
+        return Either.left(
+          new PluginDescriptorMismatchError({
+            pluginName: String(plugin.manifest.name),
+            kind: "commands",
+            declared: [id],
+            provided: [id],
+            message: `Plugin ${String(plugin.manifest.name)} duplicates command id ${id} from ${owner}.`,
+            remediation: `Rename or remove the duplicate command ${id}.`,
+          }),
+        );
+      }
+      owners.set(id, String(plugin.manifest.name));
+      candidates.push({ id, pluginName: String(plugin.manifest.name), source: plugin.source, load });
+    }
+  }
+  return Either.right(candidates);
+};
+
 const bootstrapFailure = (message: string, cause: unknown) =>
   new LandoRuntimeBootstrapError({ message, stage: "plugins", cause });
 
@@ -174,9 +245,14 @@ export const makePluginContributionGraphLive = (
         [bundled, system, user, app, explicit],
         policy.discovery.disable,
       );
+      const commands = yield* Either.match(pluginCommandCandidates(merged), {
+        onLeft: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+        onRight: Effect.succeed,
+      });
       const graph: PluginContributionGraphShape = {
         plugins: merged,
         certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
+        commands,
         hostContext: rawContext,
       };
       return Context.add(rawContext, PluginContributionGraph, graph);
