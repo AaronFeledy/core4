@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 — Lando 3 Parity",
   "branchName": "feat/lando3-parity",
-  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-581): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
+  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-582): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
   "userStories": [
     {
       "id": "US-561",
@@ -316,6 +316,22 @@
       "notes": ""
     },
     {
+      "id": "US-582",
+      "title": "Service-type tooling precedence reconciliation + reserved-name enforcement",
+      "description": "As a plugin author, the normative service-type tooling contract matches shipped behavior, and a service type cannot silently contribute a reserved top-level task name into the app tooling map.",
+      "acceptanceCriteria": [
+        "§6.11.3 and §10 state the shipped two-rank model (resolved Landofile tooling: > service-type tooling:), whole-task replacement keyed on task name, and the ordinal service-name tie-break. Prose landed 2026-08-17 ahead of this story; verify no further drift and that no other spec site restates a recipe tooling: rank.",
+        "Decide, and state normatively in §6.11.3, whether reserved top-level tooling names (run, scratch, scratch:* per reservedTopLevelAliasOwner) are rejected at plan time when contributed by a service type, or remain guarded only at invocation time. §6.11.3 says contributions merge \"at plan time\" while compileEffectiveTooling/assemble validate no names today; the guards live at invocation in engine/src/operations/tooling.ts and tooling-bun-script.ts.",
+        "If plan-time is chosen, the merged tooling map is validated during planning and fails with the tagged CommandAliasConflictError naming the contributing service type and task, surfaced as an Effect failure rather than a thrown exception per the core tagged-failure tenet.",
+        "assertToolingNameClaimable (engine/src/operations/reserved-aliases.ts) is either wired into that production path or deleted together with its unit test. No helper may remain with zero production callers and a green test that proves nothing shipped.",
+        "topLevelAlias: sits in BETA_TOOLING_TASK_KEYS and is rejected for every tooling task today, so §10's \"Service-type tooling MUST NOT use topLevelAlias:\" is currently vacuous. Record the follow-up so the rule gains real enforcement when the beta gate lifts.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
       "id": "US-581",
       "title": "Parity refresh + wave closure",
       "description": "As a maintainer, the parity audit reflects reality after this wave and the whole wave's verification contract is green on one tree.",
@@ -326,7 +342,7 @@
         "§8.8.10 table verified against recipes/ contents; §6.12.1 rows verified against the runtime registry (every row registered, every registration in a row).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 21,
+      "priority": 22,
       "passes": false,
       "notes": ""
     }

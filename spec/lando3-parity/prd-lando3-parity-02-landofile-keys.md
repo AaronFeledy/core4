@@ -64,6 +64,19 @@ Landofile schema changes flow through `@lando/sdk` (`sdk/src/schema/landofile.ts
 - [ ] Subscribers execute at the correct points in the §3 standard sequences (start/stop/restart/rebuild/destroy), in declaration order, through the tooling engine (provider exec default, host via ShellRunner) — no new execution path.
 - [ ] Failure policy per spec: a failing `pre-*` subscriber aborts the operation with a tagged error carrying step identity and output tail; `post-*` failures surface as warnings without rolling back the completed operation (or per §8.5 text if stricter).
 - [ ] Step output routes through the Renderer as task detail; events publish on the event bus with redaction applied.
-- [ ] Recipe-contributed and service-type-contributed event tasks merge below user entries with the §6.11.3 precedence.
+- [ ] Event steps come only from the resolved Landofile top-level `events:` map (§7.2 merge, including `includes:` fragments per §7.7), in authored declaration order. No runtime recipe or service-type event-contribution surface is introduced: `ServiceTypeResolution` gains no `events` field and the planner performs no recipe or service-type event merge (adjudicated 2026-08-17; §6.11.3 contributes tooling only, §8.8 makes recipes inert after init, and service types inject lifecycle work through `ServiceFeature`/`AppFeature` build steps rather than events — a distinct runtime event-contribution surface is deferred to a dedicated spec story).
 - [ ] New executable guide `docs/guides/landofile/events.mdx` covers pre-start/post-start with a failure-path hidden scenario; guide coverage/INDEX updated; guide gates green.
+- [ ] Tests pass; typecheck passes; lint passes.
+
+### US-582: Service-type tooling precedence reconciliation + reserved-name enforcement
+
+**Description:** As a plugin author, the normative service-type tooling contract matches shipped behavior, and a service type cannot silently contribute a reserved top-level task name into the app tooling map.
+
+**Acceptance Criteria:**
+
+- [ ] §6.11.3 and §10 state the shipped two-rank model (resolved Landofile `tooling:` > service-type `tooling:`), whole-task replacement, and the ordinal service-name tie-break. Prose landed 2026-08-17 ahead of this story; verify no further drift and that no other spec site restates a recipe `tooling:` rank.
+- [ ] Decide, and state normatively in §6.11.3, whether reserved top-level tooling names (`run`, `scratch`, `scratch:*` per `reservedTopLevelAliasOwner`) are rejected at plan time when contributed by a service type, or remain guarded only at invocation time. §6.11.3 says contributions merge "at plan time" while `compileEffectiveTooling`/`assemble` validate no names today; the guards live at invocation in `engine/src/operations/tooling.ts` and `tooling-bun-script.ts`.
+- [ ] If plan-time is chosen, the merged tooling map is validated during planning and fails with the tagged `CommandAliasConflictError` naming the contributing service type and task, surfaced as an Effect failure rather than a thrown exception per the core tagged-failure tenet.
+- [ ] `assertToolingNameClaimable` (`engine/src/operations/reserved-aliases.ts`) is either wired into that production path or deleted together with its unit test. No helper may remain with zero production callers and a green test that proves nothing shipped.
+- [ ] `topLevelAlias:` sits in `BETA_TOOLING_TASK_KEYS` and is rejected for every tooling task today, so §10's "Service-type tooling MUST NOT use `topLevelAlias:`" is currently vacuous. Record the follow-up so the rule gains real enforcement when the beta gate lifts.
 - [ ] Tests pass; typecheck passes; lint passes.
