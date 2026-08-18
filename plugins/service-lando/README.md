@@ -30,9 +30,9 @@ framework presets ship post-GA; the table below tracks what
 | `go`       | 1.22, 1.23   | `none`                                                       | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
-`mysql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `solr`,
-`elasticsearch`, `opensearch`, `meilisearch`, `nginx`, `apache`, `static`,
-`compose`) do not accept a `framework:` field.
+`mysql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
+`minio`, `localstack`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
+`nginx`, `apache`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Beta scope vs. the GA-target catalog
 

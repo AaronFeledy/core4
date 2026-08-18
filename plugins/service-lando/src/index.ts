@@ -11,9 +11,11 @@ import { composeServiceType } from "./services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { landoServiceType } from "./services/lando.ts";
+import { localstackServiceType } from "./services/localstack.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "./services/meilisearch.ts";
 import { memcachedServiceType } from "./services/memcached.ts";
+import { minioServiceType } from "./services/minio.ts";
 import { mongodbServiceType } from "./services/mongodb.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
@@ -22,6 +24,7 @@ import { opensearch2ServiceType, opensearchServiceType } from "./services/opense
 import { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./services/php.ts";
 import { postgresServiceType } from "./services/postgres.ts";
 import { python312ServiceType } from "./services/python.ts";
+import { rabbitmq3ServiceType, rabbitmq4ServiceType, rabbitmqServiceType } from "./services/rabbitmq.ts";
 import { redisServiceType } from "./services/redis.ts";
 import { ruby33ServiceType } from "./services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "./services/solr.ts";
@@ -35,6 +38,7 @@ export { composeServiceType } from "./services/compose.ts";
 export { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { landoServiceType } from "./services/lando.ts";
+export { localstackServiceType } from "./services/localstack.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
 export {
   MEILISEARCH_DEFAULT_MASTER_KEY,
@@ -43,6 +47,7 @@ export {
   meilisearchServiceType,
 } from "./services/meilisearch.ts";
 export { memcachedServiceType } from "./services/memcached.ts";
+export { minioServiceType } from "./services/minio.ts";
 export { mongodbServiceType } from "./services/mongodb.ts";
 export { mysqlServiceType } from "./services/mysql.ts";
 export { nginxServiceType } from "./services/nginx.ts";
@@ -55,6 +60,7 @@ export {
 export { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./services/php.ts";
 export { postgresServiceType } from "./services/postgres.ts";
 export { python312ServiceType } from "./services/python.ts";
+export { rabbitmq3ServiceType, rabbitmq4ServiceType, rabbitmqServiceType } from "./services/rabbitmq.ts";
 export { redisServiceType } from "./services/redis.ts";
 export { ruby33ServiceType } from "./services/ruby.ts";
 export { solr9ServiceType, solrServiceType } from "./services/solr.ts";
@@ -69,10 +75,12 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["go:1.22", go122ServiceType],
   ["go:1.23", go123ServiceType],
   ["lando", landoServiceType],
+  ["localstack", localstackServiceType],
   ["mariadb", mariadbServiceType],
   ["meilisearch", meilisearchServiceType],
   ["meilisearch:1", meilisearch1ServiceType],
   ["memcached", memcachedServiceType],
+  ["minio", minioServiceType],
   ["mongodb", mongodbServiceType],
   ["mysql", mysqlServiceType],
   ["nginx", nginxServiceType],
@@ -86,6 +94,9 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["php:8.3", php83ServiceType],
   ["php:8.4", php84ServiceType],
   ["python:3.12", python312ServiceType],
+  ["rabbitmq", rabbitmqServiceType],
+  ["rabbitmq:3", rabbitmq3ServiceType],
+  ["rabbitmq:4", rabbitmq4ServiceType],
   ["redis", redisServiceType],
   ["ruby:3.3", ruby33ServiceType],
   ["solr", solrServiceType],
@@ -144,10 +155,12 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "go:1.22",
       "go:1.23",
       "lando",
+      "localstack",
       "mariadb",
       "meilisearch",
       "meilisearch:1",
       "memcached",
+      "minio",
       "mongodb",
       "mysql",
       "nginx",
@@ -161,6 +174,9 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "php:8.3",
       "php:8.4",
       "python:3.12",
+      "rabbitmq",
+      "rabbitmq:3",
+      "rabbitmq:4",
       "redis",
       "ruby:3.3",
       "solr",
