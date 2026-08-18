@@ -111,11 +111,13 @@ export type BuiltInCommandStatus =
 export type BuiltInCommandEntry = {
   readonly command: BuiltInCommandClass;
   readonly spec: LandoCommandSpec;
+  readonly inputSpec?: LandoCommandSpec;
   readonly status: BuiltInCommandStatus;
 };
 
 const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
-  const spec = {
+  const spec = command.landoSpec;
+  const inputSpec = {
     ...command.landoSpec,
     flags: { ...command.baseFlags, ...command.flags },
     args: command.args,
@@ -125,6 +127,7 @@ const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
   return {
     command,
     spec,
+    inputSpec,
     status: plan === undefined ? { kind: "implemented" } : { kind: "deferred", plan },
   };
 };
