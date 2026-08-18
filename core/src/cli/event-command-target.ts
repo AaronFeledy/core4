@@ -26,14 +26,10 @@ const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableComma
 const canonicalCommandIdPattern = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 const coreNamespaces = new Set<ExecutableCommandNamespace>(["app", "apps", "meta"]);
 
-const isExactToolingTarget = (command: string): boolean => {
-  if (!command.startsWith("app:")) return false;
-  const colon = command.indexOf(":", 4);
-  return colon === -1;
-};
+const isToolingTarget = (command: string): boolean => command.startsWith("app:") && command.length > 4;
 
 const lookupTargetKind = (command: string): ToolingCommandLookupError["targetKind"] => {
-  if (isExactToolingTarget(command)) return "tooling";
+  if (isToolingTarget(command)) return "tooling";
   const head = command.split(":", 1)[0] ?? command;
   if (coreNamespaces.has(head) || !command.includes(":")) return "built-in";
   return "plugin";
@@ -167,6 +163,7 @@ type ToolingEventCommandTarget = {
   readonly kind: "tooling";
   readonly spec: ExecutableCommandSpec;
   readonly toolingName: string;
+  readonly toolingTask: ToolingTaskShape;
 };
 
 export type EventCommandTarget =
@@ -216,7 +213,9 @@ export const resolveEventCommandTarget = (
     return Effect.fail(lookupFailure({ command, builtIns, graph, tooling }));
   }
   const builtIn = builtIns.find((candidate) => candidate.spec.id === command);
-  if (builtIn !== undefined) return Effect.succeed({ kind: "built-in", spec: builtIn.spec, builtIn });
+  if (builtIn !== undefined) {
+    return Effect.succeed({ kind: "built-in", spec: builtIn.inputSpec ?? builtIn.spec, builtIn });
+  }
   const plugin = Option.isSome(graph)
     ? graph.value.commands.find((candidate) => candidate.id === command)
     : undefined;
@@ -225,13 +224,14 @@ export const resolveEventCommandTarget = (
       Effect.map((spec) => ({ kind: "plugin", spec })),
     );
   }
-  const toolingName = isExactToolingTarget(command) ? command.slice(4) : undefined;
+  const toolingName = isToolingTarget(command) ? command.slice(4) : undefined;
   const task = toolingName === undefined ? undefined : tooling?.[toolingName];
   if (task !== undefined && plan !== undefined && toolingName !== undefined) {
     return Effect.succeed({
       kind: "tooling",
       spec: toolingSpec(`app:${toolingName}`, toolingName, task, plan),
       toolingName,
+      toolingTask: task,
     });
   }
   return Effect.fail(lookupFailure({ command, builtIns, graph, tooling }));

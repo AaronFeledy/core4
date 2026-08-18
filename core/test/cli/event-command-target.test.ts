@@ -67,6 +67,7 @@ describe("resolveEventCommandTarget", () => {
     // Then
     expect(target.kind).toBe("built-in");
     expect(target.spec.id).toBe("app:start");
+    expect(target.spec).toBe(builtInEntry.inputSpec ?? builtInEntry.spec);
   });
 
   test("classifies plugin-owned commands even when they share a core namespace", async () => {
@@ -96,6 +97,22 @@ describe("resolveEventCommandTarget", () => {
     // Then
     expect(target.kind).toBe("tooling");
     expect(target.spec.id).toBe("app:lint");
+  });
+
+  test("resolves a namespaced app tooling target", async () => {
+    // Given
+    const plan = attachEffectiveTooling(makePlan(), {
+      "db:wait": { cmds: ["db-ready"], description: "Wait for the database" },
+    });
+
+    // When
+    const target = await Effect.runPromise(
+      resolveEventCommandTarget("app:db:wait", Context.empty(), [builtInEntry], plan),
+    );
+
+    // Then
+    expect(target.kind).toBe("tooling");
+    expect(target.spec.id).toBe("app:db:wait");
   });
 
   test("caches a validated plugin loader after the first resolution", async () => {
@@ -160,7 +177,7 @@ describe("resolveEventCommandTarget", () => {
     }
   });
 
-  test("rejects bare and non-canonical ids as tagged lookup misses", async () => {
+  test("rejects bare and unknown namespaced ids as tagged lookup misses", async () => {
     // Given
     const plan = makePlan();
 
@@ -178,7 +195,7 @@ describe("resolveEventCommandTarget", () => {
     expect(bareError).toBeInstanceOf(ToolingCommandLookupError);
     expect(nestedError).toBeInstanceOf(ToolingCommandLookupError);
     if (bareError instanceof ToolingCommandLookupError) expect(bareError.targetKind).toBe("built-in");
-    if (nestedError instanceof ToolingCommandLookupError) expect(nestedError.targetKind).toBe("built-in");
+    if (nestedError instanceof ToolingCommandLookupError) expect(nestedError.targetKind).toBe("tooling");
   });
 
   test("rejects a non-canonical id even when a plugin graph publishes it", async () => {
