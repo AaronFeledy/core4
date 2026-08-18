@@ -43,9 +43,7 @@ const loadPluginSpec = (
   Effect.tryPromise({
     try: async () => {
       const cached = loaderCache.get(load);
-      if (cached !== undefined) return cached;
-
-      const spec = await load();
+      const spec = await (cached ?? load());
       const issues: string[] = [];
       const namespace = id.split(":", 1)[0] ?? id;
       if (spec.id !== id) issues.push(`id ${String(spec.id)} does not match ${id}`);
@@ -70,9 +68,8 @@ const loadPluginSpec = (
             "Return an executable command spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration.",
         });
       }
-      const validated = Promise.resolve(spec);
-      loaderCache.set(load, validated);
-      return validated;
+      if (cached === undefined) loaderCache.set(load, Promise.resolve(spec));
+      return spec;
     },
     catch: (cause) =>
       cause instanceof PluginDescriptorMismatchError

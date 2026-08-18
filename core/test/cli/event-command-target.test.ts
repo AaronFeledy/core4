@@ -132,6 +132,27 @@ describe("resolveEventCommandTarget", () => {
     expect(calls).toBe(1);
   });
 
+  test("revalidates a cached plugin spec against each declared command id", async () => {
+    // Given
+    const loader: ExecutableCommandLoader = () => Promise.resolve(makePluginSpec("db:import"));
+    const importContext = makeRuntimeContext("db:import", loader);
+    const exportContext = makeRuntimeContext("db:export", loader);
+
+    // When
+    await Effect.runPromise(resolveEventCommandTarget("db:import", importContext, [builtInEntry]));
+    const exit = await Effect.runPromiseExit(
+      resolveEventCommandTarget("db:export", exportContext, [builtInEntry]),
+    );
+
+    // Then
+    const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+    expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
+    if (error instanceof PluginDescriptorMismatchError) {
+      expect(error.declared).toContain("id=db:export");
+      expect(error.provided).toContain("id=db:import");
+    }
+  });
+
   test("does not cache a plugin spec that fails descriptor validation", async () => {
     // Given
     let calls = 0;
