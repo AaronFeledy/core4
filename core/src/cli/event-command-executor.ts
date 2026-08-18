@@ -91,6 +91,9 @@ export const makeEventCommandExecutor = (
         fixedEntries ?? eventCommandEntries,
         resolved.plan,
       );
+      if (target.kind === "built-in" && target.builtIn.status.kind === "deferred") {
+        return yield* Effect.fail(notImplementedErrorForSpec(target.builtIn.spec));
+      }
       yield* validateEventCommandInput(target.spec, {
         flags: resolved.flags,
         args: resolved.args,

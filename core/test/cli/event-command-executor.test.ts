@@ -944,20 +944,20 @@ describe("EventCommandExecutorLive", () => {
     };
 
     // When
-    const error = await Effect.runPromise(
-      Effect.flip(
-        executorFor(entry, harness).run({
-          command: spec.id,
-          flags: {},
-          args: {},
-          argv: [],
-          cwd: process.cwd(),
-        }),
-      ),
-    );
+    const executor = executorFor(entry, harness);
+    const input = {
+      command: spec.id,
+      flags: {},
+      args: {},
+      argv: [],
+      cwd: process.cwd(),
+    };
+    const validationError = await Effect.runPromise(Effect.flip(executor.validate?.(input) ?? Effect.void));
+    const runError = await Effect.runPromise(Effect.flip(executor.run(input)));
 
     // Then
-    expect(error).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
+    expect(validationError).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
+    expect(runError).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
   });
 
   test("keeps canonical arguments structured and exposes raw argv as parsedArgv", async () => {
