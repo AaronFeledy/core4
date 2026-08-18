@@ -84,6 +84,7 @@ export {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
 } from "@lando/engine/operations/ensure-global-services";
+export { runAppEvent } from "@lando/engine/operations/events";
 export { globalInstall } from "@lando/engine/operations/global-install";
 export type { InfoAppResult } from "@lando/engine/operations/info";
 export { logsAppForTarget } from "@lando/engine/operations/logs";
@@ -129,6 +130,7 @@ export { attachEffectiveTooling, effectiveToolingForPlan } from "@lando/engine/p
 export { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 export type { CertificateAuthorityResolverShape } from "@lando/engine/plugins/certificate-authority-resolver";
 export { makeLandoPluginContext } from "@lando/engine/plugins/context";
+export { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 export { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
 export { makePluginRegistryLive, PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
 export {
@@ -220,7 +222,7 @@ export {
   makeEnvSecretStoreLive,
   SecretStoreLive,
 } from "@lando/engine/services/secret-store";
-export { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+export { makeShellRunnerLive, makeShellRunnerService } from "@lando/engine/services/shell-runner";
 export { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 export { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
 export { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";

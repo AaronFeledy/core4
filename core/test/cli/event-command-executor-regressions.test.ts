@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Queue, Schema, Stream } from "effect";
 
-import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -10,6 +9,7 @@ import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registr
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { Command } from "../../src/cli/spec/metadata.ts";
+import { PluginContributionGraph } from "../../src/testing/engine-layers.ts";
 
 type Harness = {
   readonly context: Context.Context<unknown>;
