@@ -150,7 +150,8 @@ export const pluginCommandCandidates = (
     );
     const loaders = commandLoaders(plugin);
     const provided = [...loaders.keys()];
-    if (declared.length !== provided.length || declared.some((id) => !loaders.has(id))) {
+    const declaredIds = new Set(declared);
+    if (provided.some((id) => !declaredIds.has(id))) {
       return Either.left(
         new PluginDescriptorMismatchError({
           pluginName: String(plugin.manifest.name),
