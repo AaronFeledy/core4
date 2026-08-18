@@ -1,15 +1,6 @@
-/**
- * The canonical Lando command-spec contract and its registration validation.
- *
- * `LandoCommandSpec` is the framework-free description of a built-in command —
- * id, namespace, bootstrap depth, flags/args, `run` Effect, result schema, and
- * rendering/streaming hooks. This module owns that shape plus the structural
- * checks applied at registration (result schema, allowlist safety, top-level
- * alias claimability) and the id/alias/error helpers derived from it.
- * `command-base.ts` layers the legacy-compatible `Command` base over this contract.
- */
-import { type Effect, Schema } from "effect";
+import { Schema } from "effect";
 
+import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
 import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
@@ -19,13 +10,6 @@ import { type BugReportContext, type RendererMode, formatBugReport } from "../bu
 import type { DeferredCommandPlan } from "../deferred-commands";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
 
-/**
- * The three first-class command namespaces.
- *
- *   - `app`: operations on the current Lando app
- *   - `apps`: cross-app and host-discovery operations
- *   - `meta`: operations on Lando itself (config, plugins, host setup)
- */
 export type LandoCommandNamespace = "app" | "apps" | "meta";
 
 /**
@@ -46,16 +30,10 @@ export type LandoTopLevelAlias = boolean | LandoAliasSpec | ReadonlyArray<LandoA
 const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAliasSpec> =>
   Array.isArray(value);
 
-export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
-  /**
-   * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
-   * `"meta:config"`). It starts with one of `LandoCommandNamespace` plus
-   * `:`, and the canonical id is namespace-prefixed.
-   */
-  readonly id: string;
-  readonly summary: string;
-  readonly description?: string;
+export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
+  extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "successExitCode"> {
   readonly namespace: LandoCommandNamespace;
+  readonly description?: string;
   readonly deprecated?: DeprecationNotice;
   /** True only for commands exposed as MCP tools by default; destructive surfaces must not set this. */
   readonly mcpAllowed?: boolean;
@@ -66,37 +44,35 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;
-  readonly bootstrap:
-    | "none"
-    | "minimal"
-    | "plugins"
-    | "commands"
-    | "tooling"
-    | "provider"
-    | "global"
-    | "scratch"
-    | "app";
-  readonly flags?: Readonly<Record<string, unknown>>;
-  readonly args?: Readonly<Record<string, unknown>>;
-  readonly run: (input: unknown) => Effect.Effect<A, E, R>;
-  /** Required machine shape of this command's result; commands with no payload declare {@link EmptyResultSchema}. */
-  readonly resultSchema: Schema.Schema.AnyNoContext;
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live";
   readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
-  readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
+  /**
+   * Core CLI string render hook. Omitted from the SDK Effect union and
+   * redeclared here so built-in call sites keep `RenderContext` and a
+   * `string | undefined` return (no Effect leakage).
+   */
+  readonly render?: {
+    bivarianceHack(result: unknown, input?: unknown, ctx?: RenderContext): string | undefined;
+  }["bivarianceHack"];
   readonly successExitCode?: {
     bivarianceHack(result: A, input?: unknown): number | undefined;
   }["bivarianceHack"];
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
 
-/** Result schema for a command with no machine-readable payload. */
+export type {
+  ExecutableCommandInput,
+  ExecutableCommandNamespace,
+  ExecutableCommandRenderContext,
+  ExecutableCommandSpec,
+  ExecutableCommandValue,
+} from "@lando/sdk/plugins";
+
 export const EmptyResultSchema = Schema.Struct({});
 
-/** Raised at registration when a command spec violates a structural rule (e.g. a missing `resultSchema`). */
 export class CommandRegistrationError extends Schema.TaggedError<CommandRegistrationError>()(
   "CommandRegistrationError",
   {
@@ -106,7 +82,6 @@ export class CommandRegistrationError extends Schema.TaggedError<CommandRegistra
   },
 ) {}
 
-/** Reject a command spec that does not declare the required `resultSchema`. */
 export const validateCommandSpec = (spec: {
   readonly id: string;
   readonly resultSchema?: unknown;
@@ -134,10 +109,6 @@ export const validateCommandSpec = (spec: {
   );
 };
 
-/**
- * True for canonical namespace-prefixed Lando command ids (`app:*`,
- * `apps:*`, `meta:*`).
- */
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
 
 export const formatCommandError = (input: {

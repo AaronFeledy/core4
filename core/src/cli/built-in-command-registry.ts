@@ -93,6 +93,7 @@ import VersionCommand from "./command-specs/meta/version";
 import XCommand from "./command-specs/meta/x";
 import { mcpRegistryFromBuiltIns } from "./commands/meta/mcp";
 import { type DeferredCommandPlan, notImplementedErrorForSpec } from "./deferred-commands";
+import { injectEventCommandRegistry } from "./event-command-executor";
 import type { LandoCommandSpec } from "./spec/command-base";
 import type { CommandClass } from "./spec/metadata";
 
@@ -110,14 +111,23 @@ export type BuiltInCommandStatus =
 export type BuiltInCommandEntry = {
   readonly command: BuiltInCommandClass;
   readonly spec: LandoCommandSpec;
+  readonly inputSpec?: LandoCommandSpec;
   readonly status: BuiltInCommandStatus;
 };
 
 const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
-  const plan = command.landoSpec.deferred;
+  const spec = command.landoSpec;
+  const inputSpec = {
+    ...spec,
+    flags: { ...command.baseFlags, ...command.flags },
+    args: command.args,
+    strict: command.strict,
+  };
+  const plan = spec.deferred;
   return {
     command,
-    spec: command.landoSpec,
+    spec,
+    inputSpec,
     status: plan === undefined ? { kind: "implemented" } : { kind: "deferred", plan },
   };
 };
@@ -213,6 +223,8 @@ export const builtInCommandRegistry = {
 const builtInCommandIndex = buildBuiltInCommandIndex(Object.entries(builtInCommandRegistry));
 
 export const builtInCommandEntries: ReadonlyArray<BuiltInCommandEntry> = builtInCommandIndex.entries;
+
+injectEventCommandRegistry(builtInCommandEntries);
 
 export const deferredBuiltInCommandIds: ReadonlyArray<string> = builtInCommandEntries
   .filter((entry) => entry.status.kind === "deferred")

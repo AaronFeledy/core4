@@ -4,6 +4,14 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
+  `LandoPluginModule.commands` executable loaders. Manifest `contributes.commands` ids now require
+  matching lazy loaders, allowing event `command:` steps to execute plugin commands rather than
+  treating manifest ids as unavailable metadata.
+- `ToolingInvocation` additively gains optional structural `hostSteps` for Bun Shell host execution,
+  and `ShellCommandOptions` additively gains optional `argv` so authored shell source and forwarded
+  arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host
+  shell positional references cannot be bound safely.
 - `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
@@ -109,6 +117,7 @@
 - `LandofileService.discover`'s error channel additively gains `ComposeKeyRejectedError`; the frozen surface fixture is updated to match. `@lando/sdk/errors` additively exports `ComposeKeyRejectedError`, carrying `{ source, service?, keyPath, remediation }`; it registers no JSON Schema and widens no frozen schema list. `@lando/sdk/landofile` additively exports the pure helper `detectLandofileTags` plus the type-only `LandofileTag` / `LandofileTagOccurrence`. `IncludeEntry.kind` additively accepts `"compose"`, and the top-level Compose `include:` key normalizes to `kind: compose` entries appended after authored `includes:` entries.
 - The Compose service-key vocabulary wave's additive SDK surface, consolidated: `@lando/sdk/schema` accepts Compose spellings and alternate scalar/list forms on `ServiceConfig` (`environment` as a map or `KEY=value` list, `labels` as a map or Compose list, `dependsOn` canonicalized to `ServiceDependency[]` with the `ServiceDependencyCondition` vocabulary, `envFile`, and the authoring cross-key spellings `working_dir` / `env_file` / `depends_on`); canonical `ports` / `expose` / `volumes` entry lists (`ComposePortEntry`, `ComposeVolumeEntry`); the Compose `healthcheck` authoring shape; the per-container runtime-knob field schemas (`ComposeDeploy`, `ComposeLogging`, and the rest of the `Compose*Field` family); `ComposeKeyRejectedError`; `IncludeEntry.kind: "compose"`; `ServiceDependency` / `ServiceDependencyCondition`; and `ComposeServiceFieldKey` / `ComposeServiceFieldCapabilities` / `ComposeProjectFieldKey` / `ComposeProjectFieldCapabilities` / `ComposeServiceKnobKey` / `ComposeKnobCapabilities`. In the same wave, `ServiceConfig.composeBuild` is removed pre-release with no compatibility shim, replaced by a shape-discriminated `ServiceConfig.build` that rejects mixing the Lando build-script family (`artifact` / `app`) with the Compose image-build family (`context` / `dockerfile` / `dockerfile_inline` / `args` / `target`); it accepts a bare-string short form, defaults an omitted `context` to `"."`, and its canonical `dockerfileInline` field encodes back to `dockerfile_inline`, with `ArtifactBuildSpec.specInline` carrying the inlined Dockerfile into the provider-neutral artifact model. `COMPOSE_TOP_LEVEL_KEYS` gains `name` per the committed disposition matrix; top-level `configs`, `secrets`, and `x-*` preserve under `AppPlan.extensions.compose`; `ServiceConfig.build` now publishes a `description` in the JSON Schema artifact instead of sitting in the `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` list.
 - Unified tooling-fragment includes: `IncludeEntry.kind` additively accepts `"tooling"`, and the `IncludeEntry` object form additively accepts the tooling-include fields `namespace`, `flatten`, `internal`, `optional`, `aliases`, `excludes`, and `vars` (rejected at load time on non-tooling includes). `LandofileShape` additively accepts the `toolingIncludes:` shorthand map, whose entries are the new `ToolingIncludeShape` export (`file`, `optional`, `flatten`, `internal`, `aliases`, `excludes`, `vars`; deliberately no `dir` or `checksum` because tooling fragments are local-file only). `@lando/sdk/errors` additively exports `ToolingIncludeCycleError` (`{ message, source, remediation }`), and `LandofileService.discover`'s error channel additively gains it; the frozen surface fixture is updated to match. `ToolingIncludeShape` registers a JSON Schema and is included in the schema artifact set.
+- Events-as-tasks additively exports the ten-name `AppLifecycleEventName` (including `pre-init` / `post-init`), strict mutually-exclusive `EventStep` variants, `EventForSelector`, `EventDeferStep`, `EventForStep`, and `LandofileEvents`; `LandofileShape.events` is an optional addition. Event steps add optional `if` / `silent`, task-call literal `vars`, canonical-command `raw` / `ignoreError`, deferred sibling actions, explicit-list / variable / matrix / sources / generates loop selectors, and `dir` on every `cmd` variant. `EventCommandStep.flags` / `.args` values use the additive `EventCommandInputValue` union (`ToolingVarLiteral | string[] | number[] | boolean[]`) so repeatable/multiple inputs can be authored as homogeneous scalar arrays. `@lando/sdk/expressions` additively exposes `event`, `item`, and `key` context scopes. `@lando/sdk/errors` additively exports `LandofileUnknownEventError`, `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, `ToolingStepSelectorUnavailableError`, `ToolingStepConditionError`, `ToolingCommandLookupError` (unresolved canonical `command:` target, carrying `targetKind` and close-match remediation), and `CommandInputValidationError` (target-spec `flags` / `args` / `raw` mismatch). `LandofileService.discover`'s error channel additively gains `LandofileUnknownEventError`; the frozen service-surface fixture is updated to match.
 
 ## Additive Alpha schema exports
 
@@ -132,6 +141,16 @@
 - `BuildStepSkipEvent`
 - `BuildStep`
 - `BunShellScriptFrontMatter`
+- `AppLifecycleEventName`
+- `EventCmdStep`
+- `EventCommandStep`
+- `EventCommandInputValue`
+- `EventDeferStep`
+- `EventForSelector`
+- `EventForStep`
+- `EventStep`
+- `EventTaskStep`
+- `LandofileEvents`
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`
@@ -608,6 +627,8 @@
 - `ArtifactTransferError`
 - `CommandAliasConflictError`
 - `CommandAliasTargetError`
+- `CommandInputValidationError`
+- `ToolingCommandLookupError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`

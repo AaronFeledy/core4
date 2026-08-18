@@ -9,10 +9,11 @@ import { ShellExecError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
-import { makeShellRunnerLive } from "../../src/services/shell-runner";
+import { makeShellRunnerLive, withShellRedactionTokens } from "../../src/services/shell-runner";
 
 const redactionLayer = Layer.succeed(RedactionService, {
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  forProfile: (profile, options) =>
+    Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
 });
 
 const unexpectedReplIO = () => {
@@ -56,6 +57,27 @@ describe("makeShellRunnerLive", () => {
 
       expect(result).toEqual({ exitCode: 0, stdout: "HI", stderr: "" });
       expect(await Bun.file(join(cwd, "output.txt")).text()).toBe("!");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("forwards argv structurally without evaluating shell metacharacters", async () => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-runner-argv-"));
+    const argv = ["two words", "", "$(touch unwanted)", "it's-safe"];
+
+    try {
+      // When
+      const result = await execShell("printf '<%s>\\n'", { cwd, argv });
+
+      // Then
+      expect(result).toEqual({
+        exitCode: 0,
+        stdout: "<two words>\n<>\n<$(touch unwanted)>\n<it's-safe>\n",
+        stderr: "",
+      });
+      expect(await Bun.file(join(cwd, "unwanted")).exists()).toBe(false);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -143,6 +165,29 @@ describe("makeShellRunnerLive", () => {
     expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
     const payload = JSON.stringify(events);
     expect(payload).not.toContain("topsecret");
+    expect(payload).toContain("[redacted]");
+  });
+
+  test("redacts scoped tokens from shell events without exporting them to the child", async () => {
+    // Given
+    const events: LandoEvent[] = [];
+    const secret = "event-task-secret";
+
+    // When
+    const result = await Effect.runPromise(
+      withShellRedactionTokens(
+        [secret],
+        Effect.flatMap(ShellRunner, (shellRunner) =>
+          shellRunner.exec(`test -z "$EVENT_TASK_TOKEN" && printf '${secret}' && printf '${secret}' 1>&2`),
+        ),
+      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: secret, stderr: secret });
+    expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
+    const payload = JSON.stringify(events);
+    expect(payload).not.toContain(secret);
     expect(payload).toContain("[redacted]");
   });
 

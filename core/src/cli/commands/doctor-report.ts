@@ -58,6 +58,16 @@ const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
         violations: [{ path: "", message: error.message }],
       } satisfies ConfigLintResult),
     ),
+    Effect.catchTag("LandofileUnknownEventError", (error) =>
+      Effect.succeed({
+        app: "",
+        file: error.file,
+        valid: false,
+        violations: [
+          { path: `events.${error.event}`, message: error.message, suggestedFix: error.remediation },
+        ],
+      } satisfies ConfigLintResult),
+    ),
   );
 
 const sourceForDeprecation = (entry: {

@@ -6,6 +6,7 @@ import type { PluginManifest } from "@lando/sdk/schema";
 
 type MapSlot =
   | "runtimeProviders"
+  | "commands"
   | "renderers"
   | "fileSyncEngines"
   | "templateEngines"
@@ -27,6 +28,7 @@ type DoctorCheck = NonNullable<LandoPluginModule["doctorChecks"]>[number];
 
 export interface PluginCapabilityIndex {
   readonly runtimeProviders: SlotMap<"runtimeProviders">;
+  readonly commands: SlotMap<"commands">;
   readonly renderers: SlotMap<"renderers">;
   readonly fileSyncEngines: SlotMap<"fileSyncEngines">;
   readonly templateEngines: SlotMap<"templateEngines">;
@@ -99,6 +101,7 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
       idsOf(contributes?.providers),
       keysOf(module.runtimeProviders),
     ),
+    validateDescriptorIds(module, "commands", idsOf(contributes?.commands), keysOf(module.commands)),
     validateDescriptorIds(module, "renderers", idsOf(contributes?.renderers), keysOf(module.renderers)),
     validateDescriptorIds(
       module,
@@ -191,6 +194,7 @@ const computePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
 ): Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError> => {
   const runtimeProviders = mutableMapFor<"runtimeProviders">();
+  const commands = mutableMapFor<"commands">();
   const renderers = mutableMapFor<"renderers">();
   const fileSyncEngines = mutableMapFor<"fileSyncEngines">();
   const templateEngines = mutableMapFor<"templateEngines">();
@@ -218,6 +222,7 @@ const computePluginCapabilityIndex = (
       addContributions({ target, entries, pluginName: module.name, kind });
     const additions = [
       add(runtimeProviders, module.runtimeProviders ?? [], "providers"),
+      add(commands, module.commands ?? [], "commands"),
       add(renderers, module.renderers ?? [], "renderers"),
       add(fileSyncEngines, module.fileSyncEngines ?? [], "fileSyncEngines"),
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
@@ -247,6 +252,7 @@ const computePluginCapabilityIndex = (
 
   return Either.right({
     runtimeProviders,
+    commands,
     renderers,
     fileSyncEngines,
     templateEngines,

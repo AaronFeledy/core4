@@ -16,6 +16,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   ToolingEngine,
+  type ToolingHostStep,
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
@@ -105,6 +106,25 @@ const normalizeCommands = (
   return [];
 };
 
+const normalizeHostSteps = (
+  task: ToolingTaskShape,
+  args: ReadonlyArray<string>,
+): ReadonlyArray<ToolingHostStep> => {
+  const forwardedArgs = task.arguments === false ? [] : args;
+  const cmds = task.cmds;
+  if (cmds !== undefined && cmds.length > 0) {
+    return cmds.map((source, index) => ({
+      kind: "shell",
+      source,
+      argv: index === cmds.length - 1 ? forwardedArgs : [],
+    }));
+  }
+  if (task.cmd === undefined) return [];
+  return typeof task.cmd === "string"
+    ? [{ kind: "shell", source: task.cmd, argv: forwardedArgs }]
+    : [{ kind: "argv", argv: [...task.cmd, ...forwardedArgs] }];
+};
+
 export const buildToolingInvocation = (
   name: string,
   task: ToolingTaskShape,
@@ -127,6 +147,7 @@ export const buildToolingInvocation = (
     ...(env === undefined ? {} : { env }),
     ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
     commands,
+    hostSteps: normalizeHostSteps(task, options.args ?? []),
   };
 };
 

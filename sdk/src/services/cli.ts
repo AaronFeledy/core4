@@ -1,6 +1,6 @@
 import { Context, type Effect } from "effect";
 
-import type { EventError, ToolingExecError } from "../errors/index.ts";
+import type { EventError, ToolingCompileError, ToolingExecError } from "../errors/index.ts";
 import type { AppPlan, RendererCapabilities } from "../schema/index.ts";
 import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
 
@@ -59,6 +59,17 @@ export class Telemetry extends Context.Tag("@lando/core/Telemetry")<
  * equivalent). The order of `commands` is significant; engines execute
  * them sequentially and stop at the first non-zero exit code.
  */
+export type ToolingHostStep =
+  | {
+      readonly kind: "shell";
+      readonly source: string;
+      readonly argv: ReadonlyArray<string>;
+    }
+  | {
+      readonly kind: "argv";
+      readonly argv: ReadonlyArray<string>;
+    };
+
 export interface ToolingInvocation {
   /** Tooling task name (the Landofile `tooling.<name>` key). */
   readonly tool: string;
@@ -78,6 +89,8 @@ export interface ToolingInvocation {
   readonly agentEnvAllowlist?: ReadonlyArray<string>;
   /** Pre-normalized argv forms, executed in order. */
   readonly commands: ReadonlyArray<ReadonlyArray<string>>;
+  /** Structural Bun Shell forms for host execution, executed in order. */
+  readonly hostSteps?: ReadonlyArray<ToolingHostStep>;
 }
 
 /**
@@ -112,7 +125,7 @@ export class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
       invocation: ToolingInvocation,
       plan: AppPlan,
       provider: RuntimeProviderShape,
-    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingExecError>;
+    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
 >() {}
 

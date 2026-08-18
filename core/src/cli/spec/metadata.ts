@@ -8,6 +8,7 @@ export type FlagConfig<T> = {
   readonly options?: readonly string[];
   readonly parse?: (input: string) => T | Promise<T>;
   readonly required?: boolean;
+  readonly valueType?: "string" | "integer";
 };
 
 export type OptionFlag<T = string | number | undefined> = FlagConfig<T> & {
@@ -45,6 +46,7 @@ export const Flags = {
     ...config,
     multiple: config.multiple ?? false,
     type: "option",
+    valueType: "integer",
   }),
   boolean: (config: FlagConfig<boolean> = {}): BooleanFlag<boolean | undefined> => ({
     ...config,

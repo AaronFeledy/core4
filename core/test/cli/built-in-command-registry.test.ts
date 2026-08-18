@@ -58,6 +58,13 @@ describe("built-in command registry contract", () => {
       expect(key).toBe(entry.spec.id);
       expect(registry.resolveBuiltInCommand(entry.spec.id)).toBe(entry);
       expect(entry.command.landoSpec).toBe(entry.spec);
+      expect(entry.inputSpec).not.toBe(entry.spec);
+      expect(entry.inputSpec).toEqual({
+        ...entry.spec,
+        flags: { ...entry.command.baseFlags, ...entry.command.flags },
+        args: entry.command.args,
+        strict: entry.command.strict,
+      });
       expect(entry.command.bootstrap).toBe(entry.spec.bootstrap);
       for (const alias of entry.command.aliases ?? []) {
         expect(registry.resolveBuiltInCommand(alias), `${alias} must resolve to ${entry.spec.id}`).toBe(

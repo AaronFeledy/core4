@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { builtInCommandRegistry } from "../../src/cli/built-in-command-registry.ts";
 import { SETUP_COMMAND_FLAGS } from "../../src/cli/command-specs/meta/setup-command-flags.ts";
 import SetupCommand from "../../src/cli/command-specs/meta/setup.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
@@ -12,14 +13,15 @@ import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-
 const UNIVERSAL_FLAG_NAMES = new Set(["format", "json"]);
 
 describe("meta:setup plugin flag merge", () => {
-  test("native spec, legacy wrapper, and manifest share one merged setup flag surface", () => {
+  test("native spec, legacy wrapper, and registry share one merged setup flag surface", () => {
     // When
-    const manifestFlags = COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.spec.flags;
+    const registeredSpec = builtInCommandRegistry["meta:setup"].spec;
 
     // Then
     expect(setupSpec.flags).toBe(SETUP_COMMAND_FLAGS);
     expect(SetupCommand.flags).toBe(SETUP_COMMAND_FLAGS);
-    expect(JSON.stringify(manifestFlags)).toBe(JSON.stringify(SETUP_COMMAND_FLAGS));
+    expect(registeredSpec).toBe(setupSpec);
+    expect(registeredSpec.flags).toBe(SETUP_COMMAND_FLAGS);
   });
 
   test("every bundled contributed flag is merged into SetupCommand.flags metadata", () => {

@@ -28,6 +28,8 @@ import type {
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
+  LandofileEventLifecycleReentryError,
+  LandofileEventStepFailedError,
   LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLoadExpressionError,
@@ -36,6 +38,7 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   NoProviderInstalledError,
@@ -184,7 +187,11 @@ export interface StartAppResult {
 export type StartAppError =
   | AppIdReservedError
   | BuildPhaseFailedError
+  | ComposeKeyRejectedError
   | EventError
+  | LandofileEventLifecycleReentryError
+  | LandofileEventStepFailedError
+  | ToolingCompileError
   | FileSyncDriftError
   | FileSyncStartError
   | FileSyncStopError
@@ -193,7 +200,9 @@ export type StartAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
+  | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
@@ -223,6 +232,9 @@ export interface StopAppResult {
 export type StopAppError =
   | AppIdReservedError
   | EventError
+  | LandofileEventLifecycleReentryError
+  | LandofileEventStepFailedError
+  | ToolingCompileError
   | FileSyncDriftError
   | FileSyncStartError
   | FileSyncStopError
@@ -231,6 +243,7 @@ export type StopAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
@@ -340,6 +353,7 @@ export type InfoAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
@@ -385,6 +399,7 @@ export type ExecAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
@@ -432,6 +447,7 @@ export type ToolingError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
@@ -464,6 +480,7 @@ export type LogsAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
@@ -524,6 +541,7 @@ export type RemoteSyncError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
@@ -599,7 +617,9 @@ export interface AppConfigLintOptions {
  * read/write methods may be added non-breakingly in later releases.
  */
 export interface AppConfigApi {
-  readonly lint: (options?: AppConfigLintOptions) => Effect.Effect<ConfigLintResult, LandofileNotFoundError>;
+  readonly lint: (
+    options?: AppConfigLintOptions,
+  ) => Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileUnknownEventError>;
 }
 
 /**

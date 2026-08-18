@@ -16,6 +16,9 @@ export interface ExpressionContext {
   readonly info?: Readonly<Record<string, unknown>> | undefined;
   readonly secrets?: Readonly<Record<string, string>> | undefined;
   readonly globalServices?: Readonly<Record<string, unknown>> | undefined;
+  readonly event?: Readonly<Record<string, unknown>> | undefined;
+  readonly item?: unknown;
+  readonly key?: string | number | undefined;
 }
 
 export const ExpressionContext: Schema.Schema<ExpressionContext> = Schema.Struct({
@@ -31,4 +34,7 @@ export const ExpressionContext: Schema.Schema<ExpressionContext> = Schema.Struct
   info: Schema.optional(UnknownRecord),
   secrets: Schema.optional(StringRecord),
   globalServices: Schema.optional(UnknownRecord),
+  event: Schema.optional(UnknownRecord),
+  item: Schema.optional(Schema.Unknown),
+  key: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
 });

@@ -4,46 +4,68 @@ import { NotImplementedError } from "@lando/sdk/errors";
 
 export const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
-const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
-  { key: "deps" },
-  { key: "engine" },
-  { key: "bootstrap" },
-  { key: "dotenv" },
-  { key: "user" },
-  { key: "appMount" },
-  { key: "stdio" },
-  { key: "interactive" },
-  { key: "passThrough" },
-  { key: "sources" },
-  { key: "generates" },
-  { key: "method" },
-  { key: "status" },
-  { key: "preconditions" },
-  { key: "if" },
-  { key: "run" },
-  { key: "platforms" },
-  { key: "prompt" },
-  { key: "silent" },
-  { key: "output" },
-  { key: "failFast" },
-  { key: "disabled" },
-  { key: "aliases" },
-  { key: "topLevelAlias" },
-  { key: "namespace" },
-  { key: "internal" },
-  { key: "hostProxyAllowed" },
-  { key: "examples" },
-  { key: "usage" },
-];
+const BETA_TOOLING_TASK_KEYS = [
+  "deps",
+  "engine",
+  "bootstrap",
+  "dotenv",
+  "user",
+  "appMount",
+  "stdio",
+  "interactive",
+  "passThrough",
+  "sources",
+  "generates",
+  "method",
+  "status",
+  "preconditions",
+  "if",
+  "run",
+  "platforms",
+  "prompt",
+  "silent",
+  "output",
+  "failFast",
+  "disabled",
+  "aliases",
+  "topLevelAlias",
+  "namespace",
+  "internal",
+  "hostProxyAllowed",
+  "examples",
+  "usage",
+] as const;
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
-const BETA_VAR_KEYS = new Set(["raw"]);
 
 interface ToolingBetaFinding {
   readonly task: string;
   readonly key: string;
   readonly description: string;
+  readonly event?: string;
 }
+
+const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBetaFinding | undefined => {
+  const events = parsed.events;
+  if (events === null || typeof events !== "object" || Array.isArray(events)) return undefined;
+
+  for (const [event, steps] of Object.entries(events as Record<string, unknown>)) {
+    if (!Array.isArray(steps)) continue;
+    for (const step of steps) {
+      if (step === null || typeof step !== "object" || Array.isArray(step)) continue;
+      const structuredStep = step as Record<string, unknown>;
+      if (Object.hasOwn(structuredStep, "platforms")) {
+        return {
+          task: event,
+          key: `events.${event}[].platforms`,
+          description: 'Event step field "platforms"',
+          event,
+        };
+      }
+    }
+  }
+  return undefined;
+};
 
 const scanToolingInputMetadataForBeta = (
   taskName: string,
@@ -92,7 +114,10 @@ const scanToolingInputMetadataForBeta = (
 
 export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;
-  const tooling = (parsed as Record<string, unknown>).tooling;
+  const parsedRecord = parsed as Record<string, unknown>;
+  const eventFinding = scanEventsForBeta(parsedRecord);
+  if (eventFinding !== undefined) return eventFinding;
+  const tooling = parsedRecord.tooling;
   if (tooling === null || typeof tooling !== "object" || Array.isArray(tooling)) return undefined;
   const toolingMap = tooling as Record<string, unknown>;
 
@@ -100,12 +125,12 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     if (taskValue === null || typeof taskValue !== "object" || Array.isArray(taskValue)) continue;
     const task = taskValue as Record<string, unknown>;
 
-    for (const entry of BETA_TOOLING_TASK_KEYS) {
-      if (Object.hasOwn(task, entry.key)) {
+    for (const key of BETA_TOOLING_TASK_KEYS) {
+      if (Object.hasOwn(task, key)) {
         return {
           task: taskName,
-          key: entry.key,
-          description: `Tooling task field "${entry.key}"`,
+          key,
+          description: `Tooling task field "${key}"`,
         };
       }
     }
@@ -137,14 +162,12 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     if (vars !== null && typeof vars === "object" && !Array.isArray(vars)) {
       for (const [varName, varValue] of Object.entries(vars as Record<string, unknown>)) {
         if (varValue !== null && typeof varValue === "object" && !Array.isArray(varValue)) {
-          for (const varKey of Object.keys(varValue as Record<string, unknown>)) {
-            if (BETA_VAR_KEYS.has(varKey)) {
-              return {
-                task: taskName,
-                key: `vars.${varName}.${varKey}`,
-                description: `Unsafe "${varKey}:" interpolation in tooling var "${varName}"`,
-              };
-            }
+          if (Object.hasOwn(varValue, "raw")) {
+            return {
+              task: taskName,
+              key: `vars.${varName}.raw`,
+              description: `Unsafe "raw:" interpolation in tooling var "${varName}"`,
+            };
           }
         }
       }
@@ -162,7 +185,10 @@ export const rejectBetaToolingFeatures = (
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
-      message: `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`,
+      message:
+        finding.event === undefined
+          ? `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`
+          : `${finding.description} in event "${finding.event}" is not supported in Alpha Landofiles at ${filePath}.`,
       commandId: "landofile.parse",
       remediation: BETA_REMEDIATION,
     }),

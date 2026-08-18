@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CapabilityError,
+  LandofileEventStepFailedError,
   NotImplementedError,
   ProviderUnavailableError,
   ServiceStartError,
@@ -92,6 +93,50 @@ describe("buildBugReport: envelope extraction", () => {
       ]),
     );
     expect(env.providerId).toBe("lando");
+  });
+
+  test("extracts event step identity and output tail from LandofileEventStepFailedError", () => {
+    const env = buildBugReport({
+      error: new LandofileEventStepFailedError({
+        message: "Event pre-destroy step 1 failed.",
+        event: "pre-destroy",
+        index: 0,
+        kind: "command",
+        service: "web",
+        exitCode: 1,
+        outputTail: "Unknown canonical command app:confgi. Did you mean app:config?",
+        remediation: "Fix pre-destroy step 1, then rerun the lifecycle command.",
+      }),
+      context: ctx({ commandId: "app:destroy" }),
+    });
+    expect(env.extra).toEqual(
+      expect.arrayContaining([
+        ["event", "pre-destroy"],
+        ["step", "1"],
+        ["kind", "command"],
+        ["service", "web"],
+        ["outputTail", "Unknown canonical command app:confgi. Did you mean app:config?"],
+      ]),
+    );
+  });
+
+  test("omits empty output tail and absent service from LandofileEventStepFailedError extras", () => {
+    const env = buildBugReport({
+      error: new LandofileEventStepFailedError({
+        message: "Event post-start step 2 failed.",
+        event: "post-start",
+        index: 1,
+        kind: "cmd",
+        exitCode: 1,
+        outputTail: "",
+        remediation: "Fix post-start step 2, then rerun the lifecycle command.",
+      }),
+      context: ctx({ commandId: "app:start" }),
+    });
+    const keys = env.extra.map(([key]) => key);
+    expect(keys).toContain("event");
+    expect(keys).not.toContain("service");
+    expect(keys).not.toContain("outputTail");
   });
 
   test("redacts env-style secrets in the body", () => {

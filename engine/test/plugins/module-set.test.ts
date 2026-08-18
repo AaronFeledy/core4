@@ -157,4 +157,26 @@ describe("makePluginCapabilityIndex", () => {
       expect(result.left.pluginName).toBe("@lando/ca-second");
     }
   });
+
+  test("rejects manifest command ids without matching executable loaders", () => {
+    // Given
+    const manifest = Schema.decodeSync(PluginManifest)({
+      name: "@lando/command-mismatch",
+      version: "1.0.0",
+      api: 4,
+      contributes: { commands: ["meta:declared"] },
+    });
+    const module = { name: manifest.name, manifest };
+
+    // When
+    const result = makePluginCapabilityIndex([module]);
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left.kind).toBe("commands");
+      expect(result.left.declared).toEqual(["meta:declared"]);
+      expect(result.left.provided).toEqual([]);
+    }
+  });
 });

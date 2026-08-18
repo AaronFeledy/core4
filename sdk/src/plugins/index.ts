@@ -30,6 +30,7 @@ export type {
 } from "../schema/renderer-panel.ts";
 export type { RenderEvent } from "../events/rich-render.ts";
 export * from "./module.ts";
+export type * from "./command.ts";
 
 /**
  * Constrained publish-only seam onto the closed `RenderEvent` vocabulary.

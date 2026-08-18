@@ -11,6 +11,7 @@ export interface ShellCommandOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly shell?: "bun";
+  readonly argv?: ReadonlyArray<string>;
 }
 
 export interface ProcessSpawnOptions {
