@@ -4,7 +4,7 @@ import {
   refreshAppCache,
   renderAppCacheRefreshResult,
 } from "../../../commands/app-cache-refresh";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appCacheRefreshSpec: LandoCommandSpec<AppCacheRefreshResult> = {
   resultSchema: AppCacheRefreshResultSchema,
@@ -15,13 +15,3 @@ export const appCacheRefreshSpec: LandoCommandSpec<AppCacheRefreshResult> = {
   run: () => refreshAppCache(),
   render: (result) => renderAppCacheRefreshResult(result as AppCacheRefreshResult),
 };
-
-export default class AppCacheRefreshCommand extends LandoCommandBase {
-  static override description = appCacheRefreshSpec.summary;
-  static override landoSpec: LandoCommandSpec = appCacheRefreshSpec;
-  static override bootstrap = appCacheRefreshSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appCacheRefreshSpec);
-  }
-}

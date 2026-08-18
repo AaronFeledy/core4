@@ -12,7 +12,7 @@ import {
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
 } from "../../../commands/plugin-trust";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown): { action: string; name: string } => {
   if (typeof input !== "object" || input === null) return { action: "", name: "" };
@@ -32,6 +32,10 @@ export const pluginTrustSpec: LandoCommandSpec<PluginTrustCommandResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  args: {
+    action: Args.string({ description: "Plugin name, list, or revoke.", required: true }),
+    name: Args.string({ description: "Plugin name to revoke.", required: false }),
+  },
   run: (input) => {
     const parsed = extractInput(input);
     if (parsed.action === "list") return pluginTrustList();
@@ -45,18 +49,3 @@ export const pluginTrustSpec: LandoCommandSpec<PluginTrustCommandResult> = {
     return renderPluginTrustResult(trustResult);
   },
 };
-
-export default class PluginTrustCommand extends LandoCommandBase {
-  static override description = pluginTrustSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginTrustSpec)];
-  static override args = {
-    action: Args.string({ description: "Plugin name, list, or revoke.", required: true }),
-    name: Args.string({ description: "Plugin name to revoke.", required: false }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginTrustSpec;
-  static override bootstrap = pluginTrustSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginTrustSpec);
-  }
-}

@@ -8,7 +8,7 @@ import {
   uninstall,
 } from "@lando/engine/operations/uninstall";
 import { renderUninstallResult } from "../../commands/uninstall";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 const CONTAINER_RUNTIMES = [
   { cmd: "docker", providerId: "docker" },
@@ -260,18 +260,11 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never
   resultSchema: UninstallResultSchema,
   id: "meta:uninstall",
   summary: "Remove Lando-owned installed files after confirmation.",
+  description: "Remove Lando-owned installed files after confirmation.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
-  run: (input) => uninstall(uninstallOptionsFromInput(input)),
-  successExitCode: (result) => (result.refused || result.failed ? 1 : undefined),
-  render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
-};
-
-export default class MetaUninstallCommand extends LandoCommandBase {
-  static override description = metaUninstallSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaUninstallSpec)];
-  static override flags = {
+  flags: {
     "dry-run": Flags.boolean({
       description: "Print the uninstall plan without changing the system.",
       default: false,
@@ -289,11 +282,8 @@ export default class MetaUninstallCommand extends LandoCommandBase {
       description: "Remove Lando-owned toolchain files and data roots after confirmation.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaUninstallSpec;
-  static override bootstrap = metaUninstallSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaUninstallSpec);
-  }
-}
+  },
+  run: (input) => uninstall(uninstallOptionsFromInput(input)),
+  successExitCode: (result) => (result.refused || result.failed ? 1 : undefined),
+  render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
+};

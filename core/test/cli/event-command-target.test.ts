@@ -66,7 +66,7 @@ describe("resolveEventCommandTarget", () => {
     // Then
     expect(target.kind).toBe("built-in");
     expect(target.spec.id).toBe("app:start");
-    expect(target.spec).toBe(builtInEntry.inputSpec ?? builtInEntry.spec);
+    expect(target.spec).toBe(builtInEntry.spec);
   });
 
   test("classifies plugin-owned commands even when they share a core namespace", async () => {

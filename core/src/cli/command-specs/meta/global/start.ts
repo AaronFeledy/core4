@@ -7,12 +7,7 @@ import {
   globalStart,
   renderGlobalStartResult,
 } from "../../../commands/meta/global-start";
-import {
-  LandoCommandBase,
-  type LandoCommandSpec,
-  extractSpecAbortSignal,
-  resolveTopLevelAliases,
-} from "../../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -34,27 +29,17 @@ export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
   resultSchema: GlobalStartResultSchema,
   id: "meta:global:start",
   summary: "Start the host-level global Lando app.",
+  description: "Start the host-level global Lando app.",
   namespace: "meta",
   topLevelAlias: "global:start",
   bootstrap: "global",
-  run: (input) => globalStart(globalStartOptionsFromInput(input)),
-  render: (result) => renderGlobalStartResult(result as GlobalStartResult),
-};
-
-export default class MetaGlobalStartCommand extends LandoCommandBase {
-  static override description = metaGlobalStartSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalStartSpec)];
-  static override flags = {
+  flags: {
     service: Flags.string({
       char: "s",
       description: "Start and inspect a specific global service (repeatable).",
       multiple: true,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaGlobalStartSpec;
-  static override bootstrap = metaGlobalStartSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalStartSpec);
-  }
-}
+  },
+  run: (input) => globalStart(globalStartOptionsFromInput(input)),
+  render: (result) => renderGlobalStartResult(result as GlobalStartResult),
+};

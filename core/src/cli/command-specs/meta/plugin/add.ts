@@ -7,7 +7,7 @@ import { NotImplementedError } from "@lando/sdk/errors";
 import { pluginAdd, renderPluginAddResult } from "../../../commands/plugin-add";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown): { spec: string; trust: boolean; force: boolean; yes: boolean } => {
   if (typeof input !== "object" || input === null) {
@@ -37,6 +37,21 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  args: {
+    spec: Args.string({
+      description: "Plugin spec (npm package name with optional @version).",
+      required: false,
+    }),
+  },
+  flags: {
+    trust: Flags.boolean({
+      description:
+        "Trust the plugin for this session (required for non-interactive installs; persistent trust is deferred to Beta).",
+      default: false,
+    }),
+    yes: Flags.boolean({ char: "y", description: "Alias of --trust.", default: false }),
+    force: Flags.boolean({ description: "Re-install even if already present.", default: false }),
+  },
   run: (input) =>
     Effect.gen(function* () {
       const parsed = extractInput(input);
@@ -51,29 +66,3 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     }),
   render: (result) => renderPluginAddResult(result as PluginAddResult),
 };
-
-export default class PluginAddCommand extends LandoCommandBase {
-  static override description = pluginAddSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginAddSpec)];
-  static override args = {
-    spec: Args.string({
-      description: "Plugin spec (npm package name with optional @version).",
-      required: false,
-    }),
-  };
-  static override flags = {
-    trust: Flags.boolean({
-      description:
-        "Trust the plugin for this session (required for non-interactive installs; persistent trust is deferred to Beta).",
-      default: false,
-    }),
-    yes: Flags.boolean({ char: "y", description: "Alias of --trust.", default: false }),
-    force: Flags.boolean({ description: "Re-install even if already present.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginAddSpec;
-  static override bootstrap = pluginAddSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginAddSpec);
-  }
-}

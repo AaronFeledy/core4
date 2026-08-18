@@ -2,7 +2,7 @@ import { RemoteTestResult } from "@lando/sdk/schema";
 
 import { appRemoteSetup } from "@lando/engine/operations/remote";
 import { renderRemoteTestResult } from "../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import { remoteEnvArg, remoteSetupFlags, remoteSetupOptionsFromInput } from "./common";
 
 export const remoteSetupSpec: LandoCommandSpec = {
@@ -17,15 +17,3 @@ export const remoteSetupSpec: LandoCommandSpec = {
   render: (result, input, ctx) =>
     renderRemoteTestResult(result as never, remoteSetupOptionsFromInput(input).format, ctx),
 };
-
-export default class RemoteSetupCommand extends LandoCommandBase {
-  static override description = remoteSetupSpec.summary;
-  static override flags = remoteSetupFlags;
-  static override args = { env: remoteEnvArg };
-  static override landoSpec: LandoCommandSpec = remoteSetupSpec;
-  static override bootstrap = remoteSetupSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(remoteSetupSpec);
-  }
-}

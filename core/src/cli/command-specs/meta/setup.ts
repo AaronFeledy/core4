@@ -35,7 +35,7 @@ import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../comma
 import { installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext } from "../../renderer-boundary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";
 import {
   type SetupResult,
@@ -103,6 +103,7 @@ export const setupSpec: LandoCommandSpec<
   resultSchema: SetupResultSchema,
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
+  description: "Run provider, CA, proxy, and shell-integration setup.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",
@@ -274,15 +275,3 @@ export const setupSpec: LandoCommandSpec<
     return notes.length === 0 ? completion : `${completion}\n${notes.join("\n")}`;
   },
 };
-
-export default class SetupCommand extends LandoCommandBase {
-  static override description = "Run provider, CA, proxy, and shell-integration setup.";
-  static override aliases = [...resolveTopLevelAliases(setupSpec)];
-  static override flags = SETUP_COMMAND_FLAGS;
-  static override landoSpec: LandoCommandSpec = setupSpec;
-  static override bootstrap = setupSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(setupSpec);
-  }
-}

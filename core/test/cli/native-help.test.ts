@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers";
 
@@ -97,7 +98,7 @@ describe("native registry help", () => {
     expect(result.stdout).toContain("COMMANDS");
     for (const entry of visibleEntries) {
       expect(result.stdout, `missing canonical id ${entry.spec.id}`).toContain(entry.spec.id);
-      for (const alias of entry.command.aliases ?? []) {
+      for (const alias of resolveTopLevelAliases(entry.spec)) {
         if (alias.startsWith("-")) continue;
         expect(result.stdout, `missing alias pointer ${alias} -> ${entry.spec.id}`).toContain(
           `${alias} -> ${entry.spec.id}`,
@@ -106,7 +107,7 @@ describe("native registry help", () => {
     }
   });
 
-  test("Given a registered command, when its help is requested, then registry metadata and class-owned flags render", async () => {
+  test("Given a registered command, when its help is requested, then catalog metadata and spec-owned flags render", async () => {
     // Given / When
     const result = await runCli(["meta:plugin:login", "--help"]);
 

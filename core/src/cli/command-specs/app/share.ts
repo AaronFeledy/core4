@@ -4,7 +4,7 @@ import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/s
 
 import { appShare } from "@lando/engine/operations/share";
 import { renderShareResult } from "../../commands/share";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share/common";
 
 export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
@@ -19,15 +19,3 @@ export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   render: (result, input, ctx) =>
     renderShareResult(result as TunnelSessionType, shareFormatFromInput(input), ctx),
 };
-
-export default class ShareCommand extends LandoCommandBase {
-  static override description = shareSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(shareSpec)];
-  static override flags = shareFlags;
-  static override landoSpec: LandoCommandSpec = shareSpec;
-  static override bootstrap = shareSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(shareSpec);
-  }
-}

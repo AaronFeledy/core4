@@ -58,6 +58,7 @@ const runtime = async (
   }
   const makeLayer = () =>
     makeCommandsBootstrapLayer({
+      runtimeLayerFactory: { make: makeLandoRuntime },
       lifecycle: makeBootstrapLifecycleTracker(),
       loggerMode: "silent",
       rendererMode: "plain",

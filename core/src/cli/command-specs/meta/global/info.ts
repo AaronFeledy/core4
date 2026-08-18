@@ -7,7 +7,7 @@ import {
   globalInfo,
   renderGlobalInfoResult,
 } from "../../../commands/meta/global-info";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -25,17 +25,11 @@ export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
   resultSchema: GlobalInfoResultSchema,
   id: "meta:global:info",
   summary: "Print runtime information for the host-level global Lando app.",
+  description: "Print runtime information for the host-level global Lando app.",
   namespace: "meta",
   topLevelAlias: "global:info",
   bootstrap: "global",
-  run: (input) => globalInfo(globalInfoOptionsFromInput(input)),
-  render: (result, _input, ctx) => renderGlobalInfoResult(result as GlobalInfoResult, ctx),
-};
-
-export default class MetaGlobalInfoCommand extends LandoCommandBase {
-  static override description = metaGlobalInfoSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalInfoSpec)];
-  static override flags = {
+  flags: {
     service: Flags.string({
       char: "s",
       description: "Filter to a specific global service (repeatable).",
@@ -46,11 +40,7 @@ export default class MetaGlobalInfoCommand extends LandoCommandBase {
       options: ["table", "json"],
       default: "table",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaGlobalInfoSpec;
-  static override bootstrap = metaGlobalInfoSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalInfoSpec);
-  }
-}
+  },
+  run: (input) => globalInfo(globalInfoOptionsFromInput(input)),
+  render: (result, _input, ctx) => renderGlobalInfoResult(result as GlobalInfoResult, ctx),
+};

@@ -1,6 +1,6 @@
 import { type ShareStopResult, ShareStopResultSchema, appShareStop } from "@lando/engine/operations/share";
 import { renderShareStopResult } from "../../../commands/share";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import { shareFormatFromInput, shareStopFlags, shareStopOptionsFromInput } from "./common";
 
 export const shareStopSpec: LandoCommandSpec = {
@@ -15,15 +15,3 @@ export const shareStopSpec: LandoCommandSpec = {
   render: (result, input, ctx) =>
     renderShareStopResult(result as ShareStopResult, shareFormatFromInput(input), ctx),
 };
-
-export default class ShareStopCommand extends LandoCommandBase {
-  static override description = shareStopSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(shareStopSpec)];
-  static override flags = shareStopFlags;
-  static override landoSpec: LandoCommandSpec = shareStopSpec;
-  static override bootstrap = shareStopSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(shareStopSpec);
-  }
-}

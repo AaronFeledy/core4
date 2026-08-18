@@ -46,7 +46,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly deferred?: DeferredCommandPlan;
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
-  readonly streamingMode?: "live";
+  readonly streamingMode?: "live" | ((input: unknown) => "live" | undefined);
   readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
   /**

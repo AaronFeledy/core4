@@ -1,9 +1,8 @@
 import { commandAliasConflictError } from "@lando/engine/operations/reserved-aliases";
-import { CommandRegistrationError } from "./spec/command-spec";
+import { CommandRegistrationError, resolveTopLevelAliases } from "./spec/command-spec";
 
 type BuiltInCommandRegistration = {
-  readonly spec: { readonly id: string };
-  readonly command: { readonly aliases?: ReadonlyArray<string> };
+  readonly spec: Parameters<typeof resolveTopLevelAliases>[0];
 };
 
 export type BuiltInCommandIndex<T extends BuiltInCommandRegistration> = {
@@ -26,7 +25,7 @@ export const buildBuiltInCommandIndex = <T extends BuiltInCommandRegistration>(
         remediation: `Register ${entry.spec.id} under its canonical registry key.`,
       });
     }
-    for (const token of [entry.spec.id, ...(entry.command.aliases ?? [])]) {
+    for (const token of [entry.spec.id, ...resolveTopLevelAliases(entry.spec)]) {
       const owner = byToken.get(token);
       if (owner !== undefined) {
         throw commandAliasConflictError(token, `command ${entry.spec.id}`, owner.spec.id);
@@ -37,5 +36,5 @@ export const buildBuiltInCommandIndex = <T extends BuiltInCommandRegistration>(
     }
     entries.push(entry);
   }
-  return { entries, byToken, namespaceHeads };
+  return { entries: Object.freeze(entries), byToken, namespaceHeads };
 };

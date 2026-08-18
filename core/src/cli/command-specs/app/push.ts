@@ -3,7 +3,7 @@ import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema
 import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
 import { appPush } from "@lando/engine/operations/remote";
 import { renderSyncResult } from "../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import {
   remoteEnvArg,
   remoteFormatFromInput,
@@ -24,16 +24,3 @@ export const pushSpec: LandoCommandSpec<SyncResultType> = {
   render: (result, input, ctx) =>
     renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
 };
-
-export default class PushCommand extends LandoCommandBase {
-  static override description = pushSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pushSpec)];
-  static override flags = remoteSkeletonFlags;
-  static override args = { env: remoteEnvArg };
-  static override landoSpec: LandoCommandSpec = pushSpec;
-  static override bootstrap = pushSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pushSpec);
-  }
-}

@@ -1,8 +1,8 @@
 import { builtInCommandEntries } from "./built-in-command-registry";
-import type { CommandClass } from "./spec/metadata";
+import type { LandoCommandSpec } from "./spec/command-base";
 
 const compiledCommands = Object.fromEntries(
-  builtInCommandEntries.map((entry) => [entry.spec.id, entry.command]),
-) satisfies Record<string, CommandClass>;
+  builtInCommandEntries.map((entry) => [entry.spec.id, entry.spec]),
+) satisfies Record<string, LandoCommandSpec>;
 
 export default compiledCommands;

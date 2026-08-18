@@ -7,7 +7,7 @@ import {
   scratchIdFromInput,
   scratchLogs,
 } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
   resultSchema: ScratchLogsResultSchema,
@@ -15,21 +15,11 @@ export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
   summary: "Show logs for a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:logs",
+  aliases: ["scratch:logs"],
   bootstrap: "scratch",
+  args: {
+    id: Args.string({ description: "Scratch app id.", required: false }),
+  },
   run: (input) => scratchLogs(scratchIdFromInput(input)),
   render: (result) => renderScratchLogsResult(result as ScratchLogsResult),
 };
-
-export default class AppsScratchLogsCommand extends LandoCommandBase {
-  static override description = appsScratchLogsSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchLogsSpec)];
-  static override args = {
-    id: Args.string({ description: "Scratch app id.", required: false }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchLogsSpec;
-  static override bootstrap = appsScratchLogsSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchLogsSpec);
-  }
-}

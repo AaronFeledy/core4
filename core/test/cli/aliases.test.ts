@@ -4,20 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import ExecCommand from "../../src/cli/command-specs/app/exec.ts";
-import InfoCommand from "../../src/cli/command-specs/app/info.ts";
-import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
-import SshCommand from "../../src/cli/command-specs/app/ssh.ts";
-import StartCommand from "../../src/cli/command-specs/app/start.ts";
-import StopCommand from "../../src/cli/command-specs/app/stop.ts";
-import AppsScratchDestroyCommand from "../../src/cli/command-specs/apps/scratch/destroy.ts";
-import AppsScratchGcCommand from "../../src/cli/command-specs/apps/scratch/gc.ts";
-import AppsScratchInfoCommand from "../../src/cli/command-specs/apps/scratch/info.ts";
-import AppsScratchListCommand from "../../src/cli/command-specs/apps/scratch/list.ts";
-import AppsScratchLogsCommand from "../../src/cli/command-specs/apps/scratch/logs.ts";
-import AppsScratchRunCommand from "../../src/cli/command-specs/apps/scratch/run.ts";
-import AppsScratchStartCommand from "../../src/cli/command-specs/apps/scratch/start.ts";
-import AppsScratchStopCommand from "../../src/cli/command-specs/apps/scratch/stop.ts";
+import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -28,10 +15,6 @@ interface RunResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-}
-
-interface CommandWithAliases {
-  readonly aliases?: ReadonlyArray<string>;
 }
 
 const runCommand = async (
@@ -56,34 +39,10 @@ const runCommand = async (
   return { exitCode, stdout, stderr };
 };
 
-const commandAliases = (command: CommandWithAliases): ReadonlyArray<string> => command.aliases ?? [];
-
 describe("app command aliases", () => {
-  test("declare OCLIF top-level aliases on the command classes", () => {
-    expect(commandAliases(StartCommand)).toContain("start");
-    expect(commandAliases(StopCommand)).toContain("stop");
-    expect(commandAliases(InfoCommand)).toContain("info");
-    expect(commandAliases(ExecCommand)).toContain("exec");
-    expect(commandAliases(SshCommand)).toContain("ssh");
-    expect(commandAliases(AppShellCommand)).toContain("shell");
-  });
-
-  test("declare scratch namespace top-level aliases on the command classes", () => {
-    expect(commandAliases(AppsScratchStartCommand)).toEqual(
-      expect.arrayContaining(["scratch:start", "scratch"]),
-    );
-    expect(commandAliases(AppsScratchStopCommand)).toContain("scratch:stop");
-    expect(commandAliases(AppsScratchDestroyCommand)).toContain("scratch:destroy");
-    expect(commandAliases(AppsScratchListCommand)).toContain("scratch:list");
-    expect(commandAliases(AppsScratchInfoCommand)).toContain("scratch:info");
-    expect(commandAliases(AppsScratchLogsCommand)).toContain("scratch:logs");
-    expect(commandAliases(AppsScratchGcCommand)).toContain("scratch:gc");
-    expect(commandAliases(AppsScratchRunCommand)).toEqual(expect.arrayContaining(["scratch:run", "run"]));
-  });
-
   test("register alias metadata in the native command registry", () => {
     const aliasesById = new Map(
-      builtInCommandEntries.map((entry) => [entry.spec.id, entry.command.aliases ?? []] as const),
+      builtInCommandEntries.map((entry) => [entry.spec.id, resolveTopLevelAliases(entry.spec)] as const),
     );
 
     expect(aliasesById.get("app:start")).toContain("start");

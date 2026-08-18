@@ -1,6 +1,6 @@
 import { RemoteListResultSchema, appRemoteList } from "@lando/engine/operations/remote";
 import { renderRemoteListResult } from "../../../commands/remote";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import { remoteConfigFlags, remoteListOptionsFromInput } from "./common";
 
 export const remoteListSpec: LandoCommandSpec = {
@@ -14,14 +14,3 @@ export const remoteListSpec: LandoCommandSpec = {
   render: (result, input, ctx) =>
     renderRemoteListResult(result as never, remoteListOptionsFromInput(input).format, ctx),
 };
-
-export default class RemoteListCommand extends LandoCommandBase {
-  static override description = remoteListSpec.summary;
-  static override flags = remoteConfigFlags;
-  static override landoSpec: LandoCommandSpec = remoteListSpec;
-  static override bootstrap = remoteListSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(remoteListSpec);
-  }
-}

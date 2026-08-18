@@ -14,9 +14,9 @@
 import { Effect, Layer, Option } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { makeLandoRuntime } from "../../runtime/layer";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
@@ -33,10 +33,12 @@ const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
 
 export const resilientDoctorReport = (
   options: DoctorOptions = {},
-): Effect.Effect<DoctorReport, never, never> =>
+): Effect.Effect<DoctorReport, never, RuntimeLayerFactory> =>
   interruptOnAbort(collectResilientDoctorReport(options), options.signal);
 
-const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<DoctorReport, never, never> =>
+const collectResilientDoctorReport = (
+  options: DoctorOptions,
+): Effect.Effect<DoctorReport, never, RuntimeLayerFactory> =>
   Effect.scoped(
     Effect.gen(function* () {
       const sourceEnv = { ...(options.env ?? process.env) };
@@ -45,7 +47,8 @@ const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<Doc
         ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
         : createStandaloneRedactor("secrets", { sourceEnv });
 
-      const runtime = makeLandoRuntime(
+      const runtimeLayerFactory = yield* RuntimeLayerFactory;
+      const runtime = runtimeLayerFactory.make(
         cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
       );
       const built = yield* isolateDoctorSection({

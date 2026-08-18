@@ -247,9 +247,10 @@ const writeStderr = (io: ShellIO | undefined, chunk: string): Effect.Effect<void
 const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize> => {
   if (io?.onResize === undefined || io.terminalSize === undefined) return Stream.empty;
   const onResize = io.onResize;
+  const terminalSize = io.terminalSize;
   return Stream.async<ShellTerminalSize>((emit) => {
     const listener = () => {
-      const size = io.terminalSize?.();
+      const size = terminalSize();
       if (size !== undefined) emit(Effect.succeed(Chunk.of(size)));
     };
     return Effect.sync(onResize(listener));
@@ -298,9 +299,7 @@ export const shellApp = (
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
 
-    const shell = "Bun.$";
-    const useServiceMode = options.service !== undefined && options.service.length > 0;
-    if (useServiceMode) {
+    if (options.service !== undefined && options.service.length > 0) {
       const io = options.io ?? processShellIO;
       const service = yield* resolveService(options.service, plan);
       const provider = yield* registry.select(plan);
@@ -387,10 +386,10 @@ export const shellApp = (
       ...(hostHome === undefined ? {} : { LANDO_HOST_HOME: hostHome }),
     };
 
-    let historyFile: string | undefined;
-    if (options.noHistory !== true) {
-      historyFile = options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root));
-    }
+    const historyFile =
+      options.noHistory === true
+        ? undefined
+        : (options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root)));
 
     const launched = yield* shellRunner.interactive({
       cwd,
@@ -403,13 +402,10 @@ export const shellApp = (
     return {
       mode: "host" as const,
       app: plan.name,
-      shell,
+      shell: "Bun.$",
       cwd,
       exitCode: launched.exitCode,
     };
   });
 
-export const renderShellAppResult = (result: ShellAppResult): string | undefined => {
-  if (result.exitCode !== 0) process.exitCode = result.exitCode;
-  return undefined;
-};
+export const renderShellAppResult = (_result: ShellAppResult): string | undefined => undefined;

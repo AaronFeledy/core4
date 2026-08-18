@@ -40,6 +40,21 @@ describe("native CLI dispatch unification", () => {
     expect(runCliSource).toContain("=> runCompiledCli(options.argv);");
   });
 
+  test("implemented built-ins execute their resolved catalog entry without topic switch tables", async () => {
+    // Given the shipping dispatcher module.
+    const source = await Bun.file(runSourcePath).text();
+
+    // When its production imports and terminal dispatch are inspected.
+    const executableSource = source.slice(source.indexOf("const runCompiledCli ="));
+
+    // Then implemented commands use one generic catalog-entry executor.
+    expect(source).toContain('import { runBuiltInCommand } from "./run-built-in-command"');
+    expect(executableSource).toContain("runBuiltInCommand(builtInCommand, argv.slice(1))");
+    expect(source).not.toContain('from "./dispatch-app"');
+    expect(source).not.toContain('from "./dispatch-apps"');
+    expect(source).not.toContain('from "./dispatch-meta"');
+  });
+
   test("source entry uses native argument validation", async () => {
     // Given an argument rejected by the native app:shell adapter.
     const args = ["shell", "web"] as const;

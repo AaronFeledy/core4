@@ -8,13 +8,7 @@ import {
   globalLogs,
   renderGlobalLogsResult,
 } from "../../../commands/meta/global-logs";
-import { normalizeCliFlagTokens } from "../../../flag-value-validation";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
 
 export interface GlobalLogsFlags {
   readonly service?: string;
@@ -48,10 +42,20 @@ export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
   resultSchema: EmptyResultSchema,
   id: "meta:global:logs",
   summary: "Stream logs from the host-level global Lando app.",
+  description: "Stream logs from the host-level global Lando app.",
   namespace: "meta",
   topLevelAlias: "global:logs",
   bootstrap: "global",
   streaming: StreamFrame,
+  streamingMode: (input) => (globalLogsFollowFromInput(input) ? "live" : undefined),
+  flags: {
+    service: Flags.string({ char: "s", description: "Filter logs to a single global service." }),
+    follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
+    tail: Flags.integer({ description: "Show last N lines per service." }),
+    since: Flags.string({
+      description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+    }),
+  },
   run: (input) => {
     const options = globalLogsOptionsFromInput(input);
     if (!globalLogsFollowFromInput(input)) return globalLogs(options);
@@ -68,34 +72,3 @@ export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
   },
   render: (result) => renderGlobalLogsResult(result as GlobalLogsResult),
 };
-
-// Type intentionally left inferred: an explicit LandoCommandSpec annotation makes
-// the machine-output gate read this spread variant as missing a literal resultSchema.
-const followGlobalLogsSpec = { ...globalLogsSpec, streamingMode: "live" as const };
-
-export default class MetaGlobalLogsCommand extends LandoCommandBase {
-  static override description = globalLogsSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(globalLogsSpec)];
-  static override flags = {
-    service: Flags.string({ char: "s", description: "Filter logs to a single global service." }),
-    follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
-    tail: Flags.integer({ description: "Show last N lines per service." }),
-    since: Flags.string({
-      description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
-    }),
-  };
-  static override landoSpec: LandoCommandSpec = globalLogsSpec;
-  static override bootstrap = globalLogsSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    const normalizedArgv = normalizeCliFlagTokens(this.argv, {
-      ...this.ctor.baseFlags,
-      ...this.ctor.flags,
-    });
-    await this.runEffect(
-      normalizedArgv.includes("--follow") || normalizedArgv.includes("-f")
-        ? followGlobalLogsSpec
-        : globalLogsSpec,
-    );
-  }
-}

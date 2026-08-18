@@ -3,12 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { RuntimeLayerFactory } from "../../src/testing/engine-layers.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
+const runtimeLayerFactoryLive = Layer.succeed(RuntimeLayerFactory, { make: makeLandoRuntime });
+
+const runResilientDoctor = (env: Readonly<Record<string, string>>) =>
+  Effect.runPromise(resilientDoctorReport({ env }).pipe(Effect.provide(runtimeLayerFactoryLive)));
 
 const withUserDataRoot = async <A>(userDataRoot: string, run: () => Promise<A>): Promise<A> => {
   const priorDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -48,9 +54,7 @@ describe("doctor installed-plugin metadata health", () => {
 
     try {
       // When
-      const report = await withUserDataRoot(userDataRoot, () =>
-        Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV })),
-      );
+      const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then valid metadata produces no metadata-health failure
       expect((report.self?.checks ?? []).some((check) => check.section === "plugin-metadata")).toBe(false);
@@ -78,7 +82,7 @@ describe("doctor installed-plugin metadata health", () => {
     try {
       // When
       const report = await withUserDataRoot(userDataRoot, () =>
-        Effect.runPromise(resilientDoctorReport({ env: { ...SHORT_BUDGET_ENV, LANDO_TEST_TOKEN: secret } })),
+        runResilientDoctor({ ...SHORT_BUDGET_ENV, LANDO_TEST_TOKEN: secret }),
       );
 
       // Then the metadata failure is attributed, bounded, redacted, and isolated
@@ -117,9 +121,7 @@ describe("doctor installed-plugin metadata health", () => {
 
     try {
       // When
-      const report = await withUserDataRoot(userDataRoot, () =>
-        Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV })),
-      );
+      const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then the invalid manifest is attributed and the report remains schema-valid
       const metadataCheck = (report.self?.checks ?? []).find((check) => check.section === "plugin-metadata");
@@ -144,9 +146,7 @@ describe("doctor installed-plugin metadata health", () => {
 
     try {
       // When
-      const report = await withUserDataRoot(userDataRoot, () =>
-        Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV })),
-      );
+      const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then the corrupt registry is a structured failure and other sections still answer
       const metadataCheck = (report.self?.checks ?? []).find((check) => check.section === "plugin-metadata");

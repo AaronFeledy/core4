@@ -149,12 +149,19 @@ const summaryLine = (report: IncludeUpdateReport): string => {
   return `${report.lockfilePath}: ${verb} ${report.entries.length} include${report.entries.length === 1 ? "" : "s"}${scope}${offline} (${parts.join(", ")}).`;
 };
 
-const STATUS_GLYPH: Readonly<Record<string, string>> = { added: "+", updated: "~", unchanged: "=" };
+const STATUS_GLYPH: Readonly<Record<IncludeUpdateReport["entries"][number]["status"], string>> = {
+  added: "+",
+  updated: "~",
+  unchanged: "=",
+};
 
-const textRender = (report: IncludeUpdateReport): string => {
+export const renderIncludesUpdateResult = (
+  report: IncludeUpdateReport,
+  _format: AppIncludesUpdateFormat = "text",
+): string => {
   const lines = [summaryLine(report)];
   for (const entry of report.entries) {
-    lines.push(`  ${STATUS_GLYPH[entry.status] ?? " "} ${entry.source} -> ${entry.resolved}`);
+    lines.push(`  ${STATUS_GLYPH[entry.status]} ${entry.source} -> ${entry.resolved}`);
   }
   for (const source of report.removed) lines.push(`  - ${source} (removed)`);
   if (report.entries.length === 0 && report.removed.length === 0) {
@@ -164,17 +171,4 @@ const textRender = (report: IncludeUpdateReport): string => {
     lines.push("Lockfile is out of date. Run `lando app:includes:update` to refresh it.");
   }
   return lines.join("\n");
-};
-
-/**
- * Render an update report. In `--check` mode, sets `process.exitCode = 1` when
- * drift is detected so CI can gate on it (side-effect render pattern, identical
- * for source and compiled entries of the native dispatcher).
- */
-export const renderIncludesUpdateResult = (
-  report: IncludeUpdateReport,
-  _format: AppIncludesUpdateFormat = "text",
-): string => {
-  if (report.checkMode && report.drift) process.exitCode = 1;
-  return textRender(report);
 };

@@ -2,7 +2,7 @@ import { Flags } from "../../../spec/metadata";
 
 import type { ScratchGcReport } from "@lando/sdk/services";
 import { ScratchGcReportResultSchema, renderScratchGcReport, scratchGc } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const pruneFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
@@ -16,24 +16,14 @@ export const appsScratchGcSpec: LandoCommandSpec<ScratchGcReport> = {
   summary: "Inspect scratch Lando app orphans.",
   namespace: "apps",
   topLevelAlias: "scratch:gc",
+  aliases: ["scratch:gc"],
   bootstrap: "scratch",
-  run: (input) => scratchGc({ prune: pruneFromInput(input) }),
-  render: (result) => renderScratchGcReport(result as ScratchGcReport),
-};
-
-export default class AppsScratchGcCommand extends LandoCommandBase {
-  static override description = appsScratchGcSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchGcSpec)];
-  static override flags = {
+  flags: {
     prune: Flags.boolean({
       description: "Reap orphaned scratch resources after reporting them.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchGcSpec;
-  static override bootstrap = appsScratchGcSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchGcSpec);
-  }
-}
+  },
+  run: (input) => scratchGc({ prune: pruneFromInput(input) }),
+  render: (result) => renderScratchGcReport(result as ScratchGcReport),
+};

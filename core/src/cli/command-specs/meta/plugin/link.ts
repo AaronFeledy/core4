@@ -7,7 +7,7 @@ import {
   renderPluginLinkResult,
 } from "../../../commands/plugin-link";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown): { path?: string } => {
   if (typeof input !== "object" || input === null) return {};
@@ -22,23 +22,12 @@ export const pluginLinkSpec: LandoCommandSpec<PluginLinkResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) => pluginLink(extractInput(input)),
-  render: (result) => renderPluginLinkResult(result as PluginLinkResult),
-};
-
-export default class PluginLinkCommand extends LandoCommandBase {
-  static override description = pluginLinkSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginLinkSpec)];
-  static override args = {
+  args: {
     path: Args.string({
       description: "Plugin authoring directory to link (defaults to cwd).",
       required: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginLinkSpec;
-  static override bootstrap = pluginLinkSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginLinkSpec);
-  }
-}
+  },
+  run: (input) => pluginLink(extractInput(input)),
+  render: (result) => renderPluginLinkResult(result as PluginLinkResult),
+};

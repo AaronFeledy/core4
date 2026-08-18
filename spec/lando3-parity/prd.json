@@ -100,7 +100,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Split from US-565 by adjudication on 2026-08-17; owns the §16.7 full-catalog extraction and embedding registration needed for §8.5.2.1 CLI/embedding parity."
     },
     {

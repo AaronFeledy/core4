@@ -9,10 +9,12 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
-import { normalizeScratchStartArgv } from "./commands/scratch";
+import type { ScratchStartOptions } from "./commands/scratch";
+import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
 import { printCommandHelp, printRootHelp } from "./compiled-help";
+import { compiledCommandInputFromArgv } from "./compiled-input";
 import {
   normalizeCompiledCommandArgv,
   normalizeCompiledScratchRunArgvForUniversalFlags,
@@ -29,23 +31,24 @@ import {
   setActiveRendererMode,
   setActiveResultFormat,
 } from "./compiled-runtime";
-import { dispatchAppCommand } from "./dispatch-app";
-import { dispatchAppsCommand } from "./dispatch-apps";
-import { dispatchMetaCommand } from "./dispatch-meta";
 import { renderAliasResolutionFailure, routeResolvedTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
+import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { runBuiltInCommand } from "./run-built-in-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
 export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
-export { compiledCommandInputFromArgv } from "./compiled-input";
+export { compiledCommandInputFromArgv };
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
-export { parseScratchStartArgv } from "./dispatch-apps";
+
+export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
+  scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
@@ -169,9 +172,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   const passthroughHasPayload =
     isBunOrX && dispatchArgv.slice(1).some((arg) => arg !== "--help" && arg !== "-h");
   const found: [string, CompiledCommand] | undefined =
-    builtInCommand === undefined
-      ? findCommand(argv[0] ?? "")
-      : [builtInCommand.spec.id, builtInCommand.command];
+    builtInCommand === undefined ? findCommand(argv[0] ?? "") : [builtInCommand.spec.id, builtInCommand.spec];
 
   if (
     !passthroughHasPayload &&
@@ -250,11 +251,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (await dispatchAppCommand(argv)) return;
-  if (await dispatchAppsCommand(argv)) return;
-  if (await dispatchMetaCommand(argv)) return;
+  if (builtInCommand?.status.kind === "embedding-exempt") {
+    await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1));
+    return;
+  }
+  if (builtInCommand !== undefined) {
+    await runBuiltInCommand(builtInCommand, argv.slice(1));
+    return;
+  }
 
-  throw new Error(`Implemented command ${found[0]} has no native dispatch adapter.`);
+  throw new TypeError(`Implemented command ${found[0]} has no catalog entry.`);
 };
 
 export interface RunCliOptions {

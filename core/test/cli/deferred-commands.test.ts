@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import {
+  builtInCommandCatalog,
   builtInCommandEntries,
-  builtInCommandRegistry,
   deferredBuiltInCommandIds,
   isBuiltInCommandImplemented,
   notImplementedErrorForCommand,
@@ -148,8 +148,8 @@ describe("deferred command remediation contract", () => {
   test("fixture only contains canonical command ids that exist in the compiled registry", () => {
     for (const entry of fixture.commands) {
       expect(
-        Object.hasOwn(builtInCommandRegistry, entry.id),
-        `${entry.id} must be registered in built-in-command-registry.ts`,
+        Object.hasOwn(builtInCommandCatalog, entry.id),
+        `${entry.id} must be registered in the built-in command catalog`,
       ).toBe(true);
     }
   });

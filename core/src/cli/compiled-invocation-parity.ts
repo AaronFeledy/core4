@@ -6,6 +6,8 @@
  * diagnostic wording. `rejectInvalidInvocation` is the dispatch guard;
  * `invocationParityError` is the pure diagnostic used by compatibility tests.
  */
+import { Schema } from "effect";
+
 import {
   argDefinitionsForCommand,
   commandSpecForId,
@@ -13,6 +15,15 @@ import {
   flagNameByToken,
 } from "./compiled-argv";
 import { emitDiagnosticLine } from "./compiled-session";
+
+export class InvalidCliInvocationError extends Schema.TaggedError<InvalidCliInvocationError>()(
+  "InvalidCliInvocationError",
+  {
+    message: Schema.String,
+    commandId: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
 
 /**
  * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag

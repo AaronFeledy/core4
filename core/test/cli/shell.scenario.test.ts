@@ -29,7 +29,8 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
-import AppShellCommand from "../../src/cli/command-specs/app/shell.ts";
+import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
+import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 import { registerBuiltInContractDeprecations } from "../../src/testing/engine-layers.ts";
 import { DeprecationServiceLive } from "../../src/testing/engine-layers.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -703,12 +704,14 @@ describe("shellApp — shell modes", () => {
 
 describe("lando shell — CLI surface", () => {
   test("registers `shell` and `app:shell` as a top-level alias and native id", () => {
-    expect(resolveBuiltInCommand("app:shell")?.command.aliases).toContain("shell");
-    expect(AppShellCommand.aliases).toContain("shell");
+    expect(resolveTopLevelAliases(resolveBuiltInCommand("app:shell")?.spec ?? appShellSpec)).toContain(
+      "shell",
+    );
+    expect(resolveTopLevelAliases(appShellSpec)).toContain("shell");
   });
 
   test("declares service, host, no-history, and no-interactive flags", () => {
-    const flags = Object.keys(AppShellCommand.flags);
+    const flags = Object.keys(appShellSpec.flags ?? {});
     expect(flags).toContain("service");
     expect(flags).toContain("host");
     expect(flags).toContain("no-history");
@@ -716,7 +719,7 @@ describe("lando shell — CLI surface", () => {
   });
 
   test("is strict: bare positional service names are rejected, not silently ignored", () => {
-    expect(AppShellCommand.strict).toBe(true);
+    expect(appShellSpec.strict).toBe(true);
   });
 });
 

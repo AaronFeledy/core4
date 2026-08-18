@@ -43,7 +43,7 @@ type CommandWithArgs = {
 
 const invocationArgs = (commandId: string): ReadonlyArray<string> => {
   const command: CommandWithArgs =
-    builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.command ?? {};
+    builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.spec ?? {};
   const flags = Object.entries(command.flags ?? {})
     .filter(([, flag]) => flag.required === true)
     .map(([name]) => `--${name}=placeholder`);

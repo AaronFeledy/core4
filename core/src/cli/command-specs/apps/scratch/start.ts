@@ -3,12 +3,11 @@ import { Flags } from "../../../spec/metadata";
 import {
   type ScratchStartResult,
   ScratchStartResultSchema,
-  normalizeScratchStartArgv,
   renderScratchStartResult,
   scratchStart,
   scratchStartOptionsFromInput,
 } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
   resultSchema: ScratchStartResultSchema,
@@ -16,15 +15,9 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
   summary: "Start a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: ["scratch:start", "scratch"],
+  aliases: ["scratch:start", "scratch"],
   bootstrap: "scratch",
-  run: (input) => scratchStart(scratchStartOptionsFromInput(input)),
-  render: (result) => renderScratchStartResult(result as ScratchStartResult),
-};
-
-export default class AppsScratchStartCommand extends LandoCommandBase {
-  static override description = appsScratchStartSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchStartSpec)];
-  static override flags = {
+  flags: {
     fork: Flags.boolean({ description: "Use the current app as the scratch source.", default: false }),
     from: Flags.string({ description: "Recipe reference to materialize as a scratch app." }),
     detach: Flags.boolean({ description: "Return after acquiring the scratch app.", default: false }),
@@ -61,14 +54,7 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       default: false,
       description: "Join the shared cross-app network and expose the global app's storage scope.",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchStartSpec;
-  static override bootstrap = appsScratchStartSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    // `--mount-cwd` takes an optional value (`--mount-cwd[=<container-path>]`); oclif's string
-    // flag rejects the bare form, so rewrite it to the empty-value form before parsing.
-    this.argv = [...normalizeScratchStartArgv(this.argv)];
-    await this.runEffect(appsScratchStartSpec);
-  }
-}
+  },
+  run: (input) => scratchStart(scratchStartOptionsFromInput(input)),
+  render: (result) => renderScratchStartResult(result as ScratchStartResult),
+};
