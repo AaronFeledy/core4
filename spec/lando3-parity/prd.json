@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 — Lando 3 Parity",
   "branchName": "feat/lando3-parity",
-  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-582): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
+  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-583): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
   "userStories": [
     {
       "id": "US-561",
@@ -74,7 +74,7 @@
       "title": "events: (events-as-tasks)",
       "description": "As a user, I can declare events: entries (pre-start, post-start, post-rebuild, ...) whose steps run as tooling-style tasks at matching lifecycle points — the v4 analog of v3 hooks.",
       "acceptanceCriteria": [
-        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the full §8.5 events map and §8.5.2 step contract (same step types as cmds: and service targeting). Per §8.5.2.1, command: steps resolve built-in, plugin-contributed, and tooling canonical ids and validate flags, args, and raw against the target LandoCommandSpec at compile time for literal values and invocation time for expression-resolved values.",
+        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the full §8.5 events map and §8.5.2 step contract (same step types as cmds: and service targeting). Per §8.5.2.1, command: steps resolve built-in, plugin-contributed, and tooling canonical ids and validate flags, args, and raw against the target LandoCommandSpec at compile time for literal values and invocation time for expression-resolved values. US-565 proves built-in targets through the shared native CLI/runtime path; extracting and self-registering the complete class-free built-in executable catalog for makeLandoRuntime/openLandoRuntime embedding is the §16.7 work owned by US-583, not this story. US-565 must neither import the CLI-only registry into the default library entry nor create a second dispatcher.",
         "Event names validate against the §3/§11 app-scoped lifecycle taxonomy; unknown names fail closed at plan time listing valid names.",
         "Subscribers execute at correct points of the §3 standard sequences in declaration order through the shared tooling graph compiler and ToolingEngine: service-targeted steps use providerExec by default, while service: :host steps use ShellRunnerBunLive/Bun.$ per §3.4 and §8.6. Host steps must not synthesize sh -c, invoke an external system shell, or re-encode argv as a literal shell string; no new execution path.",
         "Failing pre-* subscriber aborts the operation with tagged error (step identity + output tail); post-* failures surface as warnings per spec.",
@@ -88,6 +88,22 @@
       "notes": ""
     },
     {
+      "id": "US-583",
+      "title": "Embedding-safe built-in executable command catalog",
+      "description": "As an embedding host, App-handle lifecycle events and tooling command steps can invoke built-in canonical commands through the same class-free Effect operations as the CLI, without importing CLI-only command adapters or creating a second dispatcher.",
+      "acceptanceCriteria": [
+        "Extract one class-free executable-command catalog covering every §8.2 built-in canonical id, including explicit deferred or §16.7-exempt status where no programmatic operation exists. The catalog is derived from the canonical LandoCommandSpec registry rather than maintained as a second command list, and completeness is enforced against the full built-in registry.",
+        "The native CLI registry/dispatcher, @lando/core/cli command operations, and EventCommandExecutor consume the same executable entries and preserve canonical spec identity, input validation, lifecycle correlation, success-exit semantics, rendering, redaction, and interruption. No second dispatcher or duplicate executable metadata is introduced.",
+        "makeLandoRuntime/openLandoRuntime self-register the built-in executable targets without importing CLI-only command classes/adapters through the default @lando/core entry or creating a generated-bootstrap import cycle. Existing host-provided plugin discovery policy remains unchanged.",
+        "An App handle driven through an embedding runtime executes Landofile event/tooling command: steps targeting representative app, apps, and meta built-ins identically to the native CLI path; unknown, deferred, and invalid-input targets fail with the same tagged errors and remediation.",
+        "Catalog-completeness, library import-boundary, generated-layer cycle, and embedding lifecycle tests cover the production seams above.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Split from US-565 by adjudication on 2026-08-17; owns the §16.7 full-catalog extraction and embedding registration needed for §8.5.2.1 CLI/embedding parity."
+    },
+    {
       "id": "US-566",
       "title": "rabbitmq, minio, localstack service types",
       "description": "As a user, I can declare type: rabbitmq | minio | localstack exactly as the §6.12.1 catalog promises.",
@@ -97,7 +113,7 @@
         "docs/guides/services/{rabbitmq,minio,localstack}.mdx executable guides; INDEX + coverage gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 6,
+      "priority": 7,
       "passes": false,
       "notes": ""
     },
@@ -112,7 +128,7 @@
         "docs/guides/services/mailpit.mdx guide with hidden mailhog-deprecation scenario asserting the warning; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 7,
+      "priority": 8,
       "passes": false,
       "notes": ""
     },
@@ -127,7 +143,7 @@
         "docs/guides/services/{tomcat,varnish}.mdx executable guides; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 8,
+      "priority": 9,
       "passes": false,
       "notes": ""
     },
@@ -142,7 +158,7 @@
         "docs/guides/services/{dotnet,mssql,phpmyadmin}.mdx guides (mssql notes platform constraint); gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 9,
+      "priority": 10,
       "passes": false,
       "notes": ""
     },
@@ -157,7 +173,7 @@
         "php-version-matrix.mdx + php-composer-workflows.mdx exercise 8.5 and Composer selection; services/php.mdx version text updated; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 10,
+      "priority": 11,
       "passes": false,
       "notes": ""
     },
@@ -173,7 +189,7 @@
         "services/php.mdx documents via: with a rendered fpm+nginx scenario replacing the no-fpm caveat; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 11,
+      "priority": 12,
       "passes": false,
       "notes": ""
     },
@@ -188,7 +204,7 @@
         "xdebug-phpstorm.mdx + vscode.mdx rewritten to real end-to-end flows (hidden scenario asserts extension loads via php -m); php-customization.mdx updated; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": ""
     },
@@ -203,7 +219,7 @@
         "Rendered db_client scenario in switching-databases.mdx or php-customization.mdx; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": ""
     },
@@ -218,7 +234,7 @@
         "compose-service-block.mdx + php-customization.mdx show configs:-based php.ini overrides; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": ""
     },
@@ -235,7 +251,7 @@
         "docs/guides/recipes/extending-recipes.mdx guide; coverage/INDEX gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": ""
     },
@@ -250,7 +266,7 @@
         "Each README.mdx exercises at least one non-default variant; recipe test layer + guide gates green; bundled-recipe codegen clean.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
@@ -265,7 +281,7 @@
         "Recipe test layer + guide gates green; meta recipes list/describe/validate pass through machine output.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": ""
     },
@@ -279,7 +295,7 @@
         "All three: non-interactive defaults, bundled-recipe codegen registration, executable README.mdx with a non-default variant, recipe test layer + guide gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": ""
     },
@@ -296,7 +312,7 @@
         "docs/guides/tooling/db-import-export.mdx guide; coverage/INDEX gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 19,
+      "priority": 20,
       "passes": false,
       "notes": ""
     },
@@ -311,7 +327,7 @@
         "INDEX + check:guide-coverage, check:guide-drift, lint:guides green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 20,
+      "priority": 21,
       "passes": false,
       "notes": ""
     },
@@ -327,7 +343,7 @@
         "topLevelAlias: sits in BETA_TOOLING_TASK_KEYS and is rejected for every tooling task today, so §10's \"Service-type tooling MUST NOT use topLevelAlias:\" is currently vacuous. Record the follow-up so the rule gains real enforcement when the beta gate lifts.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 21,
+      "priority": 22,
       "passes": false,
       "notes": ""
     },
@@ -342,7 +358,7 @@
         "§8.8.10 table verified against recipes/ contents; §6.12.1 rows verified against the runtime registry (every row registered, every registration in a row).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 22,
+      "priority": 23,
       "passes": false,
       "notes": ""
     }
