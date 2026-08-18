@@ -108,7 +108,6 @@ type MinimalRuntimeServices =
   | Telemetry
   | ConfigService
   | EventService
-  | EventCommandExecutor
   | EventDeliveryMetrics
   | PathsService
   | FileSystem
@@ -155,7 +154,8 @@ export type AppRuntimeServices =
   | ShellRunner
   | FileSyncEngine
   | ProxyService
-  | RuntimeCwd;
+  | RuntimeCwd
+  | EventCommandExecutor;
 type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
