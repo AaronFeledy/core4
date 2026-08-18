@@ -25,7 +25,6 @@ import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
-import { landoRenderer } from "./renderer/bundled-renderers";
 
 export {
   type ResolveCliDeprecationWarningsOptions,
@@ -80,6 +79,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
+  const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = options.io ?? createStdioRendererIO();
   const renderContext: RenderContext = {
     mode: options.rendererMode,
