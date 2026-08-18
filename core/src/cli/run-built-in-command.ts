@@ -10,7 +10,7 @@ import { InvalidCliInvocationError, invocationParityError } from "./compiled-inv
 import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 
 export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArray<string>): Promise<void> => {
-  const diagnostic = invocationParityError(entry.spec.id, argv);
+  const diagnostic = entry.spec.strict === false ? undefined : invocationParityError(entry.spec.id, argv);
   if (diagnostic !== undefined) {
     return runCompiledCommand(
       Effect.fail(
