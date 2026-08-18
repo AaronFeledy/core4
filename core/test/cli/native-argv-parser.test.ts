@@ -38,6 +38,19 @@ const compiledInput = (
   });
 
 describe("native argv parser seam", () => {
+  test("strict:false inputs strip the option terminator and preserve the command remainder", () => {
+    const input = compiledInput("app:exec", ["--service", "appserver", "--", "echo", "-n", "hello"]);
+
+    expect(input.flags.service).toBe("appserver");
+    expect(input.parsedArgv).toEqual(["echo", "-n", "hello"]);
+  });
+
+  test("strict:false inputs preserve an unknown leading option as passthrough argv", () => {
+    const input = compiledInput("meta:bun", ["-e", "console.log('ok')"]);
+
+    expect(input.parsedArgv).toEqual(["-e", "console.log('ok')"]);
+  });
+
   test("native command inputs carry the resolved universal result format", () => {
     expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "json"))).toBe("json");
     expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "text"))).toBe("table");

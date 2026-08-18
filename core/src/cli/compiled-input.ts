@@ -78,6 +78,11 @@ export const compiledCommandInputFromArgv = (
       continue;
     }
 
+    if (command.strict === false) {
+      positionals.push(...normalizedArgv.slice(index));
+      break;
+    }
+
     if (arg.startsWith("-")) continue;
     positionals.push(arg);
   }
@@ -91,7 +96,14 @@ export const compiledCommandInputFromArgv = (
   flags.format = effectiveResultFormat;
   if (effectiveResultFormat === "json") flags.json = true;
 
-  const input = { argv: normalizedArgv, flags, args, ...options, resultFormat: effectiveResultFormat };
+  const input = {
+    argv: normalizedArgv,
+    ...(command.strict === false ? { parsedArgv: positionals } : {}),
+    flags,
+    args,
+    ...options,
+    resultFormat: effectiveResultFormat,
+  };
   setActiveCommandInvocation(commandId, input);
   return input;
 };
