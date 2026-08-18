@@ -400,3 +400,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - `embedding-exempt` is not an MCP allowlist bit; default MCP exposure stays `mcpAllowed: true` only.
   - `Layer.suspend` does not defer static imports; keep CLI-only native adapters out of `BuiltInCommandCatalogLive` and let the generated bootstrap inject the catalog.
 ---
+
+## 2026-08-18 11:40 CDT - US-583 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (provider+CA satisfied; managed Podman 6.0.1 running). Compiled CLI accepted `events.command:` for `app:config`, `apps:list`, and `meta:version`; `lando destroy --yes` ran those steps between host bookends. Unknown/deferred/invalid targets failed closed with tagged remediation. `lando mcp --list` used the shared dispatcher. An embedding `openLandoRuntime` App handle ran the same three `command:` steps (`cli-app:config-*`, `cli-apps:list-*`, `cli-meta:version-*`). Adjacent `app:config`, `app:cache:refresh`, `info`, `version`, `help`, `doctor`, and `shellenv` worked.
+- Fixed shared-catalog `strict: false` argv rejection so `lando bun <script>` and other passthrough commands keep extra arguments (`c95797694`).
+- **Out-of-scope finding:** `lando setup` failed the proxy step and `lando start` failed with `ServiceStartError` / `netavark: aardvark-dns failed to start: Failed to connect to user scope bus via local transport`. Same sandbox user-bus/cgroup limitation recorded in US-565 Verify; not caused by this story. Pre-init/post-init/pre-start host steps still ran.
+- **Learnings for future iterations:**
+  - `runBuiltInCommand` must honor `LandoCommandSpec.strict === false`; flag/positional parity is for strict commands only. `lando bun`/`lando x` extra argv is the canary.
+  - Library `openLandoRuntime()` needs `plugins: { policy: "bundled-only" }` after `import "@lando/core/bundled-plugins"`; the default library policy does not discover CLI-installed providers.
+---
