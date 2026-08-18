@@ -2,13 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, Context, DateTime, Effect, Exit, Schema } from "effect";
 
-import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { PluginDescriptorMismatchError, ToolingCommandLookupError } from "@lando/sdk/errors";
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
+import { PluginContributionGraph, attachEffectiveTooling } from "../../src/testing/engine-layers.ts";
 
 const builtInEntry = builtInCommandEntries.find((entry) => entry.spec.id === "app:start");
 if (builtInEntry === undefined) throw new Error("Missing built-in app:start command entry.");
