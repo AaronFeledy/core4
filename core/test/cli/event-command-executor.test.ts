@@ -715,7 +715,7 @@ describe("EventCommandExecutorLive", () => {
     expect(harness.presentation).toEqual([]);
   });
 
-  test("rejects structured tooling input when the task disables arguments", async () => {
+  test("accepts declared tooling flags when the task disables positional arguments", async () => {
     // Given
     const harness = makeHarness();
     const plan = attachEffectiveTooling(
@@ -728,7 +728,7 @@ describe("EventCommandExecutorLive", () => {
         },
       },
     );
-    let invocations = 0;
+    const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
         list: Effect.succeed([ProviderId.make("test")]),
@@ -737,16 +737,16 @@ describe("EventCommandExecutorLive", () => {
       }),
       Context.add(ToolingEngine, {
         id: "test",
-        run: () =>
+        run: (invocation) =>
           Effect.sync(() => {
-            invocations += 1;
+            invocations.push(invocation);
             return { tool: "inspect", service: ":lando", exitCode: 0, stdout: "", stderr: "" };
           }),
       }),
     );
 
     // When
-    const exit = await Effect.runPromiseExit(
+    const result = await Effect.runPromise(
       makeEventCommandExecutor(context).run({
         command: "app:inspect",
         flags: { verbose: true },
@@ -758,11 +758,11 @@ describe("EventCommandExecutorLive", () => {
     );
 
     // Then
-    expect(Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined).toMatchObject({
-      _tag: "ToolingCompileError",
-      tool: "inspect",
+    expect(result).toMatchObject({ exitCode: 0 });
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]).toMatchObject({
+      commands: [["sh", "-c", 'inspect "$@"', "lando-tooling", "--verbose"]],
     });
-    expect(invocations).toBe(0);
   });
 
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
