@@ -110,16 +110,22 @@ describe("RedactionServiceLive", () => {
   });
 
   test("masks exact source env values for secret-bearing keys", async () => {
-    const secret = "us374-super-secret-token";
+    const secrets = ["us374-super-secret-token", "us374-plural-token", "us374-hyphen-token"];
     const redactor = await runWithStore(
       Effect.flatMap(RedactionService, (service) =>
-        service.forProfile("secrets", { sourceEnv: { US374_VERIFY_SECRET: secret } }),
+        service.forProfile("secrets", {
+          sourceEnv: {
+            US374_VERIFY_SECRET: secrets[0],
+            API_TOKENS: secrets[1],
+            "api-token": secrets[2],
+          },
+        }),
       ),
       {},
     );
 
-    const redacted = redactor.redactString(`provider leaked ${secret}`);
-    expect(redacted).toBe("provider leaked [redacted]");
+    const redacted = redactor.redactString(`provider leaked ${secrets.join(" ")}`);
+    expect(redacted).toBe("provider leaked [redacted] [redacted] [redacted]");
   });
 
   test("masks host-proxy token source env values", async () => {
