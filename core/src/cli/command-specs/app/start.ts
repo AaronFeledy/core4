@@ -1,4 +1,7 @@
+import { Effect } from "effect";
+
 import { type StartAppResult, StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderStartAppResult } from "../../commands/start-result";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 
@@ -19,7 +22,7 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
   streaming: StreamFrame,
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
-    return startApp(signal === undefined ? {} : { signal });
+    return Effect.zipRight(refreshAppCache(), startApp(signal === undefined ? {} : { signal }));
   },
   render: (result) => renderStartAppResult(result as StartAppResult),
 };
