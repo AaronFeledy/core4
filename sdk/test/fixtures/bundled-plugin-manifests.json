@@ -320,6 +320,43 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
+        "globalServices": [
+          {
+            "enabledByDefault": true,
+            "id": "ssh-agent",
+            "module": "./src/global-service.ts",
+            "requires": {
+              "providerCapabilities": []
+            },
+            "summary": "Global SSH agent sidecar"
+          }
+        ],
+        "sshServices": [
+          {
+            "defaultFor": {
+              "platform": ["darwin", "linux", "win32"]
+            },
+            "id": "sidecar",
+            "module": "./src/ssh-service.ts"
+          }
+        ]
+      },
+      "description": "SSH agent sidecar for forwarding SSH keys into app networks.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/ssh-agent",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/ssh-agent"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
         "templateEngines": ["handlebars"]
       },
       "description": "Handlebars whole-file template engine for Lando v4.",

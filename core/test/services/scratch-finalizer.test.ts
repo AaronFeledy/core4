@@ -14,26 +14,26 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { DataMoverLive } from "@lando/engine/data-mover/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeEngineLandofileServiceLive } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive } from "@lando/engine/services/planner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+import { DataMoverLive } from "../../src/testing/engine-layers.ts";
+import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { ScratchRegistryLive } from "../../src/testing/engine-layers.ts";
+import { ScratchResourceScannerLive } from "../../src/testing/engine-layers.ts";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "../../src/testing/engine-layers.ts";
+import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
+import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 
 const providerId = ProviderId.make("lando");
 

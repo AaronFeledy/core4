@@ -1,7 +1,9 @@
 # Drupal CMS
 
-Spin up a Drupal CMS (Starshot) stack with PHP, MariaDB, Drush, and Composer. After
-the app starts, scaffold the codebase with `lando composer create-project drupal/cms .`.
+Spin up a Drupal CMS 2 stack with PHP, MariaDB, Drush, and Composer. After
+the app starts, scaffold the codebase with `lando drupal-cms-scaffold`,
+then install with `lando drupal-cms-install`.
+
 The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
 
 ## 1. scaffold

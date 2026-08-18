@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 
-import { collectManifests } from "../graph.ts";
+import { collectManifests, loadWorkspacePackages } from "../graph.ts";
 import type { BoundaryRule, ProgramContext } from "../types.ts";
 import {
   GENERATED_COMPOSITION_PREFIXES,
@@ -10,13 +10,12 @@ import {
   isWorkspaceTargetAllowed,
 } from "./package-dag-policy.ts";
 import { checkPackageSourceEdges } from "./package-dag-source.ts";
+import { checkPackageTestEdges, checkPackageTestPresence } from "./package-dag-test.ts";
 
 const PACKAGE_DAG_SCOPE = {
   roots: ["."],
   extensions: [".json", ".ts", ".tsx", ".mts", ".cts"],
   excludeDirNames: [".git", ".local", ".codegraph", "node_modules", "dist"],
-  excludePathSegments: ["test"],
-  excludeTestFiles: true,
 } as const;
 
 const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -47,9 +46,12 @@ const edgeDetail = (owner: WorkspaceManifest, kind: WorkspaceEdgeKind, target: s
 };
 
 const checkProgram = async (context: ProgramContext): Promise<void> => {
-  const packages = await Promise.all(
-    (await collectManifests(context.root)).map((manifest) => readWorkspaceManifest(manifest, context.root)),
-  );
+  const [packages, testPackages] = await Promise.all([
+    collectManifests(context.root).then((manifests) =>
+      Promise.all(manifests.map((manifest) => readWorkspaceManifest(manifest, context.root))),
+    ),
+    loadWorkspacePackages(context.root),
+  ]);
   const workspaceNames = new Set(packages.map((workspacePackage) => workspacePackage.name));
 
   for (const workspacePackage of packages) {
@@ -71,6 +73,8 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
   }
 
   await checkPackageSourceEdges(context, packages);
+  await checkPackageTestEdges(context, testPackages);
+  checkPackageTestPresence(context, testPackages);
 };
 
 export const packageDagRule = {

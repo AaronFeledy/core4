@@ -7,6 +7,11 @@ export type PackageEdges = {
   readonly devDependencies?: Readonly<Record<string, string>>;
 };
 
+export type PackageDefinition = PackageEdges & {
+  readonly exports?: string | Readonly<Record<string, string>>;
+  readonly withoutTests?: boolean;
+};
+
 export type GateResult = {
   readonly exitCode: number;
   readonly stdout: string;
@@ -16,7 +21,7 @@ export type GateResult = {
 export interface PackageDagFixture {
   readonly root: string;
   readonly write: (path: string, contents: string) => Promise<void>;
-  readonly writePackage: (directory: string, name: string, edges?: PackageEdges) => Promise<void>;
+  readonly writePackage: (directory: string, name: string, definition?: PackageDefinition) => Promise<void>;
   readonly writeRoot: (workspaces: readonly string[]) => Promise<void>;
   readonly runGate: (args: readonly string[]) => Promise<GateResult>;
   readonly dispose: () => Promise<void>;
@@ -29,8 +34,14 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
     await mkdir(join(file, ".."), { recursive: true });
     await writeFile(file, contents);
   };
-  const writePackage = async (directory: string, name: string, edges: PackageEdges = {}): Promise<void> => {
-    await write(`${directory}/package.json`, `${JSON.stringify({ name, ...edges })}\n`);
+  const writePackage = async (
+    directory: string,
+    name: string,
+    definition: PackageDefinition = {},
+  ): Promise<void> => {
+    const { withoutTests = false, ...manifest } = definition;
+    await write(`${directory}/package.json`, `${JSON.stringify({ name, ...manifest })}\n`);
+    if (!withoutTests) await write(`${directory}/test/placeholder.test.ts`, "export {};\n");
   };
   const writeRoot = async (workspaces: readonly string[]): Promise<void> => {
     await write("package.json", `${JSON.stringify({ private: true, workspaces })}\n`);

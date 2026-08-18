@@ -8,12 +8,6 @@ import { ToolExtractError, ToolManifestError } from "@lando/sdk/errors";
 import type { ToolArtifactEntry } from "@lando/sdk/schema";
 
 import {
-  makeFakeDownloader,
-  makeTarGz,
-  makeZip,
-  sha256Hex,
-} from "../../../sdk/test/tool-provisioning/_fixtures.ts";
-import {
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
   mutagenAgentInstallPath,
@@ -23,6 +17,8 @@ import {
   provisionMutagen,
   readInstalledMutagenStatus,
 } from "../src/provision.ts";
+import { makeTarGz, makeZip } from "./support/archive-fixtures.ts";
+import { makeFakeDownloader, sha256Hex } from "./support/fake-downloader.ts";
 
 const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 

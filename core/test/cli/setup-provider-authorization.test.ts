@@ -48,7 +48,7 @@ describe("provider setup authorization", () => {
 
     // Then
     expect(approved).toBe(plan);
-    expect(calls).toEqual(["provider-setup-install-uidmap"]);
+    expect(calls).toEqual(["provider-setup-consent"]);
   });
 
   test("returns a tagged denial without prompting in unattended mode", async () => {

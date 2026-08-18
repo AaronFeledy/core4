@@ -7,10 +7,11 @@ import {
   assertMcpAllowlistSafe,
   computeMcpDefaultAllowlist,
   isMcpAllowlistForbidden,
-} from "../../src/cli/allowlists/mcp.ts";
+} from "@lando/mcp/allowlist";
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
+import type { McpCommandSpec } from "@lando/mcp/registry";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
@@ -37,7 +38,7 @@ const specFor = (id: string): LandoCommandSpec => {
   return spec;
 };
 
-const mcpSpecFor = (id: string): LandoCommandSpec => {
+const mcpSpecFor = (id: string): McpCommandSpec => {
   const spec = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.find(
     (entry) => entry.spec.id === id,
   )?.spec;

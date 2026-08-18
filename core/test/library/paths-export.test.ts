@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import pathsPackage from "../../../paths/package.json";
 import corePackage from "../../package.json";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -108,6 +107,8 @@ describe("@lando/core/paths package export", () => {
   });
 
   test("re-exports the @lando/paths package that owns the implementation", async () => {
+    const pathsPackage = await Bun.file(resolve(import.meta.dirname, "../../../paths/package.json")).json();
+
     expect(pathsPackage.private).toBe(true);
     expect(pathsPackage.exports).toEqual({
       ".": "./src/paths.ts",

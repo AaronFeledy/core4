@@ -4,7 +4,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { buildManagedRuntimeServiceArgs } from "../../../plugins/provider-lando/src/managed-runtime-service.ts";
+import { buildManagedRuntimeServiceArgs } from "@lando/provider-lando";
 import { assembleBundle, parseRuntimeBundleSources } from "../../../scripts/assemble-runtime-bundle.ts";
 import { verifyLinuxPodmanPortability } from "../../../scripts/linux-podman-source-build.ts";
 

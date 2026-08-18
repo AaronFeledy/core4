@@ -19,9 +19,9 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
-import { withOptionalStderrOutput } from "../../src/cli/renderer-output.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { withOptionalStderrOutput } from "@lando/renderer/output";
+import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

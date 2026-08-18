@@ -33,17 +33,17 @@ import type {
 } from "@lando/sdk/services";
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
+  ConfigServiceLive,
+  FileSystemLive,
+  GlobalAppServiceLive,
   attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
-} from "@lando/engine/planner/effective-events";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+  makeShellRunnerLive,
+} from "../../src/testing/engine-layers.ts";
 import "../../src/runtime/engine-composition.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

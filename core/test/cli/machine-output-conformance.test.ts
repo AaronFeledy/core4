@@ -8,9 +8,9 @@ import { makeTestRuntime } from "@lando/core/testing";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const decodeEnvelope = (line: string): CommandResultEnvelope =>

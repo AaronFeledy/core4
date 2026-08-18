@@ -3,10 +3,9 @@ import { Effect } from "effect";
 
 import { Renderer } from "@lando/sdk/services";
 
+import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
+import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "@lando/renderer/runtime";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import type { RendererIO } from "../../src/cli/renderer/io.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "../../src/cli/renderer/runtime.ts";
 
 const makeLandoService = (io: RendererIO) =>
   Effect.runSync(Renderer.pipe(Effect.provide(landoRenderer.makeService(io))));

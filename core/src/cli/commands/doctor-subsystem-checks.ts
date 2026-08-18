@@ -38,10 +38,10 @@ export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFai
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
 
-const manualSetupSolution = (description: string): DoctorSolution => ({
+const manualSetupSolution = (description: string, command = "lando setup"): DoctorSolution => ({
   kind: "manual",
   description,
-  command: "lando setup",
+  command,
 });
 
 const automaticFixSolution = (description: string): DoctorSolution => ({
@@ -59,6 +59,10 @@ export interface SubsystemSpec {
    */
   readonly manualRemediation: string;
   /**
+   * Command shown for manual remediation (defaults to "lando setup").
+   */
+  readonly manualCommand?: string;
+  /**
    * Remediation advertised for a degraded `automatic` subsystem in read-only
    * mode (before `--fix` is run).
    */
@@ -71,7 +75,7 @@ export const PROXY_SPEC: SubsystemSpec = {
   automaticRemediation:
     "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
   manualRemediation:
-    "The HTTPS reverse proxy is not available yet. Run `lando setup` and start the global app to enable Traefik routing.",
+    "The HTTPS reverse proxy is not running. Run `lando setup` to provision and start the global app with Traefik.",
 };
 
 export const CERTS_SPEC: SubsystemSpec = {
@@ -85,9 +89,9 @@ export const SSH_SPEC: SubsystemSpec = {
   name: "ssh",
   recovery: "automatic",
   automaticRemediation:
-    "The SSH agent sidecar is not available. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
+    "The SSH agent sidecar is not running. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
   manualRemediation:
-    "The SSH agent sidecar is not available. Run `lando setup` to provision SSH agent forwarding.",
+    "The SSH agent sidecar is not running. Run `lando setup` to provision SSH agent forwarding.",
 };
 
 export const HEALTHCHECK_SPEC: SubsystemSpec = {
@@ -124,13 +128,15 @@ const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
   SUBSYSTEM_SPECS.map((spec) => [spec.name, spec] as const),
 );
 
-const degradedSolution = (spec: SubsystemSpec): DoctorSolution =>
-  spec.recovery === "automatic" && spec.automaticRemediation !== undefined
+const degradedSolution = (spec: SubsystemSpec, _serviceId: string): DoctorSolution => {
+  return spec.recovery === "automatic" && spec.automaticRemediation !== undefined
     ? automaticFixSolution(spec.automaticRemediation)
-    : manualSetupSolution(spec.manualRemediation);
+    : manualSetupSolution(spec.manualRemediation, spec.manualCommand);
+};
 
 export const classifySubsystemFailure = (
   subsystem: string,
+  serviceId: string,
   cause?: unknown,
 ): DoctorSubsystemFailure | undefined => {
   const spec = SPEC_BY_NAME.get(subsystem);
@@ -138,13 +144,17 @@ export const classifySubsystemFailure = (
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: degradedSolution(spec),
+    solution: degradedSolution(spec, serviceId),
     ...(cause === undefined ? {} : { cause }),
   });
 };
 
-export const subsystemFailureDiagnostic = (subsystem: string, cause?: unknown): DoctorSubsystemFailure => {
-  const diagnostic = classifySubsystemFailure(subsystem, cause);
+export const subsystemFailureDiagnostic = (
+  subsystem: string,
+  serviceId: string,
+  cause?: unknown,
+): DoctorSubsystemFailure => {
+  const diagnostic = classifySubsystemFailure(subsystem, serviceId, cause);
   if (diagnostic !== undefined) return diagnostic;
   return new DoctorSubsystemFailure({
     subsystem,
@@ -181,6 +191,8 @@ export const buildDegradedCheck = (
   cause?: unknown,
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
+    const serviceId = baseContext.subsystemId ?? "unknown";
+
     if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
       const fixCommand = `${spec.name}.setup`;
       const result = yield* Effect.either(runSetup());
@@ -193,7 +205,7 @@ export const buildDegradedCheck = (
           fixExitCode: "0",
         });
       }
-      const diagnostic = subsystemFailureDiagnostic(spec.name, result.left);
+      const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.left);
       return {
         name: spec.name,
         status: "warn",
@@ -206,7 +218,7 @@ export const buildDegradedCheck = (
           fixExitCode: "1",
           fixError: errorMessage(result.left),
         },
-        solutions: [manualSetupSolution(spec.manualRemediation)],
+        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
       };
     }
 
@@ -217,18 +229,19 @@ export const buildDegradedCheck = (
         severity: "warn",
         recovery: spec.recovery,
         context: { ...baseContext, fixOutcome: "skipped-manual" },
-        solutions: [manualSetupSolution(spec.manualRemediation)],
+        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
       };
     }
 
-    const diagnostic = cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, cause);
+    const diagnostic =
+      cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
     return {
       name: spec.name,
       status: "warn",
       severity: diagnostic?.severity ?? "warn",
       recovery: spec.recovery,
       context: baseContext,
-      solutions: [diagnostic?.solution ?? degradedSolution(spec)],
+      solutions: [diagnostic?.solution ?? degradedSolution(spec, serviceId)],
     };
   });
 

@@ -18,6 +18,10 @@
     "redaction",
     "http-client",
     "managed-file",
+    "data-mover",
+    "telemetry",
+    "renderer",
+    "mcp",
     "engine",
     "docs",
     "plugins/*"

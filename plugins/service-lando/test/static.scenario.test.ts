@@ -18,12 +18,14 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
-import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
+import {
+  AppPlannerLive,
+  EventServiceLive,
+  PluginRegistryLive,
+  ProviderExecToolingEngineLive,
+} from "@lando/core/testing";
 import { services } from "../src/index.ts";
+import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 

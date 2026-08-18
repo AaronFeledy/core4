@@ -20,16 +20,17 @@ describe("workspace package DAG policy", () => {
     expect(enginePolicy?.devDependencies).not.toContain("@lando/managed-file");
   });
 
-  test("allows only core to depend on engine", () => {
+  test("allows only approved engine composers to depend on engine", () => {
     // Given
+    const engineComposers = ["@lando/core", "@lando/renderer", "@lando/mcp"];
     const policies = Object.entries(WORKSPACE_EDGE_TABLE);
 
     // When
-    const nonCorePolicies = policies.filter(([packageName]) => packageName !== "@lando/core");
+    const nonComposerPolicies = policies.filter(([packageName]) => !engineComposers.includes(packageName));
 
     // Then
     expect(WORKSPACE_EDGE_TABLE["@lando/core"]?.dependencies).toBe("workspace");
-    for (const [, policy] of nonCorePolicies) {
+    for (const [, policy] of nonComposerPolicies) {
       expect(policy.dependencies).not.toContain("@lando/engine");
       expect(policy.devDependencies).not.toContain("@lando/engine");
     }

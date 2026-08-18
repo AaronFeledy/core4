@@ -22,7 +22,7 @@ describe("renderer boundary lint gate", () => {
     );
   });
 
-  test("passes when direct writes are confined to explicit carve-outs", async () => {
+  test("passes when direct writes are confined to the renderer owner", async () => {
     const root = await makeFixtureRoot();
     try {
       await write(
@@ -30,7 +30,7 @@ describe("renderer boundary lint gate", () => {
         "core/src/cli/pre-renderer.ts",
         "export const paint = (stream) => stream.write('x');\n",
       );
-      await write(root, "core/bin/lando.ts", "process.stdout.write('banner');\n");
+      await write(root, "renderer/src/io.ts", "process.stdout.write('banner');\n");
       await write(root, "core/src/cli/commands/ok.ts", "export const ok = true;\n");
 
       expect(await checkRendererBoundary({ root })).toEqual({ ok: true, offenders: [] });
@@ -91,18 +91,42 @@ describe("renderer boundary lint gate", () => {
     }
   });
 
-  test("ignores test files and non-call property access", async () => {
+  test("ignores test files and non-write stream property access", async () => {
     const root = await makeFixtureRoot();
     try {
       await write(root, "core/src/recipes/allowed.test.ts", "console.log('test only');\n");
       await write(
         root,
         "core/src/recipes/reference.ts",
-        "export const stream = process.stdout;\nexport const log = console.log;\n",
+        "export const stream = process.stdout;\nexport const tty = process.stdout.isTTY;\n",
       );
       await write(root, "core/src/recipes/ok.ts", "export const ok = true;\n");
 
       expect(await checkRendererBoundary({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports aliased and reassigned write access", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/cli/alias.ts", "export const write = process.stdout.write;\n");
+      await write(root, "core/src/cli/reassign.ts", "process.stderr.write = () => true;\n");
+      await write(root, "core/bin/lando.ts", "console.log('cold path');\n");
+
+      const result = await checkRendererBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/bin/lando.ts:console.log",
+        "core/src/cli/alias.ts:process.stdout.write",
+        "core/src/cli/reassign.ts:process.stderr.write",
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

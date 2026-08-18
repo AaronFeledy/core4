@@ -9,12 +9,9 @@ const propertyName = (node: ts.PropertyName): string | undefined => {
   return undefined;
 };
 
-const directWriteMatch = (node: ts.CallExpression): string | undefined => {
-  const expression = node.expression;
-  if (!ts.isPropertyAccessExpression(expression)) return undefined;
-
-  const method = propertyName(expression.name);
-  const target = expression.expression;
+const directWriteMatch = (node: ts.PropertyAccessExpression): string | undefined => {
+  const method = propertyName(node.name);
+  const target = node.expression;
 
   if (ts.isIdentifier(target) && target.text === "console") {
     return method === undefined ? "console.<computed>" : `console.${method}`;
@@ -33,19 +30,16 @@ const directWriteMatch = (node: ts.CallExpression): string | undefined => {
 export const rendererRule = {
   id: "renderer",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: [...CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "renderer/src"), "core/bin"],
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: {
-    files: ["core/bin/lando.ts"],
-    prefixes: [],
-  },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Renderer boundary check passed.",
   failureHeadline:
     "Renderer boundary check failed. Direct console/process writes must route through the Renderer boundary.",
   onNode: (node, context) => {
-    if (!ts.isCallExpression(node)) return;
+    if (!ts.isPropertyAccessExpression(node)) return;
     const match = directWriteMatch(node);
     if (match === undefined) return;
     const source = node.getSourceFile();

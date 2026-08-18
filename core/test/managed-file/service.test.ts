@@ -7,8 +7,8 @@ import { Effect, Exit, type Scope } from "effect";
 
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
-import { managedFileLedger } from "@lando/engine/config/roots";
 import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
+import { managedFileLedger } from "../../src/testing/engine-layers.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);

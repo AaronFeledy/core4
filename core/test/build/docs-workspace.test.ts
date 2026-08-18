@@ -52,4 +52,18 @@ describe("docs workspace", () => {
     // Then Astro's workspace cache is ignored
     expect(entries).toContain("docs/.astro/");
   });
+
+  test("publishes the static site to the GitHub Pages project URL", async () => {
+    const astroConfig = await Bun.file(resolve(repoRoot, "docs/astro.config.mjs")).text();
+
+    expect(astroConfig).toContain('site: "https://aaronfeledy.github.io"');
+    expect(astroConfig).toContain('base: "/core4/"');
+  });
+
+  test("keeps splash-page links relative so GitHub Pages base works", async () => {
+    const splash = await Bun.file(resolve(repoRoot, "docs/index.md")).text();
+
+    expect(splash).not.toMatch(/\]\(\/(?!\/)/);
+    expect(splash).not.toMatch(/link:\s*\/(?!\/)/);
+  });
 });

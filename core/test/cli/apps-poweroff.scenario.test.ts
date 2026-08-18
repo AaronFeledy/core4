@@ -8,9 +8,9 @@ import { Effect, Layer } from "effect";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { ConfigService } from "@lando/sdk/services";
 
-import { writeCwdAppMapEntry } from "@lando/engine/cache/cwd-app-map";
-import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
+import { writeCwdAppMapEntry } from "../../src/testing/engine-layers.ts";
+import { HostMaintenanceRegistry } from "../../src/testing/engine-layers.ts";
 
 let userDataRoot: string;
 let userCacheRoot: string;

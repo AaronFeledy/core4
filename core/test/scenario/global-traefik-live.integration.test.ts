@@ -12,10 +12,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import {
-  TRAEFIK_DYNAMIC_CONFIG_DIR,
-  TRAEFIK_IMAGE,
-} from "../../../plugins/proxy-traefik/src/global-services/traefik.ts";
+import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "@lando/proxy-traefik";
 
 const providerId = ProviderId.make("lando");
 const TRAEFIK_WEB_PORT = 38080;

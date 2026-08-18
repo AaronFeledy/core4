@@ -5,9 +5,9 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { buildUninstallPlan, uninstall } from "@lando/engine/operations/uninstall";
-import type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
+import { buildUninstallPlan, uninstall } from "../../src/testing/engine-layers.ts";
+import type { ManagedProviderMachineClassification } from "../../src/testing/engine-layers.ts";
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-machine-"));
@@ -19,17 +19,16 @@ const classifyingAs =
     classification;
 
 describe("uninstall managed provider machines", () => {
-  test("plan marks the machine step owned when setup state records a Lando-created machine", () => {
+  test("plan lists Lando-owned managed provider machines as owned", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const plan = buildUninstallPlan({
+      const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
         exists: () => false,
         readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
       });
-
       expect(plan.find((step) => step.id === "managed-provider-machines")).toMatchObject({
         status: "owned",
         target: "lando",
@@ -126,6 +125,7 @@ describe("uninstall managed provider machines", () => {
             return { removed: false };
           },
           remove: async () => {},
+          listDiscoveredApps: async () => [], // No running apps
         }),
       );
 
@@ -139,10 +139,10 @@ describe("uninstall managed provider machines", () => {
     }
   });
 
-  test("absent machine record skips the step", () => {
+  test("absent machine record skips the step", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const plan = buildUninstallPlan(
+      const plan = await buildUninstallPlan(
         {
           userDataRoot,
           userCacheRoot,

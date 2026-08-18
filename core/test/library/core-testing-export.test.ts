@@ -5,6 +5,10 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import type {
+  AppPlanner,
+  BufferedRendererIO,
+  BufferedRendererIOOptions,
+  ComposeServiceFeature,
   FileSystemCall,
   LoggerCall,
   RendererCall,
@@ -48,6 +52,10 @@ const packedConsumerDependencyClosure = async (): Promise<ReadonlyArray<string>>
 };
 
 type TestingTypeExportCheck = {
+  readonly appPlanner?: AppPlanner;
+  readonly bufferedRendererIO?: BufferedRendererIO;
+  readonly bufferedRendererIOOptions?: BufferedRendererIOOptions;
+  readonly composeServiceFeature?: ComposeServiceFeature;
   readonly runtime?: TestRuntime;
   readonly options: TestRuntimeOptions;
   readonly calls: TestRuntimeCalls;
@@ -121,6 +129,23 @@ describe("@lando/core/testing package export", () => {
     expect(testing.recordedEvents).toBeFunction();
     expect(testing.TestClock).toBeDefined();
     expect(testing.TestContext).toBeDefined();
+    expect(testing.AppPlanner).toBeDefined();
+    expect(testing.AppPlannerLive).toBeDefined();
+    expect(testing.EventServiceLive).toBeDefined();
+    expect(testing.L337_BASE_DEFAULT_FEATURE_IDS).toBeDefined();
+    expect(testing.LANDO_BASE_DEFAULT_FEATURE_IDS).toBeDefined();
+    expect(testing.PluginRegistryLive).toBeDefined();
+    expect(testing.ProviderExecToolingEngineLive).toBeDefined();
+    expect(testing.applyAuthoredAppMount).toBeFunction();
+    expect(testing.applyAuthoredHealthcheck).toBeFunction();
+    expect(testing.buildKeyForService).toBeFunction();
+    expect(testing.composeService).toBeFunction();
+    expect(testing.createBufferedRendererIO).toBeFunction();
+    expect(testing.loadLandofileFile).toBeFunction();
+    expect(testing.loadLogFileHelperPayloads).toBeFunction();
+    expect(testing.makePluginRegistryLive).toBeFunction();
+    expect(testing.makePluginStateStore).toBeFunction();
+    expect(testing.mergeDefaultExcludes).toBeFunction();
     expect(testingTypeExportCheck.options).toEqual({});
     expect(corePackage.exports["./testing"]).toEqual({
       types: "./src/testing/index.ts",
@@ -179,7 +204,7 @@ describe("@lando/core/testing package export", () => {
         [
           process.execPath,
           "-e",
-          "const mod = await import('@lando/core/testing'); const names = ['makeTestRuntime', 'provideTestRuntime', 'withService', 'TestRuntimeLayer', 'TestRuntimeProvider', 'TestRemoteSource', 'makeTestRemoteSource', 'localRemoteSource', 'TestDataset', 'makeTestDataset', 'TestDataMover', 'makeTestDataMover', 'TestTunnelService', 'makeTestTunnelService', 'ScenarioContext', 'withScenarioContext', 'ScenarioContextFactory', 'TestClock', 'TestContext']; const missing = names.filter((name) => mod[name] === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
+          "const mod = await import('@lando/core/testing'); const names = ['AppPlanner', 'AppPlannerLive', 'EventServiceLive', 'L337_BASE_DEFAULT_FEATURE_IDS', 'LANDO_BASE_DEFAULT_FEATURE_IDS', 'PluginRegistryLive', 'ProviderExecToolingEngineLive', 'ScenarioContext', 'TestClock', 'TestContext', 'TestDataMover', 'TestDataset', 'TestRemoteSource', 'TestRuntimeLayer', 'TestRuntimeProvider', 'TestTunnelService', 'applyAuthoredAppMount', 'applyAuthoredHealthcheck', 'buildKeyForService', 'composeService', 'createBufferedRendererIO', 'loadLandofileFile', 'loadLogFileHelperPayloads', 'localRemoteSource', 'makePluginRegistryLive', 'makePluginStateStore', 'makeTestDataMover', 'makeTestDataset', 'makeTestRemoteSource', 'makeTestRuntime', 'makeTestTunnelService', 'mergeDefaultExcludes', 'provideTestRuntime', 'withScenarioContext', 'withService']; const missing = names.filter((name) => mod[name] === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
         ],
         consumerDir,
       );

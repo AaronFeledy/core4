@@ -29,6 +29,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import type {
   AppSelector,
   DestroyOptions,
@@ -38,7 +39,6 @@ import type {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
 import { setActiveRendererMode } from "../../src/cli/compiled-runtime.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

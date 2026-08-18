@@ -30,9 +30,10 @@ const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secret
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
-const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
-const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
-const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-transport.ts"));
+const { McpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/transport.ts"));
 const { RedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const frames = [
@@ -192,7 +193,7 @@ of `lando mcp --format=json`.
     <Step name="require-protocol-pipes">
       <Run
         runtime="library"
-        code={`const { classifyMcpServeStartup } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-limits.ts"));
+code={`const { classifyMcpServeStartup } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
 const pipe = { available: true, tty: false, kind: "fifo" } as const;
 expect(classifyMcpServeStartup({ resultFormat: "text", stdin: pipe, stdout: pipe })).toBeUndefined();
 const tty = classifyMcpServeStartup({
@@ -249,9 +250,9 @@ outbound queue, queued bytes, and blocked-write duration are bounded too
     <Step name="verify-read-only-tools">
       <Run
         runtime="library"
-        code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
-const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-limits.ts"));
-const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../core/src/mcp/catalog.ts"));
+code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-transport.ts"));
+const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
+const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));

@@ -38,7 +38,7 @@ describe("codegen clean-checkout bootstrap", () => {
 
     // Then: each generated module is importable with an empty literal export.
     const commandIds = await import(join(root, "core/src/cli/generated/command-ids.ts"));
-    const mcpAllowlist = await import(join(root, "core/src/cli/generated/mcp-allowlist.ts"));
+    const mcpAllowlist = await import(join(root, "mcp/src/generated/mcp-allowlist.ts"));
     const hostProxyAllowlist = await import(join(root, "core/src/cli/generated/host-proxy-allowlist.ts"));
     const commandRegistryManifest = await import(
       join(root, "core/src/cli/generated/command-registry-manifest.ts")

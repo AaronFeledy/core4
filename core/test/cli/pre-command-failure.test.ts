@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Schema } from "effect";
 
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ComposeKeyRejectedError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { EventService } from "@lando/sdk/services";
 import { buildBugReport, renderJsonBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
 

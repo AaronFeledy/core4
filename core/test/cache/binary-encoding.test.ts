@@ -15,7 +15,7 @@ import {
   APP_PLAN_CACHE_SCHEMA_VERSION,
   readCachedAppPlan,
   writeCachedAppPlan,
-} from "@lando/engine/cache/app-plan";
+} from "../../src/testing/engine-layers.ts";
 import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
@@ -25,7 +25,7 @@ import {
   decodePluginCommandIndex,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
-} from "@lando/engine/cache/command-index";
+} from "../../src/testing/engine-layers.ts";
 import {
   CWD_APP_MAP_CACHE_FILE,
   CWD_APP_MAP_CACHE_HEADER_BYTES,
@@ -33,9 +33,9 @@ import {
   CWD_APP_MAP_CACHE_SCHEMA_VERSION,
   listCwdAppMapEntries,
   writeCwdAppMapEntry,
-} from "@lando/engine/cache/cwd-app-map";
-import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+} from "../../src/testing/engine-layers.ts";
+import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures", "binary-cache");
 

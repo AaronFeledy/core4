@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/lando-conf" "$RUNNER_TEMP/lando-data" "$RUNNER_TEMP/lando-cache"
-          sudo env LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf" LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data" LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache" unshare --net sh -c '
+          sudo env LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf" LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data" LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache" unshare --net bash -c '
             set -euo pipefail
             ip link set lo up
             strace -f -e trace=network -o dist/first-launch.network.log ./dist/lando --version
@@ -104,7 +104,11 @@ jobs:
           bun run --filter='@lando/redaction' build
           bun run --filter='@lando/http-client' build
           bun run --filter='@lando/managed-file' build
+          bun run --filter='@lando/data-mover' build
+          bun run --filter='@lando/telemetry' build
           bun run --filter='@lando/engine' build
+          bun run --filter='@lando/renderer' build
+          bun run --filter='@lando/mcp' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
           bun run --filter='@lando/provider-podman' build
@@ -115,6 +119,7 @@ jobs:
           bun run --filter='@lando/file-sync-mutagen' build
           bun run --filter='@lando/ca-mkcert' build
           bun run --filter='@lando/proxy-traefik' build
+          bun run --filter='@lando/ssh-agent' build
           bun run --filter='@lando/template-handlebars' build
           bun run --filter='@lando/template-mustache' build
           bun run --filter='@lando/core' typecheck
@@ -136,7 +141,11 @@ jobs:
           npm publish --workspace @lando/redaction --dry-run --access public --tag dev
           npm publish --workspace @lando/http-client --dry-run --access public --tag dev
           npm publish --workspace @lando/managed-file --dry-run --access public --tag dev
+          npm publish --workspace @lando/data-mover --dry-run --access public --tag dev
+          npm publish --workspace @lando/telemetry --dry-run --access public --tag dev
           npm publish --workspace @lando/engine --dry-run --access public --tag dev
+          npm publish --workspace @lando/renderer --dry-run --access public --tag dev
+          npm publish --workspace @lando/mcp --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-docker --dry-run --access public --tag dev
@@ -148,6 +157,7 @@ jobs:
           npm publish --workspace @lando/file-sync-mutagen --dry-run --access public --tag dev
           npm publish --workspace @lando/ca-mkcert --dry-run --access public --tag dev
           npm publish --workspace @lando/proxy-traefik --dry-run --access public --tag dev
+          npm publish --workspace @lando/ssh-agent --dry-run --access public --tag dev
           npm publish --workspace @lando/template-handlebars --dry-run --access public --tag dev
           npm publish --workspace @lando/template-mustache --dry-run --access public --tag dev
 
@@ -162,7 +172,11 @@ jobs:
           npm publish --workspace @lando/redaction --access public --tag dev --provenance
           npm publish --workspace @lando/http-client --access public --tag dev --provenance
           npm publish --workspace @lando/managed-file --access public --tag dev --provenance
+          npm publish --workspace @lando/data-mover --access public --tag dev --provenance
+          npm publish --workspace @lando/telemetry --access public --tag dev --provenance
           npm publish --workspace @lando/engine --access public --tag dev --provenance
+          npm publish --workspace @lando/renderer --access public --tag dev --provenance
+          npm publish --workspace @lando/mcp --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
           npm publish --workspace @lando/provider-docker --access public --tag dev --provenance
@@ -174,6 +188,7 @@ jobs:
           npm publish --workspace @lando/file-sync-mutagen --access public --tag dev --provenance
           npm publish --workspace @lando/ca-mkcert --access public --tag dev --provenance
           npm publish --workspace @lando/proxy-traefik --access public --tag dev --provenance
+          npm publish --workspace @lando/ssh-agent --access public --tag dev --provenance
           npm publish --workspace @lando/template-handlebars --access public --tag dev --provenance
           npm publish --workspace @lando/template-mustache --access public --tag dev --provenance
           after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
@@ -206,7 +221,7 @@ jobs:
           mkdir -p "$SMOKE_ROOT"
           cd "$SMOKE_ROOT"
           npm init --yes >/dev/null
-          for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION" "@lando/container-runtime@$LANDO_NPM_VERSION" "@lando/state-store@$LANDO_NPM_VERSION" "@lando/landofile@$LANDO_NPM_VERSION" "@lando/redaction@$LANDO_NPM_VERSION" "@lando/http-client@$LANDO_NPM_VERSION" "@lando/managed-file@$LANDO_NPM_VERSION" "@lando/engine@$LANDO_NPM_VERSION" "@lando/core@$LANDO_NPM_VERSION" "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"; do
+          for package_spec in "@lando/sdk@$LANDO_NPM_VERSION" "@lando/paths@$LANDO_NPM_VERSION" "@lando/container-runtime@$LANDO_NPM_VERSION" "@lando/state-store@$LANDO_NPM_VERSION" "@lando/landofile@$LANDO_NPM_VERSION" "@lando/redaction@$LANDO_NPM_VERSION" "@lando/http-client@$LANDO_NPM_VERSION" "@lando/managed-file@$LANDO_NPM_VERSION" "@lando/data-mover@$LANDO_NPM_VERSION" "@lando/telemetry@$LANDO_NPM_VERSION" "@lando/engine@$LANDO_NPM_VERSION" "@lando/renderer@$LANDO_NPM_VERSION" "@lando/mcp@$LANDO_NPM_VERSION" "@lando/core@$LANDO_NPM_VERSION" "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/ssh-agent@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"; do
             for attempt in {1..30}; do
               if test "$(npm view "$package_spec" version 2>/dev/null || true)" = "$LANDO_NPM_VERSION"; then
                 break
@@ -221,5 +236,5 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund "@lando/core@$LANDO_NPM_VERSION"
           bun -e 'Bun.resolveSync("@lando/engine", process.env.SMOKE_ROOT); Bun.resolveSync("@lando/landofile", process.env.SMOKE_ROOT); await import("@lando/core/testing");'
           bun -e 'const core = await import("@lando/core"); if (typeof core.makeLandoRuntime !== "function" || typeof core.openLandoRuntime !== "function") throw new Error("@lando/core runtime exports are unavailable"); const bundledPluginResolved = await import("@lando/provider-lando").then(() => true, () => false); if (bundledPluginResolved) throw new Error("bundled plugin resolved before installation");'
-          npm install --ignore-scripts --no-audit --no-fund "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"
+          npm install --ignore-scripts --no-audit --no-fund "@lando/provider-lando@$LANDO_NPM_VERSION" "@lando/provider-docker@$LANDO_NPM_VERSION" "@lando/provider-podman@$LANDO_NPM_VERSION" "@lando/service-lando@$LANDO_NPM_VERSION" "@lando/logger-pretty@$LANDO_NPM_VERSION" "@lando/renderer-lando@$LANDO_NPM_VERSION" "@lando/notify-lando@$LANDO_NPM_VERSION" "@lando/file-sync-mutagen@$LANDO_NPM_VERSION" "@lando/ca-mkcert@$LANDO_NPM_VERSION" "@lando/proxy-traefik@$LANDO_NPM_VERSION" "@lando/ssh-agent@$LANDO_NPM_VERSION" "@lando/template-handlebars@$LANDO_NPM_VERSION" "@lando/template-mustache@$LANDO_NPM_VERSION"
           bun -e 'const bundled = await import("@lando/core/bundled-plugins"); const core = await import("@lando/core"); if (bundled.BUNDLED_PLUGIN_MODULES.length !== 12 || typeof core.makeLandoRuntime !== "function") throw new Error("@lando/core bundled composition is unavailable");'

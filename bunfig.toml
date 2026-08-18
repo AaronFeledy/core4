@@ -2,6 +2,14 @@
 preload = ["./scripts/test-preload.ts"]
 include = [
   "core/test/**/*.test.ts",
+  "engine/test/**/*.test.ts",
+  "paths/test/**/*.test.ts",
+  "state-store/test/**/*.test.ts",
+  "redaction/test/**/*.test.ts",
+  "http-client/test/**/*.test.ts",
+  "managed-file/test/**/*.test.ts",
+  "landofile/test/**/*.test.ts",
+  "container-runtime/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
   "docs/test/**/*.test.ts",

@@ -1,0 +1,41 @@
+{
+  "name": "@lando/telemetry",
+  "description": "Private telemetry inventory, redaction, and transport implementation for Lando runtimes.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lando-community/core4.git",
+    "directory": "telemetry"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./events": "./src/events.ts",
+    "./inventory": "./src/inventory.ts",
+    "./policy": "./src/policy.ts",
+    "./redaction": "./src/redaction.ts",
+    "./service": "./src/service.ts",
+    "./package.json": "./package.json"
+  },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "telemetry", "redaction"],
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "effect": "^3.21.2"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo",
+    "test": "bun test ./test",
+    "typecheck": "tsc -b"
+  }
+}

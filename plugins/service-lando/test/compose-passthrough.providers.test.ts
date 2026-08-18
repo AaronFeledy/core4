@@ -4,10 +4,9 @@ import { Effect, Layer } from "effect";
 import { AppPlanner } from "@lando/core/services";
 import { type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { renderCompose as renderDockerCompose } from "../../provider-docker/src/index.ts";
-import { renderCompose as renderLandoCompose } from "../../provider-lando/src/compose.ts";
+import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
+import { renderCompose as renderDockerCompose } from "@lando/provider-docker";
+import { renderCompose as renderLandoCompose } from "@lando/provider-lando";
 import { services } from "../src/index.ts";
 
 const providerLandoCapabilities = {

@@ -30,6 +30,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
+    "test": "bun test ./test",
     "typecheck": "tsc -b"
   }
 }

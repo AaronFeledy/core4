@@ -28,17 +28,17 @@ import {
   readAppPlanSourceFingerprint,
   readCachedAppPlan,
   writeCachedAppPlan,
-} from "@lando/engine/cache/app-plan";
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+} from "../../src/testing/engine-layers.ts";
+import { writeFileAtomicViaRename } from "../../src/testing/engine-layers.ts";
 import {
   CWD_APP_MAP_CACHE_FILE,
   deleteCwdAppMapEntry,
   listCwdAppMapEntries,
   readCwdAppMapEntry,
   writeCwdAppMapEntry,
-} from "@lando/engine/cache/cwd-app-map";
-import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+} from "../../src/testing/engine-layers.ts";
+import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
+import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 
 const CachedValue = Schema.Struct({
   name: Schema.String,

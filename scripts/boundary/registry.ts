@@ -53,7 +53,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: machineOutputRule,
-    seamJustification: "Serialization and schema-presence contracts are call-site behavior.",
+    seamJustification:
+      "Canonical serialization moved behind @lando/sdk/command-result, eliminating the machine-output rule's final carve-out (one to zero); the strengthened rule scans every runtime consumer, including @lando/mcp, for direct serialization and missing command result schemas that package edges cannot express.",
   },
   {
     rule: managedFileRule,
@@ -67,7 +68,8 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   },
   {
     rule: packageDagRule,
-    seamJustification: "This is the primary package ownership gate.",
+    seamJustification:
+      "This is the primary package ownership gate; the @lando/data-mover, @lando/telemetry, and @lando/mcp seams remove former in-package ownership checks while package-DAG enforces the new package directions.",
   },
   {
     rule: pathsRule,
@@ -86,7 +88,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: rendererRule,
     seamJustification:
-      "Package ownership cannot enforce output routing; after extraction the rule retains direct-write scanning with only the compiled shell fast path carved out.",
+      'The @lando/renderer seam owns terminal writes; the owner-excluding rule scans runtime consumers plus core/bin for property-access-based console/process write access because package-DAG cannot enforce call-site output routing. Computed access such as `console["log"]` is not detected.',
   },
   {
     rule: specReferenceRule,

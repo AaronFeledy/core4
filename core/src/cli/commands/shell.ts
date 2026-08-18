@@ -50,8 +50,8 @@ import {
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { makeLandoPaths } from "@lando/paths";
+import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
-import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary";
 
 export interface ShellAppOptions {
   readonly host?: boolean;

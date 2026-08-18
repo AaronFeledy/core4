@@ -16,7 +16,6 @@ const runtimeBrainDirectories = [
   "app",
   "cache",
   "config",
-  "data-mover",
   "deprecation",
   "errors",
   "global-app",
@@ -31,14 +30,13 @@ const runtimeBrainDirectories = [
   "scratch-app",
   "services",
   "subsystems",
-  "telemetry",
   "tooling",
   "tunnel",
   "utils",
 ] as const;
 
 const coreShellDirectories = new Set(["cli", "docs", "interaction", "mcp", "recipes", "testing"]);
-const coreRootFiles = new Set(["index.ts", "version.ts"]);
+const coreRootFiles = new Set(["index.ts", "mcp-command-executor.ts", "version.ts"]);
 const coreRuntimeAllowlist = new Set([
   "app/index.ts",
   "app/resolve.ts",

@@ -27,10 +27,11 @@ const OWNER_EXCLUDING_RULES: ReadonlyMap<string, string> = new Map([
   ["network", "http-client/src"],
   ["paths", "paths/src"],
   ["redaction", "redaction/src"],
+  ["renderer", "renderer/src"],
   ["state-store", "state-store/src"],
 ]);
 
-const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "probe", "renderer"] as const;
+const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "probe"] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
@@ -140,7 +141,8 @@ describe("workspace source-root drift gate", () => {
 
       // Then: every shared runtime consumer remains covered except the owning implementation
       expect(rule).toBeDefined();
-      expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== ownerRoot));
+      const expectedRoots = CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== ownerRoot);
+      expect(rule?.scope.roots).toEqual(id === "renderer" ? [...expectedRoots, "core/bin"] : expectedRoots);
       expect(rule?.carveOuts).toEqual({ files: [], prefixes: [] });
     }
   });

@@ -1,0 +1,56 @@
+/**
+ * MCP retained-runtime command execution seam.
+ *
+ * `makeNestedExecute` is the `McpExecute` the dispatch loop hands each tool
+ * call: it runs a resolved command as a NESTED invocation against the session's
+ * single retained runtime (`runtimeContext`) and the per-request stream sink,
+ * translating the command lifecycle `Exit` into a `CommandResultOutcome`.
+ * Interrupts (cancellation) propagate; this seam must not swallow them.
+ */
+import { Cause, type Context, Effect, type Exit } from "effect";
+
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import type { McpExecute } from "./dispatch";
+import type { McpCommandExecutorShape } from "./port";
+
+export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effect<CommandResultOutcome> => {
+  if (exit._tag === "Success") {
+    return Effect.succeed({ _tag: "success", value: exit.value } satisfies CommandResultOutcome);
+  }
+  if (Cause.isInterruptedOnly(exit.cause)) return Effect.interrupt;
+  return Effect.succeed({
+    _tag: "failure",
+    error: Cause.squash(exit.cause),
+  } satisfies CommandResultOutcome);
+};
+
+export const makeNestedExecute =
+  (
+    runtimeContext: Context.Context<never>,
+    streamSink: Context.Tag.Service<typeof StreamFrameSink>,
+    executor: McpCommandExecutorShape,
+  ): McpExecute =>
+  (entry, runInput) =>
+    Effect.gen(function* () {
+      const command = entry.spec.run(runInput);
+      const rootAwareCommand =
+        runInput.appPath === undefined
+          ? command
+          : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
+      const exit = yield* executor.execute(rootAwareCommand, {
+        commandId: entry.spec.id,
+        argv: runInput.argv,
+        args: runInput.args,
+        flags: runInput.flags,
+        ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
+        ...(entry.spec.successExitCode === undefined
+          ? {}
+          : { successExitCode: (value) => entry.spec.successExitCode?.(value, runInput) }),
+      });
+      return yield* outcomeFromExit(exit);
+    }).pipe(
+      Effect.provide(runtimeContext),
+      Effect.provideService(StreamFrameSink, streamSink),
+    ) as Effect.Effect<CommandResultOutcome, never>;

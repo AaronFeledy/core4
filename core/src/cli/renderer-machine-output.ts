@@ -9,18 +9,18 @@
  */
 import { Effect, Option } from "effect";
 
-import { EventService } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
-import type { CommandWarningsShape } from "./command-warnings";
-import { writeResultLine } from "./renderer-output";
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
   encodeStreamResultFrame,
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
-} from "./result-encode";
+} from "@lando/sdk/command-result";
+import { EventService } from "@lando/sdk/services";
+
+import { RedactionService } from "@lando/redaction/service";
+import { writeResultLine } from "@lando/renderer/output";
+import type { CommandWarningsShape } from "./command-warnings";
 
 export interface StreamOutputFrame {
   readonly _tag: "stdout" | "stderr";

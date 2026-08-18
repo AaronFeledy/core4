@@ -4,8 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 import { AppPlanner, PluginRegistry } from "@lando/core/services";
 import { AppPlan, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
 import { services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 

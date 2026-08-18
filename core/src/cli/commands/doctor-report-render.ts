@@ -3,8 +3,6 @@ import { Schema } from "effect";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext } from "../renderer-boundary";
 import {
   type SummaryDocument,
   type SummaryRow,
@@ -12,7 +10,9 @@ import {
   type SummaryTone,
   formatSummary,
   worstSummaryTone,
-} from "../renderer/summary";
+} from "@lando/renderer/summary";
+import type { RenderContext } from "../renderer-boundary";
+import { isDecoratedContext } from "../renderer-boundary";
 import { renderConfigLintViolation } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { DoctorReportSchema } from "./doctor-report-contract";

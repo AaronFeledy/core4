@@ -35,6 +35,7 @@
     "effect": "^3.21.2"
   },
   "devDependencies": {
+    "@lando/core": "workspace:*",
     "@lando/paths": "workspace:*"
   },
   "scripts": {

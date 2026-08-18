@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");

@@ -7,6 +7,7 @@ import { Effect } from "effect";
  */
 import { Args, Flags } from "../../spec/metadata";
 
+import { makeRendererServiceLiveForMode, writeDiagnosticLine } from "@lando/renderer/output";
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { formatBugReport } from "../../bug-report";
@@ -17,13 +18,12 @@ import { parseInitSourceFlags } from "../../commands/init-source";
 import { type ResultFormat, resolveResultFormat } from "../../format-flags";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
 import {
-  makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
-  writeDiagnosticLine,
 } from "../../renderer-boundary";
 import type { RendererMode } from "../../renderer-selection";
+import { landoRenderer } from "../../renderer/bundled-renderers";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -234,7 +234,9 @@ export default class InitCommand extends LandoCommandBase {
       ...initOptionsFromInput(parsed),
       onWarn: (message: string) => {
         Effect.runSync(
-          writeDiagnosticLine(message).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+          writeDiagnosticLine(message).pipe(
+            Effect.provide(makeRendererServiceLiveForMode(rendererMode, landoRenderer)),
+          ),
         );
       },
     };

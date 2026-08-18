@@ -19,13 +19,13 @@ const derivedTypeScriptPolicies = [
   },
   {
     ids: ["mcp-allowlist", "host-proxy-allowlist"],
-    ignoreProbe: "core/src/cli/generated/mcp-allowlist.ts",
+    ignoreProbe: "mcp/src/generated/mcp-allowlist.ts",
     trackingPath: "core/src/cli/generated",
   },
   {
     ids: ["provider-images"],
-    ignoreProbe: "engine/src/data-mover/generated/provider-images.ts",
-    trackingPath: "engine/src/data-mover/generated/provider-images.ts",
+    ignoreProbe: "data-mover/src/generated/provider-images.ts",
+    trackingPath: "data-mover/src/generated/provider-images.ts",
   },
   {
     ids: ["bundled-plugins"],

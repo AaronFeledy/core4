@@ -1,9 +1,9 @@
 import { Args, Flags } from "../../spec/metadata";
 
 import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
+import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
-import { withOptionalStderrOutput } from "../../renderer-output";
 import {
   EmptyResultSchema,
   LandoCommandBase,

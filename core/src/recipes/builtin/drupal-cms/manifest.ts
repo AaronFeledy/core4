@@ -4,7 +4,7 @@ export const drupalCmsRecipeSource = `${DRUPAL_CMS_RECIPE_ID}/recipe.yml`;
 
 export const drupalCmsRecipeYaml = `id: ${DRUPAL_CMS_RECIPE_ID}
 title: Drupal CMS
-description: Drupal CMS (Starshot) with PHP, a database (MariaDB or PostgreSQL), and Drush.
+description: Drupal CMS 2 with PHP, a database (MariaDB or PostgreSQL), and Drush.
 version: 0.1.0
 authors:
   - Lando Core Team
@@ -39,5 +39,5 @@ files:
     template: true
 postInit:
   - type: message
-    text: Run 'lando start', then scaffold Drupal CMS with 'lando composer create-project drupal/cms .'.
+    text: Run 'lando start', then scaffold Drupal CMS 2 with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.
 `;

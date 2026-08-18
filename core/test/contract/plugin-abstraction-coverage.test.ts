@@ -10,7 +10,8 @@ import * as sdkTest from "@lando/sdk/test";
  *
  * Each plugin abstraction that publishes a shared contract suite in
  * `@lando/sdk/test` must have at least one built-in invocation — a `core/test/**`
- * file that runs that suite against the shipped built-in implementation(s).
+ * or `engine/test/**` file (the test tree of the package owning the built-in)
+ * that runs that suite against the shipped built-in implementation(s).
  *
  * This gate fails when:
  *   - a published `make*ContractSuite` / `run*ContractSuite` export goes missing
@@ -18,7 +19,7 @@ import * as sdkTest from "@lando/sdk/test";
  *   - a manifest entry that is supposed to have a built-in invocation loses it
  *     (the invocation file is deleted, or stops calling the suite);
  *   - someone tries to satisfy coverage with an `sdk/test/**` self-test instead
- *     of a real core built-in invocation.
+ *     of a real built-in invocation.
  *
  * `defaultPolicy: "none-bundled"` is a principled exception, not a loophole:
  * core ships no bundled implementation for that abstraction (e.g. `ConfigTranslator`),
@@ -32,7 +33,7 @@ type DefaultPolicy =
   /**
    * The abstraction is schema-only in core today (no concrete pluggable class),
    * so the built-in invocation runs the suite over documented reference
-   * transforms. Still a real `core/test/**` invocation.
+   * transforms. Still a real built-in invocation in the owning package's tests.
    */
   | "reference-mirror"
   /** No bundled built-in in core; only the SDK self-test can exist until a plugin contributes. */
@@ -67,21 +68,21 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     makeExport: "makeToolingEngineContractSuite",
     runExport: "runToolingEngineContractSuite",
     defaultPolicy: "built-in",
-    invocationFiles: ["core/test/services/tooling-engine-contract.test.ts"],
+    invocationFiles: ["engine/test/services/tooling-engine-contract.test.ts"],
   },
   {
     abstraction: "RouteFilter",
     makeExport: "makeRouteFilterContractSuite",
     runExport: "runRouteFilterContractSuite",
     defaultPolicy: "reference-mirror",
-    invocationFiles: ["core/test/subsystems/proxy/route-filter-contract.test.ts"],
+    invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {
     abstraction: "ProxyService",
     makeExport: "makeProxyServiceContractSuite",
     runExport: "runProxyServiceContractSuite",
     defaultPolicy: "built-in",
-    invocationFiles: ["core/test/subsystems/proxy/traefik-contract.test.ts"],
+    invocationFiles: ["engine/test/subsystems/proxy/traefik-contract.test.ts"],
   },
   {
     abstraction: "SecretStore",
@@ -215,9 +216,10 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
       }
       expect(entry.invocationFiles.length).toBeGreaterThan(0);
       for (const file of entry.invocationFiles) {
-        // The invocation must live in core/test (a real built-in invocation),
-        // never sdk/test (a suite self-test).
-        expect(file.startsWith("core/test/")).toBe(true);
+        // The invocation must be a real built-in invocation, living in the test
+        // tree of the package owning the built-in (core or engine), never
+        // sdk/test (a suite self-test).
+        expect(file.startsWith("core/test/") || file.startsWith("engine/test/")).toBe(true);
         expect(file.startsWith("sdk/test/")).toBe(false);
         expect(existsSync(resolve(REPO_ROOT, file))).toBe(true);
         // The file must actually call the suite (make or run form), so a

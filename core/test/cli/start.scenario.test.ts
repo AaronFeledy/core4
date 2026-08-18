@@ -50,16 +50,19 @@ import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
-import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { EventCommandExecutor } from "../../../engine/src/services/event-command-executor.ts";
+import {
+  ConfigServiceLive,
+  EventCommandExecutor,
+  FileSystemLive,
+  GlobalAppServiceLive,
+  attachEffectiveEvents,
+  attachEffectiveTooling,
+  effectiveEventsForPlan,
+  makeShellRunnerLive,
+  stripHostProxyRunLando,
+} from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
