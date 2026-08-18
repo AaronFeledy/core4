@@ -331,3 +331,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Drift Audit note: the audit was already past its churn threshold before this change (delta ~2788 changed lines against a 1500 trigger, 39 commits, 8 Build/Review cycles). This entry does not suppress it, and the `.drift-gate-US-565` counter was deliberately left untouched. When the audit runs, its escalation-tier suppression check should apply: a prior adjudication ruled the boundary, and every commit since touches only spec/PRD/progress prose, so no new production commits have landed.
 - No `passes` flip for US-565; story state remains `implemented`. Resume at Review.
 ---
+
+## 2026-08-17 19:04 CDT - US-565 Review
+- Fixed complete `cmd` step parity for deferred/looped working directories, invocation-time validation for expression-bearing repeated canonical inputs, nested tooling command ids, canonical tooling output propagation, raw/tooling-environment/result redaction, and plural or hyphenated secret-field matching. Restored canonical built-in spec identity and manifest-only plugin discovery without weakening executable-loader validation.
+- Review notes (deferred/rejected): rejected Bugbot's blanket claim that every successful canonical command must return captured stdout/stderr because built-in and plugin output remains Renderer-owned and duplicate capture was previously adjudicated; the confirmed tooling-target loss was fixed. The remaining request for embedding runtimes to self-register every built-in command requires a class-free executable registry across the full command catalog, a §16 surface not explicitly owned by the source US-565 criteria, so Review routed that contract gap to adjudication instead of importing the CLI registry or creating a second dispatcher.
+- Guide-Coverage-Skip: The existing events guide already covers lifecycle execution; these fixes close validation, redaction, and registry regressions without changing its user workflow.
+- Verification: explicit-base guide drift, typecheck, lint, boundaries, schema snapshot codegen, 223 focused event/registry/discovery/lifecycle tests, and a 64-test post-security redaction/event rerun passed. Schema compatibility reports only the pre-existing `sshServices` removals and `ProviderSetupPlan` unknown drift.
+- **Learnings for future iterations:**
+  - Canonical command redaction must cover lifecycle snapshots and target-owned tooling environment values, not only returned streams; secret-key matching must recognize plural and hyphenated forms.
+  - Keep canonical command specs identical to their registry source objects; transport-only base flags belong in a separate input-validation projection.
+---
