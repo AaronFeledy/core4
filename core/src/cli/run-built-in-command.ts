@@ -28,7 +28,7 @@ export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArra
 
   return runWithProcessAbortSignal((signal) => {
     const input = compiledCommandInputFromArgv(entry.spec.id, argv, { signal });
-    if (entry.spec.id === "meta:mcp" && input.flags.list !== true) return runMetaMcp(argv);
+    if (entry.spec.id === "meta:mcp") return runMetaMcp(argv);
 
     const streamingMode =
       typeof entry.spec.streamingMode === "function"

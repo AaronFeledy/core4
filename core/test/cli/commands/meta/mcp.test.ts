@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 
@@ -38,6 +40,20 @@ const registry: McpCommandRegistry = {
 const appConfigUnsafeIds = [...APP_CONFIG_MCP_UNSAFE_IDS];
 
 const fullRegistry = (): McpCommandRegistry => mcpRegistryFromBuiltIns(builtInCommandEntries);
+
+describe("native meta:mcp dispatch", () => {
+  test("routes list and serve through the same MCP dispatcher", () => {
+    // Given
+    const source = readFileSync(
+      new URL("../../../../src/cli/run-built-in-command.ts", import.meta.url),
+      "utf8",
+    );
+
+    // When / Then
+    expect(source).toContain('if (entry.spec.id === "meta:mcp") return runMetaMcp(argv);');
+    expect(source).not.toContain("input.flags.list !== true");
+  });
+});
 
 describe("metaMcpSpec", () => {
   test("runs the real programmatic list operation from the injected built-in catalog", async () => {
