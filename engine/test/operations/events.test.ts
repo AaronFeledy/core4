@@ -206,6 +206,27 @@ describe("runAppEvent tooling-step kernel", () => {
     });
   });
 
+  test("preserves working directories on looped and deferred cmd variants", async () => {
+    // Given
+    const invocations: ToolingInvocation[] = [];
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-start": [
+        { cmd: "inspect-{{ item }}", for: ["web", "db"], dir: PortablePath.make("/workspace/loop") },
+        { defer: "cleanup", dir: PortablePath.make("/workspace/deferred") },
+      ],
+    });
+
+    // When
+    await Effect.runPromise(runAppEvent(plan, "pre-start").pipe(Effect.provide(eventRuntime(invocations))));
+
+    // Then
+    expect(invocations.map(({ cwd, commands }) => ({ cwd, command: commands[0]?.[2] }))).toEqual([
+      { cwd: "/workspace/loop", command: 'inspect-web "$@"' },
+      { cwd: "/workspace/loop", command: 'inspect-db "$@"' },
+      { cwd: "/workspace/deferred", command: 'cleanup "$@"' },
+    ]);
+  });
+
   test("redacts secrets introduced by resolved task variables before live event publication", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
@@ -376,13 +397,13 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(canonical[0]).toMatchObject({ command: "info", args: { target: "one" } });
   });
 
-  test("passes secret-bearing canonical flags as executor redaction tokens", async () => {
+  test("passes repeated secret-bearing canonical inputs as executor redaction tokens", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
-    const secret = "canonical-event-secret";
+    const secrets = ["canonical-event-secret-one", "canonical-event-secret-two"] as const;
     const plan = attachEffectiveEvents(eventPlan(), {
-      "pre-start": [{ command: "info", flags: { API_TOKEN: secret } }],
+      "pre-start": [{ command: "info", flags: { API_TOKENS: [...secrets] } }],
     });
 
     // When
@@ -393,7 +414,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     const input = canonical[0];
     expect(input !== undefined && "redactionTokens" in input ? input.redactionTokens : undefined).toEqual([
-      secret,
+      ...secrets,
     ]);
   });
 
@@ -576,7 +597,7 @@ describe("runAppEvent tooling-step kernel", () => {
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
     const plan = attachEffectiveEvents(eventPlan(), {
-      "pre-start": [{ command: "app:info", args: { target: "{{ event.target }}" } }],
+      "pre-start": [{ command: "app:info", args: { target: ["{{ event.target }}"] } }],
     });
     const resolvedFailure = new ToolingCompileError({
       message: "argument target for app:info must be a string.",

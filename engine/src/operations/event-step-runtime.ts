@@ -50,6 +50,7 @@ interface EventRuntimeOptions {
   readonly redactor: Redactor;
   readonly redactorFor: (
     records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
+    directTokens?: ReadonlyArray<string>,
   ) => Effect.Effect<EventRedactionScope>;
   readonly runCanonical: (
     leaf: ResolvedToolingCommandStepLeaf,
@@ -266,7 +267,7 @@ export const makeEventStepRunners = (
         leaf,
         Effect.suspend(() => {
           const startedAt = Date.now();
-          return options.redactorFor([leaf.flags]).pipe(
+          return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
             Effect.flatMap(({ redactor, redactionTokens }) =>
               options.runCanonical(leaf, redactionTokens).pipe(
                 Effect.mapError((error) =>

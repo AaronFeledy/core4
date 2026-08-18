@@ -167,13 +167,19 @@ export const runAppEvent = (
           ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
         ],
       });
-      const redactorFor = (records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>) => {
+      const redactorFor = (
+        records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
+        directTokens: ReadonlyArray<string> = [],
+      ) => {
         const redactionTokens = [
           ...collectAppPlanRedactionTokens(plan),
+          ...directTokens,
           ...records.flatMap((record) => {
             if (record === undefined) return [];
-            return collectSecretEnvValues(
-              Object.fromEntries(Object.entries(record).map(([name, value]) => [name, String(value)])),
+            return Object.entries(record).flatMap(([name, value]) =>
+              (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
+                collectSecretEnvValues({ [name]: String(occurrence) }),
+              ),
             );
           }),
         ];
