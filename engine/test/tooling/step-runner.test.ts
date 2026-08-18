@@ -237,8 +237,16 @@ describe("runToolingStepProgram conditions and leaves", () => {
       compileEventStepProgram([
         {
           command: "info",
-          flags: { tag: ["alpha", "{{ vars.tag }}"] },
-          args: { services: ["{{ vars.service }}", "database"] },
+          flags: {
+            tag: ["alpha", "{{ vars.tag }}"],
+            retries: [1, 2],
+            enabled: [true, false],
+          },
+          args: {
+            services: ["{{ vars.service }}", "database"],
+            attempts: [3, 4],
+            selected: [false, true],
+          },
         },
       ]),
     );
@@ -251,7 +259,10 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(exit._tag).toBe("Success");
     expect(observed).toEqual([
-      { flags: { tag: ["alpha", "beta"] }, args: { services: ["appserver", "database"] } },
+      {
+        flags: { tag: ["alpha", "beta"], retries: [1, 2], enabled: [true, false] },
+        args: { services: ["appserver", "database"], attempts: [3, 4], selected: [false, true] },
+      },
     ]);
   });
 

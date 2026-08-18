@@ -129,11 +129,16 @@ const compileNode = (
   return Effect.succeed(leafNode(compileLeaf(step, authoredIndex)));
 };
 
-/** Non-string scalars are compile-time literals; strings are dynamic when any segment is not LiteralSegment. */
+/** Scalars and array entries are dynamic when any parsed string segment is not literal. */
 const commandInputHasDynamicExpression = (
   value: unknown,
   tool: string,
 ): Effect.Effect<boolean, ToolingCompileError> => {
+  if (Array.isArray(value)) {
+    return Effect.reduce(value, false, (found, entry) =>
+      commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
+    );
+  }
   if (typeof value !== "string") return Effect.succeed(false);
   const parsed = parseExpressionEither(value, { filePath: "<event-step-command>" });
   if (Either.isLeft(parsed)) {

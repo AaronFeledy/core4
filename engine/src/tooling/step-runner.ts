@@ -49,8 +49,10 @@ const resolveRecord = (
     resolveLiteral(value, context).pipe(Effect.map((resolved) => [name, resolved] as const)),
   ).pipe(Effect.map(Object.fromEntries));
 
-/** `Array.isArray` alone leaves `readonly string[]` in the scalar branch. */
-const isRepeatableInput = (value: EventCommandInputValue): value is ReadonlyArray<string> =>
+type RepeatableCommandInput = ReadonlyArray<string> | ReadonlyArray<number> | ReadonlyArray<boolean>;
+
+/** `Array.isArray` alone leaves readonly arrays in the scalar branch. */
+const isRepeatableInput = (value: EventCommandInputValue): value is RepeatableCommandInput =>
   Array.isArray(value);
 
 const resolveCommandValue = (
@@ -58,7 +60,7 @@ const resolveCommandValue = (
   context: ExpressionContext,
 ): Effect.Effect<unknown, ToolingStepExpressionError> =>
   isRepeatableInput(value)
-    ? Effect.forEach(value, (entry) => resolve(entry, context))
+    ? Effect.forEach(value, (entry) => resolveLiteral(entry, context))
     : resolveLiteral(value, context);
 
 const resolveCommandRecord = (

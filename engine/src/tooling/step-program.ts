@@ -28,7 +28,7 @@ export interface ToolingTaskStepLeaf extends ToolingStepLeafBase {
 export interface ToolingCommandStepLeaf extends ToolingStepLeafBase {
   readonly kind: "command";
   readonly command: string;
-  /** Scalar literals, or homogeneous string arrays for repeatable target inputs. */
+  /** Scalar literals or homogeneous scalar arrays for repeatable target inputs. */
   readonly flags: Readonly<Record<string, EventCommandInputValue>>;
   readonly args: Readonly<Record<string, EventCommandInputValue>>;
   readonly raw: ReadonlyArray<string>;
