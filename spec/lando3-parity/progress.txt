@@ -341,3 +341,9 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Canonical command redaction must cover lifecycle snapshots and target-owned tooling environment values, not only returned streams; secret-key matching must recognize plural and hyphenated forms.
   - Keep canonical command specs identical to their registry source objects; transport-only base flags belong in a separate input-validation projection.
 ---
+
+## 2026-08-17 19:15 CDT - US-565 Review follow-up
+- Fixed the post-commit Bugbot finding by rejecting deferred built-in `command:` steps during static event-program validation, before any earlier event step can execute; runtime rejection remains as a second boundary.
+- Review notes (deferred/rejected): the embedding built-in registry finding remains the contract gap recorded in the preceding Review entry and is routed to adjudication rather than fixed through a forbidden CLI-registry import.
+- Verification: focused executor tests, typecheck, and lint passed.
+---
