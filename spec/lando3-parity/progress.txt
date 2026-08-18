@@ -391,3 +391,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Embedding parity includes process ownership: executable specs and shared renderers return exit semantics through `successExitCode`; only the native shell may mutate its process exit status.
   - An Effect service supplied to generated bootstrap layers must be introduced through the generator and the hand-maintained runtime service union, not merged as a sibling after consumers are built.
 ---
+
+## 2026-08-18 10:58 CDT - US-583 Review
+- Reviewed the embedding catalog against the source acceptance criteria. Updated stale `core/AGENTS.md` class-layer guidance to the class-free catalog, one-way `BuiltInCommandCatalogLive` injection, and the four native-only embedding exemptions. No product-code blocker.
+- Review notes (deferred/rejected): rejected treating `lando mcp --allow` of embedding-exempt ids as a US-583 privilege bug because embedding-exempt is the EventCommandExecutor/library boundary while MCP is the native CLI with its own `mcpAllowed` default allowlist; rejected the `meta:mcp` serve-mode adapter as a second dispatcher because it is native stdio transport under `run.ts`; rejected treating static catalog/spec imports through the default `@lando/core` entry as a leak because import-boundary tests require that graph and the specs are the class-free operations; rejected demanding a complete namespace-first `@lando/core/cli/operations` export surface because US-583 owns catalog extraction and EventCommandExecutor registration, not a §16.7 named-export rewrite; rejected requiring a second fresh-runtime failure matrix because App-handle lifecycle tests already run representative app/apps/meta `command:` steps and executor tests cover unknown/deferred/exempt/invalid tagged failures.
+- Verification: QA typecheck, lint, boundaries, and 219 focused tests passed before this docs-only fix; guide-drift vs origin/main passed; Bugbot found no bugs on the build commit.
+- **Learnings for future iterations:**
+  - `embedding-exempt` is not an MCP allowlist bit; default MCP exposure stays `mcpAllowed: true` only.
+  - `Layer.suspend` does not defer static imports; keep CLI-only native adapters out of `BuiltInCommandCatalogLive` and let the generated bootstrap inject the catalog.
+---
