@@ -16,6 +16,7 @@ import {
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
+  type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -24,6 +25,7 @@ import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -122,6 +124,12 @@ const entryFor = (
   return {
     command: TestCommand,
     spec: {
+      ...spec,
+      flags: TestCommand.flags,
+      args: TestCommand.args,
+      strict: spec.strict ?? TestCommand.strict,
+    },
+    inputSpec: {
       ...spec,
       flags: TestCommand.flags,
       args: TestCommand.args,
@@ -677,7 +685,13 @@ describe("EventCommandExecutorLive", () => {
         run: (invocation) =>
           Effect.sync(() => {
             invocations.push(invocation.tool);
-            return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+            return {
+              tool: invocation.tool,
+              service: ":lando",
+              exitCode: 0,
+              stdout: "tooling stdout",
+              stderr: "tooling stderr",
+            };
           }),
       }),
     );
@@ -691,10 +705,108 @@ describe("EventCommandExecutorLive", () => {
     };
 
     // When
-    await Effect.runPromise(makeEventCommandExecutor(context).run(input));
+    const result = await Effect.runPromise(makeEventCommandExecutor(context).run(input));
 
     // Then
     expect(invocations).toEqual(["lint"]);
+    expect(result).toEqual({ exitCode: 0, stdout: "tooling stdout", stderr: "tooling stderr" });
+    expect(harness.presentation).toEqual([]);
+  });
+
+  test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
+    // Given
+    const harness = makeHarness();
+    const secret = "--US565-RAW-SECRET";
+    const invocations: ToolingInvocation[] = [];
+    const plan = attachEffectiveTooling(
+      attachEffectiveEvents(
+        { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+        { "pre-start": [{ command: "app:inspect", raw: [secret] }] },
+      ),
+      { inspect: { cmd: "inspect" } },
+    );
+    const context = harness.context.pipe(
+      Context.add(RuntimeProviderRegistry, {
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+      Context.add(ToolingEngine, {
+        id: "test",
+        run: (invocation) =>
+          Effect.sync(() => {
+            invocations.push(invocation);
+            return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+          }),
+      }),
+    );
+    const executor = makeEventCommandExecutor(context);
+    const runtime = Context.add(context, EventCommandExecutor, executor);
+
+    // When
+    await Effect.runPromise(runAppEvent(plan, "pre-start").pipe(Effect.provide(runtime)));
+
+    // Then
+    expect(invocations[0]?.commands[0]).toContain(secret);
+    const lifecycle = harness.events.filter(
+      (event) => event._tag === "cli-app:inspect-init" || event._tag === "cli-app:inspect-run",
+    );
+    expect(lifecycle).toHaveLength(2);
+    const payload = JSON.stringify(lifecycle);
+    expect(payload).not.toContain(secret);
+    expect(payload).toContain("[redacted]");
+    expect(harness.presentation).toEqual([]);
+  });
+
+  test("redacts canonical tooling env secrets from detail and nonzero failure output", async () => {
+    // Given
+    const harness = makeHarness();
+    const secret = "US565-TOOLING-ENV-SECRET";
+    const plan = attachEffectiveTooling(
+      attachEffectiveEvents(
+        { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+        { "pre-start": [{ command: "app:inspect" }] },
+      ),
+      { inspect: { cmd: "inspect", env: { API_TOKEN: secret } } },
+    );
+    const context = harness.context.pipe(
+      Context.add(RuntimeProviderRegistry, {
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+      Context.add(ToolingEngine, {
+        id: "test",
+        run: (invocation) => {
+          const token = invocation.env?.API_TOKEN ?? "missing";
+          return Effect.succeed({
+            tool: invocation.tool,
+            service: ":lando",
+            exitCode: 7,
+            stdout: `stdout:${token}`,
+            stderr: `stderr:${token}`,
+          });
+        },
+      }),
+    );
+    const executor = makeEventCommandExecutor(context);
+    const runtime = Context.add(context, EventCommandExecutor, executor);
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(runAppEvent(plan, "pre-start").pipe(Effect.provide(runtime))),
+    );
+
+    // Then
+    expect(error).toMatchObject({ _tag: "LandofileEventStepFailedError", exitCode: 7 });
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.outputTail).toBe("stdout:[redacted]\nstderr:[redacted]");
+    const details = harness.events.filter((event) => event._tag === "task.detail");
+    expect(details).toHaveLength(2);
+    const payload = JSON.stringify(details);
+    expect(payload).not.toContain(secret);
+    expect(payload).toContain("[redacted]");
+    expect(harness.presentation).toEqual([]);
   });
 
   test("rejects an unknown built-in canonical id with a tagged lookup error naming close matches", async () => {
@@ -885,7 +997,7 @@ describe("EventCommandExecutorLive", () => {
     );
 
     // Then
-    expect(captured).toEqual({ args: { target: "named" }, parsedArgv: ["--", "raw", "tail"] });
+    expect(captured).toEqual({ args: { target: "named" }, parsedArgv: ["named", "--", "raw", "tail"] });
   });
 
   test("parses every occurrence of a multiple canonical flag in order", async () => {
@@ -959,7 +1071,7 @@ describe("EventCommandExecutorLive", () => {
     // Then
     expect(input).toEqual({
       argv: ["--", "tail"],
-      parsedArgv: ["--", "tail"],
+      parsedArgv: ["app", "a", "b", "--", "tail"],
       flags: { decimal: 1.25, integer: 4, enabled: false, mode: "SAFE", labels: ["[one]", "[two]"] },
       args: { target: "app", paths: ["a", "b"] },
     });

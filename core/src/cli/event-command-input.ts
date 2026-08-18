@@ -236,5 +236,11 @@ export const validateEventCommandInput = (
         ),
       );
     }
-    return { argv: input.raw, parsedArgv: input.raw, flags, args };
+    const parsedArgv = [
+      ...Object.values(args).flatMap((value) =>
+        Array.isArray(value) ? value.map((occurrence) => String(occurrence)) : [String(value)],
+      ),
+      ...input.raw,
+    ];
+    return { argv: input.raw, parsedArgv, flags, args };
   });
