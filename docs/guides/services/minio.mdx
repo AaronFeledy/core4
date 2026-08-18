@@ -1,0 +1,63 @@
+---
+id: minio
+provider: test
+timeout: 90000
+tags: [beta, docs, minio, service]
+---
+
+# MinIO
+
+Add S3-compatible object storage to your app with `type: minio`. Set `database`
+to name the bucket Lando creates for you:
+
+```yaml
+name: minio-demo
+services:
+  object-store:
+    type: minio
+    database: uploads
+```
+
+MinIO listens on API port `9000` and console port `9001`. Lando runs
+`server /data --console-address :9001`, stores object data in the persistent
+`/data` volume, and uses `lando` for both the default username and password.
+
+<Guide>
+  <Scenario id="resolved-config" render>
+    <Step name="scaffold">
+      <UseFixture name="minio-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"minio\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"uploads\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Bucket and credentials
+
+The `database` value becomes `MINIO_DEFAULT_BUCKETS`, so `database: uploads`
+creates an `uploads` bucket without another config key. If you omit it, Lando
+uses the app name as the bucket name.
+
+For local development, the root credentials default to `lando` and `lando`.
+Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
+your app needs different credentials.
+
+## Console and client
+
+Open `https://object-store.minio-demo.lndo.site` for the MinIO console. Lando
+routes that hostname to port `9001`; applications talk to the S3 API on the
+internal service port `9000`.
+
+The service also adds `mc` tooling, so you can run the MinIO client in the
+object-store service:
+
+```sh
+lando mc --help
+```
+
+</Guide>

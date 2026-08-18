@@ -20,6 +20,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 ## Codebase Patterns (carry forward)
 
+- New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
@@ -408,4 +409,20 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - `runBuiltInCommand` must honor `LandoCommandSpec.strict === false`; flag/positional parity is for strict commands only. `lando bun`/`lando x` extra argv is the canary.
   - Library `openLandoRuntime()` needs `plugins: { policy: "bundled-only" }` after `import "@lando/core/bundled-plugins"`; the default library policy does not discover CLI-installed providers.
+---
+
+## 2026-08-18 15:58 CDT - Babysit
+- PR: #788 https://github.com/AaronFeledy/core4/pull/788
+- CI outcome: pass
+- Review feedback: fixed (passthrough argv no longer steals declared flags from the inner command tail)
+- Merge: merged (squash)
+---
+
+## 2026-08-18 18:20 CDT - US-566
+- RabbitMQ 3/4, MinIO, and LocalStack now plan as catalog service types: management/console routes, persistent volumes, healthchecks, and service-type tooling (rabbitmqctl/rabbitmqadmin, mc, awslocal). MinIO bucket init is `database:` mapped to `MINIO_DEFAULT_BUCKETS`.
+- Each type publishes a config schema under `@lando/sdk/schema/services/<type>` and ships an executable guide that inspects resolved config.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus guide lint/coverage/public transcripts passed; `lando app:config --format=json` accepted a three-service Landofile.
+- **Learnings for future iterations:**
+  - New catalog types should publish `@lando/sdk/schema/services/<type>` via `ServiceConfig.pick` plus a narrowed `type` literal, then register the schema in `json-schema.ts`. Missing inherited field descriptions fail `codegen:schema-snapshot`.
+  - `ServiceType.schema` is `Schema.Schema.AnyNoContext` so concrete catalog schemas assign without assertions.
 ---

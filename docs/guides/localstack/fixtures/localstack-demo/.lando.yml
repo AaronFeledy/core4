@@ -1,0 +1,4 @@
+name: localstack-demo
+services:
+  aws:
+    type: localstack
