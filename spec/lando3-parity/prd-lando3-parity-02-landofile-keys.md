@@ -59,13 +59,26 @@ Landofile schema changes flow through `@lando/sdk` (`sdk/src/schema/landofile.ts
 
 **Acceptance Criteria:**
 
-- [ ] `events` is removed from `BETA_TOP_LEVEL_KEYS`; schema accepts the §8.5 events map (event name → steps accepting the same step types as `cmds:`, incl. service targeting and canonical-command calls).
+- [ ] `events` is removed from `BETA_TOP_LEVEL_KEYS`; schema accepts the full §8.5 events map and §8.5.2 step contract (the same step types as `cmds:`, including service targeting). Per §8.5.2.1, `command:` steps resolve built-in, plugin-contributed, and tooling canonical ids and validate `flags`, `args`, and `raw` against the target `LandoCommandSpec` at compile time for literal values and invocation time for expression-resolved values. US-565 proves built-in targets through the shared native CLI/runtime path; extracting and self-registering the complete class-free built-in executable catalog for `makeLandoRuntime`/`openLandoRuntime` embedding is the §16.7 work owned by US-583, not this story. US-565 must neither import the CLI-only registry into the default library entry nor create a second dispatcher.
 - [ ] Event names validate against the §3/§11 lifecycle taxonomy scoped to app events; unknown names fail closed at plan time listing valid names.
 - [ ] Subscribers execute at the correct points in the §3 standard sequences (start/stop/restart/rebuild/destroy), in declaration order, through the tooling engine (provider exec default, host via ShellRunner) — no new execution path.
 - [ ] Failure policy per spec: a failing `pre-*` subscriber aborts the operation with a tagged error carrying step identity and output tail; `post-*` failures surface as warnings without rolling back the completed operation (or per §8.5 text if stricter).
 - [ ] Step output routes through the Renderer as task detail; events publish on the event bus with redaction applied.
 - [ ] Event steps come only from the resolved Landofile top-level `events:` map (§7.2 merge, including `includes:` fragments per §7.7), in authored declaration order. No runtime recipe or service-type event-contribution surface is introduced: `ServiceTypeResolution` gains no `events` field and the planner performs no recipe or service-type event merge (adjudicated 2026-08-17; §6.11.3 contributes tooling only, §8.8 makes recipes inert after init, and service types inject lifecycle work through `ServiceFeature`/`AppFeature` build steps rather than events — a distinct runtime event-contribution surface is deferred to a dedicated spec story).
 - [ ] New executable guide `docs/guides/landofile/events.mdx` covers pre-start/post-start with a failure-path hidden scenario; guide coverage/INDEX updated; guide gates green.
+- [ ] Tests pass; typecheck passes; lint passes.
+
+### US-583: Embedding-safe built-in executable command catalog
+
+**Description:** As an embedding host, App-handle lifecycle events and tooling `command:` steps can invoke built-in canonical commands through the same class-free Effect operations as the CLI, without importing CLI-only command adapters or creating a second dispatcher.
+
+**Acceptance Criteria:**
+
+- [ ] Extract one class-free executable-command catalog covering every §8.2 built-in canonical id, including explicit deferred or §16.7-exempt status where no programmatic operation exists. The catalog is derived from the canonical `LandoCommandSpec` registry rather than maintained as a second command list, and completeness is enforced against the full built-in registry.
+- [ ] The native CLI registry/dispatcher, `@lando/core/cli` command operations, and `EventCommandExecutor` consume the same executable entries and preserve canonical spec identity, input validation, lifecycle correlation, success-exit semantics, rendering, redaction, and interruption. No second dispatcher or duplicate executable metadata is introduced.
+- [ ] `makeLandoRuntime`/`openLandoRuntime` self-register the built-in executable targets without importing CLI-only command classes/adapters through the default `@lando/core` entry or creating a generated-bootstrap import cycle. Existing host-provided plugin discovery policy remains unchanged.
+- [ ] An App handle driven through an embedding runtime executes Landofile event/tooling `command:` steps targeting representative app, apps, and meta built-ins identically to the native CLI path; unknown, deferred, and invalid-input targets fail with the same tagged errors and remediation.
+- [ ] Catalog-completeness, library import-boundary, generated-layer cycle, and embedding lifecycle tests cover the production seams above.
 - [ ] Tests pass; typecheck passes; lint passes.
 
 ### US-582: Service-type tooling precedence reconciliation + reserved-name enforcement

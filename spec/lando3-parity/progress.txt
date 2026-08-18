@@ -360,3 +360,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - A `pre-destroy` program is the host-safe compiled-CLI surface for event ordering and command-target checks when container networking is unavailable.
 ---
+
+## 2026-08-17 22:58 CDT - US-565 Review
+- Reconciled the authoritative source PRD with the adjudicated US-565/US-583 split: US-565 now explicitly retains native CLI/runtime canonical-command proof while the new US-583 source story owns complete class-free embedding registration. This prevents Review from re-demanding a surface already split by adjudication.
+- Review notes (deferred/rejected): rejected reopening embedding-wide built-in registration under US-565 because the 22:14 adjudication assigns it to US-583 and forbids a CLI-registry import or second dispatcher; Bugbot and the goal, QA, quality, and security lanes found no product defect.
+- Verification: typecheck, lint, explicit-base guide drift, source/index consistency, and 30 focused event/compiler/registry/lifecycle/guide spot checks passed with positive counts.
+- **Learnings for future iterations:**
+  - When adjudication splits or narrows a story in `prd.json`, update the matching source PRD section in the same change; the source Markdown is Review's authoritative acceptance contract.
+---
