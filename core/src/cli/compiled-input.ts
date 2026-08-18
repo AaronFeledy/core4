@@ -78,13 +78,7 @@ export const compiledCommandInputFromArgv = (
       continue;
     }
 
-    if (command.strict === false) {
-      positionals.push(...normalizedArgv.slice(index));
-      break;
-    }
-
-    if (arg.startsWith("-")) continue;
-    positionals.push(arg);
+    if (command.strict === false || !arg.startsWith("-")) positionals.push(arg);
   }
 
   const args: Record<string, unknown> = {};
