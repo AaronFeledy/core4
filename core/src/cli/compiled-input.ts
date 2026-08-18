@@ -17,6 +17,28 @@ import {
 import { normalizeCliFlagTokens, validateCommandFlagValues } from "./flag-value-validation";
 import { type ResultFormat, resolveResultFormat } from "./format-flags";
 
+const withCommandRemainderSeparator = (
+  argv: ReadonlyArray<string>,
+  flagDefinitions: ReturnType<typeof flagDefinitionsForCommand>,
+): ReadonlyArray<string> => {
+  const flagTokens = flagNameByToken(flagDefinitions);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined || arg === "--") return argv;
+    const equalsIndex = arg.indexOf("=");
+    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+    const normalizedToken = normalizeCliFlagTokens([arg], flagDefinitions);
+    const recognized = flagTokens.has(token) || normalizedToken.length !== 1 || normalizedToken[0] !== arg;
+    if (!recognized) return [...argv.slice(0, index), "--", ...argv.slice(index)];
+
+    const last = normalizedToken.at(-1);
+    if (last === undefined || last.includes("=")) continue;
+    const lastFlagName = flagTokens.get(last);
+    if (lastFlagName !== undefined && flagDefinitions[lastFlagName]?.type !== "boolean") index += 1;
+  }
+  return argv;
+};
+
 export const compiledCommandInputFromArgv = (
   commandId: string,
   argv: ReadonlyArray<string>,
@@ -26,12 +48,22 @@ export const compiledCommandInputFromArgv = (
     readonly signal?: AbortSignal;
   } = {},
 ): CompiledCommandInput => {
+  const command = commandSpecForId(commandId);
+  const argDefinitions = command === undefined ? {} : argDefinitionsForCommand(command);
+  const flagDefinitions = command === undefined ? {} : flagDefinitionsForCommand(command);
+  const commandRemainderArgv =
+    command?.strict === false && command.args?.command !== undefined
+      ? withCommandRemainderSeparator(argv, flagDefinitions)
+      : argv;
+  const hasImplicitCommandSeparator = commandRemainderArgv !== argv;
   const formatResolution =
-    options.resultFormat === undefined && hasUniversalFormatFlag(argv)
-      ? resolveResultFormat({ argv, rendererMode: options.rendererMode ?? activeRendererMode })
+    options.resultFormat === undefined && hasUniversalFormatFlag(commandRemainderArgv)
+      ? resolveResultFormat({
+          argv: commandRemainderArgv,
+          rendererMode: options.rendererMode ?? activeRendererMode,
+        })
       : undefined;
   const effectiveResultFormat = options.resultFormat ?? formatResolution?.format ?? activeResultFormat;
-  const command = commandSpecForId(commandId);
   if (command === undefined) {
     const flags: Record<string, unknown> = {};
     flags.format = effectiveResultFormat;
@@ -40,17 +72,17 @@ export const compiledCommandInputFromArgv = (
     setActiveCommandInvocation(commandId, input);
     return input;
   }
-  const argvWithoutUniversalFormat = formatResolution?.remainingArgv ?? argv;
+  const argvWithoutUniversalFormat = formatResolution?.remainingArgv ?? commandRemainderArgv;
   const commandArgv =
     commandId === "apps:scratch:start"
       ? normalizeScratchStartArgv(argvWithoutUniversalFormat)
       : argvWithoutUniversalFormat;
-  const flagDefinitions = flagDefinitionsForCommand(command);
   const normalizedArgv = normalizeCliFlagTokens(commandArgv, flagDefinitions);
+  const implicitSeparatorIndex = hasImplicitCommandSeparator ? normalizedArgv.indexOf("--") : -1;
   const flagValueError = validateCommandFlagValues(commandId, normalizedArgv, flagDefinitions);
   if (flagValueError !== undefined) throw flagValueError;
   const flagTokens = flagNameByToken(flagDefinitions);
-  const argNames = Object.keys(argDefinitionsForCommand(command));
+  const argNames = Object.keys(argDefinitions);
   const flags: Record<string, unknown> = {};
   const positionals: string[] = [];
 
@@ -91,7 +123,13 @@ export const compiledCommandInputFromArgv = (
   if (effectiveResultFormat === "json") flags.json = true;
 
   const input = {
-    argv: normalizedArgv,
+    argv:
+      implicitSeparatorIndex === -1
+        ? normalizedArgv
+        : [
+            ...normalizedArgv.slice(0, implicitSeparatorIndex),
+            ...normalizedArgv.slice(implicitSeparatorIndex + 1),
+          ],
     ...(command.strict === false ? { parsedArgv: positionals } : {}),
     flags,
     args,
