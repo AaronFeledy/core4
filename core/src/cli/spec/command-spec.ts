@@ -1,13 +1,3 @@
-/**
- * The canonical Lando command-spec contract and its registration validation.
- *
- * `LandoCommandSpec` is the framework-free description of a built-in command —
- * id, namespace, bootstrap depth, flags/args, `run` Effect, result schema, and
- * rendering/streaming hooks. This module owns that shape plus the structural
- * checks applied at registration (result schema, allowlist safety, top-level
- * alias claimability) and the id/alias/error helpers derived from it.
- * `command-base.ts` layers the legacy-compatible `Command` base over this contract.
- */
 import { Schema } from "effect";
 
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
@@ -20,13 +10,6 @@ import { type BugReportContext, type RendererMode, formatBugReport } from "../bu
 import type { DeferredCommandPlan } from "../deferred-commands";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
 
-/**
- * The three first-class command namespaces.
- *
- *   - `app`: operations on the current Lando app
- *   - `apps`: cross-app and host-discovery operations
- *   - `meta`: operations on Lando itself (config, plugins, host setup)
- */
 export type LandoCommandNamespace = "app" | "apps" | "meta";
 
 /**
@@ -49,12 +32,6 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
 
 export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "successExitCode"> {
-  /**
-   * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
-   * `"meta:config"`). It starts with one of `LandoCommandNamespace` plus
-   * `:`, and the canonical id is namespace-prefixed.
-   */
-  /** Built-in commands stay on the three core namespaces (not plugin cspaces). */
   readonly namespace: LandoCommandNamespace;
   readonly description?: string;
   readonly deprecated?: DeprecationNotice;
@@ -94,10 +71,8 @@ export type {
   ExecutableCommandValue,
 } from "@lando/sdk/plugins";
 
-/** Result schema for a command with no machine-readable payload. */
 export const EmptyResultSchema = Schema.Struct({});
 
-/** Raised at registration when a command spec violates a structural rule (e.g. a missing `resultSchema`). */
 export class CommandRegistrationError extends Schema.TaggedError<CommandRegistrationError>()(
   "CommandRegistrationError",
   {
@@ -107,7 +82,6 @@ export class CommandRegistrationError extends Schema.TaggedError<CommandRegistra
   },
 ) {}
 
-/** Reject a command spec that does not declare the required `resultSchema`. */
 export const validateCommandSpec = (spec: {
   readonly id: string;
   readonly resultSchema?: unknown;
@@ -135,10 +109,6 @@ export const validateCommandSpec = (spec: {
   );
 };
 
-/**
- * True for canonical namespace-prefixed Lando command ids (`app:*`,
- * `apps:*`, `meta:*`).
- */
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
 
 export const formatCommandError = (input: {

@@ -94,12 +94,12 @@ export const resolveToolingTaskShape = (
   context: ExpressionContext,
 ): Effect.Effect<ToolingTaskShape, ToolingStepExpressionError> =>
   Effect.gen(function* () {
-    const cmd =
-      task.cmd === undefined
-        ? undefined
-        : typeof task.cmd === "string"
-          ? yield* resolveString(task.cmd, context)
-          : yield* Effect.forEach(task.cmd, (value) => resolveString(value, context));
+    let cmd: ToolingTaskShape["cmd"];
+    if (typeof task.cmd === "string") {
+      cmd = yield* resolveString(task.cmd, context);
+    } else if (task.cmd !== undefined) {
+      cmd = yield* Effect.forEach(task.cmd, (value) => resolveString(value, context));
+    }
     const cmds =
       task.cmds === undefined
         ? undefined

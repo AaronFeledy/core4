@@ -30,7 +30,7 @@ const acceptedSteps = [
 ] as const;
 
 describe("EventStep", () => {
-  test("decodes every Wave 3 authoring form under default and strict options", () => {
+  test("decodes every structured authoring form under default and strict options", () => {
     // Given / When / Then
     for (const options of decodeOptions) {
       for (const step of acceptedSteps) {

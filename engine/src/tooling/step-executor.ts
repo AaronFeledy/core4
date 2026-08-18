@@ -43,28 +43,32 @@ const selectorIterations = (
   selector: ToolingStepSelector,
   context: ExpressionContext,
 ): Effect.Effect<ReadonlyArray<ToolingStepIteration>> => {
-  if (selector.kind === "list") {
-    return Effect.succeed(
-      selector.values.map((item, key) => ({ context: { ...context, item, key }, item, key })),
-    );
+  switch (selector.kind) {
+    case "list":
+      return Effect.succeed(
+        selector.values.map((item, key) => ({ context: { ...context, item, key }, item, key })),
+      );
+    case "matrix":
+      return Effect.succeed(
+        matrixItems(selector.axes).map((item, key) => ({ context: { ...context, item, key }, item, key })),
+      );
+    case "var": {
+      const selected = context.vars?.[selector.name];
+      if (Array.isArray(selected)) {
+        return Effect.succeed(
+          selected.map((item, key) => ({ context: { ...context, item, key }, item, key })),
+        );
+      }
+      if (typeof selected === "object" && selected !== null) {
+        return Effect.succeed(
+          Object.entries(selected)
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+            .map(([key, item]) => ({ context: { ...context, item, key }, item, key })),
+        );
+      }
+      return Effect.succeed([]);
+    }
   }
-  if (selector.kind === "matrix") {
-    return Effect.succeed(
-      matrixItems(selector.axes).map((item, key) => ({ context: { ...context, item, key }, item, key })),
-    );
-  }
-  const selected = context.vars?.[selector.name];
-  if (Array.isArray(selected)) {
-    return Effect.succeed(selected.map((item, key) => ({ context: { ...context, item, key }, item, key })));
-  }
-  if (typeof selected === "object" && selected !== null) {
-    return Effect.succeed(
-      Object.entries(selected)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-        .map(([key, item]) => ({ context: { ...context, item, key }, item, key })),
-    );
-  }
-  return Effect.succeed([]);
 };
 
 const executeResolved = <E, A>(

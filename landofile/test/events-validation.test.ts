@@ -51,7 +51,7 @@ describe("Landofile events", () => {
     ).toThrow();
   });
 
-  test("Wave 3 structured event fields graduate from the Beta scanner", async () => {
+  test("structured event fields are accepted by the Beta scanner", async () => {
     // Given
     const graduatedSteps = [
       { defer: "later" },

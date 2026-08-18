@@ -1,20 +1,3 @@
-/**
- * Runtime composition and `makeLandoRuntime` factory.
- *
- * The composed `LandoRuntimeLive` layer is built once at the host boundary
- * and then provided to the program. Intermediate layer composition stays out
- * of core except in tests.
- *
- * Factory behavior:
- * - Returns one `Layer` that satisfies the default service tags.
- * - Validates options with Effect Schema and can fail with
- *   `LandoRuntimeBootstrapError`.
- * - Is safe to call multiple times in one process; each call gets isolated
- *   caches, plugin registry, and event bus state.
- * - Does not mutate process-global state unless `installSignalHandlers: true`.
- * - Runs the requested bootstrap sequence.
- * - Keeps resource ownership in the layer's outer scope.
- */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { Effect, Either, Layer, Schema } from "effect";
@@ -202,12 +185,6 @@ const signalHandlersLayer = Layer.scopedDiscard(
   Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber })),
 );
 
-/**
- * `makeLandoRuntime`.
- *
- * Builds the runtime layer for the requested bootstrap depth. This factory
- * owns composition and option validation only.
- */
 type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOptions & {
   readonly bootstrap: TBootstrap;
 };

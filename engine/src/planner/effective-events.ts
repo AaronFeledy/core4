@@ -12,8 +12,7 @@ export const compileEffectiveEvents = (input: {
 }): LandofileEvents => sortedEvents({ ...input.landofile.events });
 
 export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents): AppPlan => {
-  const sorted = sortedEvents(events);
-  effectiveEventsByPlan.set(plan, sorted);
+  effectiveEventsByPlan.set(plan, sortedEvents(events));
   return plan;
 };
 

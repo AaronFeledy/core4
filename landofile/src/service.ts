@@ -62,11 +62,6 @@ const SERVICE_CONFIG_KEYS = new Set([
   "depends_on",
 ]);
 
-const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
-  key: string;
-  description: string;
-}> = [];
-
 const rejectUnknownEventNames = (
   filePath: string,
   parsed: unknown,
@@ -82,15 +77,6 @@ const rejectUnknownEventNames = (
       remediation: `Use one of: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
     }),
   );
-};
-
-const scanForBetaTopLevelKey = (parsed: unknown): { key: string; description: string } | undefined => {
-  if (parsed === null || typeof parsed !== "object") return undefined;
-  const obj = parsed as Record<string, unknown>;
-  for (const entry of BETA_TOP_LEVEL_KEYS) {
-    if (Object.hasOwn(obj, entry.key)) return entry;
-  }
-  return undefined;
 };
 
 const CONFIG_EXPRESSION_PATTERN = /\$\{[A-Za-z_]/;
@@ -249,21 +235,6 @@ const scanContentForBetaExpressions = (
   );
 };
 
-const rejectBetaTopLevelKeys = (
-  filePath: string,
-  parsed: unknown,
-): Effect.Effect<unknown, NotImplementedError> => {
-  const beta = scanForBetaTopLevelKey(parsed);
-  if (beta === undefined) return Effect.succeed(parsed);
-  return Effect.fail(
-    new NotImplementedError({
-      message: `Top-level "${beta.key}:" is not supported in Alpha Landofiles at ${filePath}.`,
-      commandId: "landofile.parse",
-      remediation: BETA_REMEDIATION,
-    }),
-  );
-};
-
 type LandofileLoadError =
   | ComposeKeyRejectedError
   | LandofileNotFoundError
@@ -392,7 +363,6 @@ const loadYamlLandofile = (
     Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
     Effect.flatMap((content) => rejectComposeTags(filePath, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
     Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
     Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
@@ -411,7 +381,6 @@ const loadTsLandofile = (
 > =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
-    Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
     Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
     Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),

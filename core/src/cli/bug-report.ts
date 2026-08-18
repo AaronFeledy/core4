@@ -1,23 +1,3 @@
-/**
- * Standardized failure-output formatter for CLI commands.
- *
- * Every command failure becomes a bug-report block with a machine-readable
- * error code, the running command id, optional app/provider ids, and
- * pointers to the user cache and logs directories. Sensitive env-style
- * values (`*_TOKEN=`, `*_PASSWORD=`, etc.) and credential-named object
- * fields on `error.details` are redacted before anything reaches stderr.
- *
- * Two output modes are supported and selected by the renderer flag:
- *   - `plain` / `lando`: multi-line block; `body` first, then optional
- *     `↳ remediation`, then `key: value` diagnostic lines.
- *   - `json`: a single NDJSON line with `_tag: "message.error"` plus
- *     diagnostic fields; same shape that the renderer Layer would emit
- *     if `message.error` were published through `EventService`.
- *
- * Native dispatcher error boundaries call `formatBugReport` so source and
- * compiled entries emit identical diagnostics.
- */
-
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { redactDetails, redactString } from "./redact";
@@ -157,7 +137,7 @@ const extractExtraTagFields = (
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);
     const outputTail = asString(record.outputTail);
-    if (outputTail !== undefined && outputTail.length > 0) out.push(["outputTail", outputTail]);
+    if (outputTail !== undefined) out.push(["outputTail", outputTail]);
   }
   if (tag === "ComposeKeyRejectedError") {
     for (const field of ["source", "service", "keyPath"] as const) {

@@ -160,10 +160,11 @@ export const runAppEvent = (
         );
       }
       const tooling = effectiveToolingForPlan(plan);
+      const appPlanRedactionTokens = collectAppPlanRedactionTokens(plan);
       const redactor = yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
         redactionTokens: [
-          ...collectAppPlanRedactionTokens(plan),
+          ...appPlanRedactionTokens,
           ...steps.flatMap((step) => redactionValuesForStep(step, tooling)),
         ],
       });
@@ -172,7 +173,7 @@ export const runAppEvent = (
         directTokens: ReadonlyArray<string> = [],
       ) => {
         const redactionTokens = [
-          ...collectAppPlanRedactionTokens(plan),
+          ...appPlanRedactionTokens,
           ...directTokens,
           ...records.flatMap((record) => {
             if (record === undefined) return [];
@@ -191,33 +192,32 @@ export const runAppEvent = (
           .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
       };
       const commandExecutor = yield* Effect.serviceOption(EventCommandExecutor);
+      const validate = Option.isSome(commandExecutor) ? commandExecutor.value.validate : undefined;
       const validateCommand =
-        Option.isSome(commandExecutor) && commandExecutor.value.validate !== undefined
+        validate !== undefined
           ? (leaf: ToolingCommandStepLeaf) =>
-              commandExecutor.value
-                .validate?.({
-                  command: leaf.command,
-                  flags: leaf.flags,
-                  args: leaf.args,
-                  argv: leaf.raw,
-                  cwd: String(plan.root),
-                  silent: leaf.silent,
-                  plan,
-                })
-                .pipe(
-                  Effect.mapError((cause) => {
-                    if (cause instanceof ToolingCompileError) return cause;
-                    const detail = cause instanceof Error ? cause.message : String(cause);
-                    const remediation = (cause as { readonly remediation?: unknown } | null)?.remediation;
-                    const suffix =
-                      typeof remediation === "string" && remediation.length > 0 ? ` ${remediation}` : "";
-                    return new ToolingCompileError({
-                      message: `Failed to validate canonical command ${leaf.command}: ${detail}${suffix}`,
-                      tool: leaf.command,
-                      cause,
-                    });
-                  }),
-                ) ?? Effect.void
+              validate({
+                command: leaf.command,
+                flags: leaf.flags,
+                args: leaf.args,
+                argv: leaf.raw,
+                cwd: String(plan.root),
+                silent: leaf.silent,
+                plan,
+              }).pipe(
+                Effect.mapError((cause) => {
+                  if (cause instanceof ToolingCompileError) return cause;
+                  const detail = cause instanceof Error ? cause.message : String(cause);
+                  const remediation = (cause as { readonly remediation?: unknown } | null)?.remediation;
+                  const suffix =
+                    typeof remediation === "string" && remediation.length > 0 ? ` ${remediation}` : "";
+                  return new ToolingCompileError({
+                    message: `Failed to validate canonical command ${leaf.command}: ${detail}${suffix}`,
+                    tool: leaf.command,
+                    cause,
+                  });
+                }),
+              )
           : undefined;
       const program = yield* compileEventStepProgram(steps, validateCommand).pipe(
         Effect.mapError((error) => eventError(error, event, first, redactor)),

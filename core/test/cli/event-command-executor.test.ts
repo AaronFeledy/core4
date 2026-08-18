@@ -716,7 +716,7 @@ describe("EventCommandExecutorLive", () => {
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
     // Given
     const harness = makeHarness();
-    const secret = "--US565-RAW-SECRET";
+    const secret = "--RAW-ARGV-SECRET";
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
       attachEffectiveEvents(
@@ -761,7 +761,7 @@ describe("EventCommandExecutorLive", () => {
   test("redacts canonical tooling env secrets from detail and nonzero failure output", async () => {
     // Given
     const harness = makeHarness();
-    const secret = "US565-TOOLING-ENV-SECRET";
+    const secret = "TOOLING-ENV-SECRET";
     const plan = attachEffectiveTooling(
       attachEffectiveEvents(
         { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },

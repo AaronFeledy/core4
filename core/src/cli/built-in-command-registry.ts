@@ -118,7 +118,7 @@ export type BuiltInCommandEntry = {
 const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
   const spec = command.landoSpec;
   const inputSpec = {
-    ...command.landoSpec,
+    ...spec,
     flags: { ...command.baseFlags, ...command.flags },
     args: command.args,
     strict: command.strict,

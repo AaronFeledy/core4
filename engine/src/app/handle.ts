@@ -49,10 +49,8 @@ export type AppHandleRuntimeServices =
   | RedactionService;
 
 /**
- * Builds the opaque/branded `App` handle returned by `resolveApp`/`runtime.app`.
- * The command-operation seam (`ops`) is passed in (loaded lazily by the caller)
- * so the default `@lando/core` import graph stays OCLIF/TUI-free; each method
- * binds the captured runtime so one-shot methods require no services.
+ * Builds a branded `App` handle. Injecting `ops` keeps CLI and TUI modules out
+ * of the library import graph, while methods bind the captured runtime.
  */
 export const makeAppHandle = (
   target: ResolvedAppTarget,

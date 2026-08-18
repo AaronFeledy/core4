@@ -4,41 +4,39 @@ import { NotImplementedError } from "@lando/sdk/errors";
 
 export const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
-const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
-  { key: "deps" },
-  { key: "engine" },
-  { key: "bootstrap" },
-  { key: "dotenv" },
-  { key: "user" },
-  { key: "appMount" },
-  { key: "stdio" },
-  { key: "interactive" },
-  { key: "passThrough" },
-  { key: "sources" },
-  { key: "generates" },
-  { key: "method" },
-  { key: "status" },
-  { key: "preconditions" },
-  { key: "if" },
-  { key: "run" },
-  { key: "platforms" },
-  { key: "prompt" },
-  { key: "silent" },
-  { key: "output" },
-  { key: "failFast" },
-  { key: "disabled" },
-  { key: "aliases" },
-  { key: "topLevelAlias" },
-  { key: "namespace" },
-  { key: "internal" },
-  { key: "hostProxyAllowed" },
-  { key: "examples" },
-  { key: "usage" },
-];
+const BETA_TOOLING_TASK_KEYS = [
+  "deps",
+  "engine",
+  "bootstrap",
+  "dotenv",
+  "user",
+  "appMount",
+  "stdio",
+  "interactive",
+  "passThrough",
+  "sources",
+  "generates",
+  "method",
+  "status",
+  "preconditions",
+  "if",
+  "run",
+  "platforms",
+  "prompt",
+  "silent",
+  "output",
+  "failFast",
+  "disabled",
+  "aliases",
+  "topLevelAlias",
+  "namespace",
+  "internal",
+  "hostProxyAllowed",
+  "examples",
+  "usage",
+] as const;
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
-const BETA_VAR_KEYS = new Set(["raw"]);
-const BETA_EVENT_STEP_KEYS = new Set(["platforms"]);
 
 interface ToolingBetaFinding {
   readonly task: string;
@@ -56,12 +54,11 @@ const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBe
     for (const step of steps) {
       if (step === null || typeof step !== "object" || Array.isArray(step)) continue;
       const structuredStep = step as Record<string, unknown>;
-      const unsupportedKey = Object.keys(structuredStep).find((key) => BETA_EVENT_STEP_KEYS.has(key));
-      if (unsupportedKey !== undefined) {
+      if (Object.hasOwn(structuredStep, "platforms")) {
         return {
           task: event,
-          key: `events.${event}[].${unsupportedKey}`,
-          description: `Event step field "${unsupportedKey}"`,
+          key: `events.${event}[].platforms`,
+          description: 'Event step field "platforms"',
           event,
         };
       }
@@ -128,12 +125,12 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     if (taskValue === null || typeof taskValue !== "object" || Array.isArray(taskValue)) continue;
     const task = taskValue as Record<string, unknown>;
 
-    for (const entry of BETA_TOOLING_TASK_KEYS) {
-      if (Object.hasOwn(task, entry.key)) {
+    for (const key of BETA_TOOLING_TASK_KEYS) {
+      if (Object.hasOwn(task, key)) {
         return {
           task: taskName,
-          key: entry.key,
-          description: `Tooling task field "${entry.key}"`,
+          key,
+          description: `Tooling task field "${key}"`,
         };
       }
     }
@@ -165,14 +162,12 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     if (vars !== null && typeof vars === "object" && !Array.isArray(vars)) {
       for (const [varName, varValue] of Object.entries(vars as Record<string, unknown>)) {
         if (varValue !== null && typeof varValue === "object" && !Array.isArray(varValue)) {
-          for (const varKey of Object.keys(varValue as Record<string, unknown>)) {
-            if (BETA_VAR_KEYS.has(varKey)) {
-              return {
-                task: taskName,
-                key: `vars.${varName}.${varKey}`,
-                description: `Unsafe "${varKey}:" interpolation in tooling var "${varName}"`,
-              };
-            }
+          if (Object.hasOwn(varValue, "raw")) {
+            return {
+              task: taskName,
+              key: `vars.${varName}.raw`,
+              description: `Unsafe "raw:" interpolation in tooling var "${varName}"`,
+            };
           }
         }
       }
