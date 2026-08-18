@@ -5,7 +5,7 @@ import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, ShellRunner, ToolingEngine } from "@lando/sdk/services";
 
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
-import { buildToolingInvocation } from "./tooling.ts";
+import { buildToolingInvocation, validateToolingArguments } from "./tooling.ts";
 
 export const runEventToolingCommand = (
   plan: AppPlan,
@@ -14,6 +14,8 @@ export const runEventToolingCommand = (
   raw: ReadonlyArray<string>,
 ) =>
   Effect.gen(function* () {
+    const argumentError = validateToolingArguments(name, task, raw);
+    if (argumentError !== undefined) return yield* Effect.fail(argumentError);
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
     const provider = yield* registry.select(plan);

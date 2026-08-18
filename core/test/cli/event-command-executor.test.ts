@@ -715,6 +715,56 @@ describe("EventCommandExecutorLive", () => {
     expect(harness.presentation).toEqual([]);
   });
 
+  test("rejects structured tooling input when the task disables arguments", async () => {
+    // Given
+    const harness = makeHarness();
+    const plan = attachEffectiveTooling(
+      { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
+      {
+        inspect: {
+          cmd: "inspect",
+          arguments: false,
+          flags: { verbose: { type: "boolean" } },
+        },
+      },
+    );
+    let invocations = 0;
+    const context = harness.context.pipe(
+      Context.add(RuntimeProviderRegistry, {
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+      Context.add(ToolingEngine, {
+        id: "test",
+        run: () =>
+          Effect.sync(() => {
+            invocations += 1;
+            return { tool: "inspect", service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+          }),
+      }),
+    );
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      makeEventCommandExecutor(context).run({
+        command: "app:inspect",
+        flags: { verbose: true },
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+        plan,
+      }),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined).toMatchObject({
+      _tag: "ToolingCompileError",
+      tool: "inspect",
+    });
+    expect(invocations).toBe(0);
+  });
+
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
     // Given
     const harness = makeHarness();
