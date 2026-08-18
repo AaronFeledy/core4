@@ -1,13 +1,14 @@
 import { Effect, Schema } from "effect";
+import { Flags } from "../../spec/metadata";
+
+import { normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
+import type { LandoCommandSpec } from "../../spec/command-base";
+
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.
  *
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
-import { Flags } from "../../spec/metadata";
-
-import { normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
-import type { LandoCommandSpec } from "../../spec/command-base";
 
 export const shellenvShellFromInput = (input: unknown) => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";

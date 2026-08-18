@@ -256,7 +256,7 @@ export const deferredBuiltInCommandIds: ReadonlyArray<string> = builtInCommandEn
   .map((entry) => entry.spec.id);
 
 export const isBuiltInCommandImplemented = (commandId: string): boolean =>
-  builtInCommandEntries.some((entry) => entry.spec.id === commandId && entry.status.kind === "implemented");
+  builtInCommandCatalog[commandId]?.status.kind === "implemented";
 
 export const resolveBuiltInCommand = (token: string | undefined): BuiltInCommandEntry | undefined =>
   token === undefined ? undefined : builtInCommandIndex.byToken.get(token);
@@ -265,7 +265,7 @@ export const isReservedNamespaceHead = (head: string | undefined): boolean =>
   head !== undefined && builtInCommandIndex.namespaceHeads.has(head);
 
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
-  const entry = builtInCommandEntries.find((candidate) => candidate.spec.id === commandId);
+  const entry = builtInCommandCatalog[commandId];
   return entry === undefined
     ? new NotImplementedError({
         message: `Command ${commandId} is not implemented.`,

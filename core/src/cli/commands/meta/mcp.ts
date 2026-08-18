@@ -89,24 +89,30 @@ const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
   return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
 };
 
-const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => ({
-  id: command.id,
-  summary: command.summary,
-  namespace: command.id.startsWith("meta:") ? "meta" : command.id.startsWith("apps:") ? "apps" : "app",
-  bootstrap: "app",
-  hidden: command.hidden,
-  args: {
+const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => {
+  let namespace: LandoCommandSpec["namespace"] = "app";
+  if (command.id.startsWith("meta:")) namespace = "meta";
+  else if (command.id.startsWith("apps:")) namespace = "apps";
+
+  return {
+    id: command.id,
+    summary: command.summary,
+    namespace,
+    bootstrap: "app",
+    hidden: command.hidden,
     args: {
-      type: "string",
-      multiple: true,
-      description: "Arguments passed to the tooling task.",
+      args: {
+        type: "string",
+        multiple: true,
+        description: "Arguments passed to the tooling task.",
+      },
     },
-  },
-  resultSchema: ToolingMcpResultSchema,
-  run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
-  redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
-  render: (result) => renderRunToolingResult(result as RunToolingResult),
-});
+    resultSchema: ToolingMcpResultSchema,
+    run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+    redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
+    render: (result) => renderRunToolingResult(result as RunToolingResult),
+  };
+};
 
 const parsedStringArray = (value: unknown): ReadonlyArray<string> | undefined => {
   if (!Array.isArray(value)) return undefined;

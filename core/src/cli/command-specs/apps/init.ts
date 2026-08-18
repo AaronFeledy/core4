@@ -1,10 +1,4 @@
 import { Effect } from "effect";
-/**
- * `lando apps:init` — interactive scaffolding for new Lando apps.
- *
- * **Interactive only** — not exported as a function from
- * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
- */
 import { Args, Flags } from "../../spec/metadata";
 
 import type { InitAppOptions } from "../../commands/init";
@@ -12,6 +6,13 @@ import { resolveInitDestination } from "../../commands/init-destination";
 import { parseInitSourceFlags } from "../../commands/init-source";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+
+/**
+ * `lando apps:init` — interactive scaffolding for new Lando apps.
+ *
+ * **Interactive only** — not exported as a function from
+ * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
+ */
 
 export interface InitFlags {
   readonly full: boolean;

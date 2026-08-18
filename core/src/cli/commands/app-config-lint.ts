@@ -5,7 +5,10 @@ import { renderConfigLintViolation } from "./config-lint-rendering";
 
 export type AppConfigLintFormat = "text" | "json";
 
-const textRender = (result: ConfigLintResult): string => {
+export const renderConfigLintResult = (
+  result: ConfigLintResult,
+  _format: AppConfigLintFormat = "text",
+): string => {
   if (result.valid) {
     return `${result.file}: no canonical-schema violations.`;
   }
@@ -15,8 +18,3 @@ const textRender = (result: ConfigLintResult): string => {
   const lines = result.violations.map(renderConfigLintViolation);
   return [header, ...lines].join("\n");
 };
-
-export const renderConfigLintResult = (
-  result: ConfigLintResult,
-  _format: AppConfigLintFormat = "text",
-): string => textRender(result);

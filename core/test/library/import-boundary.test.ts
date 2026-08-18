@@ -107,17 +107,7 @@ const classifyTuiImport = (edge: {
 const classifyEffectImport = (edge: { readonly specifier: string }): string | undefined =>
   isEffectNpmSpecifier(edge.specifier) ? `imports the Effect runtime package "${edge.specifier}"` : undefined;
 
-interface OclifViolation {
-  readonly chain: ReadonlyArray<string>;
-  readonly reason: string;
-}
-
-interface TuiViolation {
-  readonly chain: ReadonlyArray<string>;
-  readonly reason: string;
-}
-
-interface EffectViolation {
+interface ImportViolation {
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -227,12 +217,13 @@ const walkLazyModuleGraph = (
       if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) visit(resolvedAbs);
     }
 
-    for (const edge of scanDynamicEdges(absPath, source)) {
+    const dynamicEdges = scanDynamicEdges(absPath, source);
+    const isOpenTuiSubstrateModule = openTuiLiteralImportFiles.includes(absPath);
+    const openTuiDriverEdges = isOpenTuiSubstrateModule
+      ? dynamicEdges.filter((candidate) => candidate.specifier === "@opentui/core")
+      : [];
+    for (const edge of dynamicEdges) {
       const resolvedAbs = followEdge(edge.specifier);
-      const isOpenTuiSubstrateModule = openTuiLiteralImportFiles.includes(absPath);
-      const openTuiDriverEdges = isOpenTuiSubstrateModule
-        ? scanDynamicEdges(absPath, source).filter((candidate) => candidate.specifier === "@opentui/core")
-        : [];
       const isLiteralOpenTuiDriverEdge =
         isOpenTuiSubstrateModule &&
         edge.specifier === "@opentui/core" &&
@@ -270,14 +261,14 @@ const walkStaticImportGraph = (
   entryAbs: string,
 ): {
   readonly visited: ReadonlySet<string>;
-  readonly violations: ReadonlyArray<OclifViolation>;
-  readonly tuiViolations: ReadonlyArray<TuiViolation>;
-  readonly effectViolations: ReadonlyArray<EffectViolation>;
+  readonly violations: ReadonlyArray<ImportViolation>;
+  readonly tuiViolations: ReadonlyArray<ImportViolation>;
+  readonly effectViolations: ReadonlyArray<ImportViolation>;
 } => {
   const visited = new Set<string>();
-  const violations: OclifViolation[] = [];
-  const tuiViolations: TuiViolation[] = [];
-  const effectViolations: EffectViolation[] = [];
+  const violations: ImportViolation[] = [];
+  const tuiViolations: ImportViolation[] = [];
+  const effectViolations: ImportViolation[] = [];
 
   const visit = (absPath: string, chain: ReadonlyArray<string>): void => {
     if (visited.has(absPath)) return;
@@ -327,17 +318,7 @@ const walkStaticImportGraph = (
   return { visited, violations, tuiViolations, effectViolations };
 };
 
-const formatViolation = (entrySpecifier: string, violation: OclifViolation): string => {
-  const chain = violation.chain.map(repoRelative).join("\n      → ");
-  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
-};
-
-const formatTuiViolation = (entrySpecifier: string, violation: TuiViolation): string => {
-  const chain = violation.chain.map(repoRelative).join("\n      → ");
-  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
-};
-
-const formatEffectViolation = (entrySpecifier: string, violation: EffectViolation): string => {
+const formatViolation = (entrySpecifier: string, violation: ImportViolation): string => {
   const chain = violation.chain.map(repoRelative).join("\n      → ");
   return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
 };
@@ -577,9 +558,7 @@ describe("OCLIF-free default entry", () => {
     expect(visited.size).toBeGreaterThan(1);
 
     if (tuiViolations.length > 0) {
-      const report = tuiViolations
-        .map((violation) => formatTuiViolation("@lando/core", violation))
-        .join("\n\n");
+      const report = tuiViolations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");
       throw new Error(`@lando/core must not load any TUI code path; offending import chains:\n\n${report}`);
     }
     expect(tuiViolations.length).toBe(0);
@@ -621,7 +600,7 @@ describe("Effect-free @lando/core/paths", () => {
 
     if (effectViolations.length > 0) {
       const report = effectViolations
-        .map((violation) => formatEffectViolation("@lando/core/paths", violation))
+        .map((violation) => formatViolation("@lando/core/paths", violation))
         .join("\n\n");
       throw new Error(
         `@lando/core/paths must not load the Effect runtime; offending import chains:\n\n${report}`,

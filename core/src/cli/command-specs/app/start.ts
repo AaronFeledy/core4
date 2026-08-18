@@ -1,11 +1,12 @@
 import { type StartAppResult, StartAppResultSchema, startApp } from "@lando/engine/operations/start";
 import { renderStartAppResult } from "../../commands/start-result";
-/**
- * `lando app:start` — native command metadata adapter.
- */
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 
 import { StreamFrame } from "@lando/sdk/schema";
+
+/**
+ * `lando app:start` — native command metadata adapter.
+ */
 
 export const startSpec: LandoCommandSpec<StartAppResult> = {
   resultSchema: StartAppResultSchema,

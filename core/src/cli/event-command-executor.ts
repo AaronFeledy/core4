@@ -102,11 +102,10 @@ export const makeEventCommandExecutor = (
   },
   run(resolved: EventCommandExecutorInput) {
     return Effect.gen(function* () {
-      const entries = fixedEntries;
       const target = yield* resolveEventCommandTarget(
         resolved.command,
         runtimeContext,
-        entries,
+        fixedEntries,
         resolved.plan,
       );
       if (target.kind === "built-in" && target.builtIn.status.kind === "deferred") {

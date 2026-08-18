@@ -159,7 +159,10 @@ const STATUS_GLYPH: Readonly<Record<IncludeVerifyStatus, string>> = {
   stale: "-",
 };
 
-const textRender = (report: IncludeVerifyReport): string => {
+export const renderIncludesVerifyResult = (
+  report: IncludeVerifyReport,
+  _format: AppIncludesVerifyFormat = "text",
+): string => {
   const lines = [summaryLine(report)];
   for (const entry of report.entries) {
     lines.push(`  ${STATUS_GLYPH[entry.status]} ${entry.source}: ${entry.status}`);
@@ -172,8 +175,3 @@ const textRender = (report: IncludeVerifyReport): string => {
   }
   return lines.join("\n");
 };
-
-export const renderIncludesVerifyResult = (
-  report: IncludeVerifyReport,
-  _format: AppIncludesVerifyFormat = "text",
-): string => textRender(report);

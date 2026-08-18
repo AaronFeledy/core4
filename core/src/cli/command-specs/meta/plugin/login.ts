@@ -1,4 +1,8 @@
 import { Effect } from "effect";
+import { Flags } from "../../../spec/metadata";
+
+import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
+
 /**
  * `lando meta:plugin:login` — write registry auth.
  *
@@ -6,9 +10,6 @@ import { Effect } from "effect";
  * `<userConfRoot>/plugin-auth.json` and are consumed by the registry
  * plugin source for private packages.
  */
-import { Flags } from "../../../spec/metadata";
-
-import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
 
 export const pluginLoginSpec: LandoCommandSpec<never> = {
   resultSchema: EmptyResultSchema,

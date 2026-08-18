@@ -1,10 +1,11 @@
 import { Effect } from "effect";
-/**
- * `lando meta:plugin:logout` — clear registry auth.
- */
 import { Flags } from "../../../spec/metadata";
 
 import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
+
+/**
+ * `lando meta:plugin:logout` — clear registry auth.
+ */
 
 export const pluginLogoutSpec: LandoCommandSpec<never> = {
   resultSchema: EmptyResultSchema,

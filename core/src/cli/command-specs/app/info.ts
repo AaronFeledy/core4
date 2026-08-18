@@ -2,10 +2,11 @@ import { Flags } from "../../spec/metadata";
 
 import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/operations/info";
 import { renderInfoAppResult } from "../../commands/info-render";
+import type { LandoCommandSpec } from "../../spec/command-base";
+
 /**
  * `lando app:info` — native command metadata adapter.
  */
-import type { LandoCommandSpec } from "../../spec/command-base";
 
 const infoDeepFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;

@@ -115,8 +115,9 @@ describe("built-in command registry contract", () => {
     // Given
     const registry = await import("../../src/cli/built-in-command-registry.ts");
     const buildIndex = Reflect.get(registry, "buildBuiltInCommandIndex");
-    expect(isRegistryBuilder(buildIndex)).toBe(true);
-    if (!isRegistryBuilder(buildIndex)) return;
+    const isBuilder = isRegistryBuilder(buildIndex);
+    expect(isBuilder).toBe(true);
+    if (!isBuilder) return;
 
     // When
     const index = buildIndex([

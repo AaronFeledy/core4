@@ -37,7 +37,7 @@ const registry: McpCommandRegistry = {
   commandEntries: [entry("app:info", "Show app info"), entry("app:config:get", "App config")],
 };
 
-const appConfigUnsafeIds = [...APP_CONFIG_MCP_UNSAFE_IDS];
+const appConfigUnsafeIds = APP_CONFIG_MCP_UNSAFE_IDS;
 
 const fullRegistry = (): McpCommandRegistry => mcpRegistryFromBuiltIns(builtInCommandEntries);
 

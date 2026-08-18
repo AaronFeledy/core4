@@ -14,7 +14,7 @@
  * `git diff --exit-code` fails if the output drifts.
  */
 import { mkdir, readdir, rm } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
 
@@ -275,9 +275,7 @@ const main = async (): Promise<void> => {
     if (file.endsWith(".ts") && !expectedFiles.has(file)) await rm(resolve(OUTPUT_DIR, file));
   }
 
-  console.log(
-    `[build-bootstrap-layers] wrote ${OUTPUT_DIR} (${files.map((file) => basename(file)).length} files)`,
-  );
+  console.log(`[build-bootstrap-layers] wrote ${OUTPUT_DIR} (${files.length} files)`);
 };
 
 await main();

@@ -1,8 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 
 import type { RendererIO } from "@lando/renderer/io";
-import type { RendererMode } from "../bug-report";
-import { formatBugReport } from "../bug-report";
+import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";
 import type { ResultFormat } from "../format-flags";
 import { runWithRendererHandling } from "../renderer-boundary";

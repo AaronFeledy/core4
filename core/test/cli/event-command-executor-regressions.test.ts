@@ -74,9 +74,10 @@ const withPlugin = (context: Context.Context<unknown>, spec: ExecutableCommandSp
     hostContext: Context.empty(),
   });
 
-const builtInEntry = (spec: LandoCommandSpec): BuiltInCommandEntry => {
-  return { spec, status: { kind: "implemented" } };
-};
+const builtInEntry = (spec: LandoCommandSpec): BuiltInCommandEntry => ({
+  spec,
+  status: { kind: "implemented" },
+});
 
 describe("event command executor regressions", () => {
   test("plugin render receives ordered positional argv and redacted structured input", async () => {
