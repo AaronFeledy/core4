@@ -22,7 +22,7 @@ describe("workspace package DAG policy", () => {
 
   test("allows only approved engine composers to depend on engine", () => {
     // Given
-    const engineComposers = ["@lando/core", "@lando/renderer"];
+    const engineComposers = ["@lando/core", "@lando/renderer", "@lando/mcp"];
     const policies = Object.entries(WORKSPACE_EDGE_TABLE);
 
     // When

@@ -4,7 +4,7 @@ import {
   MAX_RETAINED_COMPLETED_REQUEST_IDS,
   emptyCompletedRequestIds,
   rememberCompletedRequestId,
-} from "../../src/mcp/cancellation.ts";
+} from "@lando/mcp/cancellation";
 
 describe("MCP completed request history", () => {
   test("evicts the oldest request id at the retained-history limit", () => {

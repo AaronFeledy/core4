@@ -19,7 +19,7 @@ const derivedTypeScriptPolicies = [
   },
   {
     ids: ["mcp-allowlist", "host-proxy-allowlist"],
-    ignoreProbe: "core/src/cli/generated/mcp-allowlist.ts",
+    ignoreProbe: "mcp/src/generated/mcp-allowlist.ts",
     trackingPath: "core/src/cli/generated",
   },
   {

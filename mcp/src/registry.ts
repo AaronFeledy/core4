@@ -10,11 +10,28 @@
  */
 import { McpToolInputError } from "@lando/sdk/errors";
 
-import type { LandoCommandSpec } from "../cli/spec/command-base";
+import type { Effect, Schema } from "effect";
+import type { McpProgressFrame, McpRunInput } from "./dispatch";
+
+export interface McpCommandSpec {
+  readonly id: string;
+  readonly summary: string;
+  readonly description?: string;
+  readonly mcpAllowed?: boolean;
+  readonly flags?: Readonly<Record<string, unknown>>;
+  readonly args?: Readonly<Record<string, unknown>>;
+  readonly run: (input: McpRunInput) => Effect.Effect<unknown, unknown, unknown>;
+  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly streamFrames?: (result: unknown) => ReadonlyArray<McpProgressFrame>;
+  readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
+  readonly successExitCode?: {
+    bivarianceHack(result: unknown, input?: unknown): number | undefined;
+  }["bivarianceHack"];
+}
 
 /** A single command projected as an MCP tool. */
 export interface McpCommandEntry {
-  readonly spec: LandoCommandSpec;
+  readonly spec: McpCommandSpec;
   /** True only for tooling-task tools (projection); false for command tools. */
   readonly tooling?: boolean;
 }
@@ -66,7 +83,7 @@ const groupSchema = (members: Readonly<Record<string, unknown>> | undefined): Js
  * declared `flags`/`args`. Commands that declare neither get a closed object
  * with empty `flags`/`args` groups.
  */
-export const deriveToolInputSchema = (spec: LandoCommandSpec): JsonSchemaObject => ({
+export const deriveToolInputSchema = (spec: McpCommandSpec): JsonSchemaObject => ({
   type: "object",
   properties: {
     flags: groupSchema(spec.flags),
@@ -158,7 +175,7 @@ const validateTopLevelInput = (toolId: string, input: McpToolInput | undefined):
  * path. Returns the normalized `{ flags, args }` payload on success.
  */
 export const validateToolInput = (
-  spec: LandoCommandSpec,
+  spec: McpCommandSpec,
   input: McpToolInput | undefined,
 ): { readonly flags: Record<string, unknown>; readonly args: Record<string, unknown> } => {
   validateTopLevelInput(spec.id, input);

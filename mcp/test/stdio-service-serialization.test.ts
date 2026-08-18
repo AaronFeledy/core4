@@ -4,17 +4,12 @@ import { Effect, Fiber, Layer, Queue, Schema } from "effect";
 import type { McpCatalog } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
+import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
+import { McpTransport } from "@lando/mcp/transport";
 import { RedactionService } from "@lando/redaction/service";
-import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import type { McpCommandEntry } from "../../src/mcp/registry.ts";
-import {
-  McpRuntimeConfig,
-  type McpRuntimeConfigShape,
-  McpService,
-  McpServiceLive,
-} from "../../src/mcp/service.ts";
-import { makeStdioMcpTransport } from "../../src/mcp/stdio-transport.ts";
-import { McpTransport } from "../../src/mcp/transport.ts";
+import { TestMcpCommandExecutor } from "./executor";
 
 const encoder = new TextEncoder();
 const catalog = { tools: [] } satisfies McpCatalog;
@@ -35,11 +30,9 @@ describe("MCP service stdio serialization", () => {
     // Given
     const secret = "known-service-secret";
     let calls = 0;
-    const command: LandoCommandSpec = {
+    const command: McpCommandSpec = {
       id: "app:info",
       summary: "app:info summary",
-      namespace: "app",
-      bootstrap: "app",
       resultSchema: Schema.Struct({
         chunks: Schema.Array(Schema.Number),
         apiToken: Schema.String,
@@ -73,6 +66,7 @@ describe("MCP service stdio serialization", () => {
           Layer.succeed(RedactionService, {
             forProfile: () => Effect.succeed(createRedactor("secrets", { values: [secret] })),
           }),
+          TestMcpCommandExecutor,
         ),
       ),
     );

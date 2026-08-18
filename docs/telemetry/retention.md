@@ -5,11 +5,11 @@ description: How Lando redacts telemetry before it leaves your machine and how l
 
 # Telemetry Redaction and Retention Policy
 
-This is the canonical, in-repo policy for how Lando telemetry is redacted before it leaves your machine and how long any collected data is retained. It is published before telemetry emission is enabled by default and is linked from the [telemetry event inventory](./events.md), the opt-out command output (`lando config telemetry status`), and the machine-readable inventory in [`engine/src/telemetry/inventory.ts`](../../engine/src/telemetry/inventory.ts).
+This is the canonical, in-repo policy for how Lando telemetry is redacted before it leaves your machine and how long any collected data is retained. It is published before telemetry emission is enabled by default and is linked from the [telemetry event inventory](./events.md), the opt-out command output (`lando config telemetry status`), and the machine-readable inventory in [`telemetry/src/inventory.ts`](../../telemetry/src/inventory.ts).
 
 ## Redaction rules {#redaction}
 
-Every telemetry payload passes through the shared redaction layer ([`engine/src/telemetry/redaction.ts`](../../engine/src/telemetry/redaction.ts)) before it is buffered or handed to any sink. Redaction runs inside the recording path, so a disabled, failing, or plugin-contributed sink can never observe a raw payload.
+Every telemetry payload passes through the shared redaction layer ([`telemetry/src/redaction.ts`](../../telemetry/src/redaction.ts)) before it is buffered or handed to any sink. Redaction runs inside the recording path, so a disabled, failing, or plugin-contributed sink can never observe a raw payload.
 
 Redaction does two things:
 

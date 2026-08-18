@@ -24,22 +24,23 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
+import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
+import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
+import {
+  type McpCommandEntry,
+  type McpCommandSpec,
+  deriveToolInputSchema,
+  validateToolInput,
+} from "@lando/mcp/registry";
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
+import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
 import { RedactionService } from "@lando/redaction/service";
-import { assertMcpAllowlistSafe } from "../../src/cli/allowlists/mcp.ts";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/generated/mcp-allowlist.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
-import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
-import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";
-import {
-  McpRuntimeConfig,
-  type McpRuntimeConfigShape,
-  McpService,
-  McpServiceLive,
-} from "../../src/mcp/service.ts";
-import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
+import { McpServiceLive } from "../../src/mcp-command-executor.ts";
 
 /** A prompt-required tagged failure, standing in for interactive recipe answers. */
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {
@@ -98,7 +99,7 @@ const harness = (
 const decodeEnvelope = (envelope: unknown): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(envelope);
 
-const specFor = (id: string): LandoCommandSpec | undefined =>
+const specFor = (id: string): McpCommandSpec | undefined =>
   allCommandEntries().find((entry) => entry.spec.id === id)?.spec;
 
 const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>

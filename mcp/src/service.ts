@@ -30,6 +30,7 @@ import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch";
 import { makeNestedExecute } from "./execute";
 import { makeStreamFrameSink } from "./framing";
+import { McpCommandExecutor, type McpCommandExecutorShape } from "./port";
 import type { McpCommandEntry } from "./registry";
 import { McpTransport, type McpTransportRequest } from "./transport";
 
@@ -53,7 +54,7 @@ export interface McpRuntimeConfigShape {
   readonly runtimeLayer: Layer.Layer<unknown> | Layer.Layer<never>;
 }
 
-export class McpRuntimeConfig extends Context.Tag("@lando/core/McpRuntimeConfig")<
+export class McpRuntimeConfig extends Context.Tag("@lando/mcp/McpRuntimeConfig")<
   McpRuntimeConfig,
   McpRuntimeConfigShape
 >() {}
@@ -69,12 +70,13 @@ export interface McpServiceShape {
   readonly catalog: (options?: McpCatalogOptions) => Effect.Effect<McpCatalog>;
 }
 
-export class McpService extends Context.Tag("@lando/core/McpService")<McpService, McpServiceShape>() {}
+export class McpService extends Context.Tag("@lando/mcp/McpService")<McpService, McpServiceShape>() {}
 
 const makeService = (
   config: McpRuntimeConfigShape,
   redaction: Context.Tag.Service<typeof RedactionService>,
   events: Option.Option<Context.Tag.Service<typeof EventService>>,
+  executor: McpCommandExecutorShape,
 ): McpServiceShape => {
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
     ? (event) => events.value.publish(event).pipe(Effect.catchAll(() => Effect.void))
@@ -132,7 +134,11 @@ const makeService = (
             effective: effective.ids,
             allowlistSource: options.tooling === true ? `${effective.source}+tooling` : effective.source,
             redactor,
-            execute: makeNestedExecute(runtimeContext, makeStreamFrameSink(notifyFor(incoming), redactor)),
+            execute: makeNestedExecute(
+              runtimeContext,
+              makeStreamFrameSink(notifyFor(incoming), redactor),
+              executor,
+            ),
             notify: notifyFor(incoming),
             ...(publish === undefined ? {} : { publish }),
           });
@@ -244,15 +250,19 @@ const makeService = (
  * `meta:mcp` or a library host requests it. Requires the retained-runtime
  * config and `RedactionService`; `EventService` is optional.
  */
-export const McpServiceLive: Layer.Layer<McpService, never, McpRuntimeConfig | RedactionService> =
-  Layer.suspend(() =>
-    Layer.effect(
-      McpService,
-      Effect.gen(function* () {
-        const config = yield* McpRuntimeConfig;
-        const redaction = yield* RedactionService;
-        const events = yield* Effect.serviceOption(EventService);
-        return makeService(config, redaction, events);
-      }),
-    ),
-  );
+export const McpServiceLive: Layer.Layer<
+  McpService,
+  never,
+  McpRuntimeConfig | McpCommandExecutor | RedactionService
+> = Layer.suspend(() =>
+  Layer.effect(
+    McpService,
+    Effect.gen(function* () {
+      const config = yield* McpRuntimeConfig;
+      const redaction = yield* RedactionService;
+      const events = yield* Effect.serviceOption(EventService);
+      const executor = yield* McpCommandExecutor;
+      return makeService(config, redaction, events, executor);
+    }),
+  ),
+);
