@@ -703,10 +703,15 @@ export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
 const EventStepCondition = Schema.Union(Schema.String, Schema.Boolean);
 
 /**
- * Scalar literal or homogeneous string array for a canonical `command:` flag/arg.
- * Arrays support `multiple` inputs; mixed types, objects, and non-string arrays fail closed.
+ * Scalar literal or homogeneous scalar array for a canonical `command:` flag/arg.
+ * Arrays support `multiple` inputs; mixed types and objects fail closed.
  */
-export const EventCommandInputValue = Schema.Union(ToolingVarLiteral, Schema.Array(Schema.String));
+export const EventCommandInputValue = Schema.Union(
+  ToolingVarLiteral,
+  Schema.Array(Schema.String),
+  Schema.Array(Schema.Number),
+  Schema.Array(Schema.Boolean),
+);
 export type EventCommandInputValue = typeof EventCommandInputValue.Type;
 
 export const EventCommandStep = Schema.Struct({
@@ -809,6 +814,7 @@ const EventDeferredCmdShorthand = Schema.Struct({
   defer: Schema.String,
   for: Schema.optional(Schema.Never),
   service: Schema.optional(Schema.String),
+  dir: Schema.optional(PortablePath),
   env: Schema.optional(ToolingEnvironment),
   user: Schema.optional(Schema.String),
   ignoreError: Schema.optional(Schema.Boolean),
@@ -823,6 +829,7 @@ const EventDeferredCmdStep = Schema.Struct({
   defer: Schema.Literal(true),
   for: Schema.optional(Schema.Never),
   service: Schema.optional(Schema.String),
+  dir: Schema.optional(PortablePath),
   env: Schema.optional(ToolingEnvironment),
   user: Schema.optional(Schema.String),
   ignoreError: Schema.optional(Schema.Boolean),
@@ -848,8 +855,8 @@ const EventDeferredCommandStep = Schema.Struct({
   command: Schema.String,
   defer: Schema.Literal(true),
   for: Schema.optional(Schema.Never),
-  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
-  args: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
+  args: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
   raw: Schema.optional(Schema.Array(Schema.String)),
   ignoreError: Schema.optional(Schema.Boolean),
   if: Schema.optional(EventStepCondition),
@@ -874,6 +881,7 @@ const EventForCmdStep = Schema.Struct({
   defer: Schema.optional(Schema.Never),
   for: EventForSelector,
   service: Schema.optional(Schema.String),
+  dir: Schema.optional(PortablePath),
   env: Schema.optional(ToolingEnvironment),
   user: Schema.optional(Schema.String),
   ignoreError: Schema.optional(Schema.Boolean),
@@ -899,8 +907,8 @@ const EventForCommandStep = Schema.Struct({
   command: Schema.String,
   defer: Schema.optional(Schema.Never),
   for: EventForSelector,
-  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
-  args: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })),
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
+  args: Schema.optional(Schema.Record({ key: Schema.String, value: EventCommandInputValue })),
   raw: Schema.optional(Schema.Array(Schema.String)),
   ignoreError: Schema.optional(Schema.Boolean),
   if: Schema.optional(EventStepCondition),
@@ -914,6 +922,7 @@ const EventForDeferredCmdStep = Schema.Struct({
   defer: Schema.String,
   for: EventForSelector,
   service: Schema.optional(Schema.String),
+  dir: Schema.optional(PortablePath),
   env: Schema.optional(ToolingEnvironment),
   user: Schema.optional(Schema.String),
   ignoreError: Schema.optional(Schema.Boolean),
