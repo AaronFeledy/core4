@@ -1,4 +1,7 @@
+import { Effect } from "effect";
+
 import { type RebuildAppResult, RebuildAppResultSchema, rebuildApp } from "@lando/engine/operations/rebuild";
+import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRebuildAppResult } from "../../commands/rebuild";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 
@@ -14,7 +17,7 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   streaming: StreamFrame,
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
-    return rebuildApp(signal === undefined ? {} : { signal });
+    return Effect.zipRight(refreshAppCache(), rebuildApp(signal === undefined ? {} : { signal }));
   },
   render: (result) => renderRebuildAppResult(result as RebuildAppResult),
 };

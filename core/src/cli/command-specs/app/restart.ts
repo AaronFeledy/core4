@@ -1,4 +1,7 @@
+import { Effect } from "effect";
+
 import { type RestartAppResult, RestartAppResultSchema, restartApp } from "@lando/engine/operations/restart";
+import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRestartAppResult } from "../../commands/restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 
@@ -12,7 +15,7 @@ export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   bootstrap: "app",
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
-    return restartApp(signal === undefined ? {} : { signal });
+    return Effect.zipRight(refreshAppCache(), restartApp(signal === undefined ? {} : { signal }));
   },
   render: (result) => renderRestartAppResult(result as RestartAppResult),
 };
