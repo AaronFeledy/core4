@@ -313,6 +313,7 @@ import {
 } from "./renderer-panel.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
+import { LocalStackServiceConfig, MinIOServiceConfig, RabbitMQServiceConfig } from "./services/index.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -444,6 +445,9 @@ const rawPublicSchemaRegistry = {
   LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
+  LocalStackServiceConfig,
+  MinIOServiceConfig,
+  RabbitMQServiceConfig,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -769,6 +773,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
+  LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
+  MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
+  RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",
