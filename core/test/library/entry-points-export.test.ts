@@ -221,9 +221,10 @@ describe("@lando/core removed package entry points", () => {
     expect(() => Bun.resolveSync("@lando/core/src/cli/spec/command-base.ts", repoRoot)).toThrow();
   });
 
-  test("the native command spec base remains available by source path", async () => {
+  test("the native command spec contract remains available by source path without a class base", async () => {
     const mod = await import("../../src/cli/spec/command-base.ts");
-    expect(mod.LandoCommandBase).toBeDefined();
+    expect(mod.EmptyResultSchema).toBeDefined();
+    expect(Reflect.has(mod, "LandoCommandBase")).toBe(false);
   });
 
   test("@lando/core/cli remains exported and importable", async () => {

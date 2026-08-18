@@ -166,15 +166,7 @@ const textRender = (report: IncludeUpdateReport): string => {
   return lines.join("\n");
 };
 
-/**
- * Render an update report. In `--check` mode, sets `process.exitCode = 1` when
- * drift is detected so CI can gate on it (side-effect render pattern, identical
- * for source and compiled entries of the native dispatcher).
- */
 export const renderIncludesUpdateResult = (
   report: IncludeUpdateReport,
   _format: AppIncludesUpdateFormat = "text",
-): string => {
-  if (report.checkMode && report.drift) process.exitCode = 1;
-  return textRender(report);
-};
+): string => textRender(report);

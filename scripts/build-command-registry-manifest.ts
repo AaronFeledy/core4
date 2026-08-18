@@ -4,6 +4,8 @@ import { dirname, resolve } from "node:path";
 
 import type { BuiltInCommandEntry } from "../core/src/cli/built-in-command-registry.ts";
 import { COMMAND_TOPICS } from "../core/src/cli/command-topics.ts";
+import { universalFormatFlagDefs } from "../core/src/cli/format-flags.ts";
+import { resolveTopLevelAliases } from "../core/src/cli/spec/command-spec.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 type JsonValue =
@@ -46,7 +48,7 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
     toJsonValue({
       id: spec.id,
       summary: spec.summary,
-      description: spec.description,
+      description: spec.summary,
       namespace: spec.namespace,
       deprecated: spec.deprecated,
       mcpAllowed: spec.mcpAllowed,
@@ -65,17 +67,17 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
 };
 
 const projectCommand = (entry: BuiltInCommandEntry): JsonValue => {
-  const command = entry.command;
+  const spec = entry.spec;
   return (
     toJsonValue({
-      aliases: command.aliases,
-      args: command.args,
-      description: command.description,
-      flags: { ...command.baseFlags, ...command.flags },
-      hidden: command.hidden || entry.spec.hidden === true,
+      aliases: resolveTopLevelAliases(spec),
+      args: spec.args,
+      description: spec.description,
+      flags: { ...universalFormatFlagDefs, ...(spec.flags ?? {}) },
+      hidden: spec.hidden === true,
       spec: projectSpec(entry),
-      strict: command.strict,
-      summary: command.summary,
+      strict: spec.strict,
+      summary: spec.summary,
     }) ?? {}
   );
 };

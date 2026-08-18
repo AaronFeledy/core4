@@ -159,6 +159,7 @@ export {
 export { RuntimeCwd } from "@lando/engine/runtime/cwd";
 export { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 export { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+export { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 export type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
 export { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 export type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";

@@ -173,15 +173,7 @@ const textRender = (report: IncludeVerifyReport): string => {
   return lines.join("\n");
 };
 
-/**
- * Render a verify report. Sets `process.exitCode = 1` when the lockfile does not
- * match the resolved tree so CI can gate on it (side-effect render pattern,
- * identical for source and compiled entries of the native dispatcher).
- */
 export const renderIncludesVerifyResult = (
   report: IncludeVerifyReport,
   _format: AppIncludesVerifyFormat = "text",
-): string => {
-  if (!report.ok) process.exitCode = 1;
-  return textRender(report);
-};
+): string => textRender(report);

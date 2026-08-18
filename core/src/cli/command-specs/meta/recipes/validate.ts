@@ -7,7 +7,7 @@ import {
   recipesValidate,
   renderRecipesValidateResult,
 } from "../../../commands/recipes";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,
@@ -16,29 +16,19 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
   bootstrap: "minimal",
-  run: (input) => recipesValidate(recipePathFromInput(input), { cwd: process.cwd() }),
-  render: (result) => renderRecipesValidateResult(result as RecipesValidateResult),
-};
-
-export default class MetaRecipesValidateCommand extends LandoCommandBase {
-  static override description = metaRecipesValidateSpec.summary;
-  static override args = {
+  args: {
     path: Args.string({
       description: "Path to a recipe.yml or a recipe directory.",
       required: true,
     }),
-  };
-  static override flags = {
+  },
+  flags: {
     format: Flags.string({
       description: "Output format.",
       options: ["table", "json"],
       default: "table",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaRecipesValidateSpec;
-  static override bootstrap = metaRecipesValidateSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaRecipesValidateSpec);
-  }
-}
+  },
+  run: (input) => recipesValidate(recipePathFromInput(input), { cwd: process.cwd() }),
+  render: (result) => renderRecipesValidateResult(result as RecipesValidateResult),
+};

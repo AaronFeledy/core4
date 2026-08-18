@@ -7,7 +7,7 @@ import {
   scratchIdFromInput,
   scratchStop,
 } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   resultSchema: ScratchHandleResultSchema,
@@ -15,21 +15,11 @@ export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   summary: "Stop a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:stop",
+  aliases: ["scratch:stop"],
   bootstrap: "scratch",
+  args: {
+    id: Args.string({ description: "Scratch app id.", required: true }),
+  },
   run: (input) => scratchStop(scratchIdFromInput(input)),
   render: (result) => renderScratchStopResult(result as ScratchHandle),
 };
-
-export default class AppsScratchStopCommand extends LandoCommandBase {
-  static override description = appsScratchStopSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchStopSpec)];
-  static override args = {
-    id: Args.string({ description: "Scratch app id.", required: true }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchStopSpec;
-  static override bootstrap = appsScratchStopSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchStopSpec);
-  }
-}

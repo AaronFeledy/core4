@@ -4,17 +4,13 @@ import {
   globalRestart,
   renderGlobalRestartResult,
 } from "../../../commands/meta/global-restart";
-import {
-  LandoCommandBase,
-  type LandoCommandSpec,
-  extractSpecAbortSignal,
-  resolveTopLevelAliases,
-} from "../../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 
 export const metaGlobalRestartSpec: LandoCommandSpec<GlobalRestartResult> = {
   resultSchema: GlobalRestartResultSchema,
   id: "meta:global:restart",
   summary: "Restart the host-level global Lando app (stop + start).",
+  description: "Restart the host-level global Lando app (stop + start).",
   namespace: "meta",
   topLevelAlias: "global:restart",
   bootstrap: "global",
@@ -24,14 +20,3 @@ export const metaGlobalRestartSpec: LandoCommandSpec<GlobalRestartResult> = {
   },
   render: (result) => renderGlobalRestartResult(result as GlobalRestartResult),
 };
-
-export default class MetaGlobalRestartCommand extends LandoCommandBase {
-  static override description = metaGlobalRestartSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalRestartSpec)];
-  static override landoSpec: LandoCommandSpec = metaGlobalRestartSpec;
-  static override bootstrap = metaGlobalRestartSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalRestartSpec);
-  }
-}

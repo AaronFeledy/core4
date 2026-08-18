@@ -8,7 +8,7 @@ import {
   appConfig,
   renderAppConfigResult,
 } from "../../../commands/app-config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const isValueType = (s: unknown): s is ValueType =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
@@ -54,6 +54,30 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "app",
+  strict: false,
+  args: {
+    subcommand: Args.string({
+      description: "Subcommand: view (default), set, unset, edit, validate.",
+      required: false,
+    }),
+    key: Args.string({ description: "Dot-path key for set/unset.", required: false }),
+    value: Args.string({ description: "Value for set.", required: false }),
+  },
+  flags: {
+    format: Flags.string({
+      description: "Output format.",
+      options: ["table", "json", "yaml"],
+      default: "table",
+    }),
+    type: Flags.string({
+      description: "Value type for set.",
+      options: ["string", "number", "boolean", "json", "yaml"],
+      default: "string",
+    }),
+    path: Flags.string({ description: "Dot-path key selector." }),
+    editor: Flags.string({ description: "Editor binary for edit." }),
+    "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
+  },
   run: (input) => appConfig(appConfigOptionsFromInput(input)),
   render: (result, input) => {
     const format = appConfigOptionsFromInput(input).format ?? "table";
@@ -92,38 +116,3 @@ export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>>
     },
   },
 ];
-
-export default class AppConfigCommand extends LandoCommandBase {
-  static override description = appConfigSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appConfigSpec)];
-  static override strict = false;
-  static override args = {
-    subcommand: Args.string({
-      description: "Subcommand: view (default), set, unset, edit, validate.",
-      required: false,
-    }),
-    key: Args.string({ description: "Dot-path key for set/unset.", required: false }),
-    value: Args.string({ description: "Value for set.", required: false }),
-  };
-  static override flags = {
-    format: Flags.string({
-      description: "Output format.",
-      options: ["table", "json", "yaml"],
-      default: "table",
-    }),
-    type: Flags.string({
-      description: "Value type for set.",
-      options: ["string", "number", "boolean", "json", "yaml"],
-      default: "string",
-    }),
-    path: Flags.string({ description: "Dot-path key selector." }),
-    editor: Flags.string({ description: "Editor binary for edit." }),
-    "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = appConfigSpec;
-  static override bootstrap = appConfigSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appConfigSpec);
-  }
-}

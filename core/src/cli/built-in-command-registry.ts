@@ -1,230 +1,255 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { buildBuiltInCommandIndex } from "./built-in-command-index";
-import AppCacheRefreshCommand from "./command-specs/app/cache/refresh";
-import AppConfigCommand from "./command-specs/app/config";
-import AppConfigLintCommand from "./command-specs/app/config/lint";
-import AppConfigTranslateCommand from "./command-specs/app/config/translate";
+import { appCacheRefreshSpec } from "./command-specs/app/cache/refresh";
+import { appConfigSpec } from "./command-specs/app/config";
+import { appConfigLintSpec } from "./command-specs/app/config/lint";
+import { appConfigTranslateSpec } from "./command-specs/app/config/translate";
 import {
-  AppConfigEditCommand,
-  AppConfigSetCommand,
-  AppConfigUnsetCommand,
-  AppConfigValidateCommand,
+  appConfigEditSpec,
+  appConfigSetSpec,
+  appConfigUnsetSpec,
+  appConfigValidateSpec,
 } from "./command-specs/app/config/verbs";
-import DestroyCommand from "./command-specs/app/destroy";
-import ExecCommand from "./command-specs/app/exec";
-import AppIncludesUpdateCommand from "./command-specs/app/includes/update";
-import AppIncludesVerifyCommand from "./command-specs/app/includes/verify";
-import InfoCommand from "./command-specs/app/info";
-import LogsCommand from "./command-specs/app/logs";
-import OpenCommand from "./command-specs/app/open";
-import PullCommand from "./command-specs/app/pull";
-import PushCommand from "./command-specs/app/push";
-import RebuildCommand from "./command-specs/app/rebuild";
-import RemoteAddCommand from "./command-specs/app/remote/add";
-import RemoteEnvListCommand from "./command-specs/app/remote/env/list";
-import RemoteListCommand from "./command-specs/app/remote/list";
-import RemoteRemoveCommand from "./command-specs/app/remote/remove";
-import RemoteSetupCommand from "./command-specs/app/remote/setup";
-import RemoteTestCommand from "./command-specs/app/remote/test";
-import RestartCommand from "./command-specs/app/restart";
-import ShareCommand from "./command-specs/app/share";
-import ShareListCommand from "./command-specs/app/share/list";
-import ShareStopCommand from "./command-specs/app/share/stop";
-import ShellCommand from "./command-specs/app/shell";
-import SshCommand from "./command-specs/app/ssh";
-import StartCommand from "./command-specs/app/start";
-import StopCommand from "./command-specs/app/stop";
-import InitCommand from "./command-specs/apps/init";
-import ListCommand from "./command-specs/apps/list";
-import PoweroffCommand from "./command-specs/apps/poweroff";
-import AppsScratchDestroyCommand from "./command-specs/apps/scratch/destroy";
-import AppsScratchGcCommand from "./command-specs/apps/scratch/gc";
-import AppsScratchInfoCommand from "./command-specs/apps/scratch/info";
-import AppsScratchListCommand from "./command-specs/apps/scratch/list";
-import AppsScratchLogsCommand from "./command-specs/apps/scratch/logs";
-import AppsScratchRunCommand from "./command-specs/apps/scratch/run";
-import AppsScratchStartCommand from "./command-specs/apps/scratch/start";
-import AppsScratchStopCommand from "./command-specs/apps/scratch/stop";
-import BunCommand from "./command-specs/meta/bun";
-import MetaConfigCommand from "./command-specs/meta/config";
-import DoctorCommand from "./command-specs/meta/doctor";
-import EventsFollowCommand from "./command-specs/meta/events/follow";
-import MetaGlobalConfigCommand from "./command-specs/meta/global/config";
+import { destroySpec } from "./command-specs/app/destroy";
+import { execSpec } from "./command-specs/app/exec";
+import { appIncludesUpdateSpec } from "./command-specs/app/includes/update";
+import { appIncludesVerifySpec } from "./command-specs/app/includes/verify";
+import { infoSpec } from "./command-specs/app/info";
+import { logsSpec } from "./command-specs/app/logs";
+import { openSpec } from "./command-specs/app/open";
+import { pullSpec } from "./command-specs/app/pull";
+import { pushSpec } from "./command-specs/app/push";
+import { rebuildSpec } from "./command-specs/app/rebuild";
+import { remoteAddSpec } from "./command-specs/app/remote/add";
+import { remoteEnvListSpec } from "./command-specs/app/remote/env/list";
+import { remoteListSpec } from "./command-specs/app/remote/list";
+import { remoteRemoveSpec } from "./command-specs/app/remote/remove";
+import { remoteSetupSpec } from "./command-specs/app/remote/setup";
+import { remoteTestSpec } from "./command-specs/app/remote/test";
+import { restartSpec } from "./command-specs/app/restart";
+import { shareSpec } from "./command-specs/app/share";
+import { shareListSpec } from "./command-specs/app/share/list";
+import { shareStopSpec } from "./command-specs/app/share/stop";
+import { appShellSpec } from "./command-specs/app/shell";
+import { sshSpec } from "./command-specs/app/ssh";
+import { startSpec } from "./command-specs/app/start";
+import { stopSpec } from "./command-specs/app/stop";
+import { initSpec } from "./command-specs/apps/init";
+import { listSpec } from "./command-specs/apps/list";
+import { poweroffSpec } from "./command-specs/apps/poweroff";
+import { appsScratchDestroySpec } from "./command-specs/apps/scratch/destroy";
+import { appsScratchGcSpec } from "./command-specs/apps/scratch/gc";
+import { appsScratchInfoSpec } from "./command-specs/apps/scratch/info";
+import { appsScratchListSpec } from "./command-specs/apps/scratch/list";
+import { appsScratchLogsSpec } from "./command-specs/apps/scratch/logs";
+import { appsScratchRunSpec } from "./command-specs/apps/scratch/run";
+import { appsScratchStartSpec } from "./command-specs/apps/scratch/start";
+import { appsScratchStopSpec } from "./command-specs/apps/scratch/stop";
+import { metaBunSpec } from "./command-specs/meta/bun";
+import { metaConfigSpec } from "./command-specs/meta/config";
+import { metaDoctorSpec } from "./command-specs/meta/doctor";
+import { metaEventsFollowSpec } from "./command-specs/meta/events/follow";
+import { metaGlobalConfigSpec } from "./command-specs/meta/global/config";
 import {
-  MetaGlobalConfigEditCommand,
-  MetaGlobalConfigSetCommand,
-  MetaGlobalConfigUnsetCommand,
-  MetaGlobalConfigValidateCommand,
+  metaGlobalConfigEditSpec,
+  metaGlobalConfigSetSpec,
+  metaGlobalConfigUnsetSpec,
+  metaGlobalConfigValidateSpec,
 } from "./command-specs/meta/global/config-verbs";
-import MetaGlobalDestroyCommand from "./command-specs/meta/global/destroy";
-import MetaGlobalInfoCommand from "./command-specs/meta/global/info";
-import MetaGlobalInstallCommand from "./command-specs/meta/global/install";
-import MetaGlobalListCommand from "./command-specs/meta/global/list";
-import MetaGlobalLogsCommand from "./command-specs/meta/global/logs";
-import MetaGlobalRebuildCommand from "./command-specs/meta/global/rebuild";
-import MetaGlobalRestartCommand from "./command-specs/meta/global/restart";
-import MetaGlobalStartCommand from "./command-specs/meta/global/start";
-import MetaGlobalStatusCommand from "./command-specs/meta/global/status";
-import MetaGlobalStopCommand from "./command-specs/meta/global/stop";
-import MetaGlobalUninstallCommand from "./command-specs/meta/global/uninstall";
-import MetaMcpCommand, { injectMcpCommandRegistry } from "./command-specs/meta/mcp";
-import PluginAddCommand from "./command-specs/meta/plugin/add";
-import PluginBuildCommand from "./command-specs/meta/plugin/build";
-import PluginLinkCommand from "./command-specs/meta/plugin/link";
-import PluginLoginCommand from "./command-specs/meta/plugin/login";
-import PluginLogoutCommand from "./command-specs/meta/plugin/logout";
-import PluginNewCommand from "./command-specs/meta/plugin/new";
-import PluginPublishCommand from "./command-specs/meta/plugin/publish";
-import PluginRemoveCommand from "./command-specs/meta/plugin/remove";
-import PluginTestCommand from "./command-specs/meta/plugin/test";
-import PluginTrustCommand from "./command-specs/meta/plugin/trust";
-import PluginTrustAuthoringRootCommand from "./command-specs/meta/plugin/trust-authoring-root";
-import PluginUnlinkCommand from "./command-specs/meta/plugin/unlink";
-import RecipesDescribeCommand from "./command-specs/meta/recipes/describe";
-import RecipesListCommand from "./command-specs/meta/recipes/list";
-import RecipesValidateCommand from "./command-specs/meta/recipes/validate";
-import SetupCommand from "./command-specs/meta/setup";
-import ShellenvCommand from "./command-specs/meta/shellenv";
-import UninstallCommand from "./command-specs/meta/uninstall";
-import UpdateCommand from "./command-specs/meta/update";
-import VersionCommand from "./command-specs/meta/version";
-import XCommand from "./command-specs/meta/x";
-import { mcpRegistryFromBuiltIns } from "./commands/meta/mcp";
+import { metaGlobalDestroySpec } from "./command-specs/meta/global/destroy";
+import { metaGlobalInfoSpec } from "./command-specs/meta/global/info";
+import { metaGlobalInstallSpec } from "./command-specs/meta/global/install";
+import { metaGlobalListSpec } from "./command-specs/meta/global/list";
+import { globalLogsSpec } from "./command-specs/meta/global/logs";
+import { metaGlobalRebuildSpec } from "./command-specs/meta/global/rebuild";
+import { metaGlobalRestartSpec } from "./command-specs/meta/global/restart";
+import { metaGlobalStartSpec } from "./command-specs/meta/global/start";
+import { metaGlobalStatusSpec } from "./command-specs/meta/global/status";
+import { metaGlobalStopSpec } from "./command-specs/meta/global/stop";
+import { metaGlobalUninstallSpec } from "./command-specs/meta/global/uninstall";
+import { metaMcpSpec } from "./command-specs/meta/mcp";
+import { pluginAddSpec } from "./command-specs/meta/plugin/add";
+import { pluginBuildSpec } from "./command-specs/meta/plugin/build";
+import { pluginLinkSpec } from "./command-specs/meta/plugin/link";
+import { pluginLoginSpec } from "./command-specs/meta/plugin/login";
+import { pluginLogoutSpec } from "./command-specs/meta/plugin/logout";
+import { pluginNewSpec } from "./command-specs/meta/plugin/new";
+import { pluginPublishSpec } from "./command-specs/meta/plugin/publish";
+import { pluginRemoveSpec } from "./command-specs/meta/plugin/remove";
+import { pluginTestSpec } from "./command-specs/meta/plugin/test";
+import { pluginTrustSpec } from "./command-specs/meta/plugin/trust";
+import { pluginTrustAuthoringRootSpec } from "./command-specs/meta/plugin/trust-authoring-root";
+import { pluginUnlinkSpec } from "./command-specs/meta/plugin/unlink";
+import { metaRecipesDescribeSpec } from "./command-specs/meta/recipes/describe";
+import { metaRecipesListSpec } from "./command-specs/meta/recipes/list";
+import { metaRecipesValidateSpec } from "./command-specs/meta/recipes/validate";
+import { setupSpec } from "./command-specs/meta/setup";
+import { shellenvSpec } from "./command-specs/meta/shellenv";
+import { metaUninstallSpec } from "./command-specs/meta/uninstall";
+import { updateSpec } from "./command-specs/meta/update";
+import { versionSpec } from "./command-specs/meta/version";
+import { metaXSpec } from "./command-specs/meta/x";
 import { type DeferredCommandPlan, notImplementedErrorForSpec } from "./deferred-commands";
-import { injectEventCommandRegistry } from "./event-command-executor";
 import type { LandoCommandSpec } from "./spec/command-base";
-import type { CommandClass } from "./spec/metadata";
 
 export { buildBuiltInCommandIndex } from "./built-in-command-index";
 
-export type BuiltInCommandClass = CommandClass & {
-  readonly landoSpec: LandoCommandSpec;
-  readonly bootstrap: BootstrapLevel;
-};
-
 export type BuiltInCommandStatus =
   | { readonly kind: "implemented" }
-  | { readonly kind: "deferred"; readonly plan: DeferredCommandPlan };
+  | { readonly kind: "deferred"; readonly plan: DeferredCommandPlan }
+  | {
+      readonly kind: "embedding-exempt";
+      readonly reason: string;
+      readonly remediation: string;
+    };
 
 export type BuiltInCommandEntry = {
-  readonly command: BuiltInCommandClass;
   readonly spec: LandoCommandSpec;
-  readonly inputSpec?: LandoCommandSpec;
   readonly status: BuiltInCommandStatus;
 };
 
-const registered = (command: BuiltInCommandClass): BuiltInCommandEntry => {
-  const spec = command.landoSpec;
-  const inputSpec = {
-    ...spec,
-    flags: { ...command.baseFlags, ...command.flags },
-    args: command.args,
-    strict: command.strict,
-  };
-  const plan = spec.deferred;
-  return {
-    command,
+type EmbeddingExemption = Extract<BuiltInCommandStatus, { readonly kind: "embedding-exempt" }>;
+type BuiltInCommandRegistration =
+  | LandoCommandSpec
+  | { readonly spec: LandoCommandSpec; readonly exemption: EmbeddingExemption };
+
+const embeddingExempt = (
+  spec: LandoCommandSpec,
+  reason: string,
+  remediation: string,
+): BuiltInCommandRegistration => ({
+  spec,
+  exemption: { kind: "embedding-exempt", reason, remediation },
+});
+
+const registered = (registration: BuiltInCommandRegistration): BuiltInCommandEntry => {
+  const spec = "exemption" in registration ? registration.spec : registration;
+  const status: BuiltInCommandStatus =
+    "exemption" in registration
+      ? registration.exemption
+      : spec.deferred === undefined
+        ? { kind: "implemented" }
+        : { kind: "deferred", plan: spec.deferred };
+  return Object.freeze({
     spec,
-    inputSpec,
-    status: plan === undefined ? { kind: "implemented" } : { kind: "deferred", plan },
-  };
+    status: Object.freeze(status),
+  });
 };
 
-export const builtInCommandRegistry = {
-  "app:cache:refresh": registered(AppCacheRefreshCommand),
-  "app:config": registered(AppConfigCommand),
-  "app:config:lint": registered(AppConfigLintCommand),
-  "app:config:translate": registered(AppConfigTranslateCommand),
-  "app:config:set": registered(AppConfigSetCommand),
-  "app:config:unset": registered(AppConfigUnsetCommand),
-  "app:config:edit": registered(AppConfigEditCommand),
-  "app:config:validate": registered(AppConfigValidateCommand),
-  "app:destroy": registered(DestroyCommand),
-  "app:exec": registered(ExecCommand),
-  "app:includes:update": registered(AppIncludesUpdateCommand),
-  "app:includes:verify": registered(AppIncludesVerifyCommand),
-  "app:info": registered(InfoCommand),
-  "app:logs": registered(LogsCommand),
-  "app:open": registered(OpenCommand),
-  "app:pull": registered(PullCommand),
-  "app:push": registered(PushCommand),
-  "app:remote:add": registered(RemoteAddCommand),
-  "app:remote:env:list": registered(RemoteEnvListCommand),
-  "app:remote:list": registered(RemoteListCommand),
-  "app:remote:remove": registered(RemoteRemoveCommand),
-  "app:remote:setup": registered(RemoteSetupCommand),
-  "app:remote:test": registered(RemoteTestCommand),
-  "app:share": registered(ShareCommand),
-  "app:share:list": registered(ShareListCommand),
-  "app:share:stop": registered(ShareStopCommand),
-  "app:rebuild": registered(RebuildCommand),
-  "app:restart": registered(RestartCommand),
-  "app:shell": registered(ShellCommand),
-  "app:ssh": registered(SshCommand),
-  "app:start": registered(StartCommand),
-  "app:stop": registered(StopCommand),
-  "apps:init": registered(InitCommand),
-  "apps:list": registered(ListCommand),
-  "apps:poweroff": registered(PoweroffCommand),
-  "apps:scratch:destroy": registered(AppsScratchDestroyCommand),
-  "apps:scratch:gc": registered(AppsScratchGcCommand),
-  "apps:scratch:info": registered(AppsScratchInfoCommand),
-  "apps:scratch:list": registered(AppsScratchListCommand),
-  "apps:scratch:logs": registered(AppsScratchLogsCommand),
-  "apps:scratch:run": registered(AppsScratchRunCommand),
-  "apps:scratch:start": registered(AppsScratchStartCommand),
-  "apps:scratch:stop": registered(AppsScratchStopCommand),
-  "meta:bun": registered(BunCommand),
-  "meta:config": registered(MetaConfigCommand),
-  "meta:doctor": registered(DoctorCommand),
-  "meta:events:follow": registered(EventsFollowCommand),
-  "meta:global:config": registered(MetaGlobalConfigCommand),
-  "meta:global:config:set": registered(MetaGlobalConfigSetCommand),
-  "meta:global:config:unset": registered(MetaGlobalConfigUnsetCommand),
-  "meta:global:config:edit": registered(MetaGlobalConfigEditCommand),
-  "meta:global:config:validate": registered(MetaGlobalConfigValidateCommand),
-  "meta:global:destroy": registered(MetaGlobalDestroyCommand),
-  "meta:global:info": registered(MetaGlobalInfoCommand),
-  "meta:global:install": registered(MetaGlobalInstallCommand),
-  "meta:global:list": registered(MetaGlobalListCommand),
-  "meta:global:logs": registered(MetaGlobalLogsCommand),
-  "meta:global:rebuild": registered(MetaGlobalRebuildCommand),
-  "meta:global:restart": registered(MetaGlobalRestartCommand),
-  "meta:global:start": registered(MetaGlobalStartCommand),
-  "meta:global:status": registered(MetaGlobalStatusCommand),
-  "meta:global:stop": registered(MetaGlobalStopCommand),
-  "meta:global:uninstall": registered(MetaGlobalUninstallCommand),
-  "meta:mcp": registered(MetaMcpCommand),
-  "meta:plugin:add": registered(PluginAddCommand),
-  "meta:plugin:build": registered(PluginBuildCommand),
-  "meta:plugin:link": registered(PluginLinkCommand),
-  "meta:plugin:login": registered(PluginLoginCommand),
-  "meta:plugin:logout": registered(PluginLogoutCommand),
-  "meta:plugin:new": registered(PluginNewCommand),
-  "meta:plugin:publish": registered(PluginPublishCommand),
-  "meta:plugin:remove": registered(PluginRemoveCommand),
-  "meta:plugin:test": registered(PluginTestCommand),
-  "meta:plugin:trust": registered(PluginTrustCommand),
-  "meta:plugin:trust-authoring-root": registered(PluginTrustAuthoringRootCommand),
-  "meta:plugin:unlink": registered(PluginUnlinkCommand),
-  "meta:recipes:describe": registered(RecipesDescribeCommand),
-  "meta:recipes:list": registered(RecipesListCommand),
-  "meta:recipes:validate": registered(RecipesValidateCommand),
-  "meta:setup": registered(SetupCommand),
-  "meta:shellenv": registered(ShellenvCommand),
-  "meta:uninstall": registered(UninstallCommand),
-  "meta:update": registered(UpdateCommand),
-  "meta:version": registered(VersionCommand),
-  "meta:x": registered(XCommand),
-} satisfies Readonly<Record<string, BuiltInCommandEntry>>;
+export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>> = Object.freeze(
+  Object.fromEntries(
+    [
+      appCacheRefreshSpec,
+      appConfigSpec,
+      appConfigLintSpec,
+      appConfigTranslateSpec,
+      appConfigSetSpec,
+      appConfigUnsetSpec,
+      appConfigEditSpec,
+      appConfigValidateSpec,
+      destroySpec,
+      execSpec,
+      appIncludesUpdateSpec,
+      appIncludesVerifySpec,
+      infoSpec,
+      logsSpec,
+      openSpec,
+      pullSpec,
+      pushSpec,
+      remoteAddSpec,
+      remoteEnvListSpec,
+      remoteListSpec,
+      remoteRemoveSpec,
+      remoteSetupSpec,
+      remoteTestSpec,
+      shareSpec,
+      shareListSpec,
+      shareStopSpec,
+      rebuildSpec,
+      restartSpec,
+      appShellSpec,
+      sshSpec,
+      startSpec,
+      stopSpec,
+      embeddingExempt(
+        initSpec,
+        "App initialization owns host filesystem creation and interactive recipe acquisition outside an existing runtime.",
+        "Run `lando init` through the native CLI.",
+      ),
+      listSpec,
+      poweroffSpec,
+      appsScratchDestroySpec,
+      appsScratchGcSpec,
+      appsScratchInfoSpec,
+      appsScratchListSpec,
+      appsScratchLogsSpec,
+      appsScratchRunSpec,
+      appsScratchStartSpec,
+      appsScratchStopSpec,
+      metaBunSpec,
+      metaConfigSpec,
+      metaDoctorSpec,
+      metaEventsFollowSpec,
+      metaGlobalConfigSpec,
+      metaGlobalConfigSetSpec,
+      metaGlobalConfigUnsetSpec,
+      metaGlobalConfigEditSpec,
+      metaGlobalConfigValidateSpec,
+      metaGlobalDestroySpec,
+      metaGlobalInfoSpec,
+      metaGlobalInstallSpec,
+      metaGlobalListSpec,
+      globalLogsSpec,
+      metaGlobalRebuildSpec,
+      metaGlobalRestartSpec,
+      metaGlobalStartSpec,
+      metaGlobalStatusSpec,
+      metaGlobalStopSpec,
+      metaGlobalUninstallSpec,
+      metaMcpSpec,
+      pluginAddSpec,
+      pluginBuildSpec,
+      pluginLinkSpec,
+      pluginLoginSpec,
+      pluginLogoutSpec,
+      pluginNewSpec,
+      pluginPublishSpec,
+      pluginRemoveSpec,
+      pluginTestSpec,
+      pluginTrustSpec,
+      pluginTrustAuthoringRootSpec,
+      pluginUnlinkSpec,
+      metaRecipesDescribeSpec,
+      metaRecipesListSpec,
+      metaRecipesValidateSpec,
+      embeddingExempt(
+        setupSpec,
+        "Host setup owns process-level installation and privilege boundaries.",
+        "Run `lando setup` through the native CLI.",
+      ),
+      embeddingExempt(
+        shellenvSpec,
+        "Shell environment emission depends on the invoking shell transport.",
+        "Run `lando shellenv` through the native CLI and evaluate its output in the target shell.",
+      ),
+      embeddingExempt(
+        metaUninstallSpec,
+        "Host uninstall owns process-level removal and privilege boundaries.",
+        "Run `lando uninstall` through the native CLI.",
+      ),
+      updateSpec,
+      versionSpec,
+      metaXSpec,
+    ]
+      .map(registered)
+      .map((entry) => [entry.spec.id, entry]),
+  ),
+);
 
-const builtInCommandIndex = buildBuiltInCommandIndex(Object.entries(builtInCommandRegistry));
+const builtInCommandIndex = buildBuiltInCommandIndex(Object.entries(builtInCommandCatalog));
 
 export const builtInCommandEntries: ReadonlyArray<BuiltInCommandEntry> = builtInCommandIndex.entries;
-
-injectEventCommandRegistry(builtInCommandEntries);
 
 export const deferredBuiltInCommandIds: ReadonlyArray<string> = builtInCommandEntries
   .filter((entry) => entry.status.kind === "deferred")
@@ -251,4 +276,11 @@ export const notImplementedErrorForCommand = (commandId: string): NotImplemented
     : notImplementedErrorForSpec(entry.spec);
 };
 
-injectMcpCommandRegistry(mcpRegistryFromBuiltIns(builtInCommandEntries));
+export const embeddingExemptErrorForCommand = (entry: BuiltInCommandEntry): NotImplementedError => {
+  if (entry.status.kind !== "embedding-exempt") return notImplementedErrorForCommand(entry.spec.id);
+  return new NotImplementedError({
+    message: `Command ${entry.spec.id} cannot run through an embedded command event. ${entry.status.reason}`,
+    commandId: entry.spec.id,
+    remediation: entry.status.remediation,
+  });
+};

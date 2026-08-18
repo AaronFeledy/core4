@@ -9,18 +9,14 @@ import type { EventCommandExecutorInput } from "@lando/engine/services/event-com
 import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
-import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { makeStreamFrameSinkLive } from "@lando/renderer/output";
+import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
+import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-lifecycle";
 import { notImplementedErrorForSpec } from "./deferred-commands";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
 import { DEFAULT_RENDERER_MODE, isRendererMode } from "./renderer-selection";
-
-let eventCommandEntries: ReadonlyArray<BuiltInCommandEntry> = [];
-
-export const injectEventCommandRegistry = (entries: ReadonlyArray<BuiltInCommandEntry>): void => {
-  eventCommandEntries = entries;
-};
 
 const silentRenderer = {
   id: "silent",
@@ -81,18 +77,21 @@ const withRedaction = (
 
 export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
-  fixedEntries?: ReadonlyArray<BuiltInCommandEntry>,
+  fixedEntries: ReadonlyArray<BuiltInCommandEntry> = [],
 ): Context.Tag.Service<typeof EventCommandExecutor> => ({
   validate(resolved) {
     return Effect.gen(function* () {
       const target = yield* resolveEventCommandTarget(
         resolved.command,
         runtimeContext,
-        fixedEntries ?? eventCommandEntries,
+        fixedEntries,
         resolved.plan,
       );
       if (target.kind === "built-in" && target.builtIn.status.kind === "deferred") {
         return yield* Effect.fail(notImplementedErrorForSpec(target.builtIn.spec));
+      }
+      if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
+        return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
       }
       yield* validateEventCommandInput(target.spec, {
         flags: resolved.flags,
@@ -103,7 +102,7 @@ export const makeEventCommandExecutor = (
   },
   run(resolved: EventCommandExecutorInput) {
     return Effect.gen(function* () {
-      const entries = fixedEntries ?? eventCommandEntries;
+      const entries = fixedEntries;
       const target = yield* resolveEventCommandTarget(
         resolved.command,
         runtimeContext,
@@ -112,6 +111,9 @@ export const makeEventCommandExecutor = (
       );
       if (target.kind === "built-in" && target.builtIn.status.kind === "deferred") {
         return yield* Effect.fail(notImplementedErrorForSpec(target.builtIn.spec));
+      }
+      if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
+        return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
       }
       const input = yield* validateEventCommandInput(target.spec, {
         flags: resolved.flags,
@@ -130,14 +132,29 @@ export const makeEventCommandExecutor = (
       const redactionTokens = [...(resolved.redactionTokens ?? []), ...toolingEnvTokens];
       const inputRedactor = yield* redactorFor(redactionTokens);
       const lifecycleRedaction = yield* redactionServiceFor(redactionTokens);
+      const baseRenderer = yield* Renderer;
       const renderer =
-        resolved.silent === true
-          ? silentRenderer
-          : withRedaction(yield* Renderer, inputRedactor.redactString);
+        resolved.silent === true ? silentRenderer : withRedaction(baseRenderer, inputRedactor.redactString);
 
       const operation = target.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
       const inCwd = target.spec.namespace === "app" ? withResolvedCwd(resolved.cwd, operation) : operation;
-      const command = inCwd.pipe(Effect.provideService(Renderer, renderer));
+      const streamingMode =
+        target.kind !== "built-in"
+          ? undefined
+          : typeof target.spec.streamingMode === "function"
+            ? target.spec.streamingMode(input)
+            : target.spec.streamingMode;
+      const streamFrameSinkLayer = makeStreamFrameSinkLive("text").pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(Renderer, resolved.silent === true ? silentRenderer : baseRenderer),
+            Layer.succeed(RedactionService, lifecycleRedaction),
+          ),
+        ),
+      );
+      const streamingCommand =
+        streamingMode === "live" ? inCwd.pipe(Effect.provide(streamFrameSinkLayer)) : inCwd;
+      const command = streamingCommand.pipe(Effect.provideService(Renderer, renderer));
       const redactedCommand = withShellRedactionTokens(redactionTokens, command);
       const invocation = yield* makeNestedCommandInvocation(target.spec.id, {
         argv: input.argv,
@@ -202,5 +219,9 @@ export const makeEventCommandExecutor = (
 
 export const EventCommandExecutorLive = Layer.effect(
   EventCommandExecutor,
-  Effect.map(Effect.context<unknown>(), makeEventCommandExecutor),
+  Effect.gen(function* () {
+    const context = yield* Effect.context<unknown>();
+    const catalog = yield* BuiltInCommandCatalog;
+    return makeEventCommandExecutor(context, catalog.entries);
+  }),
 );

@@ -6,12 +6,7 @@ import { NotImplementedError } from "@lando/sdk/errors";
 import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { renderExecAppResult } from "../../commands/exec";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
@@ -23,6 +18,23 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  strict: false,
+  flags: {
+    service: Flags.string({ char: "s", description: "Service to open a shell in." }),
+    user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
+    subsystem: Flags.string({
+      description: "(Beta) SSH subsystem to invoke; rejected in Alpha.",
+    }),
+    sidecar: Flags.boolean({
+      description: "(Beta) Open the shell in a per-app SSH sidecar; rejected in Alpha.",
+    }),
+  },
+  args: {
+    command: Args.string({
+      name: "command",
+      description: "Optional command to run instead of the default shell.",
+    }),
+  },
   run: (input) => {
     const flags = extractSpecFlags(input);
     const parsedArgv = extractSpecParsedArgv(input);
@@ -49,31 +61,3 @@ const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =
     remediation:
       "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
   });
-
-export default class SshCommand extends LandoCommandBase {
-  static override description = sshSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(sshSpec)];
-  static override strict = false;
-  static override flags = {
-    service: Flags.string({ char: "s", description: "Service to open a shell in." }),
-    user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
-    subsystem: Flags.string({
-      description: "(Beta) SSH subsystem to invoke; rejected in Alpha.",
-    }),
-    sidecar: Flags.boolean({
-      description: "(Beta) Open the shell in a per-app SSH sidecar; rejected in Alpha.",
-    }),
-  };
-  static override args = {
-    command: Args.string({
-      name: "command",
-      description: "Optional command to run instead of the default shell.",
-    }),
-  };
-  static override landoSpec: LandoCommandSpec = sshSpec;
-  static override bootstrap = sshSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(sshSpec);
-  }
-}

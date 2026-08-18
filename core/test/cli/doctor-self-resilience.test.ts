@@ -29,8 +29,11 @@ import {
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { RuntimeLayerFactory } from "../../src/testing/engine-layers.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
+const runtimeLayerFactoryLive = Layer.succeed(RuntimeLayerFactory, { make: makeLandoRuntime });
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);
@@ -44,7 +47,9 @@ describe("doctor safe mode", () => {
     controller.abort();
 
     // When
-    const exit = await Effect.runPromiseExit(resilientDoctorReport({ signal: controller.signal }));
+    const exit = await Effect.runPromiseExit(
+      resilientDoctorReport({ signal: controller.signal }).pipe(Effect.provide(runtimeLayerFactoryLive)),
+    );
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
@@ -65,7 +70,9 @@ describe("doctor safe mode", () => {
       process.env.XDG_CONFIG_HOME = join(home, ".config");
 
       // When
-      const report = await Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV }));
+      const report = await Effect.runPromise(
+        resilientDoctorReport({ env: SHORT_BUDGET_ENV }).pipe(Effect.provide(runtimeLayerFactoryLive)),
+      );
 
       // Then the provider section degrades but the report is intact
       const bootstrapSelf = (report.self?.checks ?? []).find(

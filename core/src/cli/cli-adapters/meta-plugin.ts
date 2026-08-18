@@ -9,7 +9,7 @@ import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { renderMetaVersion } from "@lando/engine/version";
 import { makeLandoRuntime } from "../../runtime/layer";
-import { builtInCommandEntries } from "../built-in-command-registry";
+import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import {
   globalConfigFormatFromInput,
   globalConfigOptionsFromInput,
@@ -39,7 +39,7 @@ import { globalStart, renderGlobalStartResult } from "../commands/meta/global-st
 import { globalStatus, renderGlobalStatusResult } from "../commands/meta/global-status";
 import { globalStop, renderGlobalStopResult } from "../commands/meta/global-stop";
 import { globalUninstall, renderGlobalUninstallResult } from "../commands/meta/global-uninstall";
-import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromBuiltIns } from "../commands/meta/mcp";
+import { dispatchMcpCommand, mcpFlagsFromParsed } from "../commands/meta/mcp";
 import { pluginAdd, renderPluginAddResult } from "../commands/plugin-add";
 import { pluginBuild, renderPluginBuildResult } from "../commands/plugin-build";
 import { pluginLink, renderPluginLinkResult } from "../commands/plugin-link";
@@ -213,18 +213,16 @@ export const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => 
 export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:mcp", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
-  const registry = mcpRegistryFromBuiltIns(builtInCommandEntries);
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
     "meta:mcp",
     "plugins",
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
-  ) as Layer.Layer<ConfigService | RedactionService, LandoRuntimeBootstrapError>;
+  ) as Layer.Layer<ConfigService | RedactionService | BuiltInCommandCatalog, LandoRuntimeBootstrapError>;
   const retainedRuntime = makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
-    registry,
     flags,
     commandRuntime,
     retainedRuntime,

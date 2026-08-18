@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,21 +24,19 @@ import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
+import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
+import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
+import { defaultBunSelfSpawner } from "../../src/cli/commands/bun-self-runner.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
-import {
-  type ArgDefinitions,
-  Args,
-  Command,
-  type FlagDefinitions,
-  Flags,
-} from "../../src/cli/spec/metadata.ts";
+import { Args, Flags } from "../../src/cli/spec/metadata.ts";
 import {
   EventCommandExecutor,
   PluginContributionGraph,
   RuntimeCwd,
+  StreamFrameSink,
   attachEffectiveEvents,
   attachEffectiveTooling,
   makeShellRunnerService,
@@ -109,33 +107,15 @@ const makeHarness = (): Harness => {
 const entryFor = (
   spec: LandoCommandSpec,
   metadata: {
-    readonly flags?: FlagDefinitions;
-    readonly args?: ArgDefinitions;
+    readonly flags?: NonNullable<LandoCommandSpec["flags"]>;
+    readonly args?: NonNullable<LandoCommandSpec["args"]>;
   } = {},
 ): BuiltInCommandEntry => {
-  class TestCommand extends Command {
-    static override flags = metadata.flags ?? {};
-    static override args = metadata.args ?? {};
-    static readonly landoSpec = spec;
-    static readonly bootstrap = "none";
-
-    override run(): Promise<void> {
-      return Promise.resolve();
-    }
-  }
   return {
-    command: TestCommand,
     spec: {
       ...spec,
-      flags: TestCommand.flags,
-      args: TestCommand.args,
-      strict: spec.strict ?? TestCommand.strict,
-    },
-    inputSpec: {
-      ...spec,
-      flags: TestCommand.flags,
-      args: TestCommand.args,
-      strict: spec.strict ?? TestCommand.strict,
+      flags: metadata.flags ?? {},
+      args: metadata.args ?? {},
     },
     status: { kind: "implemented" },
   };
@@ -374,6 +354,108 @@ describe("EventCommandExecutorLive", () => {
     });
   });
 
+  test("streams app:logs --follow output before propagating interruption", async () => {
+    // Given
+    const harness = makeHarness();
+    const spec = {
+      ...testSpec(() =>
+        StreamFrameSink.pipe(
+          Effect.flatMap((sink) => sink.emit({ _tag: "stdout", service: "app", chunk: "before interrupt" })),
+          Effect.zipRight(Effect.interrupt),
+        ),
+      ),
+      id: "app:logs",
+      namespace: "app" as const,
+      streamingMode: (input: unknown) =>
+        typeof input === "object" &&
+        input !== null &&
+        "flags" in input &&
+        typeof input.flags === "object" &&
+        input.flags !== null &&
+        "follow" in input.flags &&
+        input.flags.follow === true
+          ? "live"
+          : undefined,
+    } satisfies LandoCommandSpec;
+    const executor = executorFor(entryFor(spec, { flags: { follow: { type: "boolean" } } }), harness);
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      executor.run({
+        command: "app:logs",
+        flags: { follow: true },
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then
+    expect(harness.presentation).toContain("stdout:app stdout: before interrupt\n");
+    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+  });
+
+  test("returns meta:bun nonzero exit without mutating the embedding host exit code", async () => {
+    // Given
+    const harness = makeHarness();
+    const spawn = spyOn(defaultBunSelfSpawner, "spawn").mockResolvedValue({ exitCode: 7 });
+    const priorExitCode = process.exitCode;
+    process.exitCode = 91;
+
+    try {
+      // When
+      const result = await Effect.runPromise(
+        executorFor(entryFor(metaBunSpec), harness).run({
+          command: "meta:bun",
+          flags: {},
+          args: {},
+          argv: ["--version"],
+          cwd: process.cwd(),
+          silent: true,
+        }),
+      );
+
+      // Then
+      expect(result.exitCode).toBe(7);
+      expect(process.exitCode).toBe(91);
+    } finally {
+      spawn.mockRestore();
+      process.exitCode = priorExitCode;
+    }
+  });
+
+  test("runs meta:x from structured args and returns nonzero without mutating host exit code", async () => {
+    // Given
+    const harness = makeHarness();
+    const spawn = spyOn(defaultBunSelfSpawner, "spawn").mockResolvedValue({ exitCode: 9 });
+    const priorExitCode = process.exitCode;
+    process.exitCode = 92;
+
+    try {
+      // When
+      const result = await Effect.runPromise(
+        executorFor(entryFor(metaXSpec, { args: metaXSpec.args ?? {} }), harness).run({
+          command: "meta:x",
+          flags: {},
+          args: { spec: "example-package" },
+          argv: ["--example-flag"],
+          cwd: process.cwd(),
+          silent: true,
+        }),
+      );
+
+      // Then
+      expect(spawn).toHaveBeenCalledWith(
+        expect.objectContaining({ cmd: [process.execPath, "x", "example-package", "--example-flag"] }),
+      );
+      expect(result.exitCode).toBe(9);
+      expect(process.exitCode).toBe(92);
+    } finally {
+      spawn.mockRestore();
+      process.exitCode = priorExitCode;
+    }
+  });
+
   test("provides the resolved cwd through RuntimeCwd without changing process cwd", async () => {
     // Given
     const harness = makeHarness();
@@ -448,7 +530,7 @@ describe("EventCommandExecutorLive", () => {
     const harness = makeHarness();
     const { builtInCommandEntries } = await import("../../src/cli/built-in-command-registry.ts");
     expect(builtInCommandEntries.length).toBeGreaterThan(0);
-    const executor = makeEventCommandExecutor(harness.context);
+    const executor = makeEventCommandExecutor(harness.context, builtInCommandEntries);
 
     // When
     const result = await Effect.runPromise(
@@ -1010,6 +1092,44 @@ describe("EventCommandExecutorLive", () => {
     // Then
     expect(validationError).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
     expect(runError).toMatchObject({ _tag: "NotImplementedError", commandId: spec.id });
+  });
+
+  test("rejects embedding-exempt canonical commands with actionable structured remediation", async () => {
+    // Given
+    const harness = makeHarness();
+    const spec = testSpec(() => Effect.die("embedding-exempt command must not run"));
+    const entry = {
+      ...entryFor(spec),
+      status: {
+        kind: "embedding-exempt",
+        reason: "This command requires native process ownership.",
+        remediation: "Run it through the native Lando CLI.",
+      },
+    } as const;
+    const executor = makeEventCommandExecutor(harness.context, [entry]);
+    const input = {
+      command: spec.id,
+      flags: {},
+      args: {},
+      argv: [],
+      cwd: process.cwd(),
+    };
+
+    // When
+    const validationError = await Effect.runPromise(Effect.flip(executor.validate?.(input) ?? Effect.void));
+    const runError = await Effect.runPromise(Effect.flip(executor.run(input)));
+
+    // Then
+    expect(validationError).toMatchObject({
+      _tag: "NotImplementedError",
+      commandId: spec.id,
+      remediation: "Run it through the native Lando CLI.",
+    });
+    expect(runError).toMatchObject({
+      _tag: "NotImplementedError",
+      commandId: spec.id,
+      remediation: "Run it through the native Lando CLI.",
+    });
   });
 
   test("keeps canonical arguments structured and exposes raw argv as parsedArgv", async () => {

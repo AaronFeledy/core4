@@ -1,19 +1,19 @@
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry";
+import { universalFormatFlagDefs } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
-import type { LandoCommandSpec } from "./spec/command-base";
-import type { CommandClass } from "./spec/metadata";
+import { type LandoCommandSpec, resolveTopLevelAliases } from "./spec/command-base";
 
-export type CompiledCommand = CommandClass;
+export type CompiledCommand = LandoCommandSpec;
 
 export const commandEntries: ReadonlyArray<readonly [string, CompiledCommand]> = builtInCommandEntries.map(
-  (entry) => [entry.spec.id, entry.command],
+  (entry) => [entry.spec.id, entry.spec],
 );
 
 export const commandRegistryManifest = COMMAND_REGISTRY_MANIFEST;
 
 export const commandName = (id: string, command: CompiledCommand): string => {
-  const aliases = command.aliases;
-  if (!aliases || aliases.length === 0) return id;
+  const aliases = resolveTopLevelAliases(command);
+  if (aliases.length === 0) return id;
   const nonFlagAlias = aliases.find((alias) => !alias.startsWith("-"));
   if (nonFlagAlias !== undefined) return nonFlagAlias;
   return aliases[0] ?? id;
@@ -21,7 +21,7 @@ export const commandName = (id: string, command: CompiledCommand): string => {
 
 export const findCommand = (name: string): [string, CompiledCommand] | undefined => {
   const entry = resolveBuiltInCommand(name);
-  return entry === undefined ? undefined : [entry.spec.id, entry.command];
+  return entry === undefined ? undefined : [entry.spec.id, entry.spec];
 };
 
 export type OclifFlagDefinition = {
@@ -39,25 +39,21 @@ export type OclifArgDefinition = {
 };
 
 export const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
-  builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.command;
+  builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.spec;
 
 export const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
-  (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;
+  commandSpecForId(commandId);
 
 export const flagDefinitionsForCommand = (
   command: CompiledCommand,
-): Readonly<Record<string, OclifFlagDefinition>> => {
-  const definitions = command as {
-    readonly baseFlags?: Readonly<Record<string, OclifFlagDefinition>>;
-    readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
-  };
-  return { ...(definitions.baseFlags ?? {}), ...(definitions.flags ?? {}) };
-};
+): Readonly<Record<string, OclifFlagDefinition>> => ({
+  ...universalFormatFlagDefs,
+  ...(command.flags ?? {}),
+});
 
 export const argDefinitionsForCommand = (
   command: CompiledCommand,
-): Readonly<Record<string, OclifArgDefinition>> =>
-  (command as { args?: Readonly<Record<string, OclifArgDefinition>> }).args ?? {};
+): Readonly<Record<string, OclifArgDefinition>> => command.args ?? {};
 
 export const flagNameByToken = (
   flags: Readonly<Record<string, OclifFlagDefinition>>,

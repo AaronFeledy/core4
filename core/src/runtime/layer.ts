@@ -52,6 +52,10 @@ import {
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import type {
+  RuntimeLayer as EngineRuntimeLayer,
+  RuntimeLayerFactory,
+} from "@lando/engine/runtime/runtime-layer-factory";
 import {
   LandoRuntimeOptions,
   type LibraryRendererMode,
@@ -67,6 +71,7 @@ import type { EventDeliveryMetrics } from "@lando/engine/services/event-service"
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 
+import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import "./engine-composition";
@@ -85,7 +90,9 @@ export const withRuntimeProviderRegistryOverride = <A>(
   thunk: () => Promise<A>,
 ): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
+type NoneRuntimeServices = RuntimeLayerFactory;
 type MinimalRuntimeServices =
+  | NoneRuntimeServices
   | Logger
   | Renderer
   | Telemetry
@@ -106,7 +113,11 @@ type MinimalRuntimeServices =
   | HttpClient
   | Downloader
   | HostMaintenanceRegistry;
-type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry | PluginContributionGraph;
+type PluginRuntimeServices =
+  | MinimalRuntimeServices
+  | PluginRegistry
+  | PluginContributionGraph
+  | BuiltInCommandCatalog;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
@@ -141,6 +152,7 @@ export type AppRuntimeServices =
   | EventCommandExecutor;
 type RuntimeLayer =
   | Layer.Layer<never>
+  | Layer.Layer<NoneRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<PluginRuntimeServices>
@@ -169,6 +181,7 @@ const runtimeLayerFor = (
   cwd: string,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
+    runtimeLayerFactory: { make: makeLandoRuntime },
     lifecycle,
     loggerMode,
     rendererMode,
@@ -189,6 +202,7 @@ type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOpt
   readonly bootstrap: TBootstrap;
 };
 
+export function makeLandoRuntime(options: LandoRuntimeOptionsFor<"none">): Layer.Layer<NoneRuntimeServices>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"minimal">,
 ): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
@@ -213,6 +227,7 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"app">,
 ): Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);

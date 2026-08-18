@@ -211,7 +211,7 @@ export const resolveEventCommandTarget = (
   }
   const builtIn = builtIns.find((candidate) => candidate.spec.id === command);
   if (builtIn !== undefined) {
-    return Effect.succeed({ kind: "built-in", spec: builtIn.inputSpec ?? builtIn.spec, builtIn });
+    return Effect.succeed({ kind: "built-in", spec: builtIn.spec, builtIn });
   }
   const plugin = Option.isSome(graph)
     ? graph.value.commands.find((candidate) => candidate.id === command)

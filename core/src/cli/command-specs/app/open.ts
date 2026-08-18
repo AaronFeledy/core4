@@ -7,7 +7,7 @@ import {
   openOptionsFromInput,
   renderOpenAppResult,
 } from "../../commands/open";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 export const openSpec: LandoCommandSpec<OpenAppResult> = {
   resultSchema: OpenAppResultSchema,
@@ -17,23 +17,12 @@ export const openSpec: LandoCommandSpec<OpenAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   hostProxyAllowed: true,
-  run: (input) => openApp(openOptionsFromInput(input)),
-  render: (result, _input, ctx) => renderOpenAppResult(result as OpenAppResult, ctx),
-};
-
-export default class OpenCommand extends LandoCommandBase {
-  static override description = openSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(openSpec)];
-  static override flags = {
+  flags: {
     service: Flags.string({ char: "s", description: "Scope resolution to a single service's routes." }),
     route: Flags.string({ description: "Select an exact route hostname to open." }),
     all: Flags.boolean({ description: "Open every resolved route." }),
     print: Flags.boolean({ description: "Print the resolved URL(s) instead of opening a browser." }),
-  };
-  static override landoSpec: LandoCommandSpec = openSpec;
-  static override bootstrap = openSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(openSpec);
-  }
-}
+  },
+  run: (input) => openApp(openOptionsFromInput(input)),
+  render: (result, _input, ctx) => renderOpenAppResult(result as OpenAppResult, ctx),
+};

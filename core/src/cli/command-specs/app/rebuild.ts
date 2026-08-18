@@ -1,11 +1,6 @@
 import { type RebuildAppResult, RebuildAppResultSchema, rebuildApp } from "@lando/engine/operations/rebuild";
 import { renderRebuildAppResult } from "../../commands/rebuild";
-import {
-  LandoCommandBase,
-  type LandoCommandSpec,
-  extractSpecAbortSignal,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
@@ -23,14 +18,3 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   },
   render: (result) => renderRebuildAppResult(result as RebuildAppResult),
 };
-
-export default class RebuildCommand extends LandoCommandBase {
-  static override description = rebuildSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(rebuildSpec)];
-  static override landoSpec: LandoCommandSpec = rebuildSpec;
-  static override bootstrap = rebuildSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(rebuildSpec);
-  }
-}

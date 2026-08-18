@@ -16,11 +16,7 @@ const textRender = (result: ConfigLintResult): string => {
   return [header, ...lines].join("\n");
 };
 
-/** Sets a failing process exit code when canonical-schema violations are present. */
 export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",
-): string => {
-  if (!result.valid) process.exitCode = 1;
-  return textRender(result);
-};
+): string => textRender(result);

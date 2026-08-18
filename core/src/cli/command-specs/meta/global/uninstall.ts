@@ -7,7 +7,7 @@ import {
   globalUninstall,
   renderGlobalUninstallResult,
 } from "../../../commands/meta/global-uninstall";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -23,32 +23,22 @@ export const metaGlobalUninstallSpec: LandoCommandSpec<GlobalUninstallResult> = 
   resultSchema: GlobalUninstallResultSchema,
   id: "meta:global:uninstall",
   summary: "Clear generated services from the host-level global Lando app.",
+  description: "Clear generated services from the host-level global Lando app.",
   namespace: "meta",
   topLevelAlias: "global:uninstall",
   bootstrap: "global",
-  run: (input) => globalUninstall(globalUninstallOptionsFromInput(input)),
-  render: (result) => renderGlobalUninstallResult(result as GlobalUninstallResult),
-};
-
-export default class MetaGlobalUninstallCommand extends LandoCommandBase {
-  static override description = metaGlobalUninstallSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalUninstallSpec)];
-  static override args = {
+  args: {
     plugin: Args.string({
       description: "Plugin name for future global-service disablement.",
       required: false,
     }),
-  };
-  static override flags = {
+  },
+  flags: {
     purge: Flags.boolean({
       description: "Also remove global service provider resources and data volumes before clearing services.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaGlobalUninstallSpec;
-  static override bootstrap = metaGlobalUninstallSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalUninstallSpec);
-  }
-}
+  },
+  run: (input) => globalUninstall(globalUninstallOptionsFromInput(input)),
+  render: (result) => renderGlobalUninstallResult(result as GlobalUninstallResult),
+};

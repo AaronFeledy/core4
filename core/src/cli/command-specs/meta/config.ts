@@ -9,7 +9,7 @@ import {
 
 import { createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 import { renderConfigResult } from "../../commands/config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
@@ -60,26 +60,20 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   resultSchema: ConfigResultSchema,
   id: "meta:config",
   summary: "Read or write the global Lando config.",
+  description: "Read or write the global Lando config.",
   namespace: "meta",
   topLevelAlias: "config",
   bootstrap: "minimal",
-  run: (input) => config(metaConfigOptionsFromInput(input)),
-  render: (result) => renderConfigResult(result as ConfigResult),
-};
-
-export default class MetaConfigCommand extends LandoCommandBase {
-  static override description = metaConfigSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaConfigSpec)];
-  static override strict = false;
-  static override args = {
+  strict: false,
+  args: {
     subcommand: Args.string({
       description: "Subcommand: view (default), get, set, unset, edit, validate, translate.",
       required: false,
     }),
     key: Args.string({ description: "Dot-path key for get/set/unset.", required: false }),
     value: Args.string({ description: "Value for set.", required: false }),
-  };
-  static override flags = {
+  },
+  flags: {
     format: Flags.string({
       description: "Output format.",
       options: ["json", "yaml", "table"],
@@ -93,11 +87,7 @@ export default class MetaConfigCommand extends LandoCommandBase {
     path: Flags.string({ description: "Dot-path key selector." }),
     editor: Flags.string({ description: "Editor binary for edit." }),
     "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = metaConfigSpec;
-  static override bootstrap = metaConfigSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaConfigSpec);
-  }
-}
+  },
+  run: (input) => config(metaConfigOptionsFromInput(input)),
+  render: (result) => renderConfigResult(result as ConfigResult),
+};

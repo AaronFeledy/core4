@@ -40,9 +40,9 @@ import {
   makeTestSshService,
 } from "@lando/sdk/test";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
-import SetupCommand, {
-  maybeSelectSetupProvider,
+import {
   SetupResultSchema,
+  maybeSelectSetupProvider,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
@@ -54,6 +54,7 @@ import {
 } from "../../src/cli/commands/setup-network-trust.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 import { HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
 import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
 
@@ -227,9 +228,9 @@ describe("meta:setup command", () => {
 
   test("is registered at the provider bootstrap level with the top-level setup alias", () => {
     expect(setupSpec.bootstrap).toBe("provider");
-    expect(SetupCommand.bootstrap).toBe("provider");
+    expect(setupSpec.bootstrap).toBe("provider");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.spec.bootstrap).toBe("provider");
-    expect(SetupCommand.aliases).toContain("setup");
+    expect(resolveTopLevelAliases(setupSpec)).toContain("setup");
   });
 
   test("publishes CA injection as a boolean condition and no certificate count", () => {
@@ -270,7 +271,7 @@ describe("meta:setup command", () => {
       description: "Override the Lando-managed runtime bundle URL for setup.",
       type: "option",
     });
-    expect(Object.keys(SetupCommand.flags)).toContain("runtime-bundle-url");
+    expect(Object.keys(setupSpec.flags ?? {})).toContain("runtime-bundle-url");
 
     const input = compiledCommandInputFromArgv("meta:setup", [
       "--runtime-bundle-url",
@@ -296,7 +297,7 @@ describe("meta:setup command", () => {
       select: () => Effect.succeed(provider),
     };
 
-    expect(Object.keys(SetupCommand.flags)).toContain("no-interactive");
+    expect(Object.keys(setupSpec.flags ?? {})).toContain("no-interactive");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.flags["no-interactive"]?.type).toBe("boolean");
     const input = compiledCommandInputFromArgv("meta:setup", ["--yes", "--no-interactive"]);
     expect(input.flags.yes).toBe(true);

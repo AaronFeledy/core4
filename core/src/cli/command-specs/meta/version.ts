@@ -8,15 +8,18 @@ import { renderMetaVersion } from "@lando/engine/version";
  * it without pulling the command registry).
  */
 import { type VersionResult, VersionResultSchema, version } from "../../commands/version";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   resultSchema: VersionResultSchema,
   id: "meta:version",
   mcpAllowed: true,
   summary: "Show the Lando + Bun + plugin versions.",
+  description: "Show the Lando + Bun + plugin versions.",
   namespace: "meta",
   topLevelAlias: true,
+  aliases: ["--version", "-v"],
+  hidden: false,
   bootstrap: "none",
   run: () => version,
   render: (result) => {
@@ -24,15 +27,3 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
     return renderMetaVersion(result as VersionResult);
   },
 };
-
-export default class VersionCommand extends LandoCommandBase {
-  static override description = versionSpec.summary;
-  static override hidden = false;
-  static override aliases = ["--version", "-v", ...resolveTopLevelAliases(versionSpec)];
-  static override landoSpec: LandoCommandSpec = versionSpec;
-  static override bootstrap = versionSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(versionSpec);
-  }
-}

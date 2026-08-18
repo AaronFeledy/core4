@@ -368,3 +368,26 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - When adjudication splits or narrows a story in `prd.json`, update the matching source PRD section in the same change; the source Markdown is Review's authoritative acceptance contract.
 ---
+
+## 2026-08-17 23:15 CDT - US-565 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved events-as-tasks on the compiled binary: `events:` accepted by `app:config`; unknown event fail-closed with the ten valid names; pre-init/post-init/pre-start host steps ran on `lando start`; destroy ran host, `command: app:mark-destroy`, `task: mark-destroy`, and `command: app:config` in authored order; include-only fragment events executed; pre-destroy abort kept later steps from running and redacted env secrets; post-destroy failure warned and still completed. Adjacent `info`, `app:cache:refresh`, `app:config`, `version`, and `destroy` worked. Removed `/tmp/us565-*`.
+- **Out-of-scope finding:** `lando start` then `lando global:start` failed with `ServiceStartError` / `netavark: aardvark-dns failed to start: Failed to connect to user scope bus via local transport`. Same sandbox user-bus/cgroup limitation recorded in the 14:35 Build entry; not caused by this story. Service-targeted post-start/pre-stop steps therefore could not run against a live container.
+- **Learnings for future iterations:**
+  - Tooling `command:` targets use the namespaced canonical id (`app:<task>`), not the bare task name; `task:` still takes the bare name.
+---
+
+## 2026-08-18 02:10 CDT - Babysit
+- PR: #787 https://github.com/AaronFeledy/core4/pull/787
+- CI outcome: pass
+- Review feedback: fixed (package-dag test seams, app-plan revision 15 fixture, and tooling flags no longer treated as positionals; rejected include-merge as generic §7.2 array rules)
+- Merge: merged (squash)
+---
+
+## 2026-08-18 10:10 CDT - US-583 Build completion
+- Extracted one completeness-checked class-free executable catalog for all 85 built-in command ids, with explicit deferred and four native-only embedding exemptions. Native dispatch, MCP projection, and embedding EventCommandExecutor now consume the same canonical spec entries.
+- Preserved validation, lifecycle correlation, rendering, redaction, live streaming, interruption, and success-exit behavior. Generated bootstrap composition self-registers the catalog without import cycles, and shared operations/renderers no longer mutate embedding-host exit state.
+- Verification: codegen drift, full boundaries, typecheck, lint, workspace build, and independent reviewer passed; 325 broad focused tests, 23 doctor/seam tests, 56 streaming/argument regressions, and 96 renderer/exit regressions passed. Compiled sandbox checks covered version, MCP catalog listing, native-only shellenv, and exit-2 invalid input.
+- **Learnings for future iterations:**
+  - Embedding parity includes process ownership: executable specs and shared renderers return exit semantics through `successExitCode`; only the native shell may mutate its process exit status.
+  - An Effect service supplied to generated bootstrap layers must be introduced through the generator and the hand-maintained runtime service union, not merged as a sibling after consumers are built.
+---

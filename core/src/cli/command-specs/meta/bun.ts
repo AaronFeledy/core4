@@ -1,15 +1,8 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
 import { type MetaBunResult, MetaBunResultSchema, metaBun, renderMetaBunResult } from "../../commands/bun";
 
-import { newInvocationId } from "../../command-lifecycle";
-import { runWithRendererHandling } from "../../renderer-boundary";
-import {
-  LandoCommandBase,
-  type LandoCommandSpec,
-  formatCommandError,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -21,45 +14,16 @@ export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
   resultSchema: MetaBunResultSchema,
   id: "meta:bun",
   summary: "Proxy to the embedded Bun CLI via BunSelfRunner.",
+  description: "Proxy to the embedded Bun CLI via BunSelfRunner.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  strict: false,
   run: (input) =>
     Effect.gen(function* () {
       const argv = extractArgv(input);
-      const result = yield* metaBun({ argv });
-      if (result.exitCode !== 0) process.exitCode = result.exitCode;
-      return result;
+      return yield* metaBun({ argv });
     }),
   successExitCode: (result) => result.exitCode,
   render: (result) => renderMetaBunResult(result as MetaBunResult),
 };
-
-export default class MetaBunCommand extends LandoCommandBase {
-  static override description = metaBunSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaBunSpec)];
-  static override strict = false;
-  static override landoSpec: LandoCommandSpec = metaBunSpec;
-  static override bootstrap = metaBunSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    const argv = this.argv.slice();
-    await runWithRendererHandling(metaBun({ argv }), {
-      runtime: Layer.empty,
-      rendererMode: "plain",
-      command: metaBunSpec.id,
-      invocation: {
-        commandId: metaBunSpec.id,
-        argv,
-        args: {},
-        flags: {},
-        cwd: process.cwd(),
-        invocationId: newInvocationId(),
-      },
-      resultSchema: metaBunSpec.resultSchema,
-      render: renderMetaBunResult,
-      successExitCode: (result) => result.exitCode,
-      formatError: (error) => formatCommandError({ error, commandId: metaBunSpec.id, rendererMode: "plain" }),
-    });
-  }
-}

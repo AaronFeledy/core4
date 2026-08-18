@@ -34,6 +34,7 @@ import { McpTransport } from "@lando/mcp/transport";
 import type { RedactionService } from "@lando/redaction/service";
 import { McpServiceLive } from "../../../mcp-command-executor";
 import type { RendererMode } from "../../bug-report";
+import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { ResultFormat } from "../../format-flags";
@@ -310,9 +311,11 @@ export const serveMcp = (
   });
 
 export const dispatchMcpCommand = async (params: {
-  readonly registry: McpCommandRegistry;
   readonly flags: McpCommandFlags;
-  readonly commandRuntime: Layer.Layer<ConfigService | RedactionService, LandoRuntimeBootstrapError>;
+  readonly commandRuntime: Layer.Layer<
+    ConfigService | RedactionService | BuiltInCommandCatalog,
+    LandoRuntimeBootstrapError
+  >;
   readonly retainedRuntime: Layer.Layer<unknown>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
@@ -321,8 +324,9 @@ export const dispatchMcpCommand = async (params: {
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
+      const catalog = yield* BuiltInCommandCatalog;
       const registry = yield* resolveRegistryForCommand(
-        params.registry,
+        mcpRegistryFromBuiltIns(catalog.entries),
         params.flags,
         params.retainedRuntime,
       );
@@ -344,8 +348,9 @@ export const dispatchMcpCommand = async (params: {
   const serveEffect =
     startupError === undefined
       ? Effect.gen(function* () {
+          const catalog = yield* BuiltInCommandCatalog;
           const registry = yield* resolveRegistryForCommand(
-            params.registry,
+            mcpRegistryFromBuiltIns(catalog.entries),
             params.flags,
             params.retainedRuntime,
           );

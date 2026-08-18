@@ -8,7 +8,7 @@ import {
 
 import { pluginNew, renderPluginNewResult } from "../../../commands/plugin-new";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown) => {
   const parsed =
@@ -45,18 +45,11 @@ export const pluginNewSpec: LandoCommandSpec<PluginNewResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) => pluginNew(extractInput(input)),
-  render: (result) => renderPluginNewResult(result as PluginNewResult),
-};
-
-export default class PluginNewCommand extends LandoCommandBase {
-  static override description = pluginNewSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginNewSpec)];
-  static override args = {
+  args: {
     name: Args.string({ description: "New plugin package name.", required: false }),
     destination: Args.string({ description: "Destination directory.", required: false }),
-  };
-  static override flags = {
+  },
+  flags: {
     template: Flags.string({
       description: "Bundled plugin template id.",
       options: [...PLUGIN_NEW_TEMPLATE_IDS],
@@ -69,11 +62,7 @@ export default class PluginNewCommand extends LandoCommandBase {
       description: "Never prompt; name, template, cspace, and description must be supplied.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginNewSpec;
-  static override bootstrap = pluginNewSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginNewSpec);
-  }
-}
+  },
+  run: (input) => pluginNew(extractInput(input)),
+  render: (result) => renderPluginNewResult(result as PluginNewResult),
+};

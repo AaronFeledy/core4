@@ -6,9 +6,9 @@ import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
+import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
-import { Command } from "../../src/cli/spec/metadata.ts";
 import { PluginContributionGraph } from "../../src/testing/engine-layers.ts";
 
 type Harness = {
@@ -75,15 +75,7 @@ const withPlugin = (context: Context.Context<unknown>, spec: ExecutableCommandSp
   });
 
 const builtInEntry = (spec: LandoCommandSpec): BuiltInCommandEntry => {
-  class TestCommand extends Command {
-    static readonly landoSpec = spec;
-    static readonly bootstrap = "none";
-
-    override run(): Promise<void> {
-      return Promise.resolve();
-    }
-  }
-  return { command: TestCommand, spec, inputSpec: spec, status: { kind: "implemented" } };
+  return { spec, status: { kind: "implemented" } };
 };
 
 describe("event command executor regressions", () => {
@@ -209,5 +201,40 @@ describe("event command executor regressions", () => {
 
     // Then
     expect(harness.output).toEqual(["[redacted]\n"]);
+  });
+
+  test("non-silent built-in rendering preserves host exit state while returning the spec exit code", async () => {
+    // Given
+    const harness = makeHarness();
+    const result = { tool: "test", service: "app", exitCode: 17, stdout: "rendered\n", stderr: "" };
+    const spec = {
+      ...execSpec,
+      id: "meta:test:exec-render-purity",
+      namespace: "meta",
+      bootstrap: "none",
+      run: () => Effect.succeed(result),
+    } satisfies LandoCommandSpec;
+    const previousExitCode = process.exitCode;
+    process.exitCode = 73;
+
+    try {
+      // When
+      const embedded = await Effect.runPromise(
+        makeEventCommandExecutor(harness.context, [builtInEntry(spec)]).run({
+          command: spec.id,
+          flags: {},
+          args: {},
+          argv: [],
+          cwd: process.cwd(),
+        }),
+      );
+
+      // Then
+      expect(harness.output).toEqual(["rendered\n"]);
+      expect(embedded.exitCode).toBe(17);
+      expect(process.exitCode).toBe(73);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
   });
 });

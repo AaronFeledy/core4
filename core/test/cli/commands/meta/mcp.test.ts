@@ -7,7 +7,9 @@ import { ConfigService } from "@lando/sdk/services";
 
 import { APP_CONFIG_MCP_UNSAFE_IDS } from "@lando/mcp/allowlist";
 import type { McpCommandEntry } from "@lando/mcp/registry";
+import { BuiltInCommandCatalog } from "../../../../src/cli/built-in-command-catalog-service.ts";
 import { builtInCommandEntries } from "../../../../src/cli/built-in-command-registry.ts";
+import { metaMcpSpec } from "../../../../src/cli/command-specs/meta/mcp.ts";
 import {
   type McpCommandRegistry,
   classifyMcpServeStartup,
@@ -36,6 +38,23 @@ const registry: McpCommandRegistry = {
 const appConfigUnsafeIds = [...APP_CONFIG_MCP_UNSAFE_IDS];
 
 const fullRegistry = (): McpCommandRegistry => mcpRegistryFromBuiltIns(builtInCommandEntries);
+
+describe("metaMcpSpec", () => {
+  test("runs the real programmatic list operation from the injected built-in catalog", async () => {
+    // Given
+    const catalogLayer = Layer.succeed(BuiltInCommandCatalog, { entries: builtInCommandEntries });
+    const input = { argv: [], args: {}, flags: { list: true }, parsedArgv: [] };
+
+    // When
+    const result = await Effect.runPromise(
+      metaMcpSpec.run(input).pipe(Effect.provide(catalogLayer), Effect.provide(configLayer(undefined))),
+    );
+
+    // Then
+    expect(result.tools.length).toBeGreaterThan(0);
+    expect(result.tools.some((tool) => tool.id === "app:info")).toBe(true);
+  });
+});
 
 describe("resolveMcpOptions", () => {
   test("unions flag + config allow/deny and ORs tooling", () => {

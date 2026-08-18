@@ -54,6 +54,7 @@ const renderPlugins = (): string =>
     'import { makePluginContributionGraphLive } from "@lando/engine/plugins/contribution-graph";',
     'import { makePluginRegistryLive } from "@lando/engine/plugins/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
+    'import { BuiltInCommandCatalogLive } from "../../../cli/built-in-command-catalog-live.ts";',
     'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
     "",
     "export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
@@ -71,7 +72,7 @@ const renderPlugins = (): string =>
     "  const deprecationRegistryLive = DeprecationPluginRegistryLive.pipe(",
     "    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),",
     "  );",
-    "  return Layer.mergeAll(minimalRuntimeLive, contributionGraphLive, pluginRegistryLive, deprecationRegistryLive).pipe(",
+    "  return Layer.mergeAll(minimalRuntimeLive, contributionGraphLive, pluginRegistryLive, deprecationRegistryLive, BuiltInCommandCatalogLive).pipe(",
     '    Layer.tap((context) => inputs.lifecycle.complete("plugins", Context.get(context, EventService))),',
     "  );",
     "};",
@@ -234,7 +235,16 @@ const renderApp = (): string =>
   ].join("\n");
 
 const renderNone = (): string =>
-  ['import { Layer } from "effect";', "", "export const noneBootstrapLayer = Layer.empty;", ""].join("\n");
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";',
+    'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
+    "",
+    "export const makeNoneBootstrapLayer = (inputs: BootstrapLayerInputs) =>",
+    "  Layer.succeed(RuntimeLayerFactory, inputs.runtimeLayerFactory);",
+    "",
+  ].join("\n");
 
 const renderers: Record<string, () => string> = {
   none: renderNone,

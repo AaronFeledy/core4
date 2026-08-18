@@ -5,7 +5,7 @@ import { Flags } from "../../spec/metadata";
 
 import { type DestroyAppResult, DestroyAppResultSchema, destroyApp } from "@lando/engine/operations/destroy";
 import { renderDestroyAppResult } from "../../commands/destroy";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
@@ -15,21 +15,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: (input) => {
-    const flags = extractSpecFlags(input);
-    return destroyApp({
-      volumes: flags.volumes === true || flags.purge === true,
-      purgeCaches: flags["purge-caches"] === true,
-      yes: flags.yes === true,
-    });
-  },
-  render: (result) => renderDestroyAppResult(result as DestroyAppResult),
-};
-
-export default class DestroyCommand extends LandoCommandBase {
-  static override description = destroySpec.summary;
-  static override aliases = [...resolveTopLevelAliases(destroySpec)];
-  static override flags = {
+  flags: {
     volumes: Flags.boolean({
       description: "Also remove app/service-scoped storage volumes.",
       default: false,
@@ -47,11 +33,14 @@ export default class DestroyCommand extends LandoCommandBase {
       description: "Skip the confirmation prompt (no-op until interactive prompts land).",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = destroySpec;
-  static override bootstrap = destroySpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(destroySpec);
-  }
-}
+  },
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    return destroyApp({
+      volumes: flags.volumes === true || flags.purge === true,
+      purgeCaches: flags["purge-caches"] === true,
+      yes: flags.yes === true,
+    });
+  },
+  render: (result) => renderDestroyAppResult(result as DestroyAppResult),
+};

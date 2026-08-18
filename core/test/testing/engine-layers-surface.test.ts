@@ -52,6 +52,7 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "ProxyServiceRegistry",
   "ProxyServiceUnavailableLive",
   "RuntimeCwd",
+  "RuntimeLayerFactory",
   "RuntimeProviderRegistryLive",
   "SETUP_BUILTIN_FLAG_NAMES",
   "ScratchInitAppPort",

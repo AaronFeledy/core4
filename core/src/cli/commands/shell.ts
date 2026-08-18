@@ -409,7 +409,4 @@ export const shellApp = (
     };
   });
 
-export const renderShellAppResult = (result: ShellAppResult): string | undefined => {
-  if (result.exitCode !== 0) process.exitCode = result.exitCode;
-  return undefined;
-};
+export const renderShellAppResult = (_result: ShellAppResult): string | undefined => undefined;

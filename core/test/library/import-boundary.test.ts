@@ -22,17 +22,6 @@ const openTuiLiteralImportFiles = [rendererPromptDriver, rendererLiveRegionSubst
 const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
 const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
-/**
- * Canonical CLI command-surface locations. The native command spec machinery and
- * the per-command spec modules live ONLY under these internal directories.
- * Reaching any file under them — or importing the `@oclif/*` npm packages — from
- * a non-CLI entry point is a library import-boundary violation.
- */
-const oclifCodePathDirs = [
-  `${resolve(coreSrc, "cli/spec")}/`,
-  `${resolve(coreSrc, "cli/command-specs")}/`,
-] as const;
-const oclifInternalEntry = resolve(coreSrc, "cli/run.ts");
 const tuiCodePathDirs = [
   `${resolve(coreSrc, "cli/tui")}/`,
   `${resolve(coreSrc, "cli/renderer/tui")}/`,
@@ -92,17 +81,6 @@ const classifyOclifImport = (edge: {
 }): string | undefined => {
   if (isOclifNpmSpecifier(edge.specifier)) {
     return `imports the OCLIF npm package "${edge.specifier}"`;
-  }
-  // Signal B: a non-CLI first-party module reaching into a CLI command-surface
-  // directory. Edges *within* those directories are internal to the CLI surface
-  // and are not themselves boundary violations.
-  const resolvedAbs = edge.resolvedAbs;
-  if (
-    resolvedAbs !== undefined &&
-    oclifCodePathDirs.some((dir) => resolvedAbs.startsWith(dir)) &&
-    !oclifCodePathDirs.some((dir) => edge.importerAbs.startsWith(dir))
-  ) {
-    return `reaches the OCLIF code path ${repoRelative(resolvedAbs)}`;
   }
   return undefined;
 };
@@ -453,26 +431,6 @@ describe("OCLIF import-boundary classifier (detection self-check)", () => {
     ).toContain("OCLIF npm package");
   });
 
-  test("signal B: flags a non-OCLIF module reaching into the OCLIF code path", () => {
-    expect(
-      classifyOclifImport({
-        importerAbs: resolve(coreSrc, "runtime/layer.ts"),
-        specifier: "../cli/spec/command-base.ts",
-        resolvedAbs: resolve(coreSrc, "cli/spec/command-base.ts"),
-      }),
-    ).toContain("OCLIF code path");
-  });
-
-  test("does NOT flag CLI-internal edges (spec importer → spec file)", () => {
-    expect(
-      classifyOclifImport({
-        importerAbs: resolve(coreSrc, "cli/spec/command-spec.ts"),
-        specifier: "./command-base.ts",
-        resolvedAbs: resolve(coreSrc, "cli/spec/command-base.ts"),
-      }),
-    ).toBeUndefined();
-  });
-
   test("does NOT flag ordinary first-party / external edges", () => {
     expect(
       classifyOclifImport({
@@ -596,29 +554,14 @@ describe("Effect import-boundary classifier (detection self-check)", () => {
 });
 
 describe("OCLIF-free default entry", () => {
-  test("the walker detects OCLIF when present (positive control on the native dispatcher)", () => {
-    const entryAbs = realpathSync(oclifInternalEntry);
-    const { violations } = walkStaticImportGraph(entryAbs);
-
-    expect(violations.length).toBeGreaterThan(0);
-
-    const namesOclif = violations.some((violation) =>
-      violation.chain.some(
-        (link) =>
-          link.startsWith("@oclif/") ||
-          repoRelative(link).includes("cli/command-specs") ||
-          repoRelative(link).includes("cli/spec"),
-      ),
-    );
-    expect(namesOclif).toBe(true);
-  });
-
   test("the default @lando/core entry has an OCLIF-free transitive static import graph", () => {
     const entryAbs = resolveEntrySource("@lando/core");
     const { visited, violations } = walkStaticImportGraph(entryAbs);
 
     expect(visited.size).toBeGreaterThan(1);
     expect(visited.has(resolve(stateStoreSrc, "service.ts"))).toBe(true);
+    expect(visited.has(resolve(coreSrc, "cli/built-in-command-registry.ts"))).toBe(true);
+    expect(visited.has(resolve(coreSrc, "cli/command-specs/app/rebuild.ts"))).toBe(true);
 
     if (violations.length > 0) {
       const report = violations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");
@@ -657,18 +600,6 @@ describe("OCLIF-free default entry", () => {
       expect(violations.length).toBe(0);
     },
   );
-
-  test("failure messages name the full offending import chain", () => {
-    const entryAbs = realpathSync(oclifInternalEntry);
-    const { violations } = walkStaticImportGraph(entryAbs);
-    const firstViolation = violations[0];
-    if (firstViolation === undefined) throw new Error("expected a positive-control violation");
-
-    const message = formatViolation("core/src/cli/run.ts", firstViolation);
-    expect(message).toContain("core/src/cli/run.ts");
-    expect(message).toContain("→");
-    expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/command-specs|cli\/spec/);
-  });
 });
 
 describe("Effect-free @lando/core/paths", () => {

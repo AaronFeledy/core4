@@ -2,11 +2,13 @@ import { Args, Flags } from "../../../spec/metadata";
 
 import type { IncludeUpdateReport } from "@lando/landofile/includes";
 import {
+  type AppIncludesUpdateError,
   AppIncludesUpdateResultSchema,
   appIncludesUpdate,
   renderIncludesUpdateResult,
 } from "../../../commands/app-includes-update";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
+import { extractSpecParsedArgv } from "../../../spec/command-boundary";
 
 const inputFlags = (input: unknown): Record<string, unknown> =>
   typeof input === "object" && input !== null && "flags" in input
@@ -18,38 +20,23 @@ const checkFromInput = (input: unknown): boolean => inputFlags(input).check === 
 const noNetworkFromInput = (input: unknown): boolean => inputFlags(input)["no-network"] === true;
 
 const sourcesFromInput = (input: unknown): ReadonlyArray<string> => {
-  if (typeof input !== "object" || input === null || !("argv" in input)) return [];
-  const argv = (input as { argv: unknown }).argv;
-  if (!Array.isArray(argv)) return [];
-  return argv.filter((value): value is string => typeof value === "string" && !value.startsWith("-"));
+  return extractSpecParsedArgv(input).filter((value) => !value.startsWith("-"));
 };
 
-export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
+export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport, AppIncludesUpdateError, never> = {
   resultSchema: AppIncludesUpdateResultSchema,
   id: "app:includes:update",
   summary: "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
   namespace: "app",
   bootstrap: "minimal",
-  run: (input) =>
-    appIncludesUpdate({
-      check: checkFromInput(input),
-      noNetwork: noNetworkFromInput(input),
-      sources: sourcesFromInput(input),
-    }),
-  successExitCode: (result) => (result.checkMode && result.drift ? 1 : undefined),
-  render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
-};
-
-export default class AppIncludesUpdateCommand extends LandoCommandBase {
-  static override description = appIncludesUpdateSpec.summary;
-  static override strict = false;
-  static override args = {
+  strict: false,
+  args: {
     source: Args.string({
       description: "Include source to refresh (repeatable). Omit to refresh every source.",
       required: false,
     }),
-  };
-  static override flags = {
+  },
+  flags: {
     check: Flags.boolean({
       description: "Report would-be lockfile drift without writing.",
       default: false,
@@ -63,11 +50,13 @@ export default class AppIncludesUpdateCommand extends LandoCommandBase {
       options: ["text", "json"],
       default: "text",
     }),
-  };
-  static override landoSpec: LandoCommandSpec<IncludeUpdateReport> = appIncludesUpdateSpec;
-  static override bootstrap = appIncludesUpdateSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appIncludesUpdateSpec);
-  }
-}
+  },
+  run: (input) =>
+    appIncludesUpdate({
+      check: checkFromInput(input),
+      noNetwork: noNetworkFromInput(input),
+      sources: sourcesFromInput(input),
+    }),
+  successExitCode: (result) => (result.checkMode && result.drift ? 1 : undefined),
+  render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
+};

@@ -7,7 +7,7 @@ import {
   globalStatus,
   renderGlobalStatusResult,
 } from "../../../commands/meta/global-status";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -34,18 +34,11 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   resultSchema: GlobalStatusResultSchema,
   id: "meta:global:status",
   summary: "Show runtime status for the host-level global Lando app.",
+  description: "Show runtime status for the host-level global Lando app.",
   namespace: "meta",
   topLevelAlias: "global:status",
   bootstrap: "global",
-  run: (input) => globalStatus(globalStatusOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderGlobalStatusResult(result as GlobalStatusResult, globalStatusFormatFromInput(input), ctx),
-};
-
-export default class MetaGlobalStatusCommand extends LandoCommandBase {
-  static override description = metaGlobalStatusSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalStatusSpec)];
-  static override flags = {
+  flags: {
     service: Flags.string({
       char: "s",
       description: "Filter to a specific global service (repeatable).",
@@ -56,11 +49,8 @@ export default class MetaGlobalStatusCommand extends LandoCommandBase {
       options: ["table", "json"],
       default: "table",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaGlobalStatusSpec;
-  static override bootstrap = metaGlobalStatusSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalStatusSpec);
-  }
-}
+  },
+  run: (input) => globalStatus(globalStatusOptionsFromInput(input)),
+  render: (result, input, ctx) =>
+    renderGlobalStatusResult(result as GlobalStatusResult, globalStatusFormatFromInput(input), ctx),
+};

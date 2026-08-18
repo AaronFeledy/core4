@@ -8,7 +8,7 @@ import {
   scratchInfo,
   scratchListFormatFromInput,
 } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   resultSchema: ScratchInfoResultSchema,
@@ -16,25 +16,15 @@ export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   summary: "Show information for a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:info",
+  aliases: ["scratch:info"],
   bootstrap: "scratch",
+  args: {
+    id: Args.string({ description: "Scratch app id.", required: false }),
+  },
+  flags: {
+    format: Flags.string({ description: "Output format.", options: ["table", "json"], default: "table" }),
+  },
   run: (input) => scratchInfo(scratchIdFromInput(input)),
   render: (result, input) =>
     renderScratchInfoResult(result as ScratchInfo, scratchListFormatFromInput(input)),
 };
-
-export default class AppsScratchInfoCommand extends LandoCommandBase {
-  static override description = appsScratchInfoSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchInfoSpec)];
-  static override args = {
-    id: Args.string({ description: "Scratch app id.", required: false }),
-  };
-  static override flags = {
-    format: Flags.string({ description: "Output format.", options: ["table", "json"], default: "table" }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchInfoSpec;
-  static override bootstrap = appsScratchInfoSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchInfoSpec);
-  }
-}

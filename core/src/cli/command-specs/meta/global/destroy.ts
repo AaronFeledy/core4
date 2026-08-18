@@ -7,7 +7,7 @@ import {
   globalDestroy,
   renderGlobalDestroyResult,
 } from "../../../commands/meta/global-destroy";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -19,17 +19,11 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
   resultSchema: GlobalDestroyResultSchema,
   id: "meta:global:destroy",
   summary: "Destroy the host-level global Lando app provider resources.",
+  description: "Destroy the host-level global Lando app provider resources.",
   namespace: "meta",
   topLevelAlias: "global:destroy",
   bootstrap: "global",
-  run: (input) => globalDestroy(globalDestroyOptionsFromInput(input)),
-  render: (result) => renderGlobalDestroyResult(result as GlobalDestroyResult),
-};
-
-export default class MetaGlobalDestroyCommand extends LandoCommandBase {
-  static override description = metaGlobalDestroySpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalDestroySpec)];
-  static override flags = {
+  flags: {
     yes: Flags.boolean({
       char: "y",
       description: "Confirm destruction of global app provider resources.",
@@ -39,11 +33,7 @@ export default class MetaGlobalDestroyCommand extends LandoCommandBase {
       description: "Also remove global service data volumes.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaGlobalDestroySpec;
-  static override bootstrap = metaGlobalDestroySpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalDestroySpec);
-  }
-}
+  },
+  run: (input) => globalDestroy(globalDestroyOptionsFromInput(input)),
+  render: (result) => renderGlobalDestroyResult(result as GlobalDestroyResult),
+};
