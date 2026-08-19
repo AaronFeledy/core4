@@ -12,13 +12,13 @@ describe("hasUsableUserSystemdSession", () => {
     ).toBe(true);
   });
 
-  test("is true when the user session bus exists", () => {
+  test("is false when only a session bus socket exists", () => {
     expect(
       hasUsableUserSystemdSession({
         runtimeDir: "/run/user/1000",
         exists: (path) => path === "/run/user/1000/bus",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("is false when the runtime dir has no session sockets", () => {
