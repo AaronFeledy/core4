@@ -38,7 +38,7 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
   });
   ctx.setHealthcheck({
     kind: "command",
-    command: ["wget", "-qO-", `http://127.0.0.1:${MAILPIT_WEB_PORT}/api/v1/info`],
+    command: ["/mailpit", "readyz"],
     intervalSeconds: 10,
     timeoutSeconds: 5,
     retries: 5,

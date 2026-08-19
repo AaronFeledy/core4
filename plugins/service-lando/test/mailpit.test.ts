@@ -52,7 +52,7 @@ describe("mailpit ServiceType", () => {
     ]);
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["wget", "-qO-", "http://127.0.0.1:8025/api/v1/info"],
+      command: ["/mailpit", "readyz"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
