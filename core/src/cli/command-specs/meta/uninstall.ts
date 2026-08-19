@@ -44,6 +44,8 @@ const managedLandoRuntime = (userDataRoot: string): RuntimeProbe => {
       paths.runtimeRunDir,
       "--config",
       paths.runtimeConfigDir,
+      "--storage-opt",
+      `overlay.mount_program=${paths.runtimeBinDir}/fuse-overlayfs`,
     ],
     env: {
       CONTAINERS_CONF: join(paths.runtimeConfigDir, "containers.conf"),
