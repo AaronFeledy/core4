@@ -18,9 +18,10 @@ services:
     database: uploads
 ```
 
-MinIO listens on API port `9000` and console port `9001`. Lando runs
-`server /data --console-address :9001`, stores object data in the persistent
-`/data` volume, and uses `lando` for both the default username and password.
+MinIO listens on API port `9000` and console port `9001`. Lando starts the
+official `minio/minio` image with `server /data --address :9000 --console-address
+:9001`, stores object data in the persistent `/data` volume, and uses `lando`
+for both the default username and password.
 
 <Guide>
   <Scenario id="resolved-config" render>
@@ -39,13 +40,17 @@ MinIO listens on API port `9000` and console port `9001`. Lando runs
 
 ## Bucket and credentials
 
-The `database` value becomes `MINIO_DEFAULT_BUCKETS`, so `database: uploads`
-creates an `uploads` bucket without another config key. If you omit it, Lando
-uses the app name as the bucket name.
+The official MinIO image does not honor a default-bucket environment variable.
+Lando creates the bucket as a directory under `/data` before the server starts.
+`database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
+the app name.
 
 For local development, the root credentials default to `lando` and `lando`.
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
+
+A `port:` override changes the API listen address, the internal endpoint, and
+the `mc` alias used for readiness. The console stays on `9001`.
 
 ## Console and client
 

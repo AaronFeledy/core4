@@ -11,7 +11,6 @@ const DEFAULT_IMAGE = "minio/minio:latest";
 const DEFAULT_API_PORT = 9000;
 const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
-const DEFAULT_COMMAND = ["server", "/data", "--console-address", ":9001"] as const;
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
 
@@ -23,18 +22,29 @@ const appNameFor = (input: {
   return basename(input.appRoot) || "app";
 };
 
+const bucketNameFor = (value: string): string => {
+  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return sanitized.length > 0 ? sanitized : "app";
+};
+
+const defaultServerCommand = (apiPort: number): string =>
+  `mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :${apiPort} --console-address :${CONSOLE_PORT}`;
+
 const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const apiPort = service.port ?? DEFAULT_API_PORT;
+  const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
+  const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? "lando";
+  const bucket = bucketNameFor(service.database ?? appName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  ctx.addEnv("MINIO_ROOT_USER", service.environment?.MINIO_ROOT_USER ?? "lando");
-  ctx.addEnv("MINIO_ROOT_PASSWORD", service.environment?.MINIO_ROOT_PASSWORD ?? "lando");
+  ctx.addEnv("MINIO_ROOT_USER", rootUser);
+  ctx.addEnv("MINIO_ROOT_PASSWORD", rootPassword);
+  ctx.addEnv("MINIO_BUCKET", bucket);
   ctx.addEnv(
-    "MINIO_DEFAULT_BUCKETS",
-    service.environment?.MINIO_DEFAULT_BUCKETS ?? service.database ?? appName,
+    "MC_HOST_local",
+    `http://${encodeURIComponent(rootUser)}:${encodeURIComponent(rootPassword)}@127.0.0.1:${apiPort}`,
   );
   ctx.addStorage({
     store: `${appName}-minio-data`,
@@ -55,14 +65,29 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   });
   ctx.setHealthcheck({
     kind: "command",
-    command: ["sh", "-c", `curl -sf http://localhost:${apiPort}/minio/health/live`],
+    command: ["mc", "ready", "local"],
     intervalSeconds: 10,
     timeoutSeconds: 5,
     retries: 5,
     startPeriodSeconds: 30,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.command === undefined && service.entrypoint === undefined) {
+    ctx.setEntrypoint(["/bin/sh", "-c"]);
+    ctx.setCommand([defaultServerCommand(apiPort)]);
+  } else {
+    if (service.command !== undefined) ctx.setCommand(service.command);
+    else
+      ctx.setCommand([
+        "server",
+        "/data",
+        "--address",
+        `:${apiPort}`,
+        "--console-address",
+        `:${CONSOLE_PORT}`,
+      ]);
+    if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  }
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   if (service.user !== undefined) ctx.setUser(service.user);
 };

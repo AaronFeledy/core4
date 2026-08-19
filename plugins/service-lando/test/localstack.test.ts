@@ -46,6 +46,7 @@ describe("localstack ServiceType", () => {
 
     expect(plan.type).toBe("localstack");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:latest" });
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566" });
     expect(plan.storage).toEqual([
       {
         store: "myapp-localstack-data",
@@ -56,7 +57,7 @@ describe("localstack ServiceType", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 4566, protocol: "http", name: "cloud" }]);
   });
 
-  test("respects image and port overrides", async () => {
+  test("respects image and port overrides on the gateway bind and healthcheck", async () => {
     const plan = await planLocalStackService({
       type: "localstack",
       image: "localstack/localstack:4.7",
@@ -65,6 +66,7 @@ describe("localstack ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.7" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 14566, protocol: "http", name: "cloud" }]);
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:14566" });
   });
 
   test("healthcheck curls the LocalStack health endpoint on the authored port", async () => {
@@ -83,14 +85,14 @@ describe("localstack ServiceType", () => {
   test("preserves authored environment and process fields", async () => {
     const plan = await planLocalStackService({
       type: "localstack",
-      environment: { DEBUG: "1" },
+      environment: { DEBUG: "1", GATEWAY_LISTEN: "0.0.0.0:4566" },
       command: ["localstack", "start"],
       entrypoint: ["/usr/bin/env"],
       workingDirectory: "/var/lib/localstack",
       user: "1000:1000",
     });
 
-    expect(plan.environment).toMatchObject({ DEBUG: "1" });
+    expect(plan.environment).toMatchObject({ DEBUG: "1", GATEWAY_LISTEN: "0.0.0.0:4566" });
     expect(plan.command).toEqual(["localstack", "start"]);
     expect(plan.entrypoint).toEqual(["/usr/bin/env"]);
     expect(String(plan.workingDirectory)).toBe("/var/lib/localstack");

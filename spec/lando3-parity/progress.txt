@@ -426,3 +426,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - New catalog types should publish `@lando/sdk/schema/services/<type>` via `ServiceConfig.pick` plus a narrowed `type` literal, then register the schema in `json-schema.ts`. Missing inherited field descriptions fail `codegen:schema-snapshot`.
   - `ServiceType.schema` is `Schema.Schema.AnyNoContext` so concrete catalog schemas assign without assertions.
 ---
+
+## 2026-08-18 19:13 CDT - US-566 Review
+- Confirmed Bugbot findings and fixed MinIO/LocalStack planner contracts: official MinIO no longer ships curl or honors MINIO_DEFAULT_BUCKETS, so readiness now uses `mc ready local` and bucket init creates `/data/$MINIO_BUCKET` before `minio server` with `--address` bound to `port:`. LocalStack `port:` now sets GATEWAY_LISTEN so the gateway and healthcheck share the same port.
+- Review notes (deferred/rejected): rejected switching MinIO to `kind: http` healthchecks because the planner only realizes `kind: command`; rejected treating RabbitMQ `port:` as a listen-port rewrite because AMQP health uses `rabbitmq-diagnostics ping` and matches existing redis-style advertised-port behavior; rejected Bitnami/MINIO_DEFAULT_BUCKETS because the catalog image is official `minio/minio`.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus the minio guide scenario passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Official `minio/minio` is UBI micro: no curl, no MINIO_DEFAULT_BUCKETS. Use `mc ready local` plus a pre-start directory for bucket init, and bind `--address` when `port:` is authored.
+  - LocalStack listen port is GATEWAY_LISTEN, not just the planned endpoint.
+---

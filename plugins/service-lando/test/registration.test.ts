@@ -161,17 +161,16 @@ describe("@lando/service-lando registration", () => {
       ["tcp", 9000],
       ["http", 9001],
     ]);
-    expect(objectStore.environment.MINIO_DEFAULT_BUCKETS).toBe("uploads");
+    expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");
+    expect(objectStore.command).toEqual([
+      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
+    ]);
     expect(objectStore.storage).toContainEqual({
       store: "catalog-app-minio-data",
       target: PortablePath.make("/data"),
       readOnly: false,
     });
-    expect(objectStore.healthcheck?.command).toEqual([
-      "sh",
-      "-c",
-      "curl -sf http://localhost:9000/minio/health/live",
-    ]);
+    expect(objectStore.healthcheck?.command).toEqual(["mc", "ready", "local"]);
 
     expect(aws.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:latest" });
     expect(
@@ -182,6 +181,7 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/var/lib/localstack"),
       readOnly: false,
     });
+    expect(aws.environment.GATEWAY_LISTEN).toBe("0.0.0.0:4566");
     expect(aws.healthcheck?.command).toEqual([
       "sh",
       "-c",

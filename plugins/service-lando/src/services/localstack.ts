@@ -25,6 +25,7 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.addEnv("GATEWAY_LISTEN", service.environment?.GATEWAY_LISTEN ?? `0.0.0.0:${port}`);
   ctx.addStorage({
     store: `${appNameFor(ctx)}-localstack-data`,
     target: DATA_TARGET,
