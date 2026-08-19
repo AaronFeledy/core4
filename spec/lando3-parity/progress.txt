@@ -472,3 +472,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Official `axllent/mailpit` is `/mailpit` + tzdata only. Use `/mailpit readyz`, not wget/curl.
 ---
+
+## 2026-08-19 17:45 CDT - US-567 Review
+- Doctor `--deprecations` now matches authored `type: mailhog` on CRLF Landofiles and on lines with trailing comments, so the scan agrees with the YAML parser.
+- Verification: typecheck, lint passed; 24 doctor-report tests passed.
+---

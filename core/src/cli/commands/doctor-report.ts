@@ -82,7 +82,7 @@ const sourceForDeprecation = (entry: {
   return "core";
 };
 
-const MAILHOG_TYPE = /(?:^|\n)[ \t]*type:[ \t]*["']?mailhog["']?[ \t]*(?:\n|$)/;
+const MAILHOG_TYPE = /(?:^|[\r\n])[ \t]*type:[ \t]*["']?mailhog["']?(?:[ \t]+#.*)?[ \t]*(?:\r?\n|$)/;
 
 const recordAuthoredMailhogUse = Effect.gen(function* () {
   const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
