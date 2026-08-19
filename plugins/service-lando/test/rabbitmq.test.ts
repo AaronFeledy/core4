@@ -97,7 +97,7 @@ describe("rabbitmq ServiceType", () => {
         ]);
         expect(resolution.tooling).toEqual({
           rabbitmqctl: { service: "queue", cmd: "rabbitmqctl" },
-          rabbitmqadmin: { service: "queue", cmd: "rabbitmqadmin" },
+          rabbitmqadmin: { service: "queue", cmd: "rabbitmqadmin -u lando -p lando" },
         });
       });
 

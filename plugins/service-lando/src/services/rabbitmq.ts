@@ -90,6 +90,8 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
     const routes = input.service.routes ?? [
       { hostname: `${input.name}.${appName}.lndo.site`, endpoint: MANAGEMENT_PORT },
     ];
+    const managementUser = input.service.environment?.RABBITMQ_DEFAULT_USER ?? "lando";
+    const managementPass = input.service.environment?.RABBITMQ_DEFAULT_PASS ?? "lando";
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -101,7 +103,10 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
       features: [{ id: RABBITMQ_FEATURE_ID }],
       tooling: {
         rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
-        rabbitmqadmin: { service: input.name, cmd: "rabbitmqadmin" },
+        rabbitmqadmin: {
+          service: input.name,
+          cmd: `rabbitmqadmin -u ${managementUser} -p ${managementPass}`,
+        },
       },
     });
   },
