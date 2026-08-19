@@ -21,6 +21,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 ## Codebase Patterns (carry forward)
 
 - New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
+- `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
@@ -453,4 +454,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Out-of-scope finding:** `lando rabbitmqadmin list exchanges` returned `Not_Authorized` while `rabbitmqctl` and the management UI worked with `lando`/`lando`. The contributed `rabbitmqadmin` alias does not pass default broker credentials.
 - **Out-of-scope finding:** `lando uninstall --purge` could not delete leftover root-owned MariaDB volume files from earlier stories (`EACCES` under `runtime/storage/volumes/*-mariadb-data/_data`).
 - **Learnings for future iterations:** Current `localstack/localstack:latest` (2026.7.4) exits 55 without `LOCALSTACK_AUTH_TOKEN`. Keep the catalog default on `4.14.0`, the last community image that starts unauthenticated.
+---
+
+## 2026-08-19 17:13 CDT - US-567
+- App-scoped `type: mailpit` now plans SMTP 1025 + UI 8025 with a default hostname route, using the same pinned Mailpit image as the untouched global Mailpit contribution. `type: mailhog` remains a working SMTP+UI compatibility type and records `deprecation-used` (since 4.2.0, remove 5.0.0, replacement mailpit). The renderer still dedupes that warning per process; `lando doctor --deprecations` reports authored `type: mailhog` from the current Landofile even without a full plan.
+- Both types publish `@lando/sdk/schema/services/<type>` schemas, pass the composition contract, and ship `docs/guides/services/mailpit.mdx` with a hidden mailhog-deprecation scenario.
+- Verification: typecheck, lint, boundaries, schema compatibility, guide lint/coverage/public transcripts passed; focused schema/service/registration/doctor tests passed; CLI `app:config` accepted both types and `doctor --deprecations` listed the MailHog notice.
+- **Learnings for future iterations:**
+  - `app:config` echoes authored Landofile and does not plan, so it will not fire service-type deprecation warnings. Use `app:cache:refresh` for renderer warnings and scan the authored Landofile from `doctor --deprecations` when doctor bootstraps at `none`.
+  - Official `mailhog/mailhog` is a scratch image with no shell; do not add a `kind: command` healthcheck unless the image actually has a probe binary.
 ---

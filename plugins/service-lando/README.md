@@ -31,7 +31,7 @@ framework presets ship post-GA; the table below tracks what
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 `mysql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
-`minio`, `localstack`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
+`minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
 `nginx`, `apache`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Beta scope vs. the GA-target catalog

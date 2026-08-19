@@ -1,0 +1,4 @@
+name: mailpit-demo
+services:
+  inbox:
+    type: mailpit

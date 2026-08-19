@@ -4,12 +4,15 @@
  * Merges provider, subsystem, and global-app diagnostics into a single report
  * without requiring app bootstrap.
  */
-import { Effect, Option } from "effect";
+import { join } from "node:path";
 
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import { DateTime, Effect, Option } from "effect";
+
+import { type ConfigLintResult, MAILHOG_DEPRECATION_NOTICE } from "@lando/sdk/schema";
 import {
   type ConfigService,
   DeprecationService,
+  FileSystem,
   type PathsService,
   type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -79,8 +82,34 @@ const sourceForDeprecation = (entry: {
   return "core";
 };
 
+const MAILHOG_TYPE = /(?:^|\n)[ \t]*type:[ \t]*["']?mailhog["']?[ \t]*(?:\n|$)/;
+
+const recordAuthoredMailhogUse = Effect.gen(function* () {
+  const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
+  const maybeFs = yield* Effect.serviceOption(FileSystem);
+  if (Option.isNone(maybeDeprecations) || Option.isNone(maybeFs)) return;
+  for (const name of [".lando.yml", ".lando.yaml"] as const) {
+    const path = join(process.cwd(), name);
+    const exists = yield* maybeFs.value.exists(path).pipe(Effect.catchAll(() => Effect.succeed(false)));
+    if (!exists) continue;
+    const text = yield* maybeFs.value.readText(path).pipe(Effect.catchAll(() => Effect.succeed("")));
+    if (MAILHOG_TYPE.test(text)) {
+      yield* maybeDeprecations.value
+        .use({
+          kind: "service-type",
+          id: "mailhog",
+          notice: MAILHOG_DEPRECATION_NOTICE,
+          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+        })
+        .pipe(Effect.catchAll(() => Effect.void));
+    }
+    return;
+  }
+});
+
 export const doctorDeprecations = (): Effect.Effect<DoctorDeprecationReport, never, never> =>
   Effect.gen(function* () {
+    yield* recordAuthoredMailhogUse;
     const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
     if (Option.isNone(maybeDeprecations)) return { entries: [] };
     const deprecations = maybeDeprecations.value;

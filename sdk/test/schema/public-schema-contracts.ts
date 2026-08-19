@@ -98,6 +98,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",
   LocalStackServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MailhogServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MailpitServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   MinIOServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",

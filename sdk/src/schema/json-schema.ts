@@ -313,7 +313,13 @@ import {
 } from "./renderer-panel.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
-import { LocalStackServiceConfig, MinIOServiceConfig, RabbitMQServiceConfig } from "./services/index.ts";
+import {
+  LocalStackServiceConfig,
+  MailhogServiceConfig,
+  MailpitServiceConfig,
+  MinIOServiceConfig,
+  RabbitMQServiceConfig,
+} from "./services/index.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -446,6 +452,8 @@ const rawPublicSchemaRegistry = {
   ServiceConfig,
   ServiceConfigInput,
   LocalStackServiceConfig,
+  MailhogServiceConfig,
+  MailpitServiceConfig,
   MinIOServiceConfig,
   RabbitMQServiceConfig,
   LogSource,
@@ -774,6 +782,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
   LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
+  MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",
+  MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
   MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
   RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
   LogSource: "Public Lando schema contract for Log Source.",

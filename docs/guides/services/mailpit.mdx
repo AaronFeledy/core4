@@ -1,0 +1,68 @@
+---
+id: mailpit
+provider: test
+timeout: 90000
+tags: [beta, docs, mailpit, mailhog, service]
+---
+
+# Mailpit
+
+Capture SMTP from your app with an in-app `type: mailpit` service. Lando
+routes the web UI so you can read the messages:
+
+```yaml
+name: mailpit-demo
+services:
+  inbox:
+    type: mailpit
+```
+
+Mailpit listens on SMTP port `1025` and serves its UI on `8025`. Open
+`https://inbox.mailpit-demo.lndo.site` after start.
+
+This is separate from the **global** Mailpit that lives in the host-level
+Lando app (`https://mailpit.lndo.site`). Keep the global one when every
+app on the machine should share one inbox. Use `type: mailpit` when this
+app needs its own capture server.
+
+<Guide>
+  <Scenario id="resolved-config" render>
+    <Step name="scaffold">
+      <UseFixture name="mailpit-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mailpit\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mailhog-deprecation" render={false} reason="Legacy type: mailhog must still plan and emit the deprecation warning.">
+    <Step name="scaffold">
+      <UseFixture name="mailhog-legacy" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mailhog\"" } }} />
+      <Run command="lando doctor --deprecations" />
+      <Verify command="lando doctor --deprecations" expect={{ stdout: { regex: "mailhog" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Ports and UI
+
+SMTP stays on `1025` unless you set `port:`. The UI stays on `8025`. Lando
+adds a default hostname route to that UI port; override `routes:` when you
+want a different URL.
+
+## MailHog
+
+`type: mailhog` still plans as a working SMTP + UI service, but it is
+deprecated since 4.2.0 and scheduled for removal in 5.0.0. Switch to
+`type: mailpit`. `lando doctor --deprecations` reports the old type.

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
+import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
+import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 
@@ -35,6 +37,8 @@ describe("catalog service config schemas", () => {
       LocalStackServiceConfig,
       { type: "localstack", image: "localstack/localstack", port: 4566 },
     ],
+    ["MailpitServiceConfig", MailpitServiceConfig, { type: "mailpit", image: "axllent/mailpit", port: 1025 }],
+    ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailhog", image: "mailhog/mailhog", port: 1025 }],
   ] as const)("Given %s shared service fields, when decoding, then it succeeds", (_name, schema, input) => {
     // Given / When
     const result = strictDecode(schema, input);
@@ -47,6 +51,8 @@ describe("catalog service config schemas", () => {
     ["RabbitMQServiceConfig", RabbitMQServiceConfig, { type: "minio" }],
     ["MinIOServiceConfig", MinIOServiceConfig, { type: "rabbitmq" }],
     ["LocalStackServiceConfig", LocalStackServiceConfig, { type: "minio" }],
+    ["MailpitServiceConfig", MailpitServiceConfig, { type: "mailhog" }],
+    ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailpit" }],
   ] as const)("Given %s with another catalog type, when decoding, then it fails", (_name, schema, input) => {
     // Given / When
     const result = strictDecode(schema, input);
@@ -59,6 +65,8 @@ describe("catalog service config schemas", () => {
     ["RabbitMQServiceConfig", RabbitMQServiceConfig, { type: "rabbitmq", buckets: ["data"] }],
     ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", consolePort: 9001 }],
     ["LocalStackServiceConfig", LocalStackServiceConfig, { type: "localstack", services: ["s3"] }],
+    ["MailpitServiceConfig", MailpitServiceConfig, { type: "mailpit", smtpPort: 1025 }],
+    ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailhog", smtpPort: 1025 }],
   ] as const)(
     "Given %s with an unknown key, when strictly decoding, then it fails",
     (_name, schema, input) => {
@@ -69,4 +77,12 @@ describe("catalog service config schemas", () => {
       expect(result._tag).toBe("Left");
     },
   );
+
+  test("Given the MailHog notice, when inspected, then it names mailpit as the 5.0.0 replacement", () => {
+    // Given / When / Then
+    expect(MAILHOG_DEPRECATION_NOTICE.since).toBe("4.2.0");
+    expect(MAILHOG_DEPRECATION_NOTICE.removeIn).toBe("5.0.0");
+    expect(MAILHOG_DEPRECATION_NOTICE.replacement).toBe("mailpit");
+    expect(MAILHOG_DEPRECATION_NOTICE.severity).toBe("warn");
+  });
 });

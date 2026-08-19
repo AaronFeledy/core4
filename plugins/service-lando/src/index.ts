@@ -12,6 +12,8 @@ import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { landoServiceType } from "./services/lando.ts";
 import { localstackServiceType } from "./services/localstack.ts";
+import { mailhogServiceType } from "./services/mailhog.ts";
+import { mailpitServiceType } from "./services/mailpit.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "./services/meilisearch.ts";
 import { memcachedServiceType } from "./services/memcached.ts";
@@ -39,6 +41,8 @@ export { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { landoServiceType } from "./services/lando.ts";
 export { localstackServiceType } from "./services/localstack.ts";
+export { mailhogServiceType } from "./services/mailhog.ts";
+export { mailpitServiceType } from "./services/mailpit.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
 export {
   MEILISEARCH_DEFAULT_MASTER_KEY,
@@ -76,6 +80,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["go:1.23", go123ServiceType],
   ["lando", landoServiceType],
   ["localstack", localstackServiceType],
+  ["mailhog", mailhogServiceType],
+  ["mailpit", mailpitServiceType],
   ["mariadb", mariadbServiceType],
   ["meilisearch", meilisearchServiceType],
   ["meilisearch:1", meilisearch1ServiceType],
@@ -156,6 +162,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "go:1.23",
       "lando",
       "localstack",
+      "mailhog",
+      "mailpit",
       "mariadb",
       "meilisearch",
       "meilisearch:1",
