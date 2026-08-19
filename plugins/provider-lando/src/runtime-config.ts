@@ -75,9 +75,8 @@ export const writeManagedRuntimeContainersConf = (
       // Pin conmon and the crun OCI runtime to the bundled binaries: host copies
       // (e.g. a pre-Podman-6 crun on CI runners) fail container start with
       // "crun: unknown version specified". log_driver stays k8s-file because the
-      // bundled static conmon has no journald support. cgroupfs avoids a systemd
-      // user session that WSL and headless hosts often lack.
-      const body = `[containers]\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
+      // bundled static conmon has no journald support.
+      const body = `[containers]\nlog_driver = "k8s-file"\n[engine]\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
       const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");
       const containersConfigDir = `${configDir}/containers`;

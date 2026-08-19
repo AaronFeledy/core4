@@ -30,7 +30,6 @@ const MANAGED_POLICY = `{
 interface ManagedContainersConf {
   readonly containers?: { readonly log_driver?: string };
   readonly engine?: {
-    readonly cgroup_manager?: string;
     readonly events_logger?: string;
     readonly helper_binaries_dir?: ReadonlyArray<string>;
     readonly conmon_path?: ReadonlyArray<string>;
@@ -100,7 +99,6 @@ describe("writeManagedRuntimeContainersConf", () => {
     expect(parsed.engine?.runtimes?.crun).toEqual([join(runtimeBinDir, "crun")]);
     expect(parsed.engine?.conmon_path).toEqual([join(runtimeBinDir, "conmon")]);
     expect(parsed.containers?.log_driver).toBe("k8s-file");
-    expect(parsed.engine?.cgroup_manager).toBe("cgroupfs");
     expect(parsed.engine?.events_logger).toBe("file");
   });
 
