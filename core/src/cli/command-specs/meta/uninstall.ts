@@ -187,7 +187,7 @@ const makeListDiscoveredApps =
 // Sweeps every installed runtime rather than only the discovered apps:
 // leftover stopped containers, networks, and volumes must go too (#771).
 const makeCleanupDiscoveredApps =
-  (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
+  (userDataRoot?: string): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
   async (_apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -198,7 +198,7 @@ const makeCleanupDiscoveredApps =
     const cleanupRuntimes: RuntimeProbe[] = CONTAINER_RUNTIMES.map((runtime) =>
       pathRuntime(runtime.cmd, runtime.providerId),
     );
-    const managed = managedLandoRuntime(makeLandoPaths().roots.userDataRoot);
+    const managed = managedLandoRuntime(userDataRoot ?? makeLandoPaths().roots.userDataRoot);
     if (!cleanupRuntimes.some((runtime) => runtime.cmd === managed.cmd)) {
       cleanupRuntimes.push(managed);
     }
@@ -292,7 +292,9 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
       ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
       : hasInjectedDiscovery
         ? undefined
-        : makeCleanupDiscoveredApps();
+        : makeCleanupDiscoveredApps(
+            typeof extra._userDataRoot === "string" ? extra._userDataRoot : undefined,
+          );
   return {
     dryRun: flags["dry-run"] === true,
     yes: flags.yes === true,
