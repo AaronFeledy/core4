@@ -477,3 +477,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Doctor `--deprecations` now matches authored `type: mailhog` on CRLF Landofiles and on lines with trailing comments, so the scan agrees with the YAML parser.
 - Verification: typecheck, lint passed; 24 doctor-report tests passed.
 ---
+
+## 2026-08-19 17:50 CDT - US-567 Review
+- Doctor `--deprecations` now walks to the discovered app root before scanning for `type: mailhog`, so a subdirectory invocation still reports the authored deprecation.
+- Verification: typecheck, lint passed; 25 doctor-report tests passed.
+---

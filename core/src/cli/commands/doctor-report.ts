@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/services";
 
 import { lintLandofile } from "@lando/engine/services/landofile-live";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
@@ -88,8 +89,10 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
   const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
   const maybeFs = yield* Effect.serviceOption(FileSystem);
   if (Option.isNone(maybeDeprecations) || Option.isNone(maybeFs)) return;
+  const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
+  if (appRoot === undefined) return;
   for (const name of [".lando.yml", ".lando.yaml"] as const) {
-    const path = join(process.cwd(), name);
+    const path = join(appRoot, name);
     const exists = yield* maybeFs.value.exists(path).pipe(Effect.catchAll(() => Effect.succeed(false)));
     if (!exists) continue;
     const text = yield* maybeFs.value.readText(path).pipe(Effect.catchAll(() => Effect.succeed("")));

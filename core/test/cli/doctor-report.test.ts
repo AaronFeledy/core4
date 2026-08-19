@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -605,6 +605,33 @@ describe("meta:doctor combined report", () => {
       }
     },
   );
+
+  test("doctor --deprecations finds type: mailhog when invoked from a subdirectory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mailhog-doctor-nested-"));
+    const previous = process.cwd();
+    await writeFile(join(dir, ".lando.yml"), "name: legacy-mail\nservices:\n  inbox:\n    type: mailhog\n");
+    const nested = join(dir, "web");
+    await mkdir(nested);
+    process.chdir(nested);
+    try {
+      const report = await Effect.runPromise(
+        doctorDeprecations().pipe(Effect.provide(Layer.mergeAll(DeprecationServiceLive, FileSystemLive))),
+      );
+      expect(report.entries).toEqual([
+        expect.objectContaining({
+          kind: "service-type",
+          id: "mailhog",
+          since: "4.2.0",
+          removeIn: "5.0.0",
+          replacement: "mailpit",
+          count: 1,
+        }),
+      ]);
+    } finally {
+      process.chdir(previous);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
   test("doctor deprecation machine output exposes structured data independent of warning suppression", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
