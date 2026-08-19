@@ -97,11 +97,11 @@ describe("rabbitmq ServiceType", () => {
         ]);
         expect(resolution.tooling).toEqual({
           rabbitmqctl: { service: "queue", cmd: "rabbitmqctl" },
-          rabbitmqadmin: { service: "queue", cmd: "rabbitmqadmin -u 'lando' -p 'lando'" },
+          rabbitmqadmin: { service: "queue", cmd: ["rabbitmqadmin", "-u", "lando", "-p", "lando"] },
         });
       });
 
-      test("quotes rabbitmqadmin credentials in tooling", async () => {
+      test("preserves rabbitmqadmin credentials as literal argv", async () => {
         const resolution = await resolveRabbitMQService(serviceType, {
           type: id,
           environment: {
@@ -112,7 +112,7 @@ describe("rabbitmq ServiceType", () => {
 
         expect(resolution.tooling?.rabbitmqadmin).toEqual({
           service: "queue",
-          cmd: "rabbitmqadmin -u 'user name' -p 'pa'\\''ss; rm -rf /'",
+          cmd: ["rabbitmqadmin", "-u", "user name", "-p", "pa'ss; rm -rf /"],
         });
       });
 

@@ -16,8 +16,6 @@ const ARTIFACTS = {
   "4": "rabbitmq:4-management",
 } as const;
 
-const quoteShellArg = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
-
 export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 
 const appNameFor = (ctx: ServiceFeatureContext): string => {
@@ -107,7 +105,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
         rabbitmqadmin: {
           service: input.name,
-          cmd: `rabbitmqadmin -u ${quoteShellArg(managementUser)} -p ${quoteShellArg(managementPass)}`,
+          cmd: ["rabbitmqadmin", "-u", managementUser, "-p", managementPass],
         },
       },
     });
