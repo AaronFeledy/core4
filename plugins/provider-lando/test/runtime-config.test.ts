@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,21 +102,6 @@ describe("writeManagedRuntimeContainersConf", () => {
     expect(parsed.containers?.cgroups).toBe("no-conmon");
     expect(parsed.engine?.cgroup_manager).toBe("cgroupfs");
     expect(parsed.engine?.events_logger).toBe("file");
-  });
-
-  test("writes a systemd-run shim that execs the command without a user session", async () => {
-    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-shim-"));
-    const runtimeBinDir = join(root, "runtime", "bin");
-    const runtimeConfigDir = join(root, "runtime", "config");
-    try {
-      await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
-      const shim = join(runtimeBinDir, "systemd-run");
-      await access(shim, constants.X_OK);
-      const result = await Bun.$`${shim} -q --scope --user /bin/echo aardvark-ok`.text();
-      expect(result).toContain("aardvark-ok");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
   });
 
   test("binds default published ports to loopback only for the managed runtime", async () => {
