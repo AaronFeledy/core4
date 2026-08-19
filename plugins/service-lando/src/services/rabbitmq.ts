@@ -105,7 +105,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
         rabbitmqadmin: {
           service: input.name,
-          cmd: ["rabbitmqadmin", "-u", managementUser, "-p", managementPass],
+          cmd: ["rabbitmqadmin", "--username", managementUser, "--password", managementPass],
         },
       },
     });
