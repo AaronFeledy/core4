@@ -95,8 +95,8 @@ const makeListDiscoveredApps =
         // Runtime not installed; only installed runtimes are queried below.
       }
     }
-    if (!availableRuntimes.some((runtime) => runtime.providerId === "lando")) {
-      const managed = managedLandoRuntime(userDataRoot);
+    const managed = managedLandoRuntime(userDataRoot);
+    if (!availableRuntimes.some((runtime) => runtime.cmd === managed.cmd)) {
       try {
         await runRuntime(execFileAsync, managed, ["--version"], RUNTIME_PROBE_TIMEOUT_MS);
         availableRuntimes.push(managed);
