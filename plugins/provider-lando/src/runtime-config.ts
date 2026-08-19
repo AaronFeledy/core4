@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 
 import { Effect } from "effect";
 
@@ -33,6 +33,38 @@ const MANAGED_SIGNATURE_POLICY = `{
 }
 `;
 
+// Netavark starts aardvark-dns via `systemd-run --scope --user` when systemd is
+// booted. That requires a user session bus this managed runtime must not need.
+const MANAGED_SYSTEMD_RUN_SHIM = `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --)
+      shift
+      break
+      ;;
+    --scope|--user|--system|--quiet|-q|--collect|--wait|--remain-after-exit|--no-block|--pipe|--pty|--same-dir)
+      shift
+      ;;
+    --unit|--slice|--uid|--gid|--description|--property|-p|--service-type|--working-directory|--setenv)
+      shift
+      if [ "$#" -gt 0 ]; then
+        shift
+      fi
+      ;;
+    --unit=*|--slice=*|--uid=*|--gid=*|--description=*|--property=*|--service-type=*|--working-directory=*|--setenv=*)
+      shift
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+exec "$@"
+`;
+
 export const writeManagedRuntimeContainersConf = (
   options: WriteManagedRuntimeContainersConfOptions,
 ): Effect.Effect<void, ProviderUnavailableError> =>
@@ -43,8 +75,9 @@ export const writeManagedRuntimeContainersConf = (
       // Pin conmon and the crun OCI runtime to the bundled binaries: host copies
       // (e.g. a pre-Podman-6 crun on CI runners) fail container start with
       // "crun: unknown version specified". log_driver stays k8s-file because the
-      // bundled static conmon has no journald support.
-      const body = `[containers]\nlog_driver = "k8s-file"\n[engine]\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
+      // bundled static conmon has no journald support. cgroupfs avoids a systemd
+      // user session that WSL and headless hosts often lack.
+      const body = `[containers]\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
       const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");
       const containersConfigDir = `${configDir}/containers`;
@@ -52,6 +85,10 @@ export const writeManagedRuntimeContainersConf = (
       await writeFile(`${configDir}/containers.conf`, body);
       await writeFile(`${configDir}/registries.conf`, MANAGED_REGISTRIES_CONF);
       await writeFile(`${containersConfigDir}/policy.json`, MANAGED_SIGNATURE_POLICY);
+      await mkdir(options.runtimeBinDir, { recursive: true });
+      const systemdRunShim = `${options.runtimeBinDir.replace(/\/+$/u, "")}/systemd-run`;
+      await writeFile(systemdRunShim, MANAGED_SYSTEMD_RUN_SHIM, { mode: 0o755 });
+      await chmod(systemdRunShim, 0o755);
     },
     catch: (cause) =>
       new ProviderUnavailableError({
