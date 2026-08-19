@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -63,7 +64,9 @@ const writeAndParse = async (): Promise<{
   const runtimeBinDir = join(root, "runtime", "bin");
   const runtimeConfigDir = join(root, "runtime", "config");
   try {
-    await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
+    await Effect.runPromise(
+      writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: false }),
+    );
     const body = await readFile(join(runtimeConfigDir, "containers.conf"), "utf8");
     const registriesBody = await readFile(join(runtimeConfigDir, "registries.conf"), "utf8");
     const policyBody = await readFile(join(runtimeConfigDir, "containers", "policy.json"), "utf8");
@@ -135,5 +138,40 @@ describe("writeManagedRuntimeContainersConf", () => {
     expect(policyBody).toBe(MANAGED_POLICY);
     expect(policyParsed.default?.[0]?.type).toBe("insecureAcceptAnything");
     expect(policyParsed.transports?.["docker-daemon"]?.[""]?.[0]?.type).toBe("insecureAcceptAnything");
+  });
+
+  test("writes a systemd-run shim when the host has no user systemd session", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-shim-"));
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const runtimeConfigDir = join(root, "runtime", "config");
+    try {
+      await Effect.runPromise(
+        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: true }),
+      );
+      const shim = join(runtimeBinDir, "systemd-run");
+      await access(shim, constants.X_OK);
+      const result = await Bun.$`${shim} -q --scope --user /bin/echo aardvark-ok`.text();
+      expect(result).toContain("aardvark-ok");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes a leftover systemd-run shim when a user systemd session exists", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-shim-remove-"));
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const runtimeConfigDir = join(root, "runtime", "config");
+    try {
+      await Effect.runPromise(
+        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: true }),
+      );
+      await Effect.runPromise(
+        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: false }),
+      );
+      const shim = join(runtimeBinDir, "systemd-run");
+      await expect(access(shim, constants.F_OK)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -1,12 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { hasUsableUserSystemdSession } from "./user-systemd-session.ts";
 
 export interface WriteManagedRuntimeContainersConfOptions {
   readonly runtimeBinDir: string;
   readonly runtimeConfigDir: string;
+  readonly useSystemdRunShim?: boolean;
 }
 
 const escapeTomlString = (value: string): string => value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
@@ -33,6 +35,41 @@ const MANAGED_SIGNATURE_POLICY = `{
 }
 `;
 
+// Netavark starts aardvark-dns via `systemd-run --scope --user` when systemd is
+// booted. That requires a user session bus this managed runtime must not need.
+const MANAGED_SYSTEMD_RUN_SHIM = `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --)
+      shift
+      break
+      ;;
+    --scope|--user|--system|--quiet|-q|--collect|--wait|--remain-after-exit|--no-block|--pipe|--pty|--same-dir)
+      shift
+      ;;
+    --unit|--slice|--uid|--gid|--description|--property|-p|--service-type|--working-directory|--setenv)
+      shift
+      if [ "$#" -gt 0 ]; then
+        shift
+      fi
+      ;;
+    --unit=*|--slice=*|--uid=*|--gid=*|--description=*|--property=*|--service-type=*|--working-directory=*|--setenv=*)
+      shift
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+exec "$@"
+`;
+
+const systemdRunShimPath = (runtimeBinDir: string): string =>
+  `${runtimeBinDir.replace(/\/+$/u, "")}/systemd-run`;
+
 export const writeManagedRuntimeContainersConf = (
   options: WriteManagedRuntimeContainersConfOptions,
 ): Effect.Effect<void, ProviderUnavailableError> =>
@@ -54,6 +91,22 @@ export const writeManagedRuntimeContainersConf = (
       await writeFile(`${configDir}/containers.conf`, body);
       await writeFile(`${configDir}/registries.conf`, MANAGED_REGISTRIES_CONF);
       await writeFile(`${containersConfigDir}/policy.json`, MANAGED_SIGNATURE_POLICY);
+      await mkdir(options.runtimeBinDir, { recursive: true });
+      const shimPath = systemdRunShimPath(options.runtimeBinDir);
+      const useShim = options.useSystemdRunShim ?? !hasUsableUserSystemdSession();
+      if (useShim) {
+        await writeFile(shimPath, MANAGED_SYSTEMD_RUN_SHIM, { mode: 0o755 });
+        await chmod(shimPath, 0o755);
+        return;
+      }
+      try {
+        await unlink(shimPath);
+      } catch (cause) {
+        if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
+          return;
+        }
+        throw cause;
+      }
     },
     catch: (cause) =>
       new ProviderUnavailableError({
