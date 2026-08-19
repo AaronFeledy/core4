@@ -5,14 +5,9 @@ import { dirname } from "node:path";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
+import type { PodmanServiceSpec } from "./podman-service-args.ts";
 
-export interface PodmanServiceSpec {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly env?: Readonly<Record<string, string>>;
-  readonly socketPath: string;
-}
+export { buildPodmanServiceArgs, type PodmanServiceSpec } from "./podman-service-args.ts";
 
 const launchRemediation =
   "The Lando runtime service failed to launch. Run `lando doctor` to inspect the runtime, then rerun the command; run `lando setup` if the runtime is not installed.";
@@ -78,38 +73,6 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
     return typeof stderr === "string" ? stderr : undefined;
   }
 }
-
-const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
-  const separator = podmanBin.lastIndexOf("/");
-  return separator > 0 ? podmanBin.slice(0, separator) : undefined;
-};
-
-export const buildPodmanServiceArgs = (p: {
-  readonly podmanBin: string;
-  readonly storageDir: string;
-  readonly runRoot: string;
-  readonly configDir: string;
-  readonly socketPath: string;
-}): PodmanServiceSpec => {
-  const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
-  return {
-    command: p.podmanBin,
-    env: {
-      CONTAINERS_CONF: `${p.configDir}/containers.conf`,
-      CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
-      XDG_CONFIG_HOME: p.configDir,
-      DISABLE_HC_SYSTEMD: "true",
-    },
-    args: buildManagedRuntimeServiceArgs({
-      runtimeStorageDir: p.storageDir,
-      runtimeRunDir: p.runRoot,
-      runtimeConfigDir: p.configDir,
-      ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
-      providerSocketPath: p.socketPath,
-    }),
-    socketPath: p.socketPath,
-  };
-};
 
 export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;

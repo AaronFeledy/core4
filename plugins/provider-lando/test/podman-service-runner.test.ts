@@ -29,6 +29,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
+      useSystemdRunShim: false,
     });
 
     expect(spec.command).toBe("/data/runtime/bin/podman");
@@ -56,6 +57,22 @@ describe("PodmanServiceRunner", () => {
     expect(spec.socketPath).toBe("/data/runtime/run/podman.sock");
   });
 
+  test("buildPodmanServiceArgs prepends runtime/bin when the systemd-run shim is required", () => {
+    const spec = buildPodmanServiceArgs({
+      podmanBin: "/data/runtime/bin/podman",
+      storageDir: "/data/runtime/storage",
+      runRoot: "/data/runtime/run",
+      configDir: "/data/runtime/config",
+      socketPath: "/data/runtime/run/podman.sock",
+      useSystemdRunShim: true,
+    });
+
+    expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
+    if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
+      expect(spec.env?.PATH).toContain(process.env.PATH);
+    }
+  });
+
   test("isManagedPodmanServiceArgv matches canonical and legacy argv without storage-opt", () => {
     const spec = buildPodmanServiceArgs({
       podmanBin: "/data/runtime/bin/podman",
@@ -63,6 +80,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
+      useSystemdRunShim: false,
     });
     const canonical = [spec.command, ...spec.args];
     const legacy = [
@@ -108,6 +126,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
+      useSystemdRunShim: false,
     });
 
     expect(spec.args).toContain("--time=0");
@@ -128,6 +147,7 @@ describe("PodmanServiceRunner", () => {
         runRoot: "/data/runtime/run",
         configDir: "/data/runtime/config",
         socketPath: join(dir, "podman.sock"),
+        useSystemdRunShim: false,
       });
 
       const pid = await Effect.runPromise(runner.launch(spec));

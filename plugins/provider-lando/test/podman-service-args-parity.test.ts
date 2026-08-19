@@ -18,6 +18,7 @@ test("buildPodmanServiceArgs stays byte-identical to the managed runtime service
     runRoot: paths.runtimeRunDir,
     configDir: paths.runtimeConfigDir,
     socketPath: paths.providerSocketPath,
+    useSystemdRunShim: false,
   });
 
   expect(podmanBin).toBe(`${paths.runtimeBinDir}/podman`);
@@ -43,7 +44,7 @@ test("the production provider launch uses the shared managed-runtime argv0 helpe
 });
 
 test("provider delegates Podman service arg shaping to the managed runtime helper", () => {
-  const source = readFileSync(join(import.meta.dir, "../src/podman-service-runner.ts"), "utf8");
+  const source = readFileSync(join(import.meta.dir, "../src/podman-service-args.ts"), "utf8");
 
   expect(source).toContain("buildManagedRuntimeServiceArgs");
 
