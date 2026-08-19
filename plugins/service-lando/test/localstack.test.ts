@@ -82,6 +82,33 @@ describe("localstack ServiceType", () => {
     });
   });
 
+  test("aligns GATEWAY_LISTEN with port when both are authored", async () => {
+    const plan = await planLocalStackService({
+      type: "localstack",
+      port: 14566,
+      environment: { GATEWAY_LISTEN: "127.0.0.1:4566" },
+    });
+
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "127.0.0.1:14566" });
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 14566, protocol: "http", name: "cloud" }]);
+    expect(plan.healthcheck).toMatchObject({
+      command: ["sh", "-c", "curl -sf http://localhost:14566/_localstack/health"],
+    });
+  });
+
+  test("derives the planned port from GATEWAY_LISTEN when port is omitted", async () => {
+    const plan = await planLocalStackService({
+      type: "localstack",
+      environment: { GATEWAY_LISTEN: "0.0.0.0:24666" },
+    });
+
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:24666" });
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 24666, protocol: "http", name: "cloud" }]);
+    expect(plan.healthcheck).toMatchObject({
+      command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
+    });
+  });
+
   test("preserves authored environment and process fields", async () => {
     const plan = await planLocalStackService({
       type: "localstack",

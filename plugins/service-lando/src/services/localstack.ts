@@ -20,12 +20,33 @@ const appNameFor = (ctx: ServiceFeatureContext): string => {
   return basename(ctx.appRoot) || "app";
 };
 
+/** Last `:port` or bare port in a LocalStack `GATEWAY_LISTEN` value. */
+const portFromGatewayListen = (value: string): number | undefined => {
+  const match = /:(\d+)\s*$/.exec(value) ?? /^(\d+)\s*$/.exec(value);
+  if (match?.[1] === undefined) return undefined;
+  const port = Number(match[1]);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined;
+};
+
+/** Keep host/address authoring; force the listen port to match the planned endpoint. */
+const gatewayListenForPort = (authored: string | undefined, port: number): string => {
+  if (authored === undefined) return `0.0.0.0:${port}`;
+  if (/:\d+\s*$/.test(authored)) return authored.replace(/:\d+\s*$/, `:${port}`);
+  if (/^\d+\s*$/.test(authored)) return String(port);
+  return `${authored.replace(/\s+$/, "")}:${port}`;
+};
+
 const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const authoredGateway = service.environment?.GATEWAY_LISTEN;
+  const port =
+    service.port ??
+    (authoredGateway === undefined ? undefined : portFromGatewayListen(authoredGateway)) ??
+    DEFAULT_PORT;
+  const gatewayListen = gatewayListenForPort(authoredGateway, port);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.addEnv("GATEWAY_LISTEN", service.environment?.GATEWAY_LISTEN ?? `0.0.0.0:${port}`);
+  ctx.addEnv("GATEWAY_LISTEN", gatewayListen);
   ctx.addEnv("PERSISTENCE", service.environment?.PERSISTENCE ?? "1");
   ctx.addStorage({
     store: `${appNameFor(ctx)}-localstack-data`,
@@ -51,7 +72,8 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
 export const localstackServiceFeature: ServiceFeatureDefinition = {
   id: LOCALSTACK_FEATURE_ID,
   schema: Schema.Unknown,
-  priority: 600,
+  // After lando.env so GATEWAY_LISTEN stays aligned with the planned endpoint port.
+  priority: 750,
   apply: (ctx) =>
     Effect.try({
       try: () => applyLocalStackFeature(ctx),
