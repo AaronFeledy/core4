@@ -32,12 +32,13 @@ describe("PodmanServiceRunner", () => {
     });
 
     expect(spec.command).toBe("/data/runtime/bin/podman");
-    expect(spec.env).toEqual({
+    expect(spec.env).toMatchObject({
       CONTAINERS_CONF: "/data/runtime/config/containers.conf",
       CONTAINERS_REGISTRIES_CONF: "/data/runtime/config/registries.conf",
       XDG_CONFIG_HOME: "/data/runtime/config",
+      DISABLE_HC_SYSTEMD: "true",
     });
-    expect(spec.env).not.toHaveProperty("PATH");
+    expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -135,7 +136,10 @@ describe("PodmanServiceRunner", () => {
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
-      expect(launchedEnv?.PATH).toBe(process.env.PATH);
+      expect(launchedEnv?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
+      if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
+        expect(launchedEnv?.PATH).toContain(process.env.PATH);
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,6 +1,6 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { delimiter, dirname } from "node:path";
 
 import { Effect } from "effect";
 
@@ -84,6 +84,13 @@ const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
   return separator > 0 ? podmanBin.slice(0, separator) : undefined;
 };
 
+const managedServicePath = (runtimeBinDir: string | undefined): string | undefined => {
+  const hostPath = process.env.PATH ?? "";
+  if (runtimeBinDir === undefined) return hostPath.length > 0 ? hostPath : undefined;
+  if (hostPath.length === 0) return runtimeBinDir;
+  return `${runtimeBinDir}${delimiter}${hostPath}`;
+};
+
 export const buildPodmanServiceArgs = (p: {
   readonly podmanBin: string;
   readonly storageDir: string;
@@ -92,12 +99,15 @@ export const buildPodmanServiceArgs = (p: {
   readonly socketPath: string;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
+  const pathValue = managedServicePath(runtimeBinDir);
   return {
     command: p.podmanBin,
     env: {
       CONTAINERS_CONF: `${p.configDir}/containers.conf`,
       CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
       XDG_CONFIG_HOME: p.configDir,
+      DISABLE_HC_SYSTEMD: "true",
+      ...(pathValue === undefined ? {} : { PATH: pathValue }),
     },
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,

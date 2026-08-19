@@ -24,11 +24,13 @@ test("buildPodmanServiceArgs stays byte-identical to the managed runtime service
   expect([providerSpec.command, ...providerSpec.args]).toEqual([managedSpec.command, ...managedSpec.args]);
   expect(providerSpec.command).toBe(managedSpec.command);
   expect(providerSpec.args).toEqual(managedSpec.args);
-  expect(providerSpec.env).toEqual({
+  expect(providerSpec.env).toMatchObject({
     CONTAINERS_CONF: `${paths.runtimeConfigDir}/containers.conf`,
     CONTAINERS_REGISTRIES_CONF: `${paths.runtimeConfigDir}/registries.conf`,
     XDG_CONFIG_HOME: paths.runtimeConfigDir,
+    DISABLE_HC_SYSTEMD: "true",
   });
+  expect(providerSpec.env?.PATH?.startsWith(paths.runtimeBinDir)).toBe(true);
   expect(providerSpec.socketPath).toBe(managedSpec.socketPath);
 });
 
