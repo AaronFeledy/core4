@@ -485,15 +485,29 @@ const ServiceConfigWithExtensions = Schema.Struct(
     type: Schema.optional(Schema.String), // defaults to "lando"
     primary: Schema.optional(Schema.Boolean),
 
-    image: Schema.optional(Schema.String),
+    image: Schema.optional(Schema.String).annotations({
+      description: "Container image reference used by the service.",
+    }),
     build: Schema.optional(BuildBlock),
-    command: Schema.optional(CommandSpec),
-    entrypoint: Schema.optional(CommandSpec),
-    user: Schema.optional(Schema.String),
-    workingDirectory: Schema.optional(PortablePath),
-    database: Schema.optional(Schema.String),
+    command: Schema.optional(CommandSpec).annotations({
+      description: "Command executed when the service starts.",
+    }),
+    entrypoint: Schema.optional(CommandSpec).annotations({
+      description: "Entrypoint used to launch the service container.",
+    }),
+    user: Schema.optional(Schema.String).annotations({
+      description: "Container user used to run service processes.",
+    }),
+    workingDirectory: Schema.optional(PortablePath).annotations({
+      description: "Container working directory for service processes.",
+    }),
+    database: Schema.optional(Schema.String).annotations({
+      description: "Default database, bucket, or equivalent data namespace created for the service.",
+    }),
     cores: Schema.optional(Schema.Array(Schema.String)),
-    port: Schema.optional(Schema.Number),
+    port: Schema.optional(Schema.Number).annotations({
+      description: "Primary container port exposed by the service.",
+    }),
     framework: Schema.optional(Schema.String),
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
@@ -550,12 +564,22 @@ const ServiceConfigWithExtensions = Schema.Struct(
           includes: Schema.optional(Schema.Array(Schema.String)),
         }),
       ),
-    ),
-    mounts: Schema.optional(Schema.Array(MountInput)),
-    storage: Schema.optional(Schema.Array(StorageInput)),
+    ).annotations({
+      description: "Application source mount configuration, or false to disable the app mount.",
+    }),
+    mounts: Schema.optional(Schema.Array(MountInput)).annotations({
+      description: "Additional host or managed-file mounts attached to the service.",
+    }),
+    storage: Schema.optional(Schema.Array(StorageInput)).annotations({
+      description: "Persistent or cached storage attached to the service.",
+    }),
 
-    endpoints: Schema.optional(Schema.Array(EndpointInput)),
-    routes: Schema.optional(Schema.Array(RouteInput)),
+    endpoints: Schema.optional(Schema.Array(EndpointInput)).annotations({
+      description: "Internal or published network endpoints exposed by the service.",
+    }),
+    routes: Schema.optional(Schema.Array(RouteInput)).annotations({
+      description: "Hostnames routed to service endpoints.",
+    }),
 
     healthcheck: Schema.optional(HealthcheckField).annotations({
       description:
@@ -569,7 +593,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     dependsOn: Schema.optional(ComposeDependsOnInput),
 
-    providers: Schema.optional(ProviderExtensionConfig),
+    providers: Schema.optional(ProviderExtensionConfig).annotations({
+      description: "Provider-specific service configuration keyed by provider id.",
+    }),
   },
   ExtensionRecord,
 );

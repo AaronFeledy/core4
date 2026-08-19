@@ -143,6 +143,16 @@ describe("@lando/sdk package exports", () => {
     expect(schema.renderSchemaReferenceMarkdown).toBeDefined();
   });
 
+  test("catalog service schema subpaths resolve their contracts", async () => {
+    const localstack = await import("@lando/sdk/schema/services/localstack");
+    const minio = await import("@lando/sdk/schema/services/minio");
+    const rabbitmq = await import("@lando/sdk/schema/services/rabbitmq");
+
+    expect(localstack.LocalStackServiceConfig).toBeDefined();
+    expect(minio.MinIOServiceConfig).toBeDefined();
+    expect(rabbitmq.RabbitMQServiceConfig).toBeDefined();
+  });
+
   test("schema entry point exposes JSON Schema for the canonical contract surface", async () => {
     const schema = await import("@lando/sdk/schema");
 

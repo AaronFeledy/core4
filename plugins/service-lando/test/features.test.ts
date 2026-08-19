@@ -15,29 +15,33 @@ const EXPECTED_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
   ["lando.user", 2000],
 ];
 
-const EXPECTED_CATALOG_FEATURE_IDS: ReadonlyArray<string> = [
-  "service-lando.apache",
-  "service-lando.compose",
-  "service-lando.elasticsearch",
-  "service-lando.go",
-  "service-lando.lando",
-  "service-lando.mariadb",
-  "service-lando.meilisearch",
-  "service-lando.memcached",
-  "service-lando.mongodb",
-  "service-lando.mysql",
-  "service-lando.nginx",
-  "service-lando.node",
-  "service-lando.opensearch",
-  "service-lando.php",
-  "service-lando.postgres",
-  "service-lando.python",
-  "service-lando.redis",
-  "service-lando.ruby",
-  "service-lando.solr",
-  "service-lando.static",
-  "service-lando.valkey",
-];
+/** Catalog service features apply at 600 unless they must run after lando.env. */
+const EXPECTED_CATALOG_FEATURE_PRIORITIES: Readonly<Record<string, number>> = {
+  "service-lando.apache": 600,
+  "service-lando.compose": 600,
+  "service-lando.elasticsearch": 600,
+  "service-lando.go": 600,
+  "service-lando.lando": 600,
+  "service-lando.localstack": 750,
+  "service-lando.mariadb": 600,
+  "service-lando.meilisearch": 600,
+  "service-lando.memcached": 600,
+  "service-lando.minio": 600,
+  "service-lando.mongodb": 600,
+  "service-lando.mysql": 600,
+  "service-lando.nginx": 600,
+  "service-lando.node": 600,
+  "service-lando.opensearch": 600,
+  "service-lando.php": 600,
+  "service-lando.postgres": 600,
+  "service-lando.python": 600,
+  "service-lando.rabbitmq": 600,
+  "service-lando.redis": 600,
+  "service-lando.ruby": 600,
+  "service-lando.solr": 600,
+  "service-lando.static": 600,
+  "service-lando.valkey": 600,
+};
 
 describe("@lando/service-lando built-in feature modules", () => {
   test("publishes each built-in lando.* feature at its canonical priority", () => {
@@ -49,17 +53,20 @@ describe("@lando/service-lando built-in feature modules", () => {
     }
   });
 
-  test("publishes each catalog feature at the catalog feature priority", () => {
-    for (const id of EXPECTED_CATALOG_FEATURE_IDS) {
+  test("publishes each catalog feature at its catalog feature priority", () => {
+    for (const [id, priority] of Object.entries(EXPECTED_CATALOG_FEATURE_PRIORITIES)) {
       const definition = serviceFeatures.get(id);
       expect(definition).toBeDefined();
       expect(definition?.id).toBe(id);
-      expect(definition?.priority).toBe(600);
+      expect(definition?.priority).toBe(priority);
     }
   });
 
   test("manifest contributes exactly the published feature ids", () => {
-    const expectedIds = [...EXPECTED_PRIORITIES.map(([id]) => id), ...EXPECTED_CATALOG_FEATURE_IDS];
+    const expectedIds = [
+      ...EXPECTED_PRIORITIES.map(([id]) => id),
+      ...Object.keys(EXPECTED_CATALOG_FEATURE_PRIORITIES),
+    ];
     expect([...SERVICE_FEATURE_IDS].sort()).toEqual(expectedIds.slice().sort());
     expect([...serviceFeatures.keys()].sort()).toEqual(SERVICE_FEATURE_IDS.slice().sort());
   });

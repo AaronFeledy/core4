@@ -98,7 +98,7 @@ export interface ServiceType {
   readonly versions?: ReadonlyArray<string>;
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
-  readonly schema: Schema.Schema<unknown>;
+  readonly schema: Schema.Schema.AnyNoContext;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
 

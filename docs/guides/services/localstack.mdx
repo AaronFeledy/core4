@@ -1,0 +1,64 @@
+---
+id: localstack
+provider: test
+timeout: 90000
+tags: [beta, docs, localstack, service]
+---
+
+# LocalStack
+
+Run AWS services locally by adding a service with `type: localstack`:
+
+```yaml
+name: localstack-demo
+services:
+  aws:
+    type: localstack
+```
+
+LocalStack serves its AWS-compatible APIs through the gateway on port `4566`.
+Point your SDK or application at `http://aws:4566` from another service in the
+app.
+
+<Guide>
+  <Scenario id="resolves-localstack-service" render>
+    <Step name="scaffold">
+      <UseFixture name="localstack-demo" />
+    </Step>
+    <Step name="inspect-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"localstack-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"localstack\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Keep local AWS data
+
+Lando mounts persistent storage at `/var/lib/localstack`. Queues, buckets, and
+other supported state survive normal stop and start cycles, so you don't have to
+rebuild your tiny fake cloud every morning.
+
+## Check readiness
+
+The service checks `http://localhost:4566/_localstack/health` inside the
+container. Lando waits for that healthcheck before treating LocalStack as ready.
+If the service stays unhealthy, inspect its logs before debugging your app.
+
+```sh
+lando logs -s aws
+```
+
+## Run AWS commands
+
+The service adds `awslocal` tooling automatically. It behaves like the AWS CLI
+but targets the local gateway, so you don't need to repeat endpoint flags:
+
+```sh
+lando awslocal s3api create-bucket --bucket uploads
+lando awslocal s3 ls
+```
+
+</Guide>

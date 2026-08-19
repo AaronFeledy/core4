@@ -12,6 +12,7 @@ import { ensureRuntime } from "../src/ensure-runtime.ts";
 import {
   type PodmanServiceRunner,
   RuntimeLaunchError,
+  buildPodmanServiceArgs,
   podmanServiceLogPath,
 } from "../src/podman-service-runner.ts";
 import { RootlessPrerequisiteError, type RootlessProbes } from "../src/rootless-preflight.ts";
@@ -215,11 +216,7 @@ const canonicalArgs = (p: ReturnType<typeof paths>) =>
     `unix://${p.socketPath}`,
   ]);
 
-const canonicalEnv = (p: ReturnType<typeof paths>) => ({
-  CONTAINERS_CONF: join(p.configDir, "containers.conf"),
-  CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
-  XDG_CONFIG_HOME: p.configDir,
-});
+const canonicalEnv = (p: ReturnType<typeof paths>) => buildPodmanServiceArgs(p).env;
 
 const writeLaunchState = (p: ReturnType<typeof paths>, pid: number, runtimeBundleVersion?: string) =>
   writeFile(

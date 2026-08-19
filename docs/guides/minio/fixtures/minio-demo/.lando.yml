@@ -1,0 +1,5 @@
+name: minio-demo
+services:
+  object-store:
+    type: minio
+    database: uploads

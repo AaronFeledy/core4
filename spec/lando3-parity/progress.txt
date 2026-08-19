@@ -20,6 +20,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 ## Codebase Patterns (carry forward)
 
+- New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
@@ -408,4 +409,48 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - `runBuiltInCommand` must honor `LandoCommandSpec.strict === false`; flag/positional parity is for strict commands only. `lando bun`/`lando x` extra argv is the canary.
   - Library `openLandoRuntime()` needs `plugins: { policy: "bundled-only" }` after `import "@lando/core/bundled-plugins"`; the default library policy does not discover CLI-installed providers.
+---
+
+## 2026-08-18 15:58 CDT - Babysit
+- PR: #788 https://github.com/AaronFeledy/core4/pull/788
+- CI outcome: pass
+- Review feedback: fixed (passthrough argv no longer steals declared flags from the inner command tail)
+- Merge: merged (squash)
+---
+
+## 2026-08-18 18:20 CDT - US-566
+- RabbitMQ 3/4, MinIO, and LocalStack now plan as catalog service types: management/console routes, persistent volumes, healthchecks, and service-type tooling (rabbitmqctl/rabbitmqadmin, mc, awslocal). MinIO bucket init is `database:` mapped to `MINIO_DEFAULT_BUCKETS`.
+- Each type publishes a config schema under `@lando/sdk/schema/services/<type>` and ships an executable guide that inspects resolved config.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus guide lint/coverage/public transcripts passed; `lando app:config --format=json` accepted a three-service Landofile.
+- **Learnings for future iterations:**
+  - New catalog types should publish `@lando/sdk/schema/services/<type>` via `ServiceConfig.pick` plus a narrowed `type` literal, then register the schema in `json-schema.ts`. Missing inherited field descriptions fail `codegen:schema-snapshot`.
+  - `ServiceType.schema` is `Schema.Schema.AnyNoContext` so concrete catalog schemas assign without assertions.
+---
+
+## 2026-08-18 19:13 CDT - US-566 Review
+- Confirmed Bugbot findings and fixed MinIO/LocalStack planner contracts: official MinIO no longer ships curl or honors MINIO_DEFAULT_BUCKETS, so readiness now uses `mc ready local` and bucket init creates `/data/$MINIO_BUCKET` before `minio server` with `--address` bound to `port:`. LocalStack `port:` now sets GATEWAY_LISTEN so the gateway and healthcheck share the same port.
+- Review notes (deferred/rejected): rejected switching MinIO to `kind: http` healthchecks because the planner only realizes `kind: command`; rejected treating RabbitMQ `port:` as a listen-port rewrite because AMQP health uses `rabbitmq-diagnostics ping` and matches existing redis-style advertised-port behavior; rejected Bitnami/MINIO_DEFAULT_BUCKETS because the catalog image is official `minio/minio`. Rejected post-fix Bugbot note that authored `entrypoint:` should still wrap bucket mkdir: a custom entrypoint owns process startup, and wrapping it would break the user's command contract.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus the minio guide scenario passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Official `minio/minio` is UBI micro: no curl, no MINIO_DEFAULT_BUCKETS. Use `mc ready local` plus a pre-start directory for bucket init, and bind `--address` when `port:` is authored.
+  - LocalStack listen port is GATEWAY_LISTEN, not just the planned endpoint.
+---
+
+## 2026-08-18 19:30 CDT - US-566 Review
+- Review-work confirmed the MinIO default password cannot boot current official images (secret key must be at least 8 characters). Default is now `landolando`, and LocalStack enables `PERSISTENCE=1` so the shipped data volume actually keeps state.
+- Review notes (deferred/rejected): rejected RabbitMQ `RABBITMQ_NODE_PORT` rewrite as out of the catalog row (advertised-port pattern matches Redis); rejected requiring `ports:` publication and live container tests in this review (host-safe, not owned by the US-566 ACs); rejected treating current `minio/minio:latest` curl absence as still blocking because registry layers include `curl` and `mc`, and readiness already uses `mc ready local`.
+- Verification: typecheck, lint passed; 27 focused MinIO/LocalStack/registration tests and the MinIO guide scenario passed.
+---
+
+## 2026-08-18 19:38 CDT - US-566 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (provider+CA satisfied; managed Podman 6.0.1 running). A three-service Landofile with `type: rabbitmq`, `type: minio` (`database: uploads`), and `type: localstack` resolved on the compiled CLI: `app:config` accepted all three, `info` reported types `rabbitmq`/`minio`/`localstack`, and `app:cache:refresh` compiled `rabbitmqctl`/`rabbitmqadmin`/`mc`/`awslocal`. `type: rabbitmq:3` planned as `rabbitmq`. Unknown `type: not-a-service` failed closed with `LandofileValidationError` listing `rabbitmq`, `rabbitmq:3`, `rabbitmq:4`, `minio`, and `localstack`. Adjacent `redis` and `postgres` still planned. Destroyed the scenario apps.
+- **Out-of-scope finding:** `lando setup` failed the proxy step and `lando start` failed with `GlobalAutoStartError` after `lando global:start` hit `ServiceStartError` / `netavark: aardvark-dns failed to start: Failed to connect to user scope bus via local transport`. Same sandbox user-bus/cgroup limitation recorded in US-565 and US-583 Verify; not caused by this story. Live management/console/gateway checks therefore could not run.
+---
+
+## 2026-08-18 20:25 CDT - US-566 Verify
+- Uninstalled leftover Lando state, reran `lando setup --yes --no-interactive` in lando4-dev, and started a three-service app. RabbitMQ 4.3.5 answered `rabbitmqctl` and served the management UI at https://queue.us566-verify.lndo.site:38443 (HTTP 200). MinIO created the `uploads` bucket and served the console (HTTP 200). Default `type: localstack` with the pinned `4.14.0` community image returned healthy AWS APIs; `awslocal` created and listed an S3 bucket. Adjacent `type: redis` started and was destroyed.
+- Fixed managed-runtime start on hosts without a systemd user session: `cgroupfs` + file events, a `systemd-run` shim so netavark can launch aardvark-dns, and `DISABLE_HC_SYSTEMD=true` so image healthchecks do not require `/run/user/1000/systemd`. Uninstall now probes the managed Podman binary with its runtime flags instead of requiring `podman` on PATH.
+- **Out-of-scope finding:** `lando rabbitmqadmin list exchanges` returned `Not_Authorized` while `rabbitmqctl` and the management UI worked with `lando`/`lando`. The contributed `rabbitmqadmin` alias does not pass default broker credentials.
+- **Out-of-scope finding:** `lando uninstall --purge` could not delete leftover root-owned MariaDB volume files from earlier stories (`EACCES` under `runtime/storage/volumes/*-mariadb-data/_data`).
+- **Learnings for future iterations:** Current `localstack/localstack:latest` (2026.7.4) exits 55 without `LOCALSTACK_AUTH_TOKEN`. Keep the catalog default on `4.14.0`, the last community image that starts unauthenticated.
 ---

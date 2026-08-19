@@ -1,4 +1,7 @@
 {
   "directories": [],
-  "files": ["docs/guides/prd-service-trust-01-guide-coverage.md"]
+  "files": [
+    "docs/guides/prd-service-trust-01-guide-coverage.md",
+    "docs/guides/prd-lando3-parity-03-service-catalog.md"
+  ]
 }
