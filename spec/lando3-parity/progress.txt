@@ -482,3 +482,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Doctor `--deprecations` now walks to the discovered app root before scanning for `type: mailhog`, so a subdirectory invocation still reports the authored deprecation.
 - Verification: typecheck, lint passed; 25 doctor-report tests passed.
 ---
+
+## 2026-08-19 18:00 CDT - US-567 Drift Audit
+- Trigger: 4 cycles, 832 changed lines, 4 commits
+- Category 3: Doctor's authored `type: mailhog` scan stays a bootstrap-`none` Landofile read, not a second planning path; the three review fixes (readyz, CRLF/comments, app-root walk) are the AC surface, not scar dual-paths.
+- Fixed: None; no dead exports, forwarding modules, collateral `passes` flips, or absorbed public contracts.
+- Split/excise decisions: None; both new SDK service schemas and the doctor notice trace to US-567 ACs. `passes` stays true.
+- Verification: typecheck, lint, and 181 focused schema/service/registration/contract/doctor spot checks passed.
+---
