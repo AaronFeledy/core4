@@ -107,7 +107,12 @@ describe("runSmokeReadinessProbe", () => {
         Retries: 1,
       },
     });
-    expect(requests.some((request) => request.path.startsWith("/libpod/containers/"))).toBe(false);
+    expect(
+      requests.some(
+        (request) =>
+          request.method === "GET" && /^\/libpod\/containers\/[^/]+\/healthcheck$/u.test(request.path),
+      ),
+    ).toBe(true);
     expect(requests.some((request) => /^\/containers\/[^/]+\/start$/u.test(request.path))).toBe(true);
     expect(requests.some((request) => /^\/containers\/[^/]+\/wait$/u.test(request.path))).toBe(true);
     expect(requests.some((request) => /^\/containers\/[^/]+\/json$/u.test(request.path))).toBe(true);
