@@ -109,7 +109,7 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
-const makeMinioServiceType = (): ServiceType => ({
+export const minioServiceType: ServiceType = {
   id: "minio",
   name: "minio",
   base: "lando",
@@ -130,6 +130,4 @@ const makeMinioServiceType = (): ServiceType => ({
       features: [{ id: MINIO_FEATURE_ID }],
       tooling: { mc: { service: input.name, cmd: "mc" } },
     }),
-});
-
-export const minioServiceType = makeMinioServiceType();
+};
