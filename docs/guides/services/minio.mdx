@@ -20,8 +20,8 @@ services:
 
 MinIO listens on API port `9000` and console port `9001`. Lando starts the
 official `minio/minio` image with `server /data --address :9000 --console-address
-:9001`, stores object data in the persistent `/data` volume, and uses `lando`
-for both the default username and password.
+:9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
+MinIO requires the root password to be at least eight characters.
 
 <Guide>
   <Scenario id="resolved-config" render>
@@ -45,7 +45,7 @@ Lando creates the bucket as a directory under `/data` before the server starts.
 `database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
 the app name.
 
-For local development, the root credentials default to `lando` and `lando`.
+For local development, the root credentials default to user `lando` and password `landolando`.
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
 

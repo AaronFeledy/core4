@@ -46,7 +46,7 @@ describe("localstack ServiceType", () => {
 
     expect(plan.type).toBe("localstack");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:latest" });
-    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566" });
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566", PERSISTENCE: "1" });
     expect(plan.storage).toEqual([
       {
         store: "myapp-localstack-data",

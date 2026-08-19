@@ -13,6 +13,7 @@ const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
+export const MINIO_DEFAULT_ROOT_PASSWORD = "landolando";
 
 const appNameFor = (input: {
   readonly appName?: string | undefined;
@@ -35,7 +36,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
   const apiPort = service.port ?? DEFAULT_API_PORT;
   const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
-  const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? "lando";
+  const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_ROOT_PASSWORD;
   const bucket = bucketNameFor(service.database ?? appName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });

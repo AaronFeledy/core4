@@ -4,7 +4,12 @@ import { Effect, Schema } from "effect";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 
-import { MINIO_FEATURE_ID, minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
+import {
+  MINIO_DEFAULT_ROOT_PASSWORD,
+  MINIO_FEATURE_ID,
+  minioServiceFeature,
+  minioServiceType,
+} from "../src/services/minio.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -70,11 +75,12 @@ describe("minio ServiceType", () => {
   test("sets root credentials, bucket name, and mc alias for the official image", async () => {
     const plan = await planMinioService({ type: "minio" });
 
+    expect(MINIO_DEFAULT_ROOT_PASSWORD.length).toBeGreaterThanOrEqual(8);
     expect(plan.environment).toMatchObject({
       MINIO_ROOT_USER: "lando",
-      MINIO_ROOT_PASSWORD: "lando",
+      MINIO_ROOT_PASSWORD: MINIO_DEFAULT_ROOT_PASSWORD,
       MINIO_BUCKET: "myapp",
-      MC_HOST_local: "http://lando:lando@127.0.0.1:9000",
+      MC_HOST_local: `http://lando:${MINIO_DEFAULT_ROOT_PASSWORD}@127.0.0.1:9000`,
     });
     expect(plan.environment?.MINIO_DEFAULT_BUCKETS).toBeUndefined();
   });
@@ -107,7 +113,9 @@ describe("minio ServiceType", () => {
       { _tag: "internal", port: 19000, protocol: "tcp", name: "storage" },
       { _tag: "internal", port: 9001, protocol: "http", name: "console" },
     ]);
-    expect(plan.environment?.MC_HOST_local).toBe("http://lando:lando@127.0.0.1:19000");
+    expect(plan.environment?.MC_HOST_local).toBe(
+      `http://lando:${MINIO_DEFAULT_ROOT_PASSWORD}@127.0.0.1:19000`,
+    );
     expect(plan.healthcheck).toEqual({
       kind: "command",
       command: ["mc", "ready", "local"],

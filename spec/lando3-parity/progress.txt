@@ -435,3 +435,9 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Official `minio/minio` is UBI micro: no curl, no MINIO_DEFAULT_BUCKETS. Use `mc ready local` plus a pre-start directory for bucket init, and bind `--address` when `port:` is authored.
   - LocalStack listen port is GATEWAY_LISTEN, not just the planned endpoint.
 ---
+
+## 2026-08-18 19:30 CDT - US-566 Review
+- Review-work confirmed the MinIO default password cannot boot current official images (secret key must be at least 8 characters). Default is now `landolando`, and LocalStack enables `PERSISTENCE=1` so the shipped data volume actually keeps state.
+- Review notes (deferred/rejected): rejected RabbitMQ `RABBITMQ_NODE_PORT` rewrite as out of the catalog row (advertised-port pattern matches Redis); rejected requiring `ports:` publication and live container tests in this review (host-safe, not owned by the US-566 ACs); rejected treating current `minio/minio:latest` curl absence as still blocking because registry layers include `curl` and `mc`, and readiness already uses `mc ready local`.
+- Verification: typecheck, lint passed; 27 focused MinIO/LocalStack/registration tests and the MinIO guide scenario passed.
+---
