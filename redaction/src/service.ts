@@ -33,15 +33,24 @@ const nonEmpty = (value: string | undefined): value is string =>
 
 const SECRET_ENV_KEY_PARTS = new Set([
   "apikey",
+  "apikeys",
   "authkey",
+  "authkeys",
   "authtoken",
+  "authtokens",
   "credential",
+  "credentials",
   "key",
+  "keys",
   "pass",
   "passwd",
+  "passwds",
   "password",
+  "passwords",
   "secret",
+  "secrets",
   "token",
+  "tokens",
 ]);
 
 const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof SecretStore>) =>
@@ -59,7 +68,7 @@ export const collectSecretEnvValues = (
   if (sourceEnv === undefined) return [];
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
-    const normalizedParts = key.toLowerCase().split("_").filter(nonEmpty);
+    const normalizedParts = key.toLowerCase().split(/[_-]+/u).filter(nonEmpty);
     const carriesSecret = normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
     if (carriesSecret && nonEmpty(value)) {
       values.push(value);

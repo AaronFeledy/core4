@@ -58,7 +58,7 @@ const restoreExitCode = <T>(run: () => T): T => {
 };
 
 describe("renderIncludesVerifyResult", () => {
-  test("a mismatch sets process.exitCode = 1 and names the update command", () => {
+  test("a mismatch names the update command without changing process.exitCode", () => {
     const report: IncludeVerifyReport = {
       lockfilePath: "/x/.lando.lock.yml",
       entries: [
@@ -85,11 +85,11 @@ describe("renderIncludesVerifyResult", () => {
     };
 
     restoreExitCode(() => {
-      process.exitCode = 0;
+      process.exitCode = 31;
       const text = renderIncludesVerifyResult(report, "text");
       expect(text).toContain("Lockfile does not match");
       expect(text).toContain("app:includes:update");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(31);
     });
   });
 

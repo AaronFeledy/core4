@@ -8,7 +8,7 @@ import {
   renderPluginPublishResult,
 } from "../../../commands/plugin-publish";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown): PluginPublishOptions => {
   const flags =
@@ -36,15 +36,7 @@ export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) => pluginPublish(extractInput(input)),
-  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
-  render: (result) => renderPluginPublishResult(result as PluginPublishResult),
-};
-
-export default class PluginPublishCommand extends LandoCommandBase {
-  static override description = pluginPublishSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginPublishSpec)];
-  static override flags = {
+  flags: {
     tag: Flags.string({ description: "Publish dist-tag (default: latest)." }),
     registry: Flags.string({ description: "Registry URL override." }),
     "dry-run": Flags.boolean({
@@ -53,11 +45,8 @@ export default class PluginPublishCommand extends LandoCommandBase {
     }),
     "no-test": Flags.boolean({ description: "Skip retesting before publish.", default: false }),
     "no-interactive": Flags.boolean({ description: "Never prompt for credentials.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginPublishSpec;
-  static override bootstrap = pluginPublishSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginPublishSpec);
-  }
-}
+  },
+  run: (input) => pluginPublish(extractInput(input)),
+  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
+  render: (result) => renderPluginPublishResult(result as PluginPublishResult),
+};

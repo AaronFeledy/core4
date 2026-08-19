@@ -14,7 +14,7 @@
  * `git diff --exit-code` fails if the output drifts.
  */
 import { mkdir, readdir, rm } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
 
@@ -54,6 +54,7 @@ const renderPlugins = (): string =>
     'import { makePluginContributionGraphLive } from "@lando/engine/plugins/contribution-graph";',
     'import { makePluginRegistryLive } from "@lando/engine/plugins/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
+    'import { BuiltInCommandCatalogLive } from "../../../cli/built-in-command-catalog-live.ts";',
     'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
     "",
     "export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
@@ -71,7 +72,7 @@ const renderPlugins = (): string =>
     "  const deprecationRegistryLive = DeprecationPluginRegistryLive.pipe(",
     "    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),",
     "  );",
-    "  return Layer.mergeAll(minimalRuntimeLive, contributionGraphLive, pluginRegistryLive, deprecationRegistryLive).pipe(",
+    "  return Layer.mergeAll(minimalRuntimeLive, contributionGraphLive, pluginRegistryLive, deprecationRegistryLive, BuiltInCommandCatalogLive).pipe(",
     '    Layer.tap((context) => inputs.lifecycle.complete("plugins", Context.get(context, EventService))),',
     "  );",
     "};",
@@ -194,6 +195,7 @@ const renderApp = (): string =>
     'import { makeProxyServiceRegistryLive, SelectedProxyServiceLive } from "@lando/engine/subsystems/proxy/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     'import { BUILT_IN_COMMAND_IDS } from "../../../cli/generated/command-ids.ts";',
+    'import { EventCommandExecutorLive } from "../../../cli/event-command-executor.ts";',
     'import { makeProcessShellReplIO } from "../../../cli/host-shell-terminal.ts";',
     'import { makeProviderBootstrapBaseLayer } from "./provider.ts";',
     "",
@@ -222,8 +224,10 @@ const renderApp = (): string =>
     "    ),",
     "  );",
     "  const fullAppBase = Layer.mergeAll(appBase, globalAppRuntimeLive, proxyRegistryLive, proxyServiceLive);",
-    "  const subscriberRuntimeLive = makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS).pipe(Layer.provide(fullAppBase));",
-    "  return Layer.merge(fullAppBase, subscriberRuntimeLive).pipe(",
+    "  const eventCommandExecutorLive = EventCommandExecutorLive.pipe(Layer.provide(fullAppBase));",
+    "  const runtimeAppBase = Layer.merge(fullAppBase, eventCommandExecutorLive);",
+    "  const subscriberRuntimeLive = makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS).pipe(Layer.provide(runtimeAppBase));",
+    "  return Layer.merge(runtimeAppBase, subscriberRuntimeLive).pipe(",
     '    Layer.tap((context) => inputs.lifecycle.complete("app", Context.get(context, EventService))),',
     "  );",
     "};",
@@ -231,7 +235,16 @@ const renderApp = (): string =>
   ].join("\n");
 
 const renderNone = (): string =>
-  ['import { Layer } from "effect";', "", "export const noneBootstrapLayer = Layer.empty;", ""].join("\n");
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";',
+    'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
+    "",
+    "export const makeNoneBootstrapLayer = (inputs: BootstrapLayerInputs) =>",
+    "  Layer.succeed(RuntimeLayerFactory, inputs.runtimeLayerFactory);",
+    "",
+  ].join("\n");
 
 const renderers: Record<string, () => string> = {
   none: renderNone,
@@ -262,9 +275,7 @@ const main = async (): Promise<void> => {
     if (file.endsWith(".ts") && !expectedFiles.has(file)) await rm(resolve(OUTPUT_DIR, file));
   }
 
-  console.log(
-    `[build-bootstrap-layers] wrote ${OUTPUT_DIR} (${files.map((file) => basename(file)).length} files)`,
-  );
+  console.log(`[build-bootstrap-layers] wrote ${OUTPUT_DIR} (${files.length} files)`);
 };
 
 await main();

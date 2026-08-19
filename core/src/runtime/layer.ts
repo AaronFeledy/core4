@@ -1,20 +1,3 @@
-/**
- * Runtime composition and `makeLandoRuntime` factory.
- *
- * The composed `LandoRuntimeLive` layer is built once at the host boundary
- * and then provided to the program. Intermediate layer composition stays out
- * of core except in tests.
- *
- * Factory behavior:
- * - Returns one `Layer` that satisfies the default service tags.
- * - Validates options with Effect Schema and can fail with
- *   `LandoRuntimeBootstrapError`.
- * - Is safe to call multiple times in one process; each call gets isolated
- *   caches, plugin registry, and event bus state.
- * - Does not mutate process-global state unless `installSignalHandlers: true`.
- * - Runs the requested bootstrap sequence.
- * - Keeps resource ownership in the layer's outer scope.
- */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { Effect, Either, Layer, Schema } from "effect";
@@ -69,6 +52,10 @@ import {
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import type {
+  RuntimeLayer as EngineRuntimeLayer,
+  RuntimeLayerFactory,
+} from "@lando/engine/runtime/runtime-layer-factory";
 import {
   LandoRuntimeOptions,
   type LibraryRendererMode,
@@ -79,10 +66,12 @@ import {
   normalizePluginPolicy,
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
+import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 
+import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import "./engine-composition";
@@ -101,7 +90,9 @@ export const withRuntimeProviderRegistryOverride = <A>(
   thunk: () => Promise<A>,
 ): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
+type NoneRuntimeServices = RuntimeLayerFactory;
 type MinimalRuntimeServices =
+  | NoneRuntimeServices
   | Logger
   | Renderer
   | Telemetry
@@ -122,7 +113,11 @@ type MinimalRuntimeServices =
   | HttpClient
   | Downloader
   | HostMaintenanceRegistry;
-type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry | PluginContributionGraph;
+type PluginRuntimeServices =
+  | MinimalRuntimeServices
+  | PluginRegistry
+  | PluginContributionGraph
+  | BuiltInCommandCatalog;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
@@ -153,9 +148,11 @@ export type AppRuntimeServices =
   | ShellRunner
   | FileSyncEngine
   | ProxyService
-  | RuntimeCwd;
+  | RuntimeCwd
+  | EventCommandExecutor;
 type RuntimeLayer =
   | Layer.Layer<never>
+  | Layer.Layer<NoneRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<PluginRuntimeServices>
@@ -184,6 +181,7 @@ const runtimeLayerFor = (
   cwd: string,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
+    runtimeLayerFactory: { make: makeLandoRuntime },
     lifecycle,
     loggerMode,
     rendererMode,
@@ -200,16 +198,11 @@ const signalHandlersLayer = Layer.scopedDiscard(
   Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber })),
 );
 
-/**
- * `makeLandoRuntime`.
- *
- * Builds the runtime layer for the requested bootstrap depth. This factory
- * owns composition and option validation only.
- */
 type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOptions & {
   readonly bootstrap: TBootstrap;
 };
 
+export function makeLandoRuntime(options: LandoRuntimeOptionsFor<"none">): Layer.Layer<NoneRuntimeServices>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"minimal">,
 ): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
@@ -234,6 +227,7 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"app">,
 ): Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);

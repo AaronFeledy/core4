@@ -4,13 +4,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 
 import { type LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 import { renderLogsAppResult } from "../../commands/logs";
-import { normalizeCliFlagTokens } from "../../flag-value-validation";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 
 export interface LogsFlags {
   readonly service?: string;
@@ -53,7 +47,24 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  flags: {
+    service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
+    follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
+    tail: Flags.integer({ description: "Show last N lines per service." }),
+    since: Flags.string({
+      description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+    }),
+    source: Flags.string({
+      description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
+    }),
+    "no-viewer": Flags.boolean({
+      description:
+        "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
+      default: false,
+    }),
+  },
   streaming: StreamFrame,
+  streamingMode: (input) => (logsFollowFromInput(input) ? "live" : undefined),
   run: (input) => {
     const options = logsOptionsFromInput(input);
     if (!logsFollowFromInput(input)) return logsApp(options);
@@ -71,40 +82,3 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   },
   render: (result) => renderLogsAppResult(result as LogsAppResult),
 };
-
-// Type intentionally left inferred: an explicit `LandoCommandSpec` annotation makes the
-// machine-output gate read this spread variant as a command definition missing `resultSchema`.
-const followLogsSpec = { ...logsSpec, streamingMode: "live" as const };
-
-export default class LogsCommand extends LandoCommandBase {
-  static override description = logsSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(logsSpec)];
-  static override flags = {
-    service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
-    follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
-    tail: Flags.integer({ description: "Show last N lines per service." }),
-    since: Flags.string({
-      description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
-    }),
-    source: Flags.string({
-      description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
-    }),
-    "no-viewer": Flags.boolean({
-      description:
-        "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
-      default: false,
-    }),
-  };
-  static override landoSpec: LandoCommandSpec = logsSpec;
-  static override bootstrap = logsSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    const normalizedArgv = normalizeCliFlagTokens(this.argv, {
-      ...this.ctor.baseFlags,
-      ...this.ctor.flags,
-    });
-    await this.runEffect(
-      normalizedArgv.includes("--follow") || normalizedArgv.includes("-f") ? followLogsSpec : logsSpec,
-    );
-  }
-}

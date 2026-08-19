@@ -9,12 +9,12 @@ export const printRootHelp = (activeAliases?: ReadonlyArray<readonly [string, st
   emitResultLine(renderColdRootHelp(activeAliases));
 
 export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
-  const { command, spec, status } = entry;
+  const { spec, status } = entry;
   const lines = [
-    `${spec.description ?? spec.summary}
+    `${spec.summary}
 
 USAGE
-  $ lando ${renderCommandUsage(spec.id, command)}
+  $ lando ${renderCommandUsage(spec.id, spec)}
 
 ALIASES
   ${[spec.id, ...resolveTopLevelAliases(spec)].join(", ")}`,
@@ -22,6 +22,6 @@ ALIASES
   if (status.kind === "deferred") {
     lines.push("", "STATUS", `  Planned for Lando ${status.plan.phase}.`);
   }
-  lines.push(...renderCommandHelpFlags(command));
+  lines.push(...renderCommandHelpFlags(spec));
   emitResultLine(lines.join("\n"));
 };

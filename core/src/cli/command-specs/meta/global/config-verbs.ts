@@ -3,11 +3,10 @@ import { Args, Flags } from "../../../spec/metadata";
 import {
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  type GlobalConfigSubcommand,
   globalConfig,
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import { globalConfigFormatFromInput, globalConfigOptionsFromInput } from "./config";
 
 const typeFlag = Flags.string({
@@ -23,88 +22,65 @@ const formatFlag = Flags.string({
 const editorFlag = Flags.string({ description: "Editor binary for edit." });
 const dryRunFlag = Flags.boolean({ description: "Report the change without writing.", default: false });
 
-const makeSpec = (
-  subcommand: GlobalConfigSubcommand,
-  summary: string,
-  alias: string,
-): LandoCommandSpec<GlobalConfigResult> => ({
+export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
-  id: `meta:global:config:${subcommand}`,
-  summary,
+  id: "meta:global:config:set",
+  summary: "Set a value in the global app's Landofile.",
+  description: "Set a value in the global app's Landofile.",
   namespace: "meta",
-  topLevelAlias: alias,
+  topLevelAlias: "global:config:set",
   bootstrap: "global",
-  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
-  render: (result, input) =>
-    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
-});
-
-export const metaGlobalConfigSetSpec = makeSpec(
-  "set",
-  "Set a value in the global app's Landofile.",
-  "global:config:set",
-);
-export const metaGlobalConfigUnsetSpec = makeSpec(
-  "unset",
-  "Remove a key from the global app's Landofile.",
-  "global:config:unset",
-);
-export const metaGlobalConfigEditSpec = makeSpec(
-  "edit",
-  "Edit the global app's Landofile in $EDITOR.",
-  "global:config:edit",
-);
-export const metaGlobalConfigValidateSpec = makeSpec(
-  "validate",
-  "Validate the global app's Landofile against the schema.",
-  "global:config:validate",
-);
-
-export class MetaGlobalConfigSetCommand extends LandoCommandBase {
-  static override description = metaGlobalConfigSetSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalConfigSetSpec)];
-  static override args = {
+  args: {
     key: Args.string({ description: "Dot-path key.", required: true }),
     value: Args.string({ description: "Value to set.", required: true }),
-  };
-  static override flags = { type: typeFlag, format: formatFlag, "dry-run": dryRunFlag };
-  static override landoSpec: LandoCommandSpec = metaGlobalConfigSetSpec;
-  static override bootstrap = metaGlobalConfigSetSpec.bootstrap;
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalConfigSetSpec);
-  }
-}
+  },
+  flags: { type: typeFlag, format: formatFlag, "dry-run": dryRunFlag },
+  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "set" }),
+  render: (result, input) =>
+    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+};
 
-export class MetaGlobalConfigUnsetCommand extends LandoCommandBase {
-  static override description = metaGlobalConfigUnsetSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalConfigUnsetSpec)];
-  static override args = { key: Args.string({ description: "Dot-path key.", required: true }) };
-  static override flags = { format: formatFlag, "dry-run": dryRunFlag };
-  static override landoSpec: LandoCommandSpec = metaGlobalConfigUnsetSpec;
-  static override bootstrap = metaGlobalConfigUnsetSpec.bootstrap;
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalConfigUnsetSpec);
-  }
-}
+export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
+  resultSchema: GlobalConfigResultSchema,
+  id: "meta:global:config:unset",
+  summary: "Remove a key from the global app's Landofile.",
+  description: "Remove a key from the global app's Landofile.",
+  namespace: "meta",
+  topLevelAlias: "global:config:unset",
+  bootstrap: "global",
+  args: {
+    key: Args.string({ description: "Dot-path key.", required: true }),
+  },
+  flags: { format: formatFlag, "dry-run": dryRunFlag },
+  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "unset" }),
+  render: (result, input) =>
+    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+};
 
-export class MetaGlobalConfigEditCommand extends LandoCommandBase {
-  static override description = metaGlobalConfigEditSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalConfigEditSpec)];
-  static override flags = { editor: editorFlag, format: formatFlag };
-  static override landoSpec: LandoCommandSpec = metaGlobalConfigEditSpec;
-  static override bootstrap = metaGlobalConfigEditSpec.bootstrap;
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalConfigEditSpec);
-  }
-}
+export const metaGlobalConfigEditSpec: LandoCommandSpec<GlobalConfigResult> = {
+  resultSchema: GlobalConfigResultSchema,
+  id: "meta:global:config:edit",
+  summary: "Edit the global app's Landofile in $EDITOR.",
+  description: "Edit the global app's Landofile in $EDITOR.",
+  namespace: "meta",
+  topLevelAlias: "global:config:edit",
+  bootstrap: "global",
+  flags: { editor: editorFlag, format: formatFlag },
+  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "edit" }),
+  render: (result, input) =>
+    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+};
 
-export class MetaGlobalConfigValidateCommand extends LandoCommandBase {
-  static override description = metaGlobalConfigValidateSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaGlobalConfigValidateSpec)];
-  static override flags = { format: formatFlag };
-  static override landoSpec: LandoCommandSpec = metaGlobalConfigValidateSpec;
-  static override bootstrap = metaGlobalConfigValidateSpec.bootstrap;
-  override async run(): Promise<void> {
-    await this.runEffect(metaGlobalConfigValidateSpec);
-  }
-}
+export const metaGlobalConfigValidateSpec: LandoCommandSpec<GlobalConfigResult> = {
+  resultSchema: GlobalConfigResultSchema,
+  id: "meta:global:config:validate",
+  summary: "Validate the global app's Landofile against the schema.",
+  description: "Validate the global app's Landofile against the schema.",
+  namespace: "meta",
+  topLevelAlias: "global:config:validate",
+  bootstrap: "global",
+  flags: { format: formatFlag },
+  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "validate" }),
+  render: (result, input) =>
+    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+};

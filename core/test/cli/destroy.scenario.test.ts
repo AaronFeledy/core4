@@ -374,7 +374,7 @@ describe("lando destroy", () => {
     const harness = makeDestroyLayer();
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
 
-    expect(harness.events).toEqual(["pre-destroy", "post-destroy"]);
+    expect(harness.events).toEqual(["pre-init", "post-init", "pre-destroy", "post-destroy"]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
@@ -467,7 +467,7 @@ describe("lando destroy", () => {
         destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(harness.events).toEqual(["pre-destroy", "post-destroy"]);
+      expect(harness.events).toEqual(["pre-init", "post-init", "pre-destroy", "post-destroy"]);
       expect(harness.destroyCalls).toHaveLength(1);
       expect(renderDestroyAppResult(result)).toContain("volumes removed");
     } finally {

@@ -84,6 +84,7 @@ export {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
 } from "@lando/engine/operations/ensure-global-services";
+export { runAppEvent } from "@lando/engine/operations/events";
 export { globalInstall } from "@lando/engine/operations/global-install";
 export type { InfoAppResult } from "@lando/engine/operations/info";
 export { logsAppForTarget } from "@lando/engine/operations/logs";
@@ -120,10 +121,16 @@ export {
   UpdatePermissionError,
   type UpdateWindowsReplacementSpawnInput,
 } from "@lando/engine/operations/update";
+export {
+  attachEffectiveEvents,
+  compileEffectiveEvents,
+  effectiveEventsForPlan,
+} from "@lando/engine/planner/effective-events";
 export { attachEffectiveTooling, effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 export { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 export type { CertificateAuthorityResolverShape } from "@lando/engine/plugins/certificate-authority-resolver";
 export { makeLandoPluginContext } from "@lando/engine/plugins/context";
+export { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 export { mergeDiscoveredPlugins } from "@lando/engine/plugins/plugin-discovery";
 export { makePluginRegistryLive, PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
 export {
@@ -152,6 +159,7 @@ export {
 export { RuntimeCwd } from "@lando/engine/runtime/cwd";
 export { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 export { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+export { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 export type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
 export { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 export type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
@@ -188,6 +196,7 @@ export {
   makeEventRuntimeLive,
   makeEventServiceLive,
 } from "@lando/engine/services/event-service";
+export { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 export { composeService } from "@lando/engine/services/feature";
 export type { BaseSeed, ComposeServiceInput } from "@lando/engine/services/feature";
 export { FileSystemLive, writeAtomicFile } from "@lando/engine/services/file-system";
@@ -214,7 +223,7 @@ export {
   makeEnvSecretStoreLive,
   SecretStoreLive,
 } from "@lando/engine/services/secret-store";
-export { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+export { makeShellRunnerLive, makeShellRunnerService } from "@lando/engine/services/shell-runner";
 export { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 export { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
 export { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";

@@ -17,6 +17,7 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   NoProviderInstalledError,
@@ -74,6 +75,7 @@ type AppCacheRefreshError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError

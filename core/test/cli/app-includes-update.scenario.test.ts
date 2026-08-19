@@ -9,6 +9,7 @@ import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@land
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { LandofileFormConflictError } from "@lando/core/errors";
 import type { GitIncludeCloner } from "@lando/landofile/includes";
+import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -50,6 +51,36 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
+test("app:includes:update consumes its structured declared source argument", async () => {
+  await withTempCwd(async (dir) => {
+    // Given
+    await writeFile(join(dir, ".lando.yml"), "name: structured-source\nservices: {}\n", "utf8");
+    const priorCwd = process.cwd();
+    process.chdir(dir);
+
+    try {
+      // When
+      const exit = await Effect.runPromiseExit(
+        appIncludesUpdateSpec.run({
+          args: { source: "declared-source" },
+          flags: { "no-network": true },
+          argv: [],
+          parsedArgv: ["declared-source"],
+        }),
+      );
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined).toMatchObject({
+        _tag: "LandofileIncludeError",
+        source: "declared-source",
+      });
+    } finally {
+      process.chdir(priorCwd);
+    }
+  });
+});
+
 const restoreExitCode = <T>(run: () => T): T => {
   const previous = process.exitCode;
   try {
@@ -71,7 +102,7 @@ const withUserCacheRoot = async <T>(userCacheRoot: string, run: () => Promise<T>
 };
 
 describe("renderIncludesUpdateResult", () => {
-  test("check-mode drift sets process.exitCode = 1", () => {
+  test("check-mode drift renders remediation without changing process.exitCode", () => {
     const report: IncludeUpdateReport = {
       lockfilePath: "/x/.lando.lock.yml",
       entries: [
@@ -91,10 +122,10 @@ describe("renderIncludesUpdateResult", () => {
     };
 
     restoreExitCode(() => {
-      process.exitCode = 0;
+      process.exitCode = 29;
       const text = renderIncludesUpdateResult(report, "text");
       expect(text).toContain("Lockfile is out of date");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(29);
     });
   });
 

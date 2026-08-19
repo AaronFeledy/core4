@@ -6,7 +6,7 @@ import {
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../../commands/app-config-translate";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecFlags } from "../../../spec/command-boundary";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
@@ -16,26 +16,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) => {
-    const flags = extractSpecFlags(input);
-    const files = Array.isArray(flags.file)
-      ? flags.file.filter((file): file is string => typeof file === "string")
-      : undefined;
-    return appConfigTranslate({
-      write: flags.write === true,
-      list: flags.list === true,
-      detect: flags.detect === true,
-      ...(typeof flags.from === "string" ? { from: flags.from } : {}),
-      ...(files === undefined ? {} : { files }),
-    });
-  },
-  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
-};
-
-export default class AppConfigTranslateCommand extends LandoCommandBase {
-  static override description = appConfigTranslateSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appConfigTranslateSpec)];
-  static override flags = {
+  flags: {
     list: Flags.boolean({
       description: "List installed config translators and their input kinds.",
       default: false,
@@ -60,11 +41,19 @@ export default class AppConfigTranslateCommand extends LandoCommandBase {
       options: ["yaml", "table", "json"],
       default: "yaml",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = appConfigTranslateSpec;
-  static override bootstrap = appConfigTranslateSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appConfigTranslateSpec);
-  }
-}
+  },
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    const files = Array.isArray(flags.file)
+      ? flags.file.filter((file): file is string => typeof file === "string")
+      : undefined;
+    return appConfigTranslate({
+      write: flags.write === true,
+      list: flags.list === true,
+      detect: flags.detect === true,
+      ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+      ...(files === undefined ? {} : { files }),
+    });
+  },
+  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
+};

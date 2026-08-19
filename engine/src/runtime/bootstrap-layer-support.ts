@@ -6,6 +6,7 @@ import type { Renderer, RootOverrides, RuntimeProvider } from "@lando/sdk/servic
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
+import type { RuntimeLayerFactory } from "./runtime-layer-factory.ts";
 
 export type LibraryRendererMode = "json" | "plain" | "verbose" | "lando";
 
@@ -18,6 +19,7 @@ export interface BootstrapLayerPluginDiscovery {
 }
 
 export interface BootstrapLayerInputs {
+  readonly runtimeLayerFactory: Context.Tag.Service<typeof RuntimeLayerFactory>;
   readonly lifecycle: BootstrapLifecycleTracker;
   readonly loggerMode: LoggerMode;
   readonly rendererMode: LibraryRendererMode;

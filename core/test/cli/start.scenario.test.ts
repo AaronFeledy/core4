@@ -42,6 +42,7 @@ import {
   PluginRegistry,
   ProxyService,
   RuntimeProviderRegistry,
+  ToolingEngine,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -51,11 +52,17 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers.ts";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { makeShellRunnerLive } from "../../src/testing/engine-layers.ts";
-import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
+import {
+  ConfigServiceLive,
+  EventCommandExecutor,
+  FileSystemLive,
+  GlobalAppServiceLive,
+  attachEffectiveEvents,
+  attachEffectiveTooling,
+  effectiveEventsForPlan,
+  makeShellRunnerLive,
+  stripHostProxyRunLando,
+} from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -318,6 +325,11 @@ const makeStartLayer = (
     readonly proxyApplyEffect?: Effect.Effect<void, ProxyApplyError>;
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly recordReadiness?: boolean;
+    readonly eventResult?: {
+      readonly exitCode: number;
+      readonly stdout: string;
+      readonly stderr: string;
+    };
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -441,7 +453,13 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+    Layer.succeed(LandofileService, {
+      discover: Effect.succeed({
+        name: "test-start",
+        services: {},
+        events: effectiveEventsForPlan(plannedApp),
+      }),
+    }),
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
@@ -449,12 +467,39 @@ const makeStartLayer = (
       capabilities: Effect.succeed(providerCapabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(ToolingEngine, {
+      id: "recording",
+      run: (invocation) =>
+        Effect.succeed(
+          options.eventResult === undefined
+            ? {
+                tool: invocation.tool,
+                service: invocation.service ?? "web",
+                exitCode: invocation.commands.some((command) => command.some((part) => part.includes("fail")))
+                  ? 9
+                  : 0,
+                stdout: invocation.commands[0]?.[2]?.replace(/^echo /u, "").replace(/ "[$]@"$/u, "") ?? "",
+                stderr: invocation.commands.some((command) => command.some((part) => part.includes("fail")))
+                  ? "secret-token failed"
+                  : "",
+              }
+            : {
+                tool: invocation.tool,
+                service: invocation.service ?? "web",
+                ...options.eventResult,
+              },
+        ),
+    }),
+    Layer.succeed(EventCommandExecutor, {
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    }),
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
           events.push(event._tag);
           taskEvents.push(event);
           if (event._tag === "pre-app-start") buildOrder.push("pre-app-start");
+          if (event._tag === "task.detail") buildOrder.push(`detail:${String(event.line)}`);
           if (event._tag === "task.tree.complete") buildOrder.push(`tree:${String(event.summary)}`);
           if (event._tag === "post-app-start" && options.postStartFailure !== undefined) {
             return;
@@ -679,7 +724,11 @@ const makeAutoStartLayer = async (options: {
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
     Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: options.userPlan.name, services: {} }),
+      discover: Effect.succeed({
+        name: options.userPlan.name,
+        services: {},
+        events: effectiveEventsForPlan(options.userPlan),
+      }),
     }),
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, {
@@ -710,6 +759,17 @@ const makeAutoStartLayer = async (options: {
       forProfile: (profile, redactionOptions) =>
         Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
     }),
+    Layer.succeed(ToolingEngine, {
+      id: "recording",
+      run: (invocation) =>
+        Effect.succeed({
+          tool: invocation.tool,
+          service: invocation.service ?? "web",
+          exitCode: 0,
+          stdout: invocation.commands[0]?.[2]?.replace(/^echo /u, "").replace(/ "[$]@"$/u, "") ?? "",
+          stderr: "",
+        }),
+    }),
     makeShellRunnerLive(() => {
       throw new TypeError("Interactive shell IO is not used by global start scenarios.");
     }),
@@ -731,12 +791,184 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 };
 
 describe("lando start", () => {
+  test("runs declared pre-start and post-start event steps in order around the start", async () => {
+    // Given
+    const plannedApp = attachEffectiveEvents(
+      { ...plan },
+      {
+        "pre-start": ["echo pre-one", { cmd: "echo pre-two", service: "web" }],
+        "post-start": ["echo post-one"],
+      },
+    );
+    const harness = makeStartLayer({ plannedApp });
+    expect(effectiveEventsForPlan(plannedApp)?.["pre-start"]).toHaveLength(2);
+
+    // When
+    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(result.app).toBe("test-start");
+    expect(harness.events.filter((event) => event === "pre-start" || event === "post-start")).toEqual([
+      "pre-start",
+      "post-start",
+    ]);
+    expect(
+      harness.taskEvents.filter((event) => event._tag === "task.detail").map((event) => event.line),
+    ).toEqual(["pre-one", "pre-two", "post-one"]);
+    expect(harness.buildOrder.indexOf("apply")).toBeGreaterThan(harness.buildOrder.indexOf("detail:pre-two"));
+    expect(harness.buildOrder.indexOf("detail:post-one")).toBeGreaterThan(
+      harness.buildOrder.indexOf("apply"),
+    );
+  });
+
+  test("a pre-start event failure aborts before apply with tagged identity and a redacted tail", async () => {
+    // Given
+    const failedPlan = {
+      ...plan,
+      services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
+    };
+    attachEffectiveEvents(failedPlan, { "pre-start": ["fail pre"] });
+    const harness = makeStartLayer({ plannedApp: failedPlan });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    const failure = failureOf(exit);
+    expect(failure).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      event: "pre-start",
+      index: 0,
+      kind: "cmd",
+      exitCode: 9,
+    });
+    expect(JSON.stringify(failure)).not.toContain("secret-token");
+    expect(harness.applyPlans).toHaveLength(0);
+  });
+
+  test("explicit secret-shaped cmd env values are redacted from task detail output", async () => {
+    // Given
+    const secret = "event-only-token";
+    const plannedApp = attachEffectiveEvents(
+      { ...plan },
+      { "pre-start": [{ cmd: "print event token", env: { EVENT_TOKEN: secret } }] },
+    );
+    const harness = makeStartLayer({
+      plannedApp,
+      eventResult: { exitCode: 0, stdout: secret, stderr: "" },
+    });
+
+    // When
+    await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    const details = harness.taskEvents
+      .filter((event) => event._tag === "task.detail")
+      .map((event) => String(event.line));
+    expect(details).toContain("[redacted]");
+    expect(details.join("\n")).not.toContain(secret);
+  });
+
+  test("explicit secret-shaped cmd env values are redacted from tagged failure output tails", async () => {
+    // Given
+    const secret = "event-only-failure-token";
+    const plannedApp = attachEffectiveEvents(
+      { ...plan },
+      { "pre-start": [{ cmd: "fail event token", env: { EVENT_TOKEN: secret } }] },
+    );
+    const harness = makeStartLayer({
+      plannedApp,
+      eventResult: { exitCode: 9, stdout: "", stderr: `${secret} failed` },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    const failure = failureOf(exit);
+    expect(failure).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "[redacted] failed",
+    });
+    expect(JSON.stringify(failure)).not.toContain(secret);
+  });
+
+  test("named task env secrets are redacted from task detail and tagged failure output", async () => {
+    // Given
+    const secret = "named-event-task-token";
+    const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
+    attachEffectiveTooling(plannedApp, {
+      "secret-task": { cmd: "fail named task", service: "web", env: { EVENT_TOKEN: secret } },
+    });
+    const harness = makeStartLayer({
+      plannedApp,
+      eventResult: { exitCode: 9, stdout: secret, stderr: `${secret} failed` },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    const failure = failureOf(exit);
+    const details = harness.taskEvents
+      .filter((event) => event._tag === "task.detail")
+      .map((event) => String(event.line));
+    expect(details).toContain("[redacted]");
+    expect(details).toContain("[redacted] failed");
+    expect(failure).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "[redacted]\n[redacted] failed",
+    });
+    expect(`${details.join("\n")}\n${JSON.stringify(failure)}`).not.toContain(secret);
+  });
+
+  test("unknown named event tasks preserve the typed compile failure message", async () => {
+    // Given
+    const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "missing-task" }] });
+    const harness = makeStartLayer({ plannedApp });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(failureOf(exit)).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "Unknown event tooling task missing-task.",
+    });
+  });
+
+  test("a post-start event failure warns, exits successfully, and does not roll back", async () => {
+    // Given
+    const failedPlan = {
+      ...plan,
+      services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
+    };
+    attachEffectiveEvents(failedPlan, { "post-start": ["fail post"] });
+    const harness = makeStartLayer({ plannedApp: failedPlan });
+
+    // When
+    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(result.app).toBe("test-start");
+    expect(harness.events).toContain("message.warn");
+    expect(harness.destroyCalls).toHaveLength(0);
+    expect(
+      harness.taskEvents
+        .filter((event) => event._tag === "task.detail")
+        .map((event) => String(event.line))
+        .join("\n"),
+    ).not.toContain("secret-token");
+  });
   test("plans the app, applies provider-lando, publishes app events, and renders ready services", async () => {
     const harness = makeStartLayer();
     const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.events).toEqual([
+      "pre-init",
+      "post-init",
       "pre-app-start",
+      "pre-start",
       "task.tree.start",
       "task.start",
       "task.start",
@@ -744,6 +976,7 @@ describe("lando start", () => {
       "task.complete",
       "task.tree.complete",
       "post-app-start",
+      "post-start",
     ]);
     expect(harness.buildOrder).toEqual([
       "pre-app-start",
@@ -1469,11 +1702,14 @@ describe("lando start", () => {
     expect(signalSeen).toEqual([true]);
   });
 
-  test("auto-starts required global services before publishing pre-app-start", async () => {
+  test("publishes pre-start before auto-starting required global services", async () => {
     await withGlobalRoots(async () => {
       const moduleRoot = await realpath(await mkdtemp(join(process.cwd(), ".lando-start-global-module-")));
       try {
-        const userPlan: AppPlan = { ...plan, requires: { globalServices: ["traefik"] } };
+        const userPlan = attachEffectiveEvents(
+          { ...plan, requires: { globalServices: ["traefik"] } },
+          { "pre-start": ["echo before-global"] },
+        );
         const harness = await makeAutoStartLayer({
           userPlan,
           globalServiceIds: ["traefik"],
@@ -1485,7 +1721,12 @@ describe("lando start", () => {
         const tags = harness.events.map((event) => event._tag);
         expect(tags).toContain("post-global-start");
         expect(tags).toContain("pre-app-start");
-        expect(tags.indexOf("post-global-start")).toBeLessThan(tags.indexOf("pre-app-start"));
+        expect(tags.indexOf("pre-app-start")).toBeLessThan(tags.indexOf("pre-global-start"));
+        expect(tags.indexOf("pre-start")).toBeLessThan(tags.indexOf("pre-global-start"));
+        const detailIndex = harness.events.findIndex((event) => event._tag === "task.detail");
+        expect(detailIndex).toBeGreaterThan(tags.indexOf("pre-start"));
+        expect(detailIndex).toBeLessThan(tags.indexOf("pre-global-start"));
+        expect(harness.events[detailIndex]).toMatchObject({ _tag: "task.detail", line: "before-global" });
         expect(harness.applyPlans.map((applied) => String(applied.id))).toEqual(["global", "test-start"]);
       } finally {
         await rm(moduleRoot, { recursive: true, force: true });
@@ -1503,7 +1744,7 @@ describe("lando start", () => {
     ).toBe(false);
   });
 
-  test("wraps global ensure failures in GlobalAutoStartError before pre-app-start", async () => {
+  test("wraps global ensure failures after publishing pre-start", async () => {
     await withGlobalRoots(async () => {
       const moduleRoot = await realpath(await mkdtemp(join(process.cwd(), ".lando-start-global-module-")));
       try {
@@ -1526,7 +1767,9 @@ describe("lando start", () => {
           expect(error.cause).toBeInstanceOf(GlobalServiceMissingError);
         }
         expect(harness.events.map((event) => event._tag)).toContain("pre-global-start");
-        expect(harness.events.map((event) => event._tag)).not.toContain("pre-app-start");
+        expect(harness.events.map((event) => event._tag)).toContain("pre-app-start");
+        expect(harness.events.map((event) => event._tag)).toContain("pre-start");
+        expect(harness.events.map((event) => event._tag)).not.toContain("post-app-start");
         expect(harness.applyPlans).toEqual([]);
       } finally {
         await rm(moduleRoot, { recursive: true, force: true });

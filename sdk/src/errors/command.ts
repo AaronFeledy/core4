@@ -32,3 +32,24 @@ export class CommandAliasTargetError extends Schema.TaggedError<CommandAliasTarg
     remediation: Schema.String,
   },
 ) {}
+
+/**
+ * A `command:` step's `flags`, `args`, or `raw` failed validation against the
+ * target command's `LandoCommandSpec` at compile time (literals) or invocation
+ * time (expression-resolved values).
+ */
+export class CommandInputValidationError extends Schema.TaggedError<CommandInputValidationError>()(
+  "CommandInputValidationError",
+  {
+    message: Schema.String,
+    /** Canonical id of the target command. */
+    target: Schema.String,
+    /** Offending flag or arg key. */
+    field: Schema.String,
+    kind: Schema.Literal("flag", "arg"),
+    /** Machine-readable validation reason (e.g. unknown, required, type). */
+    reason: Schema.String,
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}

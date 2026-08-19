@@ -23,6 +23,7 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-reso
 import { destroyAppAndRemoveRoutes } from "../lifecycle/routes.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -62,13 +63,13 @@ export const destroyAppForTarget = (
     const ref = target.app;
     const volumes = resolvedOptions.volumes ?? false;
 
-    yield* events.publish(
-      PreDestroyEvent.make({
-        _tag: "pre-destroy",
-        app: ref,
-        timestamp: now(),
-      }),
-    );
+    const preDestroy = PreDestroyEvent.make({
+      _tag: "pre-destroy",
+      app: ref,
+      timestamp: now(),
+    });
+    yield* events.publish(preDestroy);
+    yield* runAppEvent(plan, "pre-destroy", preDestroy);
 
     yield* terminateFileSyncSessions(ref);
 
@@ -102,13 +103,13 @@ export const destroyAppForTarget = (
       );
     }
 
-    yield* events.publish(
-      PostDestroyEvent.make({
-        _tag: "post-destroy",
-        app: ref,
-        timestamp: now(),
-      }),
-    );
+    const postDestroy = PostDestroyEvent.make({
+      _tag: "post-destroy",
+      app: ref,
+      timestamp: now(),
+    });
+    yield* events.publish(postDestroy);
+    yield* runPostAppEvent(plan, "post-destroy", postDestroy);
 
     return {
       app: plan.name,
@@ -131,6 +132,7 @@ export const destroyApp = (
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
         const plan = yield* planner.plan(landofile, capabilities);
+        yield* runAppInitEvents(plan);
         return yield* destroyAppForTarget(options, {
           plan,
           root: plan.root,

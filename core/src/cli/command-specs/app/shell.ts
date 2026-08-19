@@ -1,13 +1,7 @@
 import { Flags } from "../../spec/metadata";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  extractSpecAbortSignal,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
@@ -17,6 +11,22 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  strict: true,
+  flags: {
+    service: Flags.string({
+      char: "s",
+      description: "Open a shell inside this service instead of on the host.",
+    }),
+    host: Flags.boolean({
+      description: "Deprecated: host is the default; --host is redundant.",
+    }),
+    "no-history": Flags.boolean({
+      description: "Do not persist host shell history for this session.",
+    }),
+    "no-interactive": Flags.boolean({
+      description: "Reject interactive shell startup (use app:exec for automation).",
+    }),
+  },
   run: (input) => {
     const flags = extractSpecFlags(input);
     const signal = extractSpecAbortSignal(input);
@@ -31,29 +41,3 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   successExitCode: (result) => result.exitCode,
   render: (result) => renderShellAppResult(result as ShellAppResult),
 };
-
-export default class AppShellCommand extends LandoCommandBase {
-  static override description = appShellSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appShellSpec)];
-  static override flags = {
-    service: Flags.string({
-      char: "s",
-      description: "Open a shell inside this service instead of on the host.",
-    }),
-    host: Flags.boolean({
-      description: "Deprecated: host is the default; --host is redundant.",
-    }),
-    "no-history": Flags.boolean({
-      description: "Do not persist host shell history for this session.",
-    }),
-    "no-interactive": Flags.boolean({
-      description: "Reject interactive shell startup (use app:exec for automation).",
-    }),
-  };
-  static override landoSpec: LandoCommandSpec = appShellSpec;
-  static override bootstrap = appShellSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appShellSpec);
-  }
-}

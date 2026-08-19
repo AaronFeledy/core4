@@ -1,0 +1,8 @@
+name: events-failure
+services:
+  web:
+    type: "node:22"
+    primary: true
+events:
+  pre-stop:
+    - command: app:not-a-command

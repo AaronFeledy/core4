@@ -1,41 +1,18 @@
 import { Effect } from "effect";
+import { Args, Flags } from "../../spec/metadata";
+
+import type { InitAppOptions } from "../../commands/init";
+import { resolveInitDestination } from "../../commands/init-destination";
+import { parseInitSourceFlags } from "../../commands/init-source";
+import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
+import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+
 /**
  * `lando apps:init` — interactive scaffolding for new Lando apps.
  *
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Args, Flags } from "../../spec/metadata";
-
-import { makeRendererServiceLiveForMode, writeDiagnosticLine } from "@lando/renderer/output";
-import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
-
-import { formatBugReport } from "../../bug-report";
-import { newInvocationId } from "../../command-lifecycle";
-import { type InitAppOptions, type InitAppResult, initApp } from "../../commands/init";
-import { resolveInitDestination } from "../../commands/init-destination";
-import { parseInitSourceFlags } from "../../commands/init-source";
-import { type ResultFormat, resolveResultFormat } from "../../format-flags";
-import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
-import {
-  resolveCliDeprecationWarnings,
-  resolveCliRendererMode,
-  runWithRendererHandling,
-} from "../../renderer-boundary";
-import type { RendererMode } from "../../renderer-selection";
-import { landoRenderer } from "../../renderer/bundled-renderers";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../spec/command-base";
-import {
-  preCommandOutputMode,
-  renderCommandFlagValueValidation,
-  renderPreCommandFailure,
-} from "../../spec/command-boundary";
-import { getCommandRuntimeLayer } from "../../spec/hooks/init";
 
 export interface InitFlags {
   readonly full: boolean;
@@ -105,17 +82,12 @@ export const initSpec: LandoCommandSpec<never> = {
   summary: "Generate a new Lando app.",
   namespace: "apps",
   topLevelAlias: true,
+  aliases: ["init"],
   bootstrap: "minimal",
-  run: () => Effect.die("not yet implemented: apps:init"),
-};
-
-export default class InitCommand extends LandoCommandBase {
-  static override description = initSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(initSpec)];
-  static override args = {
+  args: {
     destination: Args.string({ description: "Output directory.", required: false, ignoreStdin: true }),
-  };
-  static override flags = {
+  },
+  flags: {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
     source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
     url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
@@ -152,114 +124,6 @@ export default class InitCommand extends LandoCommandBase {
       description: "Force interactive prompting even when stdin is not detected as a TTY.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = initSpec;
-  static override bootstrap = initSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    // Remove --renderer before parsing because this command overrides run() and
-    // never passes through runEffect, so the flag would be rejected.
-    let rendererMode: RendererMode;
-    try {
-      const resolution = await resolveCliRendererMode({ argv: this.argv, env: process.env });
-      rendererMode = resolution.mode;
-      this.argv.length = 0;
-      this.argv.push(...resolution.remainingArgv);
-    } catch (error) {
-      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        await renderPreCommandFailure({
-          commandId: "cli:renderer-selection",
-          error,
-          ...preCommandOutputMode({ argv: this.argv, env: process.env }),
-        });
-        return;
-      }
-      throw error;
-    }
-
-    const deprecationWarnings = resolveCliDeprecationWarnings({ argv: this.argv, env: process.env });
-    this.argv.length = 0;
-    this.argv.push(...deprecationWarnings.remainingArgv);
-
-    let resultFormat: ResultFormat = "text";
-    try {
-      const resolution = resolveResultFormat({ argv: this.argv, rendererMode });
-      resultFormat = resolution.format;
-      this.argv.length = 0;
-      this.argv.push(...resolution.remainingArgv);
-    } catch (error) {
-      if (error instanceof RendererSelectionError) {
-        await renderPreCommandFailure({
-          commandId: "cli:format-selection",
-          error,
-          rendererMode,
-          resultFormat: rendererMode === "json" ? "json" : "text",
-        });
-        return;
-      }
-      throw error;
-    }
-
-    if (
-      await renderCommandFlagValueValidation({
-        commandId: initSpec.id,
-        argv: this.argv,
-        definitions: { ...this.ctor.baseFlags, ...this.ctor.flags },
-        rendererMode,
-        resultFormat,
-        resultSchema: initSpec.resultSchema,
-        deprecationWarnings: deprecationWarnings.enabled,
-      })
-    )
-      return;
-
-    const parsed = await this.parse(InitCommand);
-    const runtime = getCommandRuntimeLayer(this.ctor);
-    if (runtime === undefined) {
-      await renderPreCommandFailure({
-        commandId: initSpec.id,
-        error: new LandoRuntimeBootstrapError({
-          message: `Command ${this.id ?? initSpec.id} is missing a valid static bootstrap declaration.`,
-          stage: "minimal",
-        }),
-        rendererMode,
-        resultFormat,
-        resultSchema: initSpec.resultSchema,
-        deprecationWarnings: deprecationWarnings.enabled,
-      });
-      return;
-    }
-
-    const options = {
-      ...initOptionsFromInput(parsed),
-      onWarn: (message: string) => {
-        Effect.runSync(
-          writeDiagnosticLine(message).pipe(
-            Effect.provide(makeRendererServiceLiveForMode(rendererMode, landoRenderer)),
-          ),
-        );
-      },
-    };
-    await runWithRendererHandling(
-      Effect.tryPromise({ try: () => initApp(options), catch: (error) => error }),
-      {
-        runtime,
-        rendererMode,
-        resultFormat,
-        command: initSpec.id,
-        deprecationWarnings: deprecationWarnings.enabled,
-        invocation: {
-          commandId: initSpec.id,
-          argv: this.argv,
-          args: parsed.args,
-          flags: Object.fromEntries(Object.entries(parsed.flags)),
-          cwd: process.cwd(),
-          invocationId: newInvocationId(),
-        },
-        resultSchema: initSpec.resultSchema,
-        render: (result: InitAppResult) => `Created ${result.appName} at ${result.directory}`,
-        formatError: (error) => formatBugReport({ error, context: { commandId: initSpec.id }, rendererMode }),
-      },
-    );
-  }
-}
+  },
+  run: () => Effect.die("not yet implemented: apps:init"),
+};

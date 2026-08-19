@@ -10,7 +10,7 @@ import {
   renderPluginRemoveResult,
 } from "../../../commands/plugin-remove";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractInput = (input: unknown): { name: string } => {
   if (typeof input !== "object" || input === null) return { name: "" };
@@ -25,6 +25,9 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  args: {
+    name: Args.string({ description: "Plugin name.", required: false }),
+  },
   run: (input) =>
     Effect.gen(function* () {
       const { name } = extractInput(input);
@@ -41,17 +44,3 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
     }),
   render: (result) => renderPluginRemoveResult(result as PluginRemoveResult),
 };
-
-export default class PluginRemoveCommand extends LandoCommandBase {
-  static override description = pluginRemoveSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginRemoveSpec)];
-  static override args = {
-    name: Args.string({ description: "Plugin name.", required: false }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginRemoveSpec;
-  static override bootstrap = pluginRemoveSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginRemoveSpec);
-  }
-}

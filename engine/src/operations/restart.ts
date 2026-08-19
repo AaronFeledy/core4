@@ -6,23 +6,22 @@ import type {
   RestartAppError as SdkRestartAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type {
-  AppPlanner,
   BuildOrchestrator,
   EventService,
   FileSystem,
   GlobalAppService,
-  LandofileService,
   PathsService,
   PluginRegistry,
-  RuntimeProviderRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
 import { ProxyService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
-import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
+import { runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -55,14 +54,28 @@ export const restartApp = (
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
     const proxy = yield* ProxyService;
-    const { plan } = yield* stopAppWithPlan({}, target);
+    const resolvedTarget =
+      target ??
+      (yield* Effect.gen(function* () {
+        const landofileService = yield* LandofileService;
+        const registry = yield* RuntimeProviderRegistry;
+        const planner = yield* AppPlanner;
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        const plan = yield* planner.plan(landofile, capabilities);
+        return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
+      }));
+    const plan = resolvedTarget.plan;
+    yield* runAppInitEvents(plan);
+    yield* stopAppWithPlan({}, resolvedTarget);
+    yield* managed?.onStopped ?? Effect.void;
     return yield* compensateFailure(
       startApp(
         {
           reconcile: options.reconcile ?? false,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         },
-        target,
+        resolvedTarget,
         managed,
       ),
       proxy.removeRoutes(plan.id),

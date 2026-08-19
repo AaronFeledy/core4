@@ -7,7 +7,7 @@ import {
   renderPluginUnlinkResult,
 } from "../../../commands/plugin-unlink";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 const extractName = (input: unknown): string => {
   if (typeof input !== "object" || input === null) return "";
@@ -22,20 +22,9 @@ export const pluginUnlinkSpec: LandoCommandSpec<PluginUnlinkResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
+  args: {
+    name: Args.string({ description: "Plugin name.", required: true }),
+  },
   run: (input) => pluginUnlink({ name: extractName(input) }),
   render: (result) => renderPluginUnlinkResult(result as PluginUnlinkResult),
 };
-
-export default class PluginUnlinkCommand extends LandoCommandBase {
-  static override description = pluginUnlinkSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginUnlinkSpec)];
-  static override args = {
-    name: Args.string({ description: "Plugin name.", required: true }),
-  };
-  static override landoSpec: LandoCommandSpec = pluginUnlinkSpec;
-  static override bootstrap = pluginUnlinkSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginUnlinkSpec);
-  }
-}

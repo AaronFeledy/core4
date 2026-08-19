@@ -6,7 +6,7 @@ import {
 } from "../../commands/poweroff";
 import { Flags } from "../../spec/metadata";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 const extractFlags = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};
@@ -19,7 +19,13 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   summary: "Stop every Lando-managed service across apps.",
   namespace: "apps",
   topLevelAlias: true,
+  aliases: ["poweroff"],
   bootstrap: "minimal",
+  flags: {
+    "keep-global": Flags.boolean({ description: "Do not stop the global app.", default: false }),
+    "keep-scratch": Flags.boolean({ description: "Do not stop scratch apps.", default: false }),
+    yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts.", default: false }),
+  },
   run: (input) => {
     const flags = extractFlags(input);
     return poweroff({
@@ -30,19 +36,3 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   },
   render: (result) => renderPoweroffResult(result as PoweroffResult),
 };
-
-export default class PoweroffCommand extends LandoCommandBase {
-  static override description = poweroffSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(poweroffSpec)];
-  static override flags = {
-    "keep-global": Flags.boolean({ description: "Do not stop the global app.", default: false }),
-    "keep-scratch": Flags.boolean({ description: "Do not stop scratch apps.", default: false }),
-    yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = poweroffSpec;
-  static override bootstrap = poweroffSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(poweroffSpec);
-  }
-}

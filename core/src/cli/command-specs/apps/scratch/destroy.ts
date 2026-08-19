@@ -7,7 +7,7 @@ import {
   scratchDestroy,
   scratchIdFromInput,
 } from "../../../commands/scratch";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const keepVolumesFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
@@ -21,24 +21,14 @@ export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
   summary: "Destroy a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:destroy",
+  aliases: ["scratch:destroy"],
   bootstrap: "scratch",
+  args: {
+    id: Args.string({ description: "Scratch app id.", required: true }),
+  },
+  flags: {
+    "keep-volumes": Flags.boolean({ description: "Keep scratch volumes for inspection.", default: false }),
+  },
   run: (input) => scratchDestroy(scratchIdFromInput(input), { keepVolumes: keepVolumesFromInput(input) }),
   render: (result) => renderScratchDestroyResult(result as ScratchHandle),
 };
-
-export default class AppsScratchDestroyCommand extends LandoCommandBase {
-  static override description = appsScratchDestroySpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchDestroySpec)];
-  static override args = {
-    id: Args.string({ description: "Scratch app id.", required: true }),
-  };
-  static override flags = {
-    "keep-volumes": Flags.boolean({ description: "Keep scratch volumes for inspection.", default: false }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchDestroySpec;
-  static override bootstrap = appsScratchDestroySpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchDestroySpec);
-  }
-}

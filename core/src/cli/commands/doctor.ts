@@ -3,10 +3,10 @@ import { Effect, Either, Option } from "effect";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { bundledPluginModules } from "@lando/engine/composition";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
@@ -64,7 +64,7 @@ import type { DoctorOptions } from "./doctor-options";
 
 export const doctor = (
   options: DoctorOptions = {},
-  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+  modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
 ): Effect.Effect<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;

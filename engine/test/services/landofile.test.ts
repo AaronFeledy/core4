@@ -895,11 +895,24 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
     });
   });
 
-  test("rejects top-level `events:` with remediation", async () => {
-    await assertRejectsLandofile(["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""]);
+  test("accepts graduated top-level `events:`", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.yml"),
+        ["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const landofile = await discover();
+
+      // Then
+      expect(landofile.events).toEqual({ "post-start": [{ task: "db-wait" }] });
+    });
   });
 
-  test("accepts top-level `commandAliases:` while leaving events gated", async () => {
+  test("accepts top-level `commandAliases:`", async () => {
     await withTempCwd(async (dir) => {
       // Given
       await writeFile(

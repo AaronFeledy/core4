@@ -6,20 +6,15 @@ import { describe, expect, test } from "bun:test";
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 
 import { CommandRegistrationError } from "../../src/cli/spec/command-base.ts";
+import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const repoRoot = resolve(coreRoot, "..");
 const registryPath = resolve(coreRoot, "src/cli/built-in-command-registry.ts");
-const nativeDispatchPaths = [
-  "src/cli/run.ts",
-  "src/cli/dispatch-app.ts",
-  "src/cli/dispatch-apps.ts",
-  "src/cli/dispatch-meta.ts",
-] as const;
+const nativeDispatchPaths = ["src/cli/run.ts", "src/cli/native-only-built-in-adapters.ts"] as const;
 
 type SyntheticRegistration = {
-  readonly spec: { readonly id: string };
-  readonly command: { readonly aliases?: ReadonlyArray<string> };
+  readonly spec: { readonly id: string; readonly aliases?: ReadonlyArray<string> };
 };
 
 type SyntheticIndex = {
@@ -34,12 +29,11 @@ const isRegistryBuilder = (
   typeof value === "function";
 
 const syntheticRegistration = (id: string, aliases: ReadonlyArray<string> = []): SyntheticRegistration => ({
-  spec: { id },
-  command: { aliases },
+  spec: { id, aliases },
 });
 
 describe("built-in command registry contract", () => {
-  test("one registry owns canonical specs, OCLIF metadata, and implementation status", async () => {
+  test("one catalog owns canonical executable specs and implementation status", async () => {
     // Given: the canonical built-in command registry module on disk.
     const registryFile = Bun.file(registryPath);
 
@@ -54,12 +48,11 @@ describe("built-in command registry contract", () => {
 
     expect(new Set(canonicalIds).size).toBe(canonicalIds.length);
     expect(canonicalIds).toEqual([...canonicalIds].sort((left, right) => left.localeCompare(right)));
-    for (const [key, entry] of Object.entries(registry.builtInCommandRegistry)) {
+    for (const [key, entry] of Object.entries(registry.builtInCommandCatalog)) {
       expect(key).toBe(entry.spec.id);
       expect(registry.resolveBuiltInCommand(entry.spec.id)).toBe(entry);
-      expect(entry.command.landoSpec).toBe(entry.spec);
-      expect(entry.command.bootstrap).toBe(entry.spec.bootstrap);
-      for (const alias of entry.command.aliases ?? []) {
+      expect(Object.keys(entry).sort()).toEqual(["spec", "status"]);
+      for (const alias of resolveTopLevelAliases(entry.spec)) {
         expect(registry.resolveBuiltInCommand(alias), `${alias} must resolve to ${entry.spec.id}`).toBe(
           entry,
         );
@@ -74,6 +67,14 @@ describe("built-in command registry contract", () => {
     expect(entries.filter((entry) => entry.status.kind === "deferred").map((entry) => entry.spec.id)).toEqual(
       [...registry.deferredBuiltInCommandIds],
     );
+    expect(
+      entries.filter((entry) => entry.status.kind === "embedding-exempt").map((entry) => entry.spec.id),
+    ).toEqual(["apps:init", "meta:setup", "meta:shellenv", "meta:uninstall"]);
+    for (const entry of entries.filter((candidate) => candidate.status.kind === "embedding-exempt")) {
+      if (entry.status.kind !== "embedding-exempt") continue;
+      expect(entry.status.reason.length).toBeGreaterThan(0);
+      expect(entry.status.remediation.length).toBeGreaterThan(0);
+    }
   });
 
   test("registry construction rejects mismatched keys and duplicate token ownership", async () => {
@@ -114,8 +115,9 @@ describe("built-in command registry contract", () => {
     // Given
     const registry = await import("../../src/cli/built-in-command-registry.ts");
     const buildIndex = Reflect.get(registry, "buildBuiltInCommandIndex");
-    expect(isRegistryBuilder(buildIndex)).toBe(true);
-    if (!isRegistryBuilder(buildIndex)) return;
+    const isBuilder = isRegistryBuilder(buildIndex);
+    expect(isBuilder).toBe(true);
+    if (!isBuilder) return;
 
     // When
     const index = buildIndex([
@@ -154,49 +156,46 @@ describe("built-in command registry contract", () => {
     expect(consumers.every((source) => !source.includes("oclif/compiled-commands"))).toBe(true);
   });
 
-  test("deferred status is checked before every transitional topic dispatcher", () => {
+  test("native execution dispatches resolved catalog entries by status", () => {
     // Given: only the executable runCompiledCli body, excluding imports.
     const source = readFileSync(resolve(coreRoot, "src/cli/run.ts"), "utf-8");
     const functionStart = source.indexOf("const runCompiledCli =");
     const functionEnd = source.indexOf("\n};", functionStart);
     const body = source.slice(functionStart, functionEnd);
 
-    // When: the runtime deferred gate and dispatcher call sites are located.
+    // When: the status gates and catalog execution call sites are located.
     const deferredGate = body.indexOf('if (builtInCommand?.status.kind === "deferred")');
-    const dispatchers = [
-      "dispatchAppCommand(argv)",
-      "dispatchAppsCommand(argv)",
-      "dispatchMetaCommand(argv)",
-    ];
+    const exemptAdapter = body.indexOf("runNativeOnlyBuiltIn(builtInCommand, argv.slice(1))");
+    const catalogExecution = body.indexOf("runBuiltInCommand(builtInCommand, argv.slice(1))");
 
-    // Then: the real deferred gate precedes every real topic dispatcher call.
+    // Then: deferred entries fail before explicit exemptions and implemented entries run directly.
     expect(functionStart).toBeGreaterThanOrEqual(0);
     expect(functionEnd).toBeGreaterThan(functionStart);
     expect(deferredGate).toBeGreaterThanOrEqual(0);
-    for (const dispatcher of dispatchers) {
-      const call = body.indexOf(dispatcher);
-      expect(call, `${dispatcher} must occur inside runCompiledCli`).toBeGreaterThanOrEqual(0);
-      expect(deferredGate, `deferred status must be checked before ${dispatcher}`).toBeLessThan(call);
-    }
+    expect(exemptAdapter).toBeGreaterThan(deferredGate);
+    expect(catalogExecution).toBeGreaterThan(exemptAdapter);
+    expect(body).not.toContain("dispatchAppCommand");
+    expect(body).not.toContain("dispatchAppsCommand");
+    expect(body).not.toContain("dispatchMetaCommand");
   });
 
-  test("implemented commands have native argv dispatch adapters while deferred commands do not", async () => {
-    // Given: the canonical registry and every native dispatch source.
+  test("only embedding-exempt commands have native-only adapters", async () => {
+    // Given: the canonical registry and the narrowly scoped native-only adapter.
     const registry = await import("../../src/cli/built-in-command-registry.ts");
     const dispatchSources = nativeDispatchPaths.map((path) => readFileSync(resolve(coreRoot, path), "utf-8"));
 
     // When: canonical argv[0] equality adapters are collected structurally.
     const adaptedIds = new Set(
       dispatchSources.flatMap((source) =>
-        [...source.matchAll(/argv\[0\]\s*===\s*"([^"]+)"/g)].flatMap((match) =>
+        [...source.matchAll(/case\s+"([^"]+)"/g)].flatMap((match) =>
           match[1] === undefined ? [] : [match[1]],
         ),
       ),
     );
 
-    // Then: implemented ids are reachable and deferred ids have no bespoke adapter.
+    // Then: adapter ids are exactly the explicit embedding exemptions.
     for (const entry of registry.builtInCommandEntries) {
-      expect(adaptedIds.has(entry.spec.id), entry.spec.id).toBe(entry.status.kind === "implemented");
+      expect(adaptedIds.has(entry.spec.id), entry.spec.id).toBe(entry.status.kind === "embedding-exempt");
     }
   });
 

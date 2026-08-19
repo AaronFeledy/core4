@@ -193,6 +193,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
 );
 
 const makeRebuildLayer = () => {
+  const lifecycleOrder: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{ readonly reconcile: boolean }> = [];
   const provider: RuntimeProviderShape = {
@@ -203,10 +204,12 @@ const makeRebuildLayer = () => {
     capabilities,
     apply: (_plan, options) =>
       Effect.sync(() => {
+        lifecycleOrder.push("apply");
         applyCalls.push({ reconcile: options.reconcile ?? false });
       }).pipe(Effect.as({ changed: true })),
     destroy: (target, options) =>
       Effect.sync(() => {
+        lifecycleOrder.push("destroy");
         destroyCalls.push({ target, options });
       }),
     inspect: (target) =>
@@ -235,7 +238,7 @@ const makeRebuildLayer = () => {
       select: () => Effect.succeed(provider),
     }),
     Layer.succeed(EventService, {
-      publish: () => Effect.void,
+      publish: (event) => Effect.sync(() => void lifecycleOrder.push(event._tag)),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
@@ -244,7 +247,7 @@ const makeRebuildLayer = () => {
     }),
   );
 
-  return { layer, destroyCalls, applyCalls };
+  return { layer, destroyCalls, applyCalls, lifecycleOrder };
 };
 
 const makeCachedBuildLayer = () => {
@@ -310,6 +313,11 @@ describe("lando rebuild", () => {
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
     expect(harness.applyCalls).toEqual([{ reconcile: true }]);
+    expect(
+      harness.lifecycleOrder.filter((entry) =>
+        ["pre-rebuild", "destroy", "apply", "post-rebuild"].includes(entry),
+      ),
+    ).toEqual(["pre-rebuild", "destroy", "apply", "post-rebuild"]);
     expect(result.servicesRebuilt).toEqual(["web"]);
     expect(renderRebuildAppResult(result)).toBe(
       "rebuilt: test-rebuild - web (running) http://localhost:3000",

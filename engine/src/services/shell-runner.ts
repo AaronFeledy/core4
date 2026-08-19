@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, FiberRef, Layer } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -17,6 +17,7 @@ import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
 const decoder = new TextDecoder();
+const shellRedactionTokens = FiberRef.unsafeMake<ReadonlyArray<string>>([]);
 
 interface ShellOutput {
   readonly exitCode: number;
@@ -57,10 +58,17 @@ const redactorForOptions = (options: ShellCommandOptions | undefined) =>
   Effect.gen(function* () {
     const redaction = yield* Effect.serviceOption(RedactionService);
     if (redaction._tag === "None") return identityRedactor;
+    const redactionTokens = yield* FiberRef.get(shellRedactionTokens);
     return yield* redaction.value.forProfile("secrets", {
       sourceEnv: { ...process.env, ...(options?.env ?? {}) },
+      redactionTokens,
     });
   });
+
+export const withShellRedactionTokens = <A, E, R>(
+  redactionTokens: ReadonlyArray<string>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> => effect.pipe(Effect.locally(shellRedactionTokens, redactionTokens));
 
 const publishShellEvent = (event: LandoEvent): Effect.Effect<void> =>
   Effect.serviceOption(EventService).pipe(
@@ -104,7 +112,13 @@ const redactShellError = (options: ShellCommandOptions | undefined, error: Shell
   });
 
 const execShell = async (command: string, options?: ShellCommandOptions): Promise<ProcessResult> => {
-  let shell = $`${{ raw: command }}`.quiet().nothrow();
+  let shell = (
+    options?.argv === undefined || options.argv.length === 0
+      ? $`${{ raw: command }}`
+      : $`${{ raw: command }} ${options.argv}`
+  )
+    .quiet()
+    .nothrow();
 
   if (options?.cwd !== undefined) {
     shell = shell.cwd(options.cwd);
@@ -126,7 +140,9 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
   return result;
 };
 
-const makeShellRunnerService = (makeReplIO: () => ShellReplIO): Context.Tag.Service<typeof ShellRunner> => {
+export const makeShellRunnerService = (
+  makeReplIO: () => ShellReplIO,
+): Context.Tag.Service<typeof ShellRunner> => {
   const service: Context.Tag.Service<typeof ShellRunner> = {
     exec: (command, options) =>
       Effect.gen(function* () {

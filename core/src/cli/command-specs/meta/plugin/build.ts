@@ -4,7 +4,7 @@ import {
   pluginBuild,
   renderPluginBuildResult,
 } from "../../../commands/plugin-build";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   resultSchema: PluginBuildResultSchema,
@@ -17,14 +17,3 @@ export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
   render: (result) => renderPluginBuildResult(result as PluginBuildResult),
 };
-
-export default class PluginBuildCommand extends LandoCommandBase {
-  static override description = pluginBuildSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(pluginBuildSpec)];
-  static override landoSpec: LandoCommandSpec = pluginBuildSpec;
-  static override bootstrap = pluginBuildSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(pluginBuildSpec);
-  }
-}

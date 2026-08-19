@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 
-import SetupCommand from "../../src/cli/command-specs/meta/setup.ts";
+import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-plugin-flags.ts";
 import {
   SETUP_BUILTIN_FLAG_NAMES,
@@ -61,10 +61,10 @@ describe("manifestSetupFlagContributions", () => {
 });
 
 describe("SETUP_BUILTIN_FLAG_NAMES drift guard", () => {
-  test("covers every non-contributed SetupCommand flag plus the universal flags", () => {
+  test("covers every non-contributed setup spec flag plus the universal flags", () => {
     const reserved = new Set(SETUP_BUILTIN_FLAG_NAMES);
     const contributed = new Set(BUNDLED_SETUP_FLAG_CONTRIBUTIONS.map((c) => c.flag.name));
-    for (const name of Object.keys(SetupCommand.flags)) {
+    for (const name of Object.keys(setupSpec.flags ?? {})) {
       if (contributed.has(name)) continue;
       expect(reserved.has(name)).toBe(true);
     }

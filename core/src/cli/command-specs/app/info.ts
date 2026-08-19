@@ -2,10 +2,11 @@ import { Flags } from "../../spec/metadata";
 
 import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/operations/info";
 import { renderInfoAppResult } from "../../commands/info-render";
+import type { LandoCommandSpec } from "../../spec/command-base";
+
 /**
  * `lando app:info` — native command metadata adapter.
  */
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
 
 const infoDeepFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
@@ -21,23 +22,12 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: (input) => infoApp({ deep: infoDeepFromInput(input) }),
-  render: (result, _input, ctx) => renderInfoAppResult(result as InfoAppResult, ctx),
-};
-
-export default class InfoCommand extends LandoCommandBase {
-  static override description = infoSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(infoSpec)];
-  static override flags = {
+  flags: {
     deep: Flags.boolean({
       description: "Include the resolved host agent-context env forwarding allowlist.",
       default: false,
     }),
-  };
-  static override landoSpec: LandoCommandSpec = infoSpec;
-  static override bootstrap = infoSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(infoSpec);
-  }
-}
+  },
+  run: (input) => infoApp({ deep: infoDeepFromInput(input) }),
+  render: (result, _input, ctx) => renderInfoAppResult(result as InfoAppResult, ctx),
+};

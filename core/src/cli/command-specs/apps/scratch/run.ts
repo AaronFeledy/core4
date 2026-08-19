@@ -11,7 +11,7 @@ import {
   scratchRunSuccessExitCode,
 } from "../../../commands/scratch-run";
 import type { RenderContext } from "../../../renderer-boundary";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
   resultSchema: ScratchRunResultSchema,
@@ -19,7 +19,24 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
   summary: "Run a one-off command in a disposable scratch app.",
   namespace: "apps",
   topLevelAlias: ["scratch:run", "run"],
+  aliases: ["scratch:run", "run"],
   bootstrap: "scratch",
+  strict: false,
+  flags: {
+    from: Flags.string({
+      description: "Recipe reference for the disposable scratch app (default: the bundled toolbox).",
+    }),
+    service: Flags.string({ description: "Service to run the command in (default: the primary service)." }),
+    "no-mount": Flags.boolean({
+      description: "Do not mount the current working directory into the scratch app.",
+      default: false,
+    }),
+    answer: Flags.string({ description: "Recipe answer in key=value form (repeatable).", multiple: true }),
+    keep: Flags.boolean({
+      description: "Keep the scratch app after the command exits and print its id.",
+      default: false,
+    }),
+  },
   streaming: StreamFrame,
   run: (input) => scratchRun(scratchRunOptionsFromInput(input)),
   streamFrames: (value) => {
@@ -35,30 +52,3 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
   render: (result, ctx) => renderScratchRunResult(result as ScratchRunResult, ctx as RenderContext),
   successExitCode: (result) => scratchRunSuccessExitCode(result),
 };
-
-export default class AppsScratchRunCommand extends LandoCommandBase {
-  static override description = appsScratchRunSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(appsScratchRunSpec)];
-  static override strict = false;
-  static override flags = {
-    from: Flags.string({
-      description: "Recipe reference for the disposable scratch app (default: the bundled toolbox).",
-    }),
-    service: Flags.string({ description: "Service to run the command in (default: the primary service)." }),
-    "no-mount": Flags.boolean({
-      description: "Do not mount the current working directory into the scratch app.",
-      default: false,
-    }),
-    answer: Flags.string({ description: "Recipe answer in key=value form (repeatable).", multiple: true }),
-    keep: Flags.boolean({
-      description: "Keep the scratch app after the command exits and print its id.",
-      default: false,
-    }),
-  };
-  static override landoSpec: LandoCommandSpec = appsScratchRunSpec;
-  static override bootstrap = appsScratchRunSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(appsScratchRunSpec);
-  }
-}

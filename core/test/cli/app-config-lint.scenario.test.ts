@@ -72,7 +72,7 @@ describe("renderConfigLintResult", () => {
     });
   });
 
-  test("an invalid result sets process.exitCode = 1 (side-effect render)", () => {
+  test("an invalid result renders violations without changing process.exitCode", () => {
     const result: ConfigLintResult = {
       app: "bad",
       file: "/x/.lando.yml",
@@ -80,11 +80,11 @@ describe("renderConfigLintResult", () => {
       violations: [{ path: "bogus", message: "is unexpected", suggestedFix: "Remove the unsupported key" }],
     };
     restoreExitCode(() => {
-      process.exitCode = 0;
+      process.exitCode = 37;
       const text = renderConfigLintResult(result, "text");
       expect(text).toContain("bogus");
       expect(text).toContain("fix:");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(37);
     });
   });
 

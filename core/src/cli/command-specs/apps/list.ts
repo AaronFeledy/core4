@@ -6,7 +6,7 @@ import {
 } from "../../commands/list";
 import { Flags } from "../../spec/metadata";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 const extractFormat = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
@@ -27,7 +27,12 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",
   topLevelAlias: true,
+  aliases: ["list"],
   bootstrap: "minimal",
+  flags: {
+    format: Flags.string({ description: "Output format.", options: ["json", "table"], default: "table" }),
+    path: Flags.string({ description: "Filter apps whose root contains the given substring." }),
+  },
   run: (input) => {
     const path = appsListPathFromInput(input);
     return listServices(path === undefined ? {} : { path });
@@ -35,18 +40,3 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   render: (result, input?: unknown) =>
     renderAppsListResult(result as ListServicesResult, extractFormat(input)),
 };
-
-export default class ListCommand extends LandoCommandBase {
-  static override description = listSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(listSpec)];
-  static override flags = {
-    format: Flags.string({ description: "Output format.", options: ["json", "table"], default: "table" }),
-    path: Flags.string({ description: "Filter apps whose root contains the given substring." }),
-  };
-  static override landoSpec: LandoCommandSpec = listSpec;
-  static override bootstrap = listSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(listSpec);
-  }
-}

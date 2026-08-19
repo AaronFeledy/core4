@@ -1,5 +1,6 @@
 import { Flags } from "../../spec/metadata";
 
+import type { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import type { DoctorOptions } from "../../commands/doctor";
 import { resilientDoctorReport } from "../../commands/doctor-bootstrap";
 import {
@@ -11,7 +12,7 @@ import {
 } from "../../commands/doctor-report";
 import type { RenderContext } from "../../renderer-boundary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -57,26 +58,16 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
  * program (see `doctor-bootstrap.ts`) so a bootstrap failure is reported as a
  * self check instead of leaving the user with no diagnostics.
  */
-export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, never> = {
+export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLayerFactory> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
+  description: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "none",
-  run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
-  render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
-  // A `self` check means doctor could not complete a section, which must not
-  // look like a clean run to a script or agent reading the exit code.
-  successExitCode: (result) => ((result as DoctorReport).self === undefined ? undefined : 1),
-  suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
-};
-
-export default class MetaDoctorCommand extends LandoCommandBase {
-  static override description = metaDoctorSpec.summary;
-  static override aliases = [...resolveTopLevelAliases(metaDoctorSpec)];
-  static override flags = {
+  flags: {
     provider: Flags.string({
       description: "Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman).",
     }),
@@ -97,11 +88,11 @@ export default class MetaDoctorCommand extends LandoCommandBase {
       options: ["text", "json", "yaml"],
       default: "text",
     }),
-  };
-  static override landoSpec: LandoCommandSpec = metaDoctorSpec;
-  static override bootstrap = metaDoctorSpec.bootstrap;
-
-  override async run(): Promise<void> {
-    await this.runEffect(metaDoctorSpec);
-  }
-}
+  },
+  run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
+  render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
+  // A `self` check means doctor could not complete a section, which must not
+  // look like a clean run to a script or agent reading the exit code.
+  successExitCode: (result) => ((result as DoctorReport).self === undefined ? undefined : 1),
+  suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
+};

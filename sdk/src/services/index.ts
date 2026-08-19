@@ -88,6 +88,7 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileError,
@@ -110,6 +111,7 @@ import type {
   SecretNotFoundError,
   ServiceTypeCollisionError,
   ShellExecError,
+  ToolingCompileError,
   ToolingExecError,
   ToolingIncludeCycleError,
 } from "../errors/index.ts";
@@ -315,6 +317,7 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileValidationError
       | LandofileSandboxError
       | LandofileTimeoutError
+      | LandofileUnknownEventError
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
@@ -717,7 +720,7 @@ export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngin
       invocation: ToolingInvocation,
       plan: AppPlan,
       provider: RuntimeProviderShape,
-    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingExecError>;
+    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
 >() {}
 

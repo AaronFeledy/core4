@@ -6,7 +6,7 @@ import {
   GlobalAutoStartError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
-import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
+import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, type PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -30,6 +30,7 @@ import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from ".
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
+import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -97,6 +98,25 @@ export const startAppForTarget = (
     const applyStarted = yield* Ref.make(false);
     const routesApplied = yield* Ref.make(false);
 
+    yield* events.publish(
+      PreAppStartEvent.make({
+        eventName: "pre-app-start",
+        appRef: ref,
+        providerId: plan.provider,
+        timestamp: now(),
+      }),
+    );
+    const preStart = PreStartEvent.make({
+      _tag: "pre-start",
+      scope: "app",
+      app: ref,
+      plan,
+      triggeredBy: "app:start",
+      timestamp: now(),
+    });
+    yield* events.publish(preStart);
+    yield* runAppEvent(plan, "pre-start", preStart);
+
     const neededGlobalServices = requiredGlobalServicesForPlan(plan);
     if (neededGlobalServices.length > 0) {
       yield* ensureGlobalServicesRunning({
@@ -121,15 +141,6 @@ export const startAppForTarget = (
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
         Effect.gen(function* () {
-          yield* events.publish(
-            PreAppStartEvent.make({
-              eventName: "pre-app-start",
-              appRef: ref,
-              providerId: plan.provider,
-              timestamp: now(),
-            }),
-          );
-
           const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
           const serviceList = Object.values(builtPlan.services);
           const serviceIds = serviceList.map((service) => String(service.name));
@@ -220,7 +231,6 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-
           yield* startFileSyncSessions(plan, events, managed).pipe((effect) =>
             compensateFailure(effect, removeRoutesAndDestroyApp(proxy, provider, plan)),
           );
@@ -247,6 +257,15 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
+          const postStart = PostStartEvent.make({
+            _tag: "post-start",
+            scope: "app",
+            app: ref,
+            plan,
+            timestamp: now(),
+          });
+          yield* events.publish(postStart);
+          yield* runPostAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),
@@ -277,6 +296,7 @@ export const startApp = (
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
         const plan = yield* planner.plan(landofile, capabilities);
+        yield* runAppInitEvents(plan);
         return yield* startAppForTarget(
           options,
           { plan, root: plan.root, app: appRef(plan), landofile },

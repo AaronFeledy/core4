@@ -263,12 +263,16 @@ describe("lando stop", () => {
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.events).toEqual([
+      "pre-init",
+      "post-init",
       "pre-app-stop",
+      "pre-stop",
       "pre-service-stop",
       "pre-service-stop",
       "post-service-stop",
       "post-service-stop",
       "post-app-stop",
+      "post-stop",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });

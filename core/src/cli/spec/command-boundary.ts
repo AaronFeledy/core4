@@ -1,8 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 
 import type { RendererIO } from "@lando/renderer/io";
-import type { RendererMode } from "../bug-report";
-import { formatBugReport } from "../bug-report";
+import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";
 import type { ResultFormat } from "../format-flags";
 import { runWithRendererHandling } from "../renderer-boundary";
@@ -22,10 +21,15 @@ export const extractSpecFlags = (input: unknown): Readonly<Record<string, unknow
   return Object.fromEntries(Object.entries(input.flags));
 };
 
-export const extractSpecParsedArgv = (input: unknown): ReadonlyArray<string> =>
-  typeof input === "object" && input !== null && "parsedArgv" in input && Array.isArray(input.parsedArgv)
-    ? input.parsedArgv.filter((arg): arg is string => typeof arg === "string")
+export const extractSpecParsedArgv = (input: unknown): ReadonlyArray<string> => {
+  if (typeof input !== "object" || input === null) return [];
+  if ("parsedArgv" in input && Array.isArray(input.parsedArgv)) {
+    return input.parsedArgv.filter((arg): arg is string => typeof arg === "string");
+  }
+  return "argv" in input && Array.isArray(input.argv)
+    ? input.argv.filter((arg): arg is string => typeof arg === "string")
     : [];
+};
 
 /**
  * User-facing failures that occur before a resolved command lifecycle

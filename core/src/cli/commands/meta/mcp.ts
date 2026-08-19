@@ -34,6 +34,7 @@ import { McpTransport } from "@lando/mcp/transport";
 import type { RedactionService } from "@lando/redaction/service";
 import { McpServiceLive } from "../../../mcp-command-executor";
 import type { RendererMode } from "../../bug-report";
+import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { ResultFormat } from "../../format-flags";
@@ -88,24 +89,30 @@ const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
   return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
 };
 
-const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => ({
-  id: command.id,
-  summary: command.summary,
-  namespace: command.id.startsWith("meta:") ? "meta" : command.id.startsWith("apps:") ? "apps" : "app",
-  bootstrap: "app",
-  hidden: command.hidden,
-  args: {
+const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => {
+  let namespace: LandoCommandSpec["namespace"] = "app";
+  if (command.id.startsWith("meta:")) namespace = "meta";
+  else if (command.id.startsWith("apps:")) namespace = "apps";
+
+  return {
+    id: command.id,
+    summary: command.summary,
+    namespace,
+    bootstrap: "app",
+    hidden: command.hidden,
     args: {
-      type: "string",
-      multiple: true,
-      description: "Arguments passed to the tooling task.",
+      args: {
+        type: "string",
+        multiple: true,
+        description: "Arguments passed to the tooling task.",
+      },
     },
-  },
-  resultSchema: ToolingMcpResultSchema,
-  run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
-  redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
-  render: (result) => renderRunToolingResult(result as RunToolingResult),
-});
+    resultSchema: ToolingMcpResultSchema,
+    run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+    redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
+    render: (result) => renderRunToolingResult(result as RunToolingResult),
+  };
+};
 
 const parsedStringArray = (value: unknown): ReadonlyArray<string> | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -310,9 +317,11 @@ export const serveMcp = (
   });
 
 export const dispatchMcpCommand = async (params: {
-  readonly registry: McpCommandRegistry;
   readonly flags: McpCommandFlags;
-  readonly commandRuntime: Layer.Layer<ConfigService | RedactionService, LandoRuntimeBootstrapError>;
+  readonly commandRuntime: Layer.Layer<
+    ConfigService | RedactionService | BuiltInCommandCatalog,
+    LandoRuntimeBootstrapError
+  >;
   readonly retainedRuntime: Layer.Layer<unknown>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
@@ -321,8 +330,9 @@ export const dispatchMcpCommand = async (params: {
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
+      const catalog = yield* BuiltInCommandCatalog;
       const registry = yield* resolveRegistryForCommand(
-        params.registry,
+        mcpRegistryFromBuiltIns(catalog.entries),
         params.flags,
         params.retainedRuntime,
       );
@@ -344,8 +354,9 @@ export const dispatchMcpCommand = async (params: {
   const serveEffect =
     startupError === undefined
       ? Effect.gen(function* () {
+          const catalog = yield* BuiltInCommandCatalog;
           const registry = yield* resolveRegistryForCommand(
-            params.registry,
+            mcpRegistryFromBuiltIns(catalog.entries),
             params.flags,
             params.retainedRuntime,
           );

@@ -22,17 +22,6 @@ const openTuiLiteralImportFiles = [rendererPromptDriver, rendererLiveRegionSubst
 const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
 const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
-/**
- * Canonical CLI command-surface locations. The native command spec machinery and
- * the per-command spec modules live ONLY under these internal directories.
- * Reaching any file under them — or importing the `@oclif/*` npm packages — from
- * a non-CLI entry point is a library import-boundary violation.
- */
-const oclifCodePathDirs = [
-  `${resolve(coreSrc, "cli/spec")}/`,
-  `${resolve(coreSrc, "cli/command-specs")}/`,
-] as const;
-const oclifInternalEntry = resolve(coreSrc, "cli/run.ts");
 const tuiCodePathDirs = [
   `${resolve(coreSrc, "cli/tui")}/`,
   `${resolve(coreSrc, "cli/renderer/tui")}/`,
@@ -93,17 +82,6 @@ const classifyOclifImport = (edge: {
   if (isOclifNpmSpecifier(edge.specifier)) {
     return `imports the OCLIF npm package "${edge.specifier}"`;
   }
-  // Signal B: a non-CLI first-party module reaching into a CLI command-surface
-  // directory. Edges *within* those directories are internal to the CLI surface
-  // and are not themselves boundary violations.
-  const resolvedAbs = edge.resolvedAbs;
-  if (
-    resolvedAbs !== undefined &&
-    oclifCodePathDirs.some((dir) => resolvedAbs.startsWith(dir)) &&
-    !oclifCodePathDirs.some((dir) => edge.importerAbs.startsWith(dir))
-  ) {
-    return `reaches the OCLIF code path ${repoRelative(resolvedAbs)}`;
-  }
   return undefined;
 };
 
@@ -129,17 +107,7 @@ const classifyTuiImport = (edge: {
 const classifyEffectImport = (edge: { readonly specifier: string }): string | undefined =>
   isEffectNpmSpecifier(edge.specifier) ? `imports the Effect runtime package "${edge.specifier}"` : undefined;
 
-interface OclifViolation {
-  readonly chain: ReadonlyArray<string>;
-  readonly reason: string;
-}
-
-interface TuiViolation {
-  readonly chain: ReadonlyArray<string>;
-  readonly reason: string;
-}
-
-interface EffectViolation {
+interface ImportViolation {
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -249,12 +217,13 @@ const walkLazyModuleGraph = (
       if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) visit(resolvedAbs);
     }
 
-    for (const edge of scanDynamicEdges(absPath, source)) {
+    const dynamicEdges = scanDynamicEdges(absPath, source);
+    const isOpenTuiSubstrateModule = openTuiLiteralImportFiles.includes(absPath);
+    const openTuiDriverEdges = isOpenTuiSubstrateModule
+      ? dynamicEdges.filter((candidate) => candidate.specifier === "@opentui/core")
+      : [];
+    for (const edge of dynamicEdges) {
       const resolvedAbs = followEdge(edge.specifier);
-      const isOpenTuiSubstrateModule = openTuiLiteralImportFiles.includes(absPath);
-      const openTuiDriverEdges = isOpenTuiSubstrateModule
-        ? scanDynamicEdges(absPath, source).filter((candidate) => candidate.specifier === "@opentui/core")
-        : [];
       const isLiteralOpenTuiDriverEdge =
         isOpenTuiSubstrateModule &&
         edge.specifier === "@opentui/core" &&
@@ -292,14 +261,14 @@ const walkStaticImportGraph = (
   entryAbs: string,
 ): {
   readonly visited: ReadonlySet<string>;
-  readonly violations: ReadonlyArray<OclifViolation>;
-  readonly tuiViolations: ReadonlyArray<TuiViolation>;
-  readonly effectViolations: ReadonlyArray<EffectViolation>;
+  readonly violations: ReadonlyArray<ImportViolation>;
+  readonly tuiViolations: ReadonlyArray<ImportViolation>;
+  readonly effectViolations: ReadonlyArray<ImportViolation>;
 } => {
   const visited = new Set<string>();
-  const violations: OclifViolation[] = [];
-  const tuiViolations: TuiViolation[] = [];
-  const effectViolations: EffectViolation[] = [];
+  const violations: ImportViolation[] = [];
+  const tuiViolations: ImportViolation[] = [];
+  const effectViolations: ImportViolation[] = [];
 
   const visit = (absPath: string, chain: ReadonlyArray<string>): void => {
     if (visited.has(absPath)) return;
@@ -349,17 +318,7 @@ const walkStaticImportGraph = (
   return { visited, violations, tuiViolations, effectViolations };
 };
 
-const formatViolation = (entrySpecifier: string, violation: OclifViolation): string => {
-  const chain = violation.chain.map(repoRelative).join("\n      → ");
-  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
-};
-
-const formatTuiViolation = (entrySpecifier: string, violation: TuiViolation): string => {
-  const chain = violation.chain.map(repoRelative).join("\n      → ");
-  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
-};
-
-const formatEffectViolation = (entrySpecifier: string, violation: EffectViolation): string => {
+const formatViolation = (entrySpecifier: string, violation: ImportViolation): string => {
   const chain = violation.chain.map(repoRelative).join("\n      → ");
   return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
 };
@@ -451,26 +410,6 @@ describe("OCLIF import-boundary classifier (detection self-check)", () => {
         resolvedAbs: undefined,
       }),
     ).toContain("OCLIF npm package");
-  });
-
-  test("signal B: flags a non-OCLIF module reaching into the OCLIF code path", () => {
-    expect(
-      classifyOclifImport({
-        importerAbs: resolve(coreSrc, "runtime/layer.ts"),
-        specifier: "../cli/spec/command-base.ts",
-        resolvedAbs: resolve(coreSrc, "cli/spec/command-base.ts"),
-      }),
-    ).toContain("OCLIF code path");
-  });
-
-  test("does NOT flag CLI-internal edges (spec importer → spec file)", () => {
-    expect(
-      classifyOclifImport({
-        importerAbs: resolve(coreSrc, "cli/spec/command-spec.ts"),
-        specifier: "./command-base.ts",
-        resolvedAbs: resolve(coreSrc, "cli/spec/command-base.ts"),
-      }),
-    ).toBeUndefined();
   });
 
   test("does NOT flag ordinary first-party / external edges", () => {
@@ -596,29 +535,14 @@ describe("Effect import-boundary classifier (detection self-check)", () => {
 });
 
 describe("OCLIF-free default entry", () => {
-  test("the walker detects OCLIF when present (positive control on the native dispatcher)", () => {
-    const entryAbs = realpathSync(oclifInternalEntry);
-    const { violations } = walkStaticImportGraph(entryAbs);
-
-    expect(violations.length).toBeGreaterThan(0);
-
-    const namesOclif = violations.some((violation) =>
-      violation.chain.some(
-        (link) =>
-          link.startsWith("@oclif/") ||
-          repoRelative(link).includes("cli/command-specs") ||
-          repoRelative(link).includes("cli/spec"),
-      ),
-    );
-    expect(namesOclif).toBe(true);
-  });
-
   test("the default @lando/core entry has an OCLIF-free transitive static import graph", () => {
     const entryAbs = resolveEntrySource("@lando/core");
     const { visited, violations } = walkStaticImportGraph(entryAbs);
 
     expect(visited.size).toBeGreaterThan(1);
     expect(visited.has(resolve(stateStoreSrc, "service.ts"))).toBe(true);
+    expect(visited.has(resolve(coreSrc, "cli/built-in-command-registry.ts"))).toBe(true);
+    expect(visited.has(resolve(coreSrc, "cli/command-specs/app/rebuild.ts"))).toBe(true);
 
     if (violations.length > 0) {
       const report = violations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");
@@ -634,9 +558,7 @@ describe("OCLIF-free default entry", () => {
     expect(visited.size).toBeGreaterThan(1);
 
     if (tuiViolations.length > 0) {
-      const report = tuiViolations
-        .map((violation) => formatTuiViolation("@lando/core", violation))
-        .join("\n\n");
+      const report = tuiViolations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");
       throw new Error(`@lando/core must not load any TUI code path; offending import chains:\n\n${report}`);
     }
     expect(tuiViolations.length).toBe(0);
@@ -657,18 +579,6 @@ describe("OCLIF-free default entry", () => {
       expect(violations.length).toBe(0);
     },
   );
-
-  test("failure messages name the full offending import chain", () => {
-    const entryAbs = realpathSync(oclifInternalEntry);
-    const { violations } = walkStaticImportGraph(entryAbs);
-    const firstViolation = violations[0];
-    if (firstViolation === undefined) throw new Error("expected a positive-control violation");
-
-    const message = formatViolation("core/src/cli/run.ts", firstViolation);
-    expect(message).toContain("core/src/cli/run.ts");
-    expect(message).toContain("→");
-    expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/command-specs|cli\/spec/);
-  });
 });
 
 describe("Effect-free @lando/core/paths", () => {
@@ -690,7 +600,7 @@ describe("Effect-free @lando/core/paths", () => {
 
     if (effectViolations.length > 0) {
       const report = effectViolations
-        .map((violation) => formatEffectViolation("@lando/core/paths", violation))
+        .map((violation) => formatViolation("@lando/core/paths", violation))
         .join("\n\n");
       throw new Error(
         `@lando/core/paths must not load the Effect runtime; offending import chains:\n\n${report}`,

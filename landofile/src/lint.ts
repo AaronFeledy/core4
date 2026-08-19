@@ -1,21 +1,17 @@
 /**
- * Schema-only Landofile linting.
- *
- * `lintLandofile` validates the current app directory's Landofile against the
- * canonical `LandofileShape` JSON Schema and ONLY that — no translators, no
- * doctor checks, no provider probes, and (deliberately) none of the
- * gated-key/expression scanners that `LandofileService.discover` layers on top
- * of the decode. Unknown keys surface as excess-property violations rather
- * than `NotImplementedError`, which is exactly what an editor wants.
- *
- * It is the single source of truth shared by `lando app:config:lint` and
- * `lando doctor --app`.
+ * Validates discovered Landofile layers against `LandofileShape` without
+ * running translators, provider probes, or runtime capability scanners.
+ * Unknown keys remain structured lint violations rather than runtime errors.
  */
 import { dirname } from "node:path";
 
 import { Effect, Either, ParseResult, Schema } from "effect";
 
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import {
+  LandofileFormConflictError,
+  LandofileNotFoundError,
+  LandofileUnknownEventError,
+} from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -30,6 +26,7 @@ import {
   composeTagRejection,
 } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
+import { VALID_APP_LIFECYCLE_EVENTS, unknownAppLifecycleEvent } from "./events.ts";
 import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
@@ -45,7 +42,6 @@ export interface LintLandofileOptions {
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 
-/** Shape of one `ParseResult.ArrayFormatter` issue consumed by the suggested-fix helpers. */
 type LintIssue = {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
@@ -74,7 +70,7 @@ const isMisplacedComposeSurfaceKey = (
   Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 const composeSuggestedFix = (issue: LintIssue): string | undefined => {
-  // Compose matrix governs top-level keys only; nested issues keep their precise remediation.
+  // Compose dispositions apply only to top-level schema issues.
   if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
   if (issue._tag === "Unexpected") {
@@ -172,7 +168,11 @@ const singleViolationResult = (
  */
 export const lintLandofile = (
   options: LintLandofileOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
+): Effect.Effect<
+  ConfigLintResult,
+  LandofileNotFoundError | LandofileFormConflictError | LandofileUnknownEventError,
+  never
+> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const discovery = yield* Effect.tryPromise({
@@ -272,6 +272,18 @@ export const lintLandofile = (
     }
 
     const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
+    const unknownEvent = unknownAppLifecycleEvent(parsed);
+    if (unknownEvent !== undefined) {
+      return yield* Effect.fail(
+        new LandofileUnknownEventError({
+          message: `Unknown app lifecycle event ${unknownEvent}. Valid events: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
+          event: unknownEvent,
+          validEvents: [...VALID_APP_LIFECYCLE_EVENTS],
+          file: filePath,
+          remediation: `Use one of: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
+        }),
+      );
+    }
     const rejections = layerRejections.flat();
     const rejectionViolations = rejections.map(rejectionViolation);
     const mergedViolations = violationsFor(parsed, rejections);
