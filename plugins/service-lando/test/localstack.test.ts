@@ -45,7 +45,7 @@ describe("localstack ServiceType", () => {
     const plan = await planLocalStackService({ type: "localstack" });
 
     expect(plan.type).toBe("localstack");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:latest" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.14.0" });
     expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566", PERSISTENCE: "1" });
     expect(plan.storage).toEqual([
       {

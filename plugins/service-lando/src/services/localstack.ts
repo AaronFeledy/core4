@@ -9,7 +9,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
-const DEFAULT_IMAGE = "localstack/localstack:latest";
+const DEFAULT_IMAGE = "localstack/localstack:4.14.0";
 const DEFAULT_PORT = 4566;
 const DATA_TARGET = PortablePath.make("/var/lib/localstack");
 
