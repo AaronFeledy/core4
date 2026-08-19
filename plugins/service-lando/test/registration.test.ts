@@ -172,7 +172,7 @@ describe("@lando/service-lando registration", () => {
     });
     expect(objectStore.healthcheck?.command).toEqual(["mc", "ready", "local"]);
 
-    expect(aws.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:latest" });
+    expect(aws.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.14.0" });
     expect(
       aws.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
     ).toEqual([["http", 4566]]);
