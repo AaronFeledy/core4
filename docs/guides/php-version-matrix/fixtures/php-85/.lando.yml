@@ -1,0 +1,5 @@
+name: php-version-matrix-85
+services:
+  app:
+    type: "php:8.5"
+    primary: true

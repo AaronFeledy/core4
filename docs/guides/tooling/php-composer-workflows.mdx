@@ -60,21 +60,22 @@ step, downloading any packages not already cached in the Composer cache volume. 
 `lando rebuild -y` after changing `composer.json` to force the `build.app` step to run again and
 resolve the new dependency set.
 
-## Composer version is fixed
+## Pick a Composer version
 
-Every stock PHP service installs Composer `2.10.2`, checksum-verified against a pinned SHA-256
-during the image build. Unlike Lando 3, the PHP service exposes no `composer_version`, channel, or
-way to skip the Composer install. Upgrading Composer per-project means running
-`composer self-update` inside a build step or shelling out with `lando ssh`:
+Stock PHP services install checksum-pinned Composer `2.10.2`. Set `composer:` on the PHP
+service to track that major channel, pin an exact release, or skip the install:
 
-```sh
-composer self-update 2.x
+```yaml
+services:
+  appserver:
+    type: php:8.5
+    composer: "2"          # default; the bundled Composer 2 pin
+    # composer: "2.7.7"    # exact checksum-pinned release
+    # composer: false      # skip Composer entirely
 ```
 
-A project-local override is possible as its own `build.app` step run before `composer install`,
-but it re-downloads Composer on every build since the base pin is unaffected.
-
-## Executable coverage
+Unknown versions fail at plan time with remediation. Changing `composer:` rebuilds the
+artifact layer because the selected pin is part of the image build key.
 
 <Guide>
   <Scenario id="project-dependency-install" render>
@@ -89,6 +90,53 @@ but it re-downloads Composer on every build since the base pin is unaffected.
     <Step name="lint-config">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="select-exact-composer" render>
+    <Step name="scaffold">
+      <UseFixture name="php-composer-exact" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-composer-exact" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="skip-composer" render>
+    <Step name="scaffold">
+      <UseFixture name="php-composer-skip" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*false" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-composer-skip" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unknown-composer" render={false} reason="Plan-time tagged failure for an unknown Composer version">
+    <Step name="scaffold">
+      <UseFixture name="php-composer-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported Composer version" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>

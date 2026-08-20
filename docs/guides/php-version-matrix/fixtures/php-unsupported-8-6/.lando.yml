@@ -1,5 +1,5 @@
 name: php-version-matrix-unsupported
 services:
   app:
-    type: "php:8.5"
+    type: "php:8.6"
     primary: true
