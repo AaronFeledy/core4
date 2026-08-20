@@ -312,6 +312,12 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/root/.nuget/packages"),
       readOnly: false,
     });
+    expect(appPlan.stores).toContainEqual({
+      name: "lando-cache-nuget",
+      scope: "global",
+      kind: "cache",
+      key: "nuget",
+    });
     expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
   });
 

@@ -278,6 +278,15 @@ export const planApp = (
           capabilities: providerCapabilities,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+      const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
+      if (resolvedAuthored.invalidCacheEntry !== undefined)
+        yield* Effect.fail(resolvedAuthored.invalidCacheEntry);
+      if (resolvedAuthored.globalEntry !== undefined) {
+        yield* Effect.fail(rejectGlobalScope(appRoot, name, resolvedAuthored.globalEntry));
+      }
+      const authoredStores = new Map(authored.byStore);
+      for (const [store, info] of resolvedAuthored.byStore) authoredStores.set(store, info);
+      const storageAuthored = { ...authored, byStore: authoredStores };
       const mergedLogSources = mergeLogSources({
         appRoot,
         serviceName: name,
@@ -340,7 +349,7 @@ export const planApp = (
       resolvedServices.push({
         name,
         service: pinnedService,
-        authored,
+        authored: storageAuthored,
         serviceType,
         resolution,
         logSources,
