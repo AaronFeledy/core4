@@ -12,7 +12,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { phpPrerequisiteBuildSteps } from "./php-prerequisites.ts";
+import { phpPrerequisiteBuildSteps, resolvePhpComposer } from "./php-prerequisites.ts";
 
 export {
   PHP_APT_PACKAGE_PINS,
@@ -183,6 +183,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
     Effect.try({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
+        resolvePhpComposer(input.service.composer);
         const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
         const allowOverride = input.service.allowOverride ?? false;
 

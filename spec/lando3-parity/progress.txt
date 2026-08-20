@@ -623,3 +623,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
   - Guide `errorTag` regexes that include quotes fail against JSON-stringified CLI results; match the unquoted message stem.
 ---
+
+## 2026-08-20 16:01 CDT - US-570 Review
+- Invalid `composer:` now fails at PHP service resolve even when a custom `image:` skips the Composer install step, so unknown values fail closed at plan time with the same remediation as the stock path.
+- Review notes (deferred/rejected): rejected treating the custom-image skip as an allowed inert-field gap — AC 3 requires plan-time failure for invalid values, not only when build steps run. Rejected QA and code-quality review-work lanes (auth token expired); Bugbot plus focused tests were used instead. Foreground security check: Composer URL/sha256 interpolation is catalog-pinned, not user-authored.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 22 php/prerequisites tests and 195 adjacent registration/contract/schema/workflow tests passed.
+- **Learnings for future iterations:**
+  - Image-gated PHP build steps must not own option validation; fail closed in `ServiceType.resolve` so custom `image:` still rejects invalid `composer:` values.
+---

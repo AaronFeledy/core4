@@ -117,4 +117,19 @@ describe("stock PHP prerequisite plan", () => {
     );
     expect(rejected).toBe(true);
   });
+
+  test("rejects an unknown Composer version when a custom image skips install", async () => {
+    let rejected = false;
+    await composePhpPlan({ image: "registry.example.com/php:8.2-custom", composer: "nope" }).then(
+      () => undefined,
+      (error: unknown) => {
+        rejected = true;
+        const message = error instanceof Error ? error.message : String(error);
+        expect(message).toMatch(/Unsupported Composer version "nope"/);
+        expect(message).toMatch(/composer: "2"/);
+        expect(message).toMatch(/composer: false/);
+      },
+    );
+    expect(rejected).toBe(true);
+  });
 });
