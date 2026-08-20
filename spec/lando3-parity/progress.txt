@@ -490,3 +490,18 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Split/excise decisions: None; both new SDK service schemas and the doctor notice trace to US-567 ACs. `passes` stays true.
 - Verification: typecheck, lint, and 181 focused schema/service/registration/contract/doctor spot checks passed.
 ---
+
+## 2026-08-19 20:15 CDT - Babysit
+- PR: #790 https://github.com/AaronFeledy/core4/pull/790
+- CI outcome: fail (provider-integration-linux-x64, provider-integration-linux-x64-runner ubuntu-24.04)
+- Review feedback: none (Bugbot SMTP-port finding still open; triage agents hung before any fix)
+- Merge: deferred (triage never completed; Bugbot finding and CI failure remain unaddressed)
+---
+
+## 2026-08-19 20:21 CDT - US-567
+- Story verified complete on branch (no new product code). App-scoped `type: mailpit` still coexists with the global Mailpit contribution; `type: mailhog` still plans as a compatibility type and records the 4.2.0/5.0.0 mailpit deprecation that doctor reports from the authored Landofile.
+- Verification: typecheck, lint passed; 181 focused mailpit/mailhog/registration/contract/doctor/schema tests passed.
+- **Learnings for future iterations:**
+  - A failing ubuntu-24.04 provider-docker live `logs emits at least one chunk` job is unrelated to catalog service-type stories when other provider platforms pass. Do not reopen a passed service story to chase that flake.
+  - Bugbot custom-`port` listen-bind notes on mail types match the advertised-port pattern already rejected for RabbitMQ; they are merge hygiene, not missing ACs.
+---
