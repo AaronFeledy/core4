@@ -1,0 +1,73 @@
+---
+id: phpmyadmin
+provider: test
+timeout: 90000
+tags: [beta, docs, phpmyadmin, service]
+---
+
+# phpMyAdmin
+
+Add a phpMyAdmin UI with `type: phpmyadmin`. In an app with one MySQL or
+MariaDB service, that is enough — Lando points the UI at that database and
+gives it a default hostname route:
+
+```yaml
+name: phpmyadmin-demo
+services:
+  db:
+    type: mysql
+  pma:
+    type: phpmyadmin
+```
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="phpmyadmin-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pma\"[\\s\\S]*\"type\":\\s*\"phpmyadmin\"" } }} />
+    </Step>
+    <Step name="refresh">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: phpmyadmin-demo" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Pick a version
+
+`phpmyadmin` is an alias for `phpmyadmin:latest`. Pin `phpmyadmin:5` when
+you want that major written out:
+
+```yaml
+services:
+  pma:
+    type: phpmyadmin:5
+```
+
+## Several databases
+
+phpMyAdmin auto-discovers every `mysql` and `mariadb` service in the app
+and lists them in the UI. It does not wire PostgreSQL or SQL Server.
+
+## Override the hosts
+
+Set `hosts:` when auto-discovery is not what you want. A string or a list
+replaces discovery entirely:
+
+```yaml
+services:
+  pma:
+    type: phpmyadmin
+    hosts:
+      - db
+      - db-other
+```
+
+The service listens on `80`, gets a default hostname route, and turns on
+`lando.certs`. Set `certs: false` if you do not want a leaf certificate.

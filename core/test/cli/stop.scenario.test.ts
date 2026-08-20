@@ -72,6 +72,7 @@ const capabilities: ProviderCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "portable",
   providerExtensions: [],
 };

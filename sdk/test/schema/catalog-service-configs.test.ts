@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { ServiceConfig, ServiceCreds } from "@lando/sdk/schema";
+import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
+import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
@@ -79,6 +83,77 @@ describe("catalog service config schemas", () => {
     expect(result._tag).toBe("Left");
   });
 
+  test.each(["dotnet", "dotnet:8.0", "dotnet:9.0"] as const)(
+    "Given .NET type %s, when decoding shared service fields, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        image: "mcr.microsoft.com/dotnet/sdk:9.0",
+        port: 5000,
+        certs: true,
+      };
+
+      // When
+      const result = strictDecode(DotnetServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
+  test.each(["mssql", "mssql:2019", "mssql:2022"] as const)(
+    "Given SQL Server type %s with database and creds, when decoding, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        image: "mcr.microsoft.com/mssql/server:2022-latest",
+        port: 1433,
+        database: "lando",
+        creds: { user: "sa", password: "secret", database: "lando" },
+      };
+
+      // When
+      const result = strictDecode(MssqlServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
+  test.each(["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const)(
+    "Given phpMyAdmin type %s with hosts, when decoding, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        image: "phpmyadmin:5",
+        port: 80,
+        hosts: ["database"],
+        certs: true,
+      };
+
+      // When
+      const result = strictDecode(PhpMyAdminServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
+  test("Given phpMyAdmin hosts as a single string, when decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(PhpMyAdminServiceConfig, {
+      type: "phpmyadmin",
+      image: "phpmyadmin:5",
+      hosts: "database",
+    });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
   test.each([
     ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", image: "minio/minio", port: 9000 }],
     [
@@ -104,6 +179,9 @@ describe("catalog service config schemas", () => {
     ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailpit" }],
     ["TomcatServiceConfig", TomcatServiceConfig, { type: "varnish" }],
     ["VarnishServiceConfig", VarnishServiceConfig, { type: "tomcat", backend: "appserver" }],
+    ["DotnetServiceConfig", DotnetServiceConfig, { type: "tomcat" }],
+    ["MssqlServiceConfig", MssqlServiceConfig, { type: "mysql" }],
+    ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "php" }],
   ] as const)("Given %s with another catalog type, when decoding, then it fails", (_name, schema, input) => {
     // Given / When
     const result = strictDecode(schema, input);
@@ -120,6 +198,9 @@ describe("catalog service config schemas", () => {
     ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailhog", smtpPort: 1025 }],
     ["TomcatServiceConfig", TomcatServiceConfig, { type: "tomcat", servletPort: 8080 }],
     ["VarnishServiceConfig", VarnishServiceConfig, { type: "varnish", backend: "appserver", vclPort: 80 }],
+    ["DotnetServiceConfig", DotnetServiceConfig, { type: "dotnet", runtimePort: 5000 }],
+    ["MssqlServiceConfig", MssqlServiceConfig, { type: "mssql", saPassword: "secret" }],
+    ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "phpmyadmin", uploadLimit: "64M" }],
   ] as const)(
     "Given %s with an unknown key, when strictly decoding, then it fails",
     (_name, schema, input) => {
@@ -137,5 +218,65 @@ describe("catalog service config schemas", () => {
     expect(MAILHOG_DEPRECATION_NOTICE.removeIn).toBe("5.0.0");
     expect(MAILHOG_DEPRECATION_NOTICE.replacement).toBe("mailpit");
     expect(MAILHOG_DEPRECATION_NOTICE.severity).toBe("warn");
+  });
+});
+
+describe("ServiceCreds and ServiceConfig hosts", () => {
+  test("Given complete ServiceCreds, when decoding, then it succeeds", () => {
+    // Given
+    const input = { user: "lando", password: "secret", database: "app", rootPassword: "root-secret" };
+
+    // When
+    const result = strictDecode(ServiceCreds, input);
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("Given ServiceCreds without rootPassword, when decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(ServiceCreds, { user: "lando", password: "secret", database: "app" });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("Given ServiceCreds missing a required field, when decoding, then it fails", () => {
+    // Given / When
+    const result = strictDecode(ServiceCreds, { user: "lando", password: "secret" });
+
+    // Then
+    expect(result._tag).toBe("Left");
+  });
+
+  test("Given ServiceConfig creds and hosts, when strictly decoding, then it succeeds", () => {
+    // Given
+    const input = {
+      type: "mssql",
+      creds: { user: "sa", password: "secret", database: "lando" },
+      hosts: ["database", "database2"],
+    };
+
+    // When
+    const result = strictDecode(ServiceConfig, input);
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("Given ServiceConfig hosts as a string, when strictly decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(ServiceConfig, { hosts: "database" });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("Given ServiceConfig with an unknown key, when strictly decoding, then it fails", () => {
+    // Given / When
+    const result = strictDecode(ServiceConfig, { notAServiceField: true });
+
+    // Then
+    expect(result._tag).toBe("Left");
   });
 });

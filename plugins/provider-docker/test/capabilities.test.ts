@@ -96,6 +96,8 @@ describe("provider-docker capabilities", () => {
     expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
+    expect(linux.architectureEmulation).toBe(false);
+    expect(macos.architectureEmulation).toBe(true);
     expect(macos.bindMounts).toBe(true);
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
@@ -113,6 +115,15 @@ describe("provider-docker capabilities", () => {
     expect(dockerCapabilitiesForHost("linux", "tcp://127.0.0.1:2375").bindMountPerformance).toBe("slow");
     expect(dockerCapabilitiesForHost("darwin", "/var/run/docker.sock").bindMountPerformance).toBe("slow");
     expect(dockerCapabilitiesForHost("wsl", "/var/run/docker.sock").bindMountPerformance).toBe("native");
+  });
+
+  test("advertises architectureEmulation only on Docker Desktop-class hosts", () => {
+    expect(dockerCapabilitiesForHost("linux", "/var/run/docker.sock").architectureEmulation).toBe(false);
+    expect(dockerCapabilitiesForHost("wsl", "/var/run/docker.sock").architectureEmulation).toBe(false);
+    expect(dockerCapabilitiesForHost("darwin", "/var/run/docker.sock").architectureEmulation).toBe(true);
+    expect(dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine").architectureEmulation).toBe(
+      true,
+    );
   });
 
   test("keeps WSL identity while using Linux-family behavior", async () => {

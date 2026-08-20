@@ -101,6 +101,7 @@ const capabilities: ProviderCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "portable",
   providerExtensions: [],
   hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },

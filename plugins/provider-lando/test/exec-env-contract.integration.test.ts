@@ -28,6 +28,7 @@ const host: ServiceTypeHostFacts = {
   uid: "1000",
   gid: "1000",
   home: "/home/alpha-tester",
+  arch: "x64",
 };
 
 const planNodeService = (): Promise<ServicePlan> => {

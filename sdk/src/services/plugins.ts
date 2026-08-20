@@ -10,6 +10,7 @@ import type {
   LogSource,
   PlanMetadata,
   PluginManifest,
+  ProviderCapabilities,
   ProviderId,
   ServiceConfig,
   ToolingTaskShape,
@@ -41,6 +42,7 @@ export interface ServiceTypeHostFacts {
   readonly uid: string;
   readonly gid: string;
   readonly home: string;
+  readonly arch: string;
 }
 
 /** Input handed to {@link ServiceType.resolve} for one service in the resolved Landofile. */
@@ -53,6 +55,7 @@ export interface ServiceTypeInput {
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
   readonly host?: ServiceTypeHostFacts | undefined;
+  readonly capabilities?: ProviderCapabilities;
   readonly parentResolution?: ServiceTypeResolution | undefined;
 }
 

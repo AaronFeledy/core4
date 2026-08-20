@@ -35,6 +35,7 @@ const providerCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: true,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
@@ -61,6 +62,9 @@ describe("@lando/service-lando registration", () => {
     expect(manifest.contributes.serviceTypes).toEqual([
       "apache",
       "compose",
+      "dotnet",
+      "dotnet:8.0",
+      "dotnet:9.0",
       "elasticsearch",
       "elasticsearch:8",
       "go:1.22",
@@ -75,17 +79,23 @@ describe("@lando/service-lando registration", () => {
       "memcached",
       "minio",
       "mongodb",
+      "mssql",
+      "mssql:2019",
+      "mssql:2022",
       "mysql",
       "nginx",
       "node:lts",
       "node:22",
       "opensearch",
       "opensearch:2",
-      "postgres",
       "php:8.1",
       "php:8.2",
       "php:8.3",
       "php:8.4",
+      "phpmyadmin",
+      "phpmyadmin:5",
+      "phpmyadmin:latest",
+      "postgres",
       "python:3.12",
       "rabbitmq",
       "rabbitmq:3",
@@ -236,6 +246,9 @@ describe("@lando/service-lando registration", () => {
     const cases = [
       ["localstack", ["awslocal"]],
       ["minio", ["mc"]],
+      ["mssql", ["sqlcmd"]],
+      ["mssql:2019", ["sqlcmd"]],
+      ["mssql:2022", ["sqlcmd"]],
       ["rabbitmq", ["rabbitmqctl", "rabbitmqadmin"]],
       ["rabbitmq:3", ["rabbitmqctl", "rabbitmqadmin"]],
       ["rabbitmq:4", ["rabbitmqctl", "rabbitmqadmin"]],
@@ -266,6 +279,7 @@ describe("@lando/service-lando registration", () => {
                 source: "@lando/service-lando/test/registration",
                 runtime: 4,
               },
+              capabilities: providerCapabilities,
             }),
           ),
         ).pipe(Effect.provide(registryLayer)),
@@ -274,6 +288,145 @@ describe("@lando/service-lando registration", () => {
       // Then
       expect(Object.keys(resolution.tooling ?? {})).toEqual([...expectedTooling]);
     }
+  });
+
+  test("AppPlanner composes dotnet defaults through PluginRegistry", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "dotnet-app",
+      runtime: 4,
+      services: { [ServiceName.make("api")]: { type: "dotnet", certs: false } },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const api = appPlan.services[ServiceName.make("api")];
+    if (api === undefined) throw new Error("dotnet planner service missing");
+
+    // Then
+    expect(appPlan.routes[0]).toMatchObject({
+      hostname: "api.dotnet-app.lndo.site",
+      backend: { service: ServiceName.make("api"), protocol: "http", port: 5000 },
+    });
+    expect(api.storage).toContainEqual({
+      store: "lando-cache-nuget",
+      target: PortablePath.make("/root/.nuget/packages"),
+      readOnly: false,
+    });
+    expect(appPlan.stores).toContainEqual({
+      name: "lando-cache-nuget",
+      scope: "global",
+      kind: "cache",
+      key: "nuget",
+    });
+    expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  });
+
+  test("AppPlanner composes mssql environment, storage, and healthcheck through PluginRegistry", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "sql-app",
+      runtime: 4,
+      services: { [ServiceName.make("database")]: { type: "mssql" } },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const database = appPlan.services[ServiceName.make("database")];
+    if (database === undefined) throw new Error("mssql planner service missing");
+
+    // Then
+    expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
+    const saPassword = database.environment.SA_PASSWORD;
+    if (saPassword === undefined) throw new Error("mssql SA_PASSWORD missing");
+    expect(saPassword).toStartWith("Lando!");
+    expect(database.storage).toContainEqual({
+      store: "sql-app-mssql-data",
+      target: PortablePath.make("/var/opt/mssql"),
+      readOnly: false,
+    });
+    expect(database.healthcheck?.command).toEqual([
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost",
+      "-U",
+      "sa",
+      "-P",
+      saPassword,
+      "-C",
+      "-Q",
+      "SELECT 1",
+    ]);
+  });
+
+  for (const phpmyadminType of ["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const) {
+    test(`AppPlanner auto-wires ${phpmyadminType} to a mysql sibling`, async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name: "pma-app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("pma")]: { type: phpmyadminType, certs: false },
+          [ServiceName.make("database")]: {
+            type: "mysql",
+            healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+          },
+        },
+      };
+
+      // When
+      const appPlan = await plan(landofile);
+      const pma = appPlan.services[ServiceName.make("pma")];
+      if (pma === undefined) throw new Error("phpmyadmin planner service missing");
+
+      // Then
+      expect(pma.environment).toMatchObject({
+        PMA_HOSTS: "database",
+        PMA_USER: "lando",
+        PMA_PASSWORD: "lando",
+      });
+      expect(pma.dependsOn).toContainEqual({
+        service: ServiceName.make("database"),
+        condition: "service_healthy",
+        required: true,
+      });
+    });
+  }
+
+  test("AppPlanner honors phpmyadmin hosts overrides without a database sibling", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "pma-remote-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("pma")]: {
+          type: "phpmyadmin",
+          hosts: ["db-a", "db-b"],
+          certs: false,
+        },
+      },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const pma = appPlan.services[ServiceName.make("pma")];
+    if (pma === undefined) throw new Error("phpmyadmin planner service missing");
+
+    // Then
+    expect(pma.environment.PMA_HOSTS).toBe("db-a,db-b");
+    expect(pma.dependsOn).toEqual([]);
+  });
+
+  test("AppPlanner fails when phpmyadmin has neither hosts nor a database sibling", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "pma-bad-app",
+      runtime: 4,
+      services: { [ServiceName.make("pma")]: { type: "phpmyadmin", certs: false } },
+    };
+
+    // When / Then
+    await expect(plan(landofile)).rejects.toThrow(/no mysql\/mariadb siblings and no hosts/);
   });
 
   test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with explicit webroots", async () => {

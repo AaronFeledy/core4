@@ -1,0 +1,10 @@
+name: phpmyadmin-demo
+services:
+  db:
+    type: mysql
+    healthcheck:
+      kind: command
+      command: [mysqladmin, ping]
+  pma:
+    type: phpmyadmin
+    certs: false

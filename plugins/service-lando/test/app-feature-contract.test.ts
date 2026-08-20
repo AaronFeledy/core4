@@ -4,6 +4,8 @@ import { Effect } from "effect";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { runAppFeatureContract } from "@lando/sdk/test";
 
+import { phpMyAdminWireFeature } from "../src/services/phpmyadmin.ts";
+
 describe("service-lando catalog × app-feature contract suite", () => {
   test("mailpit-style php SMTP app feature satisfies runAppFeatureContract", async () => {
     const mailpitSmtp: AppFeatureDefinition = {
@@ -28,6 +30,20 @@ describe("service-lando catalog × app-feature contract suite", () => {
           services: [
             { serviceName: "appserver", serviceType: "php", base: "lando", framework: "drupal" },
             { serviceName: "node", serviceType: "node", base: "lando" },
+          ],
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("shipped phpmyadmin wire feature satisfies runAppFeatureContract", async () => {
+    return expect(
+      Effect.runPromise(
+        runAppFeatureContract({
+          feature: phpMyAdminWireFeature,
+          services: [
+            { serviceName: "pma", serviceType: "phpmyadmin", base: "lando" },
+            { serviceName: "database", serviceType: "mysql", base: "lando" },
           ],
         }),
       ),

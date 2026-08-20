@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   PLUGIN_NAME,
+  appFeatures,
   globalServices,
   manifest,
   plugin,
@@ -36,6 +37,11 @@ describe("@lando/service-lando plugin descriptor", () => {
       expect(plugin.serviceFeatures?.has(id)).toBe(true);
     }
 
+    // When / Then — appFeatures
+    for (const id of contributionIds(contributes.appFeatures)) {
+      expect(plugin.appFeatures?.has(id)).toBe(true);
+    }
+
     // When / Then — globalServices
     for (const id of contributionIds(contributes.globalServices)) {
       expect(plugin.globalServices?.has(id)).toBe(true);
@@ -49,6 +55,7 @@ describe("@lando/service-lando plugin descriptor", () => {
     expect(plugin.layer).toBe(services);
     expect(plugin.serviceTypes).toBe(serviceTypes);
     expect(plugin.serviceFeatures).toBe(serviceFeatures);
+    expect(plugin.appFeatures).toBe(appFeatures);
     expect(plugin.globalServices).toBe(globalServices);
   });
 });

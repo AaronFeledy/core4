@@ -15,6 +15,7 @@ export interface ProviderCapabilityConstants {
   readonly ephemeralMounts?: ProviderCapabilitiesShape["ephemeralMounts"];
   readonly tlsCertificates: ProviderCapabilitiesShape["tlsCertificates"];
   readonly rootless: ProviderCapabilitiesShape["rootless"];
+  readonly architectureEmulation?: ProviderCapabilitiesShape["architectureEmulation"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
   readonly composeKnobs?: ProviderCapabilitiesShape["composeKnobs"];
   readonly composeProjectFields?: ProviderCapabilitiesShape["composeProjectFields"];
@@ -54,6 +55,7 @@ export const buildProviderCapabilities = (
     tlsCertificates: constants.tlsCertificates,
     rootless: constants.rootless,
     privilegedServices: false,
+    architectureEmulation: constants.architectureEmulation ?? false,
     composeSpec: constants.composeSpec,
     composeKnobs: constants.composeKnobs ?? { supported: [] },
     ...(constants.composeProjectFields === undefined

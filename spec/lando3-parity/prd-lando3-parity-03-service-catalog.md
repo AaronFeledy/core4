@@ -70,3 +70,6 @@ The §6.12.1 catalog names service types the runtime registry does not ship: `ra
 | US-567 | app-scoped mailpit + deprecated mailhog | `docs/guides/services/mailpit.mdx` |
 | US-568 | tomcat service type | `docs/guides/services/tomcat.mdx` |
 | US-568 | varnish service type | `docs/guides/services/varnish.mdx` |
+| US-569 | dotnet service type | `docs/guides/services/dotnet.mdx` |
+| US-569 | mssql service type | `docs/guides/services/mssql.mdx` |
+| US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` |
