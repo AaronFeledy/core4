@@ -40,6 +40,7 @@ const LITERAL_FIELDS = {
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
 const OPTIONAL_FIELDS = [
+  "architectureEmulation",
   "composeKnobs",
   "composePreservedPaths",
   "composeProjectFields",
@@ -163,7 +164,25 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(33);
+    expect(actual).toHaveLength(34);
+  });
+
+  test("defaults architectureEmulation to false when omitted", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    expect(decoded.architectureEmulation).toBe(false);
+  });
+
+  test("accepts an explicit architectureEmulation boolean", () => {
+    const enabled = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      architectureEmulation: true,
+    });
+    expect(enabled.architectureEmulation).toBe(true);
+    const disabled = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      architectureEmulation: false,
+    });
+    expect(disabled.architectureEmulation).toBe(false);
   });
 
   test("every boolean capability accepts only booleans", () => {

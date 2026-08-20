@@ -36,6 +36,7 @@ const providerLandoCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;

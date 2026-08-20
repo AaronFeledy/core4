@@ -256,6 +256,11 @@ export const ProviderCapabilities = Schema.Struct({
   tlsCertificates: Schema.Literal("native", "lando", "none"),
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
+  architectureEmulation: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+    title: "Architecture Emulation",
+    description:
+      "Whether the provider can run container images for a CPU architecture other than the host via emulation.",
+  }),
   composeSpec: Schema.Literal("none", "portable", "native"),
   composeKnobs: Schema.optional(ComposeKnobCapabilities).annotations({
     title: "Compose Knobs",

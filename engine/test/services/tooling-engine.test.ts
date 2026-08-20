@@ -56,6 +56,7 @@ const stubCapabilities = {
   tlsCertificates: "none" as const,
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "none" as const,
   providerExtensions: [],
 };

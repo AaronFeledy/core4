@@ -498,6 +498,7 @@ export const dockerCapabilitiesForHost = (
     ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: false,
+    architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
     composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],

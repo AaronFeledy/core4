@@ -69,6 +69,7 @@ const providerLandoCapabilities: ProviderCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "native",
   composeServiceFields: { supported: ["labels"] },
   providerExtensions: ["compose", "labels", "registryCredentials"],
