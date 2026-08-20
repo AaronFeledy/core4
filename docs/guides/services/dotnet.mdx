@@ -1,0 +1,67 @@
+---
+id: dotnet
+provider: test
+timeout: 90000
+tags: [beta, docs, dotnet, service]
+---
+
+# .NET
+
+Run a .NET app with `type: dotnet`. That shorthand is the .NET 9 SDK image,
+which includes the ASP.NET runtime. Lando mounts the app at `/app` and keeps
+the container idle until you set `command:` to your dev server:
+
+```yaml
+name: dotnet-demo
+services:
+  appserver:
+    type: dotnet
+    command:
+      - dotnet
+      - watch
+      - run
+      - --urls
+      - http://0.0.0.0:5000
+```
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="dotnet-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\"[\\s\\S]*\"type\":\\s*\"dotnet\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Pick a version
+
+Use `dotnet:9.0` when you want the default major written out. Choose
+`dotnet:8.0` for the previous LTS line:
+
+```yaml
+services:
+  appserver:
+    type: dotnet:8.0
+```
+
+## Run the app
+
+Lando does not invent a `dotnet run` for you. Set `command:` to whatever
+your project actually starts with, and bind it to `0.0.0.0:5000` so the
+default route can reach it.
+
+## Cache and the default route
+
+NuGet packages land in a shared cache at `/root/.nuget/packages`. The
+service listens on `5000`, gets a default hostname route, and turns on
+`lando.certs`. Set `certs: false` if you do not want a leaf certificate.
+
+```sh
+lando info --json
+```

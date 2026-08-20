@@ -1,0 +1,4 @@
+name: mssql-demo
+services:
+  database:
+    type: mssql
