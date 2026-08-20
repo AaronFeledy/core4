@@ -5,6 +5,7 @@ export * from "./minio.ts";
 export * from "./rabbitmq.ts";
 export * from "./dotnet.ts";
 export * from "./mssql.ts";
+export * from "./php.ts";
 export * from "./phpmyadmin.ts";
 export * from "./tomcat.ts";
 export * from "./varnish.ts";

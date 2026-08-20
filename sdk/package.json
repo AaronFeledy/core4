@@ -30,6 +30,7 @@
     "./schema/services/rabbitmq": "./src/schema/services/rabbitmq.ts",
     "./schema/services/dotnet": "./src/schema/services/dotnet.ts",
     "./schema/services/mssql": "./src/schema/services/mssql.ts",
+    "./schema/services/php": "./src/schema/services/php.ts",
     "./schema/services/phpmyadmin": "./src/schema/services/phpmyadmin.ts",
     "./schema/services/tomcat": "./src/schema/services/tomcat.ts",
     "./schema/services/varnish": "./src/schema/services/varnish.ts",

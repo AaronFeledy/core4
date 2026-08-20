@@ -8,6 +8,7 @@ import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/sch
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
@@ -267,6 +268,41 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
   test("Given ServiceConfig hosts as a string, when strictly decoding, then it succeeds", () => {
     // Given / When
     const result = strictDecode(ServiceConfig, { hosts: "database" });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5"] as const)(
+    "Given PHP type %s, when decoding composer selection, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        webroot: "/app",
+        allowOverride: false,
+        composer: "2.7.7",
+      };
+
+      // When
+      const result = strictDecode(PhpServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
+  test("Given PHP composer false, when decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(PhpServiceConfig, { type: "php:8.5", composer: false });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("Given ServiceConfig composer, when strictly decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(ServiceConfig, { type: "php:8.5", composer: "2" });
 
     // Then
     expect(result._tag).toBe("Right");

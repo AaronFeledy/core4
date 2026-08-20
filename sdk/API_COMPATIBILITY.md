@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
+- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
 - `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
 - `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
@@ -308,6 +308,7 @@
 - `NetworkingPlan`
 - `PerAppBridgePlan`
 - `PhpMyAdminServiceConfig`
+- `PhpServiceConfig`
 - `PlanMetadata`
 - `SharedNetworkMembershipPlan`
 - `PluginContribution`
