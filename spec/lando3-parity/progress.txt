@@ -565,3 +565,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Service-type `certs:` defaults in `normalizedConfig` are inert unless `assemble.ts` passes `resolution.normalizedConfig.certs` into `resolveCertsFeature`; authored `pinnedService.certs` stays undefined when omitted.
 ---
+
+## 2026-08-20 03:01 CDT - US-568 Drift Audit
+- Trigger: 6 cycles, 1279 changed lines, 11 commits
+- Weakened proofs: AppPlanner unknown-backend/composition checks were masked by default certs requiring a CA after the certs-seed fix; last review dropped those tests from verification
+- Review scar tissue: varnish resolve() wrote dependsOn that composition never consumes; feature addDependency is the live healthcheck-gating path
+- Fixed: deleted the unused resolve dependsOn assignment and asserted gating on the composed plan; isolated AppPlanner/guide unknown-backend proofs from the certs CA requirement so they reach the production dependency check
+- Split/excise decisions: none
+- Verification: typecheck, lint, and 179 focused tomcat/varnish/registration/contract/certs/plan tests passed
+---
