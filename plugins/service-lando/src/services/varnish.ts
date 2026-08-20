@@ -81,7 +81,8 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  // Official varnish images run as a non-root USER that cannot bind :80 under rootless Podman.
+  ctx.setUser(service.user ?? "root");
 
   const vclSource = vclOverrideBindSource(service, ctx.appRoot);
   if (vclSource !== undefined) {

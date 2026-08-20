@@ -73,6 +73,7 @@ describe("varnish ServiceType", () => {
         expect(plan.type).toBe("varnish");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "cache" }]);
+        expect(plan.user).toBe("root");
         expect(plan.environment).toMatchObject({
           VARNISH_BACKEND_HOST: "appserver",
           VARNISH_BACKEND_PORT: "80",
@@ -168,6 +169,16 @@ describe("varnish ServiceType", () => {
       source: "C:\\src\\default.vcl",
       readOnly: true,
     });
+  });
+
+  test("preserves an authored user", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      user: "1000:1000",
+    });
+
+    expect(plan.user).toBe("1000:1000");
   });
 
   test("declares supported versions and artifacts", () => {
