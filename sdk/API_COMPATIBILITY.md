@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
+- `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
   `LandoPluginModule.commands` executable loaders. Manifest `contributes.commands` ids now require
   matching lazy loaders, allowing event `command:` steps to execute plugin commands rather than
@@ -213,6 +215,9 @@
 - `landoNetworkNames`
 - `landoServiceNetworkAliases`
 - `landoSharedNetworkName`
+- `LocalStackServiceConfig`
+- `MAILHOG_DEPRECATION_NOTICE`
+- `MailhogServiceConfig`
 - `sameAppMountTarget`
 - `LogSource`
 - `LogSourceId`
@@ -289,6 +294,8 @@
 - `MatcherScalar`
 - `MatcherSchema`
 - `MatcherSchemaRef`
+- `MailpitServiceConfig`
+- `MinIOServiceConfig`
 - `MountInput`
 - `MountPlan`
 - `NetworkCaConfig`
@@ -318,6 +325,7 @@
 - `ProxyConfig`
 - `ProxyServiceContribution`
 - `ProxyStatus`
+- `RabbitMQServiceConfig`
 - `RecipeChoicesFrom`
 - `RecipeFile`
 - `RecipeId`

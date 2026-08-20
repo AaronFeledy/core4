@@ -20,6 +20,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 ## Codebase Patterns (carry forward)
 
+- New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
+- `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
@@ -408,4 +410,98 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - `runBuiltInCommand` must honor `LandoCommandSpec.strict === false`; flag/positional parity is for strict commands only. `lando bun`/`lando x` extra argv is the canary.
   - Library `openLandoRuntime()` needs `plugins: { policy: "bundled-only" }` after `import "@lando/core/bundled-plugins"`; the default library policy does not discover CLI-installed providers.
+---
+
+## 2026-08-18 15:58 CDT - Babysit
+- PR: #788 https://github.com/AaronFeledy/core4/pull/788
+- CI outcome: pass
+- Review feedback: fixed (passthrough argv no longer steals declared flags from the inner command tail)
+- Merge: merged (squash)
+---
+
+## 2026-08-18 18:20 CDT - US-566
+- RabbitMQ 3/4, MinIO, and LocalStack now plan as catalog service types: management/console routes, persistent volumes, healthchecks, and service-type tooling (rabbitmqctl/rabbitmqadmin, mc, awslocal). MinIO bucket init is `database:` mapped to `MINIO_DEFAULT_BUCKETS`.
+- Each type publishes a config schema under `@lando/sdk/schema/services/<type>` and ships an executable guide that inspects resolved config.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus guide lint/coverage/public transcripts passed; `lando app:config --format=json` accepted a three-service Landofile.
+- **Learnings for future iterations:**
+  - New catalog types should publish `@lando/sdk/schema/services/<type>` via `ServiceConfig.pick` plus a narrowed `type` literal, then register the schema in `json-schema.ts`. Missing inherited field descriptions fail `codegen:schema-snapshot`.
+  - `ServiceType.schema` is `Schema.Schema.AnyNoContext` so concrete catalog schemas assign without assertions.
+---
+
+## 2026-08-18 19:13 CDT - US-566 Review
+- Confirmed Bugbot findings and fixed MinIO/LocalStack planner contracts: official MinIO no longer ships curl or honors MINIO_DEFAULT_BUCKETS, so readiness now uses `mc ready local` and bucket init creates `/data/$MINIO_BUCKET` before `minio server` with `--address` bound to `port:`. LocalStack `port:` now sets GATEWAY_LISTEN so the gateway and healthcheck share the same port.
+- Review notes (deferred/rejected): rejected switching MinIO to `kind: http` healthchecks because the planner only realizes `kind: command`; rejected treating RabbitMQ `port:` as a listen-port rewrite because AMQP health uses `rabbitmq-diagnostics ping` and matches existing redis-style advertised-port behavior; rejected Bitnami/MINIO_DEFAULT_BUCKETS because the catalog image is official `minio/minio`. Rejected post-fix Bugbot note that authored `entrypoint:` should still wrap bucket mkdir: a custom entrypoint owns process startup, and wrapping it would break the user's command contract.
+- Verification: typecheck, lint passed; 115 focused service/contract/registration tests plus the minio guide scenario passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Official `minio/minio` is UBI micro: no curl, no MINIO_DEFAULT_BUCKETS. Use `mc ready local` plus a pre-start directory for bucket init, and bind `--address` when `port:` is authored.
+  - LocalStack listen port is GATEWAY_LISTEN, not just the planned endpoint.
+---
+
+## 2026-08-18 19:30 CDT - US-566 Review
+- Review-work confirmed the MinIO default password cannot boot current official images (secret key must be at least 8 characters). Default is now `landolando`, and LocalStack enables `PERSISTENCE=1` so the shipped data volume actually keeps state.
+- Review notes (deferred/rejected): rejected RabbitMQ `RABBITMQ_NODE_PORT` rewrite as out of the catalog row (advertised-port pattern matches Redis); rejected requiring `ports:` publication and live container tests in this review (host-safe, not owned by the US-566 ACs); rejected treating current `minio/minio:latest` curl absence as still blocking because registry layers include `curl` and `mc`, and readiness already uses `mc ready local`.
+- Verification: typecheck, lint passed; 27 focused MinIO/LocalStack/registration tests and the MinIO guide scenario passed.
+---
+
+## 2026-08-18 19:38 CDT - US-566 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (provider+CA satisfied; managed Podman 6.0.1 running). A three-service Landofile with `type: rabbitmq`, `type: minio` (`database: uploads`), and `type: localstack` resolved on the compiled CLI: `app:config` accepted all three, `info` reported types `rabbitmq`/`minio`/`localstack`, and `app:cache:refresh` compiled `rabbitmqctl`/`rabbitmqadmin`/`mc`/`awslocal`. `type: rabbitmq:3` planned as `rabbitmq`. Unknown `type: not-a-service` failed closed with `LandofileValidationError` listing `rabbitmq`, `rabbitmq:3`, `rabbitmq:4`, `minio`, and `localstack`. Adjacent `redis` and `postgres` still planned. Destroyed the scenario apps.
+- **Out-of-scope finding:** `lando setup` failed the proxy step and `lando start` failed with `GlobalAutoStartError` after `lando global:start` hit `ServiceStartError` / `netavark: aardvark-dns failed to start: Failed to connect to user scope bus via local transport`. Same sandbox user-bus/cgroup limitation recorded in US-565 and US-583 Verify; not caused by this story. Live management/console/gateway checks therefore could not run.
+---
+
+## 2026-08-18 20:25 CDT - US-566 Verify
+- Uninstalled leftover Lando state, reran `lando setup --yes --no-interactive` in lando4-dev, and started a three-service app. RabbitMQ 4.3.5 answered `rabbitmqctl` and served the management UI at https://queue.us566-verify.lndo.site:38443 (HTTP 200). MinIO created the `uploads` bucket and served the console (HTTP 200). Default `type: localstack` with the pinned `4.14.0` community image returned healthy AWS APIs; `awslocal` created and listed an S3 bucket. Adjacent `type: redis` started and was destroyed.
+- Fixed managed-runtime start on hosts without a systemd user session: `cgroupfs` + file events, a `systemd-run` shim so netavark can launch aardvark-dns, and `DISABLE_HC_SYSTEMD=true` so image healthchecks do not require `/run/user/1000/systemd`. Uninstall now probes the managed Podman binary with its runtime flags instead of requiring `podman` on PATH.
+- **Out-of-scope finding:** `lando rabbitmqadmin list exchanges` returned `Not_Authorized` while `rabbitmqctl` and the management UI worked with `lando`/`lando`. The contributed `rabbitmqadmin` alias does not pass default broker credentials.
+- **Out-of-scope finding:** `lando uninstall --purge` could not delete leftover root-owned MariaDB volume files from earlier stories (`EACCES` under `runtime/storage/volumes/*-mariadb-data/_data`).
+- **Learnings for future iterations:** Current `localstack/localstack:latest` (2026.7.4) exits 55 without `LOCALSTACK_AUTH_TOKEN`. Keep the catalog default on `4.14.0`, the last community image that starts unauthenticated.
+---
+
+## 2026-08-19 17:13 CDT - US-567
+- App-scoped `type: mailpit` now plans SMTP 1025 + UI 8025 with a default hostname route, using the same pinned Mailpit image as the untouched global Mailpit contribution. `type: mailhog` remains a working SMTP+UI compatibility type and records `deprecation-used` (since 4.2.0, remove 5.0.0, replacement mailpit). The renderer still dedupes that warning per process; `lando doctor --deprecations` reports authored `type: mailhog` from the current Landofile even without a full plan.
+- Both types publish `@lando/sdk/schema/services/<type>` schemas, pass the composition contract, and ship `docs/guides/services/mailpit.mdx` with a hidden mailhog-deprecation scenario.
+- Verification: typecheck, lint, boundaries, schema compatibility, guide lint/coverage/public transcripts passed; focused schema/service/registration/doctor tests passed; CLI `app:config` accepted both types and `doctor --deprecations` listed the MailHog notice.
+- **Learnings for future iterations:**
+  - `app:config` echoes authored Landofile and does not plan, so it will not fire service-type deprecation warnings. Use `app:cache:refresh` for renderer warnings and scan the authored Landofile from `doctor --deprecations` when doctor bootstraps at `none`.
+  - Official `mailhog/mailhog` is a scratch image with no shell; do not add a `kind: command` healthcheck unless the image actually has a probe binary.
+---
+
+## 2026-08-19 17:35 CDT - US-567 Review
+- Fixed the confirmed Mailpit readiness blocker: the planned healthcheck now uses `/mailpit readyz`, the probe the pinned `axllent/mailpit` image actually ships, instead of `wget` against the HTTP API.
+- Review notes (deferred/rejected): rejected treating review-work lanes as a story failure after they hung with no deliverable; Bugbot plus a foreground AC check were used instead. Rejected requiring the hidden guide to assert a renderer warning via `app:cache:refresh` because doctor `--deprecations` is the bootstrap-`none` warning surface the AC names and renderer dedupe is existing DeprecationService behavior. Rejected adding a MailHog command healthcheck because the official scratch image has no probe binary. Rejected expanding the cwd YAML regex scan to includes/programmatic Landofiles; doctor cannot plan at `none`.
+- Verification: typecheck, lint passed; 117 focused mailpit/mailhog/registration/contract/doctor tests passed.
+- **Learnings for future iterations:**
+  - Official `axllent/mailpit` is `/mailpit` + tzdata only. Use `/mailpit readyz`, not wget/curl.
+---
+
+## 2026-08-19 17:45 CDT - US-567 Review
+- Doctor `--deprecations` now matches authored `type: mailhog` on CRLF Landofiles and on lines with trailing comments, so the scan agrees with the YAML parser.
+- Verification: typecheck, lint passed; 24 doctor-report tests passed.
+---
+
+## 2026-08-19 17:50 CDT - US-567 Review
+- Doctor `--deprecations` now walks to the discovered app root before scanning for `type: mailhog`, so a subdirectory invocation still reports the authored deprecation.
+- Verification: typecheck, lint passed; 25 doctor-report tests passed.
+---
+
+## 2026-08-19 18:00 CDT - US-567 Drift Audit
+- Trigger: 4 cycles, 832 changed lines, 4 commits
+- Category 3: Doctor's authored `type: mailhog` scan stays a bootstrap-`none` Landofile read, not a second planning path; the three review fixes (readyz, CRLF/comments, app-root walk) are the AC surface, not scar dual-paths.
+- Fixed: None; no dead exports, forwarding modules, collateral `passes` flips, or absorbed public contracts.
+- Split/excise decisions: None; both new SDK service schemas and the doctor notice trace to US-567 ACs. `passes` stays true.
+- Verification: typecheck, lint, and 181 focused schema/service/registration/contract/doctor spot checks passed.
+---
+
+## 2026-08-19 20:15 CDT - Babysit
+- PR: #790 https://github.com/AaronFeledy/core4/pull/790
+- CI outcome: fail (provider-integration-linux-x64, provider-integration-linux-x64-runner ubuntu-24.04)
+- Review feedback: none (Bugbot SMTP-port finding still open; triage agents hung before any fix)
+- Merge: deferred (triage never completed; Bugbot finding and CI failure remain unaddressed)
+---
+
+## 2026-08-19 20:21 CDT - US-567
+- Story verified complete on branch (no new product code). App-scoped `type: mailpit` still coexists with the global Mailpit contribution; `type: mailhog` still plans as a compatibility type and records the 4.2.0/5.0.0 mailpit deprecation that doctor reports from the authored Landofile.
+- Verification: typecheck, lint passed; 181 focused mailpit/mailhog/registration/contract/doctor/schema tests passed.
+- **Learnings for future iterations:**
+  - A failing ubuntu-24.04 provider-docker live `logs emits at least one chunk` job is unrelated to catalog service-type stories when other provider platforms pass. Do not reopen a passed service story to chase that flake.
+  - Bugbot custom-`port` listen-bind notes on mail types match the advertised-port pattern already rejected for RabbitMQ; they are merge hygiene, not missing ACs.
 ---

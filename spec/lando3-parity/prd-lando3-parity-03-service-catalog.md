@@ -59,3 +59,12 @@ The §6.12.1 catalog names service types the runtime registry does not ship: `ra
 - [ ] `phpmyadmin` (5/latest): auto-wires to all MySQL-family services via the §6.12.4 cross-service creds scope; proxy route; zero-config in the single-DB case; explicit `hosts:` override supported.
 - [ ] `docs/guides/services/dotnet.mdx`, `mssql.mdx`, `phpmyadmin.mdx` executable guides (mssql guide notes the platform constraint); gates green.
 - [ ] Tests pass; typecheck passes; lint passes.
+
+## Guide Coverage
+
+| User Stories | Feature | Guide Path |
+|---|---|---|
+| US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` |
+| US-566 | minio service type | `docs/guides/services/minio.mdx` |
+| US-566 | localstack service type | `docs/guides/services/localstack.mdx` |
+| US-567 | app-scoped mailpit + deprecated mailhog | `docs/guides/services/mailpit.mdx` |

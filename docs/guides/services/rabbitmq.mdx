@@ -1,0 +1,74 @@
+---
+id: rabbitmq
+provider: test
+timeout: 90000
+tags: [beta, docs, rabbitmq, service]
+---
+
+# RabbitMQ
+
+Add RabbitMQ to your app with `type: rabbitmq`. That shorthand is an alias for
+the RabbitMQ 4 image line:
+
+```yaml
+name: rabbitmq-demo
+services:
+  queue:
+    type: rabbitmq
+```
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="rabbitmq-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"queue\"[\\s\\S]*\"type\":\\s*\"rabbitmq\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Pick a version
+
+Use `rabbitmq:4` when you want the default major version written out. Choose
+`rabbitmq:3` for an app that still needs RabbitMQ 3:
+
+```yaml
+services:
+  queue:
+    type: rabbitmq:3
+```
+
+## Connect
+
+Other services connect to `queue` on the standard AMQP port, `5672`. The
+default username and password are both `lando`, so the local connection URL is:
+
+```
+amqp://lando:lando@queue:5672
+```
+
+RabbitMQ also exposes its management UI on port `15672`. Lando gives that UI a
+default route, so check `lando info` for the app URL instead of guessing a host
+port. Sign in with `lando` and `lando`.
+
+## Keep queue data
+
+RabbitMQ stores its data in `/var/lib/rabbitmq`. The service mounts persistent
+storage there by default, which keeps queues and messages across ordinary
+restarts. Destroying the app removes that app-owned data.
+
+## Manage the broker
+
+The service adds `rabbitmqctl` and `rabbitmqadmin` tooling aliases. Run them
+from your host when you need to inspect queues, users, or broker state:
+
+```sh
+lando rabbitmqctl list_queues
+lando rabbitmqadmin list exchanges
+```
+
+</Guide>

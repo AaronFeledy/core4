@@ -5,9 +5,13 @@ import { composeServiceFeature } from "../services/compose.ts";
 import { elasticsearchServiceFeature } from "../services/elasticsearch.ts";
 import { goServiceFeature } from "../services/go.ts";
 import { landoServiceFeature } from "../services/lando.ts";
+import { localstackServiceFeature } from "../services/localstack.ts";
+import { mailhogServiceFeature } from "../services/mailhog.ts";
+import { mailpitServiceFeature } from "../services/mailpit.ts";
 import { mariadbServiceFeature } from "../services/mariadb.ts";
 import { meilisearchServiceFeature } from "../services/meilisearch.ts";
 import { memcachedServiceFeature } from "../services/memcached.ts";
+import { minioServiceFeature } from "../services/minio.ts";
 import { mongodbServiceFeature } from "../services/mongodb.ts";
 import { mysqlServiceFeature } from "../services/mysql.ts";
 import { nginxServiceFeature } from "../services/nginx.ts";
@@ -16,6 +20,7 @@ import { opensearchServiceFeature } from "../services/opensearch.ts";
 import { phpServiceFeature } from "../services/php.ts";
 import { postgresServiceFeature } from "../services/postgres.ts";
 import { pythonServiceFeature } from "../services/python.ts";
+import { rabbitmqServiceFeature } from "../services/rabbitmq.ts";
 import { redisServiceFeature } from "../services/redis.ts";
 import { rubyServiceFeature } from "../services/ruby.ts";
 import { solrServiceFeature } from "../services/solr.ts";
@@ -61,9 +66,13 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   elasticsearchServiceFeature,
   goServiceFeature,
   landoServiceFeature,
+  localstackServiceFeature,
+  mailhogServiceFeature,
+  mailpitServiceFeature,
   mariadbServiceFeature,
   meilisearchServiceFeature,
   memcachedServiceFeature,
+  minioServiceFeature,
   mongodbServiceFeature,
   mysqlServiceFeature,
   nginxServiceFeature,
@@ -72,6 +81,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   phpServiceFeature,
   postgresServiceFeature,
   pythonServiceFeature,
+  rabbitmqServiceFeature,
   redisServiceFeature,
   rubyServiceFeature,
   solrServiceFeature,

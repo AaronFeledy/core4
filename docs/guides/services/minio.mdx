@@ -1,0 +1,68 @@
+---
+id: minio
+provider: test
+timeout: 90000
+tags: [beta, docs, minio, service]
+---
+
+# MinIO
+
+Add S3-compatible object storage to your app with `type: minio`. Set `database`
+to name the bucket Lando creates for you:
+
+```yaml
+name: minio-demo
+services:
+  object-store:
+    type: minio
+    database: uploads
+```
+
+MinIO listens on API port `9000` and console port `9001`. Lando starts the
+official `minio/minio` image with `server /data --address :9000 --console-address
+:9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
+MinIO requires the root password to be at least eight characters.
+
+<Guide>
+  <Scenario id="resolved-config" render>
+    <Step name="scaffold">
+      <UseFixture name="minio-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"minio\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"uploads\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Bucket and credentials
+
+The official MinIO image does not honor a default-bucket environment variable.
+Lando creates the bucket as a directory under `/data` before the server starts.
+`database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
+the app name.
+
+For local development, the root credentials default to user `lando` and password `landolando`.
+Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
+your app needs different credentials.
+
+A `port:` override changes the API listen address, the internal endpoint, and
+the `mc` alias used for readiness. The console stays on `9001`.
+
+## Console and client
+
+Open `https://object-store.minio-demo.lndo.site` for the MinIO console. Lando
+routes that hostname to port `9001`; applications talk to the S3 API on the
+internal service port `9000`.
+
+The service also adds `mc` tooling, so you can run the MinIO client in the
+object-store service:
+
+```sh
+lando mc --help
+```
+
+</Guide>

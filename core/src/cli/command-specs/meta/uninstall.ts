@@ -1,3 +1,7 @@
+import { join } from "node:path";
+
+import { makeLandoPaths } from "@lando/paths";
+
 import { Flags } from "../../spec/metadata";
 
 import {
@@ -15,6 +19,57 @@ const CONTAINER_RUNTIMES = [
   { cmd: "podman", providerId: "lando" },
 ] as const;
 
+type RuntimeProbe = {
+  readonly cmd: string;
+  readonly providerId: string;
+  readonly argsPrefix: ReadonlyArray<string>;
+  readonly env?: NodeJS.ProcessEnv;
+};
+
+const pathRuntime = (cmd: string, providerId: string): RuntimeProbe => ({
+  cmd,
+  providerId,
+  argsPrefix: [],
+});
+
+const managedLandoRuntime = (userDataRoot: string): RuntimeProbe => {
+  const paths = makeLandoPaths({ userDataRoot });
+  return {
+    cmd: join(paths.runtimeBinDir, "podman"),
+    providerId: "lando",
+    argsPrefix: [
+      "--root",
+      paths.runtimeStorageDir,
+      "--runroot",
+      paths.runtimeRunDir,
+      "--config",
+      paths.runtimeConfigDir,
+      "--storage-opt",
+      `overlay.mount_program=${paths.runtimeBinDir}/fuse-overlayfs`,
+    ],
+    env: {
+      CONTAINERS_CONF: join(paths.runtimeConfigDir, "containers.conf"),
+      CONTAINERS_REGISTRIES_CONF: join(paths.runtimeConfigDir, "registries.conf"),
+      XDG_CONFIG_HOME: paths.runtimeConfigDir,
+    },
+  };
+};
+
+const runRuntime = async (
+  execFileAsync: (
+    file: string,
+    args: ReadonlyArray<string>,
+    options: { readonly timeout: number; readonly env?: NodeJS.ProcessEnv },
+  ) => Promise<{ readonly stdout: string }>,
+  runtime: RuntimeProbe,
+  args: ReadonlyArray<string>,
+  timeout: number,
+): Promise<{ readonly stdout: string }> =>
+  execFileAsync(runtime.cmd, [...runtime.argsPrefix, ...args], {
+    timeout,
+    ...(runtime.env === undefined ? {} : { env: { ...process.env, ...runtime.env } }),
+  });
+
 // core4 apps carry dev.lando.app; com.lando.app covers Lando 3 leftovers.
 const LANDO_APP_LABELS = ["dev.lando.app", "com.lando.app"] as const;
 const RUNTIME_PROBE_TIMEOUT_MS = 2_000;
@@ -30,13 +85,23 @@ const makeListDiscoveredApps =
     const { readdir, readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
 
-    const availableRuntimes: Array<(typeof CONTAINER_RUNTIMES)[number]> = [];
+    const availableRuntimes: RuntimeProbe[] = [];
     for (const runtime of CONTAINER_RUNTIMES) {
+      const probe = pathRuntime(runtime.cmd, runtime.providerId);
       try {
-        await execFileAsync(runtime.cmd, ["--version"], { timeout: RUNTIME_PROBE_TIMEOUT_MS });
-        availableRuntimes.push(runtime);
+        await runRuntime(execFileAsync, probe, ["--version"], RUNTIME_PROBE_TIMEOUT_MS);
+        availableRuntimes.push(probe);
       } catch {
         // Runtime not installed; only installed runtimes are queried below.
+      }
+    }
+    const managed = managedLandoRuntime(userDataRoot);
+    if (!availableRuntimes.some((runtime) => runtime.cmd === managed.cmd)) {
+      try {
+        await runRuntime(execFileAsync, managed, ["--version"], RUNTIME_PROBE_TIMEOUT_MS);
+        availableRuntimes.push(managed);
+      } catch {
+        // Managed runtime not installed.
       }
     }
     // Fail closed: with no runtime to ask, running apps cannot be ruled out.
@@ -51,10 +116,11 @@ const makeListDiscoveredApps =
       const runningAppIds = new Set<string>();
       for (const label of LANDO_APP_LABELS) {
         try {
-          const { stdout } = await execFileAsync(
-            runtime.cmd,
+          const { stdout } = await runRuntime(
+            execFileAsync,
+            runtime,
             ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
-            { timeout: RUNTIME_QUERY_TIMEOUT_MS },
+            RUNTIME_QUERY_TIMEOUT_MS,
           );
           for (const id of stdout.trim().split("\n")) {
             if (id.length > 0) runningAppIds.add(id);
@@ -123,7 +189,7 @@ const makeListDiscoveredApps =
 // Sweeps every installed runtime rather than only the discovered apps:
 // leftover stopped containers, networks, and volumes must go too (#771).
 const makeCleanupDiscoveredApps =
-  (): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
+  (userDataRoot?: string): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
   async (_apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -131,9 +197,16 @@ const makeCleanupDiscoveredApps =
 
     const errors: string[] = [];
 
-    for (const runtime of CONTAINER_RUNTIMES) {
+    const cleanupRuntimes: RuntimeProbe[] = CONTAINER_RUNTIMES.map((runtime) =>
+      pathRuntime(runtime.cmd, runtime.providerId),
+    );
+    const managed = managedLandoRuntime(userDataRoot ?? makeLandoPaths().roots.userDataRoot);
+    if (!cleanupRuntimes.some((runtime) => runtime.cmd === managed.cmd)) {
+      cleanupRuntimes.push(managed);
+    }
+    for (const runtime of cleanupRuntimes) {
       try {
-        await execFileAsync(runtime.cmd, ["--version"], { timeout: RUNTIME_PROBE_TIMEOUT_MS });
+        await runRuntime(execFileAsync, runtime, ["--version"], RUNTIME_PROBE_TIMEOUT_MS);
       } catch {
         // Runtime not installed; nothing to sweep.
         continue;
@@ -142,10 +215,11 @@ const makeCleanupDiscoveredApps =
       // Stop and remove every Lando-labeled container, running or stopped.
       for (const label of LANDO_APP_LABELS) {
         try {
-          const { stdout } = await execFileAsync(
-            runtime.cmd,
+          const { stdout } = await runRuntime(
+            execFileAsync,
+            runtime,
             ["ps", "-a", "--filter", `label=${label}`, "--format", "{{.ID}}"],
-            { timeout: RUNTIME_QUERY_TIMEOUT_MS },
+            RUNTIME_QUERY_TIMEOUT_MS,
           );
           const containerIds = stdout
             .trim()
@@ -154,15 +228,11 @@ const makeCleanupDiscoveredApps =
           if (containerIds.length === 0) continue;
 
           try {
-            await execFileAsync(runtime.cmd, ["stop", ...containerIds], {
-              timeout: RUNTIME_CLEANUP_TIMEOUT_MS,
-            });
+            await runRuntime(execFileAsync, runtime, ["stop", ...containerIds], RUNTIME_CLEANUP_TIMEOUT_MS);
           } catch {
             // Containers may already be stopped; forced removal below is the real gate.
           }
-          await execFileAsync(runtime.cmd, ["rm", "-f", ...containerIds], {
-            timeout: RUNTIME_CLEANUP_TIMEOUT_MS,
-          });
+          await runRuntime(execFileAsync, runtime, ["rm", "-f", ...containerIds], RUNTIME_CLEANUP_TIMEOUT_MS);
         } catch (cause) {
           errors.push(`${runtime.cmd} (${label}): ${cause instanceof Error ? cause.message : String(cause)}`);
         }
@@ -170,19 +240,21 @@ const makeCleanupDiscoveredApps =
 
       // Prune unused Lando networks and volumes; best-effort.
       try {
-        await execFileAsync(
-          runtime.cmd,
+        await runRuntime(
+          execFileAsync,
+          runtime,
           ["network", "prune", "-f", "--filter", "label=dev.lando.network=true"],
-          { timeout: RUNTIME_CLEANUP_TIMEOUT_MS },
+          RUNTIME_CLEANUP_TIMEOUT_MS,
         );
       } catch {
         // Networks still attached to containers are skipped by prune anyway.
       }
       try {
-        await execFileAsync(
-          runtime.cmd,
+        await runRuntime(
+          execFileAsync,
+          runtime,
           ["volume", "prune", "-f", "--filter", "label=dev.lando.volume=true"],
-          { timeout: RUNTIME_CLEANUP_TIMEOUT_MS },
+          RUNTIME_CLEANUP_TIMEOUT_MS,
         );
       } catch {
         // Volumes still in use are skipped by prune anyway.
@@ -222,7 +294,9 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
       ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
       : hasInjectedDiscovery
         ? undefined
-        : makeCleanupDiscoveredApps();
+        : makeCleanupDiscoveredApps(
+            typeof extra._userDataRoot === "string" ? extra._userDataRoot : undefined,
+          );
   return {
     dryRun: flags["dry-run"] === true,
     yes: flags.yes === true,

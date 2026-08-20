@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { AppPlanner, PluginRegistry } from "@lando/core/services";
-import { AppPlan, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
 import { services } from "../src/index.ts";
@@ -66,10 +66,14 @@ describe("@lando/service-lando registration", () => {
       "go:1.22",
       "go:1.23",
       "lando",
+      "localstack",
+      "mailhog",
+      "mailpit",
       "mariadb",
       "meilisearch",
       "meilisearch:1",
       "memcached",
+      "minio",
       "mongodb",
       "mysql",
       "nginx",
@@ -83,6 +87,9 @@ describe("@lando/service-lando registration", () => {
       "php:8.3",
       "php:8.4",
       "python:3.12",
+      "rabbitmq",
+      "rabbitmq:3",
+      "rabbitmq:4",
       "redis",
       "ruby:3.3",
       "solr",
@@ -109,6 +116,158 @@ describe("@lando/service-lando registration", () => {
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
+  });
+
+  test("AppPlanner composes RabbitMQ, MinIO, and LocalStack through PluginRegistry", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "catalog-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("queue")]: { type: "rabbitmq" },
+        [ServiceName.make("object-store")]: { type: "minio", database: "uploads" },
+        [ServiceName.make("aws")]: { type: "localstack" },
+      },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const queue = appPlan.services[ServiceName.make("queue")];
+    const objectStore = appPlan.services[ServiceName.make("object-store")];
+    const aws = appPlan.services[ServiceName.make("aws")];
+    if (queue === undefined || objectStore === undefined || aws === undefined) {
+      throw new Error("catalog planner smoke services missing");
+    }
+
+    // Then
+    expect(queue.artifact).toEqual({ kind: "ref", ref: "rabbitmq:4-management" });
+    expect(
+      queue.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
+    ).toEqual([
+      ["tcp", 5672],
+      ["http", 15672],
+    ]);
+    expect(queue.storage).toContainEqual({
+      store: "catalog-app-rabbitmq-data",
+      target: PortablePath.make("/var/lib/rabbitmq"),
+      readOnly: false,
+    });
+    expect(queue.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
+
+    expect(objectStore.artifact).toEqual({ kind: "ref", ref: "minio/minio:latest" });
+    expect(
+      objectStore.endpoints.flatMap((endpoint) =>
+        "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],
+      ),
+    ).toEqual([
+      ["tcp", 9000],
+      ["http", 9001],
+    ]);
+    expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");
+    expect(objectStore.command).toEqual([
+      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
+    ]);
+    expect(objectStore.storage).toContainEqual({
+      store: "catalog-app-minio-data",
+      target: PortablePath.make("/data"),
+      readOnly: false,
+    });
+    expect(objectStore.healthcheck?.command).toEqual(["mc", "ready", "local"]);
+
+    expect(aws.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.14.0" });
+    expect(
+      aws.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
+    ).toEqual([["http", 4566]]);
+    expect(aws.storage).toContainEqual({
+      store: "catalog-app-localstack-data",
+      target: PortablePath.make("/var/lib/localstack"),
+      readOnly: false,
+    });
+    expect(aws.environment.GATEWAY_LISTEN).toBe("0.0.0.0:4566");
+    expect(aws.healthcheck?.command).toEqual([
+      "sh",
+      "-c",
+      "curl -sf http://localhost:4566/_localstack/health",
+    ]);
+  });
+
+  test("AppPlanner composes app-scoped mailpit and mailhog without dropping global Mailpit", async () => {
+    // Given
+    const { globalServices } = await import("../src/index.ts");
+    const landofile: LandofileShape = {
+      name: "mail-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("inbox")]: { type: "mailpit" },
+        [ServiceName.make("legacy")]: { type: "mailhog" },
+      },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const inbox = appPlan.services[ServiceName.make("inbox")];
+    const legacy = appPlan.services[ServiceName.make("legacy")];
+    if (inbox === undefined || legacy === undefined) {
+      throw new Error("mail planner smoke services missing");
+    }
+
+    // Then
+    expect(globalServices.has("mailpit")).toBe(true);
+    expect(inbox.type).toBe("mailpit");
+    expect(inbox.artifact).toEqual({ kind: "ref", ref: "docker.io/axllent/mailpit:v1.30.1" });
+    expect(
+      inbox.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
+    ).toEqual([
+      ["tcp", 1025],
+      ["http", 8025],
+    ]);
+    expect(legacy.type).toBe("mailhog");
+    expect(legacy.artifact).toEqual({ kind: "ref", ref: "mailhog/mailhog:v1.0.1" });
+  });
+
+  test("PluginRegistry loads tooling for every new service type id", async () => {
+    // Given
+    const cases = [
+      ["localstack", ["awslocal"]],
+      ["minio", ["mc"]],
+      ["rabbitmq", ["rabbitmqctl", "rabbitmqadmin"]],
+      ["rabbitmq:3", ["rabbitmqctl", "rabbitmqadmin"]],
+      ["rabbitmq:4", ["rabbitmqctl", "rabbitmqadmin"]],
+    ] as const;
+
+    for (const [id, expectedTooling] of cases) {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "tooling-app",
+        runtime: 4,
+        services: { service: { type: id } },
+      });
+      const service = landofile.services?.[ServiceName.make("service")];
+      if (service === undefined) throw new Error(`${id} service missing from tooling fixture`);
+
+      // When
+      const resolution = await Effect.runPromise(
+        Effect.flatMap(PluginRegistry, (registry) =>
+          Effect.flatMap(registry.loadServiceType(id), (serviceType) =>
+            serviceType.resolve({
+              name: "service",
+              service,
+              appName: "tooling-app",
+              appRoot: "/srv/apps/tooling-app",
+              provider: ProviderId.make("lando"),
+              primary: true,
+              metadata: {
+                resolvedAt: "2026-05-18T08:00:00Z",
+                source: "@lando/service-lando/test/registration",
+                runtime: 4,
+              },
+            }),
+          ),
+        ).pipe(Effect.provide(registryLayer)),
+      );
+
+      // Then
+      expect(Object.keys(resolution.tooling ?? {})).toEqual([...expectedTooling]);
+    }
   });
 
   test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with explicit webroots", async () => {

@@ -10,9 +10,13 @@ import { composeServiceType } from "../src/services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { landoServiceType } from "../src/services/lando.ts";
+import { localstackServiceType } from "../src/services/localstack.ts";
+import { mailhogServiceType } from "../src/services/mailhog.ts";
+import { mailpitServiceType } from "../src/services/mailpit.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
+import { minioServiceType } from "../src/services/minio.ts";
 import { mongodbServiceType } from "../src/services/mongodb.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
@@ -21,6 +25,7 @@ import { opensearch2ServiceType, opensearchServiceType } from "../src/services/o
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
 import { python312ServiceType } from "../src/services/python.ts";
+import { rabbitmq3ServiceType, rabbitmq4ServiceType, rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { redisServiceType } from "../src/services/redis.ts";
 import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "../src/services/solr.ts";
@@ -49,10 +54,14 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
     landofileService: { type: "lando", image: "debian:12.11-slim" },
     serviceName: "toolbox",
   },
+  { serviceType: localstackServiceType, landofileService: { type: "localstack" } },
+  { serviceType: mailhogServiceType, landofileService: { type: "mailhog" } },
+  { serviceType: mailpitServiceType, landofileService: { type: "mailpit" } },
   { serviceType: mariadbServiceType, landofileService: { type: "mariadb" } },
   { serviceType: meilisearchServiceType, landofileService: { type: "meilisearch" } },
   { serviceType: meilisearch1ServiceType, landofileService: { type: "meilisearch:1" } },
   { serviceType: memcachedServiceType, landofileService: { type: "memcached" } },
+  { serviceType: minioServiceType, landofileService: { type: "minio", database: "uploads" } },
   { serviceType: mongodbServiceType, landofileService: { type: "mongodb" } },
   { serviceType: mysqlServiceType, landofileService: { type: "mysql" } },
   { serviceType: nginxServiceType, landofileService: { type: "nginx" } },
@@ -64,6 +73,9 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: php83ServiceType, landofileService: { type: "php:8.3" } },
   { serviceType: postgresServiceType, landofileService: { type: "postgres" } },
   { serviceType: python312ServiceType, landofileService: { type: "python:3.12" } },
+  { serviceType: rabbitmqServiceType, landofileService: { type: "rabbitmq" } },
+  { serviceType: rabbitmq3ServiceType, landofileService: { type: "rabbitmq:3" } },
+  { serviceType: rabbitmq4ServiceType, landofileService: { type: "rabbitmq:4" } },
   { serviceType: redisServiceType, landofileService: { type: "redis" } },
   { serviceType: ruby33ServiceType, landofileService: { type: "ruby:3.3" } },
   { serviceType: solrServiceType, landofileService: { type: "solr" } },
@@ -134,10 +146,14 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "go:1.22",
       "go:1.23",
       "lando",
+      "localstack",
+      "mailhog",
+      "mailpit",
       "mariadb",
       "meilisearch",
       "meilisearch:1",
       "memcached",
+      "minio",
       "mongodb",
       "mysql",
       "nginx",
@@ -149,6 +165,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "php:8.3",
       "postgres",
       "python:3.12",
+      "rabbitmq",
+      "rabbitmq:3",
+      "rabbitmq:4",
       "redis",
       "ruby:3.3",
       "solr",
