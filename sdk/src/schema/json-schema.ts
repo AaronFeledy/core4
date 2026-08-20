@@ -322,16 +322,6 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
-
-const catalogServiceSchemaRegistry = {
-  LocalStackServiceConfig,
-  MailhogServiceConfig,
-  MailpitServiceConfig,
-  MinIOServiceConfig,
-  RabbitMQServiceConfig,
-  TomcatServiceConfig,
-  VarnishServiceConfig,
-};
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -355,6 +345,16 @@ import {
   UpdateManifestSemver,
   UpdateManifestSha256,
 } from "./update-manifest.ts";
+
+const catalogServiceSchemaRegistry = {
+  LocalStackServiceConfig,
+  MailhogServiceConfig,
+  MailpitServiceConfig,
+  MinIOServiceConfig,
+  RabbitMQServiceConfig,
+  TomcatServiceConfig,
+  VarnishServiceConfig,
+};
 
 export {
   assertJsonSchemaDeprecationsValid,
