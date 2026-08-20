@@ -585,3 +585,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Adding a property to `ProviderCapabilities` re-diffs sibling `allOf` optional structs; record `unsupported-construct` exceptions for those unchanged compose/hostProxy shapes.
   - phpMyAdmin wiring is an `AppFeature` (`service-lando.phpmyadmin.wire`); MySQL-family siblings still expose credentials via `MYSQL_USER`/`MYSQL_PASSWORD` env, not a populated `creds` object.
 ---
+
+## 2026-08-20 12:33 CDT - US-569 Review
+- phpMyAdmin zero-config wiring now prefers sibling `creds.user`/`creds.password` over MYSQL_* then MARIADB_* env, matching the §6.12.4 auto-wire AC. Planner store metadata now honors service-type `kind: cache` from resolve (NuGet cache is global cache, not a service data volume).
+- Review notes (deferred/rejected): rejected Docker `architectureEmulation` on linux/WSL — fail-closed matches the AC and the explicit Desktop-class darwin/win32 tests; detecting Docker Desktop qemu on Linux is extra introspection. Rejected treating mysql/mariadb `user:` as a database username (container user). Rejected populating mysql/mariadb `creds` objects (owned by those shipped types, not US-569). Review-work oracles timed out; Bugbot plus AC checks were used instead. Reverted a mistaken ServiceCreds subset-decode test — `database` remains required.
+- Guide-Coverage-Skip: phpMyAdmin and NuGet user workflows are unchanged; creds preference and store kind are planner-internal.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 98 phpmyadmin/registration/schema tests and 34 adjacent dotnet/mssql/app-feature/service-type tests passed.
+- **Learnings for future iterations:**
+  - AppFeature views expose resolve `normalizedConfig`, not feature-applied env; phpMyAdmin cannot read MYSQL_* that mysql/mariadb only add via `addEnv`.
+  - `authoredStorageScopes` runs on the pre-resolve Landofile; service-type `kind: cache` in `resolution.normalizedConfig.storage` is inert unless assemble merges it into `authored.byStore`.
+---
