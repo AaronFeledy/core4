@@ -89,6 +89,8 @@ describe("varnish ServiceType", () => {
         });
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(plan.command?.[0]).toContain("lando-backend.vcl");
+        expect(plan.command?.[0]).toContain("varnishd -F");
+        expect(plan.command?.[0]).toContain("-j none");
       });
 
       test("resolves a default route and healthy backend dependency", async () => {
@@ -117,7 +119,10 @@ describe("varnish ServiceType", () => {
           readOnly: true,
         });
         expect(plan.environment?.VARNISH_VCL_FILE).toBeUndefined();
-        expect(plan.entrypoint).toBeUndefined();
+        expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
+        expect(plan.command?.[0]).toContain("/etc/varnish/default.vcl");
+        expect(plan.command?.[0]).toContain("varnishd -F");
+        expect(plan.command?.[0]).not.toContain("lando-backend.vcl");
       });
 
       test("fails closed when backend is missing", async () => {

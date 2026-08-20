@@ -12,6 +12,7 @@ import { resolveBindSource } from "./_volume-helpers.ts";
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 const DEFAULT_BACKEND_PORT = "80";
 const VCL_TARGET = "/etc/varnish/default.vcl";
+const GENERATED_VCL_PATH = "/tmp/lando-backend.vcl";
 const VERSIONS = ["6", "7"] as const;
 const ARTIFACTS = {
   "6": "varnish:6",
@@ -45,8 +46,11 @@ const vclOverrideBindSource = (
   return undefined;
 };
 
-const defaultVclCommand =
-  'printf \'vcl 4.0;\\nbackend default { .host = "%s"; .port = "%s"; }\\n\' "$VARNISH_BACKEND_HOST" "$VARNISH_BACKEND_PORT" > /tmp/lando-backend.vcl && exec /usr/local/bin/docker-varnish-entrypoint';
+const varnishdCommand = (vclFile: string, listenPort: number): string =>
+  `exec varnishd -F -f ${vclFile} -a :${String(listenPort)} -T localhost:6082 -s malloc,\${VARNISH_SIZE:-64m} -j none`;
+
+const generatedVclCommand = (listenPort: number): string =>
+  `printf 'vcl 4.0;\\nbackend default { .host = "%s"; .port = "%s"; }\\n' "$VARNISH_BACKEND_HOST" "$VARNISH_BACKEND_PORT" > ${GENERATED_VCL_PATH} && ${varnishdCommand(GENERATED_VCL_PATH, listenPort)}`;
 
 const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -81,7 +85,8 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  // Official varnish images run as a non-root USER that cannot bind :80 under rootless Podman.
+  // Official varnish images run as a non-root USER; varnishd also jails away from root.
+  // Root plus `-j none` is required to bind :80 under rootless Podman.
   ctx.setUser(service.user ?? "root");
 
   const vclSource = vclOverrideBindSource(service, ctx.appRoot);
@@ -94,10 +99,14 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  if (service.command === undefined && service.entrypoint === undefined && vclSource === undefined) {
-    ctx.addEnv("VARNISH_VCL_FILE", "/tmp/lando-backend.vcl");
+  if (service.command === undefined && service.entrypoint === undefined) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);
-    ctx.setCommand([defaultVclCommand]);
+    if (vclSource === undefined) {
+      ctx.addEnv("VARNISH_VCL_FILE", GENERATED_VCL_PATH);
+      ctx.setCommand([generatedVclCommand(port)]);
+    } else {
+      ctx.setCommand([varnishdCommand(VCL_TARGET, port)]);
+    }
   }
 };
 
