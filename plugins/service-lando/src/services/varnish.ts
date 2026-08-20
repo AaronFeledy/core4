@@ -3,9 +3,11 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { PortNumber, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 const DEFAULT_BACKEND_PORT = "80";
@@ -24,11 +26,24 @@ const appNameFor = (input: { readonly appName?: string | undefined; readonly app
   return basename(input.appRoot) || "app";
 };
 
-const mountTarget = (mount: string | { readonly target?: string }): string | undefined =>
-  typeof mount === "string" ? mount.split(":")[1] : mount.target;
-
-const hasVclOverride = (service: ServiceFeatureContext["normalizedConfig"]): boolean =>
-  (service.mounts ?? []).some((mount) => mountTarget(mount) === VCL_TARGET);
+const vclOverrideBindSource = (
+  service: ServiceFeatureContext["normalizedConfig"],
+  appRoot: string,
+): string | undefined => {
+  for (const mount of service.mounts ?? []) {
+    if (typeof mount === "string") {
+      const parsed = parseShortVolume(mount);
+      if (parsed.target === VCL_TARGET && parsed.source !== undefined) {
+        return resolveBindSource(parsed.source, appRoot);
+      }
+      continue;
+    }
+    if (mount.target === VCL_TARGET && mount.source !== undefined) {
+      return resolveBindSource(mount.source, appRoot);
+    }
+  }
+  return undefined;
+};
 
 const defaultVclCommand =
   'printf \'vcl 4.0;\\nbackend default { .host = "%s"; .port = "%s"; }\\n\' "$VARNISH_BACKEND_HOST" "$VARNISH_BACKEND_PORT" > /tmp/lando-backend.vcl && exec /usr/local/bin/docker-varnish-entrypoint';
@@ -68,20 +83,17 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   if (service.user !== undefined) ctx.setUser(service.user);
 
-  const vclOverride = (service.mounts ?? []).find((mount) => mountTarget(mount) === VCL_TARGET);
-  if (vclOverride !== undefined) {
-    const source = typeof vclOverride === "string" ? vclOverride.split(":")[0] : vclOverride.source;
-    if (source !== undefined) {
-      ctx.addMount({
-        type: "bind",
-        source,
-        target: PortablePath.make(VCL_TARGET),
-        readOnly: true,
-      });
-    }
+  const vclSource = vclOverrideBindSource(service, ctx.appRoot);
+  if (vclSource !== undefined) {
+    ctx.addMount({
+      type: "bind",
+      source: vclSource,
+      target: PortablePath.make(VCL_TARGET),
+      readOnly: true,
+    });
   }
 
-  if (service.command === undefined && service.entrypoint === undefined && !hasVclOverride(service)) {
+  if (service.command === undefined && service.entrypoint === undefined && vclSource === undefined) {
     ctx.addEnv("VARNISH_VCL_FILE", "/tmp/lando-backend.vcl");
     ctx.setEntrypoint(["/bin/sh", "-c"]);
     ctx.setCommand([defaultVclCommand]);

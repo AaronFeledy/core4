@@ -55,6 +55,9 @@ const resolveVarnishService = (serviceType: ServiceType, serviceDefinition: Reco
     }),
   );
 
+const vclMount = (plan: Awaited<ReturnType<typeof planVarnishService>>) =>
+  plan.mounts.find((mount) => String(mount.target) === VARNISH_VCL_TARGET);
+
 describe("varnish ServiceType", () => {
   for (const [id, image, serviceType] of [
     ["varnish:6", "varnish:6", varnish6ServiceType],
@@ -107,7 +110,11 @@ describe("varnish ServiceType", () => {
           mounts: [{ source: "./default.vcl", target: VARNISH_VCL_TARGET }],
         });
 
-        expect(plan.mounts.some((mount) => String(mount.target) === VARNISH_VCL_TARGET)).toBe(true);
+        expect(vclMount(plan)).toMatchObject({
+          type: "bind",
+          source: "/srv/apps/myapp/default.vcl",
+          readOnly: true,
+        });
         expect(plan.environment?.VARNISH_VCL_FILE).toBeUndefined();
         expect(plan.entrypoint).toBeUndefined();
       });
@@ -133,6 +140,35 @@ describe("varnish ServiceType", () => {
       });
     });
   }
+
+  test("resolves a short-form VCL override against the app root", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      mounts: ["./custom.vcl:/etc/varnish/default.vcl:ro"],
+    });
+
+    expect(vclMount(plan)).toMatchObject({
+      type: "bind",
+      source: "/srv/apps/myapp/custom.vcl",
+      readOnly: true,
+    });
+    expect(plan.environment?.VARNISH_VCL_FILE).toBeUndefined();
+  });
+
+  test("preserves a Windows drive-letter VCL override source", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      mounts: ["C:\\src\\default.vcl:/etc/varnish/default.vcl:ro"],
+    });
+
+    expect(vclMount(plan)).toMatchObject({
+      type: "bind",
+      source: "C:\\src\\default.vcl",
+      readOnly: true,
+    });
+  });
 
   test("declares supported versions and artifacts", () => {
     expect(varnishServiceType.versions).toEqual(["6", "7"]);
