@@ -87,6 +87,7 @@ const viewOf = (input: {
   readonly serviceType: string;
   readonly hosts?: string | ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
+  readonly creds?: { readonly user?: string; readonly password?: string; readonly database?: string };
 }): AppFeatureServiceView => ({
   serviceName: input.serviceName,
   serviceType: input.serviceType,
@@ -97,6 +98,7 @@ const viewOf = (input: {
     type: input.serviceType,
     ...(input.hosts === undefined ? {} : { hosts: input.hosts }),
     ...(input.environment === undefined ? {} : { environment: input.environment }),
+    ...(input.creds === undefined ? {} : { creds: input.creds }),
   }),
 });
 
@@ -258,6 +260,45 @@ describe("phpMyAdmin AppFeature", () => {
       PMA_HOSTS: "database",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
+    });
+  });
+
+  test("prefers §6.12.4 creds over MYSQL_* environment for the single-db case", async () => {
+    const { context, captures } = applyWire([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mysql",
+        creds: { user: "dbuser", password: "dbpass", database: "app" },
+        environment: { MYSQL_USER: "alice", MYSQL_PASSWORD: "s3cret" },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.env).toEqual({
+      PMA_HOSTS: "database",
+      PMA_USER: "dbuser",
+      PMA_PASSWORD: "dbpass",
+    });
+  });
+
+  test("uses MARIADB_USER and MARIADB_PASSWORD when MYSQL_* are absent", async () => {
+    const { context, captures } = applyWire([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mariadb",
+        environment: { MARIADB_USER: "maria", MARIADB_PASSWORD: "maria-secret" },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.env).toEqual({
+      PMA_HOSTS: "database",
+      PMA_USER: "maria",
+      PMA_PASSWORD: "maria-secret",
     });
   });
 

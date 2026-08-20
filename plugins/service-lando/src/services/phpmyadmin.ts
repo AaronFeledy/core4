@@ -124,10 +124,16 @@ const credentialsFor = (
 ): { readonly user: string; readonly password: string } => {
   const sibling = siblings.length === 1 ? siblings[0] : undefined;
   if (sibling === undefined) return { user: DEFAULT_PMA_USER, password: DEFAULT_PMA_PASSWORD };
+  const creds = sibling.normalizedConfig.creds;
   const environment = sibling.normalizedConfig.environment ?? {};
-  const user = environment.MYSQL_USER;
-  const password = environment.MYSQL_PASSWORD;
-  if (user !== undefined && password !== undefined) return { user, password };
+  const pairs = [
+    [creds?.user, creds?.password],
+    [environment.MYSQL_USER, environment.MYSQL_PASSWORD],
+    [environment.MARIADB_USER, environment.MARIADB_PASSWORD],
+  ] as const;
+  for (const [user, password] of pairs) {
+    if (user !== undefined && password !== undefined) return { user, password };
+  }
   return { user: DEFAULT_PMA_USER, password: DEFAULT_PMA_PASSWORD };
 };
 
