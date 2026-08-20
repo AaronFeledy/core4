@@ -67,6 +67,8 @@ describe("@lando/service-lando registration", () => {
       "go:1.23",
       "lando",
       "localstack",
+      "mailhog",
+      "mailpit",
       "mariadb",
       "meilisearch",
       "meilisearch:1",
@@ -187,6 +189,40 @@ describe("@lando/service-lando registration", () => {
       "-c",
       "curl -sf http://localhost:4566/_localstack/health",
     ]);
+  });
+
+  test("AppPlanner composes app-scoped mailpit and mailhog without dropping global Mailpit", async () => {
+    // Given
+    const { globalServices } = await import("../src/index.ts");
+    const landofile: LandofileShape = {
+      name: "mail-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("inbox")]: { type: "mailpit" },
+        [ServiceName.make("legacy")]: { type: "mailhog" },
+      },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const inbox = appPlan.services[ServiceName.make("inbox")];
+    const legacy = appPlan.services[ServiceName.make("legacy")];
+    if (inbox === undefined || legacy === undefined) {
+      throw new Error("mail planner smoke services missing");
+    }
+
+    // Then
+    expect(globalServices.has("mailpit")).toBe(true);
+    expect(inbox.type).toBe("mailpit");
+    expect(inbox.artifact).toEqual({ kind: "ref", ref: "docker.io/axllent/mailpit:v1.30.1" });
+    expect(
+      inbox.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
+    ).toEqual([
+      ["tcp", 1025],
+      ["http", 8025],
+    ]);
+    expect(legacy.type).toBe("mailhog");
+    expect(legacy.artifact).toEqual({ kind: "ref", ref: "mailhog/mailhog:v1.0.1" });
   });
 
   test("PluginRegistry loads tooling for every new service type id", async () => {

@@ -67,3 +67,4 @@ The §6.12.1 catalog names service types the runtime registry does not ship: `ra
 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` |
 | US-566 | minio service type | `docs/guides/services/minio.mdx` |
 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` |
+| US-567 | app-scoped mailpit + deprecated mailhog | `docs/guides/services/mailpit.mdx` |

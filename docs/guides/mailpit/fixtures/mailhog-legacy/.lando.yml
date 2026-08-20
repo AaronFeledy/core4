@@ -1,0 +1,4 @@
+name: mailhog-legacy
+services:
+  inbox:
+    type: mailhog

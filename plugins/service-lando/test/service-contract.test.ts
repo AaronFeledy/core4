@@ -11,6 +11,8 @@ import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/serv
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { landoServiceType } from "../src/services/lando.ts";
 import { localstackServiceType } from "../src/services/localstack.ts";
+import { mailhogServiceType } from "../src/services/mailhog.ts";
+import { mailpitServiceType } from "../src/services/mailpit.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
@@ -53,6 +55,8 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
     serviceName: "toolbox",
   },
   { serviceType: localstackServiceType, landofileService: { type: "localstack" } },
+  { serviceType: mailhogServiceType, landofileService: { type: "mailhog" } },
+  { serviceType: mailpitServiceType, landofileService: { type: "mailpit" } },
   { serviceType: mariadbServiceType, landofileService: { type: "mariadb" } },
   { serviceType: meilisearchServiceType, landofileService: { type: "meilisearch" } },
   { serviceType: meilisearch1ServiceType, landofileService: { type: "meilisearch:1" } },
@@ -143,6 +147,8 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "go:1.23",
       "lando",
       "localstack",
+      "mailhog",
+      "mailpit",
       "mariadb",
       "meilisearch",
       "meilisearch:1",

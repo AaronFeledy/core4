@@ -24,6 +24,8 @@
     "./schema": "./src/schema/index.ts",
     "./schema/services": "./src/schema/services/index.ts",
     "./schema/services/localstack": "./src/schema/services/localstack.ts",
+    "./schema/services/mailhog": "./src/schema/services/mailhog.ts",
+    "./schema/services/mailpit": "./src/schema/services/mailpit.ts",
     "./schema/services/minio": "./src/schema/services/minio.ts",
     "./schema/services/rabbitmq": "./src/schema/services/rabbitmq.ts",
     "./docs/components": "./src/docs/components/index.ts",

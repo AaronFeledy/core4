@@ -11,6 +11,8 @@ const expectedServiceTypes = [
   "go:1.23",
   "lando",
   "localstack",
+  "mailhog",
+  "mailpit",
   "mariadb",
   "meilisearch",
   "meilisearch:1",

@@ -145,10 +145,15 @@ describe("@lando/sdk package exports", () => {
 
   test("catalog service schema subpaths resolve their contracts", async () => {
     const localstack = await import("@lando/sdk/schema/services/localstack");
+    const mailhog = await import("@lando/sdk/schema/services/mailhog");
+    const mailpit = await import("@lando/sdk/schema/services/mailpit");
     const minio = await import("@lando/sdk/schema/services/minio");
     const rabbitmq = await import("@lando/sdk/schema/services/rabbitmq");
 
     expect(localstack.LocalStackServiceConfig).toBeDefined();
+    expect(mailhog.MailhogServiceConfig).toBeDefined();
+    expect(mailhog.MAILHOG_DEPRECATION_NOTICE.replacement).toBe("mailpit");
+    expect(mailpit.MailpitServiceConfig).toBeDefined();
     expect(minio.MinIOServiceConfig).toBeDefined();
     expect(rabbitmq.RabbitMQServiceConfig).toBeDefined();
   });
