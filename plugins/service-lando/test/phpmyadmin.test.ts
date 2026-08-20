@@ -88,6 +88,7 @@ const viewOf = (input: {
   readonly hosts?: string | ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
   readonly creds?: { readonly user?: string; readonly password?: string; readonly database?: string };
+  readonly healthcheck?: ServiceConfig["healthcheck"];
 }): AppFeatureServiceView => ({
   serviceName: input.serviceName,
   serviceType: input.serviceType,
@@ -99,6 +100,7 @@ const viewOf = (input: {
     ...(input.hosts === undefined ? {} : { hosts: input.hosts }),
     ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(input.creds === undefined ? {} : { creds: input.creds }),
+    ...(input.healthcheck === undefined ? {} : { healthcheck: input.healthcheck }),
   }),
 });
 
@@ -242,6 +244,23 @@ describe("phpMyAdmin AppFeature", () => {
     ]);
     expect(captures.get("database")?.env).toEqual({});
     expect(captures.get("database")?.deps).toEqual([]);
+  });
+
+  test("waits for a healthy sibling when that sibling has a healthcheck", async () => {
+    const { context, captures } = applyWire([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mysql",
+        healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.deps).toEqual([
+      { service: "database", condition: "service_healthy", required: true },
+    ]);
   });
 
   test("uses explicit MYSQL_USER and MYSQL_PASSWORD for the single-db case", async () => {

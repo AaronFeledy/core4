@@ -136,6 +136,11 @@ const credentialsFor = (
   return { user: DEFAULT_PMA_USER, password: DEFAULT_PMA_PASSWORD };
 };
 
+const siblingHasHealthProbe = (sibling: AppFeatureServiceView): boolean => {
+  const healthcheck = sibling.normalizedConfig.healthcheck;
+  return healthcheck !== undefined && healthcheck.kind !== "none";
+};
+
 const applyPhpMyAdminWire = (ctx: AppFeatureContext): void => {
   const siblings = discoveredSiblings(ctx.selected);
   ctx.forEachSelected((mutator) => {
@@ -154,7 +159,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): void => {
     for (const sibling of siblings) {
       mutator.addDependency({
         service: ServiceName.make(sibling.serviceName),
-        condition: "service_started",
+        condition: siblingHasHealthProbe(sibling) ? "service_healthy" : "service_started",
         required: true,
       });
     }
