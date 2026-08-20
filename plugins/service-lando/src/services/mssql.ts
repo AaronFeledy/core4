@@ -121,8 +121,11 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
-    const creds = credsFor(input);
-    const rootPassword = creds.rootPassword ?? defaultRootPassword(appNameFor(input), input.name);
+    const authoredEnv = input.service.environment ?? {};
+    const baseCreds = credsFor(input);
+    const rootPassword =
+      authoredEnv.SA_PASSWORD ?? baseCreds.rootPassword ?? defaultRootPassword(appNameFor(input), input.name);
+    const creds = { ...baseCreds, rootPassword };
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -130,6 +133,10 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         type: "mssql",
         image: input.service.image ?? image,
         creds,
+        environment: {
+          ...authoredEnv,
+          SA_PASSWORD: rootPassword,
+        },
       },
       features: [{ id: MSSQL_FEATURE_ID }],
       tooling: {

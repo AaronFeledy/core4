@@ -199,6 +199,37 @@ describe("mssql ServiceType", () => {
         ]);
       });
 
+      test("SA_PASSWORD environment drives sqlcmd tooling and healthcheck", async () => {
+        const saPassword = "Env!sa-password-123";
+        const plan = await planMssqlService(serviceType, {
+          type: id,
+          environment: { SA_PASSWORD: saPassword },
+        });
+        const resolution = await resolveMssqlService(serviceType, {
+          type: id,
+          environment: { SA_PASSWORD: saPassword },
+        });
+
+        expect(plan.environment.SA_PASSWORD).toBe(saPassword);
+        expect(resolution.normalizedConfig.creds?.rootPassword).toBe(saPassword);
+        expect(resolution.tooling?.sqlcmd).toEqual({
+          service: "database",
+          cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-P", saPassword, "-C"],
+        });
+        expect(plan.healthcheck?.command).toEqual([
+          SQLCMD,
+          "-S",
+          "localhost",
+          "-U",
+          "sa",
+          "-P",
+          saPassword,
+          "-C",
+          "-Q",
+          "SELECT 1",
+        ]);
+      });
+
       test("authored environment overrides MSSQL_PID", async () => {
         const plan = await planMssqlService(serviceType, {
           type: id,

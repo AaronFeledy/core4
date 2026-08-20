@@ -238,7 +238,7 @@ describe("phpMyAdmin AppFeature", () => {
     });
     expect(captures.get("pma")?.env.PMA_HOST).toBeUndefined();
     expect(captures.get("pma")?.deps).toEqual([
-      { service: "database", condition: "service_healthy", required: true },
+      { service: "database", condition: "service_started", required: true },
     ]);
     expect(captures.get("database")?.env).toEqual({});
     expect(captures.get("database")?.deps).toEqual([]);
@@ -318,8 +318,8 @@ describe("phpMyAdmin AppFeature", () => {
     expect(captures.get("pma")?.env.PMA_USERS).toBeUndefined();
     expect(captures.get("pma")?.env.PMA_PASSWORDS).toBeUndefined();
     expect(captures.get("pma")?.deps).toEqual([
-      { service: "adb", condition: "service_healthy", required: true },
-      { service: "zdb", condition: "service_healthy", required: true },
+      { service: "adb", condition: "service_started", required: true },
+      { service: "zdb", condition: "service_started", required: true },
     ]);
   });
 

@@ -154,7 +154,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): void => {
     for (const sibling of siblings) {
       mutator.addDependency({
         service: ServiceName.make(sibling.serviceName),
-        condition: "service_healthy",
+        condition: "service_started",
         required: true,
       });
     }
