@@ -5,7 +5,7 @@ import { AppPlanner, PluginRegistry } from "@lando/core/services";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
-import { services } from "../src/index.ts";
+import { globalServices, services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 
 const providerCapabilities = {
@@ -200,7 +200,6 @@ describe("@lando/service-lando registration", () => {
 
   test("AppPlanner composes app-scoped mailpit and mailhog without dropping global Mailpit", async () => {
     // Given
-    const { globalServices } = await import("../src/index.ts");
     const landofile: LandofileShape = {
       name: "mail-app",
       runtime: 4,

@@ -207,6 +207,7 @@ describe("container plan helpers", () => {
     expect(containerCreateBodyFragment(plan, { ...service, user: "root" })).toMatchObject({
       User: "root",
     });
+    expect(containerCreateBodyFragment(plan, { ...service, user: "" })).not.toHaveProperty("User");
     expect(containerCreateBodyFragment(plan, service)).not.toHaveProperty("User");
   });
 
