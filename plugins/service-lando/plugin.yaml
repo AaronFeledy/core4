@@ -46,7 +46,14 @@ contributes:
     - "static"
     - "static:nginx"
     - "static:caddy"
+    - "tomcat"
+    - "tomcat:9"
+    - "tomcat:10"
+    - "tomcat:11"
     - "valkey"
+    - "varnish"
+    - "varnish:6"
+    - "varnish:7"
   serviceFeatures:
     - "lando.boot"
     - "lando.user-id"
@@ -82,7 +89,9 @@ contributes:
     - "service-lando.ruby"
     - "service-lando.solr"
     - "service-lando.static"
+    - "service-lando.tomcat"
     - "service-lando.valkey"
+    - "service-lando.varnish"
 
 requires:
   "@lando/core": "^4.0.0"

@@ -1,0 +1,61 @@
+---
+id: tomcat
+provider: test
+timeout: 90000
+tags: [beta, docs, tomcat, service]
+---
+
+# Tomcat
+
+Run a servlet container with `type: tomcat`. That shorthand is Tomcat 11.
+Put your exploded webapp in the app root; Lando mounts it as the ROOT
+webapp:
+
+```yaml
+name: tomcat-demo
+services:
+  appserver:
+    type: tomcat
+```
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="tomcat-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\"[\\s\\S]*\"type\":\\s*\"tomcat\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Pick a version
+
+Use `tomcat:11` when you want the default major written out. Choose
+`tomcat:10` or `tomcat:9` for an older line:
+
+```yaml
+services:
+  appserver:
+    type: tomcat:10
+```
+
+## Deploy the webapp
+
+Tomcat serves `/usr/local/tomcat/webapps/ROOT` by default. The app root is
+mounted there, so a `WEB-INF` directory in your project is enough. Set
+`webroot:` when you want a different deploy path inside the container.
+
+## TLS and the default route
+
+Tomcat listens on `8080`. Lando gives it a default hostname route and turns
+on `lando.certs`, so `lando info` shows an `https://` URL after start. Set
+`certs: false` if you do not want a leaf certificate.
+
+```sh
+lando info --json
+```

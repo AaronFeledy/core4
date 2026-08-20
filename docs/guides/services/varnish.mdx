@@ -1,0 +1,87 @@
+---
+id: varnish
+provider: test
+timeout: 90000
+tags: [beta, docs, varnish, service]
+---
+
+# Varnish
+
+Put Varnish in front of another service with `type: varnish` and a required
+`backend:`. That shorthand is Varnish 7. Traffic hits Varnish first; Varnish
+fetches from the named backend:
+
+```yaml
+name: varnish-demo
+services:
+  appserver:
+    type: nginx
+  cache:
+    type: varnish
+    backend: appserver
+```
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="varnish-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\"[\\s\\S]*\"type\":\\s*\"varnish\"[\\s\\S]*\"backend\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unknown-backend" render={false} reason="Unknown varnish backend must fail closed at plan time.">
+    <Step name="scaffold">
+      <UseFixture name="varnish-unknown-backend" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "missing service missing" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Pick a version
+
+Use `varnish:7` when you want the default major written out. Choose
+`varnish:6` for the 6.0 LTS line:
+
+```yaml
+services:
+  cache:
+    type: varnish:6
+    backend: appserver
+```
+
+`backend:` must name a service in the same Landofile. An unknown name fails
+at plan time (`lando start` or `lando app:cache:refresh`) with remediation
+that names the missing service.
+
+## Override VCL
+
+Lando writes a default VCL that points at `backend:` on port `80`. Mount your
+own file over `/etc/varnish/default.vcl` when you need custom VCL:
+
+```yaml
+services:
+  cache:
+    type: varnish
+    backend: appserver
+    mounts:
+      - source: ./default.vcl
+        target: /etc/varnish/default.vcl
+```
+
+## The route sits in front
+
+Varnish listens on port `80` and gets the default hostname route. Point
+browsers at the Varnish URL from `lando info`, not at the backend service.
+Set `certs: false` if you do not want a leaf certificate on that route.

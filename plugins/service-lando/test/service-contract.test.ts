@@ -30,7 +30,14 @@ import { redisServiceType } from "../src/services/redis.ts";
 import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "../src/services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
+import {
+  tomcat9ServiceType,
+  tomcat10ServiceType,
+  tomcat11ServiceType,
+  tomcatServiceType,
+} from "../src/services/tomcat.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";
+import { varnish6ServiceType, varnish7ServiceType, varnishServiceType } from "../src/services/varnish.ts";
 
 interface CatalogCompositionEntry {
   readonly serviceType: ServiceType;
@@ -82,7 +89,14 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: solr9ServiceType, landofileService: { type: "solr:9" } },
   { serviceType: staticNginxServiceType, landofileService: { type: "static:nginx" } },
   { serviceType: staticCaddyServiceType, landofileService: { type: "static:caddy" } },
+  { serviceType: tomcatServiceType, landofileService: { type: "tomcat" } },
+  { serviceType: tomcat9ServiceType, landofileService: { type: "tomcat:9" } },
+  { serviceType: tomcat10ServiceType, landofileService: { type: "tomcat:10" } },
+  { serviceType: tomcat11ServiceType, landofileService: { type: "tomcat:11" } },
   { serviceType: valkeyServiceType, landofileService: { type: "valkey" } },
+  { serviceType: varnishServiceType, landofileService: { type: "varnish", backend: "web" } },
+  { serviceType: varnish6ServiceType, landofileService: { type: "varnish:6", backend: "web" } },
+  { serviceType: varnish7ServiceType, landofileService: { type: "varnish:7", backend: "web" } },
 ];
 
 const decodeService = (entry: CatalogCompositionEntry) => {
@@ -174,7 +188,14 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "solr:9",
       "static",
       "static:caddy",
+      "tomcat",
+      "tomcat:10",
+      "tomcat:11",
+      "tomcat:9",
       "valkey",
+      "varnish",
+      "varnish:6",
+      "varnish:7",
     ]);
   });
 });
