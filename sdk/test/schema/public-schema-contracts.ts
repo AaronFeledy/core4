@@ -97,13 +97,6 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",
-  LocalStackServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  MailhogServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  MailpitServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  MinIOServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
-  VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",
   LogSourceId: "sdk/test/schema/log-source.test.ts",
   LogSourceInput: "sdk/test/schema/log-source.test.ts",
@@ -347,6 +340,13 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   HttpUploadRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PreHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PostHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LocalStackServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MailhogServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MailpitServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MinIOServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
 } as const satisfies Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>;
 
 type JsonObject = Record<string, unknown>;

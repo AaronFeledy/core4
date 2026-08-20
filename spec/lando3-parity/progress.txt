@@ -557,3 +557,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Official Varnish unix jail still drops privileges after User=root; `-j none` is required for catalog port 80, not just a root user.
 ---
+
+## 2026-08-20 02:45 CDT - US-568 Review
+- Planner now seeds `lando.certs` from service-type resolved config, so default Tomcat/Varnish `certs: true` issues leaf certificates; authored `certs: false` still opts out. Catalog public-schema fixtures now match the appended registry order.
+- Review notes (deferred/rejected): rejected treating VCL bind-source path traversal and root+`-j none` as blockers (Landofile authors already control mounts; the jail disable is required to bind :80). Rejected adding varnishadm tooling because neither the catalog row nor US-568 ACs require it.
+- Verification: typecheck, lint passed; 334 public-schema/certs tests and 120 tomcat/varnish/contract tests passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Service-type `certs:` defaults in `normalizedConfig` are inert unless `assemble.ts` passes `resolution.normalizedConfig.certs` into `resolveCertsFeature`; authored `pinnedService.certs` stays undefined when omitted.
+---

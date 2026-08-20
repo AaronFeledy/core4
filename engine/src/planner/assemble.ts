@@ -315,7 +315,7 @@ export const planApp = (
               appName: appSlug,
               appRoot,
               serviceName: name,
-              certs: pinnedService.certs,
+              certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
               hostnames: pinnedService.hostnames ?? [],
               routes: authoredRoutes,
               defaultRouteHostname:
