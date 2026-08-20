@@ -9,7 +9,7 @@ tags: [beta, docs, php, service, runtime]
 
 Add a PHP service to your app by declaring `type: php:8.3` for the primary
 service — PHP has no bare `type: php` alias, so pin a version. Lando
-currently supports four minor versions: `8.1`, `8.2`, `8.3`, and `8.4`. The
+currently supports five minor versions: `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`. The
 default (and only first-class) image is the `-apache` variant, tagged
 `php:<version>-apache-bookworm` (e.g. `php:8.3-apache-bookworm`), which
 serves your code over HTTP on port `80`. Your repository is bind-mounted
@@ -61,8 +61,9 @@ service:
 lando composer install
 ```
 
-Composer itself is installed from a checksum-pinned release (`2.10.2`), not resolved from whatever
-happens to be latest at build time.
+Stock PHP services install a checksum-pinned Composer 2 release (`2.10.2`).
+Set `composer:` on the service to pick a different pinned version or skip the
+install entirely — see [PHP Composer workflows](../tooling/php-composer-workflows.mdx).
 
 A `php` alias runs the CLI inside the service:
 
@@ -72,7 +73,7 @@ lando php -v
 
 ## Pin a version
 
-Pin any of the four supported PHP minor versions under `type`:
+Pin any of the five supported PHP minor versions under `type`:
 
 ```yaml
 services:

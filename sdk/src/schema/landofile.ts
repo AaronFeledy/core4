@@ -547,6 +547,10 @@ const ServiceConfigWithExtensions = Schema.Struct(
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
+    composer: Schema.optional(Schema.Union(Schema.Literal(false), Schema.String)).annotations({
+      description:
+        "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
+    }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),
     envFile: Schema.optional(ComposeEnvFileInput).annotations({

@@ -24,7 +24,7 @@ import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
-import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
+import { php82ServiceType, php83ServiceType, php85ServiceType } from "../src/services/php.ts";
 import {
   phpmyadmin5ServiceType,
   phpmyadminLatestServiceType,
@@ -94,6 +94,7 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: phpmyadminLatestServiceType, landofileService: { type: "phpmyadmin:latest" } },
   { serviceType: php82ServiceType, landofileService: { type: "php:8.2" } },
   { serviceType: php83ServiceType, landofileService: { type: "php:8.3" } },
+  { serviceType: php85ServiceType, landofileService: { type: "php:8.5" } },
   { serviceType: postgresServiceType, landofileService: { type: "postgres" } },
   { serviceType: python312ServiceType, landofileService: { type: "python:3.12" } },
   { serviceType: rabbitmqServiceType, landofileService: { type: "rabbitmq" } },
@@ -207,6 +208,7 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "opensearch:2",
       "php:8.2",
       "php:8.3",
+      "php:8.5",
       "phpmyadmin",
       "phpmyadmin:5",
       "phpmyadmin:latest",

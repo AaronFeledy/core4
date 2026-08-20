@@ -26,6 +26,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
+- Landofile service keys that are not Compose aliases must be added to `ServiceConfig` fields; the unknown-key allowlist is `Object.keys(ServiceConfig.fields)`, so a PHP-only schema does not make `composer:` authorable.
+- The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
@@ -602,4 +604,30 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Fixed: pinned host.arch x64 / planner capabilities on mssql happy-path proofs; AppPlanner now wires phpmyadmin:5 and phpmyadmin:latest the same as phpmyadmin
 - Split/excise decisions: none
 - Verification: typecheck, lint, and 185 focused mssql/dotnet/phpmyadmin/registration/contract/service-type tests passed
+---
+
+## 2026-08-20 14:54 CDT - Babysit
+- PR: #792 https://github.com/AaronFeledy/core4/pull/792
+- CI outcome: pass
+- Review feedback: fixed (doctor goldens include architectureEmulation; phpMyAdmin waits for sibling health when a probe exists)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-20 15:20 CDT - US-570
+- PHP 8.5 is a catalog type (`php:8.5-apache-bookworm`) with the same extension set as 8.1–8.4. Stock PHP services still install checksum-pinned Composer 2.10.2; `composer: "2"` keeps that pin, `composer: "2.7.7"` selects that exact release, and `composer: false` skips the Composer build step. Unknown values fail at plan time with remediation.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP unit/prerequisites/registration/contract, schema catalog, php-base image/workflow, executable php/php-version-matrix/php-composer-workflows guides). Host `app:config` accepted `php:8.5` + `composer: false`; `app:cache:refresh` planned `composer: "2.7.7"` and rejected `composer: "nope"`.
+- **Learnings for future iterations:**
+  - `composer:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`; a PHP-only schema does not make the key authorable.
+  - Keep the in-container `composer.phar` checksum install; parameterize URL/sha256. Do not add a host Downloader path for PHP Composer.
+  - The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
+  - Guide `errorTag` regexes that include quotes fail against JSON-stringified CLI results; match the unquoted message stem.
+---
+
+## 2026-08-20 16:01 CDT - US-570 Review
+- Invalid `composer:` now fails at PHP service resolve even when a custom `image:` skips the Composer install step, so unknown values fail closed at plan time with the same remediation as the stock path.
+- Review notes (deferred/rejected): rejected treating the custom-image skip as an allowed inert-field gap — AC 3 requires plan-time failure for invalid values, not only when build steps run. Rejected QA and code-quality review-work lanes (auth token expired); Bugbot plus focused tests were used instead. Foreground security check: Composer URL/sha256 interpolation is catalog-pinned, not user-authored.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 22 php/prerequisites tests and 195 adjacent registration/contract/schema/workflow tests passed.
+- **Learnings for future iterations:**
+  - Image-gated PHP build steps must not own option validation; fail closed in `ServiceType.resolve` so custom `image:` still rejects invalid `composer:` values.
 ---

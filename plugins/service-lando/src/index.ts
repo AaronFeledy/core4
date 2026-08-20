@@ -26,7 +26,13 @@ import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
-import { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./services/php.ts";
+import {
+  php81ServiceType,
+  php82ServiceType,
+  php83ServiceType,
+  php84ServiceType,
+  php85ServiceType,
+} from "./services/php.ts";
 import {
   phpmyadmin5ServiceType,
   phpmyadminLatestServiceType,
@@ -85,6 +91,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["php:8.2", php82ServiceType],
   ["php:8.3", php83ServiceType],
   ["php:8.4", php84ServiceType],
+  ["php:8.5", php85ServiceType],
   ["phpmyadmin", phpmyadminServiceType],
   ["phpmyadmin:5", phpmyadmin5ServiceType],
   ["phpmyadmin:latest", phpmyadminLatestServiceType],
@@ -185,6 +192,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "php:8.2",
       "php:8.3",
       "php:8.4",
+      "php:8.5",
       "phpmyadmin",
       "phpmyadmin:5",
       "phpmyadmin:latest",
