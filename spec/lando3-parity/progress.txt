@@ -525,3 +525,10 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Authored `mounts:` are not auto-resolved on `lando` service types. Any feature that re-emits a bind source must call `resolveBindSource` and `parseShortVolume`.
 ---
+
+## 2026-08-20 01:28 CDT - US-568 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in `lando4-dev`, started Tomcat with a mounted ROOT webapp and confirmed its HTTPS route returned the deployed page, then started Varnish in front of Nginx and confirmed the cache route returned backend content with `Via: Varnish`, `X-Varnish`, and an override-VCL response header. Unknown backends failed closed with `LandofileValidationError`; Tomcat 9/10 and Varnish 6 aliases planned successfully; an adjacent Node service honored `user: root`. All started apps were destroyed.
+- Fixed Varnish stopping under managed rootless Podman: container create requests now carry the planned runtime user, and Varnish defaults to `root` so it can bind port 80 while preserving an explicitly authored user.
+- **Out-of-scope finding:** After a deliberately invalid VCL stopped the cache container, the next `lando start` returned `ProviderUnavailableError` (exit 7) instead of retrying the available managed runtime. `lando doctor` followed by the supported `lando setup --yes --no-interactive` path restored it; suspected managed-runtime transient outside the Tomcat/Varnish service-type change.
+- **Learnings for future iterations:** Live rootless verification must assert the provider create body carries `ServicePlan.user`; planner-only coverage cannot catch an image user that lacks permission to bind the service's catalog port.
+---
