@@ -263,7 +263,7 @@ describe("phpMyAdmin AppFeature", () => {
     });
   });
 
-  test("prefers §6.12.4 creds over MYSQL_* environment for the single-db case", async () => {
+  test("prefers authored creds over MYSQL_* environment for the single-db case", async () => {
     const { context, captures } = applyWire([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
       viewOf({

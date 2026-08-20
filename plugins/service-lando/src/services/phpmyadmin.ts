@@ -116,7 +116,6 @@ const discoveredSiblings = (
 ): ReadonlyArray<AppFeatureServiceView> =>
   selected
     .filter((view) => isDbType(view.serviceType))
-    .slice()
     .sort((left, right) => left.serviceName.localeCompare(right.serviceName));
 
 const credentialsFor = (
