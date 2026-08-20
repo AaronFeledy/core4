@@ -2,6 +2,7 @@ import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { apacheServiceFeature } from "../services/apache.ts";
 import { composeServiceFeature } from "../services/compose.ts";
+import { dotnetServiceFeature } from "../services/dotnet.ts";
 import { elasticsearchServiceFeature } from "../services/elasticsearch.ts";
 import { goServiceFeature } from "../services/go.ts";
 import { landoServiceFeature } from "../services/lando.ts";
@@ -13,11 +14,13 @@ import { meilisearchServiceFeature } from "../services/meilisearch.ts";
 import { memcachedServiceFeature } from "../services/memcached.ts";
 import { minioServiceFeature } from "../services/minio.ts";
 import { mongodbServiceFeature } from "../services/mongodb.ts";
+import { mssqlServiceFeature } from "../services/mssql.ts";
 import { mysqlServiceFeature } from "../services/mysql.ts";
 import { nginxServiceFeature } from "../services/nginx.ts";
 import { nodeServiceFeature } from "../services/node.ts";
 import { opensearchServiceFeature } from "../services/opensearch.ts";
 import { phpServiceFeature } from "../services/php.ts";
+import { phpmyadminServiceFeature } from "../services/phpmyadmin.ts";
 import { postgresServiceFeature } from "../services/postgres.ts";
 import { pythonServiceFeature } from "../services/python.ts";
 import { rabbitmqServiceFeature } from "../services/rabbitmq.ts";
@@ -65,6 +68,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   landoUserFeature,
   apacheServiceFeature,
   composeServiceFeature,
+  dotnetServiceFeature,
   elasticsearchServiceFeature,
   goServiceFeature,
   landoServiceFeature,
@@ -76,11 +80,13 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   memcachedServiceFeature,
   minioServiceFeature,
   mongodbServiceFeature,
+  mssqlServiceFeature,
   mysqlServiceFeature,
   nginxServiceFeature,
   nodeServiceFeature,
   opensearchServiceFeature,
   phpServiceFeature,
+  phpmyadminServiceFeature,
   postgresServiceFeature,
   pythonServiceFeature,
   rabbitmqServiceFeature,

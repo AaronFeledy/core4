@@ -28,11 +28,14 @@ framework presets ship post-GA; the table below tracks what
 | `python`   | 3.12         | `django`, `fastapi`, `flask`, `none`                         | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
 | `ruby`     | 3.3          | `rails`, `none`                                              | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
 | `go`       | 1.22, 1.23   | `none`                                                       | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
+| `dotnet`   | 8.0, 9.0     | n/a                                                          | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
+| `mssql`    | 2019, 2022   | n/a                                                          | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
+| `phpmyadmin` | 5, latest  | n/a                                                          | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
-`mysql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
+`mysql`, `mssql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
 `minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
-`nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
+`phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Beta scope vs. the GA-target catalog
 

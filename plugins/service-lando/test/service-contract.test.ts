@@ -7,6 +7,7 @@ import { runServiceCompositionContract } from "@lando/sdk/test";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "../src/services/dotnet.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { landoServiceType } from "../src/services/lando.ts";
@@ -18,11 +19,17 @@ import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { minioServiceType } from "../src/services/minio.ts";
 import { mongodbServiceType } from "../src/services/mongodb.ts";
+import { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "../src/services/mssql.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
+import {
+  phpmyadmin5ServiceType,
+  phpmyadminLatestServiceType,
+  phpmyadminServiceType,
+} from "../src/services/phpmyadmin.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
 import { python312ServiceType } from "../src/services/python.ts";
 import { rabbitmq3ServiceType, rabbitmq4ServiceType, rabbitmqServiceType } from "../src/services/rabbitmq.ts";
@@ -52,6 +59,9 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
     landofileService: { type: "compose", image: "busybox:1.36" },
     serviceName: "worker",
   },
+  { serviceType: dotnetServiceType, landofileService: { type: "dotnet" } },
+  { serviceType: dotnet80ServiceType, landofileService: { type: "dotnet:8.0" } },
+  { serviceType: dotnet90ServiceType, landofileService: { type: "dotnet:9.0" } },
   { serviceType: elasticsearchServiceType, landofileService: { type: "elasticsearch" } },
   { serviceType: elasticsearch8ServiceType, landofileService: { type: "elasticsearch:8" } },
   { serviceType: go122ServiceType, landofileService: { type: "go:1.22" } },
@@ -70,12 +80,18 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: memcachedServiceType, landofileService: { type: "memcached" } },
   { serviceType: minioServiceType, landofileService: { type: "minio", database: "uploads" } },
   { serviceType: mongodbServiceType, landofileService: { type: "mongodb" } },
+  { serviceType: mssqlServiceType, landofileService: { type: "mssql" } },
+  { serviceType: mssql2019ServiceType, landofileService: { type: "mssql:2019" } },
+  { serviceType: mssql2022ServiceType, landofileService: { type: "mssql:2022" } },
   { serviceType: mysqlServiceType, landofileService: { type: "mysql" } },
   { serviceType: nginxServiceType, landofileService: { type: "nginx" } },
   { serviceType: nodeLtsServiceType, landofileService: { type: "node:lts" } },
   { serviceType: node22ServiceType, landofileService: { type: "node:22" } },
   { serviceType: opensearchServiceType, landofileService: { type: "opensearch" } },
   { serviceType: opensearch2ServiceType, landofileService: { type: "opensearch:2" } },
+  { serviceType: phpmyadminServiceType, landofileService: { type: "phpmyadmin" } },
+  { serviceType: phpmyadmin5ServiceType, landofileService: { type: "phpmyadmin:5" } },
+  { serviceType: phpmyadminLatestServiceType, landofileService: { type: "phpmyadmin:latest" } },
   { serviceType: php82ServiceType, landofileService: { type: "php:8.2" } },
   { serviceType: php83ServiceType, landofileService: { type: "php:8.3" } },
   { serviceType: postgresServiceType, landofileService: { type: "postgres" } },
@@ -155,6 +171,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
     expect(catalogEntries.map((entry) => entry.serviceType.id).sort()).toEqual([
       "apache",
       "compose",
+      "dotnet",
+      "dotnet:8.0",
+      "dotnet:9.0",
       "elasticsearch",
       "elasticsearch:8",
       "go:1.22",
@@ -169,6 +188,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "memcached",
       "minio",
       "mongodb",
+      "mssql",
+      "mssql:2019",
+      "mssql:2022",
       "mysql",
       "nginx",
       "node:22",
@@ -177,6 +199,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "opensearch:2",
       "php:8.2",
       "php:8.3",
+      "phpmyadmin",
+      "phpmyadmin:5",
+      "phpmyadmin:latest",
       "postgres",
       "python:3.12",
       "rabbitmq",
