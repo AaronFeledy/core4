@@ -14,6 +14,7 @@ export const PhpServiceConfig = Schema.extend(
     "webroot",
     "allowOverride",
     "composer",
+    "via",
     "certs",
     "environment",
     "routes",

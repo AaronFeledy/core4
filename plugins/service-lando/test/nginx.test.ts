@@ -102,3 +102,24 @@ describe("nginx ServiceType", () => {
     );
   });
 });
+
+describe("nginx PHP FastCGI preset", () => {
+  test("fronts a named FPM backend on port 9000", async () => {
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      webroot: "/app/web",
+    });
+
+    const command = Array.isArray(plan.command)
+      ? plan.command.join(" ")
+      : typeof plan.command === "string"
+        ? plan.command
+        : "";
+    expect(command).toContain("fastcgi_pass appserver:9000");
+    expect(command).toContain("root /app/web");
+    expect(plan.dependsOn).toEqual([
+      { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
+    ]);
+  });
+});

@@ -7,6 +7,7 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceConfig,
+  ServiceName,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
@@ -14,6 +15,7 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
+const FPM_PORT = 9000;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -40,12 +42,39 @@ const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
 export const NGINX_FEATURE_ID = "service-lando.nginx" as const;
 export const NGINX_FEATURE_PRIORITY = 600;
 
+const phpFastcgiCommand = (backend: string, webroot: string, port: number): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  [
+    "set -eu",
+    "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_PHP'",
+    "server {",
+    `  listen ${String(port)};`,
+    `  root ${webroot};`,
+    "  index index.php index.html;",
+    "  location / {",
+    "    try_files $uri $uri/ /index.php?$query_string;",
+    "  }",
+    "  location ~ \\.php$ {",
+    `    fastcgi_pass ${backend}:${String(FPM_PORT)};`,
+    "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
+    "    include fastcgi_params;",
+    "    fastcgi_index index.php;",
+    "  }",
+    "}",
+    "LANDO_NGINX_PHP",
+    "exec nginx -g 'daemon off;'",
+  ].join("\n"),
+];
+
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
+  const webroot = service.webroot ?? APP_MOUNT_TARGET;
+  const backend = service.backend?.trim() ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   if (service.user !== undefined) ctx.setUser(service.user);
   const passthrough = { realization: "passthrough" as const };
   const appMount = {
@@ -74,6 +103,17 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
     retries: 5,
     startPeriodSeconds: 10,
   });
+
+  if (backend.length > 0) {
+    ctx.addDependency({
+      service: ServiceName.make(backend),
+      condition: "service_healthy",
+      required: true,
+    });
+    if (service.command === undefined && service.entrypoint === undefined) {
+      ctx.setCommand(phpFastcgiCommand(backend, webroot, port));
+    }
+  }
 
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
@@ -114,7 +154,10 @@ export const nginxServiceType: ServiceType = {
         { id: NGINX_FEATURE_ID },
         {
           id: "lando.env",
-          config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: "/app" },
+          config: {
+            appPaths: { appRoot: "/app", projectMount: "/app" },
+            webroot: input.service.webroot ?? "/app",
+          },
         },
       ],
     }),

@@ -37,6 +37,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Registry-backed services in generated bootstrap layers must receive registry entries through one-way injection; importing the built-in command registry back from a bootstrap service creates a command-spec/runtime-layer cycle.
 - `ProviderCapabilities` fields added with `optionalWith` defaults become required on the decoded Type; every capability fixture must set the new field, and adding a property re-diffs sibling `allOf` optional structs in schema-compatibility.
 - Cross-service catalog wiring that needs sibling discovery belongs in an `AppFeature` (`activatedBy` + `selectors`), not in `ServiceType.resolve`; resolve cannot see other services.
+- nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -630,4 +631,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Verification: typecheck, lint passed; explicit-base guide drift passed; 22 php/prerequisites tests and 195 adjacent registration/contract/schema/workflow tests passed.
 - **Learnings for future iterations:**
   - Image-gated PHP build steps must not own option validation; fail closed in `ServiceType.resolve` so custom `image:` still rejects invalid `composer:` values.
+---
+
+## 2026-08-20 17:40 CDT - US-571
+- PHP `via:` now selects apache (default), fpm, or cli image variants and process shape. FPM listens on 9000; cli idles with no HTTP route. `allowOverride:` is rejected on fpm/cli, and HTTP `routes:` are rejected on cli, at plan time with remediation.
+- nginx fronts a named FPM service when `backend:` is set, generating FastCGI config to `<service>:9000`. The PHP guide documents the pairing and replaces the no-fpm caveat.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP/nginx/schema/composition plus the two php guide scenarios). Schema compatibility is additive for `via`.
+- **Learnings for future iterations:**
+  - Serving-mode validation belongs in `ServiceType.resolve`, not only in the feature apply path, so custom `image:` still fail-closes invalid `via:` / mode-invalid keys.
+  - Keep PHP serving-mode helpers in `php-via.ts`; `php.ts` is already near the 250-line ceiling.
 ---
