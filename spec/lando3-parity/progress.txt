@@ -22,6 +22,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 - Official Tomcat empty ROOT returns HTTP 404; healthchecks must not use `curl -f`.
 - Official `varnish:6` ignores `VARNISH_BACKEND_*` and needs generated VCL; `varnish:7` honors host+port env vars. Prefer one generated-VCL path for both majors.
+- Official Varnish jails away from root even when the container user is root; catalog Varnish must exec `varnishd -F ... -j none` to bind :80 under rootless Podman.
 - New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
@@ -548,4 +549,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev. Tomcat HTTPS returned the mounted ROOT page. Default `type: varnish` in front of nginx returned backend HTML with `via: Varnish/7.7` and `x-varnish`; `varnishadm ping` returned PONG. Unknown `backend: missing` failed with `LandofileValidationError`. Adjacent Redis `PING`/`PONG` worked. Destroyed scenario apps.
 - Fixed Varnish still failing to bind :80 after User=root: official entrypoint/unix jail drops privileges before bind. Default and VCL-override paths now exec `varnishd -F ... -j none` as root.
 - **Learnings for future iterations:** Official Varnish jails away from root even when the container user is root. Reusing an app name after destroy can serve a stale `plan.bin`; use a fresh app id when re-verifying planner-derived command changes.
+---
+
+## 2026-08-20 02:10 CDT - US-568
+- Story verified complete on branch. Remaining Varnish bind fix (exec `varnishd -F` with `-j none` on default and VCL-override paths) is committed; Tomcat and Varnish catalog types, unknown-backend fail-closed, guides, and proxy routes remain in place.
+- Verification: typecheck, lint passed; relevant test spot checks passed (137 varnish/tomcat/registration/contract tests).
+- **Learnings for future iterations:**
+  - Official Varnish unix jail still drops privileges after User=root; `-j none` is required for catalog port 80, not just a root user.
 ---
