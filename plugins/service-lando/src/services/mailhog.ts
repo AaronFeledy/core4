@@ -26,6 +26,7 @@ const applyMailhogFeature = (ctx: ServiceFeatureContext): void => {
   const smtpPort = service.port ?? MAILPIT_SMTP_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? MAILHOG_IMAGE });
+  ctx.addEnv("MH_SMTP_BIND_ADDR", `0.0.0.0:${smtpPort}`);
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(smtpPort),

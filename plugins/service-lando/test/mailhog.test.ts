@@ -75,6 +75,17 @@ describe("mailhog ServiceType", () => {
       { _tag: "internal", port: 1025, protocol: "tcp", name: "smtp" },
       { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
     ]);
+    expect(plan.environment).toMatchObject({ MH_SMTP_BIND_ADDR: "0.0.0.0:1025" });
+  });
+
+  test("binds SMTP to an authored port", async () => {
+    const plan = await planMailhogService(mailhogServiceType, { type: "mailhog", port: 2525 });
+
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 2525, protocol: "tcp", name: "smtp" },
+      { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
+    ]);
+    expect(plan.environment).toMatchObject({ MH_SMTP_BIND_ADDR: "0.0.0.0:2525" });
   });
 
   test("resolves a default web UI route", async () => {
