@@ -71,15 +71,11 @@ const isComposerMajor = (value: string): value is PhpComposerMajor =>
 const isComposerExact = (value: string): value is PhpComposerExactVersion =>
   Object.hasOwn(PHP_COMPOSER_RELEASES, value);
 
-const composerRemediation = (): string => {
-  const exact = Object.keys(PHP_COMPOSER_RELEASES)
-    .map((version) => `composer: "${version}"`)
-    .join(", ");
-  const majors = Object.keys(PHP_COMPOSER_MAJORS)
-    .map((major) => `composer: "${major}"`)
-    .join(", ");
-  return `Set ${majors}, ${exact}, or composer: false.`;
-};
+const composerRemediation = `Set ${Object.keys(PHP_COMPOSER_MAJORS)
+  .map((major) => `composer: "${major}"`)
+  .join(", ")}, ${Object.keys(PHP_COMPOSER_RELEASES)
+  .map((version) => `composer: "${version}"`)
+  .join(", ")}, or composer: false.`;
 
 export const composerCommandFor = (release: PhpComposerRelease): string =>
   [
@@ -95,7 +91,7 @@ export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false =
   if (value === undefined) return PHP_COMPOSER;
   if (value === false) return false;
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Unsupported Composer version ${JSON.stringify(value)}. ${composerRemediation()}`);
+    throw new Error(`Unsupported Composer version ${JSON.stringify(value)}. ${composerRemediation}`);
   }
   if (isComposerMajor(value)) {
     return PHP_COMPOSER_RELEASES[PHP_COMPOSER_MAJORS[value]];
@@ -103,7 +99,7 @@ export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false =
   if (isComposerExact(value)) {
     return PHP_COMPOSER_RELEASES[value];
   }
-  throw new Error(`Unsupported Composer version "${value}". ${composerRemediation()}`);
+  throw new Error(`Unsupported Composer version "${value}". ${composerRemediation}`);
 };
 
 export const phpPrerequisiteBuildSteps = (

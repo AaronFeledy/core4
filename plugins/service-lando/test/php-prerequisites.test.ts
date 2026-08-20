@@ -53,6 +53,19 @@ const composePhpPlan = (overrides: Record<string, unknown> = {}): Promise<Servic
 const buildStepsFor = (plan: ServicePlan) =>
   Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps ?? [];
 
+const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
+  let rejected = false;
+  await promise.then(
+    () => undefined,
+    (error: unknown) => {
+      rejected = true;
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(pattern);
+    },
+  );
+  expect(rejected).toBe(true);
+};
+
 describe("stock PHP prerequisite plan", () => {
   test("carries exact executable and build-key identities", async () => {
     const steps = buildStepsFor(await composePhpPlan());
@@ -82,7 +95,6 @@ describe("stock PHP prerequisite plan", () => {
     const steps = buildStepsFor(await composePhpPlan({ composer: false }));
 
     expect(steps.map(({ id }) => id)).toEqual(["lando.boot:scaffold", "service-lando.php:prerequisites"]);
-    expect(steps.some((step) => step.id === "service-lando.php:composer")).toBe(false);
   });
 
   test("installs an exact Composer release into build-key identity", async () => {
@@ -104,32 +116,16 @@ describe("stock PHP prerequisite plan", () => {
   });
 
   test("rejects an unknown Composer version with remediation", async () => {
-    let rejected = false;
-    await composePhpPlan({ composer: "nope" }).then(
-      () => undefined,
-      (error: unknown) => {
-        rejected = true;
-        const message = error instanceof Error ? error.message : String(error);
-        expect(message).toMatch(/Unsupported Composer version "nope"/);
-        expect(message).toMatch(/composer: "2"/);
-        expect(message).toMatch(/composer: false/);
-      },
-    );
-    expect(rejected).toBe(true);
+    const planned = composePhpPlan({ composer: "nope" });
+    await expectRejectsToThrow(planned, /Unsupported Composer version "nope"/);
+    await expectRejectsToThrow(planned, /composer: "2"/);
+    await expectRejectsToThrow(planned, /composer: false/);
   });
 
   test("rejects an unknown Composer version when a custom image skips install", async () => {
-    let rejected = false;
-    await composePhpPlan({ image: "registry.example.com/php:8.2-custom", composer: "nope" }).then(
-      () => undefined,
-      (error: unknown) => {
-        rejected = true;
-        const message = error instanceof Error ? error.message : String(error);
-        expect(message).toMatch(/Unsupported Composer version "nope"/);
-        expect(message).toMatch(/composer: "2"/);
-        expect(message).toMatch(/composer: false/);
-      },
-    );
-    expect(rejected).toBe(true);
+    const planned = composePhpPlan({ image: "registry.example.com/php:8.2-custom", composer: "nope" });
+    await expectRejectsToThrow(planned, /Unsupported Composer version "nope"/);
+    await expectRejectsToThrow(planned, /composer: "2"/);
+    await expectRejectsToThrow(planned, /composer: false/);
   });
 });
