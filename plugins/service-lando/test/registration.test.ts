@@ -92,6 +92,7 @@ describe("@lando/service-lando registration", () => {
       "php:8.2",
       "php:8.3",
       "php:8.4",
+      "php:8.5",
       "phpmyadmin",
       "phpmyadmin:5",
       "phpmyadmin:latest",

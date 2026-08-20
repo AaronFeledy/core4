@@ -26,7 +26,13 @@ export {
   opensearch2ServiceType,
   opensearchServiceType,
 } from "./opensearch.ts";
-export { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./php.ts";
+export {
+  php81ServiceType,
+  php82ServiceType,
+  php83ServiceType,
+  php84ServiceType,
+  php85ServiceType,
+} from "./php.ts";
 export {
   phpmyadmin5ServiceType,
   phpmyadminLatestServiceType,

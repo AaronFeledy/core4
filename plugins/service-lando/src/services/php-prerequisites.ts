@@ -1,10 +1,27 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
-export const PHP_COMPOSER = {
-  version: "2.10.2",
-  sha256: "5ee7125f8a30a34d246cefdc0bc85b8a783b28f2aec968994118512350d28027",
-  url: "https://getcomposer.org/download/2.10.2/composer.phar",
+export const PHP_COMPOSER_RELEASES = {
+  "2.7.7": {
+    version: "2.7.7",
+    sha256: "aab940cd53d285a54c50465820a2080fcb7182a4ba1e5f795abfb10414a4b4be",
+    url: "https://getcomposer.org/download/2.7.7/composer.phar",
+  },
+  "2.10.2": {
+    version: "2.10.2",
+    sha256: "5ee7125f8a30a34d246cefdc0bc85b8a783b28f2aec968994118512350d28027",
+    url: "https://getcomposer.org/download/2.10.2/composer.phar",
+  },
 } as const;
+
+export const PHP_COMPOSER_MAJORS = {
+  "2": "2.10.2",
+} as const;
+
+export type PhpComposerRelease = (typeof PHP_COMPOSER_RELEASES)[keyof typeof PHP_COMPOSER_RELEASES];
+export type PhpComposerExactVersion = keyof typeof PHP_COMPOSER_RELEASES;
+export type PhpComposerMajor = keyof typeof PHP_COMPOSER_MAJORS;
+
+export const PHP_COMPOSER: PhpComposerRelease = PHP_COMPOSER_RELEASES["2.10.2"];
 
 export const PHP_APT_PACKAGE_PINS = {
   unzip: "6.0-28",
@@ -48,15 +65,51 @@ export const PHP_PREREQUISITES_COMMAND = [
   "rm -rf /var/lib/apt/lists/*",
 ].join(" && ");
 
-export const PHP_COMPOSER_COMMAND = [
-  "set -eux",
-  `php -r '$url = "${PHP_COMPOSER.url}"; $target = "/tmp/composer.phar"; if (copy($url, $target) !== true) { exit(1); } $actual = hash_file("sha256", $target); if ($actual === false || !hash_equals("${PHP_COMPOSER.sha256}", $actual)) { fwrite(STDERR, "Composer checksum mismatch\\n"); exit(1); }'`,
-  "install -m 0755 /tmp/composer.phar /usr/local/bin/composer",
-  "rm -f /tmp/composer.phar",
-].join(" && ");
+const isComposerMajor = (value: string): value is PhpComposerMajor =>
+  Object.hasOwn(PHP_COMPOSER_MAJORS, value);
 
-export const phpPrerequisiteBuildSteps = (): ReadonlyArray<ServiceBuildStepIntent> => [
-  {
+const isComposerExact = (value: string): value is PhpComposerExactVersion =>
+  Object.hasOwn(PHP_COMPOSER_RELEASES, value);
+
+const composerRemediation = (): string => {
+  const exact = Object.keys(PHP_COMPOSER_RELEASES)
+    .map((version) => `composer: "${version}"`)
+    .join(", ");
+  const majors = Object.keys(PHP_COMPOSER_MAJORS)
+    .map((major) => `composer: "${major}"`)
+    .join(", ");
+  return `Set ${majors}, ${exact}, or composer: false.`;
+};
+
+export const composerCommandFor = (release: PhpComposerRelease): string =>
+  [
+    "set -eux",
+    `php -r '$url = "${release.url}"; $target = "/tmp/composer.phar"; if (copy($url, $target) !== true) { exit(1); } $actual = hash_file("sha256", $target); if ($actual === false || !hash_equals("${release.sha256}", $actual)) { fwrite(STDERR, "Composer checksum mismatch\\n"); exit(1); }'`,
+    "install -m 0755 /tmp/composer.phar /usr/local/bin/composer",
+    "rm -f /tmp/composer.phar",
+  ].join(" && ");
+
+export const PHP_COMPOSER_COMMAND = composerCommandFor(PHP_COMPOSER);
+
+export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false => {
+  if (value === undefined) return PHP_COMPOSER;
+  if (value === false) return false;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Unsupported Composer version ${JSON.stringify(value)}. ${composerRemediation()}`);
+  }
+  if (isComposerMajor(value)) {
+    return PHP_COMPOSER_RELEASES[PHP_COMPOSER_MAJORS[value]];
+  }
+  if (isComposerExact(value)) {
+    return PHP_COMPOSER_RELEASES[value];
+  }
+  throw new Error(`Unsupported Composer version "${value}". ${composerRemediation()}`);
+};
+
+export const phpPrerequisiteBuildSteps = (
+  composer: unknown = undefined,
+): ReadonlyArray<ServiceBuildStepIntent> => {
+  const prerequisites: ServiceBuildStepIntent = {
     id: "service-lando.php:prerequisites",
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
@@ -64,11 +117,16 @@ export const phpPrerequisiteBuildSteps = (): ReadonlyArray<ServiceBuildStepInten
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
     },
-  },
-  {
-    id: "service-lando.php:composer",
-    phase: "build",
-    command: PHP_COMPOSER_COMMAND,
-    buildKeyInputs: { composer: PHP_COMPOSER },
-  },
-];
+  };
+  const release = resolvePhpComposer(composer);
+  if (release === false) return [prerequisites];
+  return [
+    prerequisites,
+    {
+      id: "service-lando.php:composer",
+      phase: "build",
+      command: composerCommandFor(release),
+      buildKeyInputs: { composer: release },
+    },
+  ];
+};

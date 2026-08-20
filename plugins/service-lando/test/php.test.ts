@@ -9,6 +9,7 @@ import {
   SUPPORTED_PHP_VERSIONS,
   php82ServiceType,
   php83ServiceType,
+  php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -58,7 +59,7 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("php ServiceType — supported versions and frameworks", () => {
   test("exposes the complete PHP version catalog", () => {
-    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4"]);
+    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5"]);
   });
 });
 
@@ -216,7 +217,7 @@ describe("php:8.3 ServiceType", () => {
 
     await expectRejectsToThrow(
       composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4/,
+      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5/,
     );
   });
 
@@ -245,5 +246,16 @@ describe("php:8.3 ServiceType", () => {
       }),
       /reserved LANDO_\* keys.*LANDO/,
     );
+  });
+});
+
+describe("php:8.5 ServiceType", () => {
+  test("plans a default PHP 8.5 service with the shared extension set", async () => {
+    const plan = await composePhpPlan(php85ServiceType, { type: "php:8.5" });
+
+    expect(plan.type).toBe("php:8.5");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.5-apache-bookworm" });
+    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.5");
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.5" });
   });
 });

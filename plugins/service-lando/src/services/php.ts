@@ -8,6 +8,7 @@ import {
   PortablePath,
   type ServiceConfig,
 } from "@lando/sdk/schema";
+import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -18,10 +19,11 @@ export {
   PHP_COMMON_EXTENSIONS,
   PHP_COMPOSER,
   PHP_COMPOSER_COMMAND,
+  PHP_COMPOSER_RELEASES,
   PHP_PREREQUISITES_COMMAND,
 } from "./php-prerequisites.ts";
 
-export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4"] as const;
+export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
 
 export const PHP_FEATURE_ID = "service-lando.php" as const;
@@ -112,7 +114,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? `php:${version}-apache-bookworm` });
   if (service.image === undefined) {
-    for (const step of phpPrerequisiteBuildSteps()) ctx.addBuildStep(step);
+    for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     ctx.setCommand(apacheStartCommand(webroot, allowOverride));
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
@@ -176,7 +178,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
-  schema: Schema.Unknown,
+  schema: PhpServiceConfig,
   resolve: (input) =>
     Effect.try({
       try: () => {
@@ -210,3 +212,4 @@ export const php81ServiceType: ServiceType = makePhpServiceType("8.1");
 export const php82ServiceType: ServiceType = makePhpServiceType("8.2");
 export const php83ServiceType: ServiceType = makePhpServiceType("8.3");
 export const php84ServiceType: ServiceType = makePhpServiceType("8.4");
+export const php85ServiceType: ServiceType = makePhpServiceType("8.5");
