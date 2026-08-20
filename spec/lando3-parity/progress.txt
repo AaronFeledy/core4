@@ -595,3 +595,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - AppFeature views expose resolve `normalizedConfig`, not feature-applied env; phpMyAdmin cannot read MYSQL_* that mysql/mariadb only add via `addEnv`.
   - `authoredStorageScopes` runs on the pre-resolve Landofile; service-type `kind: cache` in `resolution.normalizedConfig.storage` is inert unless assemble merges it into `authored.byStore`.
 ---
+
+## 2026-08-20 13:10 CDT - US-569 Drift Audit
+- Trigger: 2 cycles, 2428 changed lines, 12 commits
+- Weakened proofs: mssql happy-path compose/resolve/tooling tests fell through to process.arch, so they only passed on amd64; phpmyadmin AppPlanner auto-wire only covered the unversioned alias
+- Fixed: pinned host.arch x64 / planner capabilities on mssql happy-path proofs; AppPlanner now wires phpmyadmin:5 and phpmyadmin:latest the same as phpmyadmin
+- Split/excise decisions: none
+- Verification: typecheck, lint, and 185 focused mssql/dotnet/phpmyadmin/registration/contract/service-type tests passed
+---
