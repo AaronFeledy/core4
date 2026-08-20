@@ -145,7 +145,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
     }
 
     const appName = appNameFor(input);
-    const authoredDependsOn = input.service.dependsOn ?? [];
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -154,10 +153,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
         image: input.service.image ?? image,
         backend,
         certs: input.service.certs ?? true,
-        dependsOn: [
-          ...authoredDependsOn,
-          { service: backend, condition: "service_healthy" as const, required: true },
-        ],
         routes: input.service.routes ?? [
           { hostname: `${input.name}.${appName}.lndo.site`, endpoint: input.service.port ?? DEFAULT_PORT },
         ],

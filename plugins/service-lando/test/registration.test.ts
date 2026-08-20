@@ -457,8 +457,8 @@ describe("@lando/service-lando registration", () => {
       runtime: 4,
       services: {
         [ServiceName.make("appserver")]: { type: "nginx" },
-        [ServiceName.make("java")]: { type: "tomcat" },
-        [ServiceName.make("cache")]: { type: "varnish", backend: "appserver" },
+        [ServiceName.make("java")]: { type: "tomcat", certs: false },
+        [ServiceName.make("cache")]: { type: "varnish", backend: "appserver", certs: false },
       },
     };
 
@@ -483,7 +483,7 @@ describe("@lando/service-lando registration", () => {
       name: "catalog-app",
       runtime: 4,
       services: {
-        [ServiceName.make("cache")]: { type: "varnish", backend: "missing" },
+        [ServiceName.make("cache")]: { type: "varnish", backend: "missing", certs: false },
       },
     };
 

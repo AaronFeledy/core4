@@ -3,3 +3,4 @@ services:
   cache:
     type: varnish
     backend: missing
+    certs: false

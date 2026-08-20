@@ -91,9 +91,12 @@ describe("varnish ServiceType", () => {
         expect(plan.command?.[0]).toContain("lando-backend.vcl");
         expect(plan.command?.[0]).toContain("varnishd -F");
         expect(plan.command?.[0]).toContain("-j none");
+        expect(plan.dependsOn).toEqual([
+          { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
+        ]);
       });
 
-      test("resolves a default route and healthy backend dependency", async () => {
+      test("resolves a default route and enables certs", async () => {
         const resolution = await resolveVarnishService(serviceType, { type: id, backend: "appserver" });
 
         expect(resolution.normalizedConfig.routes).toEqual([
@@ -101,9 +104,6 @@ describe("varnish ServiceType", () => {
         ]);
         expect(resolution.normalizedConfig.certs).toBe(true);
         expect(resolution.normalizedConfig.backend).toBe("appserver");
-        expect(resolution.normalizedConfig.dependsOn).toEqual([
-          { service: "appserver", condition: "service_healthy", required: true },
-        ]);
       });
 
       test("keeps an authored VCL override mount and skips generated VCL", async () => {
