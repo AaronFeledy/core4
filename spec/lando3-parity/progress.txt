@@ -532,3 +532,20 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Out-of-scope finding:** After a deliberately invalid VCL stopped the cache container, the next `lando start` returned `ProviderUnavailableError` (exit 7) instead of retrying the available managed runtime. `lando doctor` followed by the supported `lando setup --yes --no-interactive` path restored it; suspected managed-runtime transient outside the Tomcat/Varnish service-type change.
 - **Learnings for future iterations:** Live rootless verification must assert the provider create body carries `ServicePlan.user`; planner-only coverage cannot catch an image user that lacks permission to bind the service's catalog port.
 ---
+
+## 2026-08-20 01:54 CDT - Push
+- PR: none — skipped: uncommitted product changes in `plugins/service-lando/src/services/varnish.ts` and `plugins/service-lando/test/varnish.test.ts` (Varnish VCL override path now runs varnishd with `-j none`; not committed after Verify)
+---
+
+## 2026-08-20 01:57 CDT - Babysit
+- PR: missing (push skipped: uncommitted varnishd `-j none` changes)
+- CI outcome: fail (no PR)
+- Review feedback: none
+- Merge: deferred (no PR for branch us-568-tomcat-varnish)
+---
+
+## 2026-08-20 02:02 CDT - US-568 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev. Tomcat HTTPS returned the mounted ROOT page. Default `type: varnish` in front of nginx returned backend HTML with `via: Varnish/7.7` and `x-varnish`; `varnishadm ping` returned PONG. Unknown `backend: missing` failed with `LandofileValidationError`. Adjacent Redis `PING`/`PONG` worked. Destroyed scenario apps.
+- Fixed Varnish still failing to bind :80 after User=root: official entrypoint/unix jail drops privileges before bind. Default and VCL-override paths now exec `varnishd -F ... -j none` as root.
+- **Learnings for future iterations:** Official Varnish jails away from root even when the container user is root. Reusing an app name after destroy can serve a stale `plan.bin`; use a fresh app id when re-verifying planner-derived command changes.
+---
