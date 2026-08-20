@@ -275,6 +275,7 @@ export const planApp = (
           primary: name === "web",
           metadata: encodedMetadata,
           host,
+          capabilities: providerCapabilities,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       const mergedLogSources = mergeLogSources({
