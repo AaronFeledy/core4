@@ -279,6 +279,7 @@ describe("@lando/service-lando registration", () => {
                 source: "@lando/service-lando/test/registration",
                 runtime: 4,
               },
+              capabilities: providerCapabilities,
             }),
           ),
         ).pipe(Effect.provide(registryLayer)),
@@ -358,37 +359,39 @@ describe("@lando/service-lando registration", () => {
     ]);
   });
 
-  test("AppPlanner auto-wires phpmyadmin to a mysql sibling", async () => {
-    // Given
-    const landofile: LandofileShape = {
-      name: "pma-app",
-      runtime: 4,
-      services: {
-        [ServiceName.make("pma")]: { type: "phpmyadmin", certs: false },
-        [ServiceName.make("database")]: {
-          type: "mysql",
-          healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+  for (const phpmyadminType of ["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const) {
+    test(`AppPlanner auto-wires ${phpmyadminType} to a mysql sibling`, async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name: "pma-app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("pma")]: { type: phpmyadminType, certs: false },
+          [ServiceName.make("database")]: {
+            type: "mysql",
+            healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+          },
         },
-      },
-    };
+      };
 
-    // When
-    const appPlan = await plan(landofile);
-    const pma = appPlan.services[ServiceName.make("pma")];
-    if (pma === undefined) throw new Error("phpmyadmin planner service missing");
+      // When
+      const appPlan = await plan(landofile);
+      const pma = appPlan.services[ServiceName.make("pma")];
+      if (pma === undefined) throw new Error("phpmyadmin planner service missing");
 
-    // Then
-    expect(pma.environment).toMatchObject({
-      PMA_HOSTS: "database",
-      PMA_USER: "lando",
-      PMA_PASSWORD: "lando",
+      // Then
+      expect(pma.environment).toMatchObject({
+        PMA_HOSTS: "database",
+        PMA_USER: "lando",
+        PMA_PASSWORD: "lando",
+      });
+      expect(pma.dependsOn).toContainEqual({
+        service: ServiceName.make("database"),
+        condition: "service_healthy",
+        required: true,
+      });
     });
-    expect(pma.dependsOn).toContainEqual({
-      service: ServiceName.make("database"),
-      condition: "service_healthy",
-      required: true,
-    });
-  });
+  }
 
   test("AppPlanner honors phpmyadmin hosts overrides without a database sibling", async () => {
     // Given

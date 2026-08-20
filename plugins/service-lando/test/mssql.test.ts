@@ -91,13 +91,14 @@ const planMssqlService = async (serviceType: ServiceType, serviceDefinition: Rec
     appName: "myapp",
     serviceName: "database",
     metadata,
+    host: hostFacts("x64"),
     featureOverrides,
   });
 
 const resolveMssqlService = (
   serviceType: ServiceType,
   serviceDefinition: Record<string, unknown>,
-  host?: ServiceTypeHostFacts,
+  host: ServiceTypeHostFacts = hostFacts("x64"),
   capabilities?: ProviderCapabilities,
 ) =>
   Effect.runPromise(
@@ -107,7 +108,7 @@ const resolveMssqlService = (
       appRoot: "/srv/apps/myapp",
       appName: "myapp",
       metadata,
-      ...(host === undefined ? {} : { host }),
+      host,
       ...(capabilities === undefined ? {} : { capabilities }),
     }),
   );

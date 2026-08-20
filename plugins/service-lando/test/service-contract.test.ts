@@ -158,6 +158,14 @@ describe("service catalog per-type checklist × composition contract suite", () 
             source: "@lando/service-lando/test/service-contract",
             runtime: 4,
           },
+          host: {
+            os: "linux",
+            user: "test",
+            uid: "1000",
+            gid: "1000",
+            home: "/home/test",
+            arch: "x64",
+          },
         }),
       );
 
