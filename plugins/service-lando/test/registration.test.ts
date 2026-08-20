@@ -97,7 +97,14 @@ describe("@lando/service-lando registration", () => {
       "static",
       "static:nginx",
       "static:caddy",
+      "tomcat",
+      "tomcat:9",
+      "tomcat:10",
+      "tomcat:11",
       "valkey",
+      "varnish",
+      "varnish:6",
+      "varnish:7",
     ]);
   });
 
@@ -442,5 +449,44 @@ describe("@lando/service-lando registration", () => {
     ).rejects.toThrow(
       /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.1.*php:8\.4.*postgres.*python:3\.12.*ruby:3\.3/,
     );
+  });
+
+  test("AppPlanner composes Tomcat and Varnish through PluginRegistry", async () => {
+    const landofile: LandofileShape = {
+      name: "catalog-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("appserver")]: { type: "nginx" },
+        [ServiceName.make("java")]: { type: "tomcat" },
+        [ServiceName.make("cache")]: { type: "varnish", backend: "appserver" },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const java = appPlan.services[ServiceName.make("java")];
+    const cache = appPlan.services[ServiceName.make("cache")];
+    if (java === undefined || cache === undefined) {
+      throw new Error("tomcat/varnish planner smoke services missing");
+    }
+
+    expect(java.artifact).toEqual({ kind: "ref", ref: "tomcat:11-jre21" });
+    expect(java.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
+    expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
+    expect(cache.dependsOn).toEqual([
+      { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
+    ]);
+  });
+
+  test("AppPlanner fails closed when Varnish backend is unknown", async () => {
+    const landofile: LandofileShape = {
+      name: "catalog-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("cache")]: { type: "varnish", backend: "missing" },
+      },
+    };
+
+    await expect(plan(landofile)).rejects.toThrow(/missing service missing.*service_healthy/);
   });
 });

@@ -31,7 +31,14 @@ import { redisServiceType } from "./services/redis.ts";
 import { ruby33ServiceType } from "./services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
+import {
+  tomcat9ServiceType,
+  tomcat10ServiceType,
+  tomcat11ServiceType,
+  tomcatServiceType,
+} from "./services/tomcat.ts";
 import { valkeyServiceType } from "./services/valkey.ts";
+import { varnish6ServiceType, varnish7ServiceType, varnishServiceType } from "./services/varnish.ts";
 
 export const PLUGIN_NAME = "@lando/service-lando" as const;
 
@@ -69,6 +76,13 @@ export { redisServiceType } from "./services/redis.ts";
 export { ruby33ServiceType } from "./services/ruby.ts";
 export { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 export { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
+export {
+  tomcat10ServiceType,
+  tomcat11ServiceType,
+  tomcat9ServiceType,
+  tomcatServiceType,
+} from "./services/tomcat.ts";
+export { varnish6ServiceType, varnish7ServiceType, varnishServiceType } from "./services/varnish.ts";
 export { valkeyServiceType } from "./services/valkey.ts";
 
 export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, ServiceType>([
@@ -110,7 +124,14 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["static", staticNginxServiceType],
   ["static:nginx", staticNginxServiceType],
   ["static:caddy", staticCaddyServiceType],
+  ["tomcat", tomcatServiceType],
+  ["tomcat:9", tomcat9ServiceType],
+  ["tomcat:10", tomcat10ServiceType],
+  ["tomcat:11", tomcat11ServiceType],
   ["valkey", valkeyServiceType],
+  ["varnish", varnishServiceType],
+  ["varnish:6", varnish6ServiceType],
+  ["varnish:7", varnish7ServiceType],
 ]);
 
 export const services = Layer.empty;
@@ -192,7 +213,14 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "static",
       "static:nginx",
       "static:caddy",
+      "tomcat",
+      "tomcat:9",
+      "tomcat:10",
+      "tomcat:11",
       "valkey",
+      "varnish",
+      "varnish:6",
+      "varnish:7",
     ],
     serviceFeatures: SERVICE_FEATURE_IDS,
   },

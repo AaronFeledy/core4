@@ -272,7 +272,9 @@
           "service-lando.ruby",
           "service-lando.solr",
           "service-lando.static",
-          "service-lando.valkey"
+          "service-lando.tomcat",
+          "service-lando.valkey",
+          "service-lando.varnish"
         ],
         "serviceTypes": [
           "apache",
@@ -313,7 +315,14 @@
           "static",
           "static:nginx",
           "static:caddy",
-          "valkey"
+          "tomcat",
+          "tomcat:9",
+          "tomcat:10",
+          "tomcat:11",
+          "valkey",
+          "varnish",
+          "varnish:6",
+          "varnish:7"
         ]
       },
       "description": "The opinionated `lando` service base.",

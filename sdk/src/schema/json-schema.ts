@@ -319,7 +319,19 @@ import {
   MailpitServiceConfig,
   MinIOServiceConfig,
   RabbitMQServiceConfig,
+  TomcatServiceConfig,
+  VarnishServiceConfig,
 } from "./services/index.ts";
+
+const catalogServiceSchemaRegistry = {
+  LocalStackServiceConfig,
+  MailhogServiceConfig,
+  MailpitServiceConfig,
+  MinIOServiceConfig,
+  RabbitMQServiceConfig,
+  TomcatServiceConfig,
+  VarnishServiceConfig,
+};
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -451,11 +463,6 @@ const rawPublicSchemaRegistry = {
   LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
-  LocalStackServiceConfig,
-  MailhogServiceConfig,
-  MailpitServiceConfig,
-  MinIOServiceConfig,
-  RabbitMQServiceConfig,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -781,11 +788,6 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
-  LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
-  MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",
-  MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
-  MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
-  RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",
@@ -1030,9 +1032,34 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
+const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
+  LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
+  MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",
+  MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
+  MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
+  RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
+  TomcatServiceConfig: "Landofile configuration accepted by the Tomcat catalog service.",
+  VarnishServiceConfig: "Landofile configuration accepted by the Varnish catalog service.",
+} as const satisfies Record<keyof typeof catalogServiceSchemaRegistry, string>;
 
 const titleFromSchemaName = (schemaName: string): string =>
   schemaName.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+
+const annotatedCatalogSchema = <Name extends keyof typeof catalogServiceSchemaRegistry>(
+  schemaName: Name,
+  schema: (typeof catalogServiceSchemaRegistry)[Name],
+): (typeof catalogServiceSchemaRegistry)[Name] =>
+  schema.annotations({
+    identifier: AST.getIdentifierAnnotation(schema.ast).pipe((option) =>
+      option._tag === "Some" ? option.value : schemaName,
+    ),
+    title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
+      option._tag === "Some" ? option.value : titleFromSchemaName(schemaName),
+    ),
+    description: AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
+      option._tag === "Some" ? option.value : CATALOG_SERVICE_SCHEMA_DESCRIPTIONS[schemaName],
+    ),
+  }) as (typeof catalogServiceSchemaRegistry)[Name];
 
 const annotatedPublicSchema = <Name extends keyof typeof rawPublicSchemaRegistry>(
   schemaName: Name,
@@ -1050,11 +1077,25 @@ const annotatedPublicSchema = <Name extends keyof typeof rawPublicSchemaRegistry
     ),
   }) as (typeof rawPublicSchemaRegistry)[Name];
 
-export const publicSchemaRegistry = Object.fromEntries(
-  (Object.keys(rawPublicSchemaRegistry) as ReadonlyArray<keyof typeof rawPublicSchemaRegistry>).map(
-    (schemaName) => [schemaName, annotatedPublicSchema(schemaName, rawPublicSchemaRegistry[schemaName])],
+const rawCatalogPublicSchemaRegistry = Object.fromEntries(
+  (Object.keys(catalogServiceSchemaRegistry) as ReadonlyArray<keyof typeof catalogServiceSchemaRegistry>).map(
+    (schemaName) => [
+      schemaName,
+      annotatedCatalogSchema(schemaName, catalogServiceSchemaRegistry[schemaName]),
+    ],
   ),
-) as { readonly [K in keyof typeof rawPublicSchemaRegistry]: (typeof rawPublicSchemaRegistry)[K] };
+) as { readonly [K in keyof typeof catalogServiceSchemaRegistry]: (typeof catalogServiceSchemaRegistry)[K] };
+
+export const publicSchemaRegistry = {
+  ...Object.fromEntries(
+    (Object.keys(rawPublicSchemaRegistry) as ReadonlyArray<keyof typeof rawPublicSchemaRegistry>).map(
+      (schemaName) => [schemaName, annotatedPublicSchema(schemaName, rawPublicSchemaRegistry[schemaName])],
+    ),
+  ),
+  ...rawCatalogPublicSchemaRegistry,
+} as { readonly [K in keyof typeof rawPublicSchemaRegistry]: (typeof rawPublicSchemaRegistry)[K] } & {
+  readonly [K in keyof typeof catalogServiceSchemaRegistry]: (typeof catalogServiceSchemaRegistry)[K];
+};
 
 export type JsonSchemaName = keyof typeof publicSchemaRegistry;
 export const JSON_SCHEMA_NAMES = Object.keys(publicSchemaRegistry) as ReadonlyArray<JsonSchemaName>;
@@ -1095,7 +1136,11 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
     description:
       descriptionAnnotation !== undefined && !BUILT_IN_DESCRIPTIONS.has(descriptionAnnotation)
         ? descriptionAnnotation
-        : PUBLIC_SCHEMA_DESCRIPTIONS[schemaName],
+        : schemaName in CATALOG_SERVICE_SCHEMA_DESCRIPTIONS
+          ? CATALOG_SERVICE_SCHEMA_DESCRIPTIONS[
+              schemaName as keyof typeof CATALOG_SERVICE_SCHEMA_DESCRIPTIONS
+            ]
+          : PUBLIC_SCHEMA_DESCRIPTIONS[schemaName as keyof typeof PUBLIC_SCHEMA_DESCRIPTIONS],
     packageExport: `@lando/sdk/schema#${schemaName}`,
     jsonSchemaPath: `dist/schemas/${artifactFilename}`,
     docsPath: `docs/reference/schemas/${docsBasename}.mdx`,
@@ -2552,6 +2597,13 @@ const expressionJsonSchema = (schemaName: "ExpressionNode" | "ExpressionTemplate
   };
 };
 
+const schemaForPublicName = (schemaName: JsonSchemaName) => {
+  if (Object.hasOwn(catalogServiceSchemaRegistry, schemaName)) {
+    return catalogServiceSchemaRegistry[schemaName as keyof typeof catalogServiceSchemaRegistry];
+  }
+  return rawPublicSchemaRegistry[schemaName as keyof typeof rawPublicSchemaRegistry];
+};
+
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
@@ -2562,5 +2614,5 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
   }
   if (schemaName === "ExpressionNode" || schemaName === "ExpressionTemplate")
     return expressionJsonSchema(schemaName);
-  return getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
+  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
 };

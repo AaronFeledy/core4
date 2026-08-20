@@ -42,7 +42,9 @@ const EXPECTED_CATALOG_FEATURE_PRIORITIES: Readonly<Record<string, number>> = {
   "service-lando.ruby": 600,
   "service-lando.solr": 600,
   "service-lando.static": 600,
+  "service-lando.tomcat": 600,
   "service-lando.valkey": 600,
+  "service-lando.varnish": 600,
 };
 
 describe("@lando/service-lando built-in feature modules", () => {

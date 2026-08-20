@@ -25,7 +25,9 @@ import { redisServiceFeature } from "../services/redis.ts";
 import { rubyServiceFeature } from "../services/ruby.ts";
 import { solrServiceFeature } from "../services/solr.ts";
 import { staticServiceFeature } from "../services/static.ts";
+import { tomcatServiceFeature } from "../services/tomcat.ts";
 import { valkeyServiceFeature } from "../services/valkey.ts";
+import { varnishServiceFeature } from "../services/varnish.ts";
 import { landoAppMountFeature } from "./app-mount.ts";
 import { landoBootFeature } from "./boot.ts";
 import { landoCertsFeature } from "./certs.ts";
@@ -86,7 +88,9 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   rubyServiceFeature,
   solrServiceFeature,
   staticServiceFeature,
+  tomcatServiceFeature,
   valkeyServiceFeature,
+  varnishServiceFeature,
 ];
 
 export const serviceFeatures: ReadonlyMap<string, ServiceFeatureDefinition> = new Map(

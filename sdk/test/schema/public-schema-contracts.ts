@@ -102,6 +102,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   MailpitServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   MinIOServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",
   LogSourceId: "sdk/test/schema/log-source.test.ts",
   LogSourceInput: "sdk/test/schema/log-source.test.ts",

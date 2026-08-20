@@ -41,7 +41,14 @@ const expectedServiceTypes = [
   "static",
   "static:nginx",
   "static:caddy",
+  "tomcat",
+  "tomcat:9",
+  "tomcat:10",
+  "tomcat:11",
   "valkey",
+  "varnish",
+  "varnish:6",
+  "varnish:7",
 ];
 
 describe("@lando/service-lando package", () => {

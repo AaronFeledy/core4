@@ -20,6 +20,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 ## Codebase Patterns (carry forward)
 
+- Official Tomcat empty ROOT returns HTTP 404; healthchecks must not use `curl -f`.
+- Official `varnish:6` ignores `VARNISH_BACKEND_*` and needs generated VCL; `varnish:7` honors host+port env vars. Prefer one generated-VCL path for both majors.
 - New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
@@ -491,11 +493,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Verification: typecheck, lint, and 181 focused schema/service/registration/contract/doctor spot checks passed.
 ---
 
-## 2026-08-19 20:15 CDT - Babysit
+## 2026-08-19 20:57 CDT - Babysit
 - PR: #790 https://github.com/AaronFeledy/core4/pull/790
-- CI outcome: fail (provider-integration-linux-x64, provider-integration-linux-x64-runner ubuntu-24.04)
-- Review feedback: none (Bugbot SMTP-port finding still open; triage agents hung before any fix)
-- Merge: deferred (triage never completed; Bugbot finding and CI failure remain unaddressed)
+- CI outcome: pass
+- Review feedback: fixed (bind mailpit/mailhog SMTP to authored port via MP/MH_SMTP_BIND_ADDR)
+- Drift check: clean
+- Merge: merged (squash)
 ---
 
 ## 2026-08-19 20:21 CDT - US-567
@@ -504,4 +507,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - A failing ubuntu-24.04 provider-docker live `logs emits at least one chunk` job is unrelated to catalog service-type stories when other provider platforms pass. Do not reopen a passed service story to chase that flake.
   - Bugbot custom-`port` listen-bind notes on mail types match the advertised-port pattern already rejected for RabbitMQ; they are merge hygiene, not missing ACs.
+---
+
+## 2026-08-19 23:35 CDT - US-568
+- Tomcat 9/10/11 and Varnish 6/7 now plan as catalog service types. Tomcat mounts the app as the ROOT webapp, enables lando.certs, and exposes a default hostname route on 8080. Varnish requires `backend: <service>`, waits on that service's healthcheck, generates default VCL (or honors a mount at `/etc/varnish/default.vcl`), and is the routable front on port 80.
+- Unknown Varnish backends fail closed at plan time with tagged remediation. Both types publish `@lando/sdk/schema/services/<type>` schemas and ship executable guides.
+- Verification: typecheck, lint, boundaries, schema compatibility, guide lint/coverage/public transcripts passed; focused schema/service/registration/contract tests passed; CLI `app:config` accepted both types and `app:cache:refresh` planned them, while an unknown backend failed with `LandofileValidationError`.
+- **Learnings for future iterations:**
+  - Official Tomcat images ship an empty `webapps/` so `/` is 404 until something is deployed. Do not healthcheck with `curl -f`.
+  - Official Varnish 6 stock VCL points at localhost and ignores `VARNISH_BACKEND_*`. Generate VCL (or mount an override) instead of relying on env for both majors.
 ---

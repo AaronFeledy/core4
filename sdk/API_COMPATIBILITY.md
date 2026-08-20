@@ -326,6 +326,8 @@
 - `ProxyServiceContribution`
 - `ProxyStatus`
 - `RabbitMQServiceConfig`
+- `TomcatServiceConfig`
+- `VarnishServiceConfig`
 - `RecipeChoicesFrom`
 - `RecipeFile`
 - `RecipeId`

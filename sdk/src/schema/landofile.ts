@@ -512,6 +512,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
     }),
+    backend: Schema.optional(Schema.String).annotations({
+      description: "Name of the app service this cache or proxy fronts.",
+    }),
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
