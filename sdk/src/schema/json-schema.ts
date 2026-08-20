@@ -314,10 +314,13 @@ import {
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import {
+  DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
   MailpitServiceConfig,
   MinIOServiceConfig,
+  MssqlServiceConfig,
+  PhpMyAdminServiceConfig,
   RabbitMQServiceConfig,
   TomcatServiceConfig,
   VarnishServiceConfig,
@@ -347,10 +350,13 @@ import {
 } from "./update-manifest.ts";
 
 const catalogServiceSchemaRegistry = {
+  DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
   MailpitServiceConfig,
   MinIOServiceConfig,
+  MssqlServiceConfig,
+  PhpMyAdminServiceConfig,
   RabbitMQServiceConfig,
   TomcatServiceConfig,
   VarnishServiceConfig,
@@ -1033,10 +1039,13 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
+  DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",
   LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
   MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",
   MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
   MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
+  MssqlServiceConfig: "Landofile configuration accepted by the SQL Server catalog service.",
+  PhpMyAdminServiceConfig: "Landofile configuration accepted by the phpMyAdmin catalog service.",
   RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
   TomcatServiceConfig: "Landofile configuration accepted by the Tomcat catalog service.",
   VarnishServiceConfig: "Landofile configuration accepted by the Varnish catalog service.",
