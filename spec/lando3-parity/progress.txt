@@ -517,3 +517,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Official Tomcat images ship an empty `webapps/` so `/` is 404 until something is deployed. Do not healthcheck with `curl -f`.
   - Official Varnish 6 stock VCL points at localhost and ignores `VARNISH_BACKEND_*`. Generate VCL (or mount an override) instead of relying on env for both majors.
 ---
+
+## 2026-08-20 00:27 CDT - US-568 Review
+- VCL override mounts now resolve relative sources against the app root and parse short-form bind syntax, so the documented `./default.vcl` path actually mounts.
+- Review notes (deferred/rejected): rejected authored-`dependsOn` weakening of the backend health gate as the existing planner authored-override contract, not a varnish-owned fail-closed hole; rejected treating a full-suite/rendered-guide timeout as a US-568 blocker because Review must not run the full local suite and that failure is unrelated to this story.
+- Verification: typecheck, lint passed; 15 varnish tests plus 121 adjacent tomcat/registration/contract tests passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Authored `mounts:` are not auto-resolved on `lando` service types. Any feature that re-emits a bind source must call `resolveBindSource` and `parseShortVolume`.
+---
