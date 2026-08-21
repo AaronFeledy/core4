@@ -529,7 +529,8 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeServiceFields: { supported: ["labels"] },
+    composeServiceFields: { supported: ["labels", "configs"] },
+    composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

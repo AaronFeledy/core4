@@ -40,6 +40,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
 - PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
 - An AppFeature with no selectors selects every service and will cycle with nginx PHP-FPM wiring; select PHP via `hasFeature` plus database `types:` when sibling discovery must not include nginx.
+- File-backed Compose `configs:` hash into the app-plan cache like `env_file`. Bundled providers declare `composeProjectFields`/`composeServiceFields` `configs` and realize grants as read-only binds; `external: true` fails closed.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -685,4 +686,36 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Out-of-scope finding:** `lando mysql --version` failed with `ToolingCompileError` (app command cache missing `app:mysql`) after start and `app:cache:refresh`. Suspected mysql service-type tooling contribution / command cache, not db_client.
 - **Learnings for future iterations:**
   - Pin MySQL apt GPG keys to the unexpired `RPM-GPG-KEY-mysql-YYYY` whose fingerprint matches the live InRelease signer; the 2023 file is the same key id with an expired self-signature.
+---
+
+## 2026-08-21 05:50 CDT - US-574
+- Compose `configs:` now realize as read-only file mounts on the bundled providers and TestRuntimeProvider. Top-level `file:` entries plus service short/long grants honor source, target, and mode; content changes bust the app-plan cache; missing files and `external: true` fail closed with tagged remediation.
+- php-customization and compose-service-block guides show a `configs:` php.ini drop-in instead of documenting the old bind-mount-only workaround.
+- Verification: typecheck, lint passed; relevant test spot checks passed (planner identity, provider contract, capabilities, conformance, both executable guides); CLI `app:config` accepted configs and `app:cache:refresh` planned, then failed closed after deleting the source file.
+- **Learnings for future iterations:**
+  - Hash config file bytes only when the provider declares both project and service `configs` support, otherwise the existing CapabilityError gate must fire first.
+  - Upstream Compose conformance fixtures are YAML-only; stub missing `configs.*.file` paths in the harness so preservation proofs still plan after realization hashing lands.
+---
+
+## 2026-08-21 05:59 CDT - US-574
+- Story verified complete on branch (no new code).
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-21 06:35 CDT - US-574 Review
+- Fixed mode-bearing config copies that failed on rebuild once the dest was chmod 0444, and the stale Podman/Lando composeServiceFields exact-match tests that still expected labels only.
+- Review notes (deferred/rejected): rejected Bugbot High that start of an existing container keeps a stale mode-copy — skip-create is existing provider bring-up semantics; plan identity plus rebuild is the re-apply contract, and mode-less grants already bind the source file live. Rejected Bugbot Medium unparseable mode fail-open because the schema accepts arbitrary number|string and realization still mounts read-only. Rejected code-quality tmpdir/symlink hardening; copies must outlive apply, and that is not a US-574 recreate contract. Security review-work lane aborted on usage limit; Bugbot plus local review used instead. Goal/QA/context lanes did not return a deliverable before wrap.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; focused compose-configs, knobs-declaration, planner identity, provider contract, and capabilities tests passed.
+- **Learnings for future iterations:**
+  - A 0444 staged copy must be chmod'd writable before copyFileSync on re-apply, or rebuild EACCES after the first start.
+---
+
+## 2026-08-21 06:58 CDT - US-574 Drift Audit
+- Trigger: 3 cycles, 744 changed lines, 5 commits
+- Category 2: Identity proof only asserted cache miss; production bind strings never asserted `:ro`
+- Category 4: Planner config-file input type was exported with no consumer
+- Category 6: php.ini guide claimed cache:refresh remounts; rebuild remounts mode-bearing copies, mode-less binds stay live
+- Fixed: Unexported the unused type; locked bind-string `:ro` and cache-hit-then-miss proofs; corrected remount guidance
+- Split/excise decisions: None; skip-create stale mode-copy, unparseable mode, and tmpdir hardening stay rejected as recorded
+- Verification: typecheck, lint, lint:guides, and 9 focused tests passed
 ---

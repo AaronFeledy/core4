@@ -1,0 +1,12 @@
+name: php-customization-ini-configs
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    configs:
+      - source: phpini
+        target: /usr/local/etc/php/conf.d/zz-custom.ini
+        mode: "0444"
+configs:
+  phpini:
+    file: ./php.ini

@@ -14,12 +14,20 @@ import {
 import { CapabilityError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
-import { AppPlanner, AppPlannerLive, loadLandofileFile, makePluginRegistryLive } from "@lando/core/testing";
+import {
+  AppPlanner,
+  AppPlannerLive,
+  FileSystemLive,
+  loadLandofileFile,
+  makePluginRegistryLive,
+} from "@lando/core/testing";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
-const plannerLayer = AppPlannerLive.pipe(Layer.provide(makePluginRegistryLive({ app: false, user: false })));
+const plannerLayer = AppPlannerLive.pipe(
+  Layer.provide(Layer.mergeAll(FileSystemLive, makePluginRegistryLive({ app: false, user: false }))),
+);
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
@@ -33,6 +41,7 @@ interface FixtureCase {
   readonly id: string;
   readonly file: string;
   readonly service: string;
+  readonly seedFiles?: Readonly<Record<string, string>>;
   readonly assertInspect: (inspect: unknown, appRoot: string) => void;
 }
 
@@ -97,13 +106,36 @@ const fixtures = [
       expect(JSON.stringify(inspect)).not.toContain("x-vendor");
     },
   },
+  {
+    id: "simple-configfile",
+    file: "upstream/simple_configfile.compose.yaml",
+    service: "entry",
+    seedFiles: { "test_config.txt": "fixture-config\n" },
+    assertInspect: (inspect: unknown, appRoot: string) => {
+      const hostConfig = field(inspect, "HostConfig");
+      const bindSource = join(appRoot, "test_config.txt");
+      const bindSpec = arrayField(hostConfig, "Binds").find(
+        (candidate) =>
+          typeof candidate === "string" && candidate.startsWith(`${bindSource}:/volumes/test_config.txt:`),
+      );
+      expect(bindSpec).toBeDefined();
+      expect(bindSpec).toContain(":ro");
+
+      const mounts = arrayField(inspect, "Mounts");
+      const bind = mounts.find(
+        (mount) => (field(mount, "Destination") ?? field(mount, "Target")) === "/volumes/test_config.txt",
+      );
+      expect(field(bind, "Source")).toBe(bindSource);
+      expect(field(bind, "RW")).toBe(false);
+    },
+  },
 ] satisfies readonly FixtureCase[];
 
 interface RejectedFixtureCase {
   readonly id: string;
   readonly file: string;
   readonly service: string;
-  readonly key: "networks" | "configs" | "secrets" | "profiles";
+  readonly key: "networks" | "secrets" | "profiles";
 }
 
 const rejectedFixtures = [
@@ -118,12 +150,6 @@ const rejectedFixtures = [
     file: "upstream/simple_network.compose.yaml",
     service: "entry",
     key: "networks",
-  },
-  {
-    id: "simple-configfile",
-    file: "upstream/simple_configfile.compose.yaml",
-    service: "entry",
-    key: "configs",
   },
   {
     id: "simple-secretfile",
@@ -155,6 +181,11 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
 
   try {
     await mkdir(join(appRoot, "src"));
+    if (fixture.seedFiles !== undefined) {
+      for (const [relativePath, contents] of Object.entries(fixture.seedFiles)) {
+        await writeFile(join(appRoot, relativePath), contents);
+      }
+    }
     const fixtureSource = await Bun.file(join(fixturesRoot, fixture.file)).text();
     const landofilePath = join(appRoot, ".lando.yml");
     await writeFile(landofilePath, makeRunnableLandofile(`compose-fixture-${fixture.id}`, fixtureSource));

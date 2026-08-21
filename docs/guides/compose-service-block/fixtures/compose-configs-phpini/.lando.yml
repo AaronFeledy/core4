@@ -1,0 +1,11 @@
+name: compose-configs-phpini
+services:
+  web:
+    image: php:8.3-apache-bookworm
+    configs:
+      - source: phpini
+        target: /usr/local/etc/php/conf.d/zz-custom.ini
+        mode: "0444"
+configs:
+  phpini:
+    file: ./php.ini

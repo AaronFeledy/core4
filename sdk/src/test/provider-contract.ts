@@ -1,10 +1,16 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Duration, Effect, Either, Schema, Stream } from "effect";
 
 import {
+  AbsolutePath,
   ComposePreservedPathKey,
   ComposeProjectFieldKey,
   ComposeServiceFieldKey,
   type HostPlatform,
+  PortablePath,
   ProviderCapabilities,
   ProviderId,
 } from "../schema/index.ts";
@@ -16,6 +22,8 @@ import {
   TEST_COPY_SOURCE,
   TEST_SERVICE_NAME,
   TEST_SERVICE_PATH,
+  bytesEqual,
+  collectByteStream,
   contractFailure,
   isNonEmptyString,
   isStream,
@@ -23,6 +31,7 @@ import {
   makeTestServicePlan,
   mapProviderFailure,
   requireContract,
+  utf8,
 } from "./_shared.ts";
 
 export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
@@ -354,6 +363,54 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       "list returns an array of service runtime snapshots",
       listed,
     );
+
+    const declaresConfigs =
+      (provider.capabilities.composeProjectFields?.supported.includes("configs") ?? false) &&
+      (provider.capabilities.composeServiceFields?.supported.includes("configs") ?? false);
+    if (declaresConfigs) {
+      const payload = utf8("memory_limit=512M\n");
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "lando-contract-configs-")));
+      const configPath = join(directory, "php.ini");
+      yield* Effect.promise(() => writeFile(configPath, payload));
+      const configPlan = {
+        ...testAppPlan,
+        root: Schema.decodeUnknownSync(AbsolutePath)(directory),
+        extensions: { compose: { configs: { phpini: { file: "./php.ini" } } } },
+        services: {
+          [TEST_SERVICE_NAME]: {
+            ...makeTestServicePlan(providerId),
+            extensions: {
+              compose: {
+                configs: [{ source: "phpini", target: "/etc/php.ini", mode: "0444" }],
+              },
+            },
+          },
+        },
+      };
+      yield* provider
+        .destroy({ app: TEST_APP_ID }, { volumes: false })
+        .pipe(Effect.mapError(mapProviderFailure("destroy before configs realization")));
+      yield* Effect.scoped(provider.apply(configPlan, { reconcile: true })).pipe(
+        Effect.mapError(mapProviderFailure("apply succeeds for the configs realization fixture")),
+      );
+      const copied = yield* Effect.scoped(
+        collectByteStream(
+          provider.copyFromService(
+            { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+            { sourcePath: Schema.decodeUnknownSync(PortablePath)("/etc/php.ini") },
+          ),
+        ),
+      ).pipe(Effect.mapError(mapProviderFailure("copyFromService reads realized config content")));
+      yield* requireContract(
+        bytesEqual(copied, payload),
+        "apply materializes configs file content at the grant target",
+        { expected: Array.from(payload), actual: Array.from(copied) },
+      );
+      yield* provider
+        .destroy({ app: TEST_APP_ID }, { volumes: false })
+        .pipe(Effect.mapError(mapProviderFailure("destroy after configs realization")));
+      yield* Effect.promise(() => rm(directory, { recursive: true, force: true }));
+    }
 
     const completingAppPlan = {
       ...testAppPlan,

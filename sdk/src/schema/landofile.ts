@@ -375,7 +375,7 @@ const composeConfigOrSecretInput = (description: string) =>
   ).annotations({ description });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
-  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose, capability-checked, and realized as read-only file mounts honoring source, target, and mode.";
 
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
