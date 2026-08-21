@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
+
 - `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
 - `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
 - `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.

@@ -116,14 +116,27 @@ const writeStdin = (stdin: BunFileSink | null | undefined, input: string | Uint8
   stdin.end();
 };
 
-const buildSpawnOptions = (input: ProcessSpawnOptions) =>
-  ({
+/**
+ * Linux-only cgroup pass-through. Non-Linux platforms ignore `cgroup` so
+ * callers can set it unconditionally. Do not throw a tagged "unsupported"
+ * error on macOS / Windows.
+ */
+export const resolveProcessCgroup = (
+  cgroup: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined => (platform === "linux" && cgroup !== undefined && cgroup !== "" ? cgroup : undefined);
+
+const buildSpawnOptions = (input: ProcessSpawnOptions) => {
+  const cgroup = resolveProcessCgroup(input.cgroup);
+  return {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(input.env === undefined ? {} : { env: { ...process.env, ...input.env } }),
+    ...(cgroup === undefined ? {} : { cgroup }),
     stdin: (input.stdin === undefined ? "ignore" : "pipe") as "ignore" | "pipe",
     stdout: "pipe" as const,
     stderr: "pipe" as const,
-  }) as const;
+  };
+};
 
 const runProcess = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
   const startedAt = Date.now();

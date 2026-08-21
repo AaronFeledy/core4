@@ -59,6 +59,29 @@ const parseDecoderValue = (session: LandofileFileSession, decoder: string, parse
   }
 };
 
+const parseJsonl = (source: string, sourcePath: string, decoder: string): unknown[] => {
+  const values: unknown[] = [];
+  const lines = source.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") continue;
+    try {
+      values.push(JSON.parse(line) as unknown);
+    } catch (cause) {
+      throw new LandofileExpressionEvalError({
+        message:
+          cause instanceof Error && cause.message.length > 0
+            ? `Landofile ${decoder} decoder failed on line ${index + 1}: ${cause.message}`
+            : `Landofile ${decoder} decoder failed on line ${index + 1}.`,
+        filePath: sourcePath,
+        remediation: `Fix the ${decoder} source file or use a different Landofile decoder.`,
+        cause,
+      });
+    }
+  }
+  return values;
+};
+
 const decode = (session: LandofileFileSession, ref: FileRef, decoder: string): unknown => {
   switch (decoder) {
     case "text":
@@ -69,6 +92,17 @@ const decode = (session: LandofileFileSession, ref: FileRef, decoder: string): u
       const value: unknown = parseDecoderValue(session, decoder, () => JSON.parse(session.text(ref)));
       return value;
     }
+    case "json5":
+    case "fromJson5":
+      return parseDecoderValue(session, decoder, () => Bun.JSON5.parse(session.text(ref)));
+    case "jsonc":
+    case "fromJsonc":
+      return parseDecoderValue(session, decoder, () => Bun.JSONC.parse(session.text(ref)));
+    case "jsonl":
+    case "fromJsonl":
+      return parseDecoderValue(session, decoder, () =>
+        parseJsonl(session.text(ref), session.source.sourcePath, decoder),
+      );
     case "yaml":
     case "fromYaml":
       return parseDecoderValue(session, decoder, () => Bun.YAML.parse(session.text(ref)));
@@ -78,12 +112,16 @@ const decode = (session: LandofileFileSession, ref: FileRef, decoder: string): u
       throw new LandofileExpressionEvalError({
         message: `Unsupported Landofile load decoder ${decoder}.`,
         filePath: session.source.sourcePath,
-        remediation: "Use text, bytes, json, yaml, fromYaml, or fromToml.",
+        remediation:
+          "Use text, bytes, json, json5, fromJson5, jsonc, fromJsonc, jsonl, fromJsonl, yaml, fromYaml, or fromToml.",
       });
   }
 };
 
 const inferredDecoder = (path: string): string => {
+  if (path.endsWith(".json5")) return "json5";
+  if (path.endsWith(".jsonc")) return "jsonc";
+  if (path.endsWith(".jsonl") || path.endsWith(".ndjson")) return "jsonl";
   if (path.endsWith(".json")) return "json";
   if (path.endsWith(".yml") || path.endsWith(".yaml")) return "yaml";
   if (path.endsWith(".toml")) return "fromToml";
@@ -110,6 +148,12 @@ export const makeLandofileLoadHelperOverrides = (
   yaml: (args) => decode(session, requireRef(args, "yaml", session.source.sourcePath), "yaml"),
   fromYaml: (args) => decode(session, requireRef(args, "fromYaml", session.source.sourcePath), "fromYaml"),
   fromToml: (args) => decode(session, requireRef(args, "fromToml", session.source.sourcePath), "fromToml"),
+  json5: (args) => decode(session, requireRef(args, "json5", session.source.sourcePath), "json5"),
+  fromJson5: (args) => decode(session, requireRef(args, "fromJson5", session.source.sourcePath), "fromJson5"),
+  jsonc: (args) => decode(session, requireRef(args, "jsonc", session.source.sourcePath), "jsonc"),
+  fromJsonc: (args) => decode(session, requireRef(args, "fromJsonc", session.source.sourcePath), "fromJsonc"),
+  jsonl: (args) => decode(session, requireRef(args, "jsonl", session.source.sourcePath), "jsonl"),
+  fromJsonl: (args) => decode(session, requireRef(args, "fromJsonl", session.source.sourcePath), "fromJsonl"),
 });
 
 export const decodeImplicitFileRef = (session: LandofileFileSession, value: unknown): unknown =>

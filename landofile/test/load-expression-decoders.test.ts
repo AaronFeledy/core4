@@ -250,3 +250,208 @@ describe("TOML Temporal date/time literals", () => {
     });
   });
 });
+
+describe("JSON5 / JSONC / JSONL decoders", () => {
+  test.each(["json5", "fromJson5"] as const)(
+    "%s parses JSON5 comments and unquoted keys",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "sample.json5");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        const parsed = helper([session.load("./sample.json5")], {});
+
+        expect(parsed).toEqual({ unquoted: "yes", trailing: 1 });
+      });
+    },
+  );
+
+  test.each(["json5", "fromJson5"] as const)(
+    "%s wraps syntax errors as LandofileExpressionEvalError",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "bad.json5");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        let caught: unknown;
+        try {
+          helper([session.load("./bad.json5")], {});
+        } catch (cause) {
+          caught = cause;
+        }
+
+        expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+        if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+        expect(caught.message).toContain(decoder);
+        expect(caught.cause).toBeInstanceOf(SyntaxError);
+      });
+    },
+  );
+
+  test.each(["jsonc", "fromJsonc"] as const)(
+    "%s parses JSONC comments and trailing commas",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "sample.jsonc");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        expect(helper([session.load("./sample.jsonc")], {})).toEqual({ quoted: "yes", trailing: 1 });
+      });
+    },
+  );
+
+  test.each(["jsonc", "fromJsonc"] as const)(
+    "%s rejects JSON5 unquoted keys so sample.json5 is not faked as JSON5",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "sample.json5");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        let caught: unknown;
+        try {
+          helper([session.load("./sample.json5")], {});
+        } catch (cause) {
+          caught = cause;
+        }
+
+        expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+        if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+        expect(caught.message).toContain(decoder);
+      });
+    },
+  );
+
+  test.each(["jsonc", "fromJsonc"] as const)(
+    "%s wraps syntax errors as LandofileExpressionEvalError",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "bad.jsonc");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        let caught: unknown;
+        try {
+          helper([session.load("./bad.jsonc")], {});
+        } catch (cause) {
+          caught = cause;
+        }
+
+        expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+        if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+        expect(caught.message).toContain(decoder);
+      });
+    },
+  );
+
+  test.each(["jsonl", "fromJsonl"] as const)("%s parses lines and skips blanks", async (decoder) => {
+    await withApp(async (appRoot) => {
+      await stageFixture(appRoot, "sample.jsonl");
+      const session = sessionFor(appRoot);
+      const helpers = makeLandofileLoadHelperOverrides(session);
+      const helper = helpers[decoder];
+      if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+      expect(helper([session.load("./sample.jsonl")], {})).toEqual([{ a: 1 }, { b: 2 }, { c: 3 }]);
+    });
+  });
+
+  test.each(["jsonl", "fromJsonl"] as const)(
+    "%s tags a bad line with LandofileExpressionEvalError and the line number",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "bad.jsonl");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        let caught: unknown;
+        try {
+          helper([session.load("./bad.jsonl")], {});
+        } catch (cause) {
+          caught = cause;
+        }
+
+        expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+        if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+        expect(caught.message).toContain(decoder);
+        expect(caught.message).toContain("line 2");
+      });
+    },
+  );
+
+  test("import() infers json5, jsonc, jsonl, and ndjson decoders", async () => {
+    await withApp(async (appRoot) => {
+      await stageFixture(appRoot, "sample.json5");
+      await stageFixture(appRoot, "sample.jsonc");
+      await stageFixture(appRoot, "sample.jsonl");
+      await stageFixture(appRoot, "sample.ndjson");
+
+      const imported = async (name: string) =>
+        Effect.runPromise(
+          resolveValue(appRoot, {
+            services: { web: { security: { ca: `{{ import('./${name}') }}` } } },
+          }),
+        );
+
+      const json5 = await imported("sample.json5");
+      const jsonc = await imported("sample.jsonc");
+      const jsonl = await imported("sample.jsonl");
+      const ndjson = await imported("sample.ndjson");
+
+      expect(json5.value).toMatchObject({
+        services: {
+          web: { security: { ca: { _tag: "ImportRef", value: { unquoted: "yes", trailing: 1 } } } },
+        },
+      });
+      expect(jsonc.value).toMatchObject({
+        services: { web: { security: { ca: { _tag: "ImportRef", value: { quoted: "yes", trailing: 1 } } } } },
+      });
+      expect(jsonl.value).toMatchObject({
+        services: { web: { security: { ca: { _tag: "ImportRef", value: [{ a: 1 }, { b: 2 }, { c: 3 }] } } } },
+      });
+      expect(ndjson.value).toMatchObject({
+        services: {
+          web: { security: { ca: { _tag: "ImportRef", value: [{ name: "one" }, { name: "two" }] } } },
+        },
+      });
+    });
+  });
+
+  test("unknown decoder remediation lists the additive JSON helpers", async () => {
+    await withApp(async (appRoot) => {
+      await stageFixture(appRoot, "sample.json5");
+      const session = sessionFor(appRoot);
+      const helpers = makeLandofileLoadHelperOverrides(session);
+      const load = helpers.load;
+      if (load === undefined) throw new Error("expected load helper");
+
+      let caught: unknown;
+      try {
+        load(["./sample.json5", "not-a-decoder"], {});
+      } catch (cause) {
+        caught = cause;
+      }
+
+      expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+      if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+      expect(caught.remediation).toContain("json5");
+      expect(caught.remediation).toContain("jsonc");
+      expect(caught.remediation).toContain("jsonl");
+    });
+  });
+});

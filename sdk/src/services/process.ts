@@ -21,6 +21,11 @@ export interface ProcessSpawnOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
   readonly timeoutMs?: number;
+  /**
+   * Linux cgroup path passed through to `Bun.spawn`. Ignored on non-Linux so
+   * callers can set `cgroup?: string` unconditionally.
+   */
+  readonly cgroup?: string;
 }
 
 export interface ProcessResult {
