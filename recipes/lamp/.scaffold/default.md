@@ -8,7 +8,7 @@ lando start
 lando info
 ```
 
-`lando start` prints the app URL. `lando info` repeats it. TODO: capture
+`lando start` prints the app URL. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and volumes.
 
@@ -22,6 +22,12 @@ lando init --recipe lamp --name=my-lamp-app --yes
 
 ```bash
 lando start
+```
+
+## 3. info
+
+```bash
+lando info
 ```
 
 ## Cleanup

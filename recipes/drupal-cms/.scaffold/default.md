@@ -8,7 +8,7 @@ lando start
 lando info
 ```
 
-`lando start` prints the app URL(s). `lando info` repeats them. TODO: capture
+`lando start` prints the app URL(s). `lando info` repeats them.
 
 After start, scaffold the codebase, then install:
 
@@ -29,6 +29,12 @@ lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
 
 ```bash
 lando start
+```
+
+## 3. info
+
+```bash
+lando info
 ```
 
 ## Cleanup
