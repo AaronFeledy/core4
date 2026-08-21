@@ -56,6 +56,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Audit dependencies
+        run: bun run audit
+
       - name: Boundary gates
         run: bun run check:boundaries
 
@@ -90,6 +93,29 @@ jobs:
             exit 1
           fi
           echo "static-checks platform matrix passed"
+
+  bun-install-isolated-experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Isolated global-store install experiment
+        run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::bun-install-isolated-experiment completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   unit-tests-linux-x64-shard:
     strategy:

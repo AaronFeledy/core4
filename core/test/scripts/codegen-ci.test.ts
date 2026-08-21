@@ -278,7 +278,7 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(26);
+      expect(versionFileMatches).toBe(27);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -451,6 +451,15 @@ describe("ci workflow codegen", () => {
       expect(staticChecksPlatform).not.toContain("- name: Typecheck");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
+      expect(staticChecksPlatform).toContain("- name: Audit dependencies");
+      expect(staticChecksPlatform).toContain("run: bun run audit");
+      expect(staticChecksPlatform).not.toContain("bun audit fix");
+      expect(workflow).toContain("bun-install-isolated-experiment:");
+      expect(workflow).toContain("continue-on-error: true");
+      expect(workflow).toContain(
+        "run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile",
+      );
+      expect(workflow).not.toContain('linker = "isolated"');
       expect(workflow.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
       expect(workflow.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
       expect(workflow).toContain("- name: Telemetry inventory lint");

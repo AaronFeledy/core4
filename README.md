@@ -242,9 +242,9 @@ This repository is unstable by design. A few practical caveats:
 - **Installer trust roots are placeholders.** The embedded GPG public key
   and cosign identity/issuer used by the installers are verification-test
   placeholders, not production release keys.
-- **`tsconfig.skipLibCheck: true`.** `@types/bun` and `@types/node` currently
-  conflict on `stream/web` and a few other globals. Revisit once Bun's type
-  packaging stabilizes.
+- **`tsconfig.skipLibCheck: true`.** `@types/bun@1.4` still clashes with
+  `@types/node` on `stream/web` and other globals, so `skipLibCheck` stays on
+  after the Bun 1.4 pin.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
   version `0.0.0` in the working tree; the publish pipeline
   (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
