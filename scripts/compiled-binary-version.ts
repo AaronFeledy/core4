@@ -49,10 +49,13 @@ const describeSuffix = (
   }
   const match = /-(\d+)-g([0-9a-f]+)$/i.exec(rest);
   if (match?.index === undefined) return { rest, dirty };
+  const commits = match[1];
+  const sha = match[2];
+  if (commits === undefined || sha === undefined) return { rest, dirty };
   return {
     rest: rest.slice(0, match.index),
-    commits: match[1],
-    sha: match[2],
+    commits,
+    sha,
     dirty,
   };
 };
