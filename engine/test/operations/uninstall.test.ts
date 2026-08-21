@@ -11,6 +11,7 @@ import {
   LANDO_SHELLENV_END,
   buildUninstallPlan,
   chmodTreeUserWritable,
+  defaultPosixShellProfilePath,
   defaultRemoveRuntimeDir,
   managedPodmanUnshareRmInvocation,
   stripLandoShellenvBlock,
@@ -427,6 +428,128 @@ describe("uninstall shellenv profile strip", () => {
         outcome: "manual",
       });
     } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("defaultPosixShellProfilePath prefers LANDO_SHELL_PROFILE when set", () => {
+    expect(
+      defaultPosixShellProfilePath({
+        LANDO_SHELL_PROFILE: "/tmp/custom.rc",
+        HOME: "/home/me",
+        SHELL: "/bin/bash",
+      }),
+    ).toBe("/tmp/custom.rc");
+  });
+
+  test("defaultPosixShellProfilePath falls back to the shell-specific default profile", () => {
+    expect(defaultPosixShellProfilePath({ HOME: "/home/me", SHELL: "/bin/zsh" })).toBe("/home/me/.zshrc");
+    expect(defaultPosixShellProfilePath({ HOME: "/home/me", SHELL: "/bin/bash" })).toBe("/home/me/.bashrc");
+    expect(defaultPosixShellProfilePath({ HOME: "/home/me" })).toBe("/home/me/.profile");
+  });
+
+  test("purge strips LANDO_SHELL_PROFILE when that env is set", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-env-");
+    const sandboxHome = join(roots.root, "home");
+    const customProfile = join(roots.root, "custom.rc");
+    mkdirSync(sandboxHome, { recursive: true });
+    const original = [
+      "export USER_LINE=keep-me",
+      LANDO_SHELLENV_BEGIN,
+      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      LANDO_SHELLENV_END,
+      "export AFTER=still-here",
+      "",
+    ].join("\n");
+    writeFileSync(customProfile, original);
+    writeFileSync(join(sandboxHome, ".bashrc"), original);
+
+    const previousProfile = process.env.LANDO_SHELL_PROFILE;
+    const previousHome = process.env.HOME;
+    const previousShell = process.env.SHELL;
+    try {
+      process.env.LANDO_SHELL_PROFILE = customProfile;
+      process.env.HOME = sandboxHome;
+      process.env.SHELL = "/bin/bash";
+
+      const result = await Effect.runPromise(
+        uninstall({
+          userDataRoot: roots.userDataRoot,
+          userCacheRoot: roots.userCacheRoot,
+          execPath: roots.execPath,
+          cgroupsDelegatePath: roots.cgroupsDelegatePath,
+          yes: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
+        }),
+      );
+
+      expect(result.failed).toBe(false);
+      const rewritten = readFileSync(customProfile, "utf8");
+      expect(rewritten).toContain("export USER_LINE=keep-me");
+      expect(rewritten).toContain("export AFTER=still-here");
+      expect(rewritten).not.toContain(LANDO_SHELLENV_BEGIN);
+      expect(readFileSync(join(sandboxHome, ".bashrc"), "utf8")).toBe(original);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        status: "owned",
+        outcome: "completed",
+        target: customProfile,
+      });
+    } finally {
+      process.env.LANDO_SHELL_PROFILE = previousProfile;
+      process.env.HOME = previousHome;
+      process.env.SHELL = previousShell;
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge still strips the default POSIX profile when LANDO_SHELL_PROFILE is unset", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-default-");
+    const sandboxHome = join(roots.root, "home");
+    const defaultProfile = join(sandboxHome, ".bashrc");
+    mkdirSync(sandboxHome, { recursive: true });
+    writeFileSync(
+      defaultProfile,
+      [
+        "export USER_LINE=keep-me",
+        LANDO_SHELLENV_BEGIN,
+        "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+        LANDO_SHELLENV_END,
+        "",
+      ].join("\n"),
+    );
+
+    const previousProfile = process.env.LANDO_SHELL_PROFILE;
+    const previousHome = process.env.HOME;
+    const previousShell = process.env.SHELL;
+    try {
+      process.env.LANDO_SHELL_PROFILE = undefined;
+      process.env.HOME = sandboxHome;
+      process.env.SHELL = "/bin/bash";
+
+      const result = await Effect.runPromise(
+        uninstall({
+          userDataRoot: roots.userDataRoot,
+          userCacheRoot: roots.userCacheRoot,
+          execPath: roots.execPath,
+          cgroupsDelegatePath: roots.cgroupsDelegatePath,
+          yes: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
+        }),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(readFileSync(defaultProfile, "utf8")).not.toContain(LANDO_SHELLENV_BEGIN);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        status: "owned",
+        outcome: "completed",
+        target: defaultProfile,
+      });
+    } finally {
+      process.env.LANDO_SHELL_PROFILE = previousProfile;
+      process.env.HOME = previousHome;
+      process.env.SHELL = previousShell;
       rmSync(roots.root, { recursive: true, force: true });
     }
   });

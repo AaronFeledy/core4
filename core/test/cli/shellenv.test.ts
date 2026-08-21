@@ -2,7 +2,12 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { renderPosixShellenv, renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
+import {
+  defaultPosixShellProfilePath,
+  renderPosixShellenv,
+  renderPowerShellShellenv,
+  shellProfileInstallCommand,
+} from "../../src/cli/commands/shellenv.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");
@@ -79,5 +84,29 @@ describe("shellenv snippet rendering", () => {
       "$Env:LANDO_USER_DATA_ROOT = 'C:/Users/Lando User''s Data'\n" +
         '$Env:PATH = "$($Env:LANDO_USER_DATA_ROOT)/bin$([System.IO.Path]::PathSeparator)$Env:PATH"',
     );
+  });
+});
+
+describe("shell profile install path", () => {
+  test("writes LANDO_SHELL_PROFILE when that env is set", () => {
+    expect(
+      defaultPosixShellProfilePath({
+        LANDO_SHELL_PROFILE: "/tmp/custom-lando.rc",
+        HOME: "/home/me",
+        SHELL: "/bin/bash",
+      }),
+    ).toBe("/tmp/custom-lando.rc");
+
+    const previous = process.env.LANDO_SHELL_PROFILE;
+    try {
+      process.env.LANDO_SHELL_PROFILE = "/tmp/custom-lando.rc";
+      expect(shellProfileInstallCommand("/tmp/lando-data").join("\n")).toContain("/tmp/custom-lando.rc");
+    } finally {
+      process.env.LANDO_SHELL_PROFILE = previous;
+    }
+  });
+
+  test("falls back to the default POSIX profile when LANDO_SHELL_PROFILE is unset", () => {
+    expect(defaultPosixShellProfilePath({ HOME: "/home/me", SHELL: "/bin/bash" })).toBe("/home/me/.bashrc");
   });
 });

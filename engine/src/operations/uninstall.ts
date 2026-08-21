@@ -180,12 +180,15 @@ export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.
 const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
   content.trim() === CGROUPS_DELEGATE_CONF_CONTENT.trim();
 
-// Lockstep with core/src/cli/commands/shellenv.ts landoShellenvBlock delimiters.
+// Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
+// LANDO_SHELL_PROFILE override setup uses when writing the block.
 // Engine must not import @lando/core.
 export const LANDO_SHELLENV_BEGIN = "# >>> LANDO shellenv >>>";
 export const LANDO_SHELLENV_END = "# <<< LANDO shellenv <<<";
 
 export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
+  const override = env.LANDO_SHELL_PROFILE;
+  if (override !== undefined && override !== "") return override;
   const home = env.HOME ?? env.USERPROFILE ?? homedir();
   const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
   if (shell === "zsh") return join(home, ".zshrc");

@@ -1165,4 +1165,54 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("purge honors LANDO_SHELL_PROFILE when stripping the shellenv block", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const customProfilePath = join(root, "custom-shell-profile");
+    const previousProfile = process.env.LANDO_SHELL_PROFILE;
+    try {
+      writeFileSync(
+        customProfilePath,
+        [
+          "export USER_LINE=keep-me",
+          "# >>> LANDO shellenv >>>",
+          "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+          'export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"',
+          "# <<< LANDO shellenv <<<",
+          "export AFTER=still-here",
+          "",
+        ].join("\n"),
+      );
+      process.env.LANDO_SHELL_PROFILE = customProfilePath;
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: join(root, "conf"),
+          _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _listDiscoveredApps: async () => [],
+          _exists: (path: string) => (path === root || path.startsWith(`${root}/`)) && existsSync(path),
+        }),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        target: customProfilePath,
+        status: "owned",
+        outcome: "completed",
+      });
+      const rewritten = readFileSync(customProfilePath, "utf8");
+      expect(rewritten).toContain("export USER_LINE=keep-me");
+      expect(rewritten).toContain("export AFTER=still-here");
+      expect(rewritten).not.toContain("# >>> LANDO shellenv >>>");
+      expect(rewritten).not.toContain("# <<< LANDO shellenv <<<");
+      expect(rewritten).not.toContain("LANDO_USER_DATA_ROOT");
+    } finally {
+      process.env.LANDO_SHELL_PROFILE = previousProfile;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
