@@ -56,13 +56,9 @@ export const resolvePhpXdebug = (value: unknown): PhpXdebug => {
   throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
 };
 
-export const phpXdebugConfigEnv = (mode: string, customImage: boolean): Readonly<Record<string, string>> => {
-  const config = {
-    XDEBUG_CONFIG: `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
-  };
-  if (!customImage) return config;
-  return { ...config, XDEBUG_MODE: mode };
-};
+export const phpXdebugConfigEnv = (): Readonly<Record<string, string>> => ({
+  XDEBUG_CONFIG: `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
+});
 
 export const phpXdebugBuildStep = (
   phpVersion: string,

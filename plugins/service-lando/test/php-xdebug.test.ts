@@ -133,7 +133,7 @@ describe("PHP xdebug option", () => {
     );
   });
 
-  test("Given an explicit mode string, when planning, then XDEBUG_MODE and buildKey use that mode", async () => {
+  test("Given an explicit mode string, when planning, then xdebug.mode and buildKey use that mode", async () => {
     const plan = await composePhpPlan({ xdebug: "debug,develop" });
     const xdebugStep = buildStepsFor(plan).find((step) => step.id === "service-lando.php:xdebug");
 
@@ -204,12 +204,15 @@ describe("PHP xdebug option", () => {
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);
   });
 
-  test("Given a custom image and xdebug true, when planning, then it skips the install step but still enables env and tooling", async () => {
+  test("Given a custom image and xdebug true, when planning, then it skips the install step without XDEBUG_MODE", async () => {
     const plan = await composePhpPlan({ image: "registry.example.com/php:8.2-custom", xdebug: true });
     const resolution = await resolvePhp({ image: "registry.example.com/php:8.2-custom", xdebug: true });
 
     expect(buildStepsFor(plan).map(({ id }) => id)).toEqual(["lando.boot:scaffold"]);
-    expect(plan.environment.XDEBUG_MODE).toBe("debug");
+    expect(plan.environment.XDEBUG_MODE).toBeUndefined();
+    expect(plan.environment.XDEBUG_CONFIG).toBe(
+      `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
+    );
     expect(resolution.tooling?.xdebug).toBeDefined();
   });
 });

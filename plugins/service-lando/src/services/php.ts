@@ -123,9 +123,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
   if (xdebug !== false) {
-    for (const [name, value] of Object.entries(
-      phpXdebugConfigEnv(xdebug.mode, service.image !== undefined),
-    )) {
+    for (const [name, value] of Object.entries(phpXdebugConfigEnv())) {
       ctx.addEnv(name, value);
     }
   }
