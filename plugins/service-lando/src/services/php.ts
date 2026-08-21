@@ -19,6 +19,7 @@ import {
   phpListenPort,
   resolvePhpVia,
 } from "./php-via.ts";
+import { phpXdebugBuildStep, phpXdebugConfigEnv, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
 export {
   PHP_APT_PACKAGE_PINS,
@@ -116,8 +117,17 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const port = phpListenPort(via, service.port);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? phpImageFor(version, via) });
+  const xdebug = resolvePhpXdebug(service.xdebug);
   if (service.image === undefined) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
+    if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
+  }
+  if (xdebug !== false) {
+    for (const [name, value] of Object.entries(
+      phpXdebugConfigEnv(xdebug.mode, service.image !== undefined),
+    )) {
+      ctx.addEnv(name, value);
+    }
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   ctx.setAppMount({
@@ -191,6 +201,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         resolvePhpComposer(input.service.composer);
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);
+        const xdebug = resolvePhpXdebug(input.service.xdebug);
         const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
         const allowOverride = input.service.allowOverride ?? false;
 
@@ -205,6 +216,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
               config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
             },
           ],
+          ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),
         };
       },
       catch: (cause) =>
