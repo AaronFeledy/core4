@@ -554,6 +554,10 @@ const ServiceConfigWithExtensions = Schema.Struct(
     via: Schema.optional(Schema.String).annotations({
       description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
     }),
+    xdebug: Schema.optional(Schema.Union(Schema.Boolean, Schema.String)).annotations({
+      description:
+        'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
+    }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),
     envFile: Schema.optional(ComposeEnvFileInput).annotations({
