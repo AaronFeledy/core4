@@ -6,12 +6,12 @@ timeout: 60000
 tags: [beta, docs, landofile, includes, lockfile]
 ---
 
-# Include fragments and lock remotes
+# Include Landofile fragments
 
-`includes:` accepts a `kind:` discriminator. `landofile` (the default,
+Put fragments under `includes:`. `kind: landofile` (the default,
 whole-file fragments) and `compose` fragments resolve per file before the
 layer merge, while `tooling` fragments resolve after it; see the
-[Include shared tooling](../tooling/tooling-includes.mdx) for the tooling namespace,
+[Include tooling from another file](../tooling/tooling-includes.mdx) for the tooling namespace,
 flatten, aliases, excludes, and vars contract. Included Landofile fragments
 use native YAML anchors, aliases, and merge keys (`&node-service`,
 `*node-service`, `<<:`); explicit mapping keys override merged defaults

@@ -8,8 +8,13 @@ tags: [beta, docs, cli, logs]
 
 # Read service logs
 
-Declare extra in-container log files under `services.<name>.logs`, the
-service that owns them:
+```sh
+lando logs --service appserver
+```
+
+That prints a snapshot for the service, merging console output with any declared file sources. File-source lines carry their source id (`appserver stderr [myapp-error]: line`). Console lines omit a source label (`appserver stdout: line`).
+
+Declare extra in-container log files on the service that owns them:
 
 ```yaml
 services:
@@ -20,87 +25,40 @@ services:
         label: myapp error log
 ```
 
-A user-declared source needs a `path`; `id`, `label`, `stream`, and
-timestamp behavior can be tuned when needed. Landofile-declared sources
-resolve to provider-owned follow sources. User config does not choose the
-collection architecture. The implicit container stdout/stderr source is
-always available and is selected with `--source console` when you want only
-engine logs.
+A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and timestamp behavior. The implicit container stdout/stderr source is always available. Use `--source console` when you want only engine logs.
 
-Service types can declare redirect sources for Lando-built images so daemon
-log files flow through stdout/stderr with no runtime follower. BYO images
-and non-redirectable logs are followed by the active runtime provider inside
-`RuntimeProvider.logs`. Core doesn't shell out to `tail -F`; the provider
-owns file access, rotation handling, framing, and follower cleanup.
+Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
 
-## The `lando logs` CLI
+## Filter and follow
 
-Show a finite snapshot for the selected service, merging console and
-available declared sources with source labels:
-
-```sh
-lando logs --service appserver
-```
-
-File-source lines are labeled with their source id so interleaved output
-stays attributable (`appserver stderr [myapp-error]: line`); console lines
-omit a source label since absence of source means the implicit console
-source (`appserver stdout: line`).
-
-`--source` restricts output to one declared source id, or to `console` for
-container stdout/stderr:
+Restrict output to one declared source id, or to `console`:
 
 ```sh
 lando logs --service appserver --source myapp-error
 ```
 
-`--follow` backfills the source tail and then streams appended lines until
-interrupted:
+`--follow` backfills the source tail, then streams new lines until you interrupt:
 
 ```sh
 lando logs --service appserver --source myapp-error --follow
 ```
 
-`--tail` applies per source, not as a single global total across merged
-sources:
+`--tail` applies per source, not as one total across merged sources:
 
 ```sh
 lando logs --service appserver --tail 50
 ```
 
-`--since` accepts durations such as `30s`, `15m`, `2h`, `7d`, or an RFC3339
-timestamp:
+`--since` accepts durations such as `30s`, `15m`, `2h`, `7d`, or an RFC3339 timestamp:
 
 ```sh
 lando logs --service appserver --since 15m
 ```
 
-## Capability degradation
+## When a source is missing
 
-A provider that cannot stream service logs fails before planning with a
-tagged capability error and remediation. A provider must advertise
-`serviceLogSources` before follow sources can be read from container files;
-redirect sources remain available without it, since they flow through the
-existing console stream.
+A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Redirect sources still work without it because they flow through the console stream.
 
-A required follow source fails up front when the provider cannot follow
-service files. A non-required unavailable follow source is surfaced as
-unavailable and skipped instead of being silently dropped. Requesting an
-undeclared `--source` fails with the known source ids, including `console`.
+A required follow source fails up front when the provider cannot follow service files. A non-required unavailable follow source is marked unavailable and skipped. An undeclared `--source` fails and lists the known source ids, including `console`.
 
-## Following, rotation, and redaction
-
-Without `--follow`, a file source emits a bounded snapshot and reaches EOF
-instead of waiting for a missing future file. Provider followers survive
-common log rotation patterns (rename+create and copytruncate) while
-preserving per-source order. Redaction and rendering happen after provider
-framing as complete UTF-8 lines, so multibyte characters and partial final
-lines are handled consistently. Interrupting `lando logs` releases every
-provider follower through the logs stream scope.
-
-Providers and library callers see the raw `LogChunk` stream; the on-disk
-service file stays under the app's control. CLI rendering, stream frames,
-events, and transcripts pass lines through `RedactionService` exactly once.
-Machine-readable output preserves the source id on `StreamFrame.source` so
-agents can distinguish console, redirect, and followed file lines.
-
+Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
