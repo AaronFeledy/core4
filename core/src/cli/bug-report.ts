@@ -187,7 +187,12 @@ const REDACTED_REMEDIATION_FALLBACK = (record: Record<string, unknown> | undefin
 
 const extractCauseRecord = (
   record: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined => (record === undefined ? undefined : asTaggedRecord(record.cause));
+): Record<string, unknown> | undefined => {
+  // Only tagged Lando errors are safe to surface: raw Error.cause values can
+  // carry OS paths with usernames (e.g. C:\Users\Alice\lando.exe).
+  const cause = record === undefined ? undefined : asTaggedRecord(record.cause);
+  return cause !== undefined && asString(cause._tag) !== undefined ? cause : undefined;
+};
 
 const mergeExtraFields = (
   primary: ReadonlyArray<readonly [string, string]>,

@@ -199,6 +199,23 @@ describe("buildBugReport: envelope extraction", () => {
     expect(text).not.toContain("global:start");
   });
 
+  test("does not leak untagged raw cause messages that contain user paths", () => {
+    const env = buildBugReport({
+      error: {
+        _tag: "UpdatePermissionError",
+        message: "Failed to schedule Windows Lando replacement.",
+        remediation: "Close every running Lando process, then retry.",
+        cause: new Error(String.raw`CreateProcess failed for C:\Users\Alice\lando.exe`),
+      },
+      context: ctx({ commandId: "meta:update" }),
+    });
+    expect(env.code).toBe("UpdatePermissionError");
+    expect(env.body).toContain("Failed to schedule Windows Lando replacement.");
+    expect(env.body).not.toContain("Alice");
+    expect(env.body).not.toContain("CreateProcess");
+    expect(env.extra.map(([key]) => key)).not.toContain("cause");
+  });
+
   test("logsDir is <cacheRoot>/logs and cacheDir is <cacheRoot>", () => {
     const env = buildBugReport({ error: new Error("x"), context: ctx() });
     expect(env.cacheDir).toBe(CACHE_ROOT);
