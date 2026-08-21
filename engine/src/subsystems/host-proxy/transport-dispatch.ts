@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -54,6 +54,7 @@ const isDeadInFlight = (entry: HostProxyInFlightRequest): boolean => {
 const reapDeadDispatchSlots = (options: HandlerOptions): void => {
   for (const entry of [...options.inFlight]) {
     if (!isDeadInFlight(entry)) continue;
+    void Effect.runPromise(Fiber.interrupt(entry.fiber));
     entry.releaseSlot();
     options.inFlight.delete(entry);
   }
