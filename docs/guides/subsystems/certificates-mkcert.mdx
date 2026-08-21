@@ -6,17 +6,18 @@ timeout: 60000
 tags: [beta, docs, subsystems, certs, mkcert, ca]
 ---
 
-# Certificates and mkcert
+# Trust local HTTPS certificates
 
-Lando issues TLS certificates for your services using the platform's active certificate
-authority. On macOS, Linux, and Windows the bundled default is `@lando/ca-mkcert`.
+Run `lando setup` so Lando installs mkcert and trusts the local CA on this machine. After that, browsers trust the HTTPS URLs Traefik serves.
 
-## Author service leaf certificates
+```sh
+lando setup
+lando doctor
+```
 
-A service's own leaf TLS certificate is configured with `certs:`. It is a separate surface from
-`security.ca:`, which adds trusted certificate authorities; a service may declare both.
+You do not start Traefik by hand. See [Use the Traefik proxy](./proxy-traefik.mdx).
 
-Issue a certificate from the active certificate authority:
+## Issue a service certificate
 
 ```yaml
 services:
@@ -24,7 +25,7 @@ services:
     certs: true
 ```
 
-Disable issuance for a service:
+Disable issuance:
 
 ```yaml
 services:
@@ -32,15 +33,7 @@ services:
     certs: false
 ```
 
-Supply a custom certificate path:
-
-```yaml
-services:
-  appserver:
-    certs: ./certs/appserver.crt
-```
-
-Supply an explicit certificate and key pair:
+Supply your own cert and key:
 
 ```yaml
 services:
@@ -50,97 +43,33 @@ services:
       key: ./certs/appserver.key
 ```
 
-The object form requires both `cert` and `key`. Any other shape — a number, a list of paths, an
-incomplete object, or an unknown field beside `cert` and `key` — fails validation with a
-`services.<name>.certs` correction before planning.
+The object form requires both `cert` and `key`. Custom paths must stay inside the app root and be readable.
 
-## Service certificate environment and SAN coverage
+With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`.
 
-Planning a `type: lando` service composes the `lando.certs` feature, which mounts the resolved
-certificate material read-only inside the service and publishes its in-container paths. The
-[`lando.boot` scaffold](../services/lando-boot-scaffold.mdx) emits the provider-neutral,
-artifact-phase intent for the shared `/etc/lando/certs` directory; `lando.certs` does not own that
-directory and only mounts leaf files beneath it:
+Inside the service the cert lands at:
 
 ```text
 LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt
 LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key
 ```
 
-`LANDO_SERVICE_KEY` is set only when key material is available, so a custom certificate supplied as
-a bare path publishes `LANDO_SERVICE_CERT` alone. `certs: false` — and any service that does not
-author `certs` — leaves both variables unset and adds no mounts. Services on the `l337` base never
-compose `lando.certs`, so `certs:` on a raw Compose service is inert.
+`certs: false` leaves both unset.
 
-With `certs: true` the planner asks the active certificate authority to issue a leaf for the
-service's internal alias. The certificate's subject alternative names cover, in order:
+## Skip host trust
 
-- the service name (`<service>`)
-- the internal alias (`<service>.<app>.internal`)
-- every entry in the service's `hostnames:`
-- every proxied hostname from the service's `routes:` and from the top-level `proxy:` block
-- `localhost` and `127.0.0.1`
+```sh
+lando setup --skip-install-ca
+```
 
-Custom certificate and key paths are resolved against the app root, must stay inside it, and must be
-readable; an escaping or missing path fails with a `services.<name>.certs` correction before any
-container work starts. Requesting `certs: true` with no certificate authority available fails with
-remediation naming `lando setup`.
+That provisions mkcert without writing to the host trust store. Browsers will warn on HTTPS until you trust the CA yourself.
 
-## Select the active certificate authority
+If `certs: true` runs before setup, the command fails and tells you to run `lando setup`.
 
-The CLI combines bundled, system, user, and app plugin contributions into one selection graph. The
-bundled `@lando/ca-mkcert` contribution declares itself the default on macOS, Linux, and Windows, so
-it is selected when no higher selection tier replaces it. `lando setup` and `certs: true` resolve
-through that same selected authority.
+## Verify
 
-Library runtimes start without bundled or discovered plugins. An embedding host may contribute an
-authority through `plugins.layers` or `plugins.manifests`, or opt into selected discovery sources.
-To replace mkcert with another platform default, enable the replacement and disable
-`@lando/ca-mkcert` in the runtime plugin policy; `disable` is applied after all sources are merged.
+```sh
+lando doctor
+```
 
-If no authority remains, setup reports that an authority plugin must be enabled or installed, and
-`certs: true` fails before container work with the same remediation. If multiple authorities match
-the platform default, selection fails with the candidate plugin names and asks the operator to
-disable all but one instead of choosing silently.
-
-## Install the certificate authority
-
-`lando setup` provisions the pinned mkcert binary through `Downloader`, so corporate `network.ca`
-and `network.proxy` settings apply to that fetch, then installs the local root CA into the host
-trust stores. When the unelevated install fails on a host that needs elevation, the install is
-retried through `PrivilegeService` with the same `CAROOT`, and a still-failing install reports the
-underlying mkcert output plus how to retry or skip.
-
-Run `lando setup --skip-install-ca` to provision mkcert without writing to any host trust store;
-embedding hosts pass `skipTrustInstall: true` to `CertificateAuthority.setup` for the same effect.
-Issuing a certificate before setup fails with remediation naming `lando setup`, and hosts with no
-published mkcert build fail with remediation instead of a partial install.
-
-Installing the root CA into the host trust store is also what makes browsers trust the
-[Traefik reverse proxy's HTTPS certificates](./proxy-traefik.mdx): without that host trust step, a
-browser shows a certificate warning even though the proxy is issuing valid certificates from the
-same authority.
-
-## The CertificateAuthority contract
-
-`CertificateAuthority` is an Effect Service tag published in `@lando/sdk`; plugins implement
-`CertificateAuthorityShape`. The `runCaContract` runner from `@lando/sdk/test` validates a plugin's
-`id`, `setup`, and `issueCert`. `TestCertificateAuthority` (built with `makeTestCertificateAuthority`)
-is the in-memory test double: it records calls and returns fake certificate paths, so contract-level
-tests don't need an installed mkcert binary.
-
-Issuing a wildcard certificate produces a `CertificateResult` shaped as
-`{ certPath, keyPath, caPath }`. Leaf files land in the Lando certs directory, and `caPath` comes
-from `mkcert -CAROOT`. For example, requesting `{ cn: 'myapp.lndo.site', sans: ['*.myapp.lndo.site'] }`
-returns paths to the issued cert, key, and CA cert. The issued chain validates with
-`openssl verify -CAfile <caPath> <certPath>` once `lando setup` has installed the local root; a live
-chain-validation test is gated behind `LANDO_TEST_CA_LIVE=1` and skipped by default.
-
-<Guide>
-  <Scenario id="global-config-sanity" render={false} reason="This guide documents the certs Landofile surface, CA selection, and mkcert install flow; those paths are covered by ServiceConfig schema tests, the CertificateAuthority SDK contract, and plugins/ca-mkcert tests, none of which need a live app. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+The certs check should pass after setup.

@@ -8,27 +8,37 @@ tags: [beta, docs, file-sync, excludes, setup]
 
 # Exclude paths from file sync
 
-Every service excludes `node_modules`, `vendor`, `.git`, and `tmp` from file sync by default. How that is enforced depends on the provider's sync strategy. A **volume-shadow** provider mounts an empty named volume over the excluded path so it's never bind-mounted or synced. A **Mutagen-ignore** provider passes the excludes as session-level ignore rules straight to the `FileSyncEngine`.
+Every service skips `node_modules`, `vendor`, `.git`, and `tmp` by default. Those paths are not synced into the container.
 
 ## Add your own excludes
 
-Add per-service patterns under `services.<name>.appMount.excludes` in your
-Landofile. User patterns are appended after the defaults, with duplicates
-removed. They extend `FILE_SYNC_DEFAULT_EXCLUDES` rather than replace it.
-If a path needs to stay synced despite matching an exclude pattern, add it
-to `services.<name>.appMount.includes`: `includes` prevents a path from
-being shadowed or ignored even if it also matches an exclude.
+Add per-service patterns under `services.<name>.appMount.excludes` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
 
-## Use framework-aware presets
+If a path must stay synced even when it matches an exclude, add it to `services.<name>.appMount.includes`.
 
-Some service types contribute their own presets on top of the defaults:
-Python contributes `__pycache__`, and Ruby contributes `.bundle`. Excludes
-merge in this order, with duplicates removed at each stage:
-
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      excludes:
+        - dist
+        - coverage
+      includes:
+        - vendor/my-local-package
 ```
-FILE_SYNC_DEFAULT_EXCLUDES → service-type presets → user excludes
+
+## Framework presets
+
+Some service types add their own excludes on top of the defaults. Python adds `__pycache__`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes.
+
+Excluded paths get an empty volume overlay so host files for that path are never read.
+
+## Verify
+
+After you change excludes, rebuild so the mounts update:
+
+```sh
+lando rebuild -y
 ```
-
-## Keep excluded paths unsynced
-
-A named volume (`lando-<app>-<service>-<kebab-path>-<hash>`) is created for each excluded path and overlaid on the bind mount target, so host files are never read for that path. The same exclude list is forwarded to `FileSyncEngine.createSession` as `FileSyncSessionSpec.excludes`, so Mutagen never attempts to sync those paths either.

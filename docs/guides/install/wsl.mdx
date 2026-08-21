@@ -1,129 +1,120 @@
 ---
 id: wsl
 provider: test
-platforms: [linux, darwin, wsl]
+platforms: [linux, wsl]
 timeout: 60000
 tags: [beta, docs, installer, wsl]
 ---
 
-# Install on WSL
+# Install Lando on WSL
 
-## Install inside the distro
+Download the Linux x64 `lando` binary from a GitHub `v4.0.0-dev.N` prerelease and run it inside your WSL distro.
 
-Lando detects a WSL host by checking for the `linux` platform plus the
-`WSL_DISTRO_NAME` or `WSL_INTEROP` environment variable that WSL itself
-sets. A WSL distro runs the same Linux build as native Linux, so it installs
-the matching `linux-x64` or `linux-arm64` release artifact — there's no
-separate `wsl` artifact.
+> **Alpha status:** Alpha is Linux x64 only. WSL is a Linux distro, so you use the same binary as native Linux. There is no Windows `lando.exe` in Alpha. The POSIX installer at `https://get.lando.dev/install.sh` is not up yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
 
-Run the POSIX installer from inside your WSL distro's shell, not from a
-Windows prompt. It installs the Linux binary into the distro's own
-filesystem:
+## Download the Linux x64 binary
+
+Work inside the WSL distro shell, not a Windows prompt.
+
+1. Open the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease.
+2. Download `lando` and `SHA256SUMS`.
+3. Verify the checksum:
 
 ```sh
-curl -fsSL https://get.lando.dev/install.sh | bash
+sha256sum -c SHA256SUMS
 ```
 
-It downloads and verifies the binary the same way it does on native Linux —
-binary plus `SHA256SUMS` plus `SHA256SUMS.asc`, checked against the
-installer's GPG trust root — before trusting it.
+The checksum command must report `lando: OK`. If it does not, delete both files and download them again from the same prerelease.
 
-## Keep the app tree on the Linux filesystem
+4. Make it executable and put it on PATH:
 
-**Warning:** never keep your app under `/mnt/c` or another Windows drive
-mount. WSL2 bridges that path over the 9P protocol, so file I/O is
-dramatically slower and file permissions and ownership stop matching what
-the containers expect. Cross-filesystem app roots are the single most
-common cause of slow, broken WSL setups.
+```sh
+chmod +x lando
+```
 
-Keep your app inside the distro's own filesystem, under your Linux home
-directory, so file access stays native and fast:
+Move that file into a directory already on PATH, or add its directory to PATH in your distro profile (`~/.bashrc` or `~/.zshrc`). Then verify:
+
+```sh
+lando --version
+```
+
+Once `lando` is on PATH, `lando shellenv` prints a profile snippet you can append so new shells keep it.
+
+PATH is per distro. Installing in one WSL distro does not put `lando` on PATH in another distro or in Windows.
+
+**If no dev prerelease exists yet:** download the `lando-linux-x64` artifact from a [successful main CI run](https://github.com/AaronFeledy/core4/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess). That needs a GitHub login. Extract the zip and verify the binary yourself.
+
+## Keep the app off /mnt/c
+
+Never keep the app under `/mnt/c` or another Windows drive mount. WSL2 serves that path over 9P, so I/O is slow and permissions do not match what containers expect.
+
+Keep the app on the Linux filesystem:
 
 ```
 /home/<user>/code/my-app
 ```
 
-Avoid this path shape — it's a Windows drive mounted into WSL, not native
-Linux storage:
+Avoid this path:
 
 ```
 /mnt/c/Users/<user>/code/my-app
 ```
 
-Lando's own data root on WSL follows the same Linux XDG column as native
-Linux — no Windows path is involved. Data defaults to
-`$XDG_DATA_HOME/lando` (`~/.local/share/lando`), and config defaults to
-`$XDG_CONFIG_HOME/lando` (`~/.config/lando`).
+Lando data on WSL uses Linux XDG paths. Data defaults to `$XDG_DATA_HOME/lando` (`~/.local/share/lando`). Config defaults to `$XDG_CONFIG_HOME/lando` (`~/.config/lando`).
 
-## Provider selection under WSL
-
-WSL uses the same default provider precedence as any other host:
-`@lando/provider-lando` unless a Landofile, `LANDO_PROVIDER`, config file,
-or `--provider` flag says otherwise. Force a specific provider the same way
-you would on native Linux, for example to opt into `provider-podman`:
+## Run setup
 
 ```sh
-lando setup --provider=podman
+lando setup
 ```
 
-A provider running inside the same WSL distro as your app talks straight to
-that distro's filesystem, so bind mounts stay native speed. The slow path
-only shows up when the app itself lives outside the distro.
+The default provider is `lando` (managed Podman). It does not need system Docker or Podman.
 
-## PATH setup
+Default setup may fail on Alpha. Host prerequisites can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders. If setup names a host prerequisite, fix it and rerun `lando setup`.
 
-Add this to your distro's shell profile (`~/.bashrc` or `~/.zshrc`) so
-`lando` is on `PATH` for every new WSL shell:
+If the managed runtime still cannot install and you have working system Docker:
 
 ```sh
-eval "$(~/.local/share/lando/bin/lando shellenv)"
+lando setup --provider=docker
 ```
 
-PATH setup is per-WSL-distro. Installing `lando` in one distro doesn't put
-it on `PATH` in a different distro or in Windows itself.
+After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. You do not need to repeat the flag.
 
-## CA trust and PowerShell/distro interop
+`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
-`lando setup` runs `mkcert -install` inside the WSL distro, which trusts the
-root CA only in that distro's own Linux trust store, not in Windows. A
-Landofile-proxied HTTPS site opened from a Windows browser still shows a
-certificate warning until the same CA is trusted on the Windows side too.
+`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-Run this inside the WSL distro to print the CAROOT directory that
-`lando setup` used — it's resolved dynamically, not a fixed path:
+Do not pass `--provider=podman` unless you already have system Podman and want that opt-in. Setup does not install Docker or Podman for you.
+
+Lando starts Traefik when you start an app. You do not start Traefik by hand.
+
+## Trust the CA in a Windows browser
+
+`lando setup` runs `mkcert -install` inside the WSL distro. That trusts the root CA in the distro Linux trust store, not in Windows. A proxied HTTPS site opened from a Windows browser still shows a warning until you trust the same CA on Windows.
+
+Print the CAROOT directory from inside the distro:
 
 ```sh
 mkcert -CAROOT
 ```
 
-`rootCA.pem` inside that CAROOT directory is the certificate to trust on the
-Windows side. Windows can read files inside the distro through the
-`\\wsl.localhost\<distro>` UNC path, so PowerShell can reach `rootCA.pem`
-without copying it first:
+`rootCA.pem` in that directory is the certificate to trust on Windows. Windows can read files in the distro through `\\wsl.localhost\<distro>`, so PowerShell can reach `rootCA.pem` without copying it first.
 
-```
-\\wsl.localhost\<distro>\$(mkcert -CAROOT)\rootCA.pem
-```
-
-Run this from an elevated (Run as Administrator) PowerShell prompt to add
-the CA to the Windows ROOT trust store:
+From an elevated PowerShell prompt:
 
 ```powershell
 certutil -addstore -f "ROOT" rootCA.pem
 ```
 
-Chrome and Edge trust the Windows store immediately. Firefox uses its own
-certificate store, so it needs the same `rootCA.pem` imported separately in
-`about:preferences#privacy`.
+Chrome and Edge trust the Windows store immediately. Firefox uses its own store, so import the same `rootCA.pem` in `about:preferences#privacy`.
 
-Windows PowerShell and the WSL distro shell run two independent `lando`
-installs, with independent binaries, data roots, and providers —
-`lando.exe` (Windows installer) and `lando` (POSIX installer inside the
-distro). The WSL shellenv PATH change only applies inside that distro's
-shell: adding `lando` to `PATH` inside WSL doesn't put `lando.exe` on the
-Windows PATH, and installing `lando.exe` on Windows doesn't put `lando` on
-the WSL distro's PATH. Run `lando` consistently from the same side you
-installed it on — an app scaffolded and started with the distro's `lando`
-expects the Linux filesystem and the WSL-side provider, and opening the
-same app root from `lando.exe` on Windows targets a different provider and
-data root, not the running app.
+You do not need a Windows Lando install for this. Alpha has no Windows binary.
+
+## Verify
+
+```sh
+lando doctor
+lando --version
+```
+
+Doctor should name the `lando` provider, or Docker if that is the last-used provider you set with `lando setup --provider=docker`.

@@ -6,48 +6,50 @@ timeout: 60000
 tags: [beta, docs, setup, providers]
 ---
 
-# Setup is guided, not automatic
+# Run lando setup
 
-`lando setup` provisions the container runtime provider before app lifecycle commands need one. Run it
-yourself; Lando does not provision a provider in the background when you first run `lando start`. When
-you don't pass `--provider` and `LANDO_PROVIDER` is unset, setup uses the bundled managed provider
-(`lando`), even if leftover `defaultProviderId` in user config says `docker` or `podman`. That default
-does not require an existing Docker or Podman install. Choosing `--provider=docker` or
-`--provider=podman` instead requires that system runtime to already be present; setup fails with
-remediation, rather than installing one for you, when it is missing.
+Run `lando setup` yourself. Lando does not provision a provider in the background when you first run `lando start`.
 
-For scripts and CI, pass `--no-interactive` to skip prompts while keeping the same guided defaults, or
-combine `--yes` with an explicit `--provider` for a fully deterministic invocation. `--yes` consents to
-confirmation and privileged host changes; leftover config still does not pick Docker. See the
-[corporate network trust guide](../config/corporate-network-trust.mdx) for CA and proxy trust setup, and
-run `lando doctor` afterward to confirm setup readiness, as described in the
-[doctor walkthrough](../subsystems/doctor-walkthrough.mdx).
+The default provider is `lando` (managed Podman). It does not need system Docker or Podman.
 
-## Non-interactive and CI
+## Use the defaults
 
 ```sh
-# Same guided defaults, no follow-up prompts
+lando setup
+```
+
+Then verify:
+
+```sh
+lando doctor
+```
+
+`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+
+Default setup may fail on Alpha. Host prerequisites can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders. If setup names a host prerequisite, fix it and rerun `lando setup`.
+
+## Fall back to Docker
+
+You need working system Docker.
+
+```sh
+lando setup --provider=docker
+```
+
+After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. You do not need to repeat the flag.
+
+`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
+
+`--provider=docker` and `--provider=podman` require that system runtime to already be present. Setup fails with remediation when it is missing. It does not install Docker or Podman for you.
+
+## Skip prompts
+
+```sh
 lando setup --no-interactive
-
-# Confirms setup prompts but does not change provider precedence
 lando setup --yes
-
-# Recommended CI shape: choose the provider and confirmation mode explicitly
 lando setup --yes --provider=lando
 ```
 
-For `linux-x64` provider-integration CI, set `LANDO_RUNTIME_BUNDLE_MANIFEST`
-to stage a current-commit runtime bundle tarball and point setup at the
-local file manifest before `ensureRuntime` brings up the managed socket. CI
-teardown uses the Lando-managed `podman` binary with isolated `--root`,
-`--runroot`, and `--config` so cleanup targets the same store the job
-created, after `lando poweroff`.
+`--no-interactive` skips prompts and keeps the same guided defaults. Combine `--yes` with an explicit `--provider` when you want a fully determined run.
 
-## System providers don't self-install
-
-`lando setup --provider=podman` requires an existing Podman installation
-and fails with remediation when Podman is unavailable.
-`lando setup --provider=docker` requires an existing Docker installation
-and fails with remediation the same way. Use
-`lando setup --provider=lando` for the bundled managed runtime instead of
-selecting a system provider you don't already have.
+See [Pick a container provider](./provider-selection.mdx). After setup, run [lando doctor](../subsystems/doctor-walkthrough.mdx).
