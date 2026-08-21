@@ -107,6 +107,7 @@ contributes:
     - "service-lando.varnish"
   appFeatures:
     - "service-lando.phpmyadmin.wire"
+    - "service-lando.nginx.php-fpm.wire"
 
 requires:
   "@lando/core": "^4.0.0"

@@ -1,9 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import type {
+  AppFeatureContext,
+  AppFeatureServiceMutators,
+  AppFeatureServiceView,
+} from "@lando/sdk/services";
 
-import { NGINX_FEATURE_ID, nginxServiceFeature, nginxServiceType } from "../src/services/nginx.ts";
+import {
+  NGINX_FEATURE_ID,
+  nginxPhpFpmWireFeature,
+  nginxServiceFeature,
+  nginxServiceType,
+} from "../src/services/nginx.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -100,5 +110,159 @@ describe("nginx ServiceType", () => {
       composeNginxPlan({ type: "nginx", environment: { LANDO_APP_NAME: "fake" } }),
       /reserved LANDO_\* keys.*LANDO_APP_NAME/,
     );
+  });
+});
+
+describe("nginx PHP FastCGI preset", () => {
+  test("fronts a named FPM backend on port 9000", async () => {
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      webroot: "/app/web",
+    });
+
+    const command = Array.isArray(plan.command)
+      ? plan.command.join(" ")
+      : typeof plan.command === "string"
+        ? plan.command
+        : "";
+    expect(command).toContain("fastcgi_pass appserver:9000");
+    expect(command).toContain("root /app/web");
+    expect(plan.dependsOn).toEqual([
+      { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
+    ]);
+  });
+});
+
+describe("nginx PHP FPM app-feature wire", () => {
+  const unusedMutators = {
+    addEnv: () => undefined,
+    addMount: () => undefined,
+    setAppMount: () => undefined,
+    addBuildStep: () => undefined,
+    addStorage: () => undefined,
+    addEndpoint: () => undefined,
+    addDependency: () => undefined,
+    addHostAlias: () => undefined,
+    setHealthcheck: () => undefined,
+    setCerts: () => undefined,
+    setEntrypoint: () => undefined,
+    setArtifact: () => undefined,
+    setUser: () => undefined,
+    setWorkingDirectory: () => undefined,
+  } satisfies Omit<AppFeatureServiceMutators, "service" | "setCommand">;
+
+  const viewOf = (input: {
+    readonly serviceName: string;
+    readonly serviceType: string;
+    readonly backend?: string;
+    readonly port?: number;
+    readonly via?: string;
+    readonly webroot?: string;
+    readonly command?: ReadonlyArray<string>;
+  }): AppFeatureServiceView => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        [input.serviceName]: {
+          type: input.serviceType,
+          ...(input.backend === undefined ? {} : { backend: input.backend }),
+          ...(input.port === undefined ? {} : { port: input.port }),
+          ...(input.via === undefined ? {} : { via: input.via }),
+          ...(input.webroot === undefined ? {} : { webroot: input.webroot }),
+          ...(input.command === undefined ? {} : { command: input.command }),
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make(input.serviceName)];
+    if (service === undefined) throw new Error(`${input.serviceName} service missing`);
+    return {
+      serviceName: input.serviceName,
+      serviceType: input.serviceType,
+      base: "lando",
+      primary: false,
+      featureIds: [],
+      normalizedConfig: service,
+    };
+  };
+
+  const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
+    const commands = new Map<string, ReadonlyArray<string> | string | undefined>();
+    const mutatorsFor = (view: AppFeatureServiceView): AppFeatureServiceMutators => ({
+      service: view,
+      setCommand: (command) => {
+        commands.set(view.serviceName, command);
+      },
+      ...unusedMutators,
+    });
+    const context: AppFeatureContext = {
+      featureId: nginxPhpFpmWireFeature.id,
+      appName: "myapp",
+      appRoot: APP_ROOT,
+      config: {},
+      selected: views,
+      forEachSelected: (mutate) => {
+        for (const view of views) mutate(mutatorsFor(view));
+      },
+      select: (name) => {
+        const view = views.find((candidate) => candidate.serviceName === name);
+        return view === undefined ? undefined : mutatorsFor(view);
+      },
+    };
+    return { context, commands };
+  };
+
+  const commandText = (command: ReadonlyArray<string> | string | undefined): string =>
+    Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
+
+  test("FastCGI upstream uses the PHP FPM service's authored port", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver", webroot: "/app/web" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    expect(commandText(commands.get("edge"))).toContain("fastcgi_pass appserver:9070");
+    expect(commandText(commands.get("edge"))).toContain("root /app/web");
+    expect(commands.get("appserver")).toBeUndefined();
+  });
+
+  test("FastCGI upstream stays on 9000 when the PHP FPM service omits port", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    expect(commandText(commands.get("edge"))).toContain("fastcgi_pass appserver:9000");
+  });
+
+  test("does not rewrite when the backend is not via fpm", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "apache", port: 8080 }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    expect(commands.get("edge")).toBeUndefined();
+  });
+
+  test("does not rewrite an authored nginx command", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
+      viewOf({
+        serviceName: "edge",
+        serviceType: "nginx",
+        backend: "appserver",
+        command: ["nginx", "-g", "daemon off;"],
+      }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    expect(commands.get("edge")).toBeUndefined();
   });
 });

@@ -234,3 +234,41 @@ describe("service catalog per-type checklist × composition contract suite", () 
     ]);
   });
 });
+
+describe("php via and nginx PHP-preset composition", () => {
+  const extraEntries: ReadonlyArray<CatalogCompositionEntry> = [
+    { serviceType: php82ServiceType, landofileService: { type: "php:8.2", via: "apache" } },
+    {
+      serviceType: php82ServiceType,
+      landofileService: { type: "php:8.2", via: "fpm" },
+      serviceName: "appserver",
+    },
+    {
+      serviceType: php82ServiceType,
+      landofileService: { type: "php:8.2", via: "cli" },
+      serviceName: "worker",
+    },
+    {
+      serviceType: nginxServiceType,
+      landofileService: { type: "nginx", backend: "appserver" },
+      serviceName: "edge",
+    },
+  ];
+
+  for (const entry of extraEntries) {
+    test(`${entry.serviceType.id} ${JSON.stringify(entry.landofileService)} satisfies composition`, async () => {
+      return expect(
+        Effect.runPromise(
+          runServiceCompositionContract({
+            serviceType: entry.serviceType,
+            landofileService: entry.landofileService,
+            appName: "myapp",
+            appRoot: "/srv/apps/myapp",
+            providerId: ProviderId.make("lando"),
+            ...(entry.serviceName === undefined ? {} : { serviceName: entry.serviceName }),
+          }),
+        ),
+      ).resolves.toBeUndefined();
+    });
+  }
+});

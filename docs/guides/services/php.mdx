@@ -7,13 +7,11 @@ tags: [beta, docs, php, service, runtime]
 
 # PHP
 
-Add a PHP service to your app by declaring `type: php:8.3` for the primary
-service — PHP has no bare `type: php` alias, so pin a version. Lando
-currently supports five minor versions: `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`. The
-default (and only first-class) image is the `-apache` variant, tagged
-`php:<version>-apache-bookworm` (e.g. `php:8.3-apache-bookworm`), which
-serves your code over HTTP on port `80`. Your repository is bind-mounted
-read-write at `/app`:
+Add a PHP service by pinning a minor version — PHP has no bare `type: php`
+alias. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`. The default
+serving mode is Apache with mod_php on port `80`, using
+`php:<version>-apache-bookworm`. Your repository is bind-mounted read-write at
+`/app`:
 
 ```yaml
 name: php-demo
@@ -42,15 +40,51 @@ services:
     </Step>
   </Scenario>
 
+## Serving modes
+
+`via:` picks the image variant and process shape:
+
+| `via:` | Image | What you get |
+| --- | --- | --- |
+| `apache` (default) | `php:<version>-apache-bookworm` | Apache + mod_php on port `80`. `webroot:` and `allowOverride:` apply. |
+| `fpm` | `php:<version>-fpm-bookworm` | PHP-FPM on port `9000`. Front it with `nginx` and `backend:`. `allowOverride:` is rejected. |
+| `cli` | `php:<version>-cli-bookworm` | Idle worker for tooling and `command:`. No web server, no HTTP route. |
+
+Pair FPM with nginx by naming the PHP service on `backend:`. Nginx writes a
+FastCGI upstream to that service on port `9000`:
+
+```yaml
+name: php-fpm-nginx
+services:
+  appserver:
+    type: "php:8.3"
+    via: fpm
+    primary: true
+  edge:
+    type: nginx
+    backend: appserver
+```
+
+  <Scenario id="fpm-nginx" render>
+    <Step name="scaffold">
+      <UseFixture name="php-fpm-nginx" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\"[\\s\\S]*\"via\":\\s*\"fpm\"[\\s\\S]*\"edge\"[\\s\\S]*\"backend\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
 ## No framework presets
 
 There's no `framework:` key on the `php` service — it has no built-in preset that switches the
-served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is fixed at `/app`.
-To serve project code from a framework's public subdirectory (e.g. Laravel's or Symfony's
-`public/`), you're responsible for pointing the web server at that path yourself — for example with
-a custom vhost delivered through a bind mount or custom image. Compose's `configs:` block isn't
-realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared
-under `configs:`.
+served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you
+set `webroot:`. To serve a framework public directory, point `webroot:` at that path (or put nginx
+in front with `via: fpm`). Compose's `configs:` block isn't realized by `provider-lando`, so a
+custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
 
 ## Composer and the CLI
 
@@ -81,9 +115,7 @@ services:
     type: php:8.2
 ```
 
-`image:` overrides the base image Lando builds from, but there's no first-class FPM pairing behind
-it: Lando doesn't wire up a companion nginx service, proxy FPM's port `9000`, or adjust
-prerequisites for a `-fpm`-style tag. Setting `image:` to something other than the built-in
-`-apache-bookworm` tag is a raw substitution you're responsible for wiring end to end yourself.
+`image:` still overrides the base image Lando builds from. You're responsible
+for wiring a custom tag end to end.
 
 </Guide>

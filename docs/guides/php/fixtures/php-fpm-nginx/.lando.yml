@@ -1,0 +1,9 @@
+name: php-fpm-nginx
+services:
+  appserver:
+    type: "php:8.3"
+    via: fpm
+    primary: true
+  edge:
+    type: nginx
+    backend: appserver

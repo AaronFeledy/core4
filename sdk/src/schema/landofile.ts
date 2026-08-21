@@ -551,6 +551,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
       description:
         "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
     }),
+    via: Schema.optional(Schema.String).annotations({
+      description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
+    }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),
     envFile: Schema.optional(ComposeEnvFileInput).annotations({
