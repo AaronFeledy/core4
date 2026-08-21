@@ -8,6 +8,7 @@ import { DateTime, Effect } from "effect";
 import { makePluginStateStore } from "@lando/core/testing";
 import {
   appliedPlanPath,
+  listAppliedPlans,
   loadAppliedPlan,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -193,6 +194,26 @@ describe("provider-lando applied state persistence", () => {
       expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
 
       await Effect.runPromise(removeAppliedPlan(state, plan.id));
+    });
+  });
+
+  test("listAppliedPlans returns empty when the namespace directory is missing", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual([]);
+    });
+  });
+
+  test("listAppliedPlans enumerates persisted plans including the global app", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const globalPlan: AppPlan = { ...plan, id: AppId.make("global"), name: "global", slug: "global" };
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+      await Effect.runPromise(persistAppliedPlan(state, globalPlan));
+
+      const listed = await Effect.runPromise(listAppliedPlans(state, stateDir));
+      const ids = listed.map((item) => String(item.id)).sort();
+      expect(ids).toEqual(["applied-state", "global"]);
     });
   });
 });
