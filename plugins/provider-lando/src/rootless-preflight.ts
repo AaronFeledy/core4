@@ -203,10 +203,15 @@ export const hasCgroupsV2Delegation = (
 ): boolean => {
   if (uid === undefined || uid.length === 0) return false;
 
+  const userSlice = join(cgroupRoot, "user.slice");
+  // No systemd user hierarchy: Lando's managed runtime uses cgroupfs and does
+  // not need user-session controller delegation.
+  if (!existsSync(userSlice)) return true;
+
   try {
     return (
       readFileSync(
-        join(cgroupRoot, "user.slice", `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
+        join(userSlice, `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
         "utf8",
       ).trim().length > 0
     );

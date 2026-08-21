@@ -117,6 +117,15 @@ describe("writeManagedRuntimeContainersConf", () => {
     expect(hostIps).toContain(MANAGED_LOOPBACK_IPS[1]);
   });
 
+  test("does not set an invalid pasta network_backend on Podman 6", async () => {
+    const { body, parsed } = await writeAndParse();
+    expect(body).not.toContain("network_backend");
+    expect(body).not.toContain("pasta");
+    expect(
+      (parsed.network as { readonly network_backend?: string } | undefined)?.network_backend,
+    ).toBeUndefined();
+  });
+
   test("never emits a LAN wildcard default for the managed runtime", async () => {
     const { body, parsed } = await writeAndParse();
     const hostIps = parsed.network?.default_host_ips ?? [];
