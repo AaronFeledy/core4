@@ -57,11 +57,7 @@ Add a tooling alias on `db` to open the `mysql` client:
 lando mysql
 ```
 
-A common companion is `db-import`, which pipes a SQL file into the client:
-
-```sh
-lando db-import dump.sql
-```
+There is no core `db-import`. Pipe a dump into `mysql` with `lando exec`, or add your own tooling alias. See [Import a SQL dump](../tooling/import-a-database.mdx).
 
 ## Pin a version
 

@@ -56,11 +56,7 @@ Add a tooling alias on `db` to open `psql`:
 lando psql
 ```
 
-A common companion is `db-import`, which pipes a SQL file into `psql`:
-
-```sh
-lando db-import dump.sql
-```
+There is no core `db-import`. Pipe a dump into `psql` with `lando exec`, or add your own tooling alias. See [Import a SQL dump](../tooling/import-a-database.mdx).
 
 ## Pin a version
 
