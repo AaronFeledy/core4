@@ -156,6 +156,9 @@ describe("PHP xdebug option", () => {
     expect(command).toMatch(/\bon\b/);
     expect(command).toMatch(/\boff\b/);
     expect(command).toMatch(/\bstatus\b/);
+    expect(command).toContain("grep -i xdebug || true");
+    expect(command).toMatch(/on\)[\s\S]*?grep -i xdebug \|\| true/);
+    expect(command).toMatch(/status\)[\s\S]*?grep -i xdebug \|\| true/);
   });
 
   test.each(["apache", "fpm", "cli"] as const)(

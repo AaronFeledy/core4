@@ -126,7 +126,7 @@ export const phpXdebugTooling = (
     "}",
     `reload() { ${reload}; }`,
     'case "$cmd" in',
-    '  on) write_ini "$mode"; reload; php -m | grep -i xdebug; php -r \'echo ini_get("xdebug.mode"), "\\n";\' ;;',
+    '  on) write_ini "$mode"; reload; php -m | grep -i xdebug || true; php -r \'echo ini_get("xdebug.mode"), "\\n";\' ;;',
     "  off) write_ini off; reload; echo off ;;",
     '  status) php -m | grep -i xdebug || true; php -r \'echo ini_get("xdebug.mode"), "\\n";\' ;;',
     '  *) echo "Use lando xdebug on, lando xdebug off, or lando xdebug status."; exit 1 ;;',
