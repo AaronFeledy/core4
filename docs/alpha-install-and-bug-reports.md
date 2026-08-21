@@ -13,8 +13,8 @@ Lando v4 is an **experimental Alpha**. The first-time install path is still bein
 
 The CI pipeline publishes a `v4.0.0-dev.N` GitHub prerelease after each successful `main` build. This prerelease includes:
 
-- `lando` — the Linux x64 compiled binary
-- `SHA256SUMS` — checksum manifest
+- `lando` : the Linux x64 compiled binary
+- `SHA256SUMS` : checksum manifest
 
 **Platform support:** Linux x64 only. Windows and macOS binaries are deferred.
 
@@ -55,21 +55,69 @@ bun run core/src/cli/index.ts --version
 
 ## First-time setup
 
-After installing the binary or building from source, run:
+After the binary is on your `PATH` (or you are running the source CLI):
 
 ```bash
 lando setup
+lando doctor
 ```
 
-This installs and configures the managed Podman runtime. If setup encounters issues, run:
+`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers.
+
+The default provider is `lando`: a Lando-managed Podman runtime. It does not use your system Docker or Podman. Leftover `defaultProviderId` in user config does not pick Docker on setup.
+
+### If setup fails
+
+Read the error. Then run `lando doctor`. Most rootless Podman host gaps (uidmap, subuid/subgid ranges, cgroups, `XDG_RUNTIME_DIR`) are auto-fixed or printed with a command you can run.
+
+**uidmap (Fedora/RHEL and unrecognized distros):**
+
+```bash
+sudo dnf install shadow-utils
+lando setup
+```
+
+**Missing subuid/subgid ranges:**
+
+```bash
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+lando setup
+```
+
+**cgroups v2 delegation:**
+
+```bash
+sudo mkdir -p /etc/systemd/system/user@.service.d
+echo -e "[Service]\nDelegate=cpu cpuset io memory pids" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+sudo systemctl daemon-reload
+lando setup
+```
+
+**Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
+
+### Linux fallback: system Docker
+
+If the default managed runtime still cannot install, and you already have working system Docker, use Docker as the supported Linux fallback:
+
+```bash
+lando setup --provider=docker
+```
+
+Or for one command:
+
+```bash
+LANDO_PROVIDER=docker lando start
+```
+
+`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. This is a fallback, not the default. See [Choose a provider](guides/setup/provider-selection.mdx).
+
+### Verify
 
 ```bash
 lando doctor
 ```
 
-`lando doctor` diagnoses common first-time issues and suggests fixes. Most rootless Podman prerequisites (uidmap, subuid/subgid ranges, cgroups, kernel settings) are handled automatically by setup or flagged with remediation by doctor.
-
-**Note on local bundle testing:** The committed runtime bundle manifest currently points at placeholder URLs. To test the full setup flow, build a local bundle with `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it. Users who already have Docker installed may use `--provider=docker` if they prefer.
+If doctor still reports issues, try `lando doctor --fix` when it offers one.
 
 ## Installers and update manifests (not yet available)
 
@@ -79,72 +127,6 @@ The following install paths are **not yet available** in Alpha:
 - **Channel manifests** at `https://update.lando.dev/v4/{stable,next,dev}.json`
 
 These will be stood up before Beta. For now, use the GitHub prerelease or build from source paths above.
-
-## Provider setup
-
-After installing Lando, run setup to provision the container runtime provider:
-
-```bash
-lando setup --yes
-```
-
-The `--yes` flag consents to automatic prerequisite installation (uidmap tools on supported distributions). The default provider is the **Lando-managed Podman runtime**, which bundles a rootless Podman installation that runs independently of any system Docker or Podman.
-
-### What lando setup does automatically
-
-On first-time Linux systems, `lando setup --yes` can automatically handle most managed Podman prerequisites:
-
-- **uidmap tools**: On Ubuntu and Debian, Lando installs the `uidmap` package automatically. Fedora/RHEL and other distributions require manual installation (see below).
-- **Runtime bundle**: Downloads and extracts the Lando-managed Podman runtime.
-- **Certificate authority**: Installs and trusts the Lando dev CA for HTTPS routing.
-
-### Manual prerequisites (when lando setup cannot auto-fix)
-
-If `lando setup` fails, follow the remediation guidance in the error message. Common manual steps:
-
-#### uidmap tools (Fedora/RHEL and unrecognized distributions)
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install shadow-utils
-lando setup
-```
-
-#### Subordinate UID/GID ranges
-
-If setup reports missing subuid/subgid ranges, add them:
-
-```bash
-sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
-lando setup
-```
-
-#### cgroups v2 delegation
-
-If setup reports a cgroups delegation error, create the systemd drop-in:
-
-```bash
-sudo mkdir -p /etc/systemd/system/user@.service.d
-echo -e "[Service]\nDelegate=cpu cpuset io memory pids" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
-sudo systemctl daemon-reload
-lando setup
-```
-
-#### XDG_RUNTIME_DIR
-
-If setup reports a missing XDG_RUNTIME_DIR, log out and back in. Most modern distributions with systemd set this automatically. If the issue persists after re-login, your session manager may need configuration (distribution-specific).
-
-### Verifying setup
-
-After setup completes, verify the runtime is ready:
-
-```bash
-lando doctor
-```
-
-If `lando doctor` reports issues, use `lando doctor --fix` to attempt automatic remediation (when available).
-
-Advanced users who prefer system Docker can specify `--provider=docker` when running setup.
 
 ## Bug report checklist
 
