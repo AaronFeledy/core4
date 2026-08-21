@@ -66,8 +66,28 @@ const makeFakeApi = (
   const requests: string[] = [];
   const existingNames = new Set(existing);
   const failedStartNames = new Set(failedStarts);
+  const images = new Set<string>();
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (path === "/networks/create") return { status: 201, body: "" };
+    if (method === "GET" && path.startsWith("/images/") && path.endsWith("/json")) {
+      const ref = decodeURIComponent(path.slice("/images/".length, -"/json".length));
+      return images.has(ref)
+        ? { status: 200, body: '{"Id":"sha256:test"}' }
+        : { status: 404, body: '{"message":"No such image"}' };
+    }
+    if (method === "POST" && path.startsWith("/images/create?")) {
+      const params = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+      const fromImage = params.get("fromImage") ?? "";
+      const tag = params.get("tag") ?? "";
+      if (fromImage.length > 0) {
+        images.add(fromImage);
+        if (tag.length > 0) {
+          images.add(`${fromImage}:${tag}`);
+          images.add(`${fromImage}@${tag}`);
+        }
+      }
+      return { status: 200, body: '{"status":"Pull complete"}\n' };
+    }
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
       const name = path.slice("/containers/".length, -"/json".length);
       return existingNames.has(name)

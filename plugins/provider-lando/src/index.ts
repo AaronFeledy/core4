@@ -87,6 +87,7 @@ import {
   setupProviderLando,
 } from "./setup.ts";
 import { runSmokeReadinessProbe } from "./smoke-probe.ts";
+import { hasHostSystemd } from "./user-systemd-session.ts";
 import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
@@ -136,7 +137,12 @@ export type {
   VolumePruneReport,
 } from "./volume-prune.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
-export { bringUp, scratchLabelsForPlan } from "./bring-up.ts";
+export {
+  bringUp,
+  isManagedNftMissingMessage,
+  scratchLabelsForPlan,
+  startFailureRemediation,
+} from "./bring-up.ts";
 export { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 export type { BringUpOptions } from "./bring-up.ts";
 export { podmanComposeKnobs } from "./compose-knobs.ts";
@@ -250,6 +256,15 @@ export type {
   RuntimeBundleManifest,
 } from "./runtime-bundle.ts";
 
+export {
+  NFT_MANIFEST,
+  NFT_TOOL_VERSION,
+  ensureManagedNft,
+  hasUsableManagedNft,
+  managedNftBinPath,
+} from "./nft-provision.ts";
+export type { EnsureManagedNftOptions, NftManifest } from "./nft-provision.ts";
+
 export { probeRuntimeServiceStatus, teardownRuntimeService } from "./runtime-status.ts";
 export type { RuntimeServiceStatus, RuntimeStatusDeps } from "./runtime-status.ts";
 
@@ -325,6 +340,7 @@ export interface ProviderLayerOptions {
   readonly arch?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
+  readonly nftCacheDir?: string;
   readonly stateDir?: string;
   readonly appliedPlanState?: PluginStateStore;
   readonly appliedPlanStateDir?: string;
@@ -458,6 +474,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   readiness: (body) => progress.run("readiness", body),
                 },
               }),
+          ...(options.artifactDownload !== undefined &&
+          options.nftCacheDir !== undefined &&
+          runtimeBinDir !== undefined &&
+          family === "linux"
+            ? {
+                nftProvision: {
+                  download: options.artifactDownload,
+                  cacheDir: options.nftCacheDir,
+                  ...(arch === undefined ? {} : { arch }),
+                },
+              }
+            : {}),
         })
       : Effect.void;
   const ensureEffect = ensureEffectFor();
@@ -602,6 +630,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
               user: process.env.USER,
+              hasSystemd: hasHostSystemd(),
             })
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
@@ -612,6 +641,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
             ...(options.artifactDownload === undefined ? {} : { artifactDownload: options.artifactDownload }),
+            ...(options.artifactDownload !== undefined && options.nftCacheDir !== undefined
+              ? {
+                  nftArtifactDownload: options.artifactDownload,
+                  nftCacheDir: options.nftCacheDir,
+                }
+              : {}),
             platform,
             ...(arch === undefined ? {} : { arch }),
             ...(() => {
@@ -643,10 +678,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                           probes: rootlessProbes,
                           privilege: setupOptions.privilege,
                           user: process.env.USER,
+                          hasSystemd: hasHostSystemd(),
                         }).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {
-                              const failure = classifyRootlessFailure(rootlessProbes.probe());
+                              const failure = classifyRootlessFailure(rootlessProbes.probe(), undefined, {
+                                hasSystemd: hasHostSystemd(),
+                              });
                               return failure === undefined ? Effect.void : Effect.fail(failure);
                             }),
                           ),
@@ -970,6 +1008,7 @@ export const plugin = definePlugin({
               providerSocketPath: paths.providerSocketPath,
               providerPidPath: paths.providerPidPath,
               artifactDownload: makePluginArtifactDownload(downloader),
+              nftCacheDir: paths.toolDownloadsDir("nft"),
               logFileHelperPayloads,
               sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
               ...runtimeState,
