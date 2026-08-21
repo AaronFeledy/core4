@@ -367,16 +367,16 @@ describe("containerSocketCandidates", () => {
   test("prefers the managed provider socket and does not default to host docker.sock", () => {
     const previousDockerHost = process.env.DOCKER_HOST;
     const previousRuntime = process.env.XDG_RUNTIME_DIR;
-    delete process.env.DOCKER_HOST;
-    delete process.env.XDG_RUNTIME_DIR;
+    Reflect.deleteProperty(process.env, "DOCKER_HOST");
+    Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
     try {
       const candidates = containerSocketCandidates("/iso/data");
       expect(candidates[0]).toBe(makeLandoPaths({ userDataRoot: "/iso/data" }).providerSocketPath);
       expect(candidates).not.toContain("/var/run/docker.sock");
     } finally {
-      if (previousDockerHost === undefined) delete process.env.DOCKER_HOST;
+      if (previousDockerHost === undefined) Reflect.deleteProperty(process.env, "DOCKER_HOST");
       else process.env.DOCKER_HOST = previousDockerHost;
-      if (previousRuntime === undefined) delete process.env.XDG_RUNTIME_DIR;
+      if (previousRuntime === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
       else process.env.XDG_RUNTIME_DIR = previousRuntime;
     }
   });

@@ -14,10 +14,16 @@ const collectTsFiles = (dir: string): ReadonlyArray<string> => {
   return out;
 };
 
+// The reserved-id contract is "commands must not call LandofileService.discover
+// (or .discover( on it)". A raw ".discover" substring also matches host-wide
+// helpers such as options.discoverContainers.
+const callsLandofileDiscover = (source: string): boolean =>
+  source.includes("LandofileService.discover") || /\.discover\b/.test(source);
+
 describe("user-app command reserved-id routing", () => {
   test("no command calls LandofileService.discover directly", () => {
     const offenders = collectTsFiles(commandsDir).filter((file) =>
-      readFileSync(file, "utf8").includes(".discover"),
+      callsLandofileDiscover(readFileSync(file, "utf8")),
     );
 
     expect(offenders).toEqual([]);
