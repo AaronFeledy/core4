@@ -25,6 +25,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
+import { CORE_VERSION } from "../../src/version.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 
@@ -100,9 +101,22 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
+    expect(report.version).toBe(CORE_VERSION);
+    expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
     expect(report.subsystems.checks.find((check) => check.name === "certs")?.context.subsystemId).toBe(
       "injected-ca",
     );
+  });
+
+  test("DoctorReportSchema requires version", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(DoctorReportSchema)({
+        provider: { checks: [] },
+        subsystems: { checks: [] },
+        globalApp: { checks: [] },
+        mcp: { checks: [] },
+      }),
+    ).toThrow();
   });
 
   test("redacts a failing network trust path in every format and keeps the report schema stable", async () => {

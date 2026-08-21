@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/services";
 
 import { lintLandofile } from "@lando/engine/services/landofile-live";
+import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
@@ -236,6 +237,7 @@ export const collectDoctorReport = <R>(
     const appConfig =
       options.app === true ? yield* section("app-config", appConfigForReport(), undefined) : undefined;
     return {
+      version: CORE_VERSION,
       provider: { checks: provider.checks },
       subsystems,
       globalApp,

@@ -2,6 +2,8 @@
 
 import { existsSync } from "node:fs";
 
+import { assertCompiledBinaryVersion } from "./compiled-binary-version.ts";
+
 const SMOKE_SUBCOMMANDS = [["--version"], ["--help"], ["shellenv"]] as const;
 const BOGUS_SUBCOMMAND = ["__lando_windows_smoke_unknown__"] as const;
 
@@ -34,6 +36,7 @@ export const smokeWindowsBinary = async (binaryPath: string): Promise<void> => {
     if (stdout.trim().length === 0) {
       throw new Error(`expected non-empty UTF-8 stdout for \`${args.join(" ")}\``);
     }
+    if (args[0] === "--version") assertCompiledBinaryVersion(stdout);
   }
 
   const bogus = await runBinary(binaryPath, BOGUS_SUBCOMMAND);

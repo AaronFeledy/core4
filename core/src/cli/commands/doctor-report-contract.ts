@@ -17,6 +17,7 @@ import type { AppVersionConstraintDoctorResult } from "./doctor-version-constrai
 import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constraint";
 
 export interface DoctorReport {
+  readonly version: string;
   readonly provider: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
@@ -139,6 +140,7 @@ const DoctorDeprecationReportSchema = Schema.Struct({
 });
 
 export const DoctorReportSchema = Schema.Struct({
+  version: Schema.String,
   provider: DoctorResultSchema,
   subsystems: SubsystemDoctorResultSchema,
   globalApp: GlobalAppDoctorResultSchema,

@@ -10,6 +10,10 @@ import { UpdateManifestSchema } from "@lando/sdk/schema";
 import { buildUpdateManifest, updateChannelForReleaseVersion } from "../../../scripts/build-update-manifest";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
+import {
+  isPlaceholderCoreVersion,
+  resolveCompiledBinaryVersion,
+} from "../../../scripts/compiled-binary-version.ts";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
@@ -509,6 +513,9 @@ describe("release orchestrator", () => {
     expect(manifestScripts.some((script) => script.includes("dist/SHA256SUMS"))).toBe(true);
     expect(manifestScripts.some((script) => script.includes("dist/SHA512SUMS"))).toBe(true);
     expect(manifestScripts.some((script) => script.includes("dist/update-manifest.json"))).toBe(true);
+    expect(manifestScripts.some((script) => script.includes("build-update-manifest.ts"))).toBe(true);
+    expect(manifestScripts.some((script) => script.includes("'--version'"))).toBe(true);
+    expect(manifestScripts.every((script) => !script.includes("'0.0.0'"))).toBe(true);
     expect(
       shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
     ).toBe(false);
@@ -1547,7 +1554,11 @@ describe("release orchestrator", () => {
         await withFixtureCwd(root, async () => {
           await provenanceStage.run({
             target: "all",
-            env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+            env: {
+              ...provenanceSigningEnv,
+              LANDO_RELEASE_PLATFORM: "linux-x64",
+              LANDO_RELEASE_VERSION: "0.0.0",
+            },
             localRehearsal: false,
             runner: {
               spawn: async () => {},
@@ -2403,8 +2414,6 @@ describe("release orchestrator", () => {
       "bun-windows-x64",
       "--outfile",
       "./dist/lando-windows-x64.exe",
-      "--version",
-      "0.0.0",
       "--minify",
       "--sourcemap=external",
     ]);
@@ -2453,8 +2462,6 @@ describe("release orchestrator", () => {
             platform.bunTarget,
             "--outfile",
             outfile,
-            "--version",
-            "0.0.0",
             "--minify",
             "--sourcemap=external",
           ],
@@ -2497,6 +2504,39 @@ describe("release orchestrator", () => {
       ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
     );
     expect(compileCmd?.cmd).toContain("4.1.0-beta.2");
+  });
+
+  test("local rehearsal compile without LANDO_RELEASE_VERSION omits placeholder stamp", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      target: "binary",
+      throughStage: "7-compile",
+      env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    const compileCmd = spawnStages.find(
+      ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
+    )?.cmd;
+    expect(compileCmd).toBeDefined();
+    expect(compileCmd).not.toContain("--version");
+    expect(compileCmd).not.toContain("0.0.0");
+
+    const stamp = resolveCompiledBinaryVersion({
+      env: {},
+      cwd: join(import.meta.dirname, "../../.."),
+    });
+    expect(isPlaceholderCoreVersion(stamp)).toBe(false);
+    expect(stamp).toMatch(/^4\.\d+\.\d+/);
   });
 
   test("compile stage reports duration and fails the linux-x64 cold-build budget", async () => {

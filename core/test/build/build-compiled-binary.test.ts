@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
+import { resolve } from "node:path";
+
 import {
   CompiledBinaryBuildError,
   type CompiledBinaryBuildRunner,
+  CompiledBinaryVersionError,
   buildCompiledBinary,
   createOpenTuiPruningPlugin,
   parseCompiledBinaryArgs,
@@ -136,5 +139,64 @@ describe("compiled binary OpenTUI native pruning", () => {
       outfile: "./dist/lando-windows-x64.exe",
       version: "4.0.0-beta.2",
     });
+  });
+
+  test("build stamps a resolved 4.x version when none is supplied", async () => {
+    // Given: a build runner that records the programmatic Bun build configuration.
+    let received: Bun.BuildConfig | undefined;
+    const runner: CompiledBinaryBuildRunner = async (config) => {
+      received = config;
+      return { success: true, logs: [], outputs: [] };
+    };
+
+    // When: a binary is built without an explicit --version.
+    await buildCompiledBinary({ target: "linux-x64", outfile: "./dist/lando-linux-x64" }, runner);
+
+    // Then: the compile-time token is always a real prerelease, never the working-tree pin.
+    const stamped = received?.define?.__LANDO_CORE_VERSION__;
+    expect(typeof stamped).toBe("string");
+    const version = JSON.parse(String(stamped));
+    expect(version).not.toBe("0.0.0");
+    expect(version).toMatch(/^4\.\d+\.\d+/);
+  });
+
+  test("build refuses to stamp the 0.0.0 placeholder", async () => {
+    const runner: CompiledBinaryBuildRunner = async () => ({ success: true, logs: [], outputs: [] });
+
+    await expect(
+      buildCompiledBinary(
+        { target: "linux-x64", outfile: "./dist/lando-linux-x64", version: "0.0.0" },
+        runner,
+      ),
+    ).rejects.toBeInstanceOf(CompiledBinaryVersionError);
+  });
+
+  test("CLI reports a placeholder version as a clean failure", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "run",
+        "scripts/build-compiled-binary.ts",
+        "--target",
+        "linux-x64",
+        "--outfile",
+        "./dist/lando-linux-x64",
+        "--version",
+        "0.0.0",
+      ],
+      cwd: resolve(import.meta.dirname, "../../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Refusing to stamp compiled binary with placeholder version 0.0.0.");
+    expect(stderr).not.toContain("Uncaught");
   });
 });
