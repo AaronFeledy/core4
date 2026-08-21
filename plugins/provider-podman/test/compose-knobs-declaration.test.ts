@@ -21,7 +21,7 @@ describe("Podman-backed Compose knob declarations", () => {
 
         expect(capabilities.composeSpec).toBe("native");
         expect(capabilities.composeKnobs?.supported).toEqual(expectedKnobs);
-        expect(capabilities.composeServiceFields?.supported).toEqual(["labels"]);
+        expect(capabilities.composeServiceFields?.supported).toEqual(["labels", "configs"]);
       });
     }
   }
