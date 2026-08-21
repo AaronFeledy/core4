@@ -199,6 +199,12 @@ describe("PHP xdebug option", () => {
     await expectRejectsToThrow(planned, /xdebug: false/);
   });
 
+  test("Given xdebug off as a mode string, when planning, then it fails closed with remediation", async () => {
+    const planned = composePhpPlan({ xdebug: "off" });
+    await expectRejectsToThrow(planned, /runtime toggle/);
+    await expectRejectsToThrow(planned, /xdebug: true/);
+  });
+
   test("Given a custom image and invalid xdebug, when planning, then it still fails closed", async () => {
     const planned = composePhpPlan({ image: "registry.example.com/php:8.2-custom", xdebug: "nope" });
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);

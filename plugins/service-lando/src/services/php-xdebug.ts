@@ -43,6 +43,11 @@ const parseModeString = (value: string): string => {
     .split(",")
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
+  if (tokens.includes("off")) {
+    throw new Error(
+      `xdebug: ${JSON.stringify(value)} installs nothing useful; "off" is the runtime toggle, not an install mode. ${XDEBUG_REMEDIATION}`,
+    );
+  }
   if (tokens.length === 0 || tokens.some((token) => !isXdebugMode(token))) {
     throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
   }
