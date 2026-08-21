@@ -38,6 +38,8 @@ export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFai
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
 
+export const isReadySubsystemId = (serviceId: string): boolean => !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
+
 const manualSetupSolution = (description: string, command = "lando setup"): DoctorSolution => ({
   kind: "manual",
   description,
@@ -255,7 +257,7 @@ export const buildIdCheck = (
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
 ): Effect.Effect<DoctorSubsystemCheck, never> => {
-  const ready = !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
+  const ready = isReadySubsystemId(serviceId);
   const baseContext: Record<string, string> = {
     subsystem: spec.name,
     subsystemId: serviceId,

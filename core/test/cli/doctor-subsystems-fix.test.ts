@@ -9,7 +9,7 @@ import {
   SshService,
   UrlScanner,
 } from "@lando/sdk/services";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestProxyService, makeTestProxyService, makeTestSshService } from "@lando/sdk/test";
 
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
@@ -167,6 +167,8 @@ describe("doctor --fix recovery", () => {
       expect(check?.context.fixOutcome).toBe("failed");
       expect(check?.context.fixExitCode).toBe("1");
       expect(check?.context.fixError?.length).toBeGreaterThan(0);
+      expect(check?.context.fixError).not.toContain("full implementation is not available yet");
+      expect(check?.context.fixError).not.toContain("not available yet");
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
       expect(solution?.command).toBe("lando setup");
@@ -190,6 +192,58 @@ describe("doctor --fix recovery", () => {
       expect(check?.status).toBe("pass");
       expect(check?.context.fixOutcome).toBeUndefined();
     }
+  });
+
+  test("--fix recovers a selected-but-stopped ProxyService without using the unavailable stub", async () => {
+    let setupCalls = 0;
+    const stoppedTraefik = Layer.succeed(ProxyService, {
+      ...makeTestProxyService(),
+      id: "traefik",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    });
+    const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
+    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const proxy = result.checks.find((c) => c.name === "proxy");
+
+    expect(setupCalls).toBe(1);
+    expect(proxy?.status).toBe("pass");
+    expect(proxy?.severity).toBe("info");
+    expect(proxy?.context.ready).toBe("true");
+    expect(proxy?.context.fixOutcome).toBe("recovered");
+    expect(proxy?.context.fixExitCode).toBe("0");
+    expect(proxy?.context.fixError).toBeUndefined();
+    expect(JSON.stringify(proxy)).not.toContain("full implementation is not available yet");
+    expect(JSON.stringify(proxy)).not.toContain("not available yet");
+    expect(proxy?.solutions).toEqual([]);
+  });
+
+  test("--fix recovers a real SshService whose setup() succeeds", async () => {
+    let setupCalls = 0;
+    const recoverableSsh = Layer.succeed(SshService, {
+      ...makeTestSshService(),
+      id: "unavailable",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    });
+    const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableSsh);
+    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const ssh = result.checks.find((c) => c.name === "ssh");
+
+    expect(setupCalls).toBe(1);
+    expect(ssh?.status).toBe("pass");
+    expect(ssh?.severity).toBe("info");
+    expect(ssh?.context.ready).toBe("true");
+    expect(ssh?.context.fixOutcome).toBe("recovered");
+    expect(ssh?.context.fixExitCode).toBe("0");
+    expect(ssh?.context.fixError).toBeUndefined();
+    expect(JSON.stringify(ssh)).not.toContain("full implementation is not available yet");
+    expect(JSON.stringify(ssh)).not.toContain("not available yet");
+    expect(ssh?.solutions).toEqual([]);
   });
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
