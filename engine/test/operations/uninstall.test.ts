@@ -19,6 +19,11 @@ import {
 } from "../../src/operations/uninstall.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
 
+const restoreEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = value;
+};
+
 const writeOverlayDiffTree = (runtimeDir: string): string => {
   const diffDir = join(runtimeDir, "storage", "overlay", "l", "abc123", "diff");
   mkdirSync(diffDir, { recursive: true });
@@ -496,9 +501,9 @@ describe("uninstall shellenv profile strip", () => {
         target: customProfile,
       });
     } finally {
-      process.env.LANDO_SHELL_PROFILE = previousProfile;
-      process.env.HOME = previousHome;
-      process.env.SHELL = previousShell;
+      restoreEnv("LANDO_SHELL_PROFILE", previousProfile);
+      restoreEnv("HOME", previousHome);
+      restoreEnv("SHELL", previousShell);
       rmSync(roots.root, { recursive: true, force: true });
     }
   });
@@ -523,7 +528,7 @@ describe("uninstall shellenv profile strip", () => {
     const previousHome = process.env.HOME;
     const previousShell = process.env.SHELL;
     try {
-      process.env.LANDO_SHELL_PROFILE = undefined;
+      Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
       process.env.HOME = sandboxHome;
       process.env.SHELL = "/bin/bash";
 
@@ -547,9 +552,9 @@ describe("uninstall shellenv profile strip", () => {
         target: defaultProfile,
       });
     } finally {
-      process.env.LANDO_SHELL_PROFILE = previousProfile;
-      process.env.HOME = previousHome;
-      process.env.SHELL = previousShell;
+      restoreEnv("LANDO_SHELL_PROFILE", previousProfile);
+      restoreEnv("HOME", previousHome);
+      restoreEnv("SHELL", previousShell);
       rmSync(roots.root, { recursive: true, force: true });
     }
   });

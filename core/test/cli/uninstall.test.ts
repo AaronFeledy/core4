@@ -1211,7 +1211,8 @@ describe("meta:uninstall", () => {
       expect(rewritten).not.toContain("# <<< LANDO shellenv <<<");
       expect(rewritten).not.toContain("LANDO_USER_DATA_ROOT");
     } finally {
-      process.env.LANDO_SHELL_PROFILE = previousProfile;
+      if (previousProfile === undefined) Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
+      else process.env.LANDO_SHELL_PROFILE = previousProfile;
       rmSync(root, { recursive: true, force: true });
     }
   });

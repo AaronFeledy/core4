@@ -87,6 +87,11 @@ describe("shellenv snippet rendering", () => {
   });
 });
 
+const restoreEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = value;
+};
+
 describe("shell profile install path", () => {
   test("writes LANDO_SHELL_PROFILE when that env is set", () => {
     expect(
@@ -102,11 +107,26 @@ describe("shell profile install path", () => {
       process.env.LANDO_SHELL_PROFILE = "/tmp/custom-lando.rc";
       expect(shellProfileInstallCommand("/tmp/lando-data").join("\n")).toContain("/tmp/custom-lando.rc");
     } finally {
-      process.env.LANDO_SHELL_PROFILE = previous;
+      restoreEnv("LANDO_SHELL_PROFILE", previous);
     }
   });
 
   test("falls back to the default POSIX profile when LANDO_SHELL_PROFILE is unset", () => {
     expect(defaultPosixShellProfilePath({ HOME: "/home/me", SHELL: "/bin/bash" })).toBe("/home/me/.bashrc");
+
+    const previous = process.env.LANDO_SHELL_PROFILE;
+    const previousHome = process.env.HOME;
+    const previousShell = process.env.SHELL;
+    try {
+      Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
+      process.env.HOME = "/home/me";
+      process.env.SHELL = "/bin/bash";
+      expect(defaultPosixShellProfilePath()).toBe("/home/me/.bashrc");
+      expect(shellProfileInstallCommand("/tmp/lando-data").join("\n")).toContain("/home/me/.bashrc");
+    } finally {
+      restoreEnv("LANDO_SHELL_PROFILE", previous);
+      restoreEnv("HOME", previousHome);
+      restoreEnv("SHELL", previousShell);
+    }
   });
 });
