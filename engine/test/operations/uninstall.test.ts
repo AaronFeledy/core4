@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -237,6 +238,79 @@ describe("uninstall cgroups delegation drop-in", () => {
     }
   });
 
+  test("echo-written delegate.conf is owned and removed", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-delegate-echo-");
+    try {
+      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
+        encoding: "buffer",
+      });
+      expect(echoed.status).toBe(0);
+      const echoWritten = echoed.stdout;
+      expect(echoWritten.toString("utf8")).not.toBe(CGROUPS_DELEGATE_CONF_CONTENT);
+      writeFileSync(roots.cgroupsDelegatePath, echoWritten);
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(roots.cgroupsDelegatePath)).toBe(false);
+      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
+        status: "owned",
+        outcome: "completed",
+        target: roots.cgroupsDelegatePath,
+      });
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("owned drop-in unlink EACCES fails the step", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-delegate-eacces-");
+    try {
+      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
+        encoding: "buffer",
+      });
+      expect(echoed.status).toBe(0);
+      writeFileSync(roots.cgroupsDelegatePath, echoed.stdout);
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+            remove: async (path: string) => {
+              if (path === roots.cgroupsDelegatePath) {
+                const error = new Error(
+                  `EACCES: permission denied, unlink '${path}'`,
+                ) as NodeJS.ErrnoException;
+                error.code = "EACCES";
+                throw error;
+              }
+              rmSync(path, { recursive: true, force: true });
+            },
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(true);
+      expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
+      const step = result.steps.find((entry) => entry.id === "cgroups-delegate");
+      expect(step).toMatchObject({
+        status: "owned",
+        outcome: "failed",
+      });
+      expect(step?.error).toMatch(/EACCES/u);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("different delegate.conf content is not deleted", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-other-");
     try {
@@ -360,6 +434,14 @@ describe("uninstall shellenv profile strip", () => {
   test("stripLandoShellenvBlock is a no-op when the delimiters are absent", () => {
     expect(stripLandoShellenvBlock("export FOO=1\n")).toEqual({
       content: "export FOO=1\n",
+      stripped: false,
+    });
+  });
+
+  test("stripLandoShellenvBlock is a no-op when BEGIN has no matching END", () => {
+    const content = `${LANDO_SHELLENV_BEGIN}\nexport FOO=1\n`;
+    expect(stripLandoShellenvBlock(content)).toEqual({
+      content,
       stripped: false,
     });
   });

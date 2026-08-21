@@ -805,10 +805,24 @@ describe("meta:uninstall", () => {
       expect(refused.stdout).toContain("uninstall refused");
       expect(refused.stdout).toContain("Rerun `lando uninstall --yes` after reviewing this plan.");
 
-      const keepData = await runCli(["uninstall", "--yes", "--keep-data"], env);
-      expect(keepData.exitCode).toBe(0);
-      expect(keepData.stdout).toContain("uninstall complete");
-      expect(keepData.stdout).toContain("mode: keep-data");
+      // Execute through the same sandboxed extras as the other confirm tests.
+      // Live CLI uses the real /etc/systemd/.../delegate.conf default and must
+      // not unlink (or EACCES-fail on) a host drop-in.
+      const keepData = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, "keep-data": true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _userConfRoot: join(root, "conf"),
+          _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
+        }),
+      );
+      expect(keepData.failed).toBe(false);
+      expect(keepData.mode).toBe("keep-data");
+      const keepDataOutput = formatUninstallResult(keepData);
+      expect(keepDataOutput).toContain("uninstall complete");
+      expect(keepDataOutput).toContain("mode: keep-data");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

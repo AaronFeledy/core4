@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
@@ -176,13 +176,17 @@ Delegate=cpu cpuset io memory pids
 
 export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
 
+// Setup writes this via echo, which appends an extra trailing newline.
+const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
+  content.trim() === CGROUPS_DELEGATE_CONF_CONTENT.trim();
+
 // Lockstep with core/src/cli/commands/shellenv.ts landoShellenvBlock delimiters.
 // Engine must not import @lando/core.
 export const LANDO_SHELLENV_BEGIN = "# >>> LANDO shellenv >>>";
 export const LANDO_SHELLENV_END = "# <<< LANDO shellenv <<<";
 
 export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const home = env.HOME ?? ".";
+  const home = env.HOME ?? env.USERPROFILE ?? homedir();
   const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
   if (shell === "zsh") return join(home, ".zshrc");
   if (shell === "bash") return join(home, ".bashrc");
@@ -297,7 +301,7 @@ const cgroupsDelegateStep = (
       detail: "Could not read the cgroups delegation drop-in; not removing it.",
     };
   }
-  if (content === CGROUPS_DELEGATE_CONF_CONTENT) {
+  if (isLandoManagedCgroupsDelegateContent(content)) {
     return {
       ...base,
       status: "owned",
