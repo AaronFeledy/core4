@@ -6,7 +6,7 @@ timeout: 60000
 tags: [beta, docs, cli, init, recipes]
 ---
 
-# Init from a remote recipe source
+# Init from a remote recipe
 
 `lando init` can scaffold an app from a recipe hosted somewhere other than
 the bundled set: a git repository, a tarball, an npm package, or the recipe
@@ -114,6 +114,6 @@ private or test registries:
 lando init --source=registry --id=<recipe-id> --registry-url=<url>
 ```
 
-See the [recipe-source guide](../recipes/remote-sources.mdx) for cache
+See [remote recipe sources](../recipes/remote-sources.mdx) for cache
 location, verification behavior, and every `RecipeSourceError` kind each
 source can raise.

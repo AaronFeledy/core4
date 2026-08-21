@@ -5,15 +5,11 @@ timeout: 60000
 tags: [beta, docs, tooling, php, composer]
 ---
 
-# PHP Composer workflows
+# Install Composer dependencies on start
 
-[Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task through the fast,
-cache-backed tooling path. This guide covers the layer above that: making project or global
-Composer dependency installation a repeatable part of the build, not a manual step a developer
-runs by hand after `lando start`.
+[Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task. This guide makes `composer install` part of the build so you do not run it by hand after every `lando start`.
 
-Declare a `composer install` step under a service's `build.app` and it runs every time the app
-starts or rebuilds, after the project code is mounted:
+Put it under `build.app`. It runs every time the app starts or rebuilds, after the project code is mounted:
 
 ```yaml
 name: php-composer-workflows-demo
@@ -34,36 +30,29 @@ tooling:
       - composer
 ```
 
-A `build.app` step runs after the app's code is mounted, so `composer install` sees
-`composer.json` and writes `vendor/` into the project — the right place for project dependencies.
-The flags above keep the install non-interactive, quiet, and production-mode — safe to run
-unattended on every start/rebuild.
+`build.app` runs after the code is mounted, so `composer install` sees `composer.json` and writes `vendor/` into the project. The flags keep it non-interactive, quiet, and production-mode.
 
-## Global dependencies via build.artifact
+## Install global tools in the image
 
-A `build.artifact` step runs while the image is baked, before the project code is mounted — use it
-for tools the whole image needs, not project code:
+A `build.artifact` step runs while the image is baked, before project code is mounted. Use it for tools the whole image needs:
 
 ```sh
 composer global require squizlabs/php_codesniffer
 ```
 
-Composer's `--working-dir` or global mode installs a tool into the image once, independent of any
-single project's `composer.json`. A global Composer binary lands under the Composer home's
-`vendor/bin`, so add that directory to `PATH` in the same `build.artifact` step if the tool must
-be callable by name.
+Composer's `--working-dir` or global mode installs a tool into the image once. A global Composer binary lands under the Composer home's `vendor/bin`, so add that directory to `PATH` in the same `build.artifact` step if the tool must be callable by name.
 
-## Live install downloads packages
+## Re-run after composer.json changes
 
-The first `lando start` (and every `lando rebuild`) re-runs the `build.app` composer install
-step, downloading any packages not already cached in the Composer cache volume. Use
-`lando rebuild -y` after changing `composer.json` to force the `build.app` step to run again and
-resolve the new dependency set.
+The first `lando start` (and every `lando rebuild`) re-runs the `build.app` composer install, downloading packages not already in the Composer cache volume. After you change `composer.json`:
+
+```sh
+lando rebuild -y
+```
 
 ## Pick a Composer version
 
-Stock PHP services install checksum-pinned Composer `2.10.2`. Set `composer:` on the PHP
-service to track that major channel, pin an exact release, or skip the install:
+Stock PHP services install checksum-pinned Composer `2.10.2`. Set `composer:` on the PHP service to track that major channel, pin an exact release, or skip the install:
 
 ```yaml
 services:
@@ -74,8 +63,7 @@ services:
     # composer: false      # skip Composer entirely
 ```
 
-Unknown versions fail at plan time with remediation. Changing `composer:` rebuilds the
-artifact layer because the selected pin is part of the image build key.
+Unknown versions fail at plan time with remediation. Changing `composer:` rebuilds the artifact layer because the selected pin is part of the image build key.
 
 <Guide>
   <Scenario id="project-dependency-install" render>

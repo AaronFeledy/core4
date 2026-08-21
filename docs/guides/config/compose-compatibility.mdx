@@ -8,24 +8,14 @@ tags: [beta, docs, config, compose]
 
 # Compose compatibility
 
-Lando treats Compose compatibility as a service-key vocabulary, not as a promise that every Compose
-project file is a valid Landofile. The committed disposition maps classify the supported vocabulary,
-and the generated [Compose key matrix](../../reference/compose-key-matrix.mdx) publishes the complete
-per-key result from that source of truth. Use `docs/reference/compose-key-matrix.mdx` instead of copying
-key lists into guides or migration notes. Consult the generated matrix for every current classification
-and its planning or remediation detail.
+Lando treats Compose compatibility as a service-key vocabulary, not as a promise that every Compose project file is a valid Landofile. The committed disposition maps classify the supported vocabulary. The generated [Compose key matrix](../../reference/compose-key-matrix.mdx) publishes the complete per-key result. Use that matrix instead of copying key lists into guides or migration notes.
 
 Each disposition describes what happens during planning:
 
 - **normalized** resolves the input into a provider-neutral plan field.
-- **preserved** accepts the input and carries it in the Compose plan extension; the matrix row detail determines whether provider capability checks apply.
-  Service-level `x-*` extensions are inert and are not capability-gated.
+- **preserved** accepts the input and carries it in the Compose plan extension. The matrix row detail determines whether provider capability checks apply. Service-level `x-*` extensions are inert and are not capability-gated.
 - **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
 
-Treat normalized and preserved entries as accepted only for the shapes documented by the generated
-matrix. Use the generated matrix remediation for rejected input instead of assuming unsupported
-intent was ignored.
+Treat normalized and preserved entries as accepted only for the shapes documented by the generated matrix. Use the matrix remediation for rejected input.
 
-For a runnable example of pasting a Compose service definition into a Landofile, continue with
-[Compose service blocks](./compose-service-block.mdx).
-
+For a runnable example, continue with [Compose service blocks](./compose-service-block.mdx).

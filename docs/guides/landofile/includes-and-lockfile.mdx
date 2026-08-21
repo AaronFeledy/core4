@@ -6,18 +6,18 @@ timeout: 60000
 tags: [beta, docs, landofile, includes, lockfile]
 ---
 
-# Includes and the lockfile
+# Include fragments and lock remotes
 
 `includes:` accepts a `kind:` discriminator. `landofile` (the default,
 whole-file fragments) and `compose` fragments resolve per file before the
 layer merge, while `tooling` fragments resolve after it; see the
-[tooling-includes guide](./tooling-includes.mdx) for the tooling namespace,
+[Include shared tooling](../tooling/tooling-includes.mdx) for the tooling namespace,
 flatten, aliases, excludes, and vars contract. Included Landofile fragments
 use native YAML anchors, aliases, and merge keys (`&node-service`,
 `*node-service`, `<<:`); explicit mapping keys override merged defaults
 before the fragment is layered into the app.
 
-The published Landofile parser/emitter (`@lando/sdk/landofile`) preserves
+The Landofile parser preserves
 encoded map order for round trips and fails closed on invalid map keys or
 non-serializable values before lockfile state is written. Command-index
 cache fingerprints include the resolved local include bytes, so changing a
@@ -64,13 +64,13 @@ lando app:includes:update --no-network
 # drift and tells you to run app:includes:update
 lando app:includes:update --check
 
-# Run the refresh comparison without writing, so CI can fail when
+# Run the refresh comparison without writing, so a script can fail when
 # .lando.lock.yml is missing, stale, or mismatched
 lando app:includes:verify
 ```
 
 If `.lando.lock.yml` can't be decoded as Lando's lockfile shape, the
-StateStore-backed reader treats it as an empty lock, so verify/update
+reader treats it as an empty lock, so verify/update
 report missing remote entries instead of preserving corrupt bytes.
 
 `app:includes:verify` reports `{ ok, entries, mismatches }` in text and JSON
@@ -85,8 +85,8 @@ were requested.
 ## Parser limits
 
 The published Landofile parser rejects oversized input with
-`LandofileParseError` before include or lockfile state is processed —
-inputs are capped at 1 MiB of UTF-8. Deep block indentation and inline-array
+`LandofileParseError` before include or lockfile state is processed.
+Inputs are capped at 1 MiB of UTF-8. Deep block indentation and inline-array
 nesting fail closed with `LandofileParseError` instead of recursing
 indefinitely, at 64 nested levels. Nested YAML aliases fail with
 `LandofileParseError` when their resolved graph exceeds the parser's

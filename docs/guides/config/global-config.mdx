@@ -5,13 +5,9 @@ timeout: 90000
 tags: [beta, docs, config, cli]
 ---
 
-# Global config
+# Read and write global config
 
-`lando config` reads or writes the Lando installation/user config — the
-host-level settings that apply to every app, such as which container
-provider Lando picks by default. It never touches a project's Landofile or
-the shared global app; use `app:config` for a project and `global:config`
-for the shared global app.
+`lando config` reads or writes host-level settings that apply to every app, such as which container provider Lando picks by default. It never touches a project's Landofile or the shared global app. Use `app:config` for a project and `global:config` for the shared global app.
 
 <Guide>
   <Scenario id="installation-config" render>
@@ -22,26 +18,15 @@ for the shared global app.
     </Step>
   </Scenario>
 
-The default view/get surface currently reports three fields under
-`result.config`: `userDataRoot`, `userConfRoot`, and `defaultProviderId`.
-The full `GlobalConfig` schema — which validates `config.yml` and
-set/unset/validate mutations — is broader: `defaultProviderId`, `telemetry`,
-`renderer`, `network`, `mcp`, `agentEnv`, `notify`, `events`,
-`systemPluginRoot`, `userDataRoot`, `userConfRoot`, `userCacheRoot`, and
-`allowLoadOutsideRoot`.
+The default view/get surface currently reports three fields under `result.config`: `userDataRoot`, `userConfRoot`, and `defaultProviderId`. The full `GlobalConfig` schema, which validates `config.yml` and set/unset/validate mutations, is broader: `defaultProviderId`, `telemetry`, `renderer`, `network`, `mcp`, `agentEnv`, `notify`, `events`, `systemPluginRoot`, `userDataRoot`, `userConfRoot`, `userCacheRoot`, and `allowLoadOutsideRoot`.
 
 ## Precedence
 
-`ConfigService` merges the global config in a deterministic order — a later
-source wins over an earlier one: defaults, then `config.yml`, then
-`LANDO_CONFIG__*` env vars, then inline flags. A `LANDO_CONFIG__*` env var
-maps its SCREAMING_SNAKE_CASE path to the matching camelCase config key and
-overrides the file for that key, for example
-`LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman`.
+`ConfigService` merges the global config in a deterministic order. A later source wins: defaults, then `config.yml`, then `LANDO_CONFIG__*` env vars, then inline flags. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase config key and overrides the file for that key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman`.
 
-The installation config lives at `config.yml` under the resolved user
-config root, for example `/home/user/.local/share/lando/config.yml` on
-Linux.
+The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.local/share/lando/config.yml` on Linux.
+
+`LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
 
 ## Get, set, unset, validate, edit
 
@@ -64,9 +49,7 @@ lando config edit
 
 ## The shared global app
 
-`lando global:config` reads or writes the shared global Lando app's
-Landofile stack — the always-on app that hosts host-wide services such as
-the proxy — not the installation config from `lando config`.
+`lando global:config` reads or writes the shared global Lando app's Landofile stack. That always-on app hosts host-wide services such as the proxy. It is not the installation config from `lando config`. Lando starts Traefik for you as part of that global app.
 
   <Scenario id="shared-global-app-config" render>
     <Step name="json-shape">
@@ -79,16 +62,9 @@ the proxy — not the installation config from `lando config`.
   </Scenario>
 </Guide>
 
-The result envelope reports `app` (the global app id), `source` (the fixed
-literal `global`), `materialized` (whether the dist Landofile has been
-materialized), both file paths (`distLandofile`, `userLandofile`), a
-`paths` object, and the decoded `landofile` shape.
+The result envelope reports `app` (the global app id), `source` (the fixed literal `global`), `materialized` (whether the dist Landofile has been materialized), both file paths (`distLandofile`, `userLandofile`), a `paths` object, and the decoded `landofile` shape.
 
-The hand-editable overlay Landofile for the shared global app lives at
-`<userDataRoot>/global/.lando.yml`, for example
-`/home/user/.local/share/lando/global/.lando.yml` on Linux. The generated
-dist Landofile that merges plugin-contributed global services on top of the
-user overlay lives at `<userDataRoot>/global/.lando.dist.yml`.
+The hand-editable overlay Landofile for the shared global app lives at `<userDataRoot>/global/.lando.yml`, for example `/home/user/.local/share/lando/global/.lando.yml` on Linux. The generated dist Landofile that merges plugin-contributed global services on top of the user overlay lives at `<userDataRoot>/global/.lando.dist.yml`.
 
 ```sh
 # Write a dot-path key into the global user Landofile

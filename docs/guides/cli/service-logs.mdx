@@ -6,7 +6,7 @@ timeout: 60000
 tags: [beta, docs, cli, logs]
 ---
 
-# Service logs
+# Read service logs
 
 Declare extra in-container log files under `services.<name>.logs`, the
 service that owns them:
@@ -22,7 +22,7 @@ services:
 
 A user-declared source needs a `path`; `id`, `label`, `stream`, and
 timestamp behavior can be tuned when needed. Landofile-declared sources
-resolve to provider-owned follow sources — user config doesn't choose the
+resolve to provider-owned follow sources. User config does not choose the
 collection architecture. The implicit container stdout/stderr source is
 always available and is selected with `--source console` when you want only
 engine logs.
@@ -77,13 +77,13 @@ lando logs --service appserver --since 15m
 
 ## Capability degradation
 
-A provider that can't stream service logs fails before planning with a
+A provider that cannot stream service logs fails before planning with a
 tagged capability error and remediation. A provider must advertise
 `serviceLogSources` before follow sources can be read from container files;
 redirect sources remain available without it, since they flow through the
 existing console stream.
 
-A required follow source fails up front when the provider can't follow
+A required follow source fails up front when the provider cannot follow
 service files. A non-required unavailable follow source is surfaced as
 unavailable and skipped instead of being silently dropped. Requesting an
 undeclared `--source` fails with the known source ids, including `console`.

@@ -5,10 +5,9 @@ timeout: 60000
 tags: [beta, docs, tooling, php, composer]
 ---
 
-# Composer on PHP
+# Run Composer on PHP
 
-Declare a `composer` tooling task targeting a PHP service and Lando routes it through the fast,
-cache-backed tooling path — no provider bootstrap needed just to discover the command:
+Declare a `composer` tooling task against a PHP service. Lando routes it through the cache-backed tooling path, so it does not need a provider bootstrap just to find the command:
 
 ```yaml
 name: composer-php-demo
@@ -37,25 +36,11 @@ tooling:
   </Scenario>
 </Guide>
 
-## Bare command and canonical id both work
+## Use the bare name or the canonical id
 
 ```sh
 lando composer --version
-```
-
-```sh
 lando app:composer --version
 ```
 
-Both forms use the same route: the router reads only a fresh app command cache before
-provider-backed execution starts. If the cache is stale or missing, the command fails with a message
-naming the fix — `lando app:cache:refresh`, `lando start`, or `lando rebuild`. After routing, the
-normal tooling path still enforces version, provider, environment, and runtime policies through
-`runTooling`.
-
-## What's available before provider bootstrap
-
-At the tooling bootstrap level, only `LandofileService` and `CommandRegistry` are available.
-`RuntimeProvider`, `RuntimeProviderRegistry`, `AppPlanner`, and `ToolingEngine` are intentionally
-unavailable until a later app/provider path actually needs them — command discovery and routing
-don't.
+Both forms use the same route. The router reads a fresh app command cache before provider-backed execution starts. If the cache is stale or missing, the command names the fix: `lando app:cache:refresh`, `lando start`, or `lando rebuild`. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.

@@ -6,7 +6,7 @@ timeout: 90000
 tags: [beta, docs, agent-native, info, json]
 ---
 
-# Inspect a running app from outside its containers
+# Inspect a running app
 
 Agents and scripts don't need a shell inside a service to learn what's running.
 `lando app:info --format=json` reports every service, its status, and its
@@ -57,13 +57,12 @@ An optional `agentEnv` block reports whether agent-context env forwarding is
 active for this app. `agentEnv.enabled` is `true` when Lando forwards
 agent-context markers into service exec/shell sessions for this app, and
 `agentEnv.forwarded` lists the names actually forwarded, e.g.
-`["CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "OPENCODE", "COPILOT_CLI", "GEMINI_CLI", "AGENT", "CI"]`
-— a subset of the fixed allowlist documented on the lando-shell guide.
+`["CLAUDECODE", "CLAUDE_CODE", "CURSOR_AGENT", "OPENCODE", "COPILOT_CLI", "GEMINI_CLI", "AGENT", "CI"]`. That is a subset of the fixed allowlist documented on the lando-shell guide.
 
 ## How context reaches a container
 
 A host script or agent can ask the CLI for structured app state from outside
-any container with `lando app:info --format=json` — no shell inside a service
+any container with `lando app:info --format=json`. No shell inside a service
 required.
 
 Only the provider-exec surfaces forward host agent-context markers into a
@@ -80,7 +79,7 @@ covers the `app:info`-specific result fields.
 
 In Lando 3, a service process read its own app context from a baked-in
 `$LANDO_INFO` environment variable, which could drift from the actual running
-state. Lando 4 has no equivalent baked-in env var — `app:info --format=json`
+state. Lando 4 has no equivalent baked-in env var. `app:info --format=json`
 is the supported, authoritative source of app state instead. The upstream
 issue tracking `$LANDO_INFO` drift, [lando/lando#2565](https://github.com/lando/lando/issues/2565),
 is why v4 makes the CLI itself authoritative for app state rather than a

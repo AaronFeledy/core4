@@ -6,15 +6,10 @@ timeout: 60000
 tags: [beta, docs, plugins, trust]
 ---
 
-# Manage plugin trust
-
-Print the non-expiring trusted plugin names and trusted authoring roots from
-`<userConfRoot>/plugin-trust.yml`:
+# List trusted plugins
 
 ```sh
 lando plugin:trust list
 ```
 
-List output includes `trusted-plugins` and `trusted-authoring-roots`
-sections, using `[]` for empty sections.
-
+That prints the non-expiring trusted plugin names and trusted authoring roots from `<userConfRoot>/plugin-trust.yml`. Output includes `trusted-plugins` and `trusted-authoring-roots` sections, using `[]` for empty sections.

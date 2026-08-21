@@ -5,18 +5,31 @@ timeout: 90000
 tags: [beta, docs, config, compose]
 ---
 
-# Compose service block
+# Paste a Compose service into a Landofile
 
-Paste a Compose service definition under `services.<name>` and Lando
-normalizes the keys it understands. `extra_hosts`, published `ports`, and
-`depends_on` conditions all survive into the plan.
+Put `type: compose` on a service and keep the Compose keys the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) accepts. `extra_hosts`, published `ports`, and `depends_on` conditions all survive into the plan.
 
-`configs:` is in that vocabulary too. Declare the file at the top level,
-grant it onto a service with `source` / `target` / `mode`, and the bundled
-providers mount it read-only. Handy for a drop-in `php.ini` without a
-bind-mount workaround.
+`configs:` grants are realized as read-only binds. Declare the file at the top level, grant it onto a service with `source` / `target` / `mode`, and the bundled providers mount it. Handy for a drop-in `php.ini` without a bind-mount workaround.
 
-Use the disposition and remediation details in the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) when porting additional Compose keys.
+```yaml
+name: compose-service-block-demo
+services:
+  cache:
+    type: compose
+    image: valkey/valkey:8-alpine
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    ports:
+      - target: 80
+        published: "8080"
+        protocol: tcp
+    depends_on:
+      cache:
+        condition: service_started
+    extra_hosts:
+      - "internal.test:127.0.0.1"
+```
 
 <Guide>
   <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>

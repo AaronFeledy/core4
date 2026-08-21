@@ -5,13 +5,9 @@ timeout: 60000
 tags: [beta, docs, tooling, includes]
 ---
 
-# Tooling includes
+# Include tooling fragments
 
-Tooling fragments load through the canonical `includes:` surface with `kind: tooling`. The
-`toolingIncludes:` shorthand resolves through the same machinery, so both spellings produce the
-same commands wherever both are accepted. Inside a tooling fragment only the `toolingIncludes:`
-spelling nests further fragments; a bare `includes:` key in a fragment fails closed with a tagged
-`LandofileIncludeError`.
+Tooling fragments load through `includes:` with `kind: tooling`. The `toolingIncludes:` shorthand uses the same machinery. Inside a tooling fragment, only `toolingIncludes:` nests further fragments. A bare `includes:` key in a fragment fails closed with tagged `LandofileIncludeError`.
 
 ```yaml
 name: tooling-includes-demo
@@ -56,15 +52,8 @@ tooling:
   </Scenario>
 </Guide>
 
-## The resolution contract
+## Know the resolution contract
 
-Included tasks register beneath the include namespace inside the task's command namespace:
-`app:<namespace>:<task>`. `flatten: true` registers included tasks without the namespace prefix.
-`internal: true` marks every task the include contributes as internal, so it stays out of command
-listings while remaining callable. `aliases: [documentation]` aliases the include namespace at the
-same command-namespace level, and `excludes: [publish]` removes tasks from the include before
-flattening or namespace registration.
+Included tasks register as `app:<namespace>:<task>`. `flatten: true` drops the namespace prefix. `internal: true` hides tasks from command listings while leaving them callable. `aliases: [documentation]` aliases the include namespace. `excludes: [publish]` removes tasks before flattening or namespace registration.
 
-Include-level `vars: { DOCS_PORT: 4321 }` apply to every included task unless the task defines the
-same var. `optional: true` suppresses missing-fragment errors instead of failing the load. Fragments
-that include each other fail closed with a tagged `ToolingIncludeCycleError`.
+Include-level `vars:` apply to every included task unless the task defines the same var. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with tagged `ToolingIncludeCycleError`.

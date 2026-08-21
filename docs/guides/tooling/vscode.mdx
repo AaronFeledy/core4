@@ -6,11 +6,9 @@ timeout: 90000
 tags: [beta, docs, tooling, vscode, editor]
 ---
 
-# VS Code
+# Run Lando from VS Code
 
-A workspace `tasks.json` lets you run Lando commands from the Command Palette or a keybinding
-instead of retyping them in the terminal. This guide uses the `vscode-demo` fixture with a PHP
-service named `appserver` and a Node service named `node`:
+Add a workspace `tasks.json` so you can run Lando from the Command Palette instead of retyping it in the terminal. This guide uses a PHP service named `appserver` and a Node service named `node`:
 
 ```yaml
 name: vscode-demo
@@ -38,7 +36,7 @@ services:
   </Scenario>
 </Guide>
 
-## Tasks and debugging
+## Add tasks
 
 ```json
 {
@@ -67,20 +65,12 @@ services:
 }
 ```
 
-Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label.
-`lando rebuild -y` recreates containers from the current Landofile, so it discards changes that are
-not persisted in the Landofile or a mounted volume.
+Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label. `lando rebuild -y` recreates containers from the current Landofile, so it discards changes that are not persisted in the Landofile or a mounted volume.
 
-PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service (see the Xdebug in PhpStorm
-guide) so Lando installs the extension and listens on port `9003`. A `launch.json` PHP debug
-config's `pathMappings` maps the in-container app path to your workspace folder so VS Code can set
-breakpoints against the files you actually edit. `app` is Lando's default in-container app mount;
-adjust the key if a service overrides its mount path.
+## Debug PHP and Node
 
-For Node debugging, start your process with `node --inspect=0.0.0.0:9229 server.js`, publish the
-debug port on the node service, and attach with `address: localhost`, `port: 9229`,
-`localRoot: ${workspaceFolder}`, `remoteRoot: /app`, and `restart: true`.
+PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando installs the extension and listens on port `9003`. See [Xdebug in PhpStorm](xdebug-phpstorm.mdx). A `launch.json` PHP debug config's `pathMappings` maps the in-container app path to your workspace folder. `app` is Lando's default in-container app mount; adjust the key if a service overrides its mount path.
 
-Use `lando shell --service appserver` when you want a persistent interactive session from VS Code's
-integrated terminal; use `lando exec appserver -- <command>` for a single one-off command without
-leaving the task open.
+For Node, start with `node --inspect=0.0.0.0:9229 server.js`, publish the debug port on the node service, and attach with `address: localhost`, `port: 9229`, `localRoot: ${workspaceFolder}`, `remoteRoot: /app`, and `restart: true`.
+
+Use `lando shell --service appserver` for a persistent session from VS Code's integrated terminal. Use `lando exec appserver -- <command>` for a one-off.
