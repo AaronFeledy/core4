@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
+import { CORE_VERSION } from "@lando/engine/version";
+
 import {
   ConfigService,
   PathsService,
@@ -100,9 +102,22 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
+    expect(report.version).toBe(CORE_VERSION);
+    expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
     expect(report.subsystems.checks.find((check) => check.name === "certs")?.context.subsystemId).toBe(
       "injected-ca",
     );
+  });
+
+  test("DoctorReportSchema requires version", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(DoctorReportSchema)({
+        provider: { checks: [] },
+        subsystems: { checks: [] },
+        globalApp: { checks: [] },
+        mcp: { checks: [] },
+      }),
+    ).toThrow();
   });
 
   test("redacts a failing network trust path in every format and keeps the report schema stable", async () => {

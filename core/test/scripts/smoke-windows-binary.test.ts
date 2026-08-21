@@ -43,6 +43,15 @@ echo "ok"
 exit 0
 `;
 
+const PLACEHOLDER_VERSION_BINARY = `#!/bin/sh
+case "$1" in
+  --version) echo "0.0.0"; exit 0;;
+  --help) echo "Lando v4 core: usage"; exit 0;;
+  shellenv) echo "export LANDO_INSTALL_DIR=/opt/lando"; exit 0;;
+  *) echo "unknown command" >&2; exit 2;;
+esac
+`;
+
 beforeAll(async () => {
   workDir = await mkdtemp(join(tmpdir(), "smoke-win-test-"));
 });
@@ -70,6 +79,11 @@ describe("smokeWindowsBinary", () => {
   test("rejects when a bogus subcommand unexpectedly exits 0", async () => {
     const binary = await writeFakeBinary("always-ok", ALWAYS_OK_BINARY);
     await expect(smokeWindowsBinary(binary)).rejects.toThrow();
+  });
+
+  test("rejects when --version reports the 0.0.0 placeholder", async () => {
+    const binary = await writeFakeBinary("placeholder-version", PLACEHOLDER_VERSION_BINARY);
+    await expect(smokeWindowsBinary(binary)).rejects.toThrow(/placeholder version/);
   });
 
   test("rejects when the binary path does not exist", async () => {

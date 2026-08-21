@@ -7,13 +7,14 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import corePackage from "../../package.json";
 import { version } from "../../src/cli/commands/version.ts";
 
 describe("version", () => {
   test("returns the current core + bun versions", async () => {
     const result = await Effect.runPromise(version);
 
-    expect(result.core).toBeDefined();
+    expect(result.core).toBe(corePackage.version);
     expect(result.bun).toMatch(/^\d+\.\d+/);
     expect(["darwin", "linux", "win32"]).toContain(result.platform);
   });

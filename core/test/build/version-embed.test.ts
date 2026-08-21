@@ -108,6 +108,34 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
         const flagOut = await runCommand([outfile, "--version"]);
         expect(flagOut.exitCode).toBe(0);
         expect(flagOut.stdout.trim()).toBe("8.8.8-stamped");
+
+        const helpOut = await runCommand([outfile, "--help"]);
+        expect(helpOut.exitCode).toBe(0);
+        expect(helpOut.stdout).toContain("8.8.8-stamped");
+
+        const doctorHome = join(root, "doctor-home");
+        const doctorOut = await new Promise<RunResult>((resolvePromise) => {
+          const proc = Bun.spawn({
+            cmd: [outfile, "doctor", "--format=json"],
+            cwd: root,
+            env: {
+              ...process.env,
+              HOME: doctorHome,
+              LANDO_USER_CONF_ROOT: join(doctorHome, "conf"),
+              LANDO_USER_DATA_ROOT: join(doctorHome, "data"),
+              LANDO_USER_CACHE_ROOT: join(doctorHome, "cache"),
+            },
+            stdout: "pipe",
+            stderr: "pipe",
+          });
+          Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]).then(
+            ([exitCode, stdout, stderr]) => resolvePromise({ exitCode, stdout, stderr }),
+          );
+        });
+        const doctorEnvelope = JSON.parse(doctorOut.stdout) as {
+          readonly result?: { readonly version?: unknown };
+        };
+        expect(doctorEnvelope.result?.version).toBe("8.8.8-stamped");
       } finally {
         await rm(root, { recursive: true, force: true });
       }

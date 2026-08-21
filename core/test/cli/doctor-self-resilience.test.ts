@@ -97,6 +97,7 @@ describe("doctor safe mode", () => {
 
 describe("doctor degradation is visible to automation", () => {
   const reportWithSelf = (): DoctorReport => ({
+    version: "4.0.0-test",
     provider: { checks: [] },
     subsystems: { checks: [] },
     globalApp: { checks: [] },
@@ -135,6 +136,7 @@ describe("doctor degradation is visible to automation", () => {
   test("a healthy report keeps the default exit code", () => {
     // Given a report with no self section
     const healthy: DoctorReport = {
+      version: "4.0.0-test",
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },

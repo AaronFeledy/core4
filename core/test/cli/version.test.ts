@@ -36,14 +36,16 @@ const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "compiled CLI version command",
   () => {
-    test("prints the core package version before runtime bootstrap", async () => {
+    test("prints a stamped 4.x prerelease, never the working-tree 0.0.0 pin", async () => {
       const build = await runCommand([process.execPath, "run", "build"]);
       expect(build.exitCode).toBe(0);
 
       const version = await runCommand([binaryPath, "version"]);
 
       expect(version.exitCode).toBe(0);
-      expect(version.stdout.trim()).toBe(corePackage.version);
+      expect(version.stdout.trim()).not.toBe("0.0.0");
+      expect(version.stdout.trim()).not.toBe(corePackage.version);
+      expect(version.stdout.trim()).toMatch(/^4\.\d+\.\d+/);
       expect(version.stderr).toBe("");
     }, 120_000);
   },

@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 import type { BunPlugin } from "bun";
 
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated.ts";
+
+export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUTFILE = resolve(REPO_ROOT, "core/dist/lando");
@@ -91,7 +94,12 @@ export const buildCompiledBinary = async (
     sourcemap: "external",
     define: {
       __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRootFor(platform.id)),
-      ...(options.version === undefined ? {} : { __LANDO_CORE_VERSION__: JSON.stringify(options.version) }),
+      __LANDO_CORE_VERSION__: JSON.stringify(
+        resolveCompiledBinaryVersion({
+          ...(options.version === undefined ? {} : { explicit: options.version }),
+          cwd: REPO_ROOT,
+        }),
+      ),
     },
     plugins: [createOpenTuiPruningPlugin(platform.id)],
   });
@@ -145,7 +153,9 @@ if (import.meta.main) {
   try {
     await buildCompiledBinary(parseCompiledBinaryArgs(Bun.argv.slice(2)));
   } catch (error) {
-    if (!(error instanceof CompiledBinaryBuildError)) throw error;
+    if (!(error instanceof CompiledBinaryBuildError || error instanceof CompiledBinaryVersionError)) {
+      throw error;
+    }
     console.error(error.message);
     process.exitCode = 1;
   }
