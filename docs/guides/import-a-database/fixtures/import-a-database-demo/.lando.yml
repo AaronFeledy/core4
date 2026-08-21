@@ -1,0 +1,9 @@
+name: import-a-database-demo
+services:
+  db:
+    type: mysql
+    primary: true
+tooling:
+  mysql:
+    service: db
+    cmd: mysql -u lando -plando import-a-database-demo

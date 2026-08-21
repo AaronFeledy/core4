@@ -95,7 +95,11 @@ describe("docs sidebar", () => {
     expect(directories).not.toContain("guides");
     expect(directories).toEqual(["guides/services", "guides/tooling", "guides/landofile", "guides/config"]);
     expect(slugs).toContain("guides/tutorial/app-lifecycle");
+    expect(slugs).toContain("guides/tutorial/from-lando-3");
     expect(slugs).toContain("guides/node-postgres");
+    expect(slugs).toContain("guides/cli/everyday-commands");
+    expect(slugs).toContain("guides/scratch/scratch-from-recipe");
+    expect(slugs).toContain("guides/cli/ssh");
     expect(slugs).toContain("guides/setup/provider-selection");
     expect(slugs).toContain("guides/setup/provider-auto-setup");
     expect(slugs).toContain("guides/install/github-releases");

@@ -1,0 +1,28 @@
+---
+id: expressions
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile]
+---
+
+# Landofile expressions
+
+`${...}` and `{{ ... }}` configuration expressions are not supported in Alpha Landofiles. Lando fails closed when it sees them.
+
+What works today is a whole-file template, includes, and env overlays.
+
+```yaml
+template: handlebars
+```
+
+If you came here for `${VARS}` magic, Alpha says not yet.
+
+## What to do instead
+
+Use `template: handlebars` or `template: mustache`, then write ordinary YAML. See [Template engines](./template-engines.mdx).
+
+Share fragments with `includes:`. See [Includes and the lockfile](./includes-and-lockfile.mdx).
+
+Override config from the environment with `LANDO_CONFIG__` or `env_file:`. See [Env overrides](./env-overrides.mdx).
+
+A general expression language for Landofile values is not up.

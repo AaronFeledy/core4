@@ -1,0 +1,31 @@
+---
+id: from-lando-3
+provider: test
+timeout: 60000
+tags: [beta, docs, tutorial, lando3]
+---
+
+# Start fresh from Lando 3
+
+Lando 4 is a rewrite. A full Lando 3 to 4 migration map is not up.
+
+Start a new Landofile, or scaffold a supported recipe:
+
+```sh
+lando init --recipe lamp --yes
+lando start
+```
+
+Lando 4 does not interpret your Lando 3 file. It writes a new one.
+
+## What to do instead
+
+Install the Alpha and run setup. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+
+Write a [Landofile](../landofile/your-landofile.mdx), or init `lamp`, `lemp`, `wordpress`, `drupal`, or `drupal-cms`.
+
+Use the [everyday CLI loop](../cli/everyday-commands.mdx).
+
+Do not wait for a key-by-key converter. It is not up.
+
+The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. `LANDO_PROVIDER` does not persist.

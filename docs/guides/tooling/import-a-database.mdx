@@ -1,0 +1,75 @@
+---
+id: import-a-database
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, database]
+---
+
+# Import a SQL dump
+
+Lando 4 has no core `db-import` command. Pipe the dump into the database client with `lando exec`.
+
+Read the database name, user, and password from `lando info` first.
+
+```sh
+lando info
+```
+
+There is no secret `db-import` button in core. You already have the client.
+
+## Import into MySQL or MariaDB
+
+The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
+
+```sh
+lando exec --service db -- mysql -u lando -plando myapp < dump.sql
+```
+
+Feed the dump on stdin from the host. Recipes do not ship a `db-import` alias.
+
+## Import into Postgres
+
+Postgres derives the password per app. Copy it from `lando info`. Do not hardcode it.
+
+```sh
+lando exec --service db -- psql -U lando -d myapp < dump.sql
+```
+
+Pipe the dump on stdin. `-f` only works when the file already exists inside the service.
+
+## Write a tooling alias
+
+Add your own client command when you want a shorter invocation:
+
+```yaml
+name: import-a-database-demo
+services:
+  db:
+    type: mysql
+    primary: true
+tooling:
+  mysql:
+    service: db
+    cmd: mysql -u lando -plando import-a-database-demo
+```
+
+Then `lando mysql` runs that client. A bundled `db:import` helper is not up.
+
+<Guide>
+  <Scenario id="client-alias" render>
+    <Step name="scaffold">
+      <UseFixture name="import-a-database-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"mysql\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run commands inside a service](../cli/exec.mdx)
+- [Add MySQL](../services/mysql.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Switching database service types](../services/switching-databases.mdx)

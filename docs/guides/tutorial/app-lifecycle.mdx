@@ -109,8 +109,7 @@ lando rebuild -y
 
 ## Tear down
 
-`destroy` removes the app's containers, networks, and volumes. This deletes
-service data. The `-y` flag is required in non-interactive contexts:
+`destroy` removes the app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. The `-y` flag is required in non-interactive contexts:
 
 ```sh
 lando destroy -y
