@@ -677,3 +677,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - An AppFeature with no selectors selects every service and forms a mutation cycle with nginx PHP-FPM wiring. Select PHP via `hasFeature` plus database `types:` so siblings are visible without selecting nginx.
   - `db_client:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
 ---
+
+## 2026-08-21 03:20 CDT - US-573 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 + mysql app with `db_client: auto`, and confirmed mysql 8.0.46 in the PHP container, a live `SELECT 1` against the database service, HTTP `us573-ok`, and adjacent PHP 8.3.33 / Composer 2.10.2. Invalid `db_client: "nope"` failed closed at plan time; `false` and `mariadb:11.4` planned. Destroyed the app.
+- Fixed the start blocker: MySQL apt `RPM-GPG-KEY-mysql-2023` expired 2025-10-22 (and the pin fingerprint was the 2022 key). Switched to `RPM-GPG-KEY-mysql-2025` / `BCA43417C3B485DD128EC6D4B7B3B788A8D3785C`.
+- **Out-of-scope finding:** authored `creds: user: app` did not apply; the mysql container used `MYSQL_USER=lando` / `MYSQL_DATABASE=us573-verify`. Query succeeded with those values. Suspected mysql service creds path, not db_client.
+- **Out-of-scope finding:** `lando mysql --version` failed with `ToolingCompileError` (app command cache missing `app:mysql`) after start and `app:cache:refresh`. Suspected mysql service-type tooling contribution / command cache, not db_client.
+- **Learnings for future iterations:**
+  - Pin MySQL apt GPG keys to the unexpired `RPM-GPG-KEY-mysql-YYYY` whose fingerprint matches the live InRelease signer; the 2023 file is the same key id with an expired self-signature.
+---
