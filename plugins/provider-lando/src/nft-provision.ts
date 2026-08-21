@@ -252,7 +252,7 @@ const sonamePresent = (files: ReadonlyArray<string>, needed: string): boolean =>
 const readCString = (bytes: Uint8Array, offset: number): string => {
   let end = offset;
   while (end < bytes.length && bytes[end] !== 0) end += 1;
-  return new TextDecoder("utf8").decode(bytes.subarray(offset, end));
+  return new TextDecoder("utf-8").decode(bytes.subarray(offset, end));
 };
 
 export const readElfNeeded = (bytes: Uint8Array): ReadonlyArray<string> => {
