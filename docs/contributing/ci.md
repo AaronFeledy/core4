@@ -33,7 +33,7 @@ bun run typecheck
 
 `bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts.
 
-The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` collects that file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table. Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
 `bun run test` prints the exact shard commands CI runs:
 
@@ -42,6 +42,14 @@ bun run test:unit:shard 1/3
 bun run test:unit:shard 2/3
 bun run test:unit:shard 3/3
 ```
+
+Refresh the committed `.bun-test-timings.json` after a suite-shape change:
+
+```bash
+bun run scripts/update-test-timings.ts
+```
+
+Nightly runs the same refresh in `refresh-test-timings-linux-x64` and uploads the timings file; commit the artifact when the split has drifted. `NIGHTLY_TIER_TESTS` stay out of both the PR shards and the timings refresh.
 
 The unsharded full pass remains available locally:
 

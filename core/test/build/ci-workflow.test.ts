@@ -272,6 +272,25 @@ describe("ci workflow", () => {
     expect(published).toContain("libgpgme|libassuan|not found");
   });
 
+  test("refreshes committed unit-test timings on nightly", async () => {
+    const workflow = await readNightlyWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const refresh = findIndentedBlock(jobs, "refresh-test-timings-linux-x64", 2);
+
+    expect(refresh).toContain("    runs-on: ubuntu-24.04");
+    expect(refresh).toContain("    timeout-minutes: 60");
+    expect(refresh).toContain("      - name: Regenerate derived sources");
+    expect(refresh).toContain("        run: bun run codegen");
+    expect(refresh).toContain("      - name: Refresh unit-test timings");
+    expect(refresh).toContain("        run: bun run scripts/update-test-timings.ts");
+    expect(refresh.indexOf("Regenerate derived sources")).toBeLessThan(
+      refresh.indexOf("Refresh unit-test timings"),
+    );
+    expect(refresh).toContain("      - name: Upload refreshed timings");
+    expect(refresh).toContain("          name: bun-test-timings");
+    expect(refresh).toContain("          path: .bun-test-timings.json");
+  });
+
   test("rehearses the distribution flow on Linux x64 without publishing", async () => {
     const workflow = await readNightlyWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");

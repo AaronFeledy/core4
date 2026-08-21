@@ -375,6 +375,35 @@ jobs:
       - name: Run nightly-tier unit tests
         run: bun test core/test/scripts/codegen-ci.test.ts core/test/build/linux-acceptance-criteria-10-14.test.ts
 
+  refresh-test-timings-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Refresh unit-test timings
+        run: bun run scripts/update-test-timings.ts
+
+      - name: Upload refreshed timings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bun-test-timings
+          path: .bun-test-timings.json
+          if-no-files-found: error
+          retention-days: 14
+
   runtime-bundle-manifest-live:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
