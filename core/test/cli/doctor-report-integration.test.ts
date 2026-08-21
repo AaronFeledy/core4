@@ -12,7 +12,7 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestProxyService, makeTestSshService } from "@lando/sdk/test";
 
 import {
@@ -219,7 +219,7 @@ describe("runtime-wired subsystem doctor", () => {
     const stoppedTraefik = {
       ...proxyService,
       id: "traefik",
-      setup: (setupConfig) =>
+      setup: (setupConfig: ProxyConfig) =>
         Effect.tap(proxyService.setup(setupConfig), () =>
           Effect.sync(() => {
             setupCalls += 1;
