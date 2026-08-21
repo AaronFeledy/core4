@@ -10,11 +10,19 @@ tags: [beta, docs, providers, setup, selection]
 
 ## Provider selection precedence
 
-Lando picks a provider from the highest-priority input available, in this order:
+App commands (`lando start`, `lando doctor`, the planner) pick a provider from the highest-priority input available, in this order:
 
 ```
 --provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)
 ```
+
+`lando setup` and `lando setup --yes` do **not** honor leftover `defaultProviderId`. A last-used `docker` or `podman` value in user config does not pick Docker for first-time setup. Setup precedence is:
+
+```
+--provider > LANDO_PROVIDER > capability default (lando)
+```
+
+Pass `--provider` on this invocation, or set `LANDO_PROVIDER` for this invocation, to override the Lando-managed default. `--yes` consents to confirmation and privileged host changes; it does not switch providers.
 
 Force a specific provider for the current command:
 

@@ -15,7 +15,10 @@ import { mergeSetupPluginFlags } from "../../setup-plugin-flags-merge";
 import { contributedSetupInputFlags } from "./setup-inputs";
 
 export const SETUP_BUILTIN_FLAGS = {
-  yes: Flags.boolean({ description: "Skip confirmation prompts.", default: false }),
+  yes: Flags.boolean({
+    description: "Consent to confirmation prompts and privileged host changes. Does not switch providers.",
+    default: false,
+  }),
   "no-interactive": Flags.boolean({
     description: "Do not prompt; fail or use documented non-interactive setup defaults.",
     default: false,
