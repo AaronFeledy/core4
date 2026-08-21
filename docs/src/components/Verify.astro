@@ -20,7 +20,7 @@ const [kind, target] = [
 ].find((entry) => entry[1] !== undefined) ?? ["check", ""];
 const expectation =
   expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "verify");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "verify");
 const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
@@ -38,5 +38,4 @@ const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(f
     </figure>
   )}
   {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
-  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
 </div>

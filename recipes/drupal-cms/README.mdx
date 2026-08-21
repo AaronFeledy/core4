@@ -15,7 +15,7 @@ lando start
 lando info
 ```
 
-`lando start` prints the app URL(s). `lando info` repeats them. TODO: capture
+`lando start` prints the app URL(s). `lando info` repeats them.
 
 After start, scaffold the codebase, then install:
 
@@ -35,6 +35,9 @@ lando drupal-cms-install
     <Step name="start">
       <Run command="lando start" />
       <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
     </Step>
     <Step name="cleanup">
       <Cleanup />
