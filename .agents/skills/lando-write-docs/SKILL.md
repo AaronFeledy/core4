@@ -17,7 +17,7 @@ Voice: Lando 4 that learned from both. Slightly irreverent and concrete (Lando 3
 
 Any of these fails the page. Rewrite that item. Do not ship.
 
-- Em dash (`—`) anywhere, including this skill
+- Em dash (`—`) anywhere. Allowed only here (the ban) and in the one Bad specimen below
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
 - First-person-plural lecture ("we will now")
@@ -27,11 +27,11 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Feature stubbed as "not available in Alpha" when Alpha does the thing
 - Default provider implied as Docker. Default is `lando` (managed Podman)
 - User page leaks CI/NDJSON/`LANDO_TEST_*`/job names
-- Essay or architecture before the first runnable step
-- Numbered list that is not a sequence you can run
-- Install, start, or config with no verify command
-- Heading that does not name the action or the command
 - More than one Diátaxis type on one page (tutorial / how-to / reference / explanation)
+- On how-to and tutorial pages only: essay or architecture before the first runnable step
+- On how-to and tutorial pages only: numbered list that is not a sequence you can run
+- On how-to and tutorial pages only: heading that does not name the action or the command
+- Install, start, or config with no verify command (how-to / tutorial)
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write
@@ -188,6 +188,14 @@ lando info --json
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
+
+  <Scenario id="rejects-bad-input" render={false} reason="Regression for tagged validation error">
+    <Step name="start-invalid">
+      <UseFixture name="invalid-fixture" />
+      <Run command="lando start" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "…" }} />
+    </Step>
+  </Scenario>
 </Guide>
 ~~~~
 
@@ -212,8 +220,7 @@ If static tests string-match guide phrases, update the test or restore the requi
 
 ## Exemplars
 
-- Service: `docs/guides/services/postgres.mdx`
-- Tutorial: `docs/guides/tutorial/app-lifecycle.mdx`
+- Shape, not voice: `docs/guides/services/postgres.mdx` and `docs/guides/tutorial/app-lifecycle.mdx`. Both still have em dashes and noun H1s. Copy the MDX shape. Do not copy the dashes or the titles.
 - Recipe shape only (not voice): `recipes/wordpress/README.mdx` (still has `<Inspect output />`; do not copy that leftover)
 
 ## Good
@@ -238,7 +245,7 @@ $ lando start
 
 This feature is not available in Alpha.
 
-## Do not ship if
+## Ship only if
 
 - [ ] One Diátaxis type; H1 is the goal
 - [ ] Opens on a command or outcome, not a lede
