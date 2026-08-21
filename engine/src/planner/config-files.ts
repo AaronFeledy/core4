@@ -7,7 +7,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
-export type ComposeConfigFileInput = {
+type ComposeConfigFileInput = {
   readonly name: string;
   readonly source: string;
   readonly hash: string;
