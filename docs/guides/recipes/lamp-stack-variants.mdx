@@ -5,79 +5,15 @@ timeout: 90000
 tags: [beta, docs, recipes, lamp, php, database]
 ---
 
-# LAMP stack variants
+# Change a LAMP stack after init
 
-The `lamp` recipe's prompt surface is narrow: an app name and a PHP version
-prompt that only offers `8.2` or `8.3`, defaulting to `8.3`. There is no
-prompt for database engine, database version, Composer version, or
-webroot. The variants below are not recipe prompts — they are ordinary
-Landofile edits you make to the generated `.lando.yml` after `lando init`,
-then apply with `lando rebuild -y`.
+`lando init --recipe lamp` writes Apache, PHP 8.3, and MariaDB. Edit `.lando.yml` after that, then `lando rebuild -y`.
 
-## What the recipe actually generates
+The recipe prompt is an app name and PHP `8.2` or `8.3` (default `8.3`). There is no prompt for the database engine, database version, Composer, or webroot.
 
-`lando init --recipe lamp` writes a fixed shape: an Apache-backed
-`appserver` on `php:8.3` (or `8.2` if chosen), `framework: none`, port
-`80`, a `database` service pinned to `type: mariadb` with no version, and
-`composer`/`php` tooling tasks that call the project-local binaries
-directly.
+## See the generated defaults
 
-## Replacing MariaDB with MySQL
-
-Nothing pins the `database` service's type. Swap `type: mariadb` for
-`type: mysql` and pin an exact tag with `image:` — for example
-`mysql:8.4` — where the recipe prompt offers neither a database choice
-nor a version option at all. This is the same Landofile-edit-plus-rebuild
-mechanism the [switching-databases](../services/switching-databases.mdx)
-guide walks in detail, including the data-migration caveat that a rebuild
-does not carry old data into the new engine.
-
-## Replacing MariaDB with PostgreSQL
-
-Swap `type: mariadb` for `type: postgres` the same way, again pinning a
-version with `image:` — here `postgres:15`. The default PHP image already
-compiles the `pdo_pgsql` extension, so nothing else on the `appserver`
-side needs to change for the Postgres driver to be available.
-
-## Running two database services side by side
-
-Nothing pins the app to one database service name either. Author a
-second, explicit database service — say a legacy `database-legacy` on
-`mysql` alongside the default `mariadb` `database` — and add it to the
-appserver's `dependsOn`. This is a manual second-service Landofile, not a
-recipe multi-database prompt.
-
-## Bind-mounting custom PHP and database config
-
-There's no recipe shorthand for a custom `php.ini` or database config
-file, and the default `provider-lando` can't realize Compose `configs:`.
-Bind-mount host config files with `volumes:` instead — one entry on
-`appserver` targeting the PHP `conf.d` drop-in directory, one on
-`database` targeting the MariaDB image's own `conf.d` directory, the same
-upstream-image convention the php-customization guide uses for the PHP
-side alone.
-
-## Matching PHP, Composer, and database tooling aliases
-
-The recipe already generates `composer` and `php` tooling tasks against
-`appserver`. Add a matching client alias against whichever `database`
-service type you land on — `mariadb`, `mysql`, or `psql` — so
-`lando <alias>` opens the right client without the reader having to
-remember the container's service name:
-
-| Database type | Client alias |
-| --- | --- |
-| `mariadb` | `lando mariadb` |
-| `mysql` | `lando mysql` |
-| `postgres` | `lando psql` |
-
-Interactive client sessions are covered in each engine's own service guide
-CLI section.
-
-Applying any of these edits to a running app still needs `lando rebuild
--y` to recreate the affected containers — none of that requires a live
-database connection or PHP request to prove the Landofile is correct, so
-every scenario below stops at lint and inspect.
+The generated Landofile is an Apache-backed `appserver` on `php:8.3` (or `8.2` if you chose it), `framework: none`, port `80`, a `database` service with `type: mariadb` and no version, plus `composer` and `php` tooling.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -93,6 +29,17 @@ every scenario below stops at lint and inspect.
     </Step>
   </Scenario>
 
+## Replace MariaDB with MySQL
+
+Swap `type: mariadb` for `type: mysql` and pin the image. A rebuild does not migrate old data, so export first if you still need what's in there. See [Switch databases](../services/switching-databases.mdx).
+
+```yaml
+services:
+  database:
+    type: mysql
+    image: mysql:8.4
+```
+
   <Scenario id="mysql-replacement" render>
     <Step name="edit">
       <UseFixture name="mysql-replacement" />
@@ -107,6 +54,17 @@ every scenario below stops at lint and inspect.
     </Step>
   </Scenario>
 
+## Replace MariaDB with PostgreSQL
+
+Swap `type: mariadb` for `type: postgres` and pin the image. The default PHP image already has `pdo_pgsql`.
+
+```yaml
+services:
+  database:
+    type: postgres
+    image: postgres:15
+```
+
   <Scenario id="postgres-replacement" render>
     <Step name="edit">
       <UseFixture name="postgres-replacement" />
@@ -120,6 +78,23 @@ every scenario below stops at lint and inspect.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"[^}]*\"image\":\\s*\"postgres:15\"" } }} />
     </Step>
   </Scenario>
+
+## Run two database services
+
+Add a second database service and put it on the appserver `dependsOn` list.
+
+```yaml
+services:
+  appserver:
+    dependsOn:
+      - database
+      - database-legacy
+  database:
+    type: mariadb
+  database-legacy:
+    type: mysql
+    image: mysql:8.0
+```
 
   <Scenario id="multiple-database-services" render>
     <Step name="edit">
@@ -137,6 +112,20 @@ every scenario below stops at lint and inspect.
     </Step>
   </Scenario>
 
+## Bind-mount PHP and database config
+
+There is no recipe shorthand for a custom `php.ini`. Compose `configs:` grants are realized as read-only binds. Bind-mount host files with `volumes:` remains a valid option.
+
+```yaml
+services:
+  appserver:
+    volumes:
+      - ./config/custom-php.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:ro
+  database:
+    volumes:
+      - ./config/custom-mariadb.cnf:/etc/mysql/conf.d/zzz-custom.cnf:ro
+```
+
   <Scenario id="bind-mounted-config" render>
     <Step name="edit">
       <UseFixture name="bind-mounted-config" />
@@ -151,6 +140,24 @@ every scenario below stops at lint and inspect.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{.*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\"" } }} />
     </Step>
   </Scenario>
+
+## Add a database client alias
+
+The recipe already generates `composer` and `php` against `appserver`. Add a matching client against `database` so `lando <alias>` opens it.
+
+| Database type | Client alias |
+| --- | --- |
+| `mariadb` | `lando mariadb` |
+| `mysql` | `lando mysql` |
+| `postgres` | `lando psql` |
+
+```yaml
+tooling:
+  mariadb:
+    service: database
+    cmds:
+      - mariadb
+```
 
   <Scenario id="tooling-aliases" render>
     <Step name="edit">
@@ -167,3 +174,5 @@ every scenario below stops at lint and inspect.
     </Step>
   </Scenario>
 </Guide>
+
+A running app still needs `lando rebuild -y` after these edits. The scenarios above stop at lint and inspect.

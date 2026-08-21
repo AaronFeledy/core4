@@ -6,28 +6,25 @@ timeout: 60000
 tags: [beta, docs, tooling, renderer, task-tree]
 ---
 
-# Output streaming and the task tree
+# Stream tooling output
 
-Running a tooling command from the app root, e.g. `lando composer install`, publishes a
-task-tree event sequence: a parent `task.tree.start` opens for the tooling command
-(`parentId tooling:composer`), one child `task.start` starts per target service
-(`taskId tooling:composer:appserver`), each output line streams into the child task as a
-`task.detail` event on `stdout`/`stderr`, a zero exit closes the child with `task.complete`
-(`summary 'completed with exit code 0'`), and the parent tree closes with a `task.tree.complete`
-carrying its succeeded/failed counts.
+Run a tooling command from the app root:
 
-A command that exits non-zero follows the same shape but ends differently: stderr lines still stream
-as `task.detail` events, the failing exit closes the child with `task.fail`
-(`summary 'failed with exit code 7', exitCode 7`), and the parent's `task.tree.complete` records the
-failure in its counts.
+```sh
+lando composer install
+```
 
-## Renderer modes
+That publishes a task tree: a parent task for the command, one child per target service, streamed stdout/stderr lines on each child, then a complete or fail close with the exit code.
+
+A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
+
+## Pick a renderer mode
 
 | Mode | Behavior |
 | --- | --- |
-| `lando` (default), `verbose` | Renders the concurrent task tree — a parent line plus an indented child line per service, each with a spinner and the most recent `task.detail` lines. |
-| `plain` | Flat stream, preserving the Alpha behavior: one `[stepId]`-prefixed line per `task.detail` event, no tree, no spinners. |
-| `json` | Emits NDJSON of every `task.*` event on stderr, giving embedding hosts and CI consumers the structured event stream. |
+| `lando` (default), `verbose` | Concurrent task tree. A parent line plus an indented child per service, each with a spinner and the most recent output lines. |
+| `plain` | Flat stream. One `[stepId]`-prefixed line per output event, no tree, no spinners. |
+| `json` | Structured `task.*` events on stderr. |
 
 <Guide>
   <Scenario id="output-streaming-config-check" render={false} reason="The task-tree event contract and renderer modes above are covered by focused renderer and tooling event tests without running provider-backed tooling in guide tests. This scenario keeps one real CLI check in the guide harness.">

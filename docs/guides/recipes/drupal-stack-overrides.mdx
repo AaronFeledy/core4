@@ -5,20 +5,15 @@ timeout: 90000
 tags: [beta, docs, recipes, drupal, php, database]
 ---
 
-# Drupal stack overrides
+# Change a Drupal stack after init
 
-The `drupal` recipe's prompt surface is narrow: an app name, a PHP version
-prompt that only offers `8.3`, and a database prompt that only offers
-`mariadb` or `postgres`. These overrides below are not recipe prompts —
-they are ordinary Landofile edits you make to the generated `.lando.yml`
-after `lando init`, then apply with `lando rebuild -y`.
+`lando init --recipe drupal` writes PHP 8.3, Apache, and MariaDB. Edit `.lando.yml` after that, then `lando rebuild -y`.
 
-## What the recipe actually generates
+The recipe prompt is an app name, PHP `8.3`, and database `mariadb` or `postgres`. Everything else is a Landofile edit.
 
-`lando init --recipe drupal` writes a fixed shape: an Apache-backed
-`appserver` on `php:8.3`, webroot `/app/web`, `allowOverride: true`, a
-`database` service, and `drush`/`composer` tooling tasks that call
-project-local `vendor/bin/drush` and `composer`.
+## See the generated defaults
+
+The generated Landofile is an Apache-backed `appserver` on `php:8.3`, webroot `/app/web`, `allowOverride: true`, a `database` service, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -34,11 +29,15 @@ project-local `vendor/bin/drush` and `composer`.
     </Step>
   </Scenario>
 
-## PHP 8.1-8.4 on the appserver
+## Pin PHP 8.1 through 8.4
 
-The recipe only prompts for `8.3`, but the `php` service type itself
-supports `8.1`, `8.2`, `8.3`, and `8.4`. Edit `services.appserver.type` to
-any of those and rebuild:
+The recipe only prompts for `8.3`, but the `php` service type supports `8.1`, `8.2`, `8.3`, and `8.4`. Edit `services.appserver.type` and rebuild.
+
+```yaml
+services:
+  appserver:
+    type: php:8.1
+```
 
   <Scenario id="php-version-override" render>
     <Step name="edit">
@@ -54,12 +53,16 @@ any of those and rebuild:
     </Step>
   </Scenario>
 
-## Swapping the database engine and pinning its image
+## Swap the database engine
 
-The default `database` service is `type: mariadb`, unversioned. Swap
-`type:` to `mysql` or `postgres`, and pin an exact upstream tag with
-`image:` — for example `mysql:8.4` where the recipe prompt has no MySQL or
-version option at all:
+The default `database` service is unversioned `type: mariadb`. Swap `type:` to `mysql` or `postgres` and pin an image. A rebuild does not migrate old data.
+
+```yaml
+services:
+  database:
+    type: mysql
+    image: mysql:8.4
+```
 
   <Scenario id="database-image-pin" render>
     <Step name="edit">
@@ -75,13 +78,22 @@ version option at all:
     </Step>
   </Scenario>
 
-## Running two database services side by side
+## Run two database services
 
-Nothing pins the app to one database service name. Author a second,
-explicit database service — say a legacy `database-legacy` on `mysql`
-alongside the default `mariadb` `database` — and add it to the
-appserver's `dependsOn`. This is a manual second-service Landofile, not a
-recipe multi-database prompt:
+Add a second database service and put it on the appserver `dependsOn` list.
+
+```yaml
+services:
+  appserver:
+    dependsOn:
+      - database
+      - database-legacy
+  database:
+    type: mariadb
+  database-legacy:
+    type: mysql
+    image: mysql:8.0
+```
 
   <Scenario id="two-database-services" render>
     <Step name="edit">
@@ -99,14 +111,17 @@ recipe multi-database prompt:
     </Step>
   </Scenario>
 
-## Drush URI and a moved webroot
+## Set a Drush URI and move the webroot
 
-The generated `drush` tooling task calls project-local `vendor/bin/drush`
-with no `DRUSH_OPTIONS_URI` set. Add it under
-`services.appserver.environment`, and if you also move the webroot away
-from the default `/app/web` (say to `/app/docroot`), Drush's project-local
-path in `tooling.drush.cmds` doesn't need to change — `vendor/bin/drush`
-lives at the Composer project root, not under the webroot:
+The generated `drush` task has no `DRUSH_OPTIONS_URI`. Add it under `services.appserver.environment`. If you also move the webroot to `/app/docroot`, leave `tooling.drush.cmds` as `vendor/bin/drush`. Drush lives at the Composer project root, not under the webroot.
+
+```yaml
+services:
+  appserver:
+    webroot: /app/docroot
+    environment:
+      DRUSH_OPTIONS_URI: https://drupal-stack-overrides.lndo.site
+```
 
   <Scenario id="drush-uri-webroot" render>
     <Step name="edit">
@@ -124,12 +139,19 @@ lives at the Composer project root, not under the webroot:
     </Step>
   </Scenario>
 
-## Bind-mounting custom PHP and database config
+## Bind-mount PHP and database config
 
-There's no recipe shorthand for a custom `php.ini` or database config
-file, and the default `provider-lando` can't realize Compose `configs:`.
-Bind-mount host config files with `volumes:` instead — one entry on
-`appserver` for PHP, one on `database` for MariaDB:
+There is no recipe shorthand for a custom `php.ini`. Compose `configs:` grants are realized as read-only binds. Bind-mount host files with `volumes:` remains a valid option.
+
+```yaml
+services:
+  appserver:
+    volumes:
+      - ./config/custom-php.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:ro
+  database:
+    volumes:
+      - ./config/custom-mariadb.cnf:/etc/mysql/conf.d/zzz-custom.cnf:ro
+```
 
   <Scenario id="bind-mounted-config" render>
     <Step name="edit">
@@ -145,10 +167,6 @@ Bind-mount host config files with `volumes:` instead — one entry on
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{.*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\"" } }} />
     </Step>
   </Scenario>
-
-Applying any of these edits to a running app still needs `lando rebuild -y`
-to recreate the affected containers — none of that requires live Drupal or
-database traffic to prove the Landofile is correct, so every scenario
-above stops at lint and inspect.
-
 </Guide>
+
+A running app still needs `lando rebuild -y` after these edits. The scenarios above stop at lint and inspect.

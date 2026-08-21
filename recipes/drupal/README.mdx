@@ -7,10 +7,24 @@ tags: [recipe, drupal, php]
 
 # Drupal
 
-Spin up a Drupal 11 stack with PHP, MariaDB, Drush, and Composer. After the app
-starts, use `lando drupal-scaffold` to install the pinned Drupal 11 project and
-project-local Drush through a retryable stage-then-commit workflow. The walkthrough
-below runs that scaffold, verifies its outputs, checks Drush, and tears the app down.
+`lando init --recipe drupal` scaffolds PHP, MariaDB, Drush, and Composer.
+
+```sh
+lando init --recipe drupal --name=my-drupal-app --yes
+lando start
+lando info
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+After start, scaffold the pinned Drupal 11 project and project-local Drush. The scaffold is a retryable stage-then-commit, so a flaky Composer fetch does not leave you half-installed:
+
+```sh
+lando drupal-scaffold
+lando drush --version
+```
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
 <Guide>
   <Scenario id="reader-path" layer="e2e" tags={["@smoke"]} render>

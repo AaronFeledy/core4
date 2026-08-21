@@ -5,14 +5,15 @@ timeout: 60000
 tags: [beta, docs, landofile]
 ---
 
-# Zero services
+# Start an app with no services
 
-A Landofile can declare only `name:` and no `services:` block at all.
-`services:` is independently optional alongside `tooling:` and `includes:`.
-A Landofile can skip `services:` entirely and only declare `tooling:`,
-useful for a pure CLI-wrapper app with no containers of its own. It can also
-declare only `includes:` to pull in services, tooling, or config fragments
-from elsewhere instead of defining them locally.
+A Landofile can declare only `name:` and skip `services:` entirely. `services:` is independently optional alongside `tooling:` and `includes:`.
+
+```yaml
+name: zero-services
+```
+
+Useful when you want a CLI-wrapper app with no containers of its own, or when `includes:` pulls services in from elsewhere.
 
 <Guide>
   <Scenario id="app-with-no-services" render>

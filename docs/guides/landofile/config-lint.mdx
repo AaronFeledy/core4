@@ -8,47 +8,37 @@ tags: [beta, docs, landofile, config, lint]
 
 # Lint a Landofile
 
-`lando app:config:lint` validates the current app's Landofile against the
-canonical schema. It runs the canonical JSON Schema only — no translators,
-no doctor checks, no provider probes. On a Landofile that passes, it prints:
-
-```
-<file>: no canonical-schema violations.
+```sh
+lando app:config:lint
 ```
 
-and exits `0`.
+That validates the current app's Landofile against the canonical schema. It runs the JSON Schema only: no translators, no doctor checks, no provider probes. A clean Landofile exits `0`.
 
-## JSON output
+## Print JSON
 
-`lando app:config:lint --format=json` emits a stable JSON `ConfigLintResult`
-for editor/LSP integrations:
+```sh
+lando app:config:lint --format=json
+```
+
+JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
 { app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }
 ```
 
-This shape is frozen by the schema artifact-set gate. `--format` defaults
-to `text` (human-readable); pass `--format=json` for machine output.
+This shape is frozen by the schema artifact-set gate. `--format` defaults to `text`. Pass `--format=json` for machine output.
 
-## Schema violations
+## Read schema violations
 
-A schema violation exits non-zero, so editors and CI can gate on it. Each
-violation carries a dot-joined `path`, a `message`, and an optional
-`suggestedFix`. Unknown keys surface as excess-property violations
-(schema-only, never a `NotImplementedError`).
+A schema violation exits non-zero. Each violation carries a dot-joined `path`, a `message`, and an optional `suggestedFix`. Unknown keys surface as excess-property violations (schema-only, never a `NotImplementedError`).
 
-## Rejected Compose keys
+## Read rejected Compose keys
 
-A rejected Compose key keeps its full authored path, for example
-`services.web.deploy.replicas`. The `suggestedFix` comes from the pinned
-Compose disposition matrix instead of a generic unknown-key message.
+A rejected Compose key keeps its full authored path, for example `services.web.deploy.replicas`. The `suggestedFix` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
 
-## Doctor integration
+## Run it from doctor
 
-`lando doctor --app` runs the same canonical-schema lint as part of the
-combined doctor report, under the `app-config-lint` check name. Both
-`lando app:config:lint` and `lando doctor --app` call the same
-`lintLandofile` pass — there's no forked logic.
+`lando doctor --app` runs the same canonical-schema lint as part of the combined doctor report, under the `app-config-lint` check name. Both commands call the same `lintLandofile` pass.
 
 <Guide>
   <Scenario id="clean-landofile" render>

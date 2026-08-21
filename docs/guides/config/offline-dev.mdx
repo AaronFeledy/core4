@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, config, offline]
 ---
 
-# Offline development
+# Work offline
 
-Lando reuses cached state wherever it can, so a lot of everyday work keeps
-running without network access.
+Lando reuses cached state wherever it can, so a lot of everyday work keeps running without network access.
 
 <Guide>
   <Scenario id="update-includes-without-network" render>
@@ -30,44 +29,18 @@ running without network access.
   </Scenario>
 </Guide>
 
-The fixture above has no remote includes, so `--no-network` succeeds trivially.
-A remote include with no prior lockfile/cache entry behaves differently:
-`lando app:includes:update --no-network --format=json` fails with a tagged
-`LandofileIncludeError` instead of falling back to a network fetch. The
-error names the missing source and states plainly that `--no-network`
-blocked the fetch that would have created the entry, for example:
+The fixture above has no remote includes, so `--no-network` succeeds trivially. A remote include with no prior lockfile or cache entry fails with `LandofileIncludeError` instead of falling back to a network fetch. The error names the missing source and says `--no-network` blocked the fetch.
 
-```
---no-network: no lockfile entry for github:acme/fragments to resolve from cache.
-```
-
-Run the same command once with network access (`lando app:includes:update`)
-to populate the lockfile and cache; `--no-network` works offline from that
-point on.
+Run the same command once with network access (`lando app:includes:update`) to populate the lockfile and cache. `--no-network` works offline from that point on.
 
 ## What works offline
 
-Starting an app you already ran before works offline, as long as its images
-were already pulled and its containers already built. Command routing and
-plugin resolution read from the on-disk command cache under the user cache
-root (refreshed with `app:cache:refresh`), not the network.
+Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
 
-Runtime bundle, tool, and recipe downloads first check the local cache; a
-cache hit never touches the network. When a download is actually required
-and the network is unavailable, the Downloader service (`http-client`) fails
-with a tagged `DownloadOfflineError` instead of hanging or silently
-retrying.
+Runtime bundle, tool, and recipe downloads first check the local cache. A cache hit never touches the network. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
 
-Once a remote include has a lockfile entry and a cached copy, refreshing it
-with `app:includes:update --no-network` reuses that cache instead of
-fetching.
+Once a remote include has a lockfile entry and a cached copy, `app:includes:update --no-network` reuses that cache.
 
 ## Honest limits
 
-An image that was never pulled has nothing in the local cache, so the first
-`lando start` for a given service image still needs network access. A
-remote include can only be resolved offline once it already has a lockfile
-entry and a cached copy from a prior online run. There is no global
-`--offline` flag — offline behavior is scoped per command, such as
-`--no-network` on `app:includes:update`, not a single switch that changes
-every command at once.
+An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.

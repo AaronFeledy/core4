@@ -6,42 +6,30 @@ timeout: 60000
 tags: [beta, docs, installer]
 ---
 
-# POSIX installer
+# Install with the POSIX installer
 
-> **Alpha status:** The POSIX installer and channel manifests described below are
-> **not yet available**. The hosts `get.lando.dev` and `update.lando.dev` are not
-> yet serving v4 artifacts. See [alpha install and bug
-> reports](../../alpha-install-and-bug-reports.md) for current install options.
+> **Alpha status:** The POSIX installer and channel manifests described below are **not yet available**. The hosts `get.lando.dev` and `update.lando.dev` are not yet serving v4 artifacts. See [alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
 >
-> The installer script exists in this repository at `scripts/install.sh`, but it
-> requires live channel manifests to function.
+> The installer script exists in this repository at `scripts/install.sh`, but it requires live channel manifests to function.
 
-## Platform detection
-
-The installer maps your host to a release artifact:
+Once those hosts are up, the installer maps your host to a release artifact:
 
 | Host | Artifact |
 | --- | --- |
 | Linux x86_64, glibc | `linux-x64` |
 | Linux arm64, glibc | `linux-arm64` |
-| Linux, musl libc | unsupported — fails before any binary downloads |
+| Linux, musl libc | unsupported; fails before any binary downloads |
 
-## Channels
+## Pick a channel
 
-`stable` will be the default channel manifest, resolved from
-`https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or
-`LANDO_CHANNEL=dev` to install from a different channel once these are available.
+`stable` will be the default channel manifest, resolved from `https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or `LANDO_CHANNEL=dev` to install from a different channel once these are available.
 
 ## Verify and install
 
-The installer will download the binary, a `SHA256SUMS` checksum manifest, and
-`SHA256SUMS.asc`, its GPG signature, for your detected platform, then
-verify the manifest against the installer-vendored GPG trust root:
+The installer will download the binary, a `SHA256SUMS` checksum manifest, and `SHA256SUMS.asc` (its GPG signature) for your detected platform, then verify the manifest against the installer-vendored GPG trust root:
 
 ```sh
 gpg --homedir <installer-trust-root> --verify SHA256SUMS.asc SHA256SUMS
 ```
 
-Only a verified binary gets installed. It lands at
-`${LANDO_INSTALL_DIR:-<userDataRoot>/bin}/lando`, creating the directory if
-it doesn't exist.
+Only a verified binary gets installed. It lands at `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}/lando`, creating the directory if it does not exist.

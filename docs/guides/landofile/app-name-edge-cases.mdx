@@ -5,12 +5,11 @@ timeout: 90000
 tags: [beta, docs, landofile, naming]
 ---
 
-# App name edge cases
+# Name an app
 
-`lando init` accepts lowercase kebab-case names; spaces and uppercase
-letters fail validation. A manually authored Landofile can still use a display
-name that `init` would reject. Lando preserves that display name while deriving
-a safe runtime slug for networks, hostnames, aliases, caches, and provider labels.
+`lando init` accepts lowercase kebab-case names. Spaces and uppercase letters fail validation.
+
+A hand-authored Landofile can still use a display name that `init` would reject. Lando keeps that display name and derives a safe runtime slug for networks, hostnames, aliases, caches, and provider labels.
 
 <Guide>
   <Scenario id="init-validates-app-names" render>
@@ -40,22 +39,12 @@ a safe runtime slug for networks, hostnames, aliases, caches, and provider label
   </Scenario>
 </Guide>
 
-## Planner naming rules
+## Read the planner naming rules
 
-The planner keeps the Landofile `name` as the user-facing display name. It
-derives the runtime slug by lowercasing ASCII letters, replacing each run of
-non-alphanumeric characters with one hyphen, and removing edge hyphens. A name
-with no ASCII letters or digits falls back to a stable hash of the app root.
+The planner keeps the Landofile `name` as the user-facing display name. It derives the runtime slug by lowercasing ASCII letters, replacing each run of non-alphanumeric characters with one hyphen, and removing edge hyphens. A name with no ASCII letters or digits falls back to a stable hash of the app root.
 
-Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six
-characters, so a per-app network name stays within the DNS limit of 63
-characters. For example, `c,o,m,m,a` becomes `c-o-m-m-a`, `bad name!` becomes
-`bad-name`, and `UPPER` becomes `upper`.
+Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six characters, so a per-app network name stays within the DNS limit of 63 characters. For example, `c,o,m,m,a` becomes `c-o-m-m-a`, `bad name!` becomes `bad-name`, and `UPPER` becomes `upper`.
 
-Default routes use `<service>.<slug>.lndo.site`, and shared-network aliases use
-`<service>.<slug>.internal`. The original display name never reaches those DNS
-surfaces.
+Default routes use `<service>.<slug>.lndo.site`. Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
 
-A 100-character lowercase name is preserved in `lando app:config`, but its
-runtime slug is the first 57 characters. The network and route therefore stay
-valid instead of producing an overlong label.
+A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.
