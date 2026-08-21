@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, solr, service]
 ---
 
-# Solr
+# Add Solr
 
-Add Solr to your app by declaring `type: solr` in your services block,
-which resolves to the `solr:9` image. Lando pulls it by default and
-listens on port `8983`:
+Put `type: solr` in your services block. That resolves to `solr:9`. Lando pulls it and listens on `8983`:
 
 ```yaml
 name: solr-demo
@@ -35,8 +33,7 @@ services:
 
 ## Precreate cores
 
-List cores under `services.search` to have Solr precreate them on boot,
-before the foreground server starts:
+List cores under `services.search` to have Solr precreate them on boot, before the foreground server starts:
 
 ```yaml
 services:
@@ -45,26 +42,21 @@ services:
     cores: [default, products]
 ```
 
-`precreate-core` runs for each declared core before `solr-foreground`, so
-every core exists before the server accepts queries.
+`precreate-core` runs for each declared core before `solr-foreground`, so every core exists before the server accepts queries.
 
-## Admin API
+## Hit the admin API
 
-Expose a tooling alias that curls the Solr admin API after start to confirm
-the HTTP surface is reachable:
+Expose a tooling alias that curls the Solr admin API after start to confirm the HTTP surface is reachable:
 
 ```sh
 lando solr-cli /solr/admin/info/system
 ```
 
-That's the same endpoint the built-in healthcheck curls
-(`curl -sf http://localhost:8983/solr/admin/info/system`) before Lando
-reports `post-start`.
+That's the same endpoint the built-in healthcheck curls (`curl -sf http://localhost:8983/solr/admin/info/system`) before Lando reports `post-start`.
 
 ## Pin a version
 
-Use `image:` to pin a specific Solr image when the default `solr:9` isn't
-what you want:
+Set `image:` when `solr:9` isn't the version you want:
 
 ```yaml
 services:

@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, ruby, service, runtime]
 ---
 
-# Ruby
+# Add Ruby
 
-Add a Ruby service to your app by declaring `type: ruby:3.3` for the
-primary service — Ruby has no bare `type: ruby` alias, so pin a version.
+Put `type: ruby:3.3` on the primary service. Ruby has no bare `type: ruby` alias, so pin a version.
 Lando currently supports `ruby:3.3`, and the default image is
 `ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app`,
 which is also the working directory:
@@ -52,8 +51,7 @@ lando exec app -- bundle exec rails server -b 0.0.0.0
 ## Pin a version
 
 Set `image:` to use the full (non-slim) or an alternate Ruby base image when
-the default `ruby:3.3-slim` isn't what you want — slim lacks build tools
-that some gems need:
+`ruby:3.3-slim` isn't what you want. Slim lacks build tools that some gems need:
 
 ```yaml
 services:

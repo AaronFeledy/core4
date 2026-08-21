@@ -5,13 +5,9 @@ timeout: 90000
 tags: [beta, docs, static, service]
 ---
 
-# Static
+# Serve a static site
 
-Serve a static site by declaring `type: static` in your services block,
-which defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` by
-default and listens on the standard HTTP port `80`. The document root
-defaults to `/app`, the app mount root, and the app source is mounted
-read-only — the server can't mutate your repository:
+Put `type: static` in your services block. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The document root defaults to `/app`, and the app source is mounted read-only. The server can't mutate your repository:
 
 ```yaml
 name: static-demo
@@ -52,11 +48,9 @@ tooling:
 Setting `root: dist` (as the fixture above does) serves the build output
 directory and sets `LANDO_WEBROOT=/app/dist` inside the container.
 
-## Caddy variant
+## Serve with Caddy
 
-The static service also supports a Caddy variant for users who prefer Caddy
-over nginx. Set `type: static:caddy` to serve via Caddy instead; its default
-image is `caddy:2-alpine`:
+Prefer Caddy? Set `type: static:caddy`. Its default image is `caddy:2-alpine`:
 
 ```yaml
 services:
@@ -66,8 +60,7 @@ services:
 
 ## Pin a version
 
-Use `image:` to pin a specific nginx or Caddy version instead of the
-default image:
+Set `image:` to pin a specific nginx or Caddy version:
 
 ```yaml
 services:

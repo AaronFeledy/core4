@@ -6,25 +6,20 @@ timeout: 60000
 tags: [beta, docs, file-sync, excludes, setup]
 ---
 
-# File sync excludes
+# Exclude paths from file sync
 
-Every service excludes `node_modules`, `vendor`, `.git`, and `tmp` from file
-sync by default. How the exclusion is enforced depends on the provider's
-sync strategy: a **volume-shadow** provider mounts an empty Docker named
-volume over the excluded path so it's never bind-mounted or synced, while a
-**Mutagen-ignore** provider passes the excludes as session-level ignore
-rules straight to the `FileSyncEngine`.
+Every service excludes `node_modules`, `vendor`, `.git`, and `tmp` from file sync by default. How that is enforced depends on the provider's sync strategy. A **volume-shadow** provider mounts an empty named volume over the excluded path so it's never bind-mounted or synced. A **Mutagen-ignore** provider passes the excludes as session-level ignore rules straight to the `FileSyncEngine`.
 
 ## Add your own excludes
 
 Add per-service patterns under `services.<name>.appMount.excludes` in your
 Landofile. User patterns are appended after the defaults, with duplicates
-removed — they extend `FILE_SYNC_DEFAULT_EXCLUDES` rather than replace it.
+removed. They extend `FILE_SYNC_DEFAULT_EXCLUDES` rather than replace it.
 If a path needs to stay synced despite matching an exclude pattern, add it
 to `services.<name>.appMount.includes`: `includes` prevents a path from
 being shadowed or ignored even if it also matches an exclude.
 
-## Framework-aware presets
+## Use framework-aware presets
 
 Some service types contribute their own presets on top of the defaults:
 Python contributes `__pycache__`, and Ruby contributes `.bundle`. Excludes
@@ -34,12 +29,6 @@ merge in this order, with duplicates removed at each stage:
 FILE_SYNC_DEFAULT_EXCLUDES → service-type presets → user excludes
 ```
 
-## Excluded paths are never synced
+## Keep excluded paths unsynced
 
-A named volume — `lando-<app>-<service>-<kebab-path>-<hash>` — is created
-for each excluded path and overlaid on the bind mount target, so host files
-are never read for that path. The same exclude list is forwarded to
-`FileSyncEngine.createSession` as `FileSyncSessionSpec.excludes`, so Mutagen
-never attempts to sync those paths either. This exclude-not-synced contract
-is covered by `core/test/services/app-planner.test.ts` and
-`plugins/file-sync-mutagen/test/engine.test.ts`.
+A named volume (`lando-<app>-<service>-<kebab-path>-<hash>`) is created for each excluded path and overlaid on the bind mount target, so host files are never read for that path. The same exclude list is forwarded to `FileSyncEngine.createSession` as `FileSyncSessionSpec.excludes`, so Mutagen never attempts to sync those paths either.

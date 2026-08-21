@@ -5,13 +5,9 @@ timeout: 90000
 tags: [beta, docs, opensearch, service]
 ---
 
-# OpenSearch
+# Add OpenSearch
 
-Add OpenSearch to your app by declaring `type: opensearch` in your services
-block, which resolves to the `opensearch:2` image. Lando pulls
-`opensearchproject/opensearch:2` by default and listens on port `9200`.
-OpenSearch is Apache 2.0 licensed, so reach for it when you need an
-open-source alternative to Elasticsearch's Elastic License v2:
+Put `type: opensearch` in your services block. That resolves to `opensearch:2`. Lando pulls `opensearchproject/opensearch:2` and listens on `9200`. OpenSearch is Apache 2.0 licensed, so reach for it when you need an open-source alternative to Elasticsearch's Elastic License v2:
 
 ```yaml
 name: opensearch-demo
@@ -37,8 +33,7 @@ services:
 
 ## Check cluster health
 
-Expose a tooling alias that curls the cluster health endpoint after start to
-verify the node is reachable:
+Expose a tooling alias that curls the cluster health endpoint after start to verify the node is reachable:
 
 ```sh
 lando os-cli /_cluster/health
@@ -46,16 +41,13 @@ lando os-cli /_cluster/health
 
 A healthy single-node OpenSearch reports `green` or `yellow`.
 
-## Elasticsearch parity
+## Use Elasticsearch 7 clients
 
-OpenSearch 2 is API-compatible with Elasticsearch 7, so most Elasticsearch 7
-clients and queries work against it unchanged. Local dev disables the demo
-security plugin — production must configure TLS and auth.
+OpenSearch 2 is API-compatible with Elasticsearch 7, so most Elasticsearch 7 clients and queries work against it unchanged. Local dev disables the demo security plugin. Production must configure TLS and auth.
 
 ## Pin a version
 
-Use `image:` to pin a specific OpenSearch image when the default
-`opensearch:2` isn't what you want:
+Set `image:` when `opensearch:2` isn't the version you want:
 
 ```yaml
 services:

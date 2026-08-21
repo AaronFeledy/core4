@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, go, service]
 ---
 
-# Go
+# Add Go
 
-Add a Go service to your app by declaring `type: go:1.23` for the primary
-service — Go has no bare `type: go` alias, so pin a version. Lando currently
+Put `type: go:1.23` on the primary service. Go has no bare `type: go` alias, so pin a version. Lando currently
 supports `go:1.22` and `go:1.23`, and derives the default image
 (`golang:1.23` for `go:1.23`) from the version you pin. Your repository is
 bind-mounted read-write at `/app`, which is also the working directory:
@@ -35,7 +34,7 @@ services:
     </Step>
   </Scenario>
 
-## Primary service
+## Mark the primary service
 
 A service named `web` is the primary service by default, so tooling commands
 target it without an explicit `service` field. To make a differently-named

@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, varnish, service]
 ---
 
-# Varnish
+# Add Varnish
 
-Put Varnish in front of another service with `type: varnish` and a required
-`backend:`. That shorthand is Varnish 7. Traffic hits Varnish first; Varnish
-fetches from the named backend:
+Put `type: varnish` in front of another service and set `backend:`. That shorthand is Varnish 7. Traffic hits Varnish first. Varnish fetches from the named backend:
 
 ```yaml
 name: varnish-demo
@@ -80,7 +78,7 @@ services:
         target: /etc/varnish/default.vcl
 ```
 
-## The route sits in front
+## Point browsers at Varnish
 
 Varnish listens on port `80` and gets the default hostname route. Point
 browsers at the Varnish URL from `lando info`, not at the backend service.

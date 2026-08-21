@@ -6,7 +6,7 @@ timeout: 60000
 tags: [beta, docs, setup, uninstall]
 ---
 
-# Uninstall and purge
+# Uninstall and purge Lando
 
 Uninstall is host-destructive once confirmed, so preview it first.
 `uninstall --dry-run` prints the full owned, user-owned, skipped, and
@@ -40,9 +40,7 @@ When that cleanup succeeds, `--purge` then removes:
 - User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
 - User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
-**If Lando cannot query a container runtime** — neither Docker nor Podman
-is available, or a query fails — `--purge` fails closed: it exits non-zero
-and deletes no data. Uninstall never orphans running containers by
+**If Lando cannot query a container runtime** (neither Docker nor Podman is available, or a query fails), `--purge` fails closed: it exits non-zero and deletes no data. Uninstall never orphans running containers by
 deleting state while they are still up.
 
 You can still stop or destroy apps yourself first; purge just no longer
@@ -57,7 +55,7 @@ lando uninstall --yes --purge
 ```
 
 A binary outside Lando's managed bin directory is never removed
-automatically — the plan prints exact manual removal steps for it instead.
+automatically. The plan prints exact manual removal steps for it instead.
 
 ## Resumable reports
 

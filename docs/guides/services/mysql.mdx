@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, mysql, service, database]
 ---
 
-# MySQL
+# Add MySQL
 
-Add a MySQL database to your app by declaring `type: mysql` in your
-services block. Lando pulls `mysql:8.0` by default and listens on the
-standard TCP port `3306`:
+Put `type: mysql` in your services block. Lando pulls `mysql:8.0` and listens on `3306`:
 
 ```yaml
 name: mysql-demo
@@ -18,7 +16,7 @@ services:
     type: mysql
 ```
 
-Start it and Lando wires the database into your app's network:
+Start it. Lando puts the database on the app network:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -33,10 +31,9 @@ Start it and Lando wires the database into your app's network:
     </Step>
   </Scenario>
 
-## Connection details
+## Connect from another service
 
-Other services in your app connect using the service name as the hostname —
-here that's `db`. The defaults:
+Other services use the service name as the hostname. Here that's `db`. Defaults:
 
 | Setting | Value |
 | --- | --- |
@@ -52,17 +49,15 @@ From inside the app network the connection URL is:
 mysql://lando:lando@db:3306/mysql-demo
 ```
 
-## CLI access
+## Open the client
 
-Declare a tooling alias targeting the `db` service to open the `mysql`
-client:
+Add a tooling alias on `db` to open the `mysql` client:
 
 ```sh
 lando mysql
 ```
 
-A common companion is a `db-import` tooling alias that pipes a SQL file into
-the client:
+A common companion is `db-import`, which pipes a SQL file into the client:
 
 ```sh
 lando db-import dump.sql
@@ -70,8 +65,7 @@ lando db-import dump.sql
 
 ## Pin a version
 
-Use `image:` to pin a specific MySQL version when the default `mysql:8.0`
-isn't what you want:
+Set `image:` when `mysql:8.0` isn't the version you want:
 
 ```yaml
 services:

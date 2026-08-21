@@ -5,20 +5,16 @@ timeout: 90000
 tags: [beta, docs, php, service, build]
 ---
 
-# When a PHP build step fails
+# Recover from a failed PHP build
 
-`build.app` runs a list of shell commands against the service's build
-layer every time the app builds — each entry executes as `sh -lc "<command>"`,
-in order, after Lando's own PHP prerequisite steps. A `composer install`
+`build.app` runs a list of shell commands against the service's build layer every time the app builds. Each entry executes as `sh -lc "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
 that fails on a bad `composer.json`, a missing PHP extension a package
 requires, or a stray `exit 1` all fail a build step the same way: the step
 exits non-zero, and Lando stops instead of starting a half-built app.
 
 ## The build plan captures the exact failing command
 
-Every `build.app` entry reaches the app's build plan verbatim, whether or
-not it will actually succeed — planning never runs a build step, it just
-records the command to run later. A fixture with an earlier
+Every `build.app` entry reaches the app's build plan verbatim, whether or not it will actually succeed. Planning never runs a build step. It just records the command to run later. A fixture with an earlier
 `composer install --no-dev` step and a deterministic `exit 1` proves both
 commands land in the resolved plan.
 
@@ -45,7 +41,7 @@ events, so `lando start` shows the failing command's own output, not just
 its exit code.
 
 On a `BuildPhaseFailedError`, `lando start` tears down what it already
-applied — including removing proxy routes — before returning the failure,
+applied, including removing proxy routes, before returning the failure,
 so a failed build never leaves a half-running app behind. The CLI exits
 non-zero and reports the tagged error, including its list of
 `BuildStepFailedError` entries, the same way any other tagged failure
@@ -53,13 +49,12 @@ surfaces.
 
 ## Recover from a failing build step
 
-Fix the failing command in `build.app` — most often that means fixing the
-underlying script itself, not the Landofile — and rerun `lando start`.
+Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`.
 Editing a `build.app` entry changes that step's content-hash build key, so
 the next build always reruns it; you don't need `lando rebuild -y` the way
 you do for `build.artifact` image-layer changes.
 
-## Executable coverage
+## Prove the plan
 
 The happy-build fixture runs a successful `build.app` entry through start
 and destroy. The failing-build fixture proves the broken command reaches

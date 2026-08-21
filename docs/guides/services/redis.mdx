@@ -5,12 +5,9 @@ timeout: 90000
 tags: [beta, docs, redis, service, cache]
 ---
 
-# Redis
+# Add Redis
 
-Add Redis to your app by declaring `type: redis` in your services block.
-Lando pulls `redis:7` by default and listens on the standard TCP port
-`6379`. The default command enables append-only persistence
-(`redis-server --appendonly yes`) so cached data survives a restart:
+Put `type: redis` in your services block. Lando pulls `redis:7` and listens on `6379`. The default command enables append-only persistence (`redis-server --appendonly yes`) so cached data survives a restart:
 
 ```yaml
 name: redis-demo
@@ -34,27 +31,23 @@ services:
     </Step>
   </Scenario>
 
-## Connection details
+## Connect from another service
 
-Connect from another service using the service name `cache` as the
-hostname. The default image runs without auth for local dev; add
-`--requirepass` via `command:` to require one. From inside the app network
-the connection URL is:
+Connect from another service using the service name `cache` as the hostname. The default image runs without auth for local dev. Add `--requirepass` via `command:` to require one. From inside the app network the connection URL is:
 
 ```
 redis://cache:6379
 ```
 
-## CLI access
+## Open the client
 
-Declare a `redis-cli` tooling alias targeting the `cache` service to verify
-it responds:
+Add a `redis-cli` tooling alias on `cache` to verify it responds:
 
 ```sh
 lando redis-cli ping
 ```
 
-Store and read keys directly from the host via the alias:
+Store and read keys from the host via the alias:
 
 ```sh
 lando redis-cli set hello world
@@ -62,8 +55,7 @@ lando redis-cli set hello world
 
 ## Pin a version
 
-Use `image:` to pin a specific Redis version when the default `redis:7`
-isn't what you want:
+Set `image:` when `redis:7` isn't the version you want:
 
 ```yaml
 services:

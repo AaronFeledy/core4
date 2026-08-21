@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, mssql, service, database]
 ---
 
-# SQL Server
+# Add SQL Server
 
-Add SQL Server with `type: mssql`. That shorthand is the 2022 image. It
-listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd`
-tooling:
+Put `type: mssql` in your services block. That shorthand is the 2022 image. It listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd` tooling:
 
 ```yaml
 name: mssql-demo
@@ -35,8 +33,7 @@ services:
 
 ## Pick a version
 
-Use `mssql:2022` when you want the default major written out. Choose
-`mssql:2019` for the previous line:
+Use `mssql:2022` when you want the default major written out. Choose `mssql:2019` for the previous line:
 
 ```yaml
 services:
@@ -44,19 +41,13 @@ services:
     type: mssql:2019
 ```
 
-## Credentials
+## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes
-`SA_PASSWORD` inside the container. The image also gets `ACCEPT_EULA=Y`
-and `MSSQL_PID=Developer`. Read the resolved password from `lando info`
-instead of guessing it.
+Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Read the resolved password from `lando info` instead of guessing it.
 
-## amd64-only images
+## Plan on amd64
 
-Upstream SQL Server images are amd64-only. On a non-amd64 host the type
-fails at plan time unless the provider declares architecture emulation.
-Use an amd64 host or a provider with architecture emulation. This is a
-capability check, not a container start failure.
+Upstream SQL Server images are amd64-only. On a non-amd64 host the type fails at plan time unless the provider declares architecture emulation. Use an amd64 host or a provider with architecture emulation. This is a capability check, not a container start failure.
 
 ```sh
 lando sqlcmd -Q "SELECT @@VERSION"

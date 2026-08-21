@@ -5,12 +5,9 @@ timeout: 90000
 tags: [beta, docs, nginx, service, webserver]
 ---
 
-# nginx
+# Add nginx
 
-Add an nginx web server to your app by declaring `type: nginx` in your
-services block. Lando pulls `nginx:1.26-alpine` by default and listens on
-the standard HTTP port `80`. Your repository is mounted at `/app` and served
-as the document root:
+Put `type: nginx` in your services block. Lando pulls `nginx:1.26-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
 
 ```yaml
 name: nginx-demo
@@ -34,14 +31,11 @@ services:
     </Step>
   </Scenario>
 
-## Routing
+## Open the URL
 
-Routes are derived from service endpoints — the proxy auto-derives an HTTPS
-hostname from the nginx service's HTTP endpoint, something like
-`web.<app>.lndo.site`. You only need a `proxy:` block to customize
-hostnames.
+The proxy auto-derives an HTTPS hostname from the nginx service's HTTP endpoint, something like `web.<app>.lndo.site`. You only need a `proxy:` block to customize hostnames.
 
-## Pair with PHP
+## Pair nginx with PHP
 
 nginx is commonly paired with a `php-fpm` service: nginx serves static
 files and proxies dynamic requests to the app service over the per-app
@@ -57,8 +51,7 @@ services:
 
 ## Pin a version
 
-Use `image:` to pin a specific nginx version when the default
-`nginx:1.26-alpine` isn't what you want:
+Set `image:` when `nginx:1.26-alpine` isn't the version you want:
 
 ```yaml
 services:

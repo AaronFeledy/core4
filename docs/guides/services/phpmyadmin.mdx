@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, phpmyadmin, service]
 ---
 
-# phpMyAdmin
+# Add phpMyAdmin
 
-Add a phpMyAdmin UI with `type: phpmyadmin`. In an app with one MySQL or
-MariaDB service, that is enough — Lando points the UI at that database and
-gives it a default hostname route:
+Put `type: phpmyadmin` in your services block. In an app with one MySQL or MariaDB service, that is enough. Lando points the UI at that database and gives it a default hostname route:
 
 ```yaml
 name: phpmyadmin-demo
@@ -50,12 +48,12 @@ services:
     type: phpmyadmin:5
 ```
 
-## Several databases
+## Point at several databases
 
 phpMyAdmin auto-discovers every `mysql` and `mariadb` service in the app
 and lists them in the UI. It does not wire PostgreSQL or SQL Server.
 
-## Override the hosts
+## Override discovered hosts
 
 Set `hosts:` when auto-discovery is not what you want. A string or a list
 replaces discovery entirely:

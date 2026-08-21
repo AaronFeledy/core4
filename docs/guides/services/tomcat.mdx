@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, tomcat, service]
 ---
 
-# Tomcat
+# Add Tomcat
 
-Run a servlet container with `type: tomcat`. That shorthand is Tomcat 11.
-Put your exploded webapp in the app root; Lando mounts it as the ROOT
-webapp:
+Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Put your exploded webapp in the app root. Lando mounts it as the ROOT webapp:
 
 ```yaml
 name: tomcat-demo

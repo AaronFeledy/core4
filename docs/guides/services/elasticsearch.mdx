@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, elasticsearch, service]
 ---
 
-# Elasticsearch
+# Add Elasticsearch
 
-Add Elasticsearch to your app by declaring `type: elasticsearch` in your
-services block. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0`
-by default and listens on port `9200`:
+Put `type: elasticsearch` in your services block. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and listens on `9200`:
 
 ```yaml
 name: elasticsearch-demo
@@ -26,10 +24,7 @@ tooling:
       - es-cli
 ```
 
-The default config sets `discovery.type: single-node` for local dev and
-disables `xpack.security.enabled` — that's convenient locally but not
-production-suitable. The default image is licensed under the Elastic License
-v2; reach for OpenSearch instead when you need Apache 2.0 licensing.
+The default config sets `discovery.type: single-node` for local dev and disables `xpack.security.enabled`. That's convenient locally, not production-suitable. The default image is licensed under the Elastic License v2. Reach for OpenSearch when you need Apache 2.0 licensing.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -48,8 +43,7 @@ v2; reach for OpenSearch instead when you need Apache 2.0 licensing.
 
 ## Check cluster health
 
-The fixture above declares `es-cli` as an app tooling alias. Query cluster
-health once the service is up:
+The fixture above declares `es-cli` as an app tooling alias. Query cluster health once the service is up:
 
 ```sh
 lando es-cli /_cluster/health
@@ -65,8 +59,7 @@ lando es-cli /_cat/indices
 
 ## Pin a version
 
-Use `image:` to pin a specific Elasticsearch version when the default
-Elasticsearch 8 image isn't what you want:
+Set `image:` when the default Elasticsearch 8 image isn't the version you want:
 
 ```yaml
 services:
@@ -75,9 +68,8 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
 ```
 
-## Security defaults are for local dev only
+## Keep security off only for local dev
 
-`xpack.security.enabled=false` is meant for local development. Production
-deployments must enable security and configure TLS.
+`xpack.security.enabled=false` is meant for local development. Production deployments must enable security and configure TLS.
 
 </Guide>
