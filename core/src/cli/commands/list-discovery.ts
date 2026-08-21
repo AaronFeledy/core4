@@ -60,7 +60,8 @@ const preferName = (left: string, right: string, appId: string): string => {
 const preferRoot = (left: string, right: string): string => {
   if (left === "" && right !== "") return right;
   if (right === "" && left !== "") return left;
-  return left.length >= right.length ? left : right;
+  // First nonempty root wins so a longer leftover legacy/cache path cannot replace plugin state.
+  return left;
 };
 
 export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): AppsListEntry[] => {

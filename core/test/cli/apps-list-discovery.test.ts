@@ -203,6 +203,34 @@ describe("mergeAppsListEntries", () => {
       },
     ]);
   });
+
+  test("keeps the first nonempty plugin root over a longer leftover path", () => {
+    const merged = mergeAppsListEntries([
+      {
+        appId: "drupal-cms",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/srv/app",
+        services: ["appserver"],
+      },
+      {
+        appId: "drupal-cms",
+        appName: "stale",
+        providerId: "docker",
+        appRoot: "/very/long/stale/legacy/path/to/app",
+        services: ["database"],
+      },
+    ]);
+    expect(merged).toEqual([
+      {
+        appId: "drupal-cms",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/srv/app",
+        services: ["appserver", "database"],
+      },
+    ]);
+  });
 });
 
 describe("apps:list host-wide discovery", () => {
@@ -219,7 +247,15 @@ describe("apps:list host-wide discovery", () => {
       await mkdir(legacyDir, { recursive: true });
       await writeFile(
         join(legacyDir, "drupal-cms.json"),
-        JSON.stringify(stateEnvelope("drupal-cms", "stale-name", "/old/drupal-cms", ["database"], "docker")),
+        JSON.stringify(
+          stateEnvelope(
+            "drupal-cms",
+            "stale-name",
+            "/very/long/stale/legacy/drupal-cms",
+            ["database"],
+            "docker",
+          ),
+        ),
       );
       const result = await runList(userDataRoot, { discoverContainers: async () => [] });
       expect(result.apps).toEqual([
