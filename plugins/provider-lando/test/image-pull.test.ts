@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
+import { type Socket, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
@@ -47,7 +47,10 @@ const captureImagePullProgress = (events: ImagePullProgressEvent[], event: Publi
 const withClosingSocket = async <T>(run: (socketPath: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-provider-lando-pull-"));
   const socketPath = join(dir, "podman.sock");
+  const connections = new Set<Socket>();
   const server = createServer((socket) => {
+    connections.add(socket);
+    socket.once("close", () => connections.delete(socket));
     socket.end();
   });
   await new Promise<void>((resolve, reject) => {
@@ -57,6 +60,7 @@ const withClosingSocket = async <T>(run: (socketPath: string) => Promise<T>): Pr
   try {
     return await run(socketPath);
   } finally {
+    for (const socket of connections) socket.destroy();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error === undefined ? resolve() : reject(error)));
     });

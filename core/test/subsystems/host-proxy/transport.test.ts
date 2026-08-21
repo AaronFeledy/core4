@@ -559,7 +559,7 @@ describe("host-proxy runLando physical transport", () => {
     expect(rejected.body).not.toContain("app:open");
     expect(rejected.responseCount).toBe(1);
     expect(rejected.connectionClosed).toBe(true);
-    expect(rejected.raw).toContain("Connection: close");
+    expect(rejected.raw.toLowerCase()).toContain("connection: close");
     expect(executions).toBe(0);
     expect(events.map((event) => [event._tag, event.outcome, event.failureDetail])).toEqual([
       ["pre-host-proxy-call", undefined, undefined],
@@ -1000,6 +1000,10 @@ const waitForSocketClose = (socket: ReturnType<typeof createConnection>): Promis
       reject(new Error("Timed out waiting for host-proxy socket close."));
       socket.destroy();
     }, 1000);
+    // Bun 1.4 unix sockets stay paused until a reader attaches, so Connection:
+    // close from the server never surfaces as `close` unless we consume data.
+    socket.on("data", () => undefined);
+    socket.resume();
     socket.once("close", () => {
       clearTimeout(timeout);
       resolveClose();
