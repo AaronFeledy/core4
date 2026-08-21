@@ -107,8 +107,8 @@ const processShellIO: ShellIO = {
     return typeof columns === "number" && typeof rows === "number" ? { columns, rows } : undefined;
   },
   onResize: (listener) => {
-    process.on("SIGWINCH", listener);
-    return () => process.off("SIGWINCH", listener);
+    (process as NodeJS.EventEmitter).on("SIGWINCH", listener);
+    return () => (process as NodeJS.EventEmitter).off("SIGWINCH", listener);
   },
 };
 

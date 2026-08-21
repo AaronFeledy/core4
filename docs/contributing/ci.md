@@ -9,7 +9,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.4.0`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 

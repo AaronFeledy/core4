@@ -102,7 +102,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
         effect: "^3.21.2",
       },
       devDependencies: {
-        "@types/bun": "^1.3.14",
+        "@types/bun": "^1.4.0",
         typescript: "^5.6.0",
       },
       scripts: {

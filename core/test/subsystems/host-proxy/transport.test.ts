@@ -559,7 +559,7 @@ describe("host-proxy runLando physical transport", () => {
     expect(rejected.body).not.toContain("app:open");
     expect(rejected.responseCount).toBe(1);
     expect(rejected.connectionClosed).toBe(true);
-    expect(rejected.raw).toContain("Connection: close");
+    expect(rejected.raw.toLowerCase()).toContain("connection: close");
     expect(executions).toBe(0);
     expect(events.map((event) => [event._tag, event.outcome, event.failureDetail])).toEqual([
       ["pre-host-proxy-call", undefined, undefined],
@@ -671,6 +671,62 @@ describe("host-proxy runLando physical transport", () => {
     const healthy = await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
 
     expect(healthy.exitCode).toBe(0);
+    await session.close();
+  });
+
+  test("reaps a dead in-flight socket by interrupting the fiber and freeing the slot", async () => {
+    let running = 0;
+    let maxRunning = 0;
+    let interrupted = false;
+    let calls = 0;
+    let accepted: (() => void) | undefined;
+    const acceptedRequest = new Promise<void>((resolve) => {
+      accepted = resolve;
+    });
+    const session = await sessionFor(
+      () => {
+        calls += 1;
+        if (calls === 1) {
+          return Effect.sync(() => {
+            running += 1;
+            maxRunning = Math.max(maxRunning, running);
+            accepted?.();
+          }).pipe(
+            Effect.zipRight(Effect.never),
+            Effect.ensuring(
+              Effect.sync(() => {
+                running -= 1;
+                interrupted = true;
+              }),
+            ),
+            Effect.as({ envelope, exitCode: 0 }),
+          );
+        }
+        return Effect.sync(() => {
+          running += 1;
+          maxRunning = Math.max(maxRunning, running);
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              running -= 1;
+            }),
+          ),
+          Effect.as({ envelope, exitCode: 0 }),
+        );
+      },
+      { concurrency: 1, shimArtifactPath: await fakeExecutable() },
+    );
+
+    const inflight = await openAuthenticatedRunLando(socketPathOf(session), authHeaders(session));
+    await acceptedRequest;
+    inflight.destroy();
+    const healthy = await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
+    await waitUntil(() => interrupted, "expected the reaped dispatch fiber to be interrupted");
+
+    expect(healthy.exitCode).toBe(0);
+    expect(interrupted).toBe(true);
+    expect(maxRunning).toBe(1);
+    expect(running).toBe(0);
     await session.close();
   });
 
@@ -971,6 +1027,38 @@ const rawSocketExchange = async (
   headers: Readonly<Record<string, string>> = {},
 ): Promise<string> => (await rawHttpExchange(socketPath, payload, headers)).body;
 
+const waitUntil = async (predicate: () => boolean, message: string): Promise<void> => {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+};
+
+const openAuthenticatedRunLando = (
+  socketPath: string,
+  headers: Readonly<Record<string, string>>,
+): Promise<ReturnType<typeof createConnection>> =>
+  new Promise((resolveSocket, reject) => {
+    const payload = JSON.stringify({ _tag: "runLando", argv: ["open"], cwd: "/app", tty: false });
+    const socket = createConnection({ path: socketPath });
+    const headerLines = Object.entries(headers).map(([name, value]) => `${name}: ${value}`);
+    const request = [
+      "POST /runLando HTTP/1.1",
+      "Host: localhost",
+      "Content-Type: application/json",
+      `Content-Length: ${Buffer.byteLength(payload)}`,
+      ...headerLines,
+      "",
+      payload,
+    ].join("\r\n");
+    socket.once("connect", () => {
+      socket.write(request);
+      resolveSocket(socket);
+    });
+    socket.once("error", reject);
+  });
+
 const openSlowAuthenticatedRequest = (
   socketPath: string,
   headers: Readonly<Record<string, string>>,
@@ -1000,6 +1088,10 @@ const waitForSocketClose = (socket: ReturnType<typeof createConnection>): Promis
       reject(new Error("Timed out waiting for host-proxy socket close."));
       socket.destroy();
     }, 1000);
+    // Bun 1.4 unix sockets stay paused until a reader attaches, so Connection:
+    // close from the server never surfaces as `close` unless we consume data.
+    socket.on("data", () => undefined);
+    socket.resume();
     socket.once("close", () => {
       clearTimeout(timeout);
       resolveClose();

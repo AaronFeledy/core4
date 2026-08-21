@@ -73,7 +73,7 @@ export const createHostProxyRunLandoSession = (
         }),
       );
     }
-    const semaphore = Effect.unsafeMakeSemaphore(concurrency);
+    const slots = { count: 0 };
     const inFlight = new Set<HostProxyInFlightRequest>();
     const shutdownRef: { current?: () => Promise<void> } = {};
 
@@ -93,7 +93,7 @@ export const createHostProxyRunLandoSession = (
         concurrency,
         maxDepth,
         bodyReadTimeoutMs,
-        semaphore,
+        slots,
         inFlight,
         runtimeContext,
       }),

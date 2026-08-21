@@ -483,7 +483,7 @@ test("active abort does not await iterator return or leak a late pending-read re
   const onUnhandled = (reason: unknown): void => {
     unhandled.push(reason);
   };
-  process.on("unhandledRejection", onUnhandled);
+  (process as NodeJS.EventEmitter).on("unhandledRejection", onUnhandled);
 
   try {
     // When
@@ -506,7 +506,7 @@ test("active abort does not await iterator return or leak a late pending-read re
     expect(returns).toBe(1);
     expect(unhandled).toEqual([]);
   } finally {
-    process.off("unhandledRejection", onUnhandled);
+    (process as NodeJS.EventEmitter).off("unhandledRejection", onUnhandled);
   }
 }, 1_000);
 
