@@ -218,7 +218,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "varnish:7",
     ],
     serviceFeatures: SERVICE_FEATURE_IDS,
-    appFeatures: ["service-lando.phpmyadmin.wire"],
+    appFeatures: ["service-lando.phpmyadmin.wire", "service-lando.nginx.php-fpm.wire"],
   },
   entry: "./src/index.ts",
 });

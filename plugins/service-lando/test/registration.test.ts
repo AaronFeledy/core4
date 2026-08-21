@@ -631,6 +631,32 @@ describe("@lando/service-lando registration", () => {
     ]);
   });
 
+  test("AppPlanner wires nginx FastCGI to the PHP FPM service's authored port", async () => {
+    const landofile: LandofileShape = {
+      name: "php-fpm-nginx",
+      runtime: 4,
+      services: {
+        [ServiceName.make("appserver")]: { type: "php:8.3", via: "fpm", port: 9070 },
+        [ServiceName.make("edge")]: { type: "nginx", backend: "appserver" },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const appserver = appPlan.services[ServiceName.make("appserver")];
+    const edge = appPlan.services[ServiceName.make("edge")];
+    if (appserver === undefined || edge === undefined) {
+      throw new Error("php-fpm/nginx planner services missing");
+    }
+
+    const command = Array.isArray(edge.command)
+      ? edge.command.join(" ")
+      : typeof edge.command === "string"
+        ? edge.command
+        : "";
+    expect(command).toContain("fastcgi_pass appserver:9070");
+    expect(appserver.command?.[2]).toContain("listen = 9070");
+  });
+
   test("AppPlanner fails closed when Varnish backend is unknown", async () => {
     const landofile: LandofileShape = {
       name: "catalog-app",
