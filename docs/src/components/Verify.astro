@@ -20,7 +20,7 @@ const [kind, target] = [
 ].find((entry) => entry[1] !== undefined) ?? ["check", ""];
 const expectation =
   expect === undefined ? undefined : typeof expect === "object" ? JSON.stringify(expect) : String(expect);
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "verify");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "verify");
 const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 

@@ -1,17 +1,18 @@
 ---
+import { isPlaceholderResultSummary } from "../lib/is-placeholder.ts";
 import { componentFramePropsFor } from "./component-frame.ts";
 
 interface Props {
   readonly [key: string]: unknown;
 }
 
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "cleanup");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "cleanup");
+const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
 <section class="lando-cleanup" {...dataAttributes}>
   <h3>Cleanup</h3>
-  {frame?.resultSummary && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
+  {showCapturedOutput && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
   {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
-  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
   <slot />
 </section>

@@ -19,7 +19,7 @@ const [kind, target] =
       : events === true
         ? ["events", "event stream"]
         : ["output", "command output"];
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inspect");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "inspect");
 const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 

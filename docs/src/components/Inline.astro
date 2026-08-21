@@ -10,7 +10,7 @@ interface Props {
 }
 
 const { code, lang = "ts" } = Astro.props;
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inline");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "inline");
 const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
