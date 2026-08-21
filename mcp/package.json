@@ -24,6 +24,7 @@
     "./cancellation": "./src/cancellation.ts",
     "./catalog": "./src/catalog.ts",
     "./dispatch": "./src/dispatch.ts",
+    "./memory-pressure": "./src/memory-pressure.ts",
     "./execute": "./src/execute.ts",
     "./generated-allowlist": "./src/generated/mcp-allowlist.ts",
     "./port": "./src/port.ts",

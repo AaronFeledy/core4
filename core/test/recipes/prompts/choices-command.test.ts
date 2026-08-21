@@ -6,6 +6,7 @@ import {
   createDefaultChoicesCommandRunner,
   landoInvocationPrefix,
   parseChoicesOutput,
+  readStandaloneExecutable,
 } from "../../../src/recipes/prompts/choices-command.ts";
 
 describe("parseChoicesOutput — json", () => {
@@ -62,22 +63,51 @@ describe("parseChoicesOutput — lines", () => {
   });
 });
 
-describe("landoInvocationPrefix", () => {
-  test("source mode includes the entry script", () => {
-    expect(landoInvocationPrefix("/bun", ["/bun", "/repo/core/src/cli/index.ts", "init"])).toEqual([
-      "/bun",
-      "/repo/core/src/cli/index.ts",
-    ]);
+describe("readStandaloneExecutable", () => {
+  test("returns the boolean property when present", () => {
+    expect(readStandaloneExecutable({ isStandaloneExecutable: true })).toBe(true);
+    expect(readStandaloneExecutable({ isStandaloneExecutable: false })).toBe(false);
   });
 
-  test("compiled binary ($bunfs entry) uses execPath only", () => {
-    expect(landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando", "/$bunfs/root/lando", "init"])).toEqual(
-      ["/usr/bin/lando"],
-    );
+  test("returns undefined when the property is missing", () => {
+    expect(readStandaloneExecutable({})).toBeUndefined();
+    expect(readStandaloneExecutable({ isStandaloneExecutable: "yes" })).toBeUndefined();
+  });
+});
+
+describe("landoInvocationPrefix", () => {
+  test("source prefix is [execPath, entry]", () => {
+    expect(
+      landoInvocationPrefix("/bun", ["/bun", "/repo/core/src/cli/index.ts", "init"], { standalone: false }),
+    ).toEqual(["/bun", "/repo/core/src/cli/index.ts"]);
+  });
+
+  test("compiled/standalone prefix is [execPath]", () => {
+    expect(
+      landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando", "/repo/core/src/cli/index.ts", "init"], {
+        standalone: true,
+      }),
+    ).toEqual(["/usr/bin/lando"]);
+  });
+
+  test("compiled path does not require $bunfs once the standalone API is true", () => {
+    expect(
+      landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando", "/not-bunfs/entry"], { standalone: true }),
+    ).toEqual(["/usr/bin/lando"]);
+  });
+
+  test("falls back to $bunfs when the standalone property is missing", () => {
+    expect(
+      landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando", "/$bunfs/root/lando", "init"], {
+        standalone: undefined,
+      }),
+    ).toEqual(["/usr/bin/lando"]);
   });
 
   test("missing entry uses execPath only", () => {
-    expect(landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando"])).toEqual(["/usr/bin/lando"]);
+    expect(landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando"], { standalone: false })).toEqual([
+      "/usr/bin/lando",
+    ]);
   });
 });
 
@@ -95,6 +125,7 @@ describe("createDefaultChoicesCommandRunner", () => {
       execPath: "/usr/bin/lando",
       argv: ["/usr/bin/lando", "/$bunfs/root/lando", "init"],
       cwd: "/work",
+      standalone: true,
     });
     const result = await runner({ command: "services:list", args: ["--type=php"] });
     expect(result).toEqual({ exitCode: 0, stdout: "php\n", stderr: "" });

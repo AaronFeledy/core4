@@ -1,4 +1,13 @@
 import { $ } from "bun";
+
+/**
+ * Bun 1.4 `Bun.Terminal` was evaluated as a PTY backend for `ShellRunner` /
+ * host-shell and rejected: there is no existing PTY/ConPTY path behind these
+ * services (`exec` uses Bun `$`; interactive uses `Bun.spawn` + IPC `--eval`),
+ * and a Terminal-backed PTY would dual-path the OpenTUI renderer terminal
+ * (dynamic `import("@opentui/core")` only). Do not add `@opentui/core` here
+ * or use `Bun.Terminal` in compiled cold-start files.
+ */
 import { type Context, Effect, FiberRef, Layer } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";

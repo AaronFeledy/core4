@@ -9,7 +9,7 @@ import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
-import { ProcessRunnerLive } from "../../src/services/process-runner";
+import { ProcessRunnerLive, resolveProcessCgroup } from "../../src/services/process-runner";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
@@ -212,5 +212,48 @@ describe("ProcessRunnerLive", () => {
 
     expect(decoded.some((chunk) => chunk.kind === "stdout" && chunk.text.includes("out"))).toBe(true);
     expect(decoded.some((chunk) => chunk.kind === "stderr" && chunk.text.includes("err"))).toBe(true);
+  });
+});
+
+describe("resolveProcessCgroup", () => {
+  test("passes cgroup through on Linux", () => {
+    expect(resolveProcessCgroup("/sys/fs/cgroup/jobs", "linux")).toBe("/sys/fs/cgroup/jobs");
+  });
+
+  test("ignores cgroup on non-Linux platforms", () => {
+    expect(resolveProcessCgroup("/sys/fs/cgroup/jobs", "darwin")).toBeUndefined();
+    expect(resolveProcessCgroup("/sys/fs/cgroup/jobs", "win32")).toBeUndefined();
+  });
+
+  test("omits empty and unset values", () => {
+    expect(resolveProcessCgroup(undefined, "linux")).toBeUndefined();
+    expect(resolveProcessCgroup("", "linux")).toBeUndefined();
+  });
+});
+
+describe("ProcessRunnerLive cgroup", () => {
+  test("does not throw when cgroup is set on this host", async () => {
+    if (process.platform !== "linux") {
+      const result = await runProcess({ cmd: "true", args: [], cgroup: "/sys/fs/cgroup/jobs" });
+      expect(result.exitCode).toBe(0);
+      return;
+    }
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(ProcessRunner, (processRunner) =>
+        processRunner.run({
+          cmd: "true",
+          args: [],
+          cgroup: "/sys/fs/cgroup/lando-definitely-missing-cgroup",
+        }),
+      ).pipe(Effect.provide(ProcessRunnerLive)),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProcessExecError);
+      }
+    }
   });
 });

@@ -37,6 +37,7 @@ export {
   defaultChoicesCommandSpawner,
   landoInvocationPrefix,
   parseChoicesOutput,
+  readStandaloneExecutable,
   type ChoicesCommandInput,
   type ChoicesCommandResult,
   type ChoicesCommandRunner,

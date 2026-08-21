@@ -51,17 +51,48 @@ export const defaultChoicesCommandSpawner: ChoicesCommandSpawner = {
 };
 
 /**
+ * Prefer Bun 1.4 `Bun.isStandaloneExecutable` when present. Returns
+ * `undefined` when the property is missing so callers can fall back to
+ * `$bunfs` / `argv[1]` matching.
+ */
+export const readStandaloneExecutable = (
+  bun: { readonly isStandaloneExecutable?: unknown } = Bun,
+): boolean | undefined =>
+  typeof bun.isStandaloneExecutable === "boolean" ? bun.isStandaloneExecutable : undefined;
+
+/**
  * Build the argv prefix that re-invokes the Lando CLI.
  *
- * Compiled `bun build --compile` binaries embed the entry under
- * `$bunfs`, so `process.execPath` IS the `lando` binary. In source mode
- * `process.execPath` is Bun and `argv[1]` is the CLI entry script.
+ * Compiled / standalone binaries use `[execPath]` only. Source mode uses
+ * `[execPath, argv[1]]`. When `standalone` is omitted, the Bun 1.4
+ * `isStandaloneExecutable` property decides; if that property is missing,
+ * `$bunfs` in `argv[1]` remains a defensive fallback. Compiled detection
+ * does not require `$bunfs` once the API exists.
+ *
+ * Do not set `BUN_BE_BUN` here — this re-entry wants normal Lando dispatch,
+ * not bun-self-runner mode.
  */
+export interface LandoInvocationPrefixOptions {
+  /**
+   * When provided (including `undefined`), skip reading `Bun.isStandaloneExecutable`.
+   * Pass `undefined` to exercise the `$bunfs` fallback.
+   */
+  readonly standalone?: boolean | undefined;
+}
+
 export const landoInvocationPrefix = (
   execPath: string,
   argv: ReadonlyArray<string>,
+  options?: LandoInvocationPrefixOptions,
 ): ReadonlyArray<string> => {
+  const standalone =
+    options !== undefined && "standalone" in options ? options.standalone : readStandaloneExecutable();
+  if (standalone === true) return [execPath];
   const entry = argv[1];
+  if (standalone === false) {
+    if (entry === undefined || entry === "") return [execPath];
+    return [execPath, entry];
+  }
   if (entry === undefined || entry === "" || entry.includes("$bunfs")) return [execPath];
   return [execPath, entry];
 };
@@ -71,6 +102,7 @@ export interface DefaultChoicesCommandRunnerOptions {
   readonly execPath?: string;
   readonly argv?: ReadonlyArray<string>;
   readonly cwd?: string;
+  readonly standalone?: boolean;
 }
 
 export const createDefaultChoicesCommandRunner = (
@@ -80,7 +112,11 @@ export const createDefaultChoicesCommandRunner = (
   const execPath = options.execPath ?? process.execPath;
   const argv = options.argv ?? process.argv;
   const cwd = options.cwd ?? process.cwd();
-  const prefix = landoInvocationPrefix(execPath, argv);
+  const prefix = landoInvocationPrefix(
+    execPath,
+    argv,
+    options.standalone === undefined ? undefined : { standalone: options.standalone },
+  );
   return ({ command, args }) => spawner.spawn({ cmd: [...prefix, command, ...args], cwd });
 };
 

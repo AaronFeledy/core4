@@ -30,6 +30,11 @@ import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch";
 import { makeNestedExecute } from "./execute";
 import { makeStreamFrameSink } from "./framing";
+import {
+  type MemoryPressureLevel,
+  attachMemoryPressureListener,
+  handleMemoryPressure as runMemoryPressureHooks,
+} from "./memory-pressure";
 import { McpCommandExecutor, type McpCommandExecutorShape } from "./port";
 import type { McpCommandEntry } from "./registry";
 import { McpTransport, type McpTransportRequest } from "./transport";
@@ -68,6 +73,12 @@ export interface McpServiceShape {
   readonly serve: (options: McpServeOptions) => Effect.Effect<void, McpTransportError, McpTransport>;
   /** The effective tool catalog — the `lando mcp --list` shape. */
   readonly catalog: (options?: McpCatalogOptions) => Effect.Effect<McpCatalog>;
+  /**
+   * Free rebuildable MCP caches and idle transport state.
+   * Attached to `process.on("memoryPressure")` for the lifetime of `serve`.
+   * Does not abort in-flight tool calls or exit the process.
+   */
+  readonly handleMemoryPressure: (level: MemoryPressureLevel) => void;
 }
 
 export class McpService extends Context.Tag("@lando/mcp/McpService")<McpService, McpServiceShape>() {}
@@ -78,6 +89,19 @@ const makeService = (
   events: Option.Option<Context.Tag.Service<typeof EventService>>,
   executor: McpCommandExecutorShape,
 ): McpServiceShape => {
+  const catalogCache = new Map<string, McpCatalog>();
+  const idleReleasers: Array<() => void> = [];
+  const handleMemoryPressure: McpServiceShape["handleMemoryPressure"] = (level) => {
+    runMemoryPressureHooks(level, {
+      dropCaches: () => {
+        catalogCache.clear();
+      },
+      closeIdleSockets: () => {
+        // No idle socket pool. Session hooks may drop rebuildable completed-id history.
+        for (const release of idleReleasers) release();
+      },
+    });
+  };
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
     ? (event) => events.value.publish(event).pipe(Effect.catchAll(() => Effect.void))
     : undefined;
@@ -87,18 +111,28 @@ const makeService = (
       : allow;
 
   const catalog: McpServiceShape["catalog"] = (options) =>
-    Effect.sync(() =>
-      buildCatalog({
+    Effect.sync(() => {
+      const allow = allowWithTooling(options?.allow, options?.tooling);
+      const cacheKey = JSON.stringify({
+        allow: allow ?? [],
+        deny: options?.deny ?? [],
+        tooling: options?.tooling === true,
+      });
+      const cached = catalogCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+      const built = buildCatalog({
         commandEntries: config.commandEntries,
         ...(config.toolingEntries === undefined ? {} : { toolingEntries: config.toolingEntries }),
         effective: computeEffectiveAllowlist({
           defaults: config.defaultAllowlist,
-          allow: allowWithTooling(options?.allow, options?.tooling),
+          allow,
           deny: options?.deny,
         }),
         ...(options === undefined ? {} : { options }),
-      }),
-    );
+      });
+      catalogCache.set(cacheKey, built);
+      return built;
+    });
 
   const serve: McpServiceShape["serve"] = (options) =>
     Effect.gen(function* () {
@@ -108,6 +142,13 @@ const makeService = (
       // finalizing the retained runtime.
       yield* Effect.scoped(
         Effect.gen(function* () {
+          const detachMemoryPressure = attachMemoryPressureListener(handleMemoryPressure);
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              detachMemoryPressure();
+              idleReleasers.length = 0;
+            }),
+          );
           const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
           const semaphore = yield* Effect.makeSemaphore(options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
           const effective = computeEffectiveAllowlist({
@@ -125,6 +166,9 @@ const makeService = (
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, McpTransportError>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
           const completed = yield* Ref.make(emptyCompletedRequestIds());
+          idleReleasers.push(() => {
+            Effect.runSync(Ref.set(completed, emptyCompletedRequestIds()));
+          });
           const notifyFor =
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>
@@ -242,7 +286,7 @@ const makeService = (
       );
     });
 
-  return { serve, catalog };
+  return { serve, catalog, handleMemoryPressure };
 };
 
 /**
