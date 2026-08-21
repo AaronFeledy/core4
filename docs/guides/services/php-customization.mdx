@@ -39,6 +39,38 @@ string) on the PHP service — see the Xdebug in PhpStorm guide. `xdebug: false`
 is the default and installs nothing; `XDEBUG_MODE` in `environment:` does not
 add the extension.
 
+## Database clients
+
+`db_client: auto` is the default. At plan time Lando looks at the other
+services in your app — MySQL, MariaDB, Postgres, MongoDB — and installs the
+matching client CLI into the PHP container. You can force one with
+`db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
+Detection is deterministic from the resolved plan; it never probes the
+provider. Changing `db_client` changes the build key, so a running app needs
+`lando rebuild -y`. A custom `image:` still validates the option but skips
+the install steps.
+
+```yaml
+services:
+  app:
+    type: "php:8.3"
+    db_client: auto
+  database:
+    type: mysql
+    creds:
+      user: app
+      password: secret
+      database: app
+tooling:
+  db-query:
+    service: app
+    cmd: mysql -h database -u app app -e "SELECT 1"
+```
+
+`lando mysql` / `lando psql` still run in the database service. Point a PHP
+task at those same `services.<db>.creds.*` values when you want the client
+that lives next to your app code — `db-query` above is that pattern.
+
 ## Install an extra extension
 
 Add a `build.artifact` step to compile or install an extension the
@@ -86,11 +118,12 @@ read-only — the container never needs to write back to your source
 Setting `image:` on a `php` service — or switching to `build.context` with
 your own Dockerfile — replaces the default `-apache` base entirely.
 `service-lando.php` only adds its prerequisite build steps (the apt
-packages, `docker-php-ext-install` compilation, and Composer install) and
-generates the Apache virtual-host command when `image:` is left unset. Set
-`image:` and both are skipped: you get none of the built-in extensions
-above and no generated Apache startup — the image's own `CMD`/`ENTRYPOINT`
-runs instead.
+packages, `docker-php-ext-install` compilation, Composer install, and
+database clients) and generates the Apache virtual-host command when
+`image:` is left unset. Set `image:` and those install steps are skipped:
+you get none of the built-in extensions above, no generated Apache
+startup, and no `db_client:` packages — the image's own `CMD`/`ENTRYPOINT`
+runs instead. Invalid `db_client:` values still fail at plan time.
 
 What still applies regardless of `image:`: the `/app` bind mount, HTTP
 endpoint, healthcheck, working directory, and `LANDO_*` environment.
@@ -144,6 +177,74 @@ actually deliver the file.
     <Step name="confirm-mount">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zz-custom\\.ini\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-auto" render>
+    <Step name="scaffold">
+      <UseFixture name="db-client-auto" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*\"auto\"" } }} />
+    </Step>
+    <Step name="verify-tooling">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "db-query" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-auto" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-disabled" render={false} reason="db_client false must plan with no database client install.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-disabled" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*false" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-disabled" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-explicit" render={false} reason="Explicit mariadb:11.4 must plan without a database sibling.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-explicit" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*\"mariadb:11.4\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-explicit" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-invalid" render={false} reason="Unknown db_client values must fail closed at plan time with remediation.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported database client" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>
