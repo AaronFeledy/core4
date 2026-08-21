@@ -1,0 +1,12 @@
+name: php-db-client-disabled
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    db_client: false
+  database:
+    type: mysql
+    creds:
+      user: app
+      password: secret
+      database: app
