@@ -106,23 +106,19 @@ Or:
 LANDO_PROVIDER=docker lando setup
 ```
 
-`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. Setup also does not save Docker as your default. Keep passing `--provider=docker` or `LANDO_PROVIDER=docker` on later commands such as `lando doctor` and `lando start`.
+`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
+
+`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
 This is a fallback, not the default. See [Pick a container provider](./guides/setup/provider-selection.mdx).
 
-4. Verify with Docker still selected:
+4. Verify:
 
 ```bash
-lando doctor --provider=docker
+lando doctor
 ```
 
-Or:
-
-```bash
-LANDO_PROVIDER=docker lando doctor
-```
-
-Bare `lando doctor` reports the managed `lando` provider. Setup does not persist Docker. If doctor still reports issues, try `lando doctor --provider=docker --fix` when it offers one.
+If doctor still reports issues, try `lando doctor --fix` when it offers one.
 
 ## Installers and update manifests (not yet available)
 
