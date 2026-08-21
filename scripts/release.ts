@@ -964,55 +964,65 @@ const provenanceCosignCommands = (
     cosignSignAndVerifyBlobCommands(env, provenancePath, `${provenancePath}.sig`, `${provenancePath}.crt`),
   );
 
-const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const windowsReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  platforms
+    .filter((platform) => isWindowsCiPlatform(platform))
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map(releaseBinaryPath);
+
+const windowsSigningCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
   const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
   const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
   const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
-  const binaryPath = releaseBinaryPath({ id: "windows-x64" });
-  const signaturePath = `${binaryPath}.sig`;
-  const certificatePath = `${binaryPath}.crt`;
 
-  return [
-    [
-      "signtool",
-      "sign",
-      "/tr",
-      timestampUrl,
-      "/td",
-      "sha256",
-      "/fd",
-      "sha256",
-      "/f",
-      certificate,
-      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
-      binaryPath,
-    ],
-    [
-      "cosign",
-      "sign-blob",
-      "--yes",
-      "--output-signature",
-      signaturePath,
-      "--output-certificate",
-      certificatePath,
-      binaryPath,
-    ],
-    ["signtool", "verify", "/pa", "/v", binaryPath],
-    [
-      "cosign",
-      "verify-blob",
-      "--certificate-identity-regexp",
-      certificateIdentityRegexp,
-      "--certificate-oidc-issuer",
-      COSIGN_OIDC_ISSUER,
-      "--signature",
-      signaturePath,
-      "--certificate",
-      certificatePath,
-      binaryPath,
-    ],
-  ];
+  return windowsReleaseArtifactPaths(platforms).flatMap((binaryPath) => {
+    const signaturePath = `${binaryPath}.sig`;
+    const certificatePath = `${binaryPath}.crt`;
+    return [
+      [
+        "signtool",
+        "sign",
+        "/tr",
+        timestampUrl,
+        "/td",
+        "sha256",
+        "/fd",
+        "sha256",
+        "/f",
+        certificate,
+        ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
+        binaryPath,
+      ],
+      [
+        "cosign",
+        "sign-blob",
+        "--yes",
+        "--output-signature",
+        signaturePath,
+        "--output-certificate",
+        certificatePath,
+        binaryPath,
+      ],
+      ["signtool", "verify", "/pa", "/v", binaryPath],
+      [
+        "cosign",
+        "verify-blob",
+        "--certificate-identity-regexp",
+        certificateIdentityRegexp,
+        "--certificate-oidc-issuer",
+        COSIGN_OIDC_ISSUER,
+        "--signature",
+        signaturePath,
+        "--certificate",
+        certificatePath,
+        binaryPath,
+      ],
+    ];
+  });
 };
 
 const compileCommand = (platform: CiPlatform, version?: string): ReadonlyArray<string> => [
@@ -1258,7 +1268,7 @@ const platformSigningPlans: ReadonlyArray<PlatformSigningPlan> = [
     selected: hasWindowsPlatform,
     credentialLabel: "Windows signing credentials",
     credentials: windowsSigningCredentials,
-    commands: (env) => windowsSigningCommands(env),
+    commands: windowsSigningCommands,
   },
 ];
 

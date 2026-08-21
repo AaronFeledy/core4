@@ -1910,6 +1910,57 @@ describe("release orchestrator", () => {
       );
     });
 
+    test("Authenticode-signs every selected Windows release binary", async () => {
+      const signedBinaries: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
+        target: "binary",
+        throughStage: "9-sign",
+        env: { ...macosSigningEnv, ...windowsSigningEnv },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+              const binaryPath = cmd.at(-1);
+              if (binaryPath !== undefined) signedBinaries.push(binaryPath);
+            }
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+
+      expect(signedBinaries).toEqual([
+        "./dist/lando-windows-arm64.exe",
+        "./dist/lando-windows-x64.exe",
+      ]);
+    });
+
+    test("LANDO_RELEASE_PLATFORM=windows-arm64 Authenticode-signs only the arm64 binary", async () => {
+      const signedBinaries: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
+        target: "binary",
+        throughStage: "9-sign",
+        env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-arm64" },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+              const binaryPath = cmd.at(-1);
+              if (binaryPath !== undefined) signedBinaries.push(binaryPath);
+            }
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+
+      expect(signedBinaries).toEqual(["./dist/lando-windows-arm64.exe"]);
+    });
+
     test("supports configured timestamp URL, certificate password, and certificate identity verification", async () => {
       const signingCommands: Array<ReadonlyArray<string>> = [];
 
