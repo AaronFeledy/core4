@@ -66,21 +66,21 @@ const unixSocketUnavailable = (socketPath: string, cause: unknown): HostProxyTra
     remediation: "Ensure the app run directory is writable.",
   });
 
-const closeListeningServer = (server: Server): Promise<void> =>
+export const closeListeningServer = (server: Server): Promise<void> =>
   new Promise((resolve) => {
-    let settled = false;
-    const done = (): void => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
+    const finish = (): void => resolve();
     try {
-      server.close(done);
-    } catch {
-      done();
-      return;
+      if (typeof server.closeAllConnections === "function") {
+        server.closeAllConnections();
+      }
+      server.close(finish);
+    } catch (cause) {
+      if (!(cause instanceof Error)) {
+        finish();
+        return;
+      }
+      finish();
     }
-    void waitImmediate().then(done);
   });
 
 const lockDownUnixSocket = async (socketPath: string): Promise<void> => {
