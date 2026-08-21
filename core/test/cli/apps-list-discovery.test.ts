@@ -11,6 +11,7 @@ import { ConfigService } from "@lando/sdk/services";
 import { makeLandoPaths } from "@lando/paths";
 
 import {
+  type AppsListEntry,
   appsFromContainerList,
   containerSocketCandidates,
   decodeAppliedStateFile,
@@ -30,7 +31,7 @@ const runList = (
   userDataRoot: string,
   options: {
     readonly userCacheRoot?: string;
-    readonly discoverContainers?: (root: string) => Promise<ReadonlyArray<{ readonly appId: string }>>;
+    readonly discoverContainers?: (root: string) => Promise<ReadonlyArray<AppsListEntry>>;
     readonly path?: string;
   } = {},
 ) =>
