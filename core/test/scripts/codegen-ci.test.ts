@@ -284,9 +284,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
-      expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
-      expect(releaseWorkflow.match(/bun-version: /g) ?? []).toHaveLength(1);
-      expect(releaseWorkflow).toContain(`bun-version: ${bunVersion}`);
+      expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
+      expect(releaseWorkflow).not.toContain("bun-version: ");
       expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
@@ -642,34 +641,21 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates npm alpha package publishing with dry-run coverage",
+    "does not generate npm alpha package publishing jobs",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(releaseWorkflowPath, "utf8");
 
-      expect(workflow).toContain("id-token: write");
-      expect(workflow).toContain("npm-alpha-packages:");
-      expect(workflow).toContain("needs: [dev-prerelease-linux-x64]");
-      expect(workflow).toContain("Setup Node for npm trusted publishing");
-      expect(workflow).toContain("registry-url: https://registry.npmjs.org");
-      expect(workflow).toContain("bun run --filter='@lando/sdk' build");
-      expect(workflow).toContain("bun run --filter='@lando/core' typecheck");
-      expect(workflow).toContain("bun run --filter='@lando/core' build:manifest");
-      expect(workflow).toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
-      expect(workflow).toContain("run: bun run scripts/prepare-npm-dev-packages.ts");
-      expect(workflow).toContain("npm publish --workspace @lando/sdk --dry-run --access public --tag dev");
-      expect(workflow).toContain("npm publish --workspace @lando/core --dry-run --access public --tag dev");
-      expect(workflow).toContain(
-        "npm publish --workspace @lando/service-lando --dry-run --access public --tag dev",
-      );
-      expect(workflow).toContain("npm publish --workspace @lando/sdk --access public --tag dev --provenance");
-      expect(workflow).toContain(
-        "npm publish --workspace @lando/core --access public --tag dev --provenance",
-      );
-      expect(workflow).toContain('test "$before_latest" = "$after_latest"');
-      expect(workflow).toContain("npm view @lando/core dist-tags.dev --json");
-      expect(workflow).toContain(`grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'`);
+      expect(workflow).not.toContain("id-token: write");
+      expect(workflow).not.toContain("npm-alpha-packages:");
+      expect(workflow).not.toContain("npm-alpha-smoke:");
+      expect(workflow).not.toContain("Setup Node for npm trusted publishing");
+      expect(workflow).not.toContain("registry-url: https://registry.npmjs.org");
+      expect(workflow).not.toContain("run: bun run scripts/prepare-npm-dev-packages.ts");
+      expect(workflow).not.toContain("npm publish --workspace @lando/sdk");
+      expect(workflow).not.toContain("npm publish --workspace @lando/core");
+      expect(workflow).not.toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
       expect(workflow).not.toContain("NPM_TOKEN");
       expect(workflow).not.toContain("NODE_AUTH_TOKEN");
     },
@@ -677,30 +663,16 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "regenerates all derived sources before the npm alpha package build and dry-run publish",
+    "keeps GitHub binary prerelease in generated workflow",
     async () => {
-      // Given
       await runCodegen();
       const workflow = await readFile(releaseWorkflowPath, "utf8");
-      const jobStart = workflow.indexOf("  npm-alpha-packages:");
-      expect(jobStart).toBeGreaterThanOrEqual(0);
-      const job = workflow.slice(jobStart);
 
-      // When
-      const installPosition = job.indexOf("run: bun install --frozen-lockfile");
-      const codegenPosition = job.indexOf("run: bun run codegen");
-      const buildPosition = job.indexOf("- name: Build package artifacts");
-      const dryRunPosition = job.indexOf("- name: Dry-run npm dev publishes");
-
-      // Then
-      expect(installPosition).toBeGreaterThanOrEqual(0);
-      expect(codegenPosition).toBeGreaterThanOrEqual(0);
-      expect(buildPosition).toBeGreaterThanOrEqual(0);
-      expect(dryRunPosition).toBeGreaterThanOrEqual(0);
-      expect(job).toContain("- name: Regenerate derived sources");
-      expect(codegenPosition).toBeGreaterThan(installPosition);
-      expect(codegenPosition).toBeLessThan(buildPosition);
-      expect(codegenPosition).toBeLessThan(dryRunPosition);
+      expect(workflow).toContain("dev-prerelease-linux-x64:");
+      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
+      expect(workflow).toContain("dist/lando");
+      expect(workflow).toContain("dist/SHA256SUMS");
     },
     codegenTestTimeout,
   );
