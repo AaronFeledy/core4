@@ -5,12 +5,9 @@ timeout: 90000
 tags: [beta, docs, compose, service]
 ---
 
-# Compose passthrough
+# Add a Compose service
 
-Run a third-party image outside the canonical service catalog by declaring
-`type: compose` in your services block. Compose ports use the short form,
-which maps to the container port, and the app root is mounted at `/app` by
-default:
+Put `type: compose` in your services block to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
 
 ```yaml
 name: compose-passthrough-demo
@@ -30,7 +27,7 @@ tooling:
       - probe
 ```
 
-Start it and Lando wires the passthrough service into the app network:
+Start it. Lando puts the passthrough service on the app network:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -58,7 +55,7 @@ lando probe
 
 `traefik/whoami` responds with a body that starts with `Hostname: ...`.
 
-## Allowed Compose keys
+## See which Compose keys work
 
 The compose passthrough only accepts a subset of Compose service keys. The
 generated key matrix at `docs/reference/compose-key-matrix.mdx` publishes
@@ -66,7 +63,7 @@ every accepted, preserved, and rejected key. If a key is rejected, the
 remediation is to move unsupported provider-specific config under
 `providers.<id>`, or open an issue to grow the subset.
 
-## The LANDO_* environment contract
+## Read the LANDO_* environment
 
 Unless `appMount: false` is set, a compose service emits the same `LANDO_*`
 identity variables as any other service, and joins the per-app network:
@@ -86,7 +83,7 @@ LANDO_PROJECT_MOUNT=/app
 The service also joins the per-app network `lando-<slug>` like any other
 service.
 
-## Opt out of the app mount
+## Skip the app mount
 
 Set `appMount: false` when the third-party image must not see the app
 source. With it set, Lando skips the synthetic `/app` bind mount, and omits

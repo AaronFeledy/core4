@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, mailpit, mailhog, service]
 ---
 
-# Mailpit
+# Add Mailpit
 
-Capture SMTP from your app with an in-app `type: mailpit` service. Lando
-routes the web UI so you can read the messages:
+Put `type: mailpit` in your services block. Lando routes the web UI so you can read captured SMTP:
 
 ```yaml
 name: mailpit-demo

@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, mongodb, service]
 ---
 
-# MongoDB
+# Add MongoDB
 
-Add MongoDB to your app by declaring `type: mongodb` in your services block.
-Lando pulls `mongo:7` by default and listens on port `27017`:
+Put `type: mongodb` in your services block. Lando pulls `mongo:7` and listens on `27017`:
 
 ```yaml
 name: mongodb-demo
@@ -17,8 +16,7 @@ services:
     type: mongodb
 ```
 
-The default root credentials are `lando` / `lando`, set via
-`MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+Default root credentials are `lando` / `lando`, set via `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -35,9 +33,9 @@ The default root credentials are `lando` / `lando`, set via
     </Step>
   </Scenario>
 
-## Verify it's healthy
+## Check that it's healthy
 
-`mongosh` requires a running MongoDB container. Run it after start:
+`mongosh` needs a running MongoDB container. Run it after start:
 
 ```sh
 lando mongosh --eval "db.runCommand('ping')"
@@ -45,7 +43,7 @@ lando mongosh --eval "db.runCommand('ping')"
 
 ## Pin a version
 
-Set `image:` to use `mongo:6` or `mongo:8` instead of the default `mongo:7`:
+Set `image:` to use `mongo:6` or `mongo:8` instead of `mongo:7`:
 
 ```yaml
 services:

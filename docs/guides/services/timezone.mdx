@@ -6,13 +6,9 @@ timeout: 60000
 tags: [beta, docs, services, environment, timezone]
 ---
 
-# Timezone
+# Set the timezone
 
-Landofiles have no dedicated `timezone:` key. Set a service's clock the same
-way you set any other container environment variable, using the map form
-under the service's `environment` key. This is a different mechanism from
-`LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which
-overlay Lando's own config instead:
+Set `TZ` under the service's `environment` map. Landofiles have no dedicated `timezone:` key. This is a different mechanism from `LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which overlay Lando's own config instead:
 
 ```yaml
 name: timezone-demo
@@ -43,11 +39,10 @@ services:
     </Step>
   </Scenario>
 
-## Host environment interpolation is rejected
+## Don't interpolate host env
 
 A Landofile can't reach into your host shell's environment with
-`${HOST_VAR}` syntax — Lando rejects configuration expressions in Alpha
-Landofiles:
+`${HOST_VAR}` syntax. Lando rejects configuration expressions in Alpha Landofiles:
 
   <Scenario id="rejected-host-env-interpolation" render>
     <Step name="scaffold">
@@ -62,8 +57,7 @@ Landofiles:
 ## Apply a changed timezone
 
 After editing `environment:` in `.lando.yml`, run `lando rebuild -y` to
-recreate the container — a restart alone does not pick up a changed `TZ`
-value:
+recreate the container. A restart alone does not pick up a changed `TZ` value:
 
 ```sh
 lando rebuild -y

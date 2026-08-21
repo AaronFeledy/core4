@@ -6,68 +6,32 @@ timeout: 60000
 tags: [beta, docs, subsystems, host-proxy, dns, lndo-site]
 ---
 
-# Host proxy
+# Resolve lndo.site on this machine
 
-`HostProxyService` is the Effect Service tag published in `@lando/sdk`; plugins implement
-`HostProxyServiceShape`. The `runHostProxyContract` runner from `@lando/sdk/test` validates a
-plugin's `id`, `setup()`, `status()`, and `teardown()`. `TestHostProxyService` (built with
-`makeTestHostProxyService`) is the in-memory test double — it records setup/status/teardown calls and
-reflects mode transitions, including the `mode='none'` opt-out path.
+`lando setup` writes `*.lndo.site` into this machine's DNS so app URLs resolve on localhost. You do not start a host proxy.
 
-## Platform mechanisms
+```sh
+lando setup
+```
 
-Each Live Layer writes host DNS state through a different platform-native mechanism, all pointed at
-the same default base domain and loopback address:
+On Linux that write is an `/etc/hosts` block or a systemd-resolved drop-in. The default domain is `lndo.site`. The default address is `127.0.0.1`.
 
-| Platform | Mechanism |
-| --- | --- |
-| macOS | `etc-resolver` — writes an `/etc/resolver/<baseDomain>` drop-in, no `/etc/hosts` edit |
-| Linux | `etc-hosts` — writes a managed `/etc/hosts` block (or a systemd-resolved drop-in) |
-| Windows | `hosts-file` — writes the HOSTS file under `System32\drivers\etc` |
+Other devices on the LAN do not get that DNS entry. To reach an app from another device, bind a port on purpose. See [Reach an app from another device](./external-access.mdx).
 
-Default base domain: `lndo.site`. Default loopback address: `127.0.0.1` — the same defaults used by
-the proxy subsystem and route plans.
+## Manage DNS yourself
 
-## Privileged writes happen at setup time
+If you already own DNS (corporate split-DNS, dnsmasq, or your own `/etc/hosts` entries):
 
-The privileged DNS write (`setup({ mode, baseDomain?, loopback?, force? })`) runs only from
-`lando setup`, never from `lando start` — that's where the sudo/UAC prompt happens.
-`HostProxyError` is the tagged error raised when setup/status/teardown can't reach the host DNS
-mechanism.
+```sh
+lando setup --host-proxy=none
+```
 
-Run `lando setup --host-proxy=none` to opt out if you manage your own DNS (corporate split-DNS,
-dnsmasq, custom `/etc/hosts` entries). That selects `HostProxyServiceDisabledLive`: `setup()` and
-`teardown()` succeed as no-ops, and `status()` reports `mode='none'`, `mechanism='skipped'`.
+That skips the privileged DNS write.
 
-## The in-container `lando open` round-trip
+## Verify
 
-The in-container shim builds a `runLando` request with `buildRunLandoRequest({ argv, cwd, tty, env })`;
-env is filtered to `LANDO_*`, `LC_*`, `LANG`, `TERM`, and resolved agent-context names before
-forwarding. The host creates an app/session-scoped Unix socket, CSPRNG token, and compiled standalone
-shim via `createHostProxyRunLandoSession(...)`; containers receive only the socket mount, shim mount,
-and session env.
+```sh
+lando doctor
+```
 
-Missing, stale, and cross-app token/session requests fail before dispatch with tagged
-`HostProxyAuthenticationError`. Nested `runLando` calls and saturated concurrent requests fail
-immediately with `HostProxyRecursionError`/`HostProxyBackpressureError` instead of queuing unbounded
-work. `HOST_PROXY_RUNLANDO_ALLOWLIST` is a generated cache of every command with
-`hostProxyAllowed: true`; `app:open` is on it, and lifecycle/meta commands are rejected as
-`HostProxyCommandNotAllowedError`.
-
-The host dispatcher remaps the container cwd to the host app root via
-`remapContainerCwd(containerCwd, mountInfo)`; targets resolve against the retained runtime, never
-container-provided URLs. The round-trip returns the same `CommandResultEnvelope` and exit-code
-semantics as host-side `lando open`, including `--print` and headless degradation. Every dispatched
-request — including rejected ones — publishes redacted `pre-host-proxy-call`/`post-host-proxy-call`
-events alongside the existing `pre-open-url`/`post-open-url` events. The socket, token lifetime,
-compiled shim, and mount source directory are removed when `session.close()` runs or the `Scope`
-finalizes.
-
-<Guide>
-  <Scenario id="host-proxy-config-check" render={false} reason="The contract, platform mechanisms, and runLando round-trip above are covered by sdk/test/contract/host-proxy-service.test.ts, core/test/contract/host-proxy-runlando.test.ts, and core/test/subsystems/host-proxy/transport.test.ts against test doubles and a physical socket/shim transport; the per-platform Live Layer needs sudo/UAC and live host DNS state. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+Doctor reports host-proxy as informational when you opted out. A missing `*.lndo.site` resolution on this machine usually means you still need `lando setup`, or you opted out.

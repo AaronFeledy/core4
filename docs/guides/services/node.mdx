@@ -5,10 +5,9 @@ timeout: 90000
 tags: [beta, docs, node, service, runtime]
 ---
 
-# Node.js
+# Add Node.js
 
-Add a Node.js service to your app by declaring `type: node:22` for the
-primary service — Node has no bare `type: node` alias, so pin a version.
+Put `type: node:22` on the primary service. Node has no bare `type: node` alias, so pin a version.
 Lando currently supports `node:lts` and `node:22`, and derives the default
 image (`node:22`) from the version you pin. Your repository is bind-mounted
 read-write at `/app`, which is also the working directory:

@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, tutorial, lifecycle]
 ---
 
-# The app lifecycle
+# Start, inspect, and tear down an app
 
-Every Lando app moves through the same loop: start it, work inside it,
-inspect it, and tear it down. This tutorial walks that loop with a small
-two-service app — a `node:22` service marked `primary: true` and a `postgres`
+Start the app, work inside it, inspect it, then tear it down. This tutorial uses a small two-service app: a `node:22` service marked `primary: true` and a `postgres`
 service it depends on:
 
 ```yaml
@@ -25,7 +23,7 @@ services:
 The primary service is the default target whenever a command omits
 `--service`.
 
-## The everyday loop
+## Run the everyday loop
 
 Start the app, check its resolved configuration, and destroy it when you're
 done:
@@ -48,7 +46,7 @@ done:
 
 ## Inspect a running app
 
-These commands are read-only — run them as often as you like:
+These commands are read-only. Run them as often as you like:
 
 ```sh
 # Show every service, its connection details, and the app URLs
@@ -85,7 +83,7 @@ lando ssh
 lando ssh --service db
 ```
 
-Tooling aliases declared under `tooling:` run inside their target service —
+Tooling aliases declared under `tooling:` run inside their target service.
 `lando npm install`, `lando psql`, and so on.
 
 ## Restart and rebuild
@@ -104,14 +102,14 @@ lando start
 # Stop then start in one step
 lando restart
 
-# Recreate containers from the current Landofile — use after changing
+# Recreate containers from the current Landofile. Use after changing
 # service types, images, or build steps
 lando rebuild -y
 ```
 
 ## Tear down
 
-`destroy` removes the app's containers, networks, and volumes — this deletes
+`destroy` removes the app's containers, networks, and volumes. This deletes
 service data. The `-y` flag is required in non-interactive contexts:
 
 ```sh

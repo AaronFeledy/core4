@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, dotnet, service]
 ---
 
-# .NET
+# Add .NET
 
-Run a .NET app with `type: dotnet`. That shorthand is the .NET 9 SDK image,
-which includes the ASP.NET runtime. Lando mounts the app at `/app` and keeps
-the container idle until you set `command:` to your dev server:
+Put `type: dotnet` in your services block. That shorthand is the .NET 9 SDK image, which includes the ASP.NET runtime. Lando mounts the app at `/app` and keeps the container idle until you set `command:` to your dev server:
 
 ```yaml
 name: dotnet-demo

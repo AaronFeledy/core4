@@ -5,13 +5,9 @@ timeout: 90000
 tags: [beta, docs, php, service, runtime]
 ---
 
-# PHP
+# Add PHP
 
-Add a PHP service by pinning a minor version — PHP has no bare `type: php`
-alias. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`. The default
-serving mode is Apache with mod_php on port `80`, using
-`php:<version>-apache-bookworm`. Your repository is bind-mounted read-write at
-`/app`:
+Put `type: php:8.3` in your services block. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`. The default serving mode is Apache with mod_php on port `80`, using `php:<version>-apache-bookworm`. Your repository is bind-mounted read-write at `/app`:
 
 ```yaml
 name: php-demo
@@ -40,7 +36,7 @@ services:
     </Step>
   </Scenario>
 
-## Serving modes
+## Pick a serving mode
 
 `via:` picks the image variant and process shape:
 
@@ -78,15 +74,11 @@ services:
     </Step>
   </Scenario>
 
-## No framework presets
+## Set the webroot yourself
 
-There's no `framework:` key on the `php` service — it has no built-in preset that switches the
-served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you
-set `webroot:`. To serve a framework public directory, point `webroot:` at that path (or put nginx
-in front with `via: fpm`). Compose's `configs:` block isn't realized by `provider-lando`, so a
-custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
+There's no `framework:` key on the `php` service. It has no built-in preset that switches the served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you set `webroot:`. To serve a framework public directory, point `webroot:` at that path, or put nginx in front with `via: fpm`. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
 
-## Composer and the CLI
+## Run Composer
 
 PHP projects typically expose Composer as a tooling alias targeting the
 service:
@@ -96,8 +88,7 @@ lando composer install
 ```
 
 Stock PHP services install a checksum-pinned Composer 2 release (`2.10.2`).
-Set `composer:` on the service to pick a different pinned version or skip the
-install entirely — see [PHP Composer workflows](../tooling/php-composer-workflows.mdx).
+Set `composer:` on the service to pick a different pinned version or skip the install entirely. See [PHP Composer workflows](../tooling/php-composer-workflows.mdx).
 
 A `php` alias runs the CLI inside the service:
 

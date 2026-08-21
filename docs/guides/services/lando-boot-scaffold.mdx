@@ -6,11 +6,9 @@ timeout: 60000
 tags: [beta, docs, service, lando, boot]
 ---
 
-# The lando.boot scaffold
+# See what lando.boot adds
 
-Every `type: lando` service includes `lando.boot`. At priority 100, it adds a provider-neutral,
-artifact-phase scaffold intent to the service's build plan: an idempotent `mkdir -p` step, not a
-mount:
+Every `type: lando` service includes `lando.boot`. At priority 100 it adds a provider-neutral, artifact-phase scaffold to the build plan. That is an idempotent `mkdir -p` step, not a mount:
 
 ```text
 /etc/lando
