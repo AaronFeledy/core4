@@ -86,6 +86,8 @@ describe("Compose config file identity", () => {
       });
 
       const first = await plan(landofile);
+      const cached = await plan(landofile);
+      expect(cached.metadata.resolvedAt).toEqual(first.metadata.resolvedAt);
       await writeFile(configPath, "memory_limit=512M\n");
       const second = await plan(landofile);
 

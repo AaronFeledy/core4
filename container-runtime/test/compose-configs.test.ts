@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import { bindSourceForComposeConfig, composeConfigMounts } from "../src/compose-configs.ts";
+import {
+  bindSourceForComposeConfig,
+  composeConfigBindStrings,
+  composeConfigMounts,
+} from "../src/compose-configs.ts";
 
 const appRoot = mkdtempSync(join(tmpdir(), "lando-compose-config-mounts-"));
 const configPath = join(appRoot, "php.ini");
@@ -72,5 +76,13 @@ describe("compose config mounts", () => {
     expect(await Bun.file(second).text()).toBe("memory_limit=256M\n");
     expect(statSync(second).mode & 0o777).toBe(0o444);
     writeFileSync(configPath, "memory_limit=512M\n");
+  });
+
+  test("Given grants, when building bind strings, then each mount is read-only", () => {
+    const binds = composeConfigBindStrings(plan, service);
+    expect(binds).toHaveLength(2);
+    expect(binds[0]).toBe(`${configPath}:/phpini:ro`);
+    expect(binds[1]?.startsWith(configPath)).toBe(false);
+    expect(binds[1]?.endsWith(":/usr/local/etc/php/conf.d/zz-custom.ini:ro")).toBe(true);
   });
 });
