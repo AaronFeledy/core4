@@ -84,14 +84,14 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-host-proxy-allowlist.ts",
     workspace: "repo",
-    dependsOn: ["setup-plugin-flags"],
+    dependsOn: ["setup-plugin-flags", "mcp-allowlist"],
   },
   {
     id: "command-registry-manifest",
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
-    dependsOn: ["setup-plugin-flags"],
+    dependsOn: ["setup-plugin-flags", "mcp-allowlist"],
   },
   {
     id: "schema-snapshot",

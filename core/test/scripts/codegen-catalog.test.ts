@@ -83,13 +83,19 @@ const expectedCatalogRows = [
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
   ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
-  ["host-proxy-allowlist", "derived", "build-host-proxy-allowlist.ts", "repo", ["setup-plugin-flags"]],
+  [
+    "host-proxy-allowlist",
+    "derived",
+    "build-host-proxy-allowlist.ts",
+    "repo",
+    ["setup-plugin-flags", "mcp-allowlist"],
+  ],
   [
     "command-registry-manifest",
     "derived",
     "build-command-registry-manifest.ts",
     "core",
-    ["setup-plugin-flags"],
+    ["setup-plugin-flags", "mcp-allowlist"],
   ],
   [
     "schema-snapshot",
@@ -248,6 +254,8 @@ describe("codegen catalog", () => {
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("mcp-allowlist"));
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
+    expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
+    expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );
