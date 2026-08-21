@@ -62,8 +62,11 @@ import {
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
-import { CertificateAuthorityResolver, HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
-import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
+import {
+  CertificateAuthorityResolver,
+  HostProxyServiceDisabledLive,
+  stripHostProxyRunLando,
+} from "../../src/testing/engine-layers.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
@@ -2759,7 +2762,9 @@ describe("meta:setup command", () => {
           setupSpec.run({ installDir: "/opt/lando" }).pipe(Effect.provide(buildSetupLayers(registry))),
         );
         expect(observed.providerId).toBe("docker");
-        await expect(readFile(join(confRoot, "config.yml"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(readFile(join(confRoot, "config.yml"), "utf8")).rejects.toMatchObject({
+          code: "ENOENT",
+        });
       } finally {
         if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
         else process.env.LANDO_PROVIDER = previous;
