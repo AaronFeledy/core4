@@ -122,4 +122,19 @@ describe("nginx PHP FastCGI preset", () => {
       { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
     ]);
   });
+
+  test("fronts a named FPM backend on an authored FastCGI port", async () => {
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      environment: { PHP_FPM_PORT: "9070" },
+    });
+
+    const command = Array.isArray(plan.command)
+      ? plan.command.join(" ")
+      : typeof plan.command === "string"
+        ? plan.command
+        : "";
+    expect(command).toContain("fastcgi_pass appserver:9070");
+  });
 });

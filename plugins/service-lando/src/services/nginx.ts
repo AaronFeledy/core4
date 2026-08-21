@@ -12,10 +12,10 @@ import {
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { PHP_FPM_PORT } from "./php-via.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
-const FPM_PORT = 9000;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -42,21 +42,35 @@ const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
 export const NGINX_FEATURE_ID = "service-lando.nginx" as const;
 export const NGINX_FEATURE_PRIORITY = 600;
 
-const phpFastcgiCommand = (backend: string, webroot: string, port: number): ReadonlyArray<string> => [
+const fpmPortFor = (service: ServiceConfig): number => {
+  const raw = service.environment?.PHP_FPM_PORT;
+  if (raw === undefined) return PHP_FPM_PORT;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`PHP_FPM_PORT must be an integer 1-65535 (got ${JSON.stringify(raw)}).`);
+  }
+  return port;
+};
+
+const phpFastcgiCommand = (
+  backend: string,
+  webroot: string,
+  ports: { readonly listen: number; readonly fpm: number },
+): ReadonlyArray<string> => [
   "sh",
   "-c",
   [
     "set -eu",
     "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_PHP'",
     "server {",
-    `  listen ${String(port)};`,
+    `  listen ${String(ports.listen)};`,
     `  root ${webroot};`,
     "  index index.php index.html;",
     "  location / {",
     "    try_files $uri $uri/ /index.php?$query_string;",
     "  }",
     "  location ~ \\.php$ {",
-    `    fastcgi_pass ${backend}:${String(FPM_PORT)};`,
+    `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
     "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
     "    include fastcgi_params;",
     "    fastcgi_index index.php;",
@@ -111,7 +125,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
       required: true,
     });
     if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(phpFastcgiCommand(backend, webroot, port));
+      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: fpmPortFor(service) }));
     }
   }
 
