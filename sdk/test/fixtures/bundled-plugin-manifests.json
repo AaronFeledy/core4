@@ -225,7 +225,11 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
-        "appFeatures": ["service-lando.phpmyadmin.wire", "service-lando.nginx.php-fpm.wire"],
+        "appFeatures": [
+          "service-lando.php.db-client",
+          "service-lando.phpmyadmin.wire",
+          "service-lando.nginx.php-fpm.wire"
+        ],
         "globalServices": [
           {
             "enabledByDefault": true,

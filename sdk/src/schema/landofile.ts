@@ -558,6 +558,12 @@ const ServiceConfigWithExtensions = Schema.Struct(
       description:
         'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
     }),
+    db_client: Schema.optional(
+      Schema.Union(Schema.Literal("auto"), Schema.Literal(false), Schema.String),
+    ).annotations({
+      description:
+        'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
+    }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),
     envFile: Schema.optional(ComposeEnvFileInput).annotations({

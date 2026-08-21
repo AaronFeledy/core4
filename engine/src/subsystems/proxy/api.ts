@@ -23,7 +23,7 @@ export { ProxyService };
 
 const PROXY_UNAVAILABLE_ID = "unavailable" as const;
 const PROXY_UNAVAILABLE_MESSAGE =
-  "ProxyService requires the global app. Run `lando setup` to install the proxy service (full implementation is not available yet).";
+  "ProxyService is not selected. Install and select the bundled Traefik proxy plugin, then run `lando setup` to provision the global app.";
 
 export const ProxyServiceUnavailableLive = Layer.succeed(ProxyService, {
   id: PROXY_UNAVAILABLE_ID,

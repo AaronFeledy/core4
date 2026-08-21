@@ -39,6 +39,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Cross-service catalog wiring that needs sibling discovery belongs in an `AppFeature` (`activatedBy` + `selectors`), not in `ServiceType.resolve`; resolve cannot see other services.
 - nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
 - PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
+- An AppFeature with no selectors selects every service and will cycle with nginx PHP-FPM wiring; select PHP via `hasFeature` plus database `types:` when sibling discovery must not include nginx.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -667,4 +668,21 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Artifact build-step shell commands cannot contain real newlines (Dockerfile `RUN` token check). Write ini files with `printf`/`\n`, not heredocs.
   - A failed `lando start` can leave a stale `plan.bin` keyed only on Landofile identity; plugin/binary changes do not invalidate it. Wipe `~/.cache/lando/apps/<app-*>` after rebuilding the binary or the old build-step command will keep failing.
+---
+
+## 2026-08-21 01:17 CDT - US-573
+- PHP `db_client: auto` (default) inspects sibling MySQL/MariaDB/Postgres/MongoDB service types and installs matching client CLIs as checksum- or repo-pinned build steps. `false` installs none; `"<family>:<version>"` forces a catalog pin. Invalid values fail at plan time with remediation even on custom `image:`, which still skips the install steps. mssql is ignored. Cross-service install runs in an AppFeature so PHP resolve stays sibling-blind.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP db-client/schema/registration plus adjacent PHP/xdebug/composer/phpmyadmin/nginx tests and the php-customization guide scenarios). Host `app:config` accepted `db_client: auto`; `app:cache:refresh` planned auto/false/explicit and rejected `db_client: "nope"` with tagged remediation.
+- **Learnings for future iterations:**
+  - An AppFeature with no selectors selects every service and forms a mutation cycle with nginx PHP-FPM wiring. Select PHP via `hasFeature` plus database `types:` so siblings are visible without selecting nginx.
+  - `db_client:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
+---
+
+## 2026-08-21 03:20 CDT - US-573 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 + mysql app with `db_client: auto`, and confirmed mysql 8.0.46 in the PHP container, a live `SELECT 1` against the database service, HTTP `us573-ok`, and adjacent PHP 8.3.33 / Composer 2.10.2. Invalid `db_client: "nope"` failed closed at plan time; `false` and `mariadb:11.4` planned. Destroyed the app.
+- Fixed the start blocker: MySQL apt `RPM-GPG-KEY-mysql-2023` expired 2025-10-22 (and the pin fingerprint was the 2022 key). Switched to `RPM-GPG-KEY-mysql-2025` / `BCA43417C3B485DD128EC6D4B7B3B788A8D3785C`.
+- **Out-of-scope finding:** authored `creds: user: app` did not apply; the mysql container used `MYSQL_USER=lando` / `MYSQL_DATABASE=us573-verify`. Query succeeded with those values. Suspected mysql service creds path, not db_client.
+- **Out-of-scope finding:** `lando mysql --version` failed with `ToolingCompileError` (app command cache missing `app:mysql`) after start and `app:cache:refresh`. Suspected mysql service-type tooling contribution / command cache, not db_client.
+- **Learnings for future iterations:**
+  - Pin MySQL apt GPG keys to the unexpired `RPM-GPG-KEY-mysql-YYYY` whose fingerprint matches the live InRelease signer; the 2023 file is the same key id with an expired self-signature.
 ---

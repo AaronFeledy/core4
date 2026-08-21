@@ -6,6 +6,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolvePhpDbClient } from "./php-db-client.ts";
 import { phpPrerequisiteBuildSteps, resolvePhpComposer } from "./php-prerequisites.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
@@ -200,6 +201,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);
         const xdebug = resolvePhpXdebug(input.service.xdebug);
+        resolvePhpDbClient(input.service.db_client);
         const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
         const allowOverride = input.service.allowOverride ?? false;
 

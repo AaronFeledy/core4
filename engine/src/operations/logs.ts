@@ -281,7 +281,7 @@ const collectLogLines = (
     const perService = yield* Effect.forEach(services, (service) =>
       provider
         .logs(
-          { app: plan.id, service: service.name },
+          { app: plan.id, service: service.name, plan },
           logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
         )
         .pipe(Stream.runCollect),
@@ -315,7 +315,7 @@ const drainLogFollow = (
     const sink = yield* StreamFrameSink;
     const streams = services.map((service) =>
       provider.logs(
-        { app: plan.id, service: service.name },
+        { app: plan.id, service: service.name, plan },
         logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
       ),
     );

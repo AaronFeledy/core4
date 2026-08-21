@@ -172,10 +172,9 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("reports a ready subsystem as pass with no remediation when a real implementation is wired", async () => {
-    const readyProxy = Layer.succeed(ProxyService, {
-      ...makeTestProxyService(),
-      id: "traefik",
-    });
+    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
+    const readyProxy = Layer.succeed(ProxyService, proxyService);
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, readyProxy);
     const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
     const proxy = result.checks.find((check) => check.name === "proxy");
@@ -184,7 +183,27 @@ describe("meta:doctor subsystem checks", () => {
     expect(proxy?.severity).toBe("info");
     expect(proxy?.context.ready).toBe("true");
     expect(proxy?.context.subsystemId).toBe("traefik");
+    expect(proxy?.context.state).toBe("running");
     expect(proxy?.solutions).toEqual([]);
+  });
+
+  test("reports a selected-but-stopped proxy as warn with automatic doctor --fix", async () => {
+    const stoppedProxy = Layer.succeed(ProxyService, {
+      ...makeTestProxyService(),
+      id: "traefik",
+    });
+    const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedProxy);
+    const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
+    const proxy = result.checks.find((check) => check.name === "proxy");
+
+    expect(proxy?.status).toBe("warn");
+    expect(proxy?.severity).toBe("warn");
+    expect(proxy?.recovery).toBe("automatic");
+    expect(proxy?.context.ready).toBe("false");
+    expect(proxy?.context.subsystemId).toBe("traefik");
+    expect(proxy?.context.state).toBe("stopped");
+    expect(proxy?.solutions[0]?.kind).toBe("automatic");
+    expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
   });
 
   test("wires the real runProbe-backed healthcheck and scanner runners, not the unavailable stubs", async () => {
