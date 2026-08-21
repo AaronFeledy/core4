@@ -31,7 +31,7 @@ const recordAbsentHostIntegration = (
     return recorder.record({
       id,
       status: "skipped",
-      evidence: `${serviceName} is optional on the ${selectedProviderId} system runtime.`,
+      evidence: `${serviceName} skipped because the host-integration service is not provided on this layer.`,
     });
   }
   return recorder.recordUnavailable(id, serviceName);
