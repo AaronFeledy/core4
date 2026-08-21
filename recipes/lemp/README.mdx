@@ -7,7 +7,7 @@ tags: [recipe, lemp, php]
 
 # LEMP
 
-Spin up Nginx, PHP, and MariaDB for a traditional PHP app.
+`lando init --recipe lemp` scaffolds Nginx, PHP, and MariaDB.
 
 ```sh
 lando init --recipe lemp --name=my-lemp-app --yes
@@ -17,7 +17,7 @@ lando info
 
 `lando start` prints the app URL. `lando info` repeats it. TODO: capture
 
-The walkthrough below scaffolds the recipe, starts the app, and tears it down.
+`lando destroy -y` removes the app containers and volumes.
 
 <Guide>
   <Scenario id="reader-path" render>

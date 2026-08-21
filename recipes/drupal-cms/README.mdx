@@ -7,19 +7,24 @@ tags: [recipe, drupal, drupal-cms, php]
 
 # Drupal CMS
 
-Spin up Drupal CMS 2 with PHP, MariaDB, Drush, and Composer.
+`lando init --recipe drupal-cms` scaffolds PHP, MariaDB, Drush, and Composer.
 
 ```sh
 lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
 lando start
 lando info
-lando drupal-cms-scaffold
-lando drupal-cms-install
 ```
 
 `lando start` prints the app URL(s). `lando info` repeats them. TODO: capture
 
-After start, scaffold the codebase, then install.
+After start, scaffold the codebase, then install:
+
+```sh
+lando drupal-cms-scaffold
+lando drupal-cms-install
+```
+
+`lando destroy -y` removes the app containers and volumes.
 
 <Guide>
   <Scenario id="reader-path" render>
