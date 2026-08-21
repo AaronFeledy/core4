@@ -278,6 +278,7 @@ describe("lando logs", () => {
 
     expect(harness.logCalls).toHaveLength(1);
     expect(harness.logCalls[0]?.options.follow).toBe(true);
+    expect(harness.logCalls[0]?.target.plan).toBe(plan);
   });
 
   test("filters by --service when set", async () => {
@@ -632,6 +633,7 @@ describe("lando logs", () => {
 
     expect(result.lines).toEqual([]);
     expect(harness.logCalls.every((call) => call.options.follow === true)).toBe(true);
+    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
     expect(emitted.map((frame) => `${frame.service}/${frame._tag}/${frame.chunk}`).sort()).toEqual(
       [
         "database/stderr/database warn",
