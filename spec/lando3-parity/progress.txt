@@ -651,3 +651,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Pin the PECL tarball (URL + sha256) the same way Composer is pinned; do not `pecl install xdebug` unpinned. Include `phpVersion` in `buildKeyInputs` even when the tarball is shared, because the compiled `.so` is ABI-specific.
   - `xdebug:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
 ---
+
+## 2026-08-20 23:55 CDT - US-572 Review
+- Stopped injecting `XDEBUG_MODE` so `lando xdebug on|off` can rewrite `zz-lando-xdebug.ini` on custom images, and rejected Landofile `xdebug: "off"` so `on` cannot restore a disabled install mode.
+- Review notes (deferred/rejected): rejected requiring the hidden guide scenario to execute `php -m` because the test provider cannot compile PECL; unit tests lock that status command. Rejected replacing `host.docker.internal` with `host.lando.internal` extra_hosts because US-439 rejected privileged hosts-file mutation; the PhpStorm guide already documents the Linux extra_hosts caveat. Rejected treating AC 1's `XDEBUG_MODE` wording as a requirement to set the env var — that contradicts AC 2 and the recorded ini-toggle pattern. Review-work lanes expired or timed out without a deliverable; Bugbot plus focused tests were used instead.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 14 PHP xdebug tests and 3 schema tests passed.
+- **Learnings for future iterations:**
+  - Landofile `xdebug:` mode strings must not include `off`; that token is the runtime toggle, and seeding tooling with it makes `lando xdebug on` a no-op.
+---
