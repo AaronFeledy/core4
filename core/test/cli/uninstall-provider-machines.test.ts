@@ -26,6 +26,8 @@ describe("uninstall managed provider machines", () => {
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
+        cgroupsDelegatePath: join(root, "delegate.conf"),
+        shellProfilePath: join(root, ".profile"),
         exists: () => false,
         readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
       });
@@ -52,6 +54,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
           teardownProviderMachines: async (rootPath: string) => {
@@ -87,6 +91,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "not-owned", name: "lando" }),
           teardownProviderMachines: async () => {
@@ -118,6 +124,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "ambiguous" }),
           teardownProviderMachines: async () => {
@@ -147,6 +155,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "absent" }),
         },
@@ -171,6 +181,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
           // Machine already removed by a prior run: teardown resolves with removed:false.
@@ -198,6 +210,8 @@ describe("uninstall managed provider machines", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          cgroupsDelegatePath: join(root, "delegate.conf"),
+          shellProfilePath: join(root, ".profile"),
           exists: () => false,
           readManagedProviderMachine: classifyingAs({ ownership: "owned", name: "lando" }),
           teardownProviderMachines: async () => {

@@ -15,6 +15,8 @@ const isolatedOptions = (root: string) => ({
   userDataRoot: join(root, "data"),
   userCacheRoot: join(root, "cache"),
   execPath: join(root, "bin", "lando"),
+  cgroupsDelegatePath: join(root, "delegate.conf"),
+  shellProfilePath: join(root, ".profile"),
 });
 
 beforeEach(() => {

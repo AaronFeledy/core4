@@ -1,7 +1,8 @@
 ⟨bold⟩⟨pink⟩╭─ UNINSTALL PLAN [WARN]  dry-run · keep-data ─────────────╮⟨reset⟩
 ⟨pink⟩├─ toolchain ──────────────────────────────────────────────┤⟨reset⟩
 ⟨pink⟩│⟨reset⟩ ⟨dim⟩[SKIP] managed provider runtime · skipped⟨dim-off⟩⟨reset⟩                ⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  target : /home/u/.local/share/lando/providers/lando⟨dim-off⟩⟨reset⟩    ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  target :⟨dim-off⟩⟨reset⟩                                               ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  /home/u/.local/share/lando/providers/provider-lando⟨dim-off⟩⟨reset⟩    ⟨pink⟩│⟨reset⟩
 ⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  Remove Lando-managed runtime bundles when present.⟨dim-off⟩⟨reset⟩     ⟨pink⟩│⟨reset⟩
 ⟨pink⟩│⟨reset⟩ ⟨green⟩[OK] installed binary · owned by Lando⟨reset⟩                   ⟨pink⟩│⟨reset⟩
 ⟨pink⟩├─ data ───────────────────────────────────────────────────┤⟨reset⟩

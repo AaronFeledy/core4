@@ -13,11 +13,9 @@ import type { PrivilegeService } from "@lando/sdk/services";
 
 import {
   type RootlessProbes,
-  cgroupsV2DelegationRemediation,
   parseSubordinateIdFile,
   validateSubordinateIdRanges,
 } from "./rootless-preflight.ts";
-import { hasHostSystemd } from "./user-systemd-session.ts";
 
 const PROVIDER_ID = ProviderId.make("lando");
 const APT_GET_UPDATE = ["/usr/bin/apt-get", "update"] as const;
@@ -45,14 +43,12 @@ interface PrerequisiteInspection {
   readonly host: LinuxHostRelease | undefined;
   readonly probes: RootlessProbes;
   readonly user: string | undefined;
-  readonly hasSystemd?: boolean;
 }
 
 interface PrerequisiteApply {
   readonly probes: RootlessProbes;
   readonly privilege: typeof PrivilegeService.Service | undefined;
   readonly user: string | undefined;
-  readonly hasSystemd?: boolean;
 }
 
 const parseReleaseValue = (raw: string): string => raw.trim().replace(/^['"]|['"]$/gu, "");
@@ -152,19 +148,6 @@ export const inspectPrerequisiteSetupPlan = (
 
   // Check cgroups delegation - only create drop-in when absent
   if (!probeResults.cgroupsV2Delegated) {
-    const hasSystemd = input.hasSystemd ?? hasHostSystemd();
-    if (!hasSystemd) {
-      return Effect.fail(
-        new ProviderSetupUnsupportedHostError({
-          providerId: PROVIDER_ID,
-          prerequisite: "cgroups-delegation",
-          message:
-            "Rootless Podman requires cgroups v2 controller delegation, but this host is not running systemd.",
-          remediation: cgroupsV2DelegationRemediation({ hasSystemd: false }),
-          ...(input.host === undefined ? {} : { host: input.host }),
-        }),
-      );
-    }
     if (!existsSync(DELEGATE_CONF_PATH)) {
       changes.push({
         _tag: "provision-cgroups-delegation",
@@ -179,7 +162,7 @@ export const inspectPrerequisiteSetupPlan = (
           prerequisite: "cgroups-delegation",
           message: "The cgroups delegation drop-in exists but your session is not delegated.",
           remediation:
-            "Log out of your current session, log back in, then rerun `lando setup`. (The systemd delegation drop-in only applies to new user sessions.) Alternatively, run `lando setup --provider=docker`.",
+            "Log out of your current session, log back in, then rerun `lando setup`. (The systemd delegation drop-in only applies to new user sessions.)",
           ...(input.host === undefined ? {} : { host: input.host }),
         }),
       );
@@ -300,19 +283,6 @@ export const applyApprovedPrerequisitePlan = (
 
         case "provision-cgroups-delegation": {
           const { path } = change as { path: string };
-          const hasSystemd = input.hasSystemd ?? hasHostSystemd();
-          if (!hasSystemd) {
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "install",
-                message:
-                  "Cannot enable systemd user cgroup delegation because this host is not running systemd.",
-                remediation: cgroupsV2DelegationRemediation({ hasSystemd: false }),
-              }),
-            );
-          }
 
           try {
             // Create the drop-in directory if it doesn't exist

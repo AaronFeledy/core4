@@ -3,8 +3,6 @@ import { delimiter, join } from "node:path";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
-import { hasHostSystemd } from "./user-systemd-session.ts";
-
 const PROVIDER_ID = "lando";
 const MINIMUM_SUBORDINATE_ID_COUNT = 65536;
 
@@ -62,7 +60,7 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   "cgroups-v2-delegation": {
     message: "Rootless Podman requires cgroups v2 controller delegation for your user session.",
     remediation:
-      "Enable systemd user cgroup delegation (create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`), run `systemctl daemon-reload`, then rerun `lando setup`. Alternatively, run `lando setup --provider=docker`.",
+      "Enable systemd user cgroup delegation (create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`), run `systemctl daemon-reload`, then rerun `lando setup`.",
   },
   "xdg-runtime-dir": {
     message: "Rootless Podman requires XDG_RUNTIME_DIR to be set for your session.",
@@ -71,29 +69,14 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   },
 };
 
-export const CGROUPS_V2_DELEGATION_NO_SYSTEMD_REMEDIATION =
-  "This host is not running systemd (PID 1 is not systemd; /run/systemd/system is missing), so user cgroup delegation cannot be enabled. Install Docker and run `lando setup --provider=docker`.";
-
-export interface CgroupsRemediationHost {
-  readonly hasSystemd?: boolean;
-}
-
-export const cgroupsV2DelegationRemediation = (host: CgroupsRemediationHost = {}): string => {
-  const hasSystemd = host.hasSystemd ?? hasHostSystemd();
-  if (!hasSystemd) return CGROUPS_V2_DELEGATION_NO_SYSTEMD_REMEDIATION;
-  return rootlessPrerequisiteCopy["cgroups-v2-delegation"].remediation;
-};
-
 export class RootlessPrerequisiteError extends ProviderUnavailableError {
-  constructor(prerequisite: RootlessPrerequisite, cause?: unknown, host: CgroupsRemediationHost = {}) {
+  constructor(prerequisite: RootlessPrerequisite, cause?: unknown) {
     const copy = rootlessPrerequisiteCopy[prerequisite];
-    const remediation =
-      prerequisite === "cgroups-v2-delegation" ? cgroupsV2DelegationRemediation(host) : copy.remediation;
     super({
       providerId: PROVIDER_ID,
       operation: "setup",
       message: copy.message,
-      remediation,
+      remediation: copy.remediation,
       details: { prerequisite } satisfies RootlessPrerequisiteDetails,
       cause,
     });
@@ -220,10 +203,15 @@ export const hasCgroupsV2Delegation = (
 ): boolean => {
   if (uid === undefined || uid.length === 0) return false;
 
+  const userSlice = join(cgroupRoot, "user.slice");
+  // No systemd user hierarchy: Lando's managed runtime uses cgroupfs and does
+  // not need user-session controller delegation.
+  if (!existsSync(userSlice)) return true;
+
   try {
     return (
       readFileSync(
-        join(cgroupRoot, "user.slice", `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
+        join(userSlice, `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
         "utf8",
       ).trim().length > 0
     );
@@ -259,7 +247,6 @@ export const makeSystemRootlessProbes = (env: Environment = process.env): Rootle
 export const classifyRootlessFailure = (
   results: RootlessProbeResults,
   _stderr?: string,
-  host: CgroupsRemediationHost = {},
 ): RootlessPrerequisiteError | undefined => {
   if (!results.subidConfigured) {
     return new RootlessPrerequisiteError("subid");
@@ -278,7 +265,7 @@ export const classifyRootlessFailure = (
   }
 
   if (!results.cgroupsV2Delegated) {
-    return new RootlessPrerequisiteError("cgroups-v2-delegation", undefined, host);
+    return new RootlessPrerequisiteError("cgroups-v2-delegation");
   }
 
   if (!results.hasXdgRuntimeDir) {

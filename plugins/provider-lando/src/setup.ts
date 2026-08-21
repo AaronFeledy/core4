@@ -28,6 +28,7 @@ import {
 } from "./machine-trust.ts";
 
 export { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+import { ensureManagedNft } from "./nft-provision.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
@@ -166,6 +167,8 @@ export interface SetupOptions {
   readonly managedRuntimeSetup?: (progress: RuntimeSetupProgress) => Effect.Effect<void, ProviderError>;
   readonly smoke?: boolean;
   readonly artifactDownload?: ArtifactDownload;
+  readonly nftArtifactDownload?: ArtifactDownload;
+  readonly nftCacheDir?: string;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
   readonly runtimeConfigDir?: string;
@@ -928,6 +931,18 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
 
       if (runtimeBinDir !== undefined && runtimeConfigDir !== undefined) {
         yield* writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir });
+      }
+
+      if (family === "linux" && runtimeBinDir !== undefined && options.nftArtifactDownload !== undefined) {
+        yield* ensureManagedNft({
+          runtimeBinDir,
+          download: options.nftArtifactDownload,
+          cacheDir:
+            options.nftCacheDir ??
+            `${(options.stateDir ?? runtimeBinDir).replace(/\/+$/u, "")}/nft-downloads`,
+          platform,
+          arch: arch ?? process.arch,
+        });
       }
 
       const podmanVersionOutput = yield* withStep(
