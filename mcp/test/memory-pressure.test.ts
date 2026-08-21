@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
 
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -10,6 +10,7 @@ import {
 } from "@lando/mcp/memory-pressure";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
+import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
 import { RedactionService } from "@lando/redaction/service";
 import { TestMcpCommandExecutor } from "./executor";
 
@@ -61,7 +62,7 @@ describe("handleMemoryPressure", () => {
 });
 
 describe("McpService.handleMemoryPressure", () => {
-  test("clears the catalog cache and leaves in-flight work un-aborted", async () => {
+  test("clears the catalog cache", async () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: spec("app:info") } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
@@ -82,5 +83,54 @@ describe("McpService.handleMemoryPressure", () => {
     expect(first).toBe(second);
     expect(third).not.toBe(first);
     expect(third.tools.map((tool) => tool.toolId)).toEqual(["app:info"]);
+  });
+
+  test("attaches during serve, leaves in-flight work un-aborted, and detaches on close", async () => {
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [
+        {
+          spec: spec("app:exec", () =>
+            Effect.promise(async () => {
+              started.resolve();
+              await finish.promise;
+              return { finished: true };
+            }),
+          ),
+        } satisfies McpCommandEntry,
+      ],
+      defaultAllowlist: ["app:exec"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const before = process.listenerCount("memoryPressure");
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      const id = yield* inmem.push({ toolId: "app:exec" });
+      yield* Effect.promise(() => started.promise);
+      const during = process.listenerCount("memoryPressure");
+      expect(process.emit("memoryPressure", "warning")).toBe(true);
+      finish.resolve();
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return { id, replies, during };
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const { id, replies, during } = await Effect.runPromise(program);
+    expect(during).toBe(before + 1);
+    expect(process.listenerCount("memoryPressure")).toBe(before);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      id,
+      ok: true,
+      result: { ok: true, envelope: { ok: true, result: { finished: true } } },
+    });
   });
 });

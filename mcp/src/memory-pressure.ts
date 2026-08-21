@@ -22,9 +22,9 @@ export interface McpMemoryPressureHooks {
  * `McpService.handleMemoryPressure(level)` implementation.
  *
  * MCP currently has no idle socket pool. `closeIdleSockets` is therefore a
- * documented no-op unless a session registers idle-state cleanup (completed
- * request-id history, leftover transport buffers). Catalog / allowlist caches
- * are always safe to drop.
+ * documented no-op. Do not wipe completed-request-id history — that is
+ * cancel-dedup state, not idle cache. Catalog / allowlist caches are always
+ * safe to drop.
  */
 export const handleMemoryPressure = (_level: MemoryPressureLevel, hooks: McpMemoryPressureHooks): void => {
   hooks.dropCaches();

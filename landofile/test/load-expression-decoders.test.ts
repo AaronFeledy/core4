@@ -310,6 +310,30 @@ describe("JSON5 / JSONC / JSONL decoders", () => {
   );
 
   test.each(["jsonc", "fromJsonc"] as const)(
+    "%s rejects JSON5 unquoted keys so sample.json5 is not faked as JSON5",
+    async (decoder) => {
+      await withApp(async (appRoot) => {
+        await stageFixture(appRoot, "sample.json5");
+        const session = sessionFor(appRoot);
+        const helpers = makeLandofileLoadHelperOverrides(session);
+        const helper = helpers[decoder];
+        if (helper === undefined) throw new Error(`expected ${decoder} helper`);
+
+        let caught: unknown;
+        try {
+          helper([session.load("./sample.json5")], {});
+        } catch (cause) {
+          caught = cause;
+        }
+
+        expect(caught).toBeInstanceOf(LandofileExpressionEvalError);
+        if (!(caught instanceof LandofileExpressionEvalError)) throw new Error("expected eval error");
+        expect(caught.message).toContain(decoder);
+      });
+    },
+  );
+
+  test.each(["jsonc", "fromJsonc"] as const)(
     "%s wraps syntax errors as LandofileExpressionEvalError",
     async (decoder) => {
       await withApp(async (appRoot) => {

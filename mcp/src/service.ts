@@ -90,16 +90,14 @@ const makeService = (
   executor: McpCommandExecutorShape,
 ): McpServiceShape => {
   const catalogCache = new Map<string, McpCatalog>();
-  const idleReleasers: Array<() => void> = [];
   const handleMemoryPressure: McpServiceShape["handleMemoryPressure"] = (level) => {
     runMemoryPressureHooks(level, {
       dropCaches: () => {
         catalogCache.clear();
       },
-      closeIdleSockets: () => {
-        // No idle socket pool. Session hooks may drop rebuildable completed-id history.
-        for (const release of idleReleasers) release();
-      },
+      // Documented no-op: no idle socket pool. Do not wipe completed-request-id
+      // history — that is cancel-dedup state.
+      closeIdleSockets: () => {},
     });
   };
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
@@ -143,12 +141,7 @@ const makeService = (
       yield* Effect.scoped(
         Effect.gen(function* () {
           const detachMemoryPressure = attachMemoryPressureListener(handleMemoryPressure);
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              detachMemoryPressure();
-              idleReleasers.length = 0;
-            }),
-          );
+          yield* Effect.addFinalizer(() => Effect.sync(() => detachMemoryPressure()));
           const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
           const semaphore = yield* Effect.makeSemaphore(options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
           const effective = computeEffectiveAllowlist({
@@ -166,9 +159,6 @@ const makeService = (
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, McpTransportError>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
           const completed = yield* Ref.make(emptyCompletedRequestIds());
-          idleReleasers.push(() => {
-            Effect.runSync(Ref.set(completed, emptyCompletedRequestIds()));
-          });
           const notifyFor =
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>

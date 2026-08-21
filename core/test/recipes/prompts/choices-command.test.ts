@@ -104,6 +104,14 @@ describe("landoInvocationPrefix", () => {
     ).toEqual(["/usr/bin/lando"]);
   });
 
+  test("standalone undefined with a normal entry is [execPath, entry]", () => {
+    expect(
+      landoInvocationPrefix("/bun", ["/bun", "/repo/core/src/cli/index.ts", "init"], {
+        standalone: undefined,
+      }),
+    ).toEqual(["/bun", "/repo/core/src/cli/index.ts"]);
+  });
+
   test("missing entry uses execPath only", () => {
     expect(landoInvocationPrefix("/usr/bin/lando", ["/usr/bin/lando"], { standalone: false })).toEqual([
       "/usr/bin/lando",

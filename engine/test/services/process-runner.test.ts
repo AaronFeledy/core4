@@ -232,7 +232,7 @@ describe("resolveProcessCgroup", () => {
 });
 
 describe("ProcessRunnerLive cgroup", () => {
-  test("does not throw when cgroup is set on this host", async () => {
+  test("ignores cgroup off Linux and fails ProcessExecError for a missing cgroup on Linux", async () => {
     if (process.platform !== "linux") {
       const result = await runProcess({ cmd: "true", args: [], cgroup: "/sys/fs/cgroup/jobs" });
       expect(result.exitCode).toBe(0);
