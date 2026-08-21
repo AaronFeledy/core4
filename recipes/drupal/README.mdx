@@ -24,7 +24,7 @@ lando drupal-scaffold
 lando drush --version
 ```
 
-`lando destroy -y` removes the app containers and volumes.
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
 <Guide>
   <Scenario id="reader-path" layer="e2e" tags={["@smoke"]} render>

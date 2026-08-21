@@ -64,7 +64,7 @@ any container with `lando app:info --format=json`. No shell inside a service
 required.
 
 Only the provider-exec surfaces forward host agent-context markers into a
-service: `lando exec <service> -- <command>` or `lando shell --service <service>`.
+service: `lando exec --service <service> -- <command>` or `lando shell --service <service>`.
 A plain `lando start`'d container gets no such injection. See
 [the lando-shell guide](../tooling/lando-shell.mdx) for the exact allowlist
 and precedence rules for the forwarded markers; this guide doesn't repeat
