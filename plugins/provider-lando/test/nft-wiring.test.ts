@@ -93,7 +93,7 @@ describe("ensureRuntime nft helper", () => {
           platform: "linux",
           podmanApi: { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
           serviceRunner: {
-            launch: () => Effect.fail(new Error("should not launch")),
+            launch: () => Effect.die("healthy runtime must not launch"),
             isAlive: () => Effect.succeed(true),
             isServiceProcess: () => Effect.succeed(true),
             terminate: () => Effect.void,
