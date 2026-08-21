@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { commonContainerLabels, mountSuffix } from "@lando/container-runtime/plan";
+import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "@lando/container-runtime/plan";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -165,7 +165,7 @@ const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<Comp
           },
   );
 
-  return [...appMount, ...mounts, ...storage];
+  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service)];
 };
 
 const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>

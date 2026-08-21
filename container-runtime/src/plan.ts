@@ -9,6 +9,8 @@ import {
 
 import { composeConfigBindStrings } from "./compose-configs.ts";
 
+export { composeConfigBindStrings };
+
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
   readonly details?: unknown;
