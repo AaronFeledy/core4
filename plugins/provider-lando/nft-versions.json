@@ -58,6 +58,27 @@
         "sha256": "b002ea172b9c1e34a67bc497c523c67bb74c3f0a4e98113cb083990a1f1d3bfe",
         "filename": "libedit2_3.1-20250104-1_amd64.deb",
         "sizeBytes": 93832
+      },
+      {
+        "name": "libtinfo6",
+        "url": "https://deb.debian.org/debian/pool/main/n/ncurses/libtinfo6_6.5+20250216-2_amd64.deb",
+        "sha256": "8b9f6a7983e9418564e48a627518de4c03917b56efe68d7f3e93bd8fffa1cc10",
+        "filename": "libtinfo6_6.5+20250216-2_amd64.deb",
+        "sizeBytes": 348380
+      },
+      {
+        "name": "libbsd0",
+        "url": "https://deb.debian.org/debian/pool/main/libb/libbsd/libbsd0_0.12.2-2_amd64.deb",
+        "sha256": "e5a85986fa6bec3307ab1bc860736b478b331882bc45e17675a7bdf88eecb43a",
+        "filename": "libbsd0_0.12.2-2_amd64.deb",
+        "sizeBytes": 130968
+      },
+      {
+        "name": "libmd0",
+        "url": "https://deb.debian.org/debian/pool/main/libm/libmd/libmd0_1.1.0-2+b1_amd64.deb",
+        "sha256": "7244ec3839b61fac0c1884fe08aaa040f26e8f1f35f1f5d3482eacefd30d1b44",
+        "filename": "libmd0_1.1.0-2+b1_amd64.deb",
+        "sizeBytes": 36272
       }
     ],
     "linux-arm64": [
@@ -116,6 +137,27 @@
         "sha256": "496c31df89fac9cb7e98102fcc21daf887376dcd9914f6322c86dd5bd4360ff1",
         "filename": "libedit2_3.1-20250104-1_arm64.deb",
         "sizeBytes": 89296
+      },
+      {
+        "name": "libtinfo6",
+        "url": "https://deb.debian.org/debian/pool/main/n/ncurses/libtinfo6_6.5+20250216-2_arm64.deb",
+        "sha256": "2a747f7fff3c2347c357387a7133df997410f07ba1b1df1a1461a97bd7fbc2fc",
+        "filename": "libtinfo6_6.5+20250216-2_arm64.deb",
+        "sizeBytes": 341360
+      },
+      {
+        "name": "libbsd0",
+        "url": "https://deb.debian.org/debian/pool/main/libb/libbsd/libbsd0_0.12.2-2_arm64.deb",
+        "sha256": "6827c1b3ad8dcbf3478803f9150359433e3376a3bde01c4503888a22eb3924e3",
+        "filename": "libbsd0_0.12.2-2_arm64.deb",
+        "sizeBytes": 128944
+      },
+      {
+        "name": "libmd0",
+        "url": "https://deb.debian.org/debian/pool/main/libm/libmd/libmd0_1.1.0-2+b1_arm64.deb",
+        "sha256": "772e86842fd3fa1816a0cfee4833a73996aaa550461491543b886b9c8f999052",
+        "filename": "libmd0_1.1.0-2+b1_arm64.deb",
+        "sizeBytes": 33664
       }
     ]
   }

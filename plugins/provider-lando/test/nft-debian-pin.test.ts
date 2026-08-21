@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -9,9 +9,12 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import {
   NFT_MANIFEST,
+  bundledLoaderDepsSatisfied,
   ensureManagedNft,
   hasUsableManagedNft,
   managedNftBinPath,
+  managedNftLibDir,
+  readElfNeeded,
   resolveNftHostKey,
 } from "../src/nft-provision.ts";
 import type { ArtifactDownload } from "../src/runtime-bundle.ts";
@@ -73,7 +76,30 @@ describe("Debian nft pin verification", () => {
           }),
         );
         const nftPath = managedNftBinPath(runtimeBinDir);
+        const libDir = managedNftLibDir(runtimeBinDir);
         expect(await hasUsableManagedNft(runtimeBinDir)).toBe(true);
+        expect(await bundledLoaderDepsSatisfied(libDir)).toBe(true);
+        const bundled = await readdir(libDir);
+        for (const prefix of ["libedit.so", "libtinfo.so", "libbsd.so", "libmd.so"]) {
+          expect(
+            bundled.some((name) => name === prefix || name.startsWith(`${prefix}.`)),
+            prefix,
+          ).toBe(true);
+        }
+        const libeditName = bundled.find((name) => name.startsWith("libedit.so"));
+        expect(libeditName).toBeDefined();
+        if (libeditName !== undefined) {
+          const needed = readElfNeeded(new Uint8Array(await readFile(join(libDir, libeditName))));
+          expect(needed).toContain("libtinfo.so.6");
+          expect(needed).toContain("libbsd.so.0");
+        }
+        const ldd = await Bun.$`env LD_LIBRARY_PATH=${libDir} ldd ${join(libDir, "nft")}`.text();
+        expect(ldd).not.toMatch(/not found/iu);
+        for (const soname of ["libedit.so", "libtinfo.so", "libbsd.so", "libmd.so"]) {
+          const line = ldd.split("\n").find((entry) => entry.includes(soname));
+          expect(line, soname).toBeDefined();
+          expect(line, `${soname} resolved from bundle`).toContain(libDir);
+        }
         const version = await Bun.$`${nftPath} --version`.text();
         expect(version).toMatch(/nftables/iu);
         const jsonHelp = await Bun.$`${nftPath} -j --help`.nothrow();

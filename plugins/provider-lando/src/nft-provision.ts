@@ -211,22 +211,153 @@ export const decompressDebDataTar = async (memberName: string, bytes: Uint8Array
   throw new Error(`Unsupported deb data archive "${memberName}".`);
 };
 
+const BUNDLED_LIB_PREFIXES = [
+  "libnftables.so",
+  "libnftnl.so",
+  "libmnl.so",
+  "libgmp.so",
+  "libjansson.so",
+  "libxtables.so",
+  "libedit.so",
+  "libtinfo.so",
+  "libbsd.so",
+  "libmd.so",
+] as const;
+
 const wantedDebPath = (name: string): "nft" | "lib" | undefined => {
   const normalized = name.replace(/^\.\//u, "");
   if (normalized === "usr/sbin/nft" || normalized.endsWith("/sbin/nft")) return "nft";
   const base = basename(normalized);
-  if (
-    base.startsWith("libnftables.so") ||
-    base.startsWith("libnftnl.so") ||
-    base.startsWith("libmnl.so") ||
-    base.startsWith("libgmp.so") ||
-    base.startsWith("libjansson.so") ||
-    base.startsWith("libxtables.so") ||
-    base.startsWith("libedit.so")
-  ) {
-    return "lib";
-  }
+  if (BUNDLED_LIB_PREFIXES.some((prefix) => base.startsWith(prefix))) return "lib";
   return undefined;
+};
+
+const HOST_SONAME_PREFIXES = [
+  "libc.so",
+  "libdl.so",
+  "libpthread.so",
+  "libm.so",
+  "librt.so",
+  "libgcc_s.so",
+  "ld-linux",
+  "linux-vdso.so",
+] as const;
+
+const isHostProvidedSoname = (name: string): boolean =>
+  HOST_SONAME_PREFIXES.some((prefix) => name.startsWith(prefix));
+
+const sonamePresent = (files: ReadonlyArray<string>, needed: string): boolean =>
+  files.some((name) => name === needed || name.startsWith(`${needed}.`));
+
+const readCString = (bytes: Uint8Array, offset: number): string => {
+  let end = offset;
+  while (end < bytes.length && bytes[end] !== 0) end += 1;
+  return new TextDecoder("utf8").decode(bytes.subarray(offset, end));
+};
+
+export const readElfNeeded = (bytes: Uint8Array): ReadonlyArray<string> => {
+  if (
+    bytes.length < 16 ||
+    bytes[0] !== 0x7f ||
+    bytes[1] !== 0x45 ||
+    bytes[2] !== 0x4c ||
+    bytes[3] !== 0x46 ||
+    bytes[5] !== 1
+  ) {
+    return [];
+  }
+  const is64 = bytes[4] === 2;
+  if (!is64 && bytes[4] !== 1) return [];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = (off: number): number => view.getUint16(off, true);
+  const u32 = (off: number): number => view.getUint32(off, true);
+  const uN = (off: number): number => {
+    if (!is64) return u32(off);
+    return u32(off) + u32(off + 4) * 0x1_0000_0000;
+  };
+  const phoff = is64 ? uN(32) : u32(28);
+  const phentsize = is64 ? u16(54) : u16(42);
+  const phnum = is64 ? u16(56) : u16(44);
+  if (phoff <= 0 || phentsize <= 0 || phnum <= 0) return [];
+
+  const loads: Array<{ readonly vaddr: number; readonly offset: number; readonly filesz: number }> = [];
+  let dynOff = -1;
+  let dynFilesz = 0;
+  for (let i = 0; i < phnum; i++) {
+    const off = phoff + i * phentsize;
+    if (off + phentsize > bytes.length) return [];
+    const type = u32(off);
+    const offset = is64 ? uN(off + 8) : u32(off + 4);
+    const vaddr = is64 ? uN(off + 16) : u32(off + 8);
+    const filesz = is64 ? uN(off + 32) : u32(off + 16);
+    if (type === 1) loads.push({ vaddr, offset, filesz });
+    if (type === 2) {
+      dynOff = offset;
+      dynFilesz = filesz;
+    }
+  }
+  if (dynOff < 0 || dynFilesz <= 0) return [];
+
+  const vaddrToOffset = (vaddr: number): number | undefined => {
+    for (const seg of loads) {
+      if (vaddr >= seg.vaddr && vaddr < seg.vaddr + seg.filesz) {
+        return seg.offset + (vaddr - seg.vaddr);
+      }
+    }
+    return undefined;
+  };
+
+  const entSize = is64 ? 16 : 8;
+  let strtabVaddr = -1;
+  const neededStrOffs: number[] = [];
+  const dynEnd = Math.min(dynOff + dynFilesz, bytes.length);
+  for (let pos = dynOff; pos + entSize <= dynEnd; pos += entSize) {
+    const tag = uN(pos);
+    const val = is64 ? uN(pos + 8) : u32(pos + 4);
+    if (tag === 0) break;
+    if (tag === 1) neededStrOffs.push(val);
+    if (tag === 5) strtabVaddr = val;
+  }
+  if (strtabVaddr < 0) return [];
+  const strtabOff = vaddrToOffset(strtabVaddr);
+  if (strtabOff === undefined) return [];
+
+  const names: string[] = [];
+  for (const rel of neededStrOffs) {
+    const name = readCString(bytes, strtabOff + rel);
+    if (name.length > 0) names.push(name);
+  }
+  return names;
+};
+
+export const bundledLoaderDepsSatisfied = async (libDir: string): Promise<boolean> => {
+  let files: string[];
+  try {
+    files = await readdir(libDir);
+  } catch {
+    return false;
+  }
+  const checkBytes = (bytes: Uint8Array): boolean => {
+    for (const needed of readElfNeeded(bytes)) {
+      if (isHostProvidedSoname(needed)) continue;
+      if (!sonamePresent(files, needed)) return false;
+    }
+    return true;
+  };
+  try {
+    if (!checkBytes(new Uint8Array(await readFile(join(libDir, "nft"))))) return false;
+  } catch {
+    return false;
+  }
+  for (const name of files) {
+    if (name === "nft") continue;
+    try {
+      if (!checkBytes(new Uint8Array(await readFile(join(libDir, name))))) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 };
 
 export const collectNftDebPayload = (
@@ -342,13 +473,15 @@ export const extractNftFromDeb = async (
   }
 };
 
-const nftLooksUsable = async (nftPath: string): Promise<boolean> => {
+const nftLooksUsable = async (runtimeBinDir: string): Promise<boolean> => {
+  const nftPath = managedNftBinPath(runtimeBinDir);
   try {
     const info = await stat(nftPath);
     if (!info.isFile() || (info.mode & 0o111) === 0) return false;
   } catch {
     return false;
   }
+  if (!(await bundledLoaderDepsSatisfied(managedNftLibDir(runtimeBinDir)))) return false;
   try {
     const result = await runProcess(nftPath, ["--version"]);
     return result.exitCode === 0 && result.stdout.length + result.stderr.length > 0;
@@ -358,8 +491,7 @@ const nftLooksUsable = async (nftPath: string): Promise<boolean> => {
 };
 
 export const hasUsableManagedNft = async (runtimeBinDir: string): Promise<boolean> => {
-  const nftPath = managedNftBinPath(runtimeBinDir);
-  if (!(await nftLooksUsable(nftPath))) return false;
+  if (!(await nftLooksUsable(runtimeBinDir))) return false;
   try {
     const marker = (await readFile(managedNftVersionPath(runtimeBinDir), "utf8")).trim();
     return marker === NFT_TOOL_VERSION;
@@ -454,9 +586,9 @@ export const ensureManagedNft = (
         provisionError("Failed to install the managed nft helper into the runtime bin.", cause),
     });
 
-    if (!(yield* Effect.promise(() => nftLooksUsable(managedNftBinPath(options.runtimeBinDir))))) {
+    if (!(yield* Effect.promise(() => nftLooksUsable(options.runtimeBinDir)))) {
       return yield* Effect.fail(
-        provisionError("Installed nft helper is not executable or failed `nft --version`."),
+        provisionError("Installed nft helper is missing bundled loader libraries or failed `nft --version`."),
       );
     }
   }).pipe(
