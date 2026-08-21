@@ -76,6 +76,21 @@ const withTempRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> =>
   }
 };
 
+const withClearedDockerHost = <T>(run: () => T): T => {
+  const previousDockerHost = process.env.DOCKER_HOST;
+  const previousRuntime = process.env.XDG_RUNTIME_DIR;
+  Reflect.deleteProperty(process.env, "DOCKER_HOST");
+  Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
+  try {
+    return run();
+  } finally {
+    if (previousDockerHost === undefined) Reflect.deleteProperty(process.env, "DOCKER_HOST");
+    else process.env.DOCKER_HOST = previousDockerHost;
+    if (previousRuntime === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
+    else process.env.XDG_RUNTIME_DIR = previousRuntime;
+  }
+};
+
 describe("decodeAppliedStateFile", () => {
   test("reads a plugin state-store AppPlan envelope", () => {
     const [entry] = decodeAppliedStateFile(
@@ -417,21 +432,6 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 });
-
-const withClearedDockerHost = <T>(run: () => T): T => {
-  const previousDockerHost = process.env.DOCKER_HOST;
-  const previousRuntime = process.env.XDG_RUNTIME_DIR;
-  Reflect.deleteProperty(process.env, "DOCKER_HOST");
-  Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
-  try {
-    return run();
-  } finally {
-    if (previousDockerHost === undefined) Reflect.deleteProperty(process.env, "DOCKER_HOST");
-    else process.env.DOCKER_HOST = previousDockerHost;
-    if (previousRuntime === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
-    else process.env.XDG_RUNTIME_DIR = previousRuntime;
-  }
-};
 
 describe("containerSocketCandidates", () => {
   test("prefers the managed provider socket and does not default to host docker.sock", () => {

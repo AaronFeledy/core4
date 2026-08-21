@@ -256,7 +256,7 @@ export const appsFromContainerList = (
 // Matches provider-lando: win32 managed machines listen on this pipe, not data-root podman.sock.
 const WINDOWS_MANAGED_MACHINE_PIPE = "\\\\.\\pipe\\podman-lando";
 
-export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
+const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
 
 export const isNamedPipeSocketPath = (socketPath: string): boolean =>
   isNpipeDockerHost(socketPath) || socketPath.startsWith("\\\\.\\pipe\\");
