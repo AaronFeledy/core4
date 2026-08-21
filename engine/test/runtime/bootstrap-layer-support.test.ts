@@ -12,6 +12,10 @@ const expectUnsupportedStreamFailure = <A, E>(exit: Exit.Exit<A, E>, operation: 
 };
 
 describe("bootstrap runtime provider stub", () => {
+  test("does not advertise architectureEmulation", () => {
+    expect(runtimeProviderService.capabilities.architectureEmulation).toBe(false);
+  });
+
   test("fails closed for unsupported volume operations", async () => {
     const listExit = await Effect.runPromiseExit(
       runtimeProviderService.listVolumes({ app: "myapp" as never }),

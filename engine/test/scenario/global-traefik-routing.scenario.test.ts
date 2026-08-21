@@ -64,6 +64,7 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: false,
   composeSpec: "portable",
   providerExtensions: [],
   ...overrides,

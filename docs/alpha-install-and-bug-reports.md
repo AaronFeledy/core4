@@ -16,7 +16,7 @@ The CI pipeline publishes a `v4.0.0-dev.N` GitHub prerelease after each successf
 - `lando` — the Linux x64 compiled binary
 - `SHA256SUMS` — checksum manifest
 
-**Platform support:** Linux x64 only. Windows binaries are deferred. macOS users should use the npm install path until macOS binary promotion lands in Beta.
+**Platform support:** Linux x64 only. Windows and macOS binaries are deferred.
 
 **To install:**
 
@@ -39,20 +39,7 @@ chmod +x lando
 
 **If no dev prerelease exists yet:** CI artifacts are available from [recent workflow runs](https://github.com/AaronFeledy/core4/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess). Download the `lando-linux-x64` artifact (requires GitHub login). The artifact is a zip containing the `lando` binary plus helper executables. Extract and verify manually.
 
-### Option 2: npm dev install (Linux/macOS)
-
-The CI pipeline publishes `@lando/core@dev` to npm after each successful `main` build.
-
-**To install:**
-
-```bash
-npm install -g @lando/core@dev
-npx lando --version
-```
-
-**If the `dev` tag does not exist yet:** The release workflow runs automatically after CI completes on `main`. Check the [release workflow runs](https://github.com/AaronFeledy/core4/actions/workflows/release.yml) for status. The `npm-alpha-packages` job publishes the `dev` tag.
-
-### Option 3: Build from source
+### Option 2: Build from source
 
 For contributors or when prebuilt binaries are unavailable:
 
@@ -68,7 +55,7 @@ bun run core/src/cli/index.ts --version
 
 ## First-time setup
 
-After installing the binary or npm package, run:
+After installing the binary or building from source, run:
 
 ```bash
 lando setup
@@ -91,7 +78,7 @@ The following install paths are **not yet available** in Alpha:
 - **POSIX installer script** at `https://get.lando.dev/install.sh` (referenced in `scripts/install.sh`)
 - **Channel manifests** at `https://update.lando.dev/v4/{stable,next,dev}.json`
 
-These will be stood up before Beta. For now, use the GitHub prerelease or npm install paths above.
+These will be stood up before Beta. For now, use the GitHub prerelease or build from source paths above.
 
 ## Provider setup
 
@@ -172,7 +159,7 @@ Include these artifacts when available:
 - The command you ran, its full stdout/stderr, and its exit code.
 - `lando doctor` output.
 - Any diagnostic `logsDir` and `cacheDir` paths printed in the failure report.
-- The install path you used: Linux x64 dev prerelease binary or `npm install @lando/core@dev`.
+- The install path you used: Linux x64 dev prerelease binary or built from source.
 - Host details: operating system, architecture, Bun version, and provider runtime details when the bug involves setup/start/stop/destroy.
 
 Do not paste secrets or credentials. Lando redacts known secret-shaped values in its own diagnostics, but shell transcripts and copied logs can still contain project-specific sensitive data.

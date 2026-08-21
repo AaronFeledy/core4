@@ -25,6 +25,22 @@ describe("container runtime capability helpers", () => {
     expect(capabilities.copyOnWriteAppRoot).toBe(false);
   });
 
+  test("defaults architectureEmulation to false when the constant is omitted", () => {
+    const capabilities = buildProviderCapabilities({ ...baseConstants, composeSpec: "portable" });
+
+    expect(capabilities.architectureEmulation).toBe(false);
+  });
+
+  test("passes an explicit architectureEmulation declaration through unchanged", () => {
+    const capabilities = buildProviderCapabilities({
+      ...baseConstants,
+      composeSpec: "portable",
+      architectureEmulation: true,
+    });
+
+    expect(capabilities.architectureEmulation).toBe(true);
+  });
+
   test("defaults composeKnobs to an empty supported set when the constant is omitted", () => {
     const capabilities = buildProviderCapabilities({ ...baseConstants, composeSpec: "portable" });
 

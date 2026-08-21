@@ -1,0 +1,7 @@
+name: varnish-demo
+services:
+  appserver:
+    type: nginx
+  cache:
+    type: varnish
+    backend: appserver

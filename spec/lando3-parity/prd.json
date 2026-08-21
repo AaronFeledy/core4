@@ -144,7 +144,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -159,7 +159,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -174,7 +174,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -190,7 +190,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

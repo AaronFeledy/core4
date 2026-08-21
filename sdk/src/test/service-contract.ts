@@ -125,6 +125,14 @@ export const runServiceCompositionContract = (
         source: "@lando/sdk/test/service-composition-contract",
         runtime: 4,
       },
+      host: {
+        os: "linux",
+        user: "test",
+        uid: "1000",
+        gid: "1000",
+        home: "/home/test",
+        arch: "x64",
+      },
     });
 
     const resolution = yield* serviceType

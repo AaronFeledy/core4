@@ -23,16 +23,19 @@ framework presets ship post-GA; the table below tracks what
 
 | Type       | Versions     | Supported `framework:` values                                | Notes                                                                                                                       |
 | ---------- | ------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `php`      | 8.1, 8.2, 8.3, 8.4 | n/a                                                    | Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`); recipes own framework-specific choices.     |
+| `php`      | 8.1, 8.2, 8.3, 8.4, 8.5 | n/a                                                    | Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`); recipes own framework-specific choices.     |
 | `node`     | lts, 22      | `none`                                                       | No framework presets; users select their own dev-server `command:`. The `framework:` field is accepted for schema compatibility and ignored by the ServiceType. |
 | `python`   | 3.12         | `django`, `fastapi`, `flask`, `none`                         | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
 | `ruby`     | 3.3          | `rails`, `none`                                              | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
 | `go`       | 1.22, 1.23   | `none`                                                       | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
+| `dotnet`   | 8.0, 9.0     | n/a                                                          | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
+| `mssql`    | 2019, 2022   | n/a                                                          | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
+| `phpmyadmin` | 5, latest  | n/a                                                          | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
-`mysql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
+`mysql`, `mssql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
 `minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
-`nginx`, `apache`, `static`, `compose`) do not accept a `framework:` field.
+`phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Beta scope vs. the GA-target catalog
 
@@ -41,7 +44,7 @@ canonical `type:` requires a spec amendment, though versions inside an
 existing entry (e.g. adding PHP 8.5) can follow upstream releases without one.
 `@lando/service-lando` ships a subset of that target catalog through Beta:
 
-- PHP ships the complete GA-target version set (8.1-8.4) and uses explicit
+- PHP ships the complete GA-target version set (8.1-8.5) and uses explicit
   `webroot:` and `allowOverride:` parameters rather than framework-name
   presets.
 - Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA —

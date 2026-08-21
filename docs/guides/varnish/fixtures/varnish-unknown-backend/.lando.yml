@@ -1,0 +1,6 @@
+name: varnish-unknown-backend
+services:
+  cache:
+    type: varnish
+    backend: missing
+    certs: false

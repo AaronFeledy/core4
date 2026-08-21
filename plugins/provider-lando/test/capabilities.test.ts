@@ -56,6 +56,9 @@ describe("provider-lando capabilities", () => {
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
+    expect(linux.architectureEmulation).toBe(false);
+    expect(macos.architectureEmulation).toBe(false);
+    expect(windows.architectureEmulation).toBe(false);
     expect(linux.artifactBuild).toBe(true);
     expect(macos.artifactBuild).toBe(true);
     expect(windows.artifactBuild).toBe(true);

@@ -206,3 +206,8 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
 | L3-PARITY-03 | US-567 | app-scoped mailpit and deprecated mailhog | `docs/guides/services/mailpit.mdx` | Shipped |
+| L3-PARITY-03 | US-568 | tomcat service type | `docs/guides/services/tomcat.mdx` | Shipped |
+| L3-PARITY-03 | US-568 | varnish service type | `docs/guides/services/varnish.mdx` | Shipped |
+| L3-PARITY-03 | US-569 | dotnet service type | `docs/guides/services/dotnet.mdx` | Shipped |
+| L3-PARITY-03 | US-569 | mssql service type | `docs/guides/services/mssql.mdx` | Shipped |
+| L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |

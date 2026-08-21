@@ -38,6 +38,9 @@ describe("provider-podman capabilities", () => {
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
+    expect(linux.architectureEmulation).toBe(false);
+    expect(macos.architectureEmulation).toBe(false);
+    expect(windows.architectureEmulation).toBe(false);
     expect(linux.composePreservedPaths).toBeUndefined();
     expect(macos.composePreservedPaths).toBeUndefined();
     expect(windows.composePreservedPaths).toBeUndefined();

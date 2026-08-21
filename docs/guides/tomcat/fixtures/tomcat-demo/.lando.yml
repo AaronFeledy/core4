@@ -1,0 +1,4 @@
+name: tomcat-demo
+services:
+  appserver:
+    type: tomcat

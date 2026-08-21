@@ -7,6 +7,7 @@ import { runServiceCompositionContract } from "@lando/sdk/test";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "../src/services/dotnet.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { landoServiceType } from "../src/services/lando.ts";
@@ -18,11 +19,17 @@ import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { minioServiceType } from "../src/services/minio.ts";
 import { mongodbServiceType } from "../src/services/mongodb.ts";
+import { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "../src/services/mssql.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
-import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
+import { php82ServiceType, php83ServiceType, php85ServiceType } from "../src/services/php.ts";
+import {
+  phpmyadmin5ServiceType,
+  phpmyadminLatestServiceType,
+  phpmyadminServiceType,
+} from "../src/services/phpmyadmin.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
 import { python312ServiceType } from "../src/services/python.ts";
 import { rabbitmq3ServiceType, rabbitmq4ServiceType, rabbitmqServiceType } from "../src/services/rabbitmq.ts";
@@ -30,7 +37,14 @@ import { redisServiceType } from "../src/services/redis.ts";
 import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "../src/services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
+import {
+  tomcat9ServiceType,
+  tomcat10ServiceType,
+  tomcat11ServiceType,
+  tomcatServiceType,
+} from "../src/services/tomcat.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";
+import { varnish6ServiceType, varnish7ServiceType, varnishServiceType } from "../src/services/varnish.ts";
 
 interface CatalogCompositionEntry {
   readonly serviceType: ServiceType;
@@ -45,6 +59,9 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
     landofileService: { type: "compose", image: "busybox:1.36" },
     serviceName: "worker",
   },
+  { serviceType: dotnetServiceType, landofileService: { type: "dotnet" } },
+  { serviceType: dotnet80ServiceType, landofileService: { type: "dotnet:8.0" } },
+  { serviceType: dotnet90ServiceType, landofileService: { type: "dotnet:9.0" } },
   { serviceType: elasticsearchServiceType, landofileService: { type: "elasticsearch" } },
   { serviceType: elasticsearch8ServiceType, landofileService: { type: "elasticsearch:8" } },
   { serviceType: go122ServiceType, landofileService: { type: "go:1.22" } },
@@ -63,14 +80,21 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: memcachedServiceType, landofileService: { type: "memcached" } },
   { serviceType: minioServiceType, landofileService: { type: "minio", database: "uploads" } },
   { serviceType: mongodbServiceType, landofileService: { type: "mongodb" } },
+  { serviceType: mssqlServiceType, landofileService: { type: "mssql" } },
+  { serviceType: mssql2019ServiceType, landofileService: { type: "mssql:2019" } },
+  { serviceType: mssql2022ServiceType, landofileService: { type: "mssql:2022" } },
   { serviceType: mysqlServiceType, landofileService: { type: "mysql" } },
   { serviceType: nginxServiceType, landofileService: { type: "nginx" } },
   { serviceType: nodeLtsServiceType, landofileService: { type: "node:lts" } },
   { serviceType: node22ServiceType, landofileService: { type: "node:22" } },
   { serviceType: opensearchServiceType, landofileService: { type: "opensearch" } },
   { serviceType: opensearch2ServiceType, landofileService: { type: "opensearch:2" } },
+  { serviceType: phpmyadminServiceType, landofileService: { type: "phpmyadmin" } },
+  { serviceType: phpmyadmin5ServiceType, landofileService: { type: "phpmyadmin:5" } },
+  { serviceType: phpmyadminLatestServiceType, landofileService: { type: "phpmyadmin:latest" } },
   { serviceType: php82ServiceType, landofileService: { type: "php:8.2" } },
   { serviceType: php83ServiceType, landofileService: { type: "php:8.3" } },
+  { serviceType: php85ServiceType, landofileService: { type: "php:8.5" } },
   { serviceType: postgresServiceType, landofileService: { type: "postgres" } },
   { serviceType: python312ServiceType, landofileService: { type: "python:3.12" } },
   { serviceType: rabbitmqServiceType, landofileService: { type: "rabbitmq" } },
@@ -82,7 +106,14 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: solr9ServiceType, landofileService: { type: "solr:9" } },
   { serviceType: staticNginxServiceType, landofileService: { type: "static:nginx" } },
   { serviceType: staticCaddyServiceType, landofileService: { type: "static:caddy" } },
+  { serviceType: tomcatServiceType, landofileService: { type: "tomcat" } },
+  { serviceType: tomcat9ServiceType, landofileService: { type: "tomcat:9" } },
+  { serviceType: tomcat10ServiceType, landofileService: { type: "tomcat:10" } },
+  { serviceType: tomcat11ServiceType, landofileService: { type: "tomcat:11" } },
   { serviceType: valkeyServiceType, landofileService: { type: "valkey" } },
+  { serviceType: varnishServiceType, landofileService: { type: "varnish", backend: "web" } },
+  { serviceType: varnish6ServiceType, landofileService: { type: "varnish:6", backend: "web" } },
+  { serviceType: varnish7ServiceType, landofileService: { type: "varnish:7", backend: "web" } },
 ];
 
 const decodeService = (entry: CatalogCompositionEntry) => {
@@ -128,6 +159,14 @@ describe("service catalog per-type checklist × composition contract suite", () 
             source: "@lando/service-lando/test/service-contract",
             runtime: 4,
           },
+          host: {
+            os: "linux",
+            user: "test",
+            uid: "1000",
+            gid: "1000",
+            home: "/home/test",
+            arch: "x64",
+          },
         }),
       );
 
@@ -141,6 +180,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
     expect(catalogEntries.map((entry) => entry.serviceType.id).sort()).toEqual([
       "apache",
       "compose",
+      "dotnet",
+      "dotnet:8.0",
+      "dotnet:9.0",
       "elasticsearch",
       "elasticsearch:8",
       "go:1.22",
@@ -155,6 +197,9 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "memcached",
       "minio",
       "mongodb",
+      "mssql",
+      "mssql:2019",
+      "mssql:2022",
       "mysql",
       "nginx",
       "node:22",
@@ -163,6 +208,10 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "opensearch:2",
       "php:8.2",
       "php:8.3",
+      "php:8.5",
+      "phpmyadmin",
+      "phpmyadmin:5",
+      "phpmyadmin:latest",
       "postgres",
       "python:3.12",
       "rabbitmq",
@@ -174,7 +223,52 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "solr:9",
       "static",
       "static:caddy",
+      "tomcat",
+      "tomcat:10",
+      "tomcat:11",
+      "tomcat:9",
       "valkey",
+      "varnish",
+      "varnish:6",
+      "varnish:7",
     ]);
   });
+});
+
+describe("php via and nginx PHP-preset composition", () => {
+  const extraEntries: ReadonlyArray<CatalogCompositionEntry> = [
+    { serviceType: php82ServiceType, landofileService: { type: "php:8.2", via: "apache" } },
+    {
+      serviceType: php82ServiceType,
+      landofileService: { type: "php:8.2", via: "fpm" },
+      serviceName: "appserver",
+    },
+    {
+      serviceType: php82ServiceType,
+      landofileService: { type: "php:8.2", via: "cli" },
+      serviceName: "worker",
+    },
+    {
+      serviceType: nginxServiceType,
+      landofileService: { type: "nginx", backend: "appserver" },
+      serviceName: "edge",
+    },
+  ];
+
+  for (const entry of extraEntries) {
+    test(`${entry.serviceType.id} ${JSON.stringify(entry.landofileService)} satisfies composition`, async () => {
+      return expect(
+        Effect.runPromise(
+          runServiceCompositionContract({
+            serviceType: entry.serviceType,
+            landofileService: entry.landofileService,
+            appName: "myapp",
+            appRoot: "/srv/apps/myapp",
+            providerId: ProviderId.make("lando"),
+            ...(entry.serviceName === undefined ? {} : { serviceName: entry.serviceName }),
+          }),
+        ),
+      ).resolves.toBeUndefined();
+    });
+  }
 });

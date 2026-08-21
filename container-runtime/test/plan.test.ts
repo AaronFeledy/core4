@@ -203,6 +203,14 @@ describe("container plan helpers", () => {
     });
   });
 
+  test("passes the planned runtime user through to the create body", () => {
+    expect(containerCreateBodyFragment(plan, { ...service, user: "root" })).toMatchObject({
+      User: "root",
+    });
+    expect(containerCreateBodyFragment(plan, { ...service, user: "" })).not.toHaveProperty("User");
+    expect(containerCreateBodyFragment(plan, service)).not.toHaveProperty("User");
+  });
+
   test("uses preserved user labels in the default create body with Lando labels winning", () => {
     const serviceWithLabels: ServicePlan = {
       ...service,

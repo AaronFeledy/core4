@@ -7,8 +7,8 @@ tags: [beta, docs, php, service, runtime]
 
 # PHP version matrix
 
-`type: php:<version>` accepts exactly `8.1`, `8.2`, `8.3`, or `8.4`. Every
-other version — including `8.0` and `8.5` — fails Landofile validation
+`type: php:<version>` accepts exactly `8.1`, `8.2`, `8.3`, `8.4`, or `8.5`.
+Every other version — including `8.0` and `8.6` — fails Landofile validation
 before any build or container work happens. Each supported version
 resolves to the matching stock upstream image, `php:<version>-apache-bookworm`:
 
@@ -76,9 +76,22 @@ a fast way to prove a `type:` resolves:
     </Step>
   </Scenario>
 
+  <Scenario id="php-8-5-resolves" render>
+    <Step name="scaffold">
+      <UseFixture name="php-85" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-version-matrix-85" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
 ## Unsupported versions fail honestly
 
-`php:8.0` and `php:8.5` are outside the supported catalog. Landofile
+`php:8.0` and `php:8.6` are outside the supported catalog. Landofile
 validation rejects them immediately, before any build or container work
 starts, and names the supported alternatives:
 
@@ -95,13 +108,13 @@ starts, and names the supported alternatives:
     </Step>
   </Scenario>
 
-  <Scenario id="php-8-5-rejected" render>
+  <Scenario id="php-8-6-rejected" render>
     <Step name="scaffold">
-      <UseFixture name="php-unsupported-8-5" />
+      <UseFixture name="php-unsupported-8-6" />
     </Step>
     <Step name="reject">
       <Run command="lando app:cache:refresh" expectExit={1} />
-      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported service type php:8\\.5 for service app\\." }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported service type php:8\\.6 for service app\\." }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -110,7 +123,7 @@ starts, and names the supported alternatives:
 
 ## Pin a version
 
-Pin any of the four supported minors under `type:`. There is no bare
+Pin any of the five supported minors under `type:`. There is no bare
 `type: php` alias — always include the version:
 
 ```yaml

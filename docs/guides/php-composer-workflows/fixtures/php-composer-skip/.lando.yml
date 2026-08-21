@@ -1,0 +1,6 @@
+name: php-composer-skip
+services:
+  appserver:
+    type: "php:8.5"
+    primary: true
+    composer: false

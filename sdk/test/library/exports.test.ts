@@ -149,6 +149,11 @@ describe("@lando/sdk package exports", () => {
     const mailpit = await import("@lando/sdk/schema/services/mailpit");
     const minio = await import("@lando/sdk/schema/services/minio");
     const rabbitmq = await import("@lando/sdk/schema/services/rabbitmq");
+    const tomcat = await import("@lando/sdk/schema/services/tomcat");
+    const varnish = await import("@lando/sdk/schema/services/varnish");
+    const dotnet = await import("@lando/sdk/schema/services/dotnet");
+    const mssql = await import("@lando/sdk/schema/services/mssql");
+    const phpmyadmin = await import("@lando/sdk/schema/services/phpmyadmin");
 
     expect(localstack.LocalStackServiceConfig).toBeDefined();
     expect(mailhog.MailhogServiceConfig).toBeDefined();
@@ -156,6 +161,11 @@ describe("@lando/sdk package exports", () => {
     expect(mailpit.MailpitServiceConfig).toBeDefined();
     expect(minio.MinIOServiceConfig).toBeDefined();
     expect(rabbitmq.RabbitMQServiceConfig).toBeDefined();
+    expect(tomcat.TomcatServiceConfig).toBeDefined();
+    expect(varnish.VarnishServiceConfig).toBeDefined();
+    expect(dotnet.DotnetServiceConfig).toBeDefined();
+    expect(mssql.MssqlServiceConfig).toBeDefined();
+    expect(phpmyadmin.PhpMyAdminServiceConfig).toBeDefined();
   });
 
   test("schema entry point exposes JSON Schema for the canonical contract surface", async () => {

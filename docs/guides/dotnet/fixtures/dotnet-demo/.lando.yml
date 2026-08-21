@@ -1,0 +1,10 @@
+name: dotnet-demo
+services:
+  appserver:
+    type: dotnet
+    command:
+      - dotnet
+      - watch
+      - run
+      - --urls
+      - http://0.0.0.0:5000

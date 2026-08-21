@@ -9,6 +9,7 @@ import {
   SUPPORTED_PHP_VERSIONS,
   php82ServiceType,
   php83ServiceType,
+  php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -58,7 +59,7 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("php ServiceType — supported versions and frameworks", () => {
   test("exposes the complete PHP version catalog", () => {
-    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4"]);
+    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5"]);
   });
 });
 
@@ -109,6 +110,7 @@ describe("php:8.2 ServiceType", () => {
       allowOverride: false,
       webroot: "/app",
       version: "8.2",
+      via: "apache",
     });
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).not.toContain("AllowOverride All");
@@ -216,7 +218,7 @@ describe("php:8.3 ServiceType", () => {
 
     await expectRejectsToThrow(
       composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4/,
+      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5/,
     );
   });
 
@@ -244,6 +246,106 @@ describe("php:8.3 ServiceType", () => {
         environment: { LANDO: "OFF" },
       }),
       /reserved LANDO_\* keys.*LANDO/,
+    );
+  });
+});
+
+describe("php:8.5 ServiceType", () => {
+  test("plans a default PHP 8.5 service with the shared extension set", async () => {
+    const plan = await composePhpPlan(php85ServiceType, { type: "php:8.5" });
+
+    expect(plan.type).toBe("php:8.5");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.5-apache-bookworm" });
+    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.5");
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.5" });
+  });
+});
+
+describe("php serving modes (via:)", () => {
+  test("via apache is the explicit apache image and HTTP listener", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "apache" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.command?.[2]).toContain("apache2-foreground");
+  });
+
+  test("via fpm uses the fpm image and listens on 9000", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-fpm-bookworm" });
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9000, protocol: "tcp", name: "web" }]);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
+    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain("listen = 9000");
+    expect(plan.command?.[2]).toContain("exec php-fpm");
+    expect(plan.command?.[2]).not.toContain("apache2-foreground");
+  });
+
+  test("via fpm listens on an authored port", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
+
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9070, protocol: "tcp", name: "web" }]);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9070"]);
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain("listen = 9070");
+    expect(plan.command?.[2]).toContain("exec php-fpm");
+  });
+
+  test("via fpm applies webroot as the working directory", async () => {
+    const plan = await composePhpPlan(php82ServiceType, {
+      type: "php:8.2",
+      via: "fpm",
+      webroot: "/app/web",
+    });
+
+    expect(String(plan.workingDirectory)).toBe("/app/web");
+    expect(plan.environment.LANDO_WEBROOT).toBe("/app/web");
+  });
+
+  test("via cli idles without a web server or HTTP route", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "cli" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-cli-bookworm" });
+    expect(plan.endpoints).toEqual([]);
+    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
+  });
+
+  test("rejects unknown via with remediation", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", via: "nginx" }),
+      /Unsupported PHP serving mode "nginx"\./,
+    );
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", via: "nginx" }),
+      /via: apache, via: fpm, or via: cli/,
+    );
+  });
+
+  test("rejects allowOverride under fpm", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", allowOverride: true }),
+      /allowOverride/,
+    );
+  });
+
+  test("rejects allowOverride under cli", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", via: "cli", allowOverride: false }),
+      /allowOverride/,
+    );
+  });
+
+  test("rejects HTTP routes under cli", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, {
+        type: "php:8.2",
+        via: "cli",
+        routes: [{ hostname: "app.lndo.site" }],
+      }),
+      /routes/,
     );
   });
 });

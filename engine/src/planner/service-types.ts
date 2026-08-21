@@ -190,6 +190,7 @@ export const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
       uid: String(userInfo.uid),
       gid: String(userInfo.gid),
       home: userInfo.homedir,
+      arch: process.arch,
     };
   } catch {
     return undefined;

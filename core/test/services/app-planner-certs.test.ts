@@ -117,3 +117,61 @@ test("covers the generated default proxy hostname", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("issues a leaf certificate for default type: tomcat without authored certs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-tomcat-"));
+  const appRoot = join(root, "app");
+  const cacheRoot = join(root, "cache");
+
+  try {
+    await mkdir(appRoot, { recursive: true });
+    const ca = makeTestCertificateAuthority();
+    const appPlan = await planAppPlannerCerts({
+      appRoot,
+      cacheRoot,
+      ca,
+      landofile: Schema.decodeUnknownSync(LandofileShape)({
+        name: "tomcat-certs",
+        runtime: 4,
+        services: { appserver: { type: "tomcat" } },
+      }),
+    });
+
+    const issued = ca.calls.filter((call) => call.op === "issueCert");
+    expect(issued).toHaveLength(1);
+    const appserver = appPlan.services[ServiceName.make("appserver")];
+    expect(appserver?.certs?.caId).toBe("test");
+    expect(appserver?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/appserver.crt");
+    expect(appserver?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/appserver.key");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("honors authored certs: false on type: tomcat", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-tomcat-off-"));
+  const appRoot = join(root, "app");
+  const cacheRoot = join(root, "cache");
+
+  try {
+    await mkdir(appRoot, { recursive: true });
+    const ca = makeTestCertificateAuthority();
+    const appPlan = await planAppPlannerCerts({
+      appRoot,
+      cacheRoot,
+      ca,
+      landofile: Schema.decodeUnknownSync(LandofileShape)({
+        name: "tomcat-certs-off",
+        runtime: 4,
+        services: { appserver: { type: "tomcat", certs: false } },
+      }),
+    });
+
+    expect(ca.calls.filter((call) => call.op === "issueCert")).toHaveLength(0);
+    const appserver = appPlan.services[ServiceName.make("appserver")];
+    expect(appserver?.certs).toBeUndefined();
+    expect(appserver?.environment.LANDO_SERVICE_CERT).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

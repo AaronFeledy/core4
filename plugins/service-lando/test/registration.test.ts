@@ -5,7 +5,7 @@ import { AppPlanner, PluginRegistry } from "@lando/core/services";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
-import { services } from "../src/index.ts";
+import { globalServices, services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 
 const providerCapabilities = {
@@ -35,6 +35,7 @@ const providerCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
+  architectureEmulation: true,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
@@ -61,6 +62,9 @@ describe("@lando/service-lando registration", () => {
     expect(manifest.contributes.serviceTypes).toEqual([
       "apache",
       "compose",
+      "dotnet",
+      "dotnet:8.0",
+      "dotnet:9.0",
       "elasticsearch",
       "elasticsearch:8",
       "go:1.22",
@@ -75,17 +79,24 @@ describe("@lando/service-lando registration", () => {
       "memcached",
       "minio",
       "mongodb",
+      "mssql",
+      "mssql:2019",
+      "mssql:2022",
       "mysql",
       "nginx",
       "node:lts",
       "node:22",
       "opensearch",
       "opensearch:2",
-      "postgres",
       "php:8.1",
       "php:8.2",
       "php:8.3",
       "php:8.4",
+      "php:8.5",
+      "phpmyadmin",
+      "phpmyadmin:5",
+      "phpmyadmin:latest",
+      "postgres",
       "python:3.12",
       "rabbitmq",
       "rabbitmq:3",
@@ -97,7 +108,14 @@ describe("@lando/service-lando registration", () => {
       "static",
       "static:nginx",
       "static:caddy",
+      "tomcat",
+      "tomcat:9",
+      "tomcat:10",
+      "tomcat:11",
       "valkey",
+      "varnish",
+      "varnish:6",
+      "varnish:7",
     ]);
   });
 
@@ -193,7 +211,6 @@ describe("@lando/service-lando registration", () => {
 
   test("AppPlanner composes app-scoped mailpit and mailhog without dropping global Mailpit", async () => {
     // Given
-    const { globalServices } = await import("../src/index.ts");
     const landofile: LandofileShape = {
       name: "mail-app",
       runtime: 4,
@@ -230,6 +247,9 @@ describe("@lando/service-lando registration", () => {
     const cases = [
       ["localstack", ["awslocal"]],
       ["minio", ["mc"]],
+      ["mssql", ["sqlcmd"]],
+      ["mssql:2019", ["sqlcmd"]],
+      ["mssql:2022", ["sqlcmd"]],
       ["rabbitmq", ["rabbitmqctl", "rabbitmqadmin"]],
       ["rabbitmq:3", ["rabbitmqctl", "rabbitmqadmin"]],
       ["rabbitmq:4", ["rabbitmqctl", "rabbitmqadmin"]],
@@ -260,6 +280,7 @@ describe("@lando/service-lando registration", () => {
                 source: "@lando/service-lando/test/registration",
                 runtime: 4,
               },
+              capabilities: providerCapabilities,
             }),
           ),
         ).pipe(Effect.provide(registryLayer)),
@@ -268,6 +289,145 @@ describe("@lando/service-lando registration", () => {
       // Then
       expect(Object.keys(resolution.tooling ?? {})).toEqual([...expectedTooling]);
     }
+  });
+
+  test("AppPlanner composes dotnet defaults through PluginRegistry", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "dotnet-app",
+      runtime: 4,
+      services: { [ServiceName.make("api")]: { type: "dotnet", certs: false } },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const api = appPlan.services[ServiceName.make("api")];
+    if (api === undefined) throw new Error("dotnet planner service missing");
+
+    // Then
+    expect(appPlan.routes[0]).toMatchObject({
+      hostname: "api.dotnet-app.lndo.site",
+      backend: { service: ServiceName.make("api"), protocol: "http", port: 5000 },
+    });
+    expect(api.storage).toContainEqual({
+      store: "lando-cache-nuget",
+      target: PortablePath.make("/root/.nuget/packages"),
+      readOnly: false,
+    });
+    expect(appPlan.stores).toContainEqual({
+      name: "lando-cache-nuget",
+      scope: "global",
+      kind: "cache",
+      key: "nuget",
+    });
+    expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  });
+
+  test("AppPlanner composes mssql environment, storage, and healthcheck through PluginRegistry", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "sql-app",
+      runtime: 4,
+      services: { [ServiceName.make("database")]: { type: "mssql" } },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const database = appPlan.services[ServiceName.make("database")];
+    if (database === undefined) throw new Error("mssql planner service missing");
+
+    // Then
+    expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
+    const saPassword = database.environment.SA_PASSWORD;
+    if (saPassword === undefined) throw new Error("mssql SA_PASSWORD missing");
+    expect(saPassword).toStartWith("Lando!");
+    expect(database.storage).toContainEqual({
+      store: "sql-app-mssql-data",
+      target: PortablePath.make("/var/opt/mssql"),
+      readOnly: false,
+    });
+    expect(database.healthcheck?.command).toEqual([
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost",
+      "-U",
+      "sa",
+      "-P",
+      saPassword,
+      "-C",
+      "-Q",
+      "SELECT 1",
+    ]);
+  });
+
+  for (const phpmyadminType of ["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const) {
+    test(`AppPlanner auto-wires ${phpmyadminType} to a mysql sibling`, async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name: "pma-app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("pma")]: { type: phpmyadminType, certs: false },
+          [ServiceName.make("database")]: {
+            type: "mysql",
+            healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+          },
+        },
+      };
+
+      // When
+      const appPlan = await plan(landofile);
+      const pma = appPlan.services[ServiceName.make("pma")];
+      if (pma === undefined) throw new Error("phpmyadmin planner service missing");
+
+      // Then
+      expect(pma.environment).toMatchObject({
+        PMA_HOSTS: "database",
+        PMA_USER: "lando",
+        PMA_PASSWORD: "lando",
+      });
+      expect(pma.dependsOn).toContainEqual({
+        service: ServiceName.make("database"),
+        condition: "service_healthy",
+        required: true,
+      });
+    });
+  }
+
+  test("AppPlanner honors phpmyadmin hosts overrides without a database sibling", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "pma-remote-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("pma")]: {
+          type: "phpmyadmin",
+          hosts: ["db-a", "db-b"],
+          certs: false,
+        },
+      },
+    };
+
+    // When
+    const appPlan = await plan(landofile);
+    const pma = appPlan.services[ServiceName.make("pma")];
+    if (pma === undefined) throw new Error("phpmyadmin planner service missing");
+
+    // Then
+    expect(pma.environment.PMA_HOSTS).toBe("db-a,db-b");
+    expect(pma.dependsOn).toEqual([]);
+  });
+
+  test("AppPlanner fails when phpmyadmin has neither hosts nor a database sibling", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "pma-bad-app",
+      runtime: 4,
+      services: { [ServiceName.make("pma")]: { type: "phpmyadmin", certs: false } },
+    };
+
+    // When / Then
+    await expect(plan(landofile)).rejects.toThrow(/no mysql\/mariadb siblings and no hosts/);
   });
 
   test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with explicit webroots", async () => {
@@ -442,5 +602,70 @@ describe("@lando/service-lando registration", () => {
     ).rejects.toThrow(
       /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.1.*php:8\.4.*postgres.*python:3\.12.*ruby:3\.3/,
     );
+  });
+
+  test("AppPlanner composes Tomcat and Varnish through PluginRegistry", async () => {
+    const landofile: LandofileShape = {
+      name: "catalog-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("appserver")]: { type: "nginx" },
+        [ServiceName.make("java")]: { type: "tomcat", certs: false },
+        [ServiceName.make("cache")]: { type: "varnish", backend: "appserver", certs: false },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const java = appPlan.services[ServiceName.make("java")];
+    const cache = appPlan.services[ServiceName.make("cache")];
+    if (java === undefined || cache === undefined) {
+      throw new Error("tomcat/varnish planner smoke services missing");
+    }
+
+    expect(java.artifact).toEqual({ kind: "ref", ref: "tomcat:11-jre21" });
+    expect(java.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
+    expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
+    expect(cache.dependsOn).toEqual([
+      { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
+    ]);
+  });
+
+  test("AppPlanner wires nginx FastCGI to the PHP FPM service's authored port", async () => {
+    const landofile: LandofileShape = {
+      name: "php-fpm-nginx",
+      runtime: 4,
+      services: {
+        [ServiceName.make("appserver")]: { type: "php:8.3", via: "fpm", port: 9070 },
+        [ServiceName.make("edge")]: { type: "nginx", backend: "appserver" },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const appserver = appPlan.services[ServiceName.make("appserver")];
+    const edge = appPlan.services[ServiceName.make("edge")];
+    if (appserver === undefined || edge === undefined) {
+      throw new Error("php-fpm/nginx planner services missing");
+    }
+
+    const command = Array.isArray(edge.command)
+      ? edge.command.join(" ")
+      : typeof edge.command === "string"
+        ? edge.command
+        : "";
+    expect(command).toContain("fastcgi_pass appserver:9070");
+    expect(appserver.command?.[2]).toContain("listen = 9070");
+  });
+
+  test("AppPlanner fails closed when Varnish backend is unknown", async () => {
+    const landofile: LandofileShape = {
+      name: "catalog-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("cache")]: { type: "varnish", backend: "missing", certs: false },
+      },
+    };
+
+    await expect(plan(landofile)).rejects.toThrow(/missing service missing.*service_healthy/);
   });
 });

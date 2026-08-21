@@ -37,6 +37,7 @@ const host: ServiceTypeHostFacts = {
   uid: "1000",
   gid: "1000",
   home: "/home/lando-user",
+  arch: "x64",
 };
 
 interface CatalogCase {

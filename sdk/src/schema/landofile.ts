@@ -476,6 +476,29 @@ const ServiceSecurityField = Schema.transform(ServiceSecurityInput, ServiceSecur
 }).annotations({ description: SERVICE_SECURITY_DESCRIPTION });
 
 /**
+ * Login credentials a catalog service may author under `services.<name>.creds`.
+ */
+export const ServiceCreds = Schema.Struct({
+  user: Schema.String.annotations({
+    description: "Username created or used by the service.",
+  }),
+  password: Schema.String.annotations({
+    description: "Password for the service user.",
+  }),
+  database: Schema.String.annotations({
+    description: "Database name the service user can access.",
+  }),
+  rootPassword: Schema.optional(Schema.String).annotations({
+    description: "Optional administrative password distinct from the service user password.",
+  }),
+}).annotations({
+  identifier: "ServiceCreds",
+  title: "Service Creds",
+  description: "Username, password, and database credentials for a catalog service.",
+});
+export type ServiceCreds = typeof ServiceCreds.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -504,6 +527,12 @@ const ServiceConfigWithExtensions = Schema.Struct(
     database: Schema.optional(Schema.String).annotations({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
+    creds: Schema.optional(ServiceCreds).annotations({
+      description: "Service login credentials used to provision or connect to the service.",
+    }),
+    hosts: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
+      description: "Database hosts this admin UI connects to; a single hostname or a list of hostnames.",
+    }),
     cores: Schema.optional(Schema.Array(Schema.String)),
     port: Schema.optional(Schema.Number).annotations({
       description: "Primary container port exposed by the service.",
@@ -512,8 +541,18 @@ const ServiceConfigWithExtensions = Schema.Struct(
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
     }),
+    backend: Schema.optional(Schema.String).annotations({
+      description: "Name of the app service this cache or proxy fronts.",
+    }),
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+    }),
+    composer: Schema.optional(Schema.Union(Schema.Literal(false), Schema.String)).annotations({
+      description:
+        "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
+    }),
+    via: Schema.optional(Schema.String).annotations({
+      description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
     }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),

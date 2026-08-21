@@ -20,9 +20,14 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 
 ## Codebase Patterns (carry forward)
 
+- Official Tomcat empty ROOT returns HTTP 404; healthchecks must not use `curl -f`.
+- Official `varnish:6` ignores `VARNISH_BACKEND_*` and needs generated VCL; `varnish:7` honors host+port env vars. Prefer one generated-VCL path for both majors.
+- Official Varnish jails away from root even when the container user is root; catalog Varnish must exec `varnishd -F ... -j none` to bind :80 under rootless Podman.
 - New catalog service types publish `@lando/sdk/schema/services/<type>` with `ServiceConfig.pick` plus a narrowed `type` literal; inherited picked fields need descriptions or schema-snapshot fails.
 - `app:config` does not plan. Planner-derived deprecation warnings need `app:cache:refresh`; `lando doctor --deprecations` must scan the authored Landofile because doctor bootstraps at `none`.
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
+- Landofile service keys that are not Compose aliases must be added to `ServiceConfig` fields; the unknown-key allowlist is `Object.keys(ServiceConfig.fields)`, so a PHP-only schema does not make `composer:` authorable.
+- The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
 - Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
@@ -30,6 +35,9 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - App-scoped command-routing policy belongs in the fresh app-command cache; native dispatch and help consume that cache without bootstrapping, while canonical command ids bypass alias policy.
 - Dynamic and template-rendered Landofile command caches use file-based freshness only and serve the last full decode when non-file inputs change; do not fingerprint environment, host, or template-render inputs until a dedicated provenance contract authorizes them.
 - Registry-backed services in generated bootstrap layers must receive registry entries through one-way injection; importing the built-in command registry back from a bootstrap service creates a command-spec/runtime-layer cycle.
+- `ProviderCapabilities` fields added with `optionalWith` defaults become required on the decoded Type; every capability fixture must set the new field, and adding a property re-diffs sibling `allOf` optional structs in schema-compatibility.
+- Cross-service catalog wiring that needs sibling discovery belongs in an `AppFeature` (`activatedBy` + `selectors`), not in `ServiceType.resolve`; resolve cannot see other services.
+- nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -491,11 +499,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Verification: typecheck, lint, and 181 focused schema/service/registration/contract/doctor spot checks passed.
 ---
 
-## 2026-08-19 20:15 CDT - Babysit
+## 2026-08-19 20:57 CDT - Babysit
 - PR: #790 https://github.com/AaronFeledy/core4/pull/790
-- CI outcome: fail (provider-integration-linux-x64, provider-integration-linux-x64-runner ubuntu-24.04)
-- Review feedback: none (Bugbot SMTP-port finding still open; triage agents hung before any fix)
-- Merge: deferred (triage never completed; Bugbot finding and CI failure remain unaddressed)
+- CI outcome: pass
+- Review feedback: fixed (bind mailpit/mailhog SMTP to authored port via MP/MH_SMTP_BIND_ADDR)
+- Drift check: clean
+- Merge: merged (squash)
 ---
 
 ## 2026-08-19 20:21 CDT - US-567
@@ -504,4 +513,131 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - A failing ubuntu-24.04 provider-docker live `logs emits at least one chunk` job is unrelated to catalog service-type stories when other provider platforms pass. Do not reopen a passed service story to chase that flake.
   - Bugbot custom-`port` listen-bind notes on mail types match the advertised-port pattern already rejected for RabbitMQ; they are merge hygiene, not missing ACs.
+---
+
+## 2026-08-19 23:35 CDT - US-568
+- Tomcat 9/10/11 and Varnish 6/7 now plan as catalog service types. Tomcat mounts the app as the ROOT webapp, enables lando.certs, and exposes a default hostname route on 8080. Varnish requires `backend: <service>`, waits on that service's healthcheck, generates default VCL (or honors a mount at `/etc/varnish/default.vcl`), and is the routable front on port 80.
+- Unknown Varnish backends fail closed at plan time with tagged remediation. Both types publish `@lando/sdk/schema/services/<type>` schemas and ship executable guides.
+- Verification: typecheck, lint, boundaries, schema compatibility, guide lint/coverage/public transcripts passed; focused schema/service/registration/contract tests passed; CLI `app:config` accepted both types and `app:cache:refresh` planned them, while an unknown backend failed with `LandofileValidationError`.
+- **Learnings for future iterations:**
+  - Official Tomcat images ship an empty `webapps/` so `/` is 404 until something is deployed. Do not healthcheck with `curl -f`.
+  - Official Varnish 6 stock VCL points at localhost and ignores `VARNISH_BACKEND_*`. Generate VCL (or mount an override) instead of relying on env for both majors.
+---
+
+## 2026-08-20 00:27 CDT - US-568 Review
+- VCL override mounts now resolve relative sources against the app root and parse short-form bind syntax, so the documented `./default.vcl` path actually mounts.
+- Review notes (deferred/rejected): rejected authored-`dependsOn` weakening of the backend health gate as the existing planner authored-override contract, not a varnish-owned fail-closed hole; rejected treating a full-suite/rendered-guide timeout as a US-568 blocker because Review must not run the full local suite and that failure is unrelated to this story.
+- Verification: typecheck, lint passed; 15 varnish tests plus 121 adjacent tomcat/registration/contract tests passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Authored `mounts:` are not auto-resolved on `lando` service types. Any feature that re-emits a bind source must call `resolveBindSource` and `parseShortVolume`.
+---
+
+## 2026-08-20 01:28 CDT - US-568 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in `lando4-dev`, started Tomcat with a mounted ROOT webapp and confirmed its HTTPS route returned the deployed page, then started Varnish in front of Nginx and confirmed the cache route returned backend content with `Via: Varnish`, `X-Varnish`, and an override-VCL response header. Unknown backends failed closed with `LandofileValidationError`; Tomcat 9/10 and Varnish 6 aliases planned successfully; an adjacent Node service honored `user: root`. All started apps were destroyed.
+- Fixed Varnish stopping under managed rootless Podman: container create requests now carry the planned runtime user, and Varnish defaults to `root` so it can bind port 80 while preserving an explicitly authored user.
+- **Out-of-scope finding:** After a deliberately invalid VCL stopped the cache container, the next `lando start` returned `ProviderUnavailableError` (exit 7) instead of retrying the available managed runtime. `lando doctor` followed by the supported `lando setup --yes --no-interactive` path restored it; suspected managed-runtime transient outside the Tomcat/Varnish service-type change.
+- **Learnings for future iterations:** Live rootless verification must assert the provider create body carries `ServicePlan.user`; planner-only coverage cannot catch an image user that lacks permission to bind the service's catalog port.
+---
+
+## 2026-08-20 01:54 CDT - Push
+- PR: none — skipped: uncommitted product changes in `plugins/service-lando/src/services/varnish.ts` and `plugins/service-lando/test/varnish.test.ts` (Varnish VCL override path now runs varnishd with `-j none`; not committed after Verify)
+---
+
+## 2026-08-20 01:57 CDT - Babysit
+- PR: missing (push skipped: uncommitted varnishd `-j none` changes)
+- CI outcome: fail (no PR)
+- Review feedback: none
+- Merge: deferred (no PR for branch us-568-tomcat-varnish)
+---
+
+## 2026-08-20 02:02 CDT - US-568 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev. Tomcat HTTPS returned the mounted ROOT page. Default `type: varnish` in front of nginx returned backend HTML with `via: Varnish/7.7` and `x-varnish`; `varnishadm ping` returned PONG. Unknown `backend: missing` failed with `LandofileValidationError`. Adjacent Redis `PING`/`PONG` worked. Destroyed scenario apps.
+- Fixed Varnish still failing to bind :80 after User=root: official entrypoint/unix jail drops privileges before bind. Default and VCL-override paths now exec `varnishd -F ... -j none` as root.
+- **Learnings for future iterations:** Official Varnish jails away from root even when the container user is root. Reusing an app name after destroy can serve a stale `plan.bin`; use a fresh app id when re-verifying planner-derived command changes.
+---
+
+## 2026-08-20 02:10 CDT - US-568
+- Story verified complete on branch. Remaining Varnish bind fix (exec `varnishd -F` with `-j none` on default and VCL-override paths) is committed; Tomcat and Varnish catalog types, unknown-backend fail-closed, guides, and proxy routes remain in place.
+- Verification: typecheck, lint passed; relevant test spot checks passed (137 varnish/tomcat/registration/contract tests).
+- **Learnings for future iterations:**
+  - Official Varnish unix jail still drops privileges after User=root; `-j none` is required for catalog port 80, not just a root user.
+---
+
+## 2026-08-20 02:45 CDT - US-568 Review
+- Planner now seeds `lando.certs` from service-type resolved config, so default Tomcat/Varnish `certs: true` issues leaf certificates; authored `certs: false` still opts out. Catalog public-schema fixtures now match the appended registry order.
+- Review notes (deferred/rejected): rejected treating VCL bind-source path traversal and root+`-j none` as blockers (Landofile authors already control mounts; the jail disable is required to bind :80). Rejected adding varnishadm tooling because neither the catalog row nor US-568 ACs require it.
+- Verification: typecheck, lint passed; 334 public-schema/certs tests and 120 tomcat/varnish/contract tests passed; explicit-base guide drift passed.
+- **Learnings for future iterations:**
+  - Service-type `certs:` defaults in `normalizedConfig` are inert unless `assemble.ts` passes `resolution.normalizedConfig.certs` into `resolveCertsFeature`; authored `pinnedService.certs` stays undefined when omitted.
+---
+
+## 2026-08-20 03:01 CDT - US-568 Drift Audit
+- Trigger: 6 cycles, 1279 changed lines, 11 commits
+- Weakened proofs: AppPlanner unknown-backend/composition checks were masked by default certs requiring a CA after the certs-seed fix; last review dropped those tests from verification
+- Review scar tissue: varnish resolve() wrote dependsOn that composition never consumes; feature addDependency is the live healthcheck-gating path
+- Fixed: deleted the unused resolve dependsOn assignment and asserted gating on the composed plan; isolated AppPlanner/guide unknown-backend proofs from the certs CA requirement so they reach the production dependency check
+- Split/excise decisions: none
+- Verification: typecheck, lint, and 179 focused tomcat/varnish/registration/contract/certs/plan tests passed
+---
+
+## 2026-08-20 10:27 CDT - US-569
+- Catalog types `dotnet` (8.0/9.0), `mssql` (2019/2022), and `phpmyadmin` (5/latest) now register in `@lando/service-lando` with published SDK schemas, composition contracts, and executable guides. SQL Server maps `creds.rootPassword` to `SA_PASSWORD` and fails closed on non-amd64 hosts unless the provider declares architecture emulation. phpMyAdmin auto-wires MySQL-family siblings or an explicit `hosts:` override and ships a default proxy route.
+- Verification: typecheck, lint passed; relevant test spot checks passed (321 focused service/schema/capability tests, 104 adjacent, 3 executable guide scenarios, schema snapshot, boundaries, guide coverage/lint, schema compatibility with accepted allOf exceptions). Host `lando app:config --format=json` on the three fixtures returned the authored types.
+- **Learnings for future iterations:**
+  - `ProviderCapabilities` fields added with `optionalWith` defaults become required on the decoded Type, so every capability fixture must set the new field (or use `Schema.optional` if omitted should stay undefined).
+  - Adding a property to `ProviderCapabilities` re-diffs sibling `allOf` optional structs; record `unsupported-construct` exceptions for those unchanged compose/hostProxy shapes.
+  - phpMyAdmin wiring is an `AppFeature` (`service-lando.phpmyadmin.wire`); MySQL-family siblings still expose credentials via `MYSQL_USER`/`MYSQL_PASSWORD` env, not a populated `creds` object.
+---
+
+## 2026-08-20 12:33 CDT - US-569 Review
+- phpMyAdmin zero-config wiring now prefers sibling `creds.user`/`creds.password` over MYSQL_* then MARIADB_* env, matching the §6.12.4 auto-wire AC. Planner store metadata now honors service-type `kind: cache` from resolve (NuGet cache is global cache, not a service data volume).
+- Review notes (deferred/rejected): rejected Docker `architectureEmulation` on linux/WSL — fail-closed matches the AC and the explicit Desktop-class darwin/win32 tests; detecting Docker Desktop qemu on Linux is extra introspection. Rejected treating mysql/mariadb `user:` as a database username (container user). Rejected populating mysql/mariadb `creds` objects (owned by those shipped types, not US-569). Review-work oracles timed out; Bugbot plus AC checks were used instead. Reverted a mistaken ServiceCreds subset-decode test — `database` remains required.
+- Guide-Coverage-Skip: phpMyAdmin and NuGet user workflows are unchanged; creds preference and store kind are planner-internal.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 98 phpmyadmin/registration/schema tests and 34 adjacent dotnet/mssql/app-feature/service-type tests passed.
+- **Learnings for future iterations:**
+  - AppFeature views expose resolve `normalizedConfig`, not feature-applied env; phpMyAdmin cannot read MYSQL_* that mysql/mariadb only add via `addEnv`.
+  - `authoredStorageScopes` runs on the pre-resolve Landofile; service-type `kind: cache` in `resolution.normalizedConfig.storage` is inert unless assemble merges it into `authored.byStore`.
+---
+
+## 2026-08-20 13:10 CDT - US-569 Drift Audit
+- Trigger: 2 cycles, 2428 changed lines, 12 commits
+- Weakened proofs: mssql happy-path compose/resolve/tooling tests fell through to process.arch, so they only passed on amd64; phpmyadmin AppPlanner auto-wire only covered the unversioned alias
+- Fixed: pinned host.arch x64 / planner capabilities on mssql happy-path proofs; AppPlanner now wires phpmyadmin:5 and phpmyadmin:latest the same as phpmyadmin
+- Split/excise decisions: none
+- Verification: typecheck, lint, and 185 focused mssql/dotnet/phpmyadmin/registration/contract/service-type tests passed
+---
+
+## 2026-08-20 14:54 CDT - Babysit
+- PR: #792 https://github.com/AaronFeledy/core4/pull/792
+- CI outcome: pass
+- Review feedback: fixed (doctor goldens include architectureEmulation; phpMyAdmin waits for sibling health when a probe exists)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-20 15:20 CDT - US-570
+- PHP 8.5 is a catalog type (`php:8.5-apache-bookworm`) with the same extension set as 8.1–8.4. Stock PHP services still install checksum-pinned Composer 2.10.2; `composer: "2"` keeps that pin, `composer: "2.7.7"` selects that exact release, and `composer: false` skips the Composer build step. Unknown values fail at plan time with remediation.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP unit/prerequisites/registration/contract, schema catalog, php-base image/workflow, executable php/php-version-matrix/php-composer-workflows guides). Host `app:config` accepted `php:8.5` + `composer: false`; `app:cache:refresh` planned `composer: "2.7.7"` and rejected `composer: "nope"`.
+- **Learnings for future iterations:**
+  - `composer:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`; a PHP-only schema does not make the key authorable.
+  - Keep the in-container `composer.phar` checksum install; parameterize URL/sha256. Do not add a host Downloader path for PHP Composer.
+  - The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
+  - Guide `errorTag` regexes that include quotes fail against JSON-stringified CLI results; match the unquoted message stem.
+---
+
+## 2026-08-20 16:01 CDT - US-570 Review
+- Invalid `composer:` now fails at PHP service resolve even when a custom `image:` skips the Composer install step, so unknown values fail closed at plan time with the same remediation as the stock path.
+- Review notes (deferred/rejected): rejected treating the custom-image skip as an allowed inert-field gap — AC 3 requires plan-time failure for invalid values, not only when build steps run. Rejected QA and code-quality review-work lanes (auth token expired); Bugbot plus focused tests were used instead. Foreground security check: Composer URL/sha256 interpolation is catalog-pinned, not user-authored.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 22 php/prerequisites tests and 195 adjacent registration/contract/schema/workflow tests passed.
+- **Learnings for future iterations:**
+  - Image-gated PHP build steps must not own option validation; fail closed in `ServiceType.resolve` so custom `image:` still rejects invalid `composer:` values.
+---
+
+## 2026-08-20 17:40 CDT - US-571
+- PHP `via:` now selects apache (default), fpm, or cli image variants and process shape. FPM listens on 9000; cli idles with no HTTP route. `allowOverride:` is rejected on fpm/cli, and HTTP `routes:` are rejected on cli, at plan time with remediation.
+- nginx fronts a named FPM service when `backend:` is set, generating FastCGI config to `<service>:9000`. The PHP guide documents the pairing and replaces the no-fpm caveat.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP/nginx/schema/composition plus the two php guide scenarios). Schema compatibility is additive for `via`.
+- **Learnings for future iterations:**
+  - Serving-mode validation belongs in `ServiceType.resolve`, not only in the feature apply path, so custom `image:` still fail-closes invalid `via:` / mode-invalid keys.
+  - Keep PHP serving-mode helpers in `php-via.ts`; `php.ts` is already near the 250-line ceiling.
 ---

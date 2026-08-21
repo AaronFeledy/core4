@@ -123,7 +123,7 @@ bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
 ```
 
-Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish; end users install the Alpha distribution as `npm install @lando/core@dev`.
+Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish.
 
 Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the alpha version and its `latest` dist-tag is unchanged.
 

@@ -1,0 +1,6 @@
+name: php-composer-invalid
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    composer: "nope"
