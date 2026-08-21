@@ -16,6 +16,7 @@ import {
   resolveManifestRepository,
 } from "./check-runtime-bundle-manifest.ts";
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
 
@@ -693,7 +694,15 @@ const releaseBinaryVerificationNotesScript = (
     "LANDO_RELEASE_NOTES",
   ].join("\n");
 
-const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO_RELEASE_VERSION") ?? "0.0.0";
+const configuredReleaseVersion = (env: ReleaseEnvironment): string | undefined =>
+  envValue(env, "LANDO_RELEASE_VERSION");
+
+const releaseVersion = (env: ReleaseEnvironment): string =>
+  configuredReleaseVersion(env) ??
+  resolveCompiledBinaryVersion({
+    env,
+    cwd: resolve(import.meta.dirname, ".."),
+  });
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
@@ -1006,7 +1015,7 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
   ];
 };
 
-const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<string> => [
+const compileCommand = (platform: CiPlatform, version?: string): ReadonlyArray<string> => [
   "bun",
   "run",
   "scripts/build-compiled-binary.ts",
@@ -1014,8 +1023,7 @@ const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<st
   platform.bunTarget,
   "--outfile",
   releaseBinaryPath(platform),
-  "--version",
-  version,
+  ...(version === undefined ? [] : ["--version", version]),
   "--minify",
   "--sourcemap=external",
 ];
@@ -1029,7 +1037,8 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
   const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
-  const version = releaseVersion(context.env);
+  // Omit --version when unset so the stamp resolver derives a real 4.x instead of 0.0.0.
+  const version = configuredReleaseVersion(context.env);
 
   await context.runner.spawn({
     stageId: "7-compile",
