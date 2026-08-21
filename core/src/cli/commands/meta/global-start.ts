@@ -1,6 +1,7 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   CapabilityError,
@@ -156,7 +157,7 @@ export const globalStart = (
     const services = yield* selectedServices(loaded.plan, options.services);
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
 
     // With `--service`, start only the selected subset rather than the whole plan.
     const selectedNames = new Set(services.map((service) => String(service.name)));

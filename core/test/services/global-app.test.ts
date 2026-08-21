@@ -88,7 +88,7 @@ describe("GlobalAppServiceLive", () => {
 
       expect(first.status).toBe("created");
       expect(first.serviceIds).toEqual([]);
-      expect(parsed).toEqual({ name: "global", runtime: 4, services: {} });
+      expect(parsed).toEqual({ name: "global", runtime: 4, provider: "lando", services: {} });
       expect(Schema.decodeUnknownSync(LandofileShape)(parsed).name).toBe("global");
 
       const second = await Effect.runPromise(

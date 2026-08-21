@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CapabilityError,
+  GlobalAutoStartError,
   LandofileEventStepFailedError,
   NotImplementedError,
   ProviderUnavailableError,
@@ -162,6 +163,57 @@ describe("buildBugReport: envelope extraction", () => {
     expect(env.remediation).toBeDefined();
     expect(env.remediation).not.toContain("secretvalue");
     expect(env.remediation).toContain("MY_API_TOKEN=[redacted]");
+  });
+
+  test("surfaces wrapped GlobalAutoStartError cause tag, message, providerId, and remediation", () => {
+    const env = buildBugReport({
+      error: new GlobalAutoStartError({
+        message: "Failed to auto-start global services (traefik) required by my-app.",
+        app: "my-app",
+        services: ["traefik"],
+        remediation: "Run `lando setup --provider=lando`, then retry `lando start`.",
+        cause: new ProviderUnavailableError({
+          providerId: "docker",
+          operation: "docker-api",
+          message: "Docker API request failed with exit code 7.",
+          remediation: "Run `lando setup --provider=lando`, then retry `lando start`.",
+        }),
+      }),
+      context: ctx({ commandId: "app:start" }),
+    });
+    expect(env.code).toBe("GlobalAutoStartError");
+    expect(env.body).toContain("Failed to auto-start global services (traefik) required by my-app.");
+    expect(env.body).toContain("Docker API request failed with exit code 7.");
+    expect(env.providerId).toBe("docker");
+    expect(env.remediation).toContain("lando setup --provider=lando");
+    expect(env.extra).toEqual(
+      expect.arrayContaining([
+        ["cause", "ProviderUnavailableError"],
+        ["operation", "docker-api"],
+      ]),
+    );
+    const text = renderPlainBugReport(env);
+    expect(text).toContain("cause: ProviderUnavailableError");
+    expect(text).toContain("providerId: docker");
+    expect(text).not.toContain("manually");
+    expect(text).not.toContain("global:start");
+  });
+
+  test("does not leak untagged raw cause messages that contain user paths", () => {
+    const env = buildBugReport({
+      error: {
+        _tag: "UpdatePermissionError",
+        message: "Failed to schedule Windows Lando replacement.",
+        remediation: "Close every running Lando process, then retry.",
+        cause: new Error(String.raw`CreateProcess failed for C:\Users\Alice\lando.exe`),
+      },
+      context: ctx({ commandId: "meta:update" }),
+    });
+    expect(env.code).toBe("UpdatePermissionError");
+    expect(env.body).toContain("Failed to schedule Windows Lando replacement.");
+    expect(env.body).not.toContain("Alice");
+    expect(env.body).not.toContain("CreateProcess");
+    expect(env.extra.map(([key]) => key)).not.toContain("cause");
   });
 
   test("logsDir is <cacheRoot>/logs and cacheDir is <cacheRoot>", () => {

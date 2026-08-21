@@ -13,6 +13,7 @@ import {
 import type { GlobalAppPaths, GlobalDistResult } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
 import { materializeGlobalServices } from "../services/global-services.ts";
 
@@ -75,7 +76,7 @@ export const globalInstall = (
     const pluginRegistry = yield* PluginRegistry;
     const registry = yield* RuntimeProviderRegistry;
     const manifests = yield* pluginRegistry.list;
-    const provider = yield* registry.select(undefined);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const services = yield* materializeGlobalServices({
       manifests,
       providerCapabilities: provider.capabilities,

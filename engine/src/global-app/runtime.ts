@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/services";
 
 import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
+import { taggedErrorRemediation } from "../providers/managed.ts";
 
 export const GlobalAppRuntimeLive = Layer.effect(
   GlobalAppService,
@@ -38,7 +39,9 @@ export const GlobalAppRuntimeLive = Layer.effect(
               new GlobalAppError({
                 message: "Unable to ensure global services are running.",
                 operation: "ensureRunning",
-                remediation: "Run `lando meta:global:start` and resolve the reported global-app failure.",
+                remediation:
+                  taggedErrorRemediation(cause) ??
+                  "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry.",
                 cause,
               }),
           ),

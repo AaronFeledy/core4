@@ -7,6 +7,8 @@ import { GlobalAppError, GlobalDistConflictError, GlobalLandofilePathConflictErr
 import { AbsolutePath, type MountInput, type ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 
+import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
+
 export { GlobalAppService } from "@lando/sdk/services";
 
 export const GLOBAL_APP_ID = "global";
@@ -104,7 +106,14 @@ const emitServices = (services: Readonly<Record<string, ServiceConfig>>): Readon
   sortedEntries(services).flatMap(([serviceId, service]) => emitValue(serviceId, service, 2));
 
 const buildDistBody = (services: Readonly<Record<string, ServiceConfig>>): string =>
-  ["name: global", "runtime: 4", "services:", ...emitServices(services), ""].join("\n");
+  [
+    "name: global",
+    "runtime: 4",
+    `provider: ${MANAGED_PROVIDER_ID}`,
+    "services:",
+    ...emitServices(services),
+    "",
+  ].join("\n");
 
 const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): string => {
   const body = buildDistBody(services);

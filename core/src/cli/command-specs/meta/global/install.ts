@@ -1,4 +1,4 @@
-import { Args } from "../../../spec/metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import {
   type GlobalInstallOptions,
@@ -24,6 +24,13 @@ export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
   namespace: "meta",
   topLevelAlias: "global:install",
   bootstrap: "global",
+  flags: {
+    yes: Flags.boolean({
+      char: "y",
+      description: "Accepted for consistency with `lando setup --yes`. Global install does not prompt.",
+      default: false,
+    }),
+  },
   args: {
     plugin: Args.string({
       description: "Plugin name for future global-service enablement.",
