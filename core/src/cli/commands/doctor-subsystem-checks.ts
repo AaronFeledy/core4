@@ -38,6 +38,8 @@ export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFai
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
 
+export const isReadySubsystemId = (serviceId: string): boolean => !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
+
 const manualSetupSolution = (description: string, command = "lando setup"): DoctorSolution => ({
   kind: "manual",
   description,
@@ -183,12 +185,16 @@ export const passCheck = (spec: SubsystemSpec, context: Record<string, string>):
   solutions: [],
 });
 
+const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
+
 export const buildDegradedCheck = (
   spec: SubsystemSpec,
   baseContext: Record<string, string>,
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
   cause?: unknown,
+  refreshContext?: () => Effect.Effect<Record<string, string>, never>,
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
     const serviceId = baseContext.subsystemId ?? "unknown";
@@ -197,9 +203,11 @@ export const buildDegradedCheck = (
       const fixCommand = `${spec.name}.setup`;
       const result = yield* Effect.either(runSetup());
       if (Either.isRight(result)) {
+        const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
         return passCheck(spec, {
-          ...baseContext,
+          ...withoutPreFixState(baseContext),
           ...(baseContext.ready === "false" ? { ready: "true" } : {}),
+          ...liveContext,
           fixOutcome: "recovered",
           fixCommand,
           fixExitCode: "0",
@@ -255,7 +263,7 @@ export const buildIdCheck = (
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
 ): Effect.Effect<DoctorSubsystemCheck, never> => {
-  const ready = !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
+  const ready = isReadySubsystemId(serviceId);
   const baseContext: Record<string, string> = {
     subsystem: spec.name,
     subsystemId: serviceId,

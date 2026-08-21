@@ -40,7 +40,7 @@ export { SshService };
 
 const SSH_UNAVAILABLE_ID = "unavailable" as const;
 const SSH_UNAVAILABLE_MESSAGE =
-  "SshService requires the SSH sidecar. Run `lando setup` to install the SSH sidecar (full implementation is not available yet).";
+  "SshService is not selected. Install and select the bundled SSH agent plugin, then run `lando setup` to provision the SSH sidecar.";
 
 export const SshServiceUnavailableLive = Layer.succeed(SshService, {
   id: SSH_UNAVAILABLE_ID,
