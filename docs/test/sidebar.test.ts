@@ -93,12 +93,7 @@ describe("docs sidebar", () => {
     // Then: user how-tos stay on the path and leaked internals stay off it.
     expect(guides.collapsed).toBe(true);
     expect(directories).not.toContain("guides");
-    expect(directories).toEqual([
-      "guides/services",
-      "guides/tooling",
-      "guides/landofile",
-      "guides/config",
-    ]);
+    expect(directories).toEqual(["guides/services", "guides/tooling", "guides/landofile", "guides/config"]);
     expect(slugs).toContain("guides/tutorial/app-lifecycle");
     expect(slugs).toContain("guides/node-postgres");
     expect(slugs).toContain("guides/setup/provider-selection");
