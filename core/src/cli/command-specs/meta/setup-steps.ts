@@ -61,6 +61,12 @@ export class ShellProfileIntegrationError extends Data.TaggedError("ShellProfile
   readonly stderr: string;
 }> {}
 
+export class SetupStepFailedError extends Data.TaggedError("SetupStepFailedError")<{
+  readonly message: string;
+  readonly stepId: string;
+  readonly remediation: string;
+}> {}
+
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
   join(userDataRoot, "setup", "file-sync-deferred.json");
 
@@ -82,10 +88,14 @@ export interface SetupReadinessRecorder {
   readonly setRuntimeService: (value: SetupReadinessRuntimeService | null | undefined) => void;
 }
 
+export interface AccumulatingSetupReadinessRecorder extends SetupReadinessRecorder {
+  readonly firstFailedStep: () => SetupReadinessStep | undefined;
+}
+
 export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
-): SetupReadinessRecorder => {
+): AccumulatingSetupReadinessRecorder => {
   const readinessSteps: SetupReadinessStep[] = [];
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
   const record = (step: SetupReadinessStep): Effect.Effect<void, never> => {
@@ -114,6 +124,7 @@ export const makeSetupReadinessRecorder = (
     record,
     recordFailure,
     recordUnavailable,
+    firstFailedStep: () => readinessSteps.find((step) => step.status === "failed"),
     setRuntimeService: (value) => {
       runtimeServiceReadiness = value;
     },
