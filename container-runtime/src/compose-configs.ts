@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -68,6 +68,7 @@ export const bindSourceForComposeConfig = (mount: ComposeConfigMount): string =>
   const directory = join(tmpdir(), "lando-compose-configs");
   mkdirSync(directory, { recursive: true });
   const realized = join(directory, digest);
+  if (existsSync(realized)) chmodSync(realized, 0o600);
   copyFileSync(mount.source, realized);
   chmodSync(realized, mount.mode);
   return realized;

@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -57,7 +57,20 @@ describe("compose config mounts", () => {
     if (withMode === undefined) throw new Error("expected mode-bearing mount");
     const realized = bindSourceForComposeConfig(withMode);
     expect(realized).not.toBe(configPath);
-    const stats = Bun.file(realized);
-    expect(stats.size).toBeGreaterThan(0);
+    expect(statSync(realized).mode & 0o777).toBe(0o444);
+  });
+
+  test("Given a mode-bearing copy, when realizing again after content change, then the copy updates", async () => {
+    const mounts = composeConfigMounts(plan, service);
+    const withMode = mounts[1];
+    if (withMode === undefined) throw new Error("expected mode-bearing mount");
+    const first = bindSourceForComposeConfig(withMode);
+    expect(statSync(first).mode & 0o777).toBe(0o444);
+    writeFileSync(configPath, "memory_limit=256M\n");
+    const second = bindSourceForComposeConfig(withMode);
+    expect(second).toBe(first);
+    expect(await Bun.file(second).text()).toBe("memory_limit=256M\n");
+    expect(statSync(second).mode & 0o777).toBe(0o444);
+    writeFileSync(configPath, "memory_limit=512M\n");
   });
 });
