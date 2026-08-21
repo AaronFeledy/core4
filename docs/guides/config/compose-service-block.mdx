@@ -7,6 +7,14 @@ tags: [beta, docs, config, compose]
 
 # Compose service block
 
+Paste a Compose service definition under `services.<name>` and Lando
+normalizes the keys it understands. `extra_hosts`, published `ports`, and
+`depends_on` conditions all survive into the plan.
+
+`configs:` is in that vocabulary too. Declare the file at the top level,
+grant it onto a service with `source` / `target` / `mode`, and the bundled
+providers mount it read-only. Handy for a drop-in `php.ini` without a
+bind-mount workaround.
 
 Use the disposition and remediation details in the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) when porting additional Compose keys.
 
@@ -42,6 +50,24 @@ Use the disposition and remediation details in the [generated Compose key matrix
     </Step>
     <Step name="cleanup-remediation">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="configs-phpini" render>
+    <Step name="scaffold">
+      <UseFixture name="compose-configs-phpini" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpini\"[\\s\\S]*zz-custom\\.ini" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: compose-configs-phpini" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>

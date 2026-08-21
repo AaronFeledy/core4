@@ -147,10 +147,20 @@ const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileSh
     dir,
   );
 
+const stubComposeConfigFiles = async (dir: string, landofile: LandofileShape) => {
+  for (const definition of Object.values(landofile.configs ?? {})) {
+    if (typeof definition.file !== "string" || definition.file.length === 0) continue;
+    const configPath = join(dir, definition.file);
+    await writeFile(configPath, "", { flag: "wx" }).catch(() => undefined);
+  }
+};
+
 const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<LandofileShape> => {
   const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
   if (!Exit.isSuccess(loaded.exit)) throw new ComposeFixtureInvariantError();
-  return asComposeLandofile(loaded.exit.value, dir);
+  const landofile = asComposeLandofile(loaded.exit.value, dir);
+  await stubComposeConfigFiles(dir, landofile);
+  return landofile;
 };
 
 const serviceFieldFamily = (matrixPath: string): ComposeServiceFieldKey | undefined => {
@@ -205,6 +215,7 @@ describe("Compose conformance fixtures", () => {
         expect(Exit.isSuccess(loaded.exit)).toBe(true);
         if (!Exit.isSuccess(loaded.exit)) return;
         await materializeFixtureEnvFiles(dir, loaded.exit.value);
+        await stubComposeConfigFiles(dir, loaded.exit.value);
         const composeLandofile = asComposeLandofile(loaded.exit.value, dir);
 
         // When

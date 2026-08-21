@@ -1,16 +1,17 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 
 const composeServiceFieldCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -37,8 +38,7 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 const plan = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, composeServiceFieldCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(FileSystemLive, PluginRegistryLive)))),
     ),
   );
 
@@ -54,6 +54,10 @@ describe("Compose service field preservation", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "compose-fields",
       runtime: 4,
+      configs: {
+        "app-config": { file: "./app.conf" },
+        "site-config": { file: "./site.conf" },
+      },
       services: {
         web: {
           image: "node:lts",
@@ -78,6 +82,8 @@ describe("Compose service field preservation", () => {
     });
 
     await withTempCwd(async () => {
+      await writeFile(join(process.cwd(), "app.conf"), "app=true\n");
+      await writeFile(join(process.cwd(), "site.conf"), "site=true\n");
       // When
       const appPlan = await plan(landofile);
       const compose = appPlan.services[ServiceName.make("web")]?.extensions.compose;

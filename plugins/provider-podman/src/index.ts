@@ -341,7 +341,8 @@ export const podmanCapabilitiesForPlatform = (
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
     // See provider-lando's fail-closed Compose service-field justification block.
-    composeServiceFields: { supported: ["labels"] },
+    composeServiceFields: { supported: ["labels", "configs"] },
+    composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

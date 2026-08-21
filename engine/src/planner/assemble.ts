@@ -68,6 +68,7 @@ import {
   assertComposeServiceFieldsSupported,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
+import { loadComposeConfigFiles } from "./config-files.ts";
 import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling, compileEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
@@ -219,6 +220,12 @@ export const planApp = (
       appRoot,
       envFiles: landofile.env_file ?? [],
       fileSystem,
+    });
+    const composeConfigFileInputs = yield* loadComposeConfigFiles({
+      appRoot,
+      landofile,
+      fileSystem,
+      capabilities: providerCapabilities,
     });
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
@@ -380,6 +387,7 @@ export const planApp = (
         landofile: landofile.services ?? {},
         composition: {
           topLevelEnvFileInputs: topLevelEnvFiles.inputs,
+          composeConfigFileInputs,
           services: resolvedServices.map((entry) => ({
             name: entry.name,
             serviceType: entry.serviceType.id,

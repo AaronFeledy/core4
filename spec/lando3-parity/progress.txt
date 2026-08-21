@@ -40,6 +40,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
 - PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
 - An AppFeature with no selectors selects every service and will cycle with nginx PHP-FPM wiring; select PHP via `hasFeature` plus database `types:` when sibling discovery must not include nginx.
+- File-backed Compose `configs:` hash into the app-plan cache like `env_file`. Bundled providers declare `composeProjectFields`/`composeServiceFields` `configs` and realize grants as read-only binds; `external: true` fails closed.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -685,4 +686,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Out-of-scope finding:** `lando mysql --version` failed with `ToolingCompileError` (app command cache missing `app:mysql`) after start and `app:cache:refresh`. Suspected mysql service-type tooling contribution / command cache, not db_client.
 - **Learnings for future iterations:**
   - Pin MySQL apt GPG keys to the unexpired `RPM-GPG-KEY-mysql-YYYY` whose fingerprint matches the live InRelease signer; the 2023 file is the same key id with an expired self-signature.
+---
+
+## 2026-08-21 05:50 CDT - US-574
+- Compose `configs:` now realize as read-only file mounts on the bundled providers and TestRuntimeProvider. Top-level `file:` entries plus service short/long grants honor source, target, and mode; content changes bust the app-plan cache; missing files and `external: true` fail closed with tagged remediation.
+- php-customization and compose-service-block guides show a `configs:` php.ini drop-in instead of documenting the old bind-mount-only workaround.
+- Verification: typecheck, lint passed; relevant test spot checks passed (planner identity, provider contract, capabilities, conformance, both executable guides); CLI `app:config` accepted configs and `app:cache:refresh` planned, then failed closed after deleting the source file.
+- **Learnings for future iterations:**
+  - Hash config file bytes only when the provider declares both project and service `configs` support, otherwise the existing CapabilityError gate must fire first.
+  - Upstream Compose conformance fixtures are YAML-only; stub missing `configs.*.file` paths in the harness so preservation proofs still plan after realization hashing lands.
 ---

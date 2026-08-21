@@ -7,6 +7,8 @@ import {
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 
+import { composeConfigBindStrings } from "./compose-configs.ts";
+
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
   readonly details?: unknown;
@@ -188,7 +190,9 @@ export const bindMountStrings = (
       ? [`${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`]
       : [],
   );
-  return Array.from(new Set([...appMounts, ...binds, ...storage]));
+  return Array.from(
+    new Set([...appMounts, ...binds, ...storage, ...composeConfigBindStrings(plan, service)]),
+  );
 };
 
 export const containerPortBindings = (

@@ -17,7 +17,7 @@ import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -62,9 +62,9 @@ describe("provider-lando capabilities", () => {
     expect(linux.artifactBuild).toBe(true);
     expect(macos.artifactBuild).toBe(true);
     expect(windows.artifactBuild).toBe(true);
-    expect(linux.composeProjectFields).toBeUndefined();
-    expect(macos.composeProjectFields).toBeUndefined();
-    expect(windows.composeProjectFields).toBeUndefined();
+    expect(linux.composeProjectFields).toEqual({ supported: ["configs"] });
+    expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
+    expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
   test("keeps WSL identity while using Linux-family capabilities", async () => {

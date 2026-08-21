@@ -145,10 +145,12 @@ export const decodeProviderCapabilities = (input: unknown) =>
  *   app bridge, while aliases, static IPv4/IPv6, `link_local_ips`,
  *   `mac_address`, `priority`, `gw_priority`, and `interface_name` are
  *   unrealized.
- * - `configs` / `secrets` — content comes from top-level entries (`file`,
+ * - `secrets` — content comes from top-level entries (`file`,
  *   `content`, `environment`, or `external`). Those entries survive only in
  *   `AppPlan.extensions.compose`; they are never normalized into provider
  *   input, so there is no source content to mount.
+ * - `configs` — file-backed top-level entries plus service grants are realized
+ *   as read-only bind mounts. `external: true` fails closed at plan time.
  * - `profiles` — Compose starts a profiled service only when its profile is
  *   activated. Lando has no profile-activation surface, so declaring support
  *   would promise activation that does not exist.
@@ -176,7 +178,8 @@ export const providerLandoCapabilitiesForPlatform = (
     rootless: true,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
-    composeServiceFields: { supported: ["labels"] },
+    composeServiceFields: { supported: ["labels", "configs"] },
+    composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(family, containerTargets),
   });

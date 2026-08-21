@@ -53,7 +53,12 @@ describe("Compose service field capabilities", () => {
 
     await withTempCwd(async () => {
       // When
-      const exit = await planExit(landofile, TestRuntimeProvider.capabilities);
+      const unsupported = {
+        ...TestRuntimeProvider.capabilities,
+        composeServiceFields: { supported: ["configs"] as const },
+        composeProjectFields: { supported: ["configs"] as const },
+      };
+      const exit = await planExit(landofile, unsupported);
 
       // Then
       const failure = expectFailure(exit);
@@ -80,7 +85,11 @@ describe("Compose service field capabilities", () => {
 
     await withTempCwd(async () => {
       // When
-      const exit = await planExit(landofile, TestRuntimeProvider.capabilities);
+      const unsupported = {
+        ...TestRuntimeProvider.capabilities,
+        composeServiceFields: { supported: ["configs"] as const },
+      };
+      const exit = await planExit(landofile, unsupported);
 
       // Then
       expect(expectFailure(exit)).toMatchObject({

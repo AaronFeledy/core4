@@ -16,7 +16,7 @@ import {
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -44,9 +44,9 @@ describe("provider-podman capabilities", () => {
     expect(linux.composePreservedPaths).toBeUndefined();
     expect(macos.composePreservedPaths).toBeUndefined();
     expect(windows.composePreservedPaths).toBeUndefined();
-    expect(linux.composeProjectFields).toBeUndefined();
-    expect(macos.composeProjectFields).toBeUndefined();
-    expect(windows.composeProjectFields).toBeUndefined();
+    expect(linux.composeProjectFields).toEqual({ supported: ["configs"] });
+    expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
+    expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
   test("declares native bind-mount performance on Linux", () => {

@@ -1,17 +1,18 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { CapabilityError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 
 const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-project-field-")));
@@ -28,8 +29,7 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(FileSystemLive, PluginRegistryLive)))),
     ),
   );
 
@@ -62,6 +62,7 @@ describe("Compose project field capabilities", () => {
     } satisfies ProviderCapabilities;
 
     await withTempCwd(async () => {
+      await writeFile(join(process.cwd(), "app.conf"), "app=true\n");
       // When
       const exit = await planExit(landofile, capabilities);
 
@@ -86,7 +87,12 @@ describe("Compose project field capabilities", () => {
 
       await withTempCwd(async () => {
         // When
-        const exit = await planExit(landofile, TestRuntimeProvider.capabilities);
+        const unsupported = {
+          ...TestRuntimeProvider.capabilities,
+          composeProjectFields: { supported: [] as const },
+          composeServiceFields: { supported: ["labels"] as const },
+        };
+        const exit = await planExit(landofile, unsupported);
 
         // Then
         const failure = expectFailure(exit);
