@@ -32,6 +32,7 @@ test("buildPodmanServiceArgs stays byte-identical to the managed runtime service
     DISABLE_HC_SYSTEMD: "true",
   });
   expect(providerSpec.env?.PATH?.startsWith(paths.runtimeBinDir)).toBe(true);
+  expect(providerSpec.cwd).toBe(paths.runtimeRunDir);
   expect(providerSpec.socketPath).toBe(managedSpec.socketPath);
 });
 

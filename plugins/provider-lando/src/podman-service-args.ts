@@ -7,6 +7,7 @@ export interface PodmanServiceSpec {
   readonly args: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string>>;
   readonly socketPath: string;
+  readonly cwd?: string;
 }
 
 const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
@@ -50,5 +51,8 @@ export const buildPodmanServiceArgs = (p: {
       providerSocketPath: p.socketPath,
     }),
     socketPath: p.socketPath,
+    // conmon getcwd() fails if the daemon inherited a CLI cwd that later vanished
+    // (guide e2e temp dirs, `cd`+rm). Bind the service to the durable run root.
+    cwd: p.runRoot,
   };
 };

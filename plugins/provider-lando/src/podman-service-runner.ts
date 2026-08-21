@@ -88,6 +88,7 @@ export interface PodmanServiceLaunchOptions {
   readonly stdout: number;
   readonly stderr: number;
   readonly detached: true;
+  readonly cwd?: string;
 }
 
 export interface PodmanServiceProcess {
@@ -185,6 +186,7 @@ export const makeSystemPodmanServiceRunner = (
       try: () => {
         const logPath = podmanServiceLogPath(spec.socketPath);
         mkdirSync(dirname(logPath), { recursive: true });
+        if (spec.cwd !== undefined) mkdirSync(spec.cwd, { recursive: true });
         const logFile = openSync(logPath, "w");
         const proc = (() => {
           try {
@@ -193,6 +195,7 @@ export const makeSystemPodmanServiceRunner = (
               stdout: logFile,
               stderr: logFile,
               detached: true,
+              ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
             });
           } finally {
             closeSync(logFile);

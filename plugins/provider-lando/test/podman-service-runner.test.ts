@@ -40,6 +40,7 @@ describe("PodmanServiceRunner", () => {
       DISABLE_HC_SYSTEMD: "true",
     });
     expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
+    expect(spec.cwd).toBe("/data/runtime/run");
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -137,14 +138,17 @@ describe("PodmanServiceRunner", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
+      let launchedCwd: string | undefined;
       const runner = makeSystemPodmanServiceRunner((_argv, options) => {
         launchedEnv = options.env;
+        launchedCwd = options.cwd;
         return { pid: 4321 };
       });
+      const runRoot = join(dir, "run");
       const spec = buildPodmanServiceArgs({
         podmanBin: "/data/runtime/bin/podman",
         storageDir: "/data/runtime/storage",
-        runRoot: "/data/runtime/run",
+        runRoot,
         configDir: "/data/runtime/config",
         socketPath: join(dir, "podman.sock"),
         useSystemdRunShim: false,
@@ -157,6 +161,7 @@ describe("PodmanServiceRunner", () => {
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
       expect(launchedEnv?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
+      expect(launchedCwd).toBe(runRoot);
       if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
         expect(launchedEnv?.PATH).toContain(process.env.PATH);
       }
