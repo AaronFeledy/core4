@@ -48,6 +48,7 @@ const releaseAssetName = (platform: { readonly id: string }): string => releaseB
 
 // Existing update clients decode with onExcessProperty: "error". Keep the
 // published 5-key schema; windows-arm64 is a compile target only.
+// `lando update` on win32-arm64 still maps to the windows-x64 binary key.
 const UPDATE_MANIFEST_PLATFORMS = CI_PLATFORMS.filter((platform) => platform.id !== "windows-arm64");
 
 const releaseUrl = (repository: string, tag: string, artifact: string): string =>

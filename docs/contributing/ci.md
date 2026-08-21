@@ -81,7 +81,7 @@ CI builds and smokes one binary per required PR platform:
 - `build-linux-arm64` on `ubuntu-24.04-arm` → `lando-linux-arm64`
 - `build-linux-x64` on `ubuntu-24.04` → `lando-linux-x64`
 - `build-windows-x64` on `windows-2022` → `lando-windows-x64`
-- `build-windows-arm64` on `windows-11-arm` → `lando-windows-arm64`
+- `build-windows-arm64` on `windows-11-arm` → `lando-windows-arm64` (`lando update` on win-arm64 still maps to the published `windows-x64` update-manifest key; the 5-key schema is unchanged)
 
 ```bash
 bun run build
