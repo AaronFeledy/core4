@@ -9,10 +9,17 @@ import {
   type ServiceConfig,
   ServiceName,
 } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  AppFeatureContext,
+  AppFeatureDefinition,
+  AppFeatureServiceView,
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { PHP_FPM_PORT } from "./php-via.ts";
+import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
@@ -41,16 +48,7 @@ const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
 
 export const NGINX_FEATURE_ID = "service-lando.nginx" as const;
 export const NGINX_FEATURE_PRIORITY = 600;
-
-const fpmPortFor = (service: ServiceConfig): number => {
-  const raw = service.environment?.PHP_FPM_PORT;
-  if (raw === undefined) return PHP_FPM_PORT;
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`PHP_FPM_PORT must be an integer 1-65535 (got ${JSON.stringify(raw)}).`);
-  }
-  return port;
-};
+export const NGINX_PHP_FPM_WIRE_FEATURE_ID = "service-lando.nginx.php-fpm.wire" as const;
 
 const phpFastcgiCommand = (
   backend: string,
@@ -125,7 +123,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
       required: true,
     });
     if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: fpmPortFor(service) }));
+      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }));
     }
   }
 
@@ -147,6 +145,37 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
           cause,
         }),
     }),
+};
+
+const isPhpFpm = (view: AppFeatureServiceView): boolean =>
+  view.serviceType.startsWith("php:") && view.normalizedConfig.via === "fpm";
+
+const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
+  const fpmPortByService = new Map<string, number>();
+  for (const view of ctx.selected) {
+    if (!isPhpFpm(view)) continue;
+    fpmPortByService.set(view.serviceName, phpListenPort("fpm", view.normalizedConfig.port));
+  }
+
+  ctx.forEachSelected((mutator) => {
+    if (mutator.service.serviceType !== "nginx") return;
+    const service = mutator.service.normalizedConfig;
+    if (service.command !== undefined || service.entrypoint !== undefined) return;
+    const backend = service.backend?.trim() ?? "";
+    if (backend.length === 0) return;
+    const fpm = fpmPortByService.get(backend);
+    if (fpm === undefined) return;
+    const listen = service.port ?? DEFAULT_PORT;
+    const webroot = service.webroot ?? APP_MOUNT_TARGET;
+    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }));
+  });
+};
+
+export const nginxPhpFpmWireFeature: AppFeatureDefinition = {
+  id: NGINX_PHP_FPM_WIRE_FEATURE_ID,
+  priority: 100,
+  activatedBy: { services: { type: "nginx" } },
+  apply: (ctx) => Effect.sync(() => applyNginxPhpFpmWire(ctx)),
 };
 
 const normalizedService = (service: ServiceConfig): ServiceConfig => ({
