@@ -16,15 +16,16 @@ describe("alpha install and bug report docs", () => {
     expect(docs).toContain("dev prerelease");
     expect(docs).toContain("SHA256SUMS");
     expect(docs).toContain("sha256sum -c SHA256SUMS");
-    expect(docs).toContain("npm install @lando/core@dev");
-    expect(docs).toContain("Linux/macOS");
+    expect(docs).toContain("Build from source");
     expect(docs).toContain("Windows");
     expect(docs).toContain("deferred");
     expect(docs).toContain("macOS");
-    expect(docs).toContain("Beta");
+    expect(docs).toContain("deferred");
     expect(docs).toContain("lando doctor");
     expect(docs).toContain("logsDir");
     expect(docs).toContain("cacheDir");
+    expect(docs).not.toContain("npm install @lando/core@dev");
+    expect(docs).not.toContain("npx lando");
   });
 
   test("links alpha install docs from README", async () => {

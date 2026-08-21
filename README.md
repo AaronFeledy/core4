@@ -102,7 +102,7 @@ Development follows this phase ladder:
 **Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
 
 - How to download the dev prerelease binary (Linux x64)
-- How to install via npm (Linux/macOS)
+- How to build from source
 - Running `lando setup` and `lando doctor` for first-time configuration
 - Where to file bug reports with the right diagnostic files
 

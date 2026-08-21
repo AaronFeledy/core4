@@ -117,8 +117,8 @@ describe("ci runbook", () => {
     const coreTypecheckIndex = runbook.indexOf("bun run --filter='@lando/core' typecheck");
     expect(landofileBuildIndex).toBeGreaterThan(0);
     expect(coreTypecheckIndex).toBeGreaterThan(landofileBuildIndex);
-    expect(runbook).toContain("npm install @lando/core@dev");
     expect(runbook).toContain("`latest` dist-tag is unchanged");
+    expect(runbook).not.toContain("npm install @lando/core@dev");
     expect(runbook).toContain(
       "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64",
     );
