@@ -719,3 +719,48 @@ describe("HttpClientLive lifecycle events", () => {
     expect(JSON.stringify(error)).not.toContain(secret);
   });
 });
+
+describe("HttpClientLive Bun 1.4 fetch failures", () => {
+  test("maps TypeError network failures to HttpRequestError", async () => {
+    const failFetch = (() => Promise.reject(new TypeError("fetch failed"))) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) => client.request({ url: "https://evt.test/down" })).pipe(
+          Effect.provide(makeHttpClientLive(failFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly _tag: string; readonly message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("fetch failed");
+  });
+
+  test("aborts the in-flight fetch when the request scope closes", async () => {
+    let signal: AbortSignal | undefined;
+    const fetchImpl = ((_input: unknown, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull() {
+              /* keep the body open until the scope finalizer aborts */
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) =>
+          client.stream({ url: "https://evt.test/abort-on-close" }),
+        ).pipe(Effect.provide(makeHttpClientLive(fetchImpl))),
+      ),
+    );
+
+    expect(signal?.aborted).toBe(true);
+  });
+});
