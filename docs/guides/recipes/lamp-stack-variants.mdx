@@ -114,7 +114,7 @@ services:
 
 ## Bind-mount PHP and database config
 
-There is no recipe shorthand for a custom `php.ini`. The default `lando` provider cannot realize Compose `configs:`. Bind-mount host files with `volumes:` instead.
+There is no recipe shorthand for a custom `php.ini`. Compose `configs:` grants are realized as read-only binds. Bind-mount host files with `volumes:` remains a valid option.
 
 ```yaml
 services:

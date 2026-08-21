@@ -40,7 +40,7 @@ describe("Compose compatibility matrix", () => {
       .flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
       .filter((value) => value.split(",").length >= 3);
 
-    expect(guide).toContain("docs/reference/compose-key-matrix.mdx");
+    expect(guide).toMatch(/\[[^\]]+\]\(\.\.\/\.\.\/reference\/compose-key-matrix\.mdx\)/);
     expect(guide).not.toContain(COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY);
     expect(enumeratingValues).toEqual([]);
 

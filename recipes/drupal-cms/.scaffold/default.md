@@ -17,7 +17,7 @@ lando drupal-cms-scaffold
 lando drupal-cms-install
 ```
 
-`lando destroy -y` removes the app containers and volumes.
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
 ## 1. scaffold
 
