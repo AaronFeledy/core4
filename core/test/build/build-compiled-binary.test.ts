@@ -90,6 +90,7 @@ describe("compiled binary OpenTUI native pruning", () => {
         __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(opentuiNativeCatalog.targetToNativeRoot["linux-x64"]),
       },
     });
+    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando-linux-x64" });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
   });

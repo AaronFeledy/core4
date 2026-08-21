@@ -1,0 +1,14 @@
+services:
+  web:
+    image: nginx
+    restart: on
+    tty: yes
+    stdin_open: no
+    privileged: off
+    labels:
+      y: keep-as-string
+      Y: also-a-string
+on:
+  condition: service_started
+yes:
+  enabled: true

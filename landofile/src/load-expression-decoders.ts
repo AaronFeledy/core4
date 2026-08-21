@@ -17,6 +17,48 @@ const requireRef = (args: ReadonlyArray<unknown>, decoder: string, sourcePath: s
   });
 };
 
+const TEMPORAL_TAG = /^\[object Temporal\./;
+
+const isTemporalLike = (value: unknown): value is { readonly toJSON: () => unknown } =>
+  typeof value === "object" &&
+  value !== null &&
+  "toJSON" in value &&
+  typeof value.toJSON === "function" &&
+  TEMPORAL_TAG.test(Object.prototype.toString.call(value));
+
+/** Bun 1.4 TOML date/time literals are Temporal objects; keep expression values JSON-like. */
+const toJsonLike = (value: unknown): unknown => {
+  if (isTemporalLike(value)) {
+    const json = value.toJSON();
+    return typeof json === "string" ? json : String(value);
+  }
+  if (Array.isArray(value)) return value.map(toJsonLike);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, toJsonLike(entry)]));
+  }
+  return value;
+};
+
+const decoderFailure = (decoder: string, sourcePath: string, cause: unknown): LandofileExpressionEvalError =>
+  new LandofileExpressionEvalError({
+    message:
+      cause instanceof Error && cause.message.length > 0
+        ? `Landofile ${decoder} decoder failed: ${cause.message}`
+        : `Landofile ${decoder} decoder failed.`,
+    filePath: sourcePath,
+    remediation: `Fix the ${decoder} source file or use a different Landofile decoder.`,
+    cause,
+  });
+
+const parseDecoderValue = (session: LandofileFileSession, decoder: string, parse: () => unknown): unknown => {
+  try {
+    return parse();
+  } catch (cause) {
+    if (cause instanceof LandofileExpressionEvalError) throw cause;
+    throw decoderFailure(decoder, session.source.sourcePath, cause);
+  }
+};
+
 const decode = (session: LandofileFileSession, ref: FileRef, decoder: string): unknown => {
   switch (decoder) {
     case "text":
@@ -24,14 +66,14 @@ const decode = (session: LandofileFileSession, ref: FileRef, decoder: string): u
     case "bytes":
       return session.bytes(ref);
     case "json": {
-      const value: unknown = JSON.parse(session.text(ref));
+      const value: unknown = parseDecoderValue(session, decoder, () => JSON.parse(session.text(ref)));
       return value;
     }
     case "yaml":
     case "fromYaml":
-      return Bun.YAML.parse(session.text(ref));
+      return parseDecoderValue(session, decoder, () => Bun.YAML.parse(session.text(ref)));
     case "fromToml":
-      return Bun.TOML.parse(session.text(ref));
+      return toJsonLike(parseDecoderValue(session, decoder, () => Bun.TOML.parse(session.text(ref))));
     default:
       throw new LandofileExpressionEvalError({
         message: `Unsupported Landofile load decoder ${decoder}.`,

@@ -88,6 +88,10 @@ export const buildCompiledBinary = async (
     target: "bun",
     format: "esm",
     splitting: true,
+    // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json
+    // (CompileBuildOptions.autoloadTsconfig / autoloadPackageJson default false).
+    // Keep version and OpenTUI metadata on `define`; enable autoload only if
+    // relocated-binary smoke fails with a missing package/path diagnostic.
     compile: { target: bunTargetFor(platform), outfile: options.outfile },
     bytecode: true,
     minify: true,
