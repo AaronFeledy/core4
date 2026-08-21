@@ -24,6 +24,7 @@
     "forceConsistentCasingInFileNames": true,
     "useDefineForClassFields": true,
     "noFallthroughCasesInSwitch": true,
+    // @types/bun@1.4 still clashes with @types/node on stream/web and other globals.
     "skipLibCheck": true
   }
 }

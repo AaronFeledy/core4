@@ -16,13 +16,14 @@ Every platform cell runs the fork-safe portable static gates:
 ```bash
 bun run codegen:check
 bun run lint
+bun run audit
 bun run check:boundaries
 bun run check:telemetry-inventory
 bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
 
 Run typecheck separately:
 
@@ -97,6 +98,25 @@ bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/l
 ```
 
 The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+
+## Local Bun profiling
+
+Keep these off the default PR gate. Use them locally when hunting cold-start or compile-graph regressions against the `core/test/cli/fast-path.test.ts` budget.
+
+```bash
+bun --cpu-prof-md ./core/bin/lando.ts --version
+bun --heap-prof-md ./core/bin/lando.ts --version
+BUN_CPU_PROFILE=1 bun ./core/bin/lando.ts --version
+```
+
+The compiled-binary wrapper can also emit Bun's markdown module graph without changing default compile flags:
+
+```bash
+LANDO_COMPILE_METAFILE=1 bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external
+bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external --metafile-md ./dist/lando.metafile.md
+```
+
+Do not commit profile dumps or `*.metafile.md` artifacts.
 
 ## Tooling hot-path perf budget
 
@@ -292,4 +312,12 @@ bun run build
 ./core/dist/lando --help
 ```
 
-`BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated` is useful for local/CI cache experiments, but keep release builds on `bun install --frozen-lockfile` until Bun's global store is no longer experimental.
+The default developer and CI install remains hoisted `bun install --frozen-lockfile`. Do not commit `linker = "isolated"` and do not make the global store the local default. `bun run dedupe` and `bun run prune` are maintainer recipes; prune is destructive and must not run in CI. `bun dedupe` is not a no-op on the current lockfile, so it is not scheduled.
+
+A non-blocking linux-x64 experiment job (`bun-install-isolated-experiment`, `continue-on-error: true`) runs:
+
+```bash
+BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+```
+
+That command succeeds against this lockfile without rewriting it. The hoisted frozen install stays the merge gate until the isolated global store is no longer experimental.

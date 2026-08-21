@@ -51,3 +51,10 @@ pnpm-lock.yaml
 # Sisyphus agent workspace (project-local)
 .sisyphus/
 .omo/
+
+# Local Bun profiling / compile-graph dumps
+*.metafile.md
+*.cpuprofile
+*.heapprofile
+cpu-profile.md
+heap-profile.md

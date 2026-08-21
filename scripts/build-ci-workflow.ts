@@ -92,6 +92,9 @@ ${setupBunSteps}
       - name: Lint
         run: bun run lint
 
+      - name: Audit dependencies
+        run: bun run audit
+
       - name: Boundary gates
         run: bun run check:boundaries
 
@@ -805,6 +808,26 @@ ${renderLinuxX64MatrixGate(
 )}`;
 };
 
+const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Isolated global-store install experiment
+        run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+
+${timingNoticeStep("bun-install-isolated-experiment", 10)}
+`;
+
 export const renderCiWorkflow = (): string => {
   const buildJobs = CI_PLATFORMS.map(renderBuildJob).join("\n");
   const perfBudgetJob = renderPerfBudgetJob();
@@ -831,6 +854,7 @@ permissions:
 
 jobs:
 ${renderStaticChecks()}
+${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}

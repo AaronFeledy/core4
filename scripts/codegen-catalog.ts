@@ -9,6 +9,7 @@ export type CodegenCatalogEntry = {
   readonly ownership: CodegenOwnership;
   readonly script: string;
   readonly workspace: CodegenWorkspace;
+  readonly dependsOn?: readonly string[];
 };
 
 export type CodegenCommand = {
@@ -76,30 +77,43 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-mcp-allowlist.ts",
     workspace: "repo",
+    dependsOn: ["setup-plugin-flags"],
   },
   {
     id: "host-proxy-allowlist",
     ownership: "derived",
     script: "build-host-proxy-allowlist.ts",
     workspace: "repo",
+    dependsOn: ["setup-plugin-flags"],
   },
   {
     id: "command-registry-manifest",
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
+    dependsOn: ["setup-plugin-flags"],
   },
   {
     id: "schema-snapshot",
     ownership: "derived",
     script: "build-schema-snapshot.ts",
     workspace: "repo",
+    dependsOn: [
+      "bundled-plugins",
+      "bundled-recipes",
+      "bootstrap-layers",
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "host-proxy-allowlist",
+      "command-registry-manifest",
+    ],
   },
   {
     id: "command-reference",
     ownership: "derived",
     script: "build-command-reference.ts",
     workspace: "repo",
+    dependsOn: ["command-registry-manifest"],
   },
   {
     id: "compose-key-matrix",
@@ -174,3 +188,30 @@ export const resolveCodegenCommand = (entry: CodegenCatalogEntry): CodegenComman
   cmd: [process.execPath, "run", resolve(SCRIPT_DIRECTORY, entry.script)],
   cwd: WORKSPACE_ROOTS[entry.workspace],
 });
+
+export const groupCodegenWaves = (
+  catalog: readonly CodegenCatalogEntry[] = CODEGEN_CATALOG,
+): readonly (readonly CodegenCatalogEntry[])[] => {
+  const knownIds = new Set(catalog.map((entry) => entry.id));
+  const remaining = new Set(knownIds);
+  const waves: CodegenCatalogEntry[][] = [];
+
+  while (remaining.size > 0) {
+    const ready = catalog.filter((entry) => {
+      if (!remaining.has(entry.id)) return false;
+      return (entry.dependsOn ?? []).every((dependency) => {
+        if (!knownIds.has(dependency)) {
+          throw new Error(`Unknown codegen dependency ${dependency} for ${entry.id}.`);
+        }
+        return !remaining.has(dependency);
+      });
+    });
+    if (ready.length === 0) {
+      throw new Error(`Unresolvable codegen dependencies: ${[...remaining].join(", ")}`);
+    }
+    waves.push(ready);
+    for (const entry of ready) remaining.delete(entry.id);
+  }
+
+  return waves;
+};

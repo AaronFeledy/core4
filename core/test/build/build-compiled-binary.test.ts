@@ -200,4 +200,21 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(stderr).toContain("Refusing to stamp compiled binary with placeholder version 0.0.0.");
     expect(stderr).not.toContain("Uncaught");
   });
+
+  test("CLI accepts --metafile-md and LANDO_COMPILE_METAFILE without changing default compile flags", () => {
+    // Given / When
+    const flagged = parseCompiledBinaryArgs(
+      ["--target=linux-x64", "--outfile=./dist/lando", "--metafile-md", "./dist/lando.metafile.md"],
+      {},
+    );
+    const fromEnv = parseCompiledBinaryArgs(["--target=linux-x64", "--outfile=./dist/lando"], {
+      LANDO_COMPILE_METAFILE: "1",
+    });
+    const defaults = parseCompiledBinaryArgs(["--target=linux-x64", "--outfile=./dist/lando"], {});
+
+    // Then: the debug flag is opt-in and does not appear on the default compile path.
+    expect(flagged.metafileMd).toBe("./dist/lando.metafile.md");
+    expect(fromEnv.metafileMd).toBe("./dist/lando.metafile.md");
+    expect(defaults.metafileMd).toBeUndefined();
+  });
 });

@@ -7,6 +7,7 @@ type CatalogEntry = {
   readonly ownership: "committed-pin" | "committed-workflow" | "derived";
   readonly script: string;
   readonly workspace: "core" | "repo";
+  readonly dependsOn?: readonly string[];
 };
 
 type CodegenCommand = {
@@ -17,6 +18,7 @@ type CodegenCommand = {
 type CodegenCatalogModule = {
   readonly CODEGEN_CATALOG: readonly CatalogEntry[];
   readonly resolveCodegenCommand: (entry: CatalogEntry) => CodegenCommand;
+  readonly groupCodegenWaves: (catalog?: readonly CatalogEntry[]) => readonly (readonly CatalogEntry[])[];
 };
 
 const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule => {
@@ -25,8 +27,10 @@ const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule =
     value === null ||
     !("CODEGEN_CATALOG" in value) ||
     !("resolveCodegenCommand" in value) ||
+    !("groupCodegenWaves" in value) ||
     !Array.isArray(value.CODEGEN_CATALOG) ||
-    typeof value.resolveCodegenCommand !== "function"
+    typeof value.resolveCodegenCommand !== "function" ||
+    typeof value.groupCodegenWaves !== "function"
   ) {
     return false;
   }
@@ -44,8 +48,12 @@ const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule =
     }
 
     return (
-      Object.keys(entry).sort().join(",") === "id,ownership,script,workspace" &&
+      ["dependsOn,id,ownership,script,workspace", "id,ownership,script,workspace"].includes(
+        Object.keys(entry).sort().join(","),
+      ) &&
       typeof entry.id === "string" &&
+      (!("dependsOn" in entry) ||
+        (Array.isArray(entry.dependsOn) && entry.dependsOn.every((id: unknown) => typeof id === "string"))) &&
       (entry.ownership === "committed-pin" ||
         entry.ownership === "committed-workflow" ||
         entry.ownership === "derived") &&
@@ -62,7 +70,7 @@ const importedCatalogModule: unknown = await import(catalogModuleUrl);
 if (!isCodegenCatalogModule(importedCatalogModule)) {
   throw new TypeError("codegen catalog module does not satisfy its runtime contract");
 }
-const { CODEGEN_CATALOG, resolveCodegenCommand } = importedCatalogModule;
+const { CODEGEN_CATALOG, groupCodegenWaves, resolveCodegenCommand } = importedCatalogModule;
 const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
@@ -74,11 +82,31 @@ const expectedCatalogRows = [
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
   ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
-  ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo"],
-  ["host-proxy-allowlist", "derived", "build-host-proxy-allowlist.ts", "repo"],
-  ["command-registry-manifest", "derived", "build-command-registry-manifest.ts", "core"],
-  ["schema-snapshot", "derived", "build-schema-snapshot.ts", "repo"],
-  ["command-reference", "derived", "build-command-reference.ts", "repo"],
+  ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
+  ["host-proxy-allowlist", "derived", "build-host-proxy-allowlist.ts", "repo", ["setup-plugin-flags"]],
+  [
+    "command-registry-manifest",
+    "derived",
+    "build-command-registry-manifest.ts",
+    "core",
+    ["setup-plugin-flags"],
+  ],
+  [
+    "schema-snapshot",
+    "derived",
+    "build-schema-snapshot.ts",
+    "repo",
+    [
+      "bundled-plugins",
+      "bundled-recipes",
+      "bootstrap-layers",
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "host-proxy-allowlist",
+      "command-registry-manifest",
+    ],
+  ],
+  ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
@@ -111,21 +139,23 @@ describe("codegen catalog", () => {
 
   test("preserves the exact generator order, commands, and workspaces", () => {
     // Given
-    const expectedKeys = ["id", "ownership", "script", "workspace"] as const;
     const expectedWorkspaceRoots = {
       core: resolve(repositoryRoot, "core"),
       repo: repositoryRoot,
     } as const;
-    const expectedCatalog = expectedCatalogRows.map(([id, ownership, script, workspace]) => ({
-      id,
-      ownership,
-      script,
-      workspace,
-    }));
-    const expectedCommands = expectedCatalogRows.map(([, , script, workspace]) => ({
-      cmd: [process.execPath, "run", resolve(repositoryRoot, "scripts", script)],
-      cwd: expectedWorkspaceRoots[workspace],
-    }));
+    const expectedCatalog = expectedCatalogRows.map((row) => {
+      const [id, ownership, script, workspace, dependsOn] = row;
+      return dependsOn === undefined
+        ? { id, ownership, script, workspace }
+        : { id, ownership, script, workspace, dependsOn };
+    });
+    const expectedCommands = expectedCatalogRows.map((row) => {
+      const [, , script, workspace] = row;
+      return {
+        cmd: [process.execPath, "run", resolve(repositoryRoot, "scripts", script)],
+        cwd: expectedWorkspaceRoots[workspace],
+      };
+    });
 
     // When
     const commands = catalog.map((entry) => resolveCodegenCommand(entry));
@@ -133,7 +163,7 @@ describe("codegen catalog", () => {
     // Then
     expect(catalog).toEqual(expectedCatalog);
     expect(catalog.map((entry) => Object.keys(entry).sort())).toEqual(
-      catalog.map(() => [...expectedKeys].sort()),
+      expectedCatalog.map((entry) => Object.keys(entry).sort()),
     );
     expect(commands).toEqual(expectedCommands);
   });
@@ -200,6 +230,65 @@ describe("codegen catalog", () => {
     expect(catalog.filter((entry) => entry.workspace === "core").map((entry) => entry.id)).toEqual([
       "command-registry-manifest",
     ]);
+  });
+
+  test("runs independent generators together and waits for explicit dependencies", () => {
+    // Given / When
+    const waves = groupCodegenWaves(catalog);
+    const waveOf = (id: string): number => {
+      const index = waves.findIndex((wave) => wave.some((entry) => entry.id === id));
+      if (index === -1) throw new Error(`Missing catalog id ${id}`);
+      return index;
+    };
+
+    // Then: later consumers wait for their inputs, and independent derived work shares a wave.
+    expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
+    expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
+    expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));
+    expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("mcp-allowlist"));
+    expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("host-proxy-allowlist"));
+    expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
+    expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
+      new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
+    );
+    expect(new Set(waves.flat().map((entry) => entry.id))).toEqual(new Set(catalog.map((entry) => entry.id)));
+    expect(
+      waves.every((wave) => {
+        const indexes = wave.map((entry) => catalog.findIndex((candidate) => candidate.id === entry.id));
+        return indexes.every((index, position) => position === 0 || index > (indexes[position - 1] ?? -1));
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects unknown or cyclic codegen dependencies", () => {
+    // Given
+    const unknownDependency: CatalogEntry = {
+      id: "broken",
+      ownership: "derived",
+      script: "missing.ts",
+      workspace: "repo",
+      dependsOn: ["does-not-exist"],
+    };
+    const cyclic: readonly CatalogEntry[] = [
+      {
+        id: "left",
+        ownership: "derived",
+        script: "left.ts",
+        workspace: "repo",
+        dependsOn: ["right"],
+      },
+      {
+        id: "right",
+        ownership: "derived",
+        script: "right.ts",
+        workspace: "repo",
+        dependsOn: ["left"],
+      },
+    ];
+
+    // When / Then
+    expect(() => groupCodegenWaves([unknownDependency])).toThrow(/Unknown codegen dependency/);
+    expect(() => groupCodegenWaves(cyclic)).toThrow(/Unresolvable codegen dependencies/);
   });
 
   test("imports without output or generator side effects", async () => {
