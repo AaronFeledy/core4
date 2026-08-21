@@ -3,10 +3,12 @@
  *
  * A system runtime (`docker`/`podman`) requires an existing host install, so
  * `systemRuntimeUnavailableError` is the remediation-bearing failure when it is
- * absent. `maybeSelectSetupProvider` only prompts when the provider was the
- * capability default and the run is interactive; otherwise it honors the
- * resolved selection. `setupProviderPlan` is the minimal plan used to drive
- * provider selection from the registry.
+ * absent. Remediation tells the user to install that runtime and rerun with the
+ * same `--provider`, or to use `--provider=lando`; it never claims that plain
+ * `lando setup` will install Docker or Podman. `maybeSelectSetupProvider` only
+ * prompts when the provider was the capability default and the run is
+ * interactive; otherwise it honors the resolved selection. `setupProviderPlan`
+ * is the minimal plan used to drive provider selection from the registry.
  */
 import { DateTime, Effect } from "effect";
 
@@ -28,7 +30,7 @@ export const systemRuntimeUnavailableError = (providerId: string): ProviderUnava
     providerId,
     operation: "setup",
     message: `\`lando setup --provider=${providerId}\` requires an existing ${runtimeName} installation, but ${runtimeName} was not detected on this host.`,
-    remediation: `Install ${runtimeName} and make sure it is running, then rerun \`lando setup --provider=${providerId}\`. To use the bundled Lando-managed runtime instead, run \`lando setup\` (the default) or \`lando setup --provider=lando\`.`,
+    remediation: `Install ${runtimeName} and make sure it is running, then rerun \`lando setup --provider=${providerId}\`. To use the bundled Lando-managed runtime instead, run \`lando setup --provider=lando\`.`,
   });
 };
 

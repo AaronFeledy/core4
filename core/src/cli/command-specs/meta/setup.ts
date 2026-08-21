@@ -1,9 +1,10 @@
 /**
  * `lando meta:setup` prepares the host provider, CA, proxy, and shell integration.
  *
- * Provider selection uses `flag > Landofile > env > config > capability-default`.
- * This command skips Landofile loading, so the effective inputs are
- * `--provider > LANDO_PROVIDER > config > default`.
+ * Setup ignores leftover `defaultProviderId` in user config so a last-used
+ * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
+ * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
+ * App commands may still honor leftover config as a last-used hint.
  */
 import { Effect } from "effect";
 
@@ -122,7 +123,6 @@ export const setupSpec: LandoCommandSpec<
       const resolution = resolveProviderSelection({
         ...(flag === undefined ? {} : { flag }),
         ...(env === undefined ? {} : { env }),
-        ...(config === undefined ? {} : { config }),
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       });
 
@@ -151,8 +151,10 @@ export const setupSpec: LandoCommandSpec<
         Effect.tapError((cause) => recorder.recordFailure("network", cause)),
       );
 
-      // Track if provider selection came from --provider flag to persist it
-      const shouldPersistProvider = flag !== undefined && flag !== config;
+      // Persist --provider=lando as a last-used hint for app commands. Never persist
+      // docker/podman: leftover system-runtime defaults must not poison a later setup.
+      const shouldPersistProvider =
+        flag !== undefined && flag !== config && !(selectedProviderId in SYSTEM_RUNTIME_PROVIDERS);
 
       if (!inputBooleanFlag(input, "skip-provider")) {
         if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {

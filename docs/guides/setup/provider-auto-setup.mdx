@@ -10,13 +10,15 @@ tags: [beta, docs, setup, providers]
 
 `lando setup` provisions the container runtime provider before app lifecycle commands need one. Run it
 yourself; Lando does not provision a provider in the background when you first run `lando start`. When
-no flag, environment variable, or config selects a provider, the default is the bundled managed provider
-(`lando setup --provider=lando`), which does not require an existing Docker or Podman install. Choosing
-`--provider=docker` or `--provider=podman` instead requires that system runtime to already be present;
-setup fails with remediation, rather than installing one for you, when it is missing.
+you don't pass `--provider` and `LANDO_PROVIDER` is unset, setup uses the bundled managed provider
+(`lando`), even if leftover `defaultProviderId` in user config says `docker` or `podman`. That default
+does not require an existing Docker or Podman install. Choosing `--provider=docker` or
+`--provider=podman` instead requires that system runtime to already be present; setup fails with
+remediation, rather than installing one for you, when it is missing.
 
 For scripts and CI, pass `--no-interactive` to skip prompts while keeping the same guided defaults, or
-combine `--yes` with an explicit `--provider` for a fully deterministic invocation. See the
+combine `--yes` with an explicit `--provider` for a fully deterministic invocation. `--yes` consents to
+confirmation and privileged host changes; leftover config still does not pick Docker. See the
 [corporate network trust guide](../config/corporate-network-trust.mdx) for CA and proxy trust setup, and
 run `lando doctor` afterward to confirm setup readiness, as described in the
 [doctor walkthrough](../subsystems/doctor-walkthrough.mdx).
