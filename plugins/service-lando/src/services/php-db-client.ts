@@ -43,8 +43,8 @@ export const PHP_MONGOSH_RELEASE = {
 } as const;
 
 const MYSQL_KEY = {
-  url: "https://repo.mysql.com/RPM-GPG-KEY-mysql-2023",
-  fingerprint: "859BE8D7C586F538430B19C2467B942D3A79BD29",
+  url: "https://repo.mysql.com/RPM-GPG-KEY-mysql-2025",
+  fingerprint: "BCA43417C3B485DD128EC6D4B7B3B788A8D3785C",
 } as const;
 const MARIADB_KEY = {
   url: "https://supplychain.mariadb.com/mariadb-keyring-2019.gpg",
