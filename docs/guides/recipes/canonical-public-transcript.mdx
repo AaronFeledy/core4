@@ -25,6 +25,7 @@ down.
     <Step name="validate-config">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Inspect output />
     </Step>
     <Step name="cleanup-generated-app">
       <Cleanup />
