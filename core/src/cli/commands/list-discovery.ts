@@ -3,6 +3,7 @@ import { access, readFile, readdir } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
 
+import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
 
 export interface AppsListEntry {
@@ -197,6 +198,12 @@ const listPluginStateRoots = async (pluginsDir: string): Promise<string[]> => {
 export const readAppliedPlansFromUserData = async (userDataRoot: string): Promise<AppsListEntry[]> => {
   const paths = makeLandoPaths({ userDataRoot });
   const apps: AppsListEntry[] = [];
+  // Plugin applied-plans are authoritative; leftover providers/*/apps is fallback only.
+  for (const pluginRoot of await listPluginStateRoots(paths.pluginsDir)) {
+    const providerId = providerIdFromPluginRoot(pluginRoot);
+    apps.push(...(await readJsonPlanFiles(join(pluginRoot, APPLIED_PLANS_NAMESPACE), providerId)));
+    apps.push(...(await readJsonPlanRecord(join(pluginRoot, APPLIED_PLANS_RECORD), providerId)));
+  }
   for (const providerName of LEGACY_PROVIDER_DIRS) {
     apps.push(
       ...(await readJsonPlanFiles(
@@ -204,11 +211,6 @@ export const readAppliedPlansFromUserData = async (userDataRoot: string): Promis
         providerName.replace(/^provider-/u, ""),
       )),
     );
-  }
-  for (const pluginRoot of await listPluginStateRoots(paths.pluginsDir)) {
-    const providerId = providerIdFromPluginRoot(pluginRoot);
-    apps.push(...(await readJsonPlanFiles(join(pluginRoot, APPLIED_PLANS_NAMESPACE), providerId)));
-    apps.push(...(await readJsonPlanRecord(join(pluginRoot, APPLIED_PLANS_RECORD), providerId)));
   }
   return apps;
 };
@@ -251,19 +253,43 @@ export const appsFromContainerList = (
   }));
 };
 
-export const containerSocketCandidates = (userDataRoot: string): string[] => {
+// Matches provider-lando: win32 managed machines listen on this pipe, not data-root podman.sock.
+const WINDOWS_MANAGED_MACHINE_PIPE = "\\\\.\\pipe\\podman-lando";
+
+export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
+
+export const isNamedPipeSocketPath = (socketPath: string): boolean =>
+  isNpipeDockerHost(socketPath) || socketPath.startsWith("\\\\.\\pipe\\");
+
+const httpSocketPath = (socketPath: string): string =>
+  isNpipeDockerHost(socketPath) ? normalizeNamedPipePath(socketPath) : socketPath;
+
+export interface ContainerSocketCandidateOptions {
+  readonly platform?: NodeJS.Platform;
+}
+
+export const containerSocketCandidates = (
+  userDataRoot: string,
+  options: ContainerSocketCandidateOptions = {},
+): string[] => {
   const paths = makeLandoPaths({ userDataRoot });
-  // Managed Podman first. Host /var/run/docker.sock is never a default source.
-  const candidates = [paths.providerSocketPath];
+  const platform = options.platform ?? process.platform;
+  // Managed Podman first. Host docker.sock / npipe://./pipe/docker_engine are never defaults.
+  const managedSocket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
+  const candidates = [managedSocket];
   const dockerHost = process.env.DOCKER_HOST;
   if (dockerHost !== undefined && dockerHost !== "") {
     if (dockerHost.startsWith("unix://")) candidates.push(dockerHost.slice("unix://".length));
+    else if (isNpipeDockerHost(dockerHost)) candidates.push(normalizeNamedPipePath(dockerHost));
+    else if (dockerHost.startsWith("\\\\.\\pipe\\")) candidates.push(dockerHost);
     else if (dockerHost.startsWith("/")) candidates.push(dockerHost);
   }
-  candidates.push("/run/podman/podman.sock");
-  const runtimeDir = process.env.XDG_RUNTIME_DIR;
-  if (runtimeDir !== undefined && runtimeDir !== "") {
-    candidates.push(join(runtimeDir, "podman", "podman.sock"));
+  if (platform !== "win32") {
+    candidates.push("/run/podman/podman.sock");
+    const runtimeDir = process.env.XDG_RUNTIME_DIR;
+    if (runtimeDir !== undefined && runtimeDir !== "") {
+      candidates.push(join(runtimeDir, "podman", "podman.sock"));
+    }
   }
   return [...new Set(candidates)];
 };
@@ -273,7 +299,7 @@ const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
     const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
     const req = httpRequest(
       {
-        socketPath,
+        socketPath: httpSocketPath(socketPath),
         path: `/containers/json?filters=${filters}`,
         method: "GET",
         headers: { Host: "localhost" },
@@ -311,10 +337,13 @@ export const discoverRunningAppsFromSockets = async (
 ): Promise<AppsListEntry[]> => {
   const paths = makeLandoPaths({ userDataRoot });
   for (const socket of sockets) {
-    try {
-      await access(socket);
-    } catch {
-      continue;
+    // Named pipes are not filesystem nodes; fs.access ENOENTs even when the pipe is live.
+    if (!isNamedPipeSocketPath(socket)) {
+      try {
+        await access(socket);
+      } catch {
+        continue;
+      }
     }
     try {
       const body = await listContainersOnSocket(socket);

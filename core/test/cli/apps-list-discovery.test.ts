@@ -16,6 +16,7 @@ import {
   containerSocketCandidates,
   decodeAppliedStateFile,
   discoverRunningAppsFromSockets,
+  isNamedPipeSocketPath,
   mergeAppsListEntries,
 } from "../../src/cli/commands/list-discovery.ts";
 import { listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
@@ -190,6 +191,34 @@ describe("mergeAppsListEntries", () => {
 });
 
 describe("apps:list host-wide discovery", () => {
+  test("prefers plugin applied-plans over leftover legacy providers/*/apps for the same appId", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "drupal-cms.json"),
+        JSON.stringify(stateEnvelope("drupal-cms", "Drupal CMS", "/srv/drupal-cms", ["appserver"], "lando")),
+      );
+      const legacyDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      await mkdir(legacyDir, { recursive: true });
+      await writeFile(
+        join(legacyDir, "drupal-cms.json"),
+        JSON.stringify(stateEnvelope("drupal-cms", "stale-name", "/old/drupal-cms", ["database"], "docker")),
+      );
+      const result = await runList(userDataRoot, { discoverContainers: async () => [] });
+      expect(result.apps).toEqual([
+        {
+          appId: "drupal-cms",
+          appName: "Drupal CMS",
+          providerId: "lando",
+          appRoot: "/srv/drupal-cms",
+          services: ["appserver", "database"],
+        },
+      ]);
+    });
+  });
+
   test("discovers applied apps from plugin state-store files", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });
@@ -362,23 +391,80 @@ describe("apps:list host-wide discovery", () => {
       }
     });
   });
+
+  test("skips filesystem access for named-pipe candidates and still stops at the first successful socket", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const pipePath = "\\\\.\\pipe\\podman-lando";
+      const unixPath = join(userDataRoot, "host.sock");
+      expect(isNamedPipeSocketPath(pipePath)).toBe(true);
+      const hits: string[] = [];
+      const server = createServer((_request, response) => {
+        hits.push(unixPath);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.listen(unixPath, () => resolve());
+        server.on("error", reject);
+      });
+      try {
+        const discovered = await discoverRunningAppsFromSockets(userDataRoot, [pipePath, unixPath]);
+        expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
+        expect(hits).toEqual([unixPath]);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+  });
 });
+
+const withClearedDockerHost = <T>(run: () => T): T => {
+  const previousDockerHost = process.env.DOCKER_HOST;
+  const previousRuntime = process.env.XDG_RUNTIME_DIR;
+  Reflect.deleteProperty(process.env, "DOCKER_HOST");
+  Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
+  try {
+    return run();
+  } finally {
+    if (previousDockerHost === undefined) Reflect.deleteProperty(process.env, "DOCKER_HOST");
+    else process.env.DOCKER_HOST = previousDockerHost;
+    if (previousRuntime === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
+    else process.env.XDG_RUNTIME_DIR = previousRuntime;
+  }
+};
 
 describe("containerSocketCandidates", () => {
   test("prefers the managed provider socket and does not default to host docker.sock", () => {
-    const previousDockerHost = process.env.DOCKER_HOST;
-    const previousRuntime = process.env.XDG_RUNTIME_DIR;
-    Reflect.deleteProperty(process.env, "DOCKER_HOST");
-    Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
-    try {
+    withClearedDockerHost(() => {
       const candidates = containerSocketCandidates("/iso/data");
       expect(candidates[0]).toBe(makeLandoPaths({ userDataRoot: "/iso/data" }).providerSocketPath);
       expect(candidates).not.toContain("/var/run/docker.sock");
-    } finally {
-      if (previousDockerHost === undefined) Reflect.deleteProperty(process.env, "DOCKER_HOST");
-      else process.env.DOCKER_HOST = previousDockerHost;
-      if (previousRuntime === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR");
-      else process.env.XDG_RUNTIME_DIR = previousRuntime;
-    }
+    });
+  });
+
+  test("win32 candidates include the managed named pipe first and do not default to host docker", () => {
+    withClearedDockerHost(() => {
+      const candidates = containerSocketCandidates("/iso/data", { platform: "win32" });
+      expect(candidates[0]).toBe("\\\\.\\pipe\\podman-lando");
+      expect(candidates).not.toContain("/var/run/docker.sock");
+      expect(candidates).not.toContain("\\\\.\\pipe\\docker_engine");
+      expect(candidates).not.toContain(makeLandoPaths({ userDataRoot: "/iso/data" }).providerSocketPath);
+    });
+  });
+
+  test("accepts npipe DOCKER_HOST values and converts them to a Node socketPath", () => {
+    withClearedDockerHost(() => {
+      process.env.DOCKER_HOST = "npipe://./pipe/podman-machine-default";
+      const fromShort = containerSocketCandidates("/iso/data", { platform: "win32" });
+      expect(fromShort[0]).toBe("\\\\.\\pipe\\podman-lando");
+      expect(fromShort).toContain("\\\\.\\pipe\\podman-machine-default");
+      expect(fromShort).not.toContain("/var/run/docker.sock");
+      expect(fromShort).not.toContain("\\\\.\\pipe\\docker_engine");
+
+      process.env.DOCKER_HOST = "npipe:////./pipe/docker_engine";
+      const fromLong = containerSocketCandidates("/iso/data", { platform: "win32" });
+      expect(fromLong[0]).toBe("\\\\.\\pipe\\podman-lando");
+      expect(fromLong).toContain("\\\\.\\pipe\\docker_engine");
+    });
   });
 });
