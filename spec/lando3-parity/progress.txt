@@ -701,3 +701,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Story verified complete on branch (no new code).
 - Verification: typecheck, lint passed; relevant test spot checks passed
 ---
+
+## 2026-08-21 06:35 CDT - US-574 Review
+- Fixed mode-bearing config copies that failed on rebuild once the dest was chmod 0444, and the stale Podman/Lando composeServiceFields exact-match tests that still expected labels only.
+- Review notes (deferred/rejected): rejected Bugbot High that start of an existing container keeps a stale mode-copy — skip-create is existing provider bring-up semantics; plan identity plus rebuild is the re-apply contract, and mode-less grants already bind the source file live. Rejected Bugbot Medium unparseable mode fail-open because the schema accepts arbitrary number|string and realization still mounts read-only. Rejected code-quality tmpdir/symlink hardening; copies must outlive apply, and that is not a US-574 recreate contract. Security review-work lane aborted on usage limit; Bugbot plus local review used instead. Goal/QA/context lanes did not return a deliverable before wrap.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; focused compose-configs, knobs-declaration, planner identity, provider contract, and capabilities tests passed.
+- **Learnings for future iterations:**
+  - A 0444 staged copy must be chmod'd writable before copyFileSync on re-apply, or rebuild EACCES after the first start.
+---
