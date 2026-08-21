@@ -28,19 +28,17 @@ Or set the provider for this shell:
 LANDO_PROVIDER=docker lando setup
 ```
 
-2. Verify with Docker still selected:
+2. Verify:
 
 ```sh
-lando doctor --provider=docker
+lando doctor
 ```
 
-Or:
+After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
 
-```sh
-LANDO_PROVIDER=docker lando doctor
-```
+`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
-Bare `lando doctor` reports the managed `lando` provider. Setup does not save Docker as your default. Keep passing `--provider=docker` or `LANDO_PROVIDER=docker` on later commands. `lando setup` and `lando setup --yes` do not honor leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+`lando setup` and `lando setup --yes` with no `--provider` still ignore leftover `defaultProviderId` in user config, so a leftover Docker value does not pick Docker on setup. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
 System `podman` is also opt-in with `--provider=podman`. It needs an existing Podman install. Setup fails with remediation if that runtime is missing. It does not install Docker or Podman for you.
 
@@ -93,14 +91,8 @@ lando setup --provider=podman
 ## Verify with lando doctor
 
 ```sh
-lando doctor --provider=docker
+lando doctor
 lando --version
 ```
 
-Or:
-
-```sh
-LANDO_PROVIDER=docker lando doctor
-```
-
-Doctor should name the provider you selected. After a Docker fallback, bare `lando doctor` still reports managed `lando`.
+Doctor should name the provider you selected. After `lando setup --provider=docker`, bare `lando doctor` should report Docker.
