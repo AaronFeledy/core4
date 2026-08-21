@@ -7,8 +7,17 @@ tags: [recipe, lamp, php]
 
 # LAMP
 
-Spin up a classic Apache, PHP, and MariaDB stack for a traditional PHP application.
-The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+Spin up Apache, PHP, and MariaDB for a traditional PHP app.
+
+```sh
+lando init --recipe lamp --name=my-lamp-app --yes
+lando start
+lando info
+```
+
+`lando start` prints the app URL. `lando info` repeats it. TODO: capture
+
+The walkthrough below scaffolds the recipe, starts the app, and tears it down.
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -19,9 +28,6 @@ The walkthrough below scaffolds the recipe, starts the app, and tears it back do
     <Step name="start">
       <Run command="lando start" />
       <Verify event="post-start" />
-    </Step>
-    <Step name="inspect">
-      <Inspect output />
     </Step>
     <Step name="cleanup">
       <Cleanup />
