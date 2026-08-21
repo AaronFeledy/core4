@@ -140,13 +140,13 @@ export const runWithProcessAbortSignal = async (
 ): Promise<void> => {
   const controller = new AbortController();
   const abort = () => controller.abort();
-  process.once("SIGINT", abort);
-  process.once("SIGTERM", abort);
+  (process as NodeJS.EventEmitter).once("SIGINT", abort);
+  (process as NodeJS.EventEmitter).once("SIGTERM", abort);
   try {
     await run(controller.signal);
   } finally {
-    process.off("SIGINT", abort);
-    process.off("SIGTERM", abort);
+    (process as NodeJS.EventEmitter).off("SIGINT", abort);
+    (process as NodeJS.EventEmitter).off("SIGTERM", abort);
   }
 };
 

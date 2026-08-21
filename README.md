@@ -112,7 +112,7 @@ Development follows this phase ladder:
 
 ## Toolchain
 
-- **Runtime:** Bun (>=1.3.14, see `engines` and `.bun-version`). Node is not supported.
+- **Runtime:** Bun (>=1.4.0, see `engines` and `.bun-version`). Node is not supported.
 - **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
