@@ -113,6 +113,7 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
       "https_proxy",
       "no_proxy",
       "LANDO_NETWORK_CA_CERTS",
+      "DOCKER_HOST",
     ]) {
       Reflect.deleteProperty(env, key);
     }

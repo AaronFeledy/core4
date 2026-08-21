@@ -228,6 +228,7 @@ export const appsFromContainerList = (
   const grouped = new Map<string, { services: Set<string>; providerId: string }>();
   for (const container of body) {
     if (!isRecord(container)) continue;
+    if (typeof container.State === "string" && container.State !== "running") continue;
     const labels = stringLabels(container.Labels);
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "") continue;
@@ -252,13 +253,14 @@ export const appsFromContainerList = (
 
 export const containerSocketCandidates = (userDataRoot: string): string[] => {
   const paths = makeLandoPaths({ userDataRoot });
+  // Managed Podman first. Host /var/run/docker.sock is never a default source.
   const candidates = [paths.providerSocketPath];
   const dockerHost = process.env.DOCKER_HOST;
   if (dockerHost !== undefined && dockerHost !== "") {
     if (dockerHost.startsWith("unix://")) candidates.push(dockerHost.slice("unix://".length));
     else if (dockerHost.startsWith("/")) candidates.push(dockerHost);
   }
-  candidates.push("/var/run/docker.sock", "/run/podman/podman.sock");
+  candidates.push("/run/podman/podman.sock");
   const runtimeDir = process.env.XDG_RUNTIME_DIR;
   if (runtimeDir !== undefined && runtimeDir !== "") {
     candidates.push(join(runtimeDir, "podman", "podman.sock"));
@@ -268,11 +270,11 @@ export const containerSocketCandidates = (userDataRoot: string): string[] => {
 
 const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
   new Promise((resolve, reject) => {
-    const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
+    const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
     const req = httpRequest(
       {
         socketPath,
-        path: `/containers/json?all=true&filters=${filters}`,
+        path: `/containers/json?filters=${filters}`,
         method: "GET",
         headers: { Host: "localhost" },
       },
@@ -308,7 +310,6 @@ export const discoverRunningAppsFromSockets = async (
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
 ): Promise<AppsListEntry[]> => {
   const paths = makeLandoPaths({ userDataRoot });
-  const discovered: AppsListEntry[] = [];
   for (const socket of sockets) {
     try {
       await access(socket);
@@ -317,10 +318,11 @@ export const discoverRunningAppsFromSockets = async (
     }
     try {
       const body = await listContainersOnSocket(socket);
-      discovered.push(...appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot }));
+      // First successful list wins so a live managed socket is not mixed with host Docker/Podman.
+      return appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot });
     } catch {
       // Socket present but not a Docker/Podman compat API, or the daemon is mid-start.
     }
   }
-  return discovered;
+  return [];
 };

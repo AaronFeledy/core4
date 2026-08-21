@@ -12,6 +12,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 import {
   appsFromContainerList,
+  containerSocketCandidates,
   decodeAppliedStateFile,
   discoverRunningAppsFromSockets,
   mergeAppsListEntries,
@@ -139,6 +140,14 @@ describe("appsFromContainerList", () => {
       appRoot: "/data/global",
       services: ["mailpit", "traefik"],
     });
+  });
+
+  test("skips stopped leftovers so the running claim stays honest", () => {
+    const apps = appsFromContainerList([
+      labeled("live", "web"),
+      { ...labeled("dead", "web"), State: "exited" },
+    ]);
+    expect(apps.map((app) => app.appId)).toEqual(["live"]);
   });
 });
 
@@ -286,7 +295,9 @@ describe("apps:list host-wide discovery", () => {
   test("discovers labeled containers from a Docker-compatible unix socket", async () => {
     await withTempRoot(async (userDataRoot) => {
       const socketPath = join(userDataRoot, "podman.sock");
+      let requestUrl: string | undefined;
       const server = createServer((request, response) => {
+        requestUrl = request.url;
         if (request.url?.startsWith("/containers/json") !== true) {
           response.writeHead(404);
           response.end();
@@ -312,9 +323,61 @@ describe("apps:list host-wide discovery", () => {
         });
         expect(result.apps.map((app) => app.appName)).toContain("drupal-cms");
         expect(result.apps.map((app) => app.appName)).toContain("global");
+        expect(requestUrl).toBeDefined();
+        expect(requestUrl?.includes("all=true")).toBe(false);
+        expect(requestUrl?.includes("running")).toBe(true);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     });
+  });
+
+  test("stops at the first successful socket and does not query later host sockets", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const firstPath = join(userDataRoot, "managed.sock");
+      const secondPath = join(userDataRoot, "host.sock");
+      const hits: string[] = [];
+      const listen = async (socketPath: string, appId: string) => {
+        const server = createServer((_request, response) => {
+          hits.push(socketPath);
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]));
+        });
+        await new Promise<void>((resolve, reject) => {
+          server.listen(socketPath, () => resolve());
+          server.on("error", reject);
+        });
+        return server;
+      };
+      const first = await listen(firstPath, "managed-app");
+      const second = await listen(secondPath, "host-app");
+      try {
+        const discovered = await discoverRunningAppsFromSockets(userDataRoot, [firstPath, secondPath]);
+        expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
+        expect(hits).toEqual([firstPath]);
+      } finally {
+        await new Promise<void>((resolve) => first.close(() => resolve()));
+        await new Promise<void>((resolve) => second.close(() => resolve()));
+      }
+    });
+  });
+});
+
+describe("containerSocketCandidates", () => {
+  test("prefers the managed provider socket and does not default to host docker.sock", () => {
+    const previousDockerHost = process.env.DOCKER_HOST;
+    const previousRuntime = process.env.XDG_RUNTIME_DIR;
+    delete process.env.DOCKER_HOST;
+    delete process.env.XDG_RUNTIME_DIR;
+    try {
+      const candidates = containerSocketCandidates("/iso/data");
+      expect(candidates[0]).toBe(makeLandoPaths({ userDataRoot: "/iso/data" }).providerSocketPath);
+      expect(candidates).not.toContain("/var/run/docker.sock");
+    } finally {
+      if (previousDockerHost === undefined) delete process.env.DOCKER_HOST;
+      else process.env.DOCKER_HOST = previousDockerHost;
+      if (previousRuntime === undefined) delete process.env.XDG_RUNTIME_DIR;
+      else process.env.XDG_RUNTIME_DIR = previousRuntime;
+    }
   });
 });
