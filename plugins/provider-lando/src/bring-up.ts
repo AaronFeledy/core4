@@ -48,20 +48,6 @@ const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
 const SETUP_REMEDIATION =
   "Run `lando setup` to install or repair the Lando runtime, then retry `lando start`.";
-const NFT_REMEDIATION =
-  "Netavark could not find nft. Run `lando setup` so Lando can provision nft into the managed runtime, then retry `lando start`. Do not install nft by hand and do not set network_backend=pasta.";
-
-export const isManagedNftMissingMessage = (message: string): boolean =>
-  /unable to execute ["']nft["']/iu.test(message) || /nftables error:.*\bnft\b/iu.test(message);
-
-const detailBody = (details: unknown): string => {
-  if (typeof details !== "object" || details === null || !("body" in details)) return "";
-  const body = (details as { readonly body?: unknown }).body;
-  return typeof body === "string" ? body : "";
-};
-
-export const startFailureRemediation = (message: string, details?: unknown): string =>
-  isManagedNftMissingMessage(`${message}\n${detailBody(details)}`) ? NFT_REMEDIATION : APPLY_REMEDIATION;
 
 interface InspectResult {
   readonly exists: boolean;
@@ -116,7 +102,7 @@ const podmanFailure = (
     operation,
     service: service.name,
     message: withApiReason(message, details),
-    remediation: startFailureRemediation(withApiReason(message, details), details),
+    remediation: APPLY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
   });
@@ -280,28 +266,24 @@ const ensureNetwork = (
         path: "/networks/create",
         body: { Name: name, Driver: "bridge" },
       }).pipe(
-        Effect.flatMap((response) => {
-          if (response.status === 201 || response.status === 200) {
-            return Effect.succeed(true);
-          }
-          if (response.status === 409) {
-            return Effect.succeed(false);
-          }
-          const details = { status: response.status, body: response.body };
-          const message = withApiReason(
-            `Podman network create failed with HTTP ${response.status}.`,
-            details,
-          );
-          return Effect.fail(
-            new ProviderUnavailableError({
-              providerId: PROVIDER_ID,
-              operation: "bringUp.network",
-              message,
-              details: redactDetails(details),
-              remediation: startFailureRemediation(message, details),
-            }),
-          );
-        }),
+        Effect.flatMap((response) =>
+          response.status === 201 || response.status === 200
+            ? Effect.succeed(true)
+            : response.status === 409
+              ? Effect.succeed(false)
+              : Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: PROVIDER_ID,
+                    operation: "bringUp.network",
+                    message: withApiReason(`Podman network create failed with HTTP ${response.status}.`, {
+                      status: response.status,
+                      body: response.body,
+                    }),
+                    details: redactDetails({ status: response.status, body: response.body }),
+                    remediation: APPLY_REMEDIATION,
+                  }),
+                ),
+        ),
       );
     }),
   );

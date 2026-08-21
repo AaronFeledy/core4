@@ -83,9 +83,6 @@ export const writeManagedRuntimeContainersConf = (
       // bundled static conmon has no journald support. cgroupfs avoids a systemd
       // user session that WSL and headless hosts often lack; keeping conmon in the
       // parent cgroup prevents one container from blocking later conmon launches.
-      // Do not set network.network_backend: Podman 6.0.1 accepts only netavark.
-      // Pasta is a helper binary in this directory, not a valid backend name.
-      // Netavark execs nft from PATH; Lando provisions nft into runtime/bin.
       const body = `[containers]\ncgroups = "no-conmon"\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
       const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");

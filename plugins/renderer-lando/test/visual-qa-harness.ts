@@ -273,7 +273,7 @@ export const SUMMARY_FIXTURES: ReadonlyArray<SummaryFixture> = [
               tone: "skipped",
               value: "skipped",
               detail: "Remove Lando-managed runtime bundles when present.",
-              fields: [{ label: "target", value: "/home/u/.local/share/lando/providers/provider-lando" }],
+              fields: [{ label: "target", value: "/home/u/.local/share/lando/providers/lando" }],
             },
             { label: "installed binary", tone: "ok", value: "owned by Lando" },
           ],

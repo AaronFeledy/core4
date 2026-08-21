@@ -39,8 +39,7 @@ describe("PodmanServiceRunner", () => {
       XDG_CONFIG_HOME: "/data/runtime/config",
       DISABLE_HC_SYSTEMD: "true",
     });
-    expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
-    expect(spec.cwd).toBe("/data/runtime/run");
+    expect(spec.env?.PATH).toBeUndefined();
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -58,7 +57,7 @@ describe("PodmanServiceRunner", () => {
     expect(spec.socketPath).toBe("/data/runtime/run/podman.sock");
   });
 
-  test("buildPodmanServiceArgs always prepends runtime/bin so netavark can find nft", () => {
+  test("buildPodmanServiceArgs prepends runtime/bin when the systemd-run shim is required", () => {
     const spec = buildPodmanServiceArgs({
       podmanBin: "/data/runtime/bin/podman",
       storageDir: "/data/runtime/storage",
@@ -134,21 +133,18 @@ describe("PodmanServiceRunner", () => {
     expect(spec.args.at(-1)).toBe("unix:///data/runtime/run/podman.sock");
   });
 
-  test("system runner launches Podman with managed config and runtime bin prepended to PATH", async () => {
+  test("system runner launches Podman with managed config and the inherited host PATH", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
-      let launchedCwd: string | undefined;
       const runner = makeSystemPodmanServiceRunner((_argv, options) => {
         launchedEnv = options.env;
-        launchedCwd = options.cwd;
         return { pid: 4321 };
       });
-      const runRoot = join(dir, "run");
       const spec = buildPodmanServiceArgs({
         podmanBin: "/data/runtime/bin/podman",
         storageDir: "/data/runtime/storage",
-        runRoot,
+        runRoot: "/data/runtime/run",
         configDir: "/data/runtime/config",
         socketPath: join(dir, "podman.sock"),
         useSystemdRunShim: false,
@@ -160,11 +156,7 @@ describe("PodmanServiceRunner", () => {
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
-      expect(launchedEnv?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
-      expect(launchedCwd).toBe(runRoot);
-      if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
-        expect(launchedEnv?.PATH).toContain(process.env.PATH);
-      }
+      expect(launchedEnv?.PATH).toBe(process.env.PATH);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

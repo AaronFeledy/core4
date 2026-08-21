@@ -1,6 +1,5 @@
 import type { DoctorCheck, DoctorSelectionRecord, DoctorStatus } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";
-import { setupCommandForProvider } from "./doctor-provider";
 import type { SetupReadinessSummary } from "./setup-readiness";
 
 const setupReadinessStepContextKey = (id: string): string =>
@@ -31,7 +30,6 @@ export const buildSetupReadinessDoctorCheck = (
       context[`${setupReadinessStepContextKey(step.id)}Evidence`] = step.evidence;
     }
   }
-  const setupCommand = setupCommandForProvider(summary.providerId);
   return {
     name: "setup-readiness",
     status,
@@ -50,8 +48,8 @@ export const buildSetupReadinessDoctorCheck = (
         : [
             {
               kind: "manual" as const,
-              description: failedStep.remediation ?? `Rerun \`${setupCommand}\` to resume host setup.`,
-              command: setupCommand,
+              description: failedStep.remediation ?? "Rerun `lando setup` to resume host setup.",
+              command: "lando setup",
             },
           ],
     ...(selection === undefined ? {} : { selection }),

@@ -35,8 +35,6 @@ const landoShellenvBlock = (userDataRoot: string): string =>
   ["# >>> LANDO shellenv >>>", renderPosixShellenv(userDataRoot), "# <<< LANDO shellenv <<<"].join("\n");
 
 export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const override = env.LANDO_SHELL_PROFILE;
-  if (override !== undefined && override !== "") return override;
   const home = env.HOME ?? ".";
   const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
   if (shell === "zsh") return join(home, ".zshrc");
@@ -46,7 +44,7 @@ export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.en
 
 export const shellProfileInstallCommand = (
   userDataRoot: string,
-  profilePath = defaultPosixShellProfilePath(),
+  profilePath = process.env.LANDO_SHELL_PROFILE ?? defaultPosixShellProfilePath(),
 ): ReadonlyArray<string> => {
   const block = landoShellenvBlock(userDataRoot);
   const script = [

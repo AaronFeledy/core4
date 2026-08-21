@@ -209,7 +209,6 @@ interface FakeApiHooks {
   readonly failStartFor?: ReadonlySet<string>;
   readonly failCreateFor?: ReadonlySet<string>;
   readonly startFailureBody?: string;
-  readonly networkCreateFailureBody?: string;
 }
 
 const makeFakeApi = (hooks: FakeApiHooks = {}) => {
@@ -229,9 +228,6 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
         const action = containerMatch?.[2];
 
         if (request.path === "/networks/create") {
-          if (hooks.networkCreateFailureBody !== undefined) {
-            return { status: 500, body: hooks.networkCreateFailureBody };
-          }
           const requestedName = (request.body as { Name?: string }).Name ?? "";
           networks.add(requestedName);
           return { status: 201, body: "{}" };
@@ -636,63 +632,6 @@ describe("provider-lando bringUp", () => {
       status: 500,
       body: "forced start failure for lando-bringupapp-database",
     });
-  });
-
-  test("nft-missing network create failures remediate with lando setup instead of lando destroy", async () => {
-    const fake = makeFakeApi({
-      networkCreateFailureBody: JSON.stringify({
-        cause: "netavark",
-        message: 'netavark: nftables error: unable to execute "nft": No such file or directory (os error 2)',
-        response: 500,
-      }),
-    });
-
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
-    const networkError = failures.find(
-      (error) =>
-        typeof error === "object" &&
-        error !== null &&
-        "_tag" in error &&
-        (error as { _tag: string })._tag === "ProviderUnavailableError",
-    ) as { message?: string; remediation?: string } | undefined;
-    expect(networkError).toBeDefined();
-    if (networkError === undefined) return;
-    expect(networkError.remediation).toMatch(/lando setup/u);
-    expect(networkError.remediation).not.toMatch(/lando destroy/u);
-    expect(networkError.message).toMatch(/nft/u);
-  });
-
-  test("nft-missing start failures remediate with lando setup instead of lando destroy", async () => {
-    const fake = makeFakeApi({
-      failStartFor: new Set(["lando-bringupapp-database"]),
-      startFailureBody: JSON.stringify({
-        cause: "netavark",
-        message: 'netavark: nftables error: unable to execute "nft": No such file or directory (os error 2)',
-        response: 500,
-      }),
-    });
-
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
-    const startError = failures.find(
-      (error) =>
-        typeof error === "object" &&
-        error !== null &&
-        "_tag" in error &&
-        (error as { _tag: string })._tag === "ServiceStartError",
-    ) as ServiceStartError | undefined;
-    expect(startError).toBeDefined();
-    if (startError === undefined) return;
-    expect(startError.remediation).toMatch(/lando setup/u);
-    expect(startError.remediation).not.toMatch(/lando destroy/u);
-    expect(startError.message).toMatch(/nft/u);
   });
 
   test("surfaces the Podman API failure reason in the error message", async () => {

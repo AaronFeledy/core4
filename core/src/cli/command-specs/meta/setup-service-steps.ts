@@ -12,7 +12,6 @@ import { CertificateAuthority, type PrivilegeService, ProxyService, SshService }
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { inputBooleanFlag } from "./setup-inputs";
-import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import type { SetupReadinessRecorder } from "./setup-steps";
 
 type SetupPrivilegeOptions = {
@@ -21,27 +20,10 @@ type SetupPrivilegeOptions = {
 
 const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
 
-const recordAbsentHostIntegration = (
-  recorder: SetupReadinessRecorder,
-  selectedProviderId: string,
-  id: string,
-  serviceName: string,
-): Effect.Effect<void, never> => {
-  if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
-    return recorder.record({
-      id,
-      status: "skipped",
-      evidence: `${serviceName} skipped because the host-integration service is not provided on this layer.`,
-    });
-  }
-  return recorder.recordUnavailable(id, serviceName);
-};
-
 export const runCaSetupStep = (
   input: unknown,
   privilegeOptions: SetupPrivilegeOptions,
   recorder: SetupReadinessRecorder,
-  selectedProviderId = "lando",
 ) =>
   Effect.gen(function* () {
     const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
@@ -51,7 +33,7 @@ export const runCaSetupStep = (
       if (skipTrustInstall) {
         yield* recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE });
       } else {
-        yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
+        yield* recorder.recordUnavailable("ca", "Certificate authority");
       }
       return;
     }
@@ -103,11 +85,7 @@ export const runCaSetupStep = (
     }
   });
 
-export const runProxySetupStep = (
-  input: unknown,
-  recorder: SetupReadinessRecorder,
-  selectedProviderId = "lando",
-) =>
+export const runProxySetupStep = (input: unknown, recorder: SetupReadinessRecorder) =>
   Effect.gen(function* () {
     if (inputBooleanFlag(input, "skip-proxy")) {
       yield* recorder.record({
@@ -124,15 +102,11 @@ export const runProxySetupStep = (
       );
       yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });
     } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "proxy", "Proxy");
+      yield* recorder.recordUnavailable("proxy", "Proxy");
     }
   });
 
-export const runShellServiceSetupStep = (
-  input: unknown,
-  recorder: SetupReadinessRecorder,
-  selectedProviderId = "lando",
-) =>
+export const runShellServiceSetupStep = (input: unknown, recorder: SetupReadinessRecorder) =>
   Effect.gen(function* () {
     if (inputBooleanFlag(input, "skip-shell-integration")) {
       yield* recorder.record({
@@ -153,6 +127,6 @@ export const runShellServiceSetupStep = (
         evidence: "Shell integration setup completed.",
       });
     } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "shell", "Shell integration");
+      yield* recorder.recordUnavailable("shell", "Shell integration");
     }
   });

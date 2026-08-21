@@ -1,16 +1,7 @@
 # LAMP
 
-`lando init --recipe lamp` scaffolds Apache, PHP, and MariaDB.
-
-```sh
-lando init --recipe lamp --name=my-lamp-app --yes
-lando start
-lando info
-```
-
-`lando start` prints the app URL. `lando info` repeats it. TODO: capture
-
-`lando destroy -y` removes the app containers and volumes.
+Spin up a classic Apache, PHP, and MariaDB stack for a traditional PHP application.
+The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
 
 ## 1. scaffold
 
@@ -22,6 +13,12 @@ lando init --recipe lamp --name=my-lamp-app --yes
 
 ```bash
 lando start
+```
+
+## 3. inspect
+
+```
+(generated at runtime)
 ```
 
 ## Cleanup

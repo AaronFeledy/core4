@@ -8,8 +8,6 @@ import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
-import type { ArtifactDownload } from "./runtime-bundle.ts";
-
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
@@ -18,7 +16,6 @@ import {
   stopDiscoveredRuntimeProcesses,
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
-import { ensureManagedNft } from "./nft-provision.ts";
 import {
   type PodmanServiceSpec,
   type RuntimeLaunchError,
@@ -35,11 +32,6 @@ import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodman
 
 export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
   readonly platform: HostPlatform;
-  readonly nftProvision?: {
-    readonly download: ArtifactDownload;
-    readonly cacheDir: string;
-    readonly arch?: string;
-  };
   readonly machineRunner?: PodmanMachineRunner;
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
@@ -195,20 +187,6 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
-    if (deps.nftProvision !== undefined) {
-      const runtimeBinDir = deps.podmanBin.includes("/")
-        ? deps.podmanBin.slice(0, deps.podmanBin.lastIndexOf("/"))
-        : undefined;
-      if (runtimeBinDir !== undefined) {
-        yield* ensureManagedNft({
-          runtimeBinDir,
-          download: deps.nftProvision.download,
-          cacheDir: deps.nftProvision.cacheDir,
-          platform: deps.platform,
-          arch: deps.nftProvision.arch ?? process.arch,
-        });
-      }
-    }
     if ((yield* linuxRuntimeIsHealthy(deps)) && deps.generationStore === undefined) {
       yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
       yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;

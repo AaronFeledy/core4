@@ -277,6 +277,7 @@ describe("ci workflow codegen", () => {
       const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
+      const bunVersion = (await readFile(resolve(repoRoot, ".bun-version"), "utf8")).trim();
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(26);

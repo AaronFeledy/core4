@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
@@ -15,14 +15,6 @@ import {
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
 } from "../runtime/managed-provider-machine";
-import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
-
-export {
-  chmodTreeUserWritable,
-  defaultRemoveRuntimeDir,
-  defaultTerminateRuntimeBinProcesses,
-  managedPodmanUnshareRmInvocation,
-} from "./uninstall-runtime-dir";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one uninstall operation on one engine seam.
 
@@ -85,11 +77,6 @@ export interface UninstallOptions {
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
   readonly cleanupDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
   readonly reportFallbackDir?: string;
-  readonly cgroupsDelegatePath?: string;
-  readonly shellProfilePath?: string;
-  readonly readText?: (path: string) => string;
-  readonly writeText?: (path: string, content: string) => Promise<void> | void;
-  readonly terminateRuntimeBinProcesses?: (runtimeDir: string) => Promise<void>;
 }
 
 export interface UninstallResult {
@@ -162,64 +149,23 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
-const defaultReadText = (path: string): string => readFileSync(path, "utf8");
-
-const defaultWriteText = (path: string, content: string): void => {
-  writeFileSync(path, content, "utf8");
-};
-
-// Lockstep with plugins/provider-lando/src/prerequisite-provision.ts DELEGATE_CONF_CONTENT.
-// Engine must not import @lando/provider-lando.
-export const CGROUPS_DELEGATE_CONF_CONTENT = `[Service]
-Delegate=cpu cpuset io memory pids
-`;
-
-export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
-
-// Setup writes this via echo, which appends an extra trailing newline.
-const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
-  content.trim() === CGROUPS_DELEGATE_CONF_CONTENT.trim();
-
-// Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
-// LANDO_SHELL_PROFILE override setup uses when writing the block.
-// Engine must not import @lando/core.
-export const LANDO_SHELLENV_BEGIN = "# >>> LANDO shellenv >>>";
-export const LANDO_SHELLENV_END = "# <<< LANDO shellenv <<<";
-
-export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const override = env.LANDO_SHELL_PROFILE;
-  if (override !== undefined && override !== "") return override;
-  const home = env.HOME ?? env.USERPROFILE ?? homedir();
-  const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
-  if (shell === "zsh") return join(home, ".zshrc");
-  if (shell === "bash") return join(home, ".bashrc");
-  return join(home, ".profile");
-};
-
-export const stripLandoShellenvBlock = (
-  content: string,
-): { readonly content: string; readonly stripped: boolean } => {
-  let result = content;
-  let stripped = false;
-  for (;;) {
-    const begin = result.indexOf(LANDO_SHELLENV_BEGIN);
-    if (begin === -1) break;
-    const end = result.indexOf(LANDO_SHELLENV_END, begin + LANDO_SHELLENV_BEGIN.length);
-    if (end === -1) break;
-    let cutEnd = end + LANDO_SHELLENV_END.length;
-    if (result.startsWith("\r\n", cutEnd)) cutEnd += 2;
-    else if (result.startsWith("\n", cutEnd)) cutEnd += 1;
-    result = `${result.slice(0, begin)}${result.slice(cutEnd)}`;
-    stripped = true;
-  }
-  return { content: result, stripped };
-};
-
-const tryReadText = (path: string, readText: (path: string) => string): string | undefined => {
+// Rootless Podman runtime directories contain subuid-owned files that a plain
+// rm cannot delete (EACCES/EPERM). Retry inside podman's user namespace on
+// Linux before giving up; rethrow the original failure when that is not
+// possible so the step reports the real cause.
+const defaultRemoveRuntimeDir = async (path: string): Promise<void> => {
   try {
-    return readText(path);
-  } catch {
-    return undefined;
+    await defaultRemove(path);
+  } catch (cause) {
+    if (process.platform !== "linux") throw cause;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      await execFileAsync("podman", ["unshare", "rm", "-rf", path], { timeout: 30_000 });
+    } catch {
+      throw cause;
+    }
   }
 };
 
@@ -276,95 +222,6 @@ const managedProviderMachineStep = (
         detail: "No managed provider machine is recorded in setup state.",
       };
   }
-};
-
-const cgroupsDelegateStep = (
-  path: string,
-  exists: (path: string) => boolean,
-  readText: (path: string) => string,
-): UninstallPlanStep => {
-  const base = {
-    id: "cgroups-delegate",
-    label: "cgroups delegation drop-in",
-    target: path,
-    destructive: true,
-  };
-  if (!exists(path)) {
-    return {
-      ...base,
-      status: "skipped",
-      detail: "No Lando-managed cgroups delegation drop-in is present.",
-    };
-  }
-  const content = tryReadText(path, readText);
-  if (content === undefined) {
-    return {
-      ...base,
-      status: "user-owned",
-      detail: "Could not read the cgroups delegation drop-in; not removing it.",
-    };
-  }
-  if (isLandoManagedCgroupsDelegateContent(content)) {
-    return {
-      ...base,
-      status: "owned",
-      detail: "Remove the Lando-managed systemd user cgroup delegation drop-in.",
-    };
-  }
-  return {
-    ...base,
-    status: "user-owned",
-    detail: "The cgroups delegation drop-in exists but is not the Lando-managed content; leave it in place.",
-  };
-};
-
-const shellEntriesStep = (
-  profilePath: string,
-  exists: (path: string) => boolean,
-  readText: (path: string) => string,
-  mode: UninstallMode | undefined,
-): UninstallPlanStep => {
-  const base = {
-    id: "shell-entries",
-    label: "shell entries",
-    target: profilePath,
-    destructive: false,
-  };
-  if (mode !== "purge") {
-    return {
-      ...base,
-      status: "manual",
-      detail: "Remove clearly delimited Lando shellenv blocks from shell profiles.",
-    };
-  }
-  if (!exists(profilePath)) {
-    return {
-      ...base,
-      status: "skipped",
-      detail: "No POSIX shell profile with a Lando shellenv block is present.",
-    };
-  }
-  const content = tryReadText(profilePath, readText);
-  if (content === undefined) {
-    return {
-      ...base,
-      status: "skipped",
-      detail: "Could not read the POSIX shell profile; not rewriting it.",
-    };
-  }
-  const { stripped } = stripLandoShellenvBlock(content);
-  if (!stripped) {
-    return {
-      ...base,
-      status: "skipped",
-      detail: "No delimited Lando shellenv block is present in the POSIX shell profile.",
-    };
-  }
-  return {
-    ...base,
-    status: "owned",
-    detail: "Strip the delimited Lando shellenv block from the POSIX shell profile.",
-  };
 };
 
 const outcomeForSkippedStep = (step: UninstallPlanStep): UninstallStepOutcome => {
@@ -455,11 +312,8 @@ export const buildUninstallPlan = async (
   const machineClassification = classifyMachine(userDataRoot);
   const paths = makeLandoPaths({ userDataRoot });
   const runtimeDir = paths.runtimeDir;
-  const managedProviderRuntime = join(userDataRoot, "providers", "provider-lando");
+  const managedProviderRuntime = join(userDataRoot, "providers", "lando");
   const hostProxySessions = paths.hostProxyRunRoot;
-  const readText = options.readText ?? defaultReadText;
-  const cgroupsDelegatePath = options.cgroupsDelegatePath ?? DEFAULT_CGROUPS_DELEGATE_PATH;
-  const shellProfilePath = options.shellProfilePath ?? defaultPosixShellProfilePath();
   const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
@@ -548,8 +402,14 @@ export const buildUninstallPlan = async (
       status: installedBinaryStatus(execPath, userDataRoot),
       detail: "Remove automatically only when the binary lives in Lando's managed bin directory.",
     },
-    cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
-    shellEntriesStep(shellProfilePath, exists, readText, mode),
+    {
+      id: "shell-entries",
+      label: "shell entries",
+      target: "Lando shellenv profile block",
+      destructive: false,
+      status: "manual",
+      detail: "Remove clearly delimited Lando shellenv blocks from shell profiles.",
+    },
     {
       id: "user-conf-root",
       label: "user config root",
@@ -602,10 +462,6 @@ const executeUninstall = async (
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const remove = options.remove ?? defaultRemove;
   const exists = options.exists ?? ((path: string) => existsSync(path));
-  const readText = options.readText ?? defaultReadText;
-  const writeText = options.writeText ?? defaultWriteText;
-  const terminateRuntimeBinProcesses =
-    options.terminateRuntimeBinProcesses ?? defaultTerminateRuntimeBinProcesses;
   const teardownRuntimeService =
     options.teardownRuntimeService ??
     ((root: string) => defaultTeardownRuntimeService(hostMaintenanceRegistry, root));
@@ -662,22 +518,6 @@ const executeUninstall = async (
       }
       continue;
     }
-    if (step.id === "shell-entries") {
-      if (step.status !== "owned") {
-        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
-        continue;
-      }
-      try {
-        const content = readText(step.target);
-        const { content: rewritten, stripped } = stripLandoShellenvBlock(content);
-        if (stripped) await writeText(step.target, rewritten);
-        executed.push({ ...step, outcome: "completed" });
-      } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
-        executed.push({ ...step, outcome: "failed", error });
-      }
-      continue;
-    }
     if (!step.destructive || step.status !== "owned") {
       executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
       continue;
@@ -688,7 +528,6 @@ const executeUninstall = async (
         if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
-        await terminateRuntimeBinProcesses(step.target);
       }
       if (step.id === "managed-provider-machines") {
         // The target is a machine NAME, not a filesystem path: tear it down via the

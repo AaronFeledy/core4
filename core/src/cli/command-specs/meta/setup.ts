@@ -58,7 +58,6 @@ import {
 } from "./setup-provider-selection";
 import { runCaSetupStep, runProxySetupStep, runShellServiceSetupStep } from "./setup-service-steps";
 import {
-  SetupStepFailedError,
   ShellProfileIntegrationError,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
@@ -68,7 +67,7 @@ import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-
 
 export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
+export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
 const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, never> =>
   Effect.gen(function* () {
@@ -152,10 +151,10 @@ export const setupSpec: LandoCommandSpec<
         Effect.tapError((cause) => recorder.recordFailure("network", cause)),
       );
 
-      // Persist an explicit --provider as a last-used hint for doctor / start /
-      // planner / app commands. Setup itself still ignores leftover
-      // defaultProviderId so a later `lando setup --yes` stays on lando.
-      const shouldPersistProvider = flag !== undefined && flag !== config;
+      // Persist --provider=lando as a last-used hint for app commands. Never persist
+      // docker/podman: leftover system-runtime defaults must not poison a later setup.
+      const shouldPersistProvider =
+        flag !== undefined && flag !== config && !(selectedProviderId in SYSTEM_RUNTIME_PROVIDERS);
 
       if (!inputBooleanFlag(input, "skip-provider")) {
         if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
@@ -212,9 +211,9 @@ export const setupSpec: LandoCommandSpec<
         });
       }
 
-      yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId);
-      yield* runProxySetupStep(input, recorder, selectedProviderId);
-      yield* runShellServiceSetupStep(input, recorder, selectedProviderId);
+      yield* runCaSetupStep(input, privilegeOptions, recorder);
+      yield* runProxySetupStep(input, recorder);
+      yield* runShellServiceSetupStep(input, recorder);
 
       if (shouldDisableHostProxyForSetup(input)) {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
@@ -245,21 +244,6 @@ export const setupSpec: LandoCommandSpec<
         network,
         recorder,
       });
-
-      const failedStep = recorder.firstFailedStep();
-      if (failedStep !== undefined) {
-        const setupCommand =
-          selectedProviderId in SYSTEM_RUNTIME_PROVIDERS
-            ? `lando setup --provider=${selectedProviderId}`
-            : "lando setup";
-        return yield* Effect.fail(
-          new SetupStepFailedError({
-            stepId: failedStep.id,
-            message: failedStep.evidence,
-            remediation: failedStep.remediation ?? `Rerun \`${setupCommand}\` to resume host setup.`,
-          }),
-        );
-      }
 
       const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
 

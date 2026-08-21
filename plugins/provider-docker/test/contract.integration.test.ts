@@ -185,42 +185,11 @@ if (response.status !== 200 || body !== "alias-ok") {
 console.log(body);
 `;
 
-const imageInspectAndPullResponse = (
-  images: Set<string>,
-  request: DockerHttpRequest,
-): DockerHttpResponse | undefined => {
-  if (request.method === "GET" && request.path.startsWith("/images/") && request.path.endsWith("/json")) {
-    const ref = decodeURIComponent(request.path.slice("/images/".length, -"/json".length));
-    if (!images.has(ref)) {
-      return { status: 404, body: JSON.stringify({ message: `No such image: ${ref}` }) };
-    }
-    return {
-      status: 200,
-      body: JSON.stringify({ Id: "sha256:test", RepoDigests: [`${ref}@sha256:test`] }),
-    };
-  }
-  if (request.method === "POST" && request.path.startsWith("/images/create?")) {
-    const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
-    const fromImage = params.get("fromImage") ?? "";
-    const tag = params.get("tag") ?? "";
-    if (fromImage.length > 0) {
-      images.add(fromImage);
-      if (tag.length > 0) {
-        images.add(`${fromImage}:${tag}`);
-        images.add(`${fromImage}@${tag}`);
-      }
-    }
-    return { status: 200, body: '{"status":"Pull complete"}\n' };
-  }
-  return undefined;
-};
-
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const volumes = new Set<string>();
-  const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -228,9 +197,6 @@ const makeFakeApi = () => {
     request: (request) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(request);
-
-        const imageResponse = imageInspectAndPullResponse(images, request);
-        if (imageResponse !== undefined) return imageResponse;
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -571,7 +537,6 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const volumes = hooks.volumes ?? new Set<string>();
-  const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -579,8 +544,6 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     request: (request) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(request);
-        const imageResponse = imageInspectAndPullResponse(images, request);
-        if (imageResponse !== undefined) return imageResponse;
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
@@ -940,9 +903,6 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
-      "GET /images/node%3A22-alpine/json",
-      "POST /images/create?fromImage=node&tag=22-alpine",
-      "GET /images/node%3A22-alpine/json",
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
@@ -1312,9 +1272,6 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
-      "GET /images/node%3A22-alpine/json",
-      "POST /images/create?fromImage=node&tag=22-alpine",
-      "GET /images/node%3A22-alpine/json",
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 
 import { Cause, Duration, Effect, Exit } from "effect";
 
@@ -449,44 +449,6 @@ describe("ensureRuntime", () => {
       );
 
       // Then: no stop/start is performed.
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("reachable socket is reused when only the host PATH suffix differs", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-path-suffix-"));
-    try {
-      // Given: setup recorded PATH as runtime/bin plus one host suffix, and this
-      // process would prepend a different host PATH (guide e2e vs setup shell).
-      const calls: Call[] = [];
-      const p = paths(dir);
-      const env = canonicalEnv(p) ?? {};
-      const runtimeBin = env.PATH?.split(delimiter)[0];
-      if (runtimeBin === undefined) throw new Error("expected managed PATH");
-      await writeFile(p.pidPath, "4321");
-      await writeFile(
-        `${p.pidPath}.launch.json`,
-        JSON.stringify({
-          pid: 4321,
-          env: { ...env, PATH: `${runtimeBin}${delimiter}/usr/bin` },
-        }),
-      );
-
-      await Effect.runPromise(
-        ensureRuntime({
-          platform: "linux",
-          podmanApi: reachableApi(),
-          serviceRunner: serviceRunner(calls, true),
-          ...p,
-        }),
-      );
-
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],

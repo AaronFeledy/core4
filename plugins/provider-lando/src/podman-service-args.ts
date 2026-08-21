@@ -1,13 +1,13 @@
 import { delimiter } from "node:path";
 
 import { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
+import { hasUsableUserSystemdSession } from "./user-systemd-session.ts";
 
 export interface PodmanServiceSpec {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string>>;
   readonly socketPath: string;
-  readonly cwd?: string;
 }
 
 const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
@@ -31,9 +31,8 @@ export const buildPodmanServiceArgs = (p: {
   readonly useSystemdRunShim?: boolean;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
-  // Always prepend the runtime bin so netavark can exec the bundled nft helper.
-  // The systemd-run shim (when present) lives in the same directory.
-  const pathValue = managedServicePath(runtimeBinDir);
+  const useShim = p.useSystemdRunShim ?? !hasUsableUserSystemdSession();
+  const pathValue = useShim ? managedServicePath(runtimeBinDir) : undefined;
   return {
     command: p.podmanBin,
     env: {
@@ -51,8 +50,5 @@ export const buildPodmanServiceArgs = (p: {
       providerSocketPath: p.socketPath,
     }),
     socketPath: p.socketPath,
-    // conmon getcwd() fails if the daemon inherited a CLI cwd that later vanished
-    // (guide e2e temp dirs, `cd`+rm). Bind the service to the durable run root.
-    cwd: p.runRoot,
   };
 };

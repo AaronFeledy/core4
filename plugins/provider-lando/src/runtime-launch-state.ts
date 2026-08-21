@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname } from "node:path";
+import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
@@ -47,16 +47,6 @@ const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | un
     catch: () => undefined,
   }).pipe(Effect.catchAll((state) => Effect.succeed(state)));
 
-const pathPrefix = (value: string): string => value.split(delimiter)[0] ?? value;
-
-const sameManagedPath = (recorded: string | undefined, expected: string | undefined): boolean => {
-  if (recorded === undefined || expected === undefined) return recorded === expected;
-  // Host PATH after runtime/bin is not identity: `lando start` from a different
-  // shell would otherwise tear down a healthy service and relaunch it from a
-  // disposable cwd (guide e2e temp dirs). nft only needs runtime/bin first.
-  return pathPrefix(recorded) === pathPrefix(expected);
-};
-
 const sameSpecEnv = (
   recordedEnv: Readonly<Record<string, string>>,
   expectedEnv: Readonly<Record<string, string>> | undefined,
@@ -64,9 +54,7 @@ const sameSpecEnv = (
   const expectedEntries = Object.entries(expectedEnv ?? {});
   return (
     Object.keys(recordedEnv).length === expectedEntries.length &&
-    expectedEntries.every(([key, value]) =>
-      key === "PATH" ? sameManagedPath(recordedEnv[key], value) : recordedEnv[key] === value,
-    )
+    expectedEntries.every(([key, value]) => recordedEnv[key] === value)
   );
 };
 
