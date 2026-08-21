@@ -412,7 +412,9 @@ describe("release orchestrator", () => {
         expect(decoded.latest).toBe("4.0.0-beta.2");
         expect(decoded.minimum).toBe("4.0.0-alpha.1");
         expect(Object.keys(decoded.binaries).sort()).toEqual(
-          CI_PLATFORMS.map((platform) => platform.id).sort(),
+          CI_PLATFORMS.filter((platform) => platform.id !== "windows-arm64")
+            .map((platform) => platform.id)
+            .sort(),
         );
         expect(decoded.binaries["linux-x64"]).toEqual({
           url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/lando-linux-x64",
@@ -1198,6 +1200,29 @@ describe("release orchestrator", () => {
           "--certificate",
           "dist/lando-windows-x64.exe.crt",
           "dist/lando-windows-x64.exe",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-windows-arm64.exe.sig",
+          "--output-certificate",
+          "dist/lando-windows-arm64.exe.crt",
+          "dist/lando-windows-arm64.exe",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-windows-arm64.exe.sig",
+          "--certificate",
+          "dist/lando-windows-arm64.exe.crt",
+          "dist/lando-windows-arm64.exe",
         ],
       ]);
       expect(releaseNoteScripts).toHaveLength(1);
@@ -2236,7 +2261,7 @@ describe("release orchestrator", () => {
 
       for (const platform of CI_PLATFORMS) {
         await writeArtifactEntry(
-          `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`,
+          `lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`,
           "binary",
         );
       }
@@ -2298,7 +2323,7 @@ describe("release orchestrator", () => {
     expect(githubScript).toContain("'--target' '0123456789abcdef0123456789abcdef01234567'");
     expect(githubScript).toContain("'--notes-file' 'dist/release-notes.md'");
     for (const platform of CI_PLATFORMS) {
-      const binaryName = `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+      const binaryName = `lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
       const binaryStem = binaryName.endsWith(".exe") ? binaryName.slice(0, -".exe".length) : binaryName;
       expect(githubScript).toContain(`'dist/${binaryName}'`);
       expect(githubScript).toContain(`'dist/${binaryName}.sig'`);
@@ -2452,7 +2477,7 @@ describe("release orchestrator", () => {
     expect(compileCommands.map(({ cmd }) => cmd)).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
       ...CI_PLATFORMS.flatMap((platform) => {
-        const outfile = `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+        const outfile = `./dist/lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
         return [
           [
             "bun",
@@ -2475,6 +2500,7 @@ describe("release orchestrator", () => {
       "linux-arm64",
       "linux-x64",
       "windows-x64",
+      "windows-arm64",
     ]);
   });
 

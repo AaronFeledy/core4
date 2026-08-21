@@ -55,7 +55,7 @@ const readProbe = async (tracePath: string): Promise<ReadonlyArray<LoaderProbeEv
 const nativeAssetPattern = (target: string): RegExp => {
   if (target.startsWith("darwin-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.dylib/gu;
   if (target.startsWith("linux-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.so/gu;
-  if (target === "windows-x64") return /B:\/~BUN\/root\/opentui-[a-z0-9]+\.dll/gu;
+  if (target.startsWith("windows-")) return /B:\/~BUN\/root\/opentui-[a-z0-9]+\.dll/gu;
   throw new Error(`Unsupported OpenTUI acceptance target: ${target}.`);
 };
 

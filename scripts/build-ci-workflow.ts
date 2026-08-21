@@ -5,6 +5,7 @@ import {
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
+  isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import {
   RUNTIME_BUNDLE_ACTION_PINS,
@@ -186,7 +187,7 @@ ${timingNoticeStep("test-isolation-linux-x64", 10)}
 `;
 
 const renderSmokeCommands = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
     : `          test -f dist/${platform.binaryName}
           ./dist/${platform.binaryName} --version
@@ -194,19 +195,19 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} shellenv`;
 
 const renderBuildNeeds = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
     : buildNeeds;
 
 const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
     : `          bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
 
 const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `
 
       - name: Download Linux sidecars from Linux artifact

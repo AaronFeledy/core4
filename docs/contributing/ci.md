@@ -9,7 +9,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.4.0`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.4.0`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -81,6 +81,7 @@ CI builds and smokes one binary per required PR platform:
 - `build-linux-arm64` on `ubuntu-24.04-arm` → `lando-linux-arm64`
 - `build-linux-x64` on `ubuntu-24.04` → `lando-linux-x64`
 - `build-windows-x64` on `windows-2022` → `lando-windows-x64`
+- `build-windows-arm64` on `windows-11-arm` → `lando-windows-arm64`
 
 ```bash
 bun run build
@@ -97,7 +98,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
 
 ## Local Bun profiling
 
@@ -287,17 +288,20 @@ Protect `main` in GitHub with required status checks enabled. All required statu
 - `guide-scenarios-linux-arm64`
 - `guide-scenarios-linux-x64`
 - `guide-scenarios-windows-x64`
+- `guide-scenarios-windows-arm64`
 - `build-darwin-arm64`
 - `build-darwin-x64`
 - `build-linux-arm64`
 - `build-linux-x64`
 - `build-windows-x64`
+- `build-windows-arm64`
 - `perf-budget-linux-x64`
 - `provider-integration-darwin-arm64`
 - `provider-integration-darwin-x64`
 - `provider-integration-linux-arm64`
 - `provider-integration-linux-x64`
 - `provider-integration-windows-x64`
+- `provider-integration-windows-arm64`
 
 ## Bun upgrade smoke checks
 

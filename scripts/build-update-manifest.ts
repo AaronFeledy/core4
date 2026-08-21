@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { Schema } from "effect";
 
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
-import { CI_PLATFORMS } from "./ci-platforms.ts";
+import { CI_PLATFORMS, releaseBinaryFileName } from "./ci-platforms.ts";
 
 type UpdateManifest = typeof UpdateManifestSchema.Encoded;
 
@@ -44,8 +44,11 @@ export const updateChannelForReleaseVersion = (version: string): UpdateChannel =
 
 const releaseTagForVersion = (version: string): string => `v${normalizeVersion(version)}`;
 
-const releaseAssetName = (platformId: string): string =>
-  `lando-${platformId}${platformId === "windows-x64" ? ".exe" : ""}`;
+const releaseAssetName = (platform: { readonly id: string }): string => releaseBinaryFileName(platform);
+
+// Existing update clients decode with onExcessProperty: "error". Keep the
+// published 5-key schema; windows-arm64 is a compile target only.
+const UPDATE_MANIFEST_PLATFORMS = CI_PLATFORMS.filter((platform) => platform.id !== "windows-arm64");
 
 const releaseUrl = (repository: string, tag: string, artifact: string): string =>
   `https://github.com/${repository}/releases/download/${tag}/${artifact}`;
@@ -77,8 +80,8 @@ export const buildUpdateManifest = async ({
   const tag = releaseTagForVersion(version);
   const binaries = Object.fromEntries(
     await Promise.all(
-      CI_PLATFORMS.map(async (platform) => {
-        const artifact = releaseAssetName(platform.id);
+      UPDATE_MANIFEST_PLATFORMS.map(async (platform) => {
+        const artifact = releaseAssetName(platform);
         const metadata = await binaryMetadata(join(distDir, artifact), allowMissingBinaries);
         return [platform.id, { url: releaseUrl(repository, tag, artifact), ...metadata }] as const;
       }),

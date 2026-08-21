@@ -25,6 +25,7 @@ const targetToNativeRoot = {
   "linux-arm64": "@opentui/core-linux-arm64",
   "linux-x64": "@opentui/core-linux-x64",
   "windows-x64": "@opentui/core-win32-x64",
+  "windows-arm64": "@opentui/core-win32-arm64",
 } as const;
 
 const runGenerator = async (): Promise<{ exitCode: number; stderr: string }> => {
@@ -96,7 +97,7 @@ describe("OpenTUI native stub catalog", () => {
     );
   });
 
-  test("generates exactly 35 deterministic import-free throwing stubs", async () => {
+  test("generates exactly 42 deterministic import-free throwing stubs", async () => {
     const targets = Object.keys(targetToNativeRoot);
     const files = (
       await Promise.all(
@@ -106,7 +107,7 @@ describe("OpenTUI native stub catalog", () => {
       )
     ).flat();
 
-    expect(files).toHaveLength(35);
+    expect(files).toHaveLength(42);
     for (const relativePath of files) {
       const [target, file] = relativePath.split("/");
       const source = await Bun.file(resolve(generatedRoot, "stubs", relativePath)).text();
@@ -171,7 +172,7 @@ describe("OpenTUI native stub catalog", () => {
       const rerun = await runGenerator();
       expect({ exitCode: rerun.exitCode, stderr: rerun.stderr }).toMatchObject({ exitCode: 0 });
 
-      expect(before.size).toBe(36);
+      expect(before.size).toBe(43);
       for (const [relativePath, source] of before) {
         expect(await Bun.file(resolve(generatedRoot, relativePath)).text()).toBe(source);
       }

@@ -15,7 +15,7 @@ import {
   checkRuntimeBundleManifestInvariant,
   resolveManifestRepository,
 } from "./check-runtime-bundle-manifest.ts";
-import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform, releaseBinaryFileName } from "./ci-platforms.ts";
 import { resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
@@ -143,7 +143,7 @@ const hasMacosPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
   platforms.some((platform) => platform.id.startsWith("darwin-"));
 
 const hasWindowsPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
-  platforms.some((platform) => platform.id === "windows-x64");
+  platforms.some((platform) => isWindowsCiPlatform(platform));
 
 const targetFlags = {
   "--all": "all",
@@ -529,7 +529,7 @@ const manifestSigningScript = (env: ReleaseEnvironment, platforms: ReadonlyArray
   ].join("\n");
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
-  `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+  `./dist/${releaseBinaryFileName(platform)}`;
 
 interface ReleaseBinarySignatureArtifact {
   readonly binaryPath: string;

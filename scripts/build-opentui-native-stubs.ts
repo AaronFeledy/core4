@@ -32,6 +32,7 @@ const TARGET_TO_NATIVE_ROOT = {
   "linux-arm64": "@opentui/core-linux-arm64",
   "linux-x64": "@opentui/core-linux-x64",
   "windows-x64": "@opentui/core-win32-x64",
+  "windows-arm64": "@opentui/core-win32-arm64",
 } as const;
 
 export interface PinnedInputs {
