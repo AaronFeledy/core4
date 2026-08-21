@@ -7,14 +7,13 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
+import { isRecord } from "./extensions.ts";
+
 type ComposeConfigFileInput = {
   readonly name: string;
   readonly source: string;
   readonly hash: string;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const grantSources = (
   landofile: LandofileShape,
@@ -44,10 +43,10 @@ export const loadComposeConfigFiles = (input: {
 }): Effect.Effect<ReadonlyArray<ComposeConfigFileInput>, LandofileValidationError> =>
   Effect.gen(function* () {
     const definitions = input.landofile.configs ?? {};
-    if (Object.keys(definitions).length === 0 && grantSources(input.landofile).length === 0) return [];
+    const grants = grantSources(input.landofile);
+    if (Object.keys(definitions).length === 0 && grants.length === 0) return [];
     if (!providerRealizesConfigs(input.capabilities)) return [];
 
-    const grants = grantSources(input.landofile);
     const definedNames = new Set(Object.keys(definitions));
 
     for (const grant of grants) {
@@ -60,8 +59,6 @@ export const loadComposeConfigFiles = (input: {
         }),
       );
     }
-
-    if (Object.keys(definitions).length === 0) return [];
 
     if (input.fileSystem === undefined) {
       return yield* Effect.fail(

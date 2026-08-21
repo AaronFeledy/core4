@@ -10,10 +10,12 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import {
+  AppPlannerLive,
+  CacheServiceLive,
+  FileSystemLive,
+  PluginRegistryLive,
+} from "../../src/testing/engine-layers.ts";
 
 const configCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -110,8 +112,6 @@ describe("Compose config file identity", () => {
       });
 
       const failure = expectFailure(await planExit(landofile));
-      expect(failure).toBeInstanceOf(LandofileValidationError);
-      expect(failure).toMatchObject({ _tag: "LandofileValidationError" });
       if (!(failure instanceof LandofileValidationError))
         throw new Error("Expected LandofileValidationError");
       expect(failure.message).toMatch(/missing\.conf/);
@@ -133,7 +133,6 @@ describe("Compose config file identity", () => {
       });
 
       const failure = expectFailure(await planExit(landofile));
-      expect(failure).toBeInstanceOf(LandofileValidationError);
       if (!(failure instanceof LandofileValidationError))
         throw new Error("Expected LandofileValidationError");
       expect(failure.message).toMatch(/external/);
@@ -154,7 +153,6 @@ describe("Compose config file identity", () => {
       });
 
       const failure = expectFailure(await planExit(landofile));
-      expect(failure).toBeInstanceOf(LandofileValidationError);
       if (!(failure instanceof LandofileValidationError))
         throw new Error("Expected LandofileValidationError");
       expect(failure.message).toMatch(/phpini/);

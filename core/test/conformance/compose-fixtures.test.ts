@@ -25,10 +25,12 @@ import {
   analyzeComposeDispositions,
 } from "@lando/landofile/compose/rejections";
 import { parseLandofile } from "@lando/landofile/parser";
-import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { loadLandofileFile } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import {
+  AppPlannerLive,
+  FileSystemLive,
+  loadLandofileFile,
+  makePluginRegistryLive,
+} from "../../src/testing/engine-layers.ts";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 import {
