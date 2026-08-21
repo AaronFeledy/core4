@@ -1,11 +1,11 @@
 ---
 title: Alpha install and bug reports
-description: How to install the Lando 4 Alpha prerelease and where to file bug reports with the right diagnostic files attached.
+description: Install the Lando 4 Alpha, run setup, and attach the right diagnostics to a bug report.
 ---
 
 # Alpha install and bug reports
 
-Lando v4 is an **experimental Alpha**. The first-time install path is still being finalized.
+Lando v4 is an **experimental Alpha**. Get a Linux x64 binary, run `lando setup`, then `lando doctor`.
 
 ## Current install options
 
@@ -13,8 +13,8 @@ Lando v4 is an **experimental Alpha**. The first-time install path is still bein
 
 The CI pipeline publishes a `v4.0.0-dev.N` GitHub prerelease after each successful `main` build. This prerelease includes:
 
-- `lando` : the Linux x64 compiled binary
-- `SHA256SUMS` : checksum manifest
+- `lando`: the Linux x64 compiled binary
+- `SHA256SUMS`: checksum manifest
 
 **Platform support:** Linux x64 only. Windows and macOS binaries are deferred.
 
@@ -53,22 +53,21 @@ bun run build
 bun run core/src/cli/index.ts --version
 ```
 
-## First-time setup
+## Run lando setup
 
-After the binary is on your `PATH` (or you are running the source CLI):
+You need a `lando` binary from the steps above.
+
+1. Run setup. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
 
 ```bash
 lando setup
-lando doctor
 ```
 
-`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers.
+`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers. Leftover `defaultProviderId` in user config does not pick Docker on setup.
 
-The default provider is `lando`: a Lando-managed Podman runtime. It does not use your system Docker or Podman. Leftover `defaultProviderId` in user config does not pick Docker on setup.
+Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the runtime may not come up. Do not treat this path as guaranteed.
 
-### If setup fails
-
-Read the error. Then run `lando doctor`. Most rootless Podman host gaps (uidmap, subuid/subgid ranges, cgroups, `XDG_RUNTIME_DIR`) are auto-fixed or printed with a command you can run.
+2. If setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor`.
 
 **uidmap (Fedora/RHEL and unrecognized distros):**
 
@@ -95,23 +94,23 @@ lando setup
 
 **Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
 
-### Linux fallback: system Docker
-
-If the default managed runtime still cannot install, and you already have working system Docker, use Docker as the supported Linux fallback:
+3. If the managed runtime still cannot install and you have working system Docker, use the supported Linux fallback:
 
 ```bash
 lando setup --provider=docker
 ```
 
-Or for one command:
+Or:
 
 ```bash
-LANDO_PROVIDER=docker lando start
+LANDO_PROVIDER=docker lando setup
 ```
 
-`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. This is a fallback, not the default. See [Choose a provider](guides/setup/provider-selection.mdx).
+`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. Setup also does not save Docker as your default. Keep passing `--provider=docker` or `LANDO_PROVIDER=docker` on later commands such as `lando doctor` and `lando start`.
 
-### Verify
+This is a fallback, not the default. See [Pick a container provider](./guides/setup/provider-selection.mdx).
+
+4. Verify:
 
 ```bash
 lando doctor
