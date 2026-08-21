@@ -68,6 +68,12 @@ const makeFakeApi = (
   const failedStartNames = new Set(failedStarts);
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (path === "/networks/create") return { status: 201, body: "" };
+    if (method === "GET" && path.startsWith("/images/") && path.endsWith("/json")) {
+      return { status: 404, body: '{"message":"No such image"}' };
+    }
+    if (method === "POST" && path.startsWith("/images/create?")) {
+      return { status: 200, body: '{"status":"Pull complete"}\n' };
+    }
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
       const name = path.slice("/containers/".length, -"/json".length);
       return existingNames.has(name)

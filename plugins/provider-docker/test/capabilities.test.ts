@@ -94,6 +94,8 @@ describe("provider-docker capabilities", () => {
 
     expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
     expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(linux.artifactPull).toBe(true);
+    expect(macos.artifactPull).toBe(true);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(linux.architectureEmulation).toBe(false);

@@ -70,9 +70,19 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { PULL_REMEDIATION, buildImageInspectRequest, pullImage } from "./image-pull.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
 import { waitForExit } from "./wait-for-exit.ts";
+
+export {
+  buildImageInspectRequest,
+  buildImagePullRequest,
+  parseImagePullFrame,
+  parseImageReference,
+  pullImage,
+} from "./image-pull.ts";
+export type { ImagePullFrame, ParsedImageReference, PulledImage } from "./image-pull.ts";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
@@ -85,6 +95,9 @@ const textDecoder = new TextDecoder();
 
 const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
+
+const IMAGE_MISSING_REMEDIATION =
+  "The image is not present on this Docker engine and could not be pulled. Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.";
 
 // Docker API error responses are JSON: `{ message: "..." }`.
 const apiReasonFromBody = (details: unknown): string | undefined => {
@@ -186,13 +199,20 @@ const networkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 
-const unavailable = (operation: string, message: string, details?: unknown, cause?: unknown) =>
+const unavailable = (
+  operation: string,
+  message: string,
+  details?: unknown,
+  cause?: unknown,
+  remediation?: string,
+) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
     message: withApiReason(message, details),
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
+    ...(remediation === undefined ? {} : { remediation }),
   });
 
 const internal = (operation: string, message: string, details?: unknown, cause?: unknown) =>
@@ -204,16 +224,25 @@ const internal = (operation: string, message: string, details?: unknown, cause?:
     ...(cause === undefined ? {} : { cause }),
   });
 
-const serviceStartFailure = (service: ServicePlan, message: string, details?: unknown, cause?: unknown) =>
+const serviceStartFailure = (
+  service: ServicePlan,
+  message: string,
+  details?: unknown,
+  cause?: unknown,
+  remediation: string = APPLY_REMEDIATION,
+) =>
   new ServiceStartError({
     providerId: PROVIDER_ID,
     operation: "apply",
     service: service.name,
     message: withApiReason(message, details),
-    remediation: APPLY_REMEDIATION,
+    remediation,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
   });
+
+const isMissingImageCreateResponse = (response: DockerHttpResponse): boolean =>
+  response.status === 404 || /no such image/iu.test(response.body);
 
 const serviceExecFailure = (service: ServicePlan, message: string, details?: unknown) =>
   new ServiceExecError({
@@ -852,33 +881,59 @@ const inspectContainer = (api: DockerApiClient, name: string) =>
     return { exists: true, running: inspect.State?.Running === true || inspect.State?.Status === "running" };
   });
 
+const ensureImagePresent = (api: DockerApiClient, imageRef: string) =>
+  Effect.gen(function* () {
+    const inspectResponse = yield* request(api, "apply", buildImageInspectRequest(imageRef));
+    if (inspectResponse.status === 200) return;
+    if (inspectResponse.status === 404) {
+      yield* pullImage(api, imageRef);
+      return;
+    }
+    yield* Effect.fail(
+      unavailable(
+        "apply",
+        `Docker image inspect failed with HTTP ${inspectResponse.status}.`,
+        inspectResponse,
+        undefined,
+        PULL_REMEDIATION,
+      ),
+    );
+  });
+
 const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
-  Effect.try({
-    try: () => createContainerBody(plan, service),
-    catch: (cause) =>
-      cause instanceof ServiceStartError
-        ? cause
-        : serviceStartFailure(service, "Failed to build Docker container create payload.", undefined, cause),
-  }).pipe(
-    Effect.flatMap((body) =>
-      request(api, "apply", {
-        method: "POST",
-        path: `/containers/create?name=${encodeURIComponent(name)}`,
-        body,
-      }),
-    ),
-    Effect.flatMap((response) =>
-      response.status === 201 || response.status === 409
-        ? Effect.void
-        : Effect.fail(
-            serviceStartFailure(
+  Effect.gen(function* () {
+    if (service.artifact?.kind === "ref") {
+      yield* ensureImagePresent(api, service.artifact.ref);
+    }
+    const body = yield* Effect.try({
+      try: () => createContainerBody(plan, service),
+      catch: (cause) =>
+        cause instanceof ServiceStartError
+          ? cause
+          : serviceStartFailure(
               service,
-              `Docker container create failed with HTTP ${response.status}.`,
-              response,
+              "Failed to build Docker container create payload.",
+              undefined,
+              cause,
             ),
-          ),
-    ),
-  );
+    });
+    const response = yield* request(api, "apply", {
+      method: "POST",
+      path: `/containers/create?name=${encodeURIComponent(name)}`,
+      body,
+    });
+    if (response.status === 201 || response.status === 409) return;
+    const missingImage = isMissingImageCreateResponse(response);
+    yield* Effect.fail(
+      serviceStartFailure(
+        service,
+        `Docker container create failed with HTTP ${response.status}.`,
+        response,
+        undefined,
+        missingImage ? IMAGE_MISSING_REMEDIATION : APPLY_REMEDIATION,
+      ),
+    );
+  });
 
 const startContainer = (api: DockerApiClient, service: ServicePlan, name: string) =>
   request(api, "apply", { method: "POST", path: `/containers/${encodeURIComponent(name)}/start` }).pipe(
@@ -951,62 +1006,6 @@ const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<v
   request(api, "destroy", { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
     Effect.catchAll(() => Effect.void),
   );
-
-const pullImage = (api: DockerApiClient, imageRef: string) =>
-  Effect.gen(function* () {
-    // Pull the image using Docker API - returns NDJSON stream
-    const response = yield* request(api, "pullArtifact", {
-      method: "POST",
-      path: `/images/create?fromImage=${encodeURIComponent(imageRef)}`,
-    });
-
-    // Docker returns HTTP 200 even on error - need to check NDJSON body for errors
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable("pullArtifact", `Docker image pull failed with HTTP ${response.status}.`, response),
-      );
-    }
-
-    // Parse NDJSON response for errors
-    const lines = response.body.split("\n").filter((line) => line.trim().length > 0);
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as { error?: string; errorDetail?: { message?: string } };
-        if (parsed.error !== undefined || parsed.errorDetail !== undefined) {
-          const errorMessage = parsed.errorDetail?.message ?? parsed.error ?? "Unknown error";
-          yield* Effect.fail(
-            unavailable("pullArtifact", `Docker image pull failed: ${errorMessage}`, parsed),
-          );
-        }
-      } catch {
-        // Ignore JSON parse errors in NDJSON stream
-      }
-    }
-
-    // Inspect the image to get its digest
-    const inspectResponse = yield* request(api, "pullArtifact", {
-      method: "GET",
-      path: `/images/${encodeURIComponent(imageRef)}/json`,
-    });
-
-    if (inspectResponse.status < 200 || inspectResponse.status >= 300) {
-      // Image was pulled but inspection failed - still return success with no digest
-      return { ref: imageRef };
-    }
-
-    const inspectBody = yield* parseJson(inspectResponse, "pullArtifact");
-    const digest =
-      typeof inspectBody === "object" &&
-      inspectBody !== null &&
-      "RepoDigests" in inspectBody &&
-      Array.isArray(inspectBody.RepoDigests) &&
-      inspectBody.RepoDigests.length > 0 &&
-      typeof inspectBody.RepoDigests[0] === "string"
-        ? (inspectBody.RepoDigests[0] as string).split("@")[1]
-        : undefined;
-
-    return { ref: imageRef, ...(digest === undefined ? {} : { digest }) };
-  });
 
 interface DiscoveredContainer {
   readonly id: string;
