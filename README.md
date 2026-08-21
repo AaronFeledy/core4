@@ -203,9 +203,9 @@ All command output flows through the `Renderer` service; pick a mode with
 ## Building from source
 
 The compiled binary is produced with `bun build --compile --bytecode` targeting
-`core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for five
-platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
-`windows-x64`. Source and compiled entries now share the native dispatcher in
+`core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for six
+platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+`windows-x64`, and `windows-arm64`. Source and compiled entries now share the native dispatcher in
 `core/src/cli/run.ts`. The retired split existed because `@oclif/core`'s
 `execute()` cannot dispatch inside a compiled Bun binary:
 a probe importing only `@oclif/core` and calling `execute()` was compiled with

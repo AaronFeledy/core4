@@ -445,7 +445,14 @@ describe("ci workflow codegen", () => {
       const staticChecksPlatform = workflow.slice(staticChecksStart, staticChecksEnd);
 
       expect(workflow).toContain("static-checks-platform:");
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
@@ -495,7 +502,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
       expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(21);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(24);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -619,13 +626,20 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates the five-platform PR CI matrix with timing and timeout instrumentation",
+    "generates the six-platform PR CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
 
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`build-${platform}:`);
         expect(workflow).toContain(`provider-integration-${platform}:`);
         expect(workflow).toContain(`name: lando-${platform}`);
@@ -635,7 +649,14 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("unit-tests-linux-x64:");
       expect(workflow).toContain("needs: [static-checks-platform]");
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
       expect(workflow).toContain(

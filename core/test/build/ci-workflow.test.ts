@@ -58,7 +58,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(21);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(24);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -314,6 +314,7 @@ describe("ci workflow", () => {
       "bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64",
       "bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64",
       "bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe",
+      "bun-windows-arm64 --outfile ./dist/bundle/lando-windows-arm64.exe",
     ]) {
       expect(rehearsal).toContain(
         `          bun run scripts/build-compiled-binary.ts --target ${target} --version "$VERSION" --minify --sourcemap=external`,
@@ -535,6 +536,7 @@ describe("ci workflow", () => {
       ["linux-arm64", "lando"],
       ["linux-x64", "lando"],
       ["windows-x64", "lando-windows-x64.exe"],
+      ["windows-arm64", "lando-windows-arm64.exe"],
     ] as const) {
       const build = findIndentedBlock(jobs, `build-${target}`, 2);
       expect(build).toContain(`          LANDO_RELEASE_TARGET: ${target}`);
@@ -877,6 +879,7 @@ describe("ci workflow", () => {
       ["guide-scenarios-darwin-x64", "macos-15-intel"],
       ["guide-scenarios-linux-arm64", "ubuntu-24.04-arm"],
       ["guide-scenarios-windows-x64", "windows-2022"],
+      ["guide-scenarios-windows-arm64", "windows-11-arm"],
     ] as const;
 
     for (const [jobId, runsOn] of guideScenarioJobs) {
@@ -1197,7 +1200,14 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
 
-    for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+    for (const platform of [
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm64",
+      "linux-x64",
+      "windows-x64",
+      "windows-arm64",
+    ]) {
       const providerJob = findIndentedBlock(
         jobs,
         platform === "linux-x64"
@@ -1220,11 +1230,48 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: ubuntu-26.04");
     expect(workflow).toContain("runs-on: [ubuntu-24.04, ubuntu-26.04]");
     expect(workflow).toContain("runs-on: windows-2022");
+    expect(workflow).toContain("runs-on: windows-11-arm");
     expect(workflow).toContain(
       '--target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external',
     );
     expect(workflow).toContain(
+      '--target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external',
+    );
+    expect(workflow).toContain(
       "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
     );
+  });
+
+  test("builds and smokes the windows-arm64 binary on windows-11-arm without live provider integration", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const buildWindows = findIndentedBlock(jobs, "build-windows-arm64", 2);
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-windows-arm64", 2);
+
+    expect(buildWindows).toContain("    runs-on: windows-11-arm");
+    expect(buildWindows).toContain("    timeout-minutes: 35");
+    expect(buildWindows).toContain(
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]",
+    );
+    expect(buildWindows).toContain("      - name: Download Linux sidecars from Linux artifact");
+    expect(buildWindows).toContain(
+      '          bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external',
+    );
+    expect(buildWindows).toContain(
+      "          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-arm64.exe",
+    );
+    expect(buildWindows).toContain("          name: lando-windows-arm64");
+    expect(buildWindows).toContain("            dist/lando-windows-arm64.exe");
+    expect(buildWindows).toContain("          retention-days: 14");
+
+    expect(providerIntegration).toContain("    needs: [build-windows-arm64]");
+    expect(providerIntegration).toContain("    runs-on: windows-11-arm");
+    expect(providerIntegration).toContain("    timeout-minutes: 20");
+    expect(providerIntegration).toContain(
+      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
+    );
+    expect(providerIntegration).not.toContain("windows-managed-setup-acceptance.ts");
+    expect(providerIntegration).not.toContain("runtime-bundle-win32");
+    expect(providerIntegration).not.toContain("win32-arm64");
   });
 });

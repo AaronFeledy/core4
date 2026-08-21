@@ -47,6 +47,7 @@ const bunTargetFor = (platform: CiPlatform): Bun.Build.CompileTarget => {
     case "bun-linux-arm64":
     case "bun-linux-x64":
     case "bun-windows-x64":
+    case "bun-windows-arm64":
       return platform.bunTarget;
     default:
       throw new Error(`Unsupported Bun compile target: ${platform.bunTarget}.`);

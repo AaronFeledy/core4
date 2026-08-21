@@ -11,6 +11,7 @@ const hostTarget = (): keyof typeof opentuiNativeCatalog.targetToNativeRoot => {
   if (process.platform === "linux" && process.arch === "arm64") return "linux-arm64";
   if (process.platform === "linux" && process.arch === "x64") return "linux-x64";
   if (process.platform === "win32" && process.arch === "x64") return "windows-x64";
+  if (process.platform === "win32" && process.arch === "arm64") return "windows-arm64";
   throw new Error(`Unsupported CLI bundle host: ${process.platform}-${process.arch}.`);
 };
 

@@ -18,17 +18,20 @@ const requiredChecks = [
   "guide-scenarios-linux-arm64",
   "guide-scenarios-linux-x64",
   "guide-scenarios-windows-x64",
+  "guide-scenarios-windows-arm64",
   "build-darwin-arm64",
   "build-darwin-x64",
   "build-linux-arm64",
   "build-linux-x64",
   "build-windows-x64",
+  "build-windows-arm64",
   "perf-budget-linux-x64",
   "provider-integration-darwin-arm64",
   "provider-integration-darwin-x64",
   "provider-integration-linux-arm64",
   "provider-integration-linux-x64",
   "provider-integration-windows-x64",
+  "provider-integration-windows-arm64",
 ] as const;
 
 const extractBranchProtectionSection = (runbook: string): string => {

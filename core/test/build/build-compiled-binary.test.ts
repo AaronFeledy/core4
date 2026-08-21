@@ -17,7 +17,7 @@ const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 
 describe("compiled binary OpenTUI native pruning", () => {
   test.each(releaseTargets)("keeps only the selected native root for %s", (target, selectedRoot) => {
-    // Given: one of the five release targets and all eight catalog roots.
+    // Given: one of the six release targets and all eight catalog roots.
     // When: each exact native root is resolved for that target.
     const resolutions = opentuiNativeCatalog.allNativeRoots.map((root) => ({
       root,
@@ -216,5 +216,18 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(flagged.metafileMd).toBe("./dist/lando.metafile.md");
     expect(fromEnv.metafileMd).toBe("./dist/lando.metafile.md");
     expect(defaults.metafileMd).toBeUndefined();
+  });
+
+  test("CLI accepts bun-windows-arm64 and normalizes the target", () => {
+    const options = parseCompiledBinaryArgs([
+      "--target=bun-windows-arm64",
+      "--outfile",
+      "./dist/lando-windows-arm64.exe",
+    ]);
+
+    expect(options).toEqual({
+      target: "windows-arm64",
+      outfile: "./dist/lando-windows-arm64.exe",
+    });
   });
 });
