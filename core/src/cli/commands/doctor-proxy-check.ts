@@ -10,6 +10,13 @@ import {
   passCheck,
 } from "./doctor-subsystem-checks";
 
+const liveProxyStateContext = (
+  proxy: typeof ProxyService.Service,
+): Effect.Effect<Record<string, string>, never> =>
+  Effect.map(Effect.either(proxy.status), (status) =>
+    Either.isRight(status) ? { state: status.right.state } : {},
+  );
+
 export const buildProxyCheck = (
   proxy: typeof ProxyService.Service,
   fix: boolean,
@@ -31,5 +38,6 @@ export const buildProxyCheck = (
       fix,
       () => Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })),
       Either.isLeft(status) ? status.left : undefined,
+      () => liveProxyStateContext(proxy),
     );
   });

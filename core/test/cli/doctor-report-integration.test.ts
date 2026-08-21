@@ -215,13 +215,16 @@ describe("runtime-wired subsystem doctor", () => {
     // Given a selected Traefik proxy that is stopped
     const config = makeConfig({});
     let setupCalls = 0;
+    const proxyService = makeTestProxyService();
     const stoppedTraefik = {
-      ...makeTestProxyService(),
+      ...proxyService,
       id: "traefik",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
+      setup: (setupConfig) =>
+        Effect.tap(proxyService.setup(setupConfig), () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+        ),
     };
     const wired = Layer.mergeAll(
       Layer.succeed(ProxyService, stoppedTraefik),
@@ -244,8 +247,9 @@ describe("runtime-wired subsystem doctor", () => {
     expect(setupCalls).toBe(1);
     expect(proxyCheck).toMatchObject({
       status: "pass",
-      context: { subsystemId: "traefik", ready: "true", fixOutcome: "recovered" },
+      context: { subsystemId: "traefik", ready: "true", state: "running", fixOutcome: "recovered" },
     });
+    expect(proxyCheck?.context.state).not.toBe("stopped");
     expect(proxyCheck?.context.fixError).toBeUndefined();
     expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
   });

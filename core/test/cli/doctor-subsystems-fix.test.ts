@@ -196,13 +196,16 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a selected-but-stopped ProxyService without using the unavailable stub", async () => {
     let setupCalls = 0;
+    const proxyService = makeTestProxyService();
     const stoppedTraefik = Layer.succeed(ProxyService, {
-      ...makeTestProxyService(),
+      ...proxyService,
       id: "traefik",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
+      setup: (config) =>
+        Effect.tap(proxyService.setup(config), () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+        ),
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
@@ -212,6 +215,8 @@ describe("doctor --fix recovery", () => {
     expect(proxy?.status).toBe("pass");
     expect(proxy?.severity).toBe("info");
     expect(proxy?.context.ready).toBe("true");
+    expect(proxy?.context.state).toBe("running");
+    expect(proxy?.context.state).not.toBe("stopped");
     expect(proxy?.context.fixOutcome).toBe("recovered");
     expect(proxy?.context.fixExitCode).toBe("0");
     expect(proxy?.context.fixError).toBeUndefined();
@@ -247,10 +252,11 @@ describe("doctor --fix recovery", () => {
   });
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
+    const proxyService = makeTestProxyService();
     const recoverableProxy = Layer.succeed(ProxyService, {
-      ...TestProxyService,
+      ...proxyService,
       id: "unavailable",
-      setup: () => Effect.void,
+      setup: (config) => proxyService.setup(config),
       applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
       removeRoutes: () => Effect.void,
     });
@@ -261,6 +267,8 @@ describe("doctor --fix recovery", () => {
     expect(proxy?.status).toBe("pass");
     expect(proxy?.severity).toBe("info");
     expect(proxy?.context.ready).toBe("true");
+    expect(proxy?.context.state).toBe("running");
+    expect(proxy?.context.state).not.toBe("stopped");
     expect(proxy?.context.fixOutcome).toBe("recovered");
     expect(proxy?.context.fixExitCode).toBe("0");
     expect(proxy?.solutions).toEqual([]);
