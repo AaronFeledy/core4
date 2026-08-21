@@ -709,3 +709,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - A 0444 staged copy must be chmod'd writable before copyFileSync on re-apply, or rebuild EACCES after the first start.
 ---
+
+## 2026-08-21 06:58 CDT - US-574 Drift Audit
+- Trigger: 3 cycles, 744 changed lines, 5 commits
+- Category 2: Identity proof only asserted cache miss; production bind strings never asserted `:ro`
+- Category 4: Planner config-file input type was exported with no consumer
+- Category 6: php.ini guide claimed cache:refresh remounts; rebuild remounts mode-bearing copies, mode-less binds stay live
+- Fixed: Unexported the unused type; locked bind-string `:ro` and cache-hit-then-miss proofs; corrected remount guidance
+- Split/excise decisions: None; skip-create stale mode-copy, unparseable mode, and tmpdir hardening stay rejected as recorded
+- Verification: typecheck, lint, lint:guides, and 9 focused tests passed
+---
