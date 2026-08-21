@@ -917,20 +917,34 @@ const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePl
               cause,
             ),
     });
-    const response = yield* request(api, "apply", {
-      method: "POST",
-      path: `/containers/create?name=${encodeURIComponent(name)}`,
+    const createRequest = {
+      method: "POST" as const,
+      path: `/containers/create?name=${encodeURIComponent(name)}` as const,
       body,
-    });
+    };
+    const response = yield* request(api, "apply", createRequest);
     if (response.status === 201 || response.status === 409) return;
-    const missingImage = isMissingImageCreateResponse(response);
+    if (isMissingImageCreateResponse(response) && service.artifact?.kind === "ref") {
+      yield* pullImage(api, service.artifact.ref);
+      const retry = yield* request(api, "apply", createRequest);
+      if (retry.status === 201 || retry.status === 409) return;
+      yield* Effect.fail(
+        serviceStartFailure(
+          service,
+          `Docker container create failed with HTTP ${retry.status}.`,
+          retry,
+          undefined,
+          IMAGE_MISSING_REMEDIATION,
+        ),
+      );
+    }
     yield* Effect.fail(
       serviceStartFailure(
         service,
         `Docker container create failed with HTTP ${response.status}.`,
         response,
         undefined,
-        missingImage ? IMAGE_MISSING_REMEDIATION : APPLY_REMEDIATION,
+        APPLY_REMEDIATION,
       ),
     );
   });

@@ -31,22 +31,27 @@ export interface ParsedImageReference {
   readonly tag: string;
 }
 
-/**
- * Split a Docker image reference into Engine `fromImage` + `tag` query values.
- * Digest refs use the digest as `tag`. Untagged names default to `latest` so
- * `/images/create` does not pull every tag.
- */
-export const parseImageReference = (reference: string): ParsedImageReference => {
-  const digestAt = reference.lastIndexOf("@");
-  if (digestAt !== -1) {
-    return { fromImage: reference.slice(0, digestAt), tag: reference.slice(digestAt + 1) };
-  }
+const splitNameAndTag = (reference: string): ParsedImageReference => {
   const lastSlash = reference.lastIndexOf("/");
   const lastColon = reference.lastIndexOf(":");
   if (lastColon > lastSlash) {
     return { fromImage: reference.slice(0, lastColon), tag: reference.slice(lastColon + 1) };
   }
   return { fromImage: reference, tag: "latest" };
+};
+
+/**
+ * Split a Docker image reference into Engine `fromImage` + `tag` query values.
+ * `name:tag@digest` drops the tag so `fromImage` is the name and `tag` is the digest.
+ * Untagged names default to `latest` so `/images/create` does not pull every tag.
+ */
+export const parseImageReference = (reference: string): ParsedImageReference => {
+  const digestAt = reference.lastIndexOf("@");
+  if (digestAt !== -1) {
+    const { fromImage } = splitNameAndTag(reference.slice(0, digestAt));
+    return { fromImage, tag: reference.slice(digestAt + 1) };
+  }
+  return splitNameAndTag(reference);
 };
 
 export const buildImagePullRequest = (reference: string): ImagePullHttpRequest => {
@@ -181,8 +186,10 @@ export const pullImage = (
     }
 
     const inspectResponse = yield* send(api, buildImageInspectRequest(reference));
-    if (inspectResponse.status < 200 || inspectResponse.status >= 300) {
-      return { ref: reference };
+    if (inspectResponse.status !== 200) {
+      return yield* Effect.fail(
+        pullFailure(reference, `post-pull inspect HTTP ${inspectResponse.status}.`, inspectResponse),
+      );
     }
 
     let inspectBody: unknown;

@@ -80,7 +80,9 @@ interface FakeApiOptions {
   readonly images?: Set<string>;
   readonly pullBody?: string;
   readonly pullStatus?: number;
+  readonly inspectStatus?: number;
   readonly createStatus?: number;
+  readonly createStatuses?: ReadonlyArray<number>;
   readonly createBody?: string;
 }
 
@@ -88,11 +90,19 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
   const requests: string[] = [];
   const images = options.images ?? new Set<string>();
   const createStatus = options.createStatus ?? 201;
+  const createStatuses = options.createStatuses;
   const createBody = options.createBody ?? "";
+  let createIndex = 0;
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (path === "/networks/create") return { status: 201, body: "" };
     if (method === "GET" && path.startsWith("/images/") && path.endsWith("/json")) {
       const ref = decodeURIComponent(path.slice("/images/".length, -"/json".length));
+      if (options.inspectStatus !== undefined) {
+        return {
+          status: options.inspectStatus,
+          body: JSON.stringify({ message: `inspect HTTP ${options.inspectStatus}` }),
+        };
+      }
       if (!images.has(ref)) {
         return { status: 404, body: JSON.stringify({ message: `No such image: ${ref}` }) };
       }
@@ -114,7 +124,9 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       return { status: 404, body: "" };
     }
     if (path.startsWith("/containers/create?")) {
-      return { status: createStatus, body: createBody };
+      const status = createStatuses?.[createIndex] ?? createStatus;
+      createIndex += 1;
+      return { status, body: createBody };
     }
     if (path.endsWith("/start")) return { status: 204, body: "" };
     if (path.endsWith("/stop")) return { status: 204, body: "" };
@@ -167,6 +179,19 @@ describe("buildImagePullRequest", () => {
     expect(request.path).toContain(
       `tag=${encodeURIComponent("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}`,
     );
+  });
+
+  test("strips the tag from name:tag@digest so fromImage is the name", () => {
+    const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    expect(parseImageReference(`nginx:latest@${digest}`)).toEqual({ fromImage: "nginx", tag: digest });
+    expect(parseImageReference(`docker.io/library/nginx:stable@${digest}`)).toEqual({
+      fromImage: "docker.io/library/nginx",
+      tag: digest,
+    });
+    const request = buildImagePullRequest(`nginx:stable@${digest}`);
+    expect(request.path).toContain("fromImage=nginx");
+    expect(request.path).toContain(`tag=${encodeURIComponent(digest)}`);
+    expect(request.path).not.toContain(encodeURIComponent("nginx:stable"));
   });
 
   test("defaults an untagged name to latest so the daemon does not pull every tag", () => {
@@ -239,6 +264,23 @@ describe("provider-docker pullArtifact", () => {
     expect(failure.remediation ?? "").not.toMatch(/lando destroy/u);
     expect(failure.remediation).toContain("lando doctor --provider=docker");
   });
+
+  test("fails the pull when post-pull inspect is not 200", async () => {
+    const fake = makeFakeApi({ inspectStatus: 404 });
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    const failure = await Effect.runPromise(Effect.flip(provider.pullArtifact({ ref: mailpitRef })));
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure._tag).toBe("ProviderUnavailableError");
+    expect(failure.message).toContain("post-pull inspect HTTP 404");
+    expect(failure.remediation ?? "").not.toMatch(/lando destroy/u);
+    expect(failure.remediation).toContain("lando doctor --provider=docker");
+    expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(true);
+    expect(fake.requests.some((entry) => entry.startsWith("GET /images/") && entry.endsWith("/json"))).toBe(
+      true,
+    );
+  });
 });
 
 describe("provider-docker apply image pull", () => {
@@ -257,7 +299,28 @@ describe("provider-docker apply image pull", () => {
     expect(fake.requests.filter((entry) => entry.startsWith("POST /containers/create")).length).toBe(1);
   });
 
-  test("treats 404-on-create without a successful pull as a failure", async () => {
+  test("inspect-200 plus create-404 pulls once and retries create", async () => {
+    const fake = makeFakeApi({
+      images: new Set([mailpitRef]),
+      createStatuses: [404, 201],
+      createBody: JSON.stringify({ message: `No such image: ${mailpitRef}` }),
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef)]);
+
+    await apply(plan, fake.api);
+
+    const firstCreate = fake.requests.findIndex((entry) => entry.startsWith("POST /containers/create"));
+    const pull = fake.requests.findIndex((entry) => entry.startsWith("POST /images/create?"));
+    const secondCreate = fake.requests.findIndex(
+      (entry, index) => index > pull && entry.startsWith("POST /containers/create"),
+    );
+    expect(pull).toBeGreaterThan(firstCreate);
+    expect(secondCreate).toBeGreaterThan(pull);
+    expect(fake.requests.filter((entry) => entry.startsWith("POST /images/create?"))).toHaveLength(1);
+    expect(fake.requests.filter((entry) => entry.startsWith("POST /containers/create"))).toHaveLength(2);
+  });
+
+  test("inspect-200 plus create-404 still fails after one pull if retry create is not 201", async () => {
     const fake = makeFakeApi({
       images: new Set([mailpitRef]),
       createStatus: 404,
@@ -272,7 +335,8 @@ describe("provider-docker apply image pull", () => {
     expect(startError.message).toContain("No such image");
     expect(startError.remediation ?? "").not.toMatch(/lando destroy/u);
     expect(startError.remediation).toContain("lando doctor --provider=docker");
-    expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(false);
+    expect(fake.requests.filter((entry) => entry.startsWith("POST /images/create?"))).toHaveLength(1);
+    expect(fake.requests.filter((entry) => entry.startsWith("POST /containers/create"))).toHaveLength(2);
   });
 
   test("does not recommend lando destroy when image pull fails during apply", async () => {

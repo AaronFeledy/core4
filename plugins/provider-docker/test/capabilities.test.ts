@@ -388,6 +388,7 @@ describe("provider-docker capabilities", () => {
     const windows = dockerCapabilitiesForPlatform("win32");
 
     expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
+    expect(windows.artifactPull).toBe(true);
     expect(windows.bindMountPerformance).toBe("slow");
     expect(windows.bindMounts).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
