@@ -77,7 +77,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
 | PRD-05 | US-119 | global-app integration with `lando doctor` | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | PRD-06 | US-122 | fork mode (`apps:scratch:start --fork=<app>`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
-| PRD-06 | US-123 | scratch mode (`apps:scratch:start --recipe=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Planned |
+| PRD-06 | US-123 | scratch mode (`apps:scratch:start --recipe=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
 | PRD-06 | US-126 | scratch registry garbage collection (`apps:scratch:gc`) | `docs/guides/scratch/scratch-gc.mdx` | Shipped |
 | PRD-06 | US-127 | `--mount-cwd` + `--share-global-storage` flags | `docs/guides/scratch/mount-and-share-flags.mdx` | Shipped |
 | PRD-06 | US-128 | `apps:scratch:list` + `apps:scratch:info` | `docs/guides/scratch/list-and-info.mdx` | Shipped |
@@ -86,7 +86,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-07 | US-135 | `fetchAllowlist:` + ctx.fetch | `docs/guides/recipes/authoring-fetch-allowlist.mdx` | Shipped |
 | PRD-07 | US-136 | programmatic recipe.ts | `docs/guides/recipes/programmatic-recipe.mdx` | Shipped |
 | PRD-08 | US-139 | `includes:` + .lando.lock.yml | `docs/guides/landofile/includes-and-lockfile.mdx` | Shipped |
-| PRD-08 | US-142 | configuration expressions (parser + evaluator) | `docs/guides/landofile/expressions.mdx` | Planned |
+| PRD-08 | US-142 | configuration expressions (parser + evaluator) | `docs/guides/landofile/expressions.mdx` | Shipped |
 | PRD-08 | US-144 | bundled template engines — Handlebars + Mustache | `docs/guides/landofile/template-engines.mdx` | Shipped |
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
@@ -95,7 +95,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
 | PRD-10 | US-164 | tooling output via renderer task tree | `docs/guides/tooling/output-streaming.mdx` | Shipped |
 | PRD-11 | US-165 | `meta:plugin:add` against npm | `docs/guides/plugins/install-from-npm.mdx` | Shipped |
-| PRD-11 | US-167 | postinstall trust gating (incl. wildcards) | `docs/guides/plugins/trust-and-wildcards.mdx` | Planned |
+| PRD-11 | US-167 | postinstall trust gating (incl. wildcards) | `docs/guides/plugins/trust-and-wildcards.mdx` | Shipped |
 | PRD-11 | US-168 | system / user / app plugin discovery scopes | `docs/guides/plugins/discovery-scopes.mdx` | Shipped |
 | PRD-11 | US-173 | library-mode defaults | `docs/guides/library/embedding-defaults.mdx` | Shipped |
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
@@ -151,6 +151,7 @@ End-to-end tutorials that exercise several capabilities at once.
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
 | — | — | everyday app lifecycle (start / inspect / exec / restart / destroy) | `docs/guides/tutorial/app-lifecycle.mdx` | Shipped |
+| — | — | start fresh when coming from Lando 3 | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | — | — | Node + Postgres app scaffolded from a recipe | `docs/guides/node-postgres.mdx` | Shipped |
 | — | — | port a Compose service block and remediate rejected keys | `docs/guides/config/compose-service-block.mdx` | Shipped |
 | — | — | share tooling fragments through `includes:` with `kind: tooling` | `docs/guides/tooling/tooling-includes.mdx` | Shipped |
@@ -177,6 +178,10 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
+| — | — | Landofile intro: services, tooling, and proxy | `docs/guides/landofile/your-landofile.mdx` | Shipped |
+| — | — | everyday CLI loop map | `docs/guides/cli/everyday-commands.mdx` | Shipped |
+| — | — | import a SQL dump with exec plus client | `docs/guides/tooling/import-a-database.mdx` | Shipped |
+| — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
 | — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
 | — | — | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
