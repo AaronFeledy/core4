@@ -696,3 +696,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Hash config file bytes only when the provider declares both project and service `configs` support, otherwise the existing CapabilityError gate must fire first.
   - Upstream Compose conformance fixtures are YAML-only; stub missing `configs.*.file` paths in the harness so preservation proofs still plan after realization hashing lands.
 ---
+
+## 2026-08-21 05:59 CDT - US-574
+- Story verified complete on branch (no new code).
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
