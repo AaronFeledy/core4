@@ -1,17 +1,17 @@
 ---
 name: lando-write-docs
 description: >
-  Write and edit Lando 4 Alpha / Core4 docs, executable guide MDX, recipe READMEs,
+  Write and edit Lando 4 docs, executable guide MDX, recipe READMEs,
   and user-facing prose. Owns voice, page shape, and prose-first executable guides.
   Use when editing docs/**, recipes/**/README.mdx, INDEX coverage, guide fixtures,
-  or doc wording. Do not use for changelogs, marketing, or official lando/core.
+  or doc wording. Do not use for changelogs or marketing.
 ---
 
 # Write Lando docs
 
 Single source of truth for how to write docs in this monorepo. Load this skill before drafting. Do not invent a parallel style guide.
 
-Voice: Lando 4 that learned from both. Slightly irreverent and concrete (Lando 3 cadence). Command-first, little ceremony (DDEV). Clone neither. Do not copy Lando 3 product facts.
+Voice: slightly irreverent and concrete. Command-first, little ceremony. Sound like someone who ships Lando, not a blog. Do not copy Lando 3 product facts.
 
 ## Fail if
 
@@ -24,7 +24,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Invented CLI output, `...`, "output omitted", or empty `<Inspect output />` sold as a transcript
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
 - User told to start Traefik by hand
-- Feature stubbed as "not available in Alpha" when Alpha does the thing
+- Feature stubbed as unavailable when the product does the thing
 - Default provider implied as Docker. Default is `lando` (managed Podman)
 - User page leaks CI/NDJSON/`LANDO_TEST_*`/job names
 - More than one Diátaxis type on one page (tutorial / how-to / reference / explanation)
@@ -37,9 +37,9 @@ Any of these fails the page. Rewrite that item. Do not ship.
 ## Before you write
 
 1. Name the page type. Write only that type.
-2. Name the reader: user, contributor, or CI. User pages get the Lando+DDEV voice. CI pages stay dry and stay out of the user path.
+2. Name the reader: user, contributor, or CI. User pages get the Lando voice. CI pages stay dry and stay out of the user path.
 3. If you show a command: run it with an isolated `LANDO` home and paste the real transcript, or show the command only (prose + fences). Do not invent stdout. Do not write `TODO: capture` on a user page.
-4. If Alpha cannot do it, say what *does* work. Do not stub.
+4. If a path is not up yet, say what *does* work. Do not stub.
 
 ## Voice
 
@@ -101,7 +101,7 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Default `lando setup` may fail while the committed runtime-bundle manifest is placeholders (404 URLs, zeroed checksums). Say that.
 - Supported Linux fallback after default setup fails: `lando setup --provider=docker` (working system Docker) or `LANDO_PROVIDER=docker`. Not "advanced users who prefer Docker."
 - Lando starts the proxy. Do not tell users to launch Traefik.
-- Alpha installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
+- Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
 
 ## Transcripts
@@ -243,13 +243,13 @@ $ lando start
 ... started ...
 ```
 
-This feature is not available in Alpha.
+This feature is not available yet.
 
 ## Ship only if
 
 - [ ] One Diátaxis type; H1 is the goal
 - [ ] Opens on a command or outcome, not a lede
-- [ ] You + imperative; no robot voice; no DDEV-clone dryness
+- [ ] You + imperative; no robot voice
 - [ ] Zero em dashes; no throat-clearing; no banned adjectives
 - [ ] Transcripts are real isolated-home captures, or the page does not claim captured output
 - [ ] No Traefik-by-hand; provider is `lando`; Docker is fallback, not default
