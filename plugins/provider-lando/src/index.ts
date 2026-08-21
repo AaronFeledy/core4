@@ -33,7 +33,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { bringDown } from "./bring-down.ts";
 import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
@@ -93,6 +93,7 @@ import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 export {
   appliedPlanPath,
   appliedPlansDir,
+  listAppliedPlans,
   loadAppliedPlan,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -342,6 +343,7 @@ export interface ProviderLayerOptions {
   readonly nftCacheDir?: string;
   readonly stateDir?: string;
   readonly appliedPlanState?: PluginStateStore;
+  readonly appliedPlanStateDir?: string;
   readonly runtimeBinDir?: string;
   readonly runtimeRunDir?: string;
   readonly runtimeStorageDir?: string;
@@ -529,6 +531,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       ? Effect.void
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
+
+  const hydratePlansFromDisk: Effect.Effect<void> =
+    options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+      ? Effect.void
+      : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+          Effect.tap((diskPlans) =>
+            Effect.sync(() => {
+              for (const diskPlan of diskPlans) {
+                if (!plans.has(diskPlan.id)) {
+                  plans.set(diskPlan.id, diskPlan);
+                }
+              }
+            }),
+          ),
+          Effect.asVoid,
+        );
 
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
@@ -846,7 +864,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         }),
       list: (filter) =>
         ensureEffect.pipe(
-          Effect.zipRight(
+          Effect.zipRight(hydratePlansFromDisk),
+          Effect.flatMap(() =>
             Effect.forEach(Array.from(plans.values()), (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>
                 inspect(
@@ -981,6 +1000,7 @@ export const plugin = definePlugin({
               platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
+              appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
               runtimeBinDir: paths.runtimeBinDir,
               runtimeRunDir: paths.runtimeRunDir,
               runtimeStorageDir: paths.runtimeStorageDir,

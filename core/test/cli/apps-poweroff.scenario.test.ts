@@ -12,6 +12,8 @@ import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.
 import { writeCwdAppMapEntry } from "../../src/testing/engine-layers.ts";
 import { HostMaintenanceRegistry } from "../../src/testing/engine-layers.ts";
 
+const noDiscover = async () => [];
+
 let userDataRoot: string;
 let userCacheRoot: string;
 
@@ -70,6 +72,7 @@ describe("apps:poweroff command", () => {
     const stopped: string[] = [];
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async (entry) => {
@@ -87,6 +90,7 @@ describe("apps:poweroff command", () => {
     const calls: string[] = [];
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async (entry) => {
@@ -109,6 +113,7 @@ describe("apps:poweroff command", () => {
   test("result records runtimeServiceStopped=true when seam terminated", async () => {
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async () => {},
@@ -123,6 +128,7 @@ describe("apps:poweroff command", () => {
   test("result records runtimeServiceStopped=false when seam reports not terminated", async () => {
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async () => {},
@@ -137,6 +143,7 @@ describe("apps:poweroff command", () => {
   test("uses the default runtime service seam when none is injected", async () => {
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async () => {},
@@ -193,6 +200,7 @@ describe("apps:poweroff command", () => {
     const stopped: string[] = [];
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         stopApp: async (entry) => {
@@ -208,6 +216,7 @@ describe("apps:poweroff command", () => {
     const stopped: string[] = [];
     const result = await Effect.runPromise(
       poweroff({
+        discoverContainers: noDiscover,
         userDataRoot,
         userCacheRoot,
         keepGlobal: true,

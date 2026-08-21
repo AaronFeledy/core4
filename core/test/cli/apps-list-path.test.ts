@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
+import { appliedPlansDirectory } from "../../src/cli/commands/list.ts";
 import { appsListPathFromArgv } from "../../src/cli/dispatch-apps.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
@@ -62,11 +63,10 @@ const appNames = (result: RunResult): ReadonlyArray<string> => {
 
 const makePlan = (id: string, root: string, services: ReadonlyArray<string>) => ({
   version: 1,
-  providerId: "lando",
-  appId: id,
-  plan: {
+  data: {
     id,
     name: id,
+    slug: id,
     root,
     provider: "lando",
     services: Object.fromEntries(
@@ -86,7 +86,7 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
   beforeAll(async () => {
     compiledBinary = await ensureCompiledCli();
     root = await mkdtemp(join(tmpdir(), "lando-apps-list-path-"));
-    const appsDir = join(root, "data", "providers", "provider-lando", "apps");
+    const appsDir = appliedPlansDirectory(join(root, "data"));
     await mkdir(appsDir, { recursive: true });
     await mkdir(join(root, "cache"), { recursive: true });
     await mkdir(join(root, "conf"), { recursive: true });
@@ -113,6 +113,7 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
       "https_proxy",
       "no_proxy",
       "LANDO_NETWORK_CA_CERTS",
+      "DOCKER_HOST",
     ]) {
       Reflect.deleteProperty(env, key);
     }

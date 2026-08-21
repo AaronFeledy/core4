@@ -1,5 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -9,13 +8,15 @@ import { ConfigService } from "@lando/sdk/services";
 import { listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 
-export interface AppsListEntry {
-  readonly appId: string;
-  readonly appName: string;
-  readonly providerId: string;
-  readonly appRoot: string;
-  readonly services: ReadonlyArray<string>;
-}
+import {
+  type AppsListEntry,
+  discoverRunningAppsFromSockets,
+  mergeAppsListEntries,
+  readAppliedPlansFromUserData,
+} from "./list-discovery";
+
+export type { AppsListEntry } from "./list-discovery";
+export { appliedPlansDirectory } from "./list-discovery";
 
 export const AppsListEntrySchema = Schema.Struct({
   appId: Schema.String,
@@ -34,85 +35,12 @@ export interface ListServicesOptions {
   readonly format?: "json" | "table";
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
+  readonly discoverContainers?: (userDataRoot: string) => Promise<ReadonlyArray<AppsListEntry>>;
 }
 
 export interface ListServicesResult {
   readonly apps: ReadonlyArray<AppsListEntry>;
 }
-
-interface AppliedPlanEnvelope {
-  readonly version: number;
-  readonly providerId?: string;
-  readonly plan?: unknown;
-}
-
-const PROVIDER_DIRS = ["provider-lando", "provider-docker"] as const;
-
-interface DiscoveredPlan {
-  readonly id: string;
-  readonly name?: string;
-  readonly root: string;
-  readonly services: ReadonlyArray<string>;
-}
-
-const decodeEnvelopeFile = (content: string): DiscoveredPlan | undefined => {
-  let envelope: AppliedPlanEnvelope;
-  try {
-    envelope = JSON.parse(content) as AppliedPlanEnvelope;
-  } catch {
-    return undefined;
-  }
-  const plan = envelope.plan as
-    | { id?: unknown; name?: unknown; root?: unknown; services?: unknown }
-    | undefined;
-  if (
-    plan === undefined ||
-    typeof plan.id !== "string" ||
-    typeof plan.root !== "string" ||
-    plan.services === null ||
-    typeof plan.services !== "object"
-  ) {
-    return undefined;
-  }
-  const services = Object.keys(plan.services as Record<string, unknown>);
-  return {
-    id: plan.id,
-    ...(typeof plan.name === "string" ? { name: plan.name } : {}),
-    root: plan.root,
-    services,
-  };
-};
-
-const readAppsFromProvider = async (
-  providerDir: string,
-  providerId: string,
-): Promise<ReadonlyArray<AppsListEntry>> => {
-  let entries: ReadonlyArray<string>;
-  try {
-    entries = await readdir(providerDir);
-  } catch {
-    return [];
-  }
-  const apps: AppsListEntry[] = [];
-  for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue;
-    try {
-      const content = await readFile(join(providerDir, entry), "utf8");
-      const plan = decodeEnvelopeFile(content);
-      if (plan === undefined) continue;
-      apps.push({
-        appId: plan.id,
-        appName: plan.name ?? plan.id,
-        providerId,
-        appRoot: plan.root,
-        services: plan.services,
-      });
-    } catch {
-      // ignore unreadable / corrupt state files
-    }
-  }
-  return apps;
-};
 
 const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => ({
   appId: basename(entry.appRoot) || entry.appRoot,
@@ -150,25 +78,29 @@ export const listServices = (
     const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
     if (userDataRoot === undefined) return { apps: [] };
 
-    const providersRoot = join(userDataRoot, "providers");
-    const apps: AppsListEntry[] = [];
-    for (const providerName of PROVIDER_DIRS) {
-      const providerDir = join(providersRoot, providerName, "apps");
-      const providerApps = yield* Effect.promise(() =>
-        readAppsFromProvider(providerDir, providerName.replace(/^provider-/, "")),
-      );
-      apps.push(...providerApps);
-    }
+    const persisted = yield* Effect.promise(async () => {
+      try {
+        return await readAppliedPlansFromUserData(userDataRoot);
+      } catch {
+        return [];
+      }
+    });
 
     const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
     const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
       Effect.catchAll(() => Effect.succeed([])),
     );
-    for (const cached of cachedApps) {
-      if (!apps.some((app) => app.appRoot === cached.appRoot)) {
-        apps.push(cacheEntryToApp(cached));
+
+    const discover = options.discoverContainers ?? discoverRunningAppsFromSockets;
+    const running = yield* Effect.promise(async () => {
+      try {
+        return await discover(userDataRoot);
+      } catch {
+        return [];
       }
-    }
+    });
+
+    const apps = mergeAppsListEntries([...persisted, ...cachedApps.map(cacheEntryToApp), ...running]);
 
     const pathFilter = options.path;
     const filtered = pathFilter === undefined ? apps : apps.filter((a) => a.appRoot.includes(pathFilter));
