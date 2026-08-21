@@ -43,7 +43,7 @@ export const sidebar = [
       {
         label: "Services",
         collapsed: true,
-        autogenerate: { directory: "guides/services", collapsed: true },
+        items: [{ autogenerate: { directory: "guides/services", collapsed: true } }],
       },
       {
         label: "Recipe guides",
@@ -57,17 +57,17 @@ export const sidebar = [
       {
         label: "Tooling",
         collapsed: true,
-        autogenerate: { directory: "guides/tooling", collapsed: true },
+        items: [{ autogenerate: { directory: "guides/tooling", collapsed: true } }],
       },
       {
         label: "Landofile",
         collapsed: true,
-        autogenerate: { directory: "guides/landofile", collapsed: true },
+        items: [{ autogenerate: { directory: "guides/landofile", collapsed: true } }],
       },
       {
         label: "Config",
         collapsed: true,
-        autogenerate: { directory: "guides/config", collapsed: true },
+        items: [{ autogenerate: { directory: "guides/config", collapsed: true } }],
       },
       {
         label: "CLI",
