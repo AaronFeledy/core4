@@ -13,6 +13,7 @@ import {
   type PhpVia,
   apacheStartCommand,
   assertPhpViaKeys,
+  fpmStartCommand,
   phpEndpointProtocol,
   phpImageFor,
   phpListenPort,
@@ -80,7 +81,7 @@ const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOver
 
 const applyFpmShape = (ctx: ServiceFeatureContext): void => {
   if (ctx.normalizedConfig.image === undefined && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand(["php-fpm"]);
+    ctx.setCommand(fpmStartCommand(phpListenPort("fpm", ctx.normalizedConfig.port)));
   }
 };
 

@@ -93,3 +93,13 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
     ].join("\n"),
   ];
 };
+
+export const fpmStartCommand = (port: number): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  [
+    "set -eu",
+    `printf '[www]\\nlisten = ${String(port)}\\n' > /usr/local/etc/php-fpm.d/zz-lando-listen.conf`,
+    "exec php-fpm",
+  ].join("\n"),
+];

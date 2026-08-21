@@ -277,7 +277,20 @@ describe("php serving modes (via:)", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9000, protocol: "tcp", name: "web" }]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
-    expect(String(plan.command?.[2] ?? "")).not.toContain("apache2-foreground");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain("listen = 9000");
+    expect(plan.command?.[2]).toContain("exec php-fpm");
+    expect(plan.command?.[2]).not.toContain("apache2-foreground");
+  });
+
+  test("via fpm listens on an authored port", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
+
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9070, protocol: "tcp", name: "web" }]);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9070"]);
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain("listen = 9070");
+    expect(plan.command?.[2]).toContain("exec php-fpm");
   });
 
   test("via fpm applies webroot as the working directory", async () => {
