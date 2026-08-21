@@ -39,7 +39,7 @@ export interface GlobalAppDoctorResult {
 const NOT_INSTALLED_SOLUTION: DoctorSolution = {
   kind: "manual",
   description:
-    "The global app is not installed. Run `lando global:install` to provision Traefik routing and Mailpit mail capture.",
+    "The global app is not installed yet. Starting an app that needs Traefik, Mailpit, or ssh-agent will provision it automatically. To materialize the stack now, run `lando global:install`.",
   command: "lando global:install",
 };
 
@@ -73,7 +73,8 @@ const parseServiceIds = (content: string): ReadonlyArray<string> => {
  * Build the global-app diagnostic check.
  *
  * - When the dist file is absent (global app not installed), returns a `warn`
- *   check with a `lando global:install` solution.
+ *   check noting that `lando start` will auto-provision it, with an optional
+ *   `lando global:install` solution to materialize the stack now.
  * - When the dist file exists, returns a `pass` check carrying:
  *   - `distLandofilePath` / `userLandofilePath` — materialized file paths
  *   - `lastInstallTimestamp` — mtime of the dist file (ISO 8601)

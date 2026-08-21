@@ -228,6 +228,9 @@ describe("native argv parser seam", () => {
     expect(globalInstallOptionsFromInput(compiledInput("meta:global:install", ["proxy"]))).toEqual({
       plugin: "proxy",
     });
+    const yesInstall = compiledInput("meta:global:install", ["--yes"]);
+    expect(yesInstall.flags.yes).toBe(true);
+    expect(globalInstallOptionsFromInput(yesInstall)).toEqual({});
     expect(
       globalUninstallOptionsFromInput(compiledInput("meta:global:uninstall", ["proxy", "--purge"])),
     ).toEqual({

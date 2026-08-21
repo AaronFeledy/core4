@@ -32,6 +32,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { publishedEndpointUrls } from "./authority-url.ts";
 
@@ -150,7 +151,7 @@ export const ensureGlobalServicesRunning = (
           };
 
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(plan);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const builds = yield* BuildOrchestrator;
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
 

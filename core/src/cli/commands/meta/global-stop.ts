@@ -25,6 +25,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -75,7 +76,7 @@ export const globalStop = (): Effect.Effect<GlobalStopResult, GlobalStopError, G
     if (!loaded.materialized) return { app: "global", materialized: false, servicesStopped: [] };
 
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const events = yield* EventService;
     const servicesStopped = Object.values(loaded.plan.services)
       .reverse()

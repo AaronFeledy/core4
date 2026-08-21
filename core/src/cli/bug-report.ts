@@ -185,6 +185,24 @@ const REDACTED_REMEDIATION_FALLBACK = (record: Record<string, unknown> | undefin
   return landofileNotFoundHint(record) ?? appIdReservedHint(record);
 };
 
+const extractCauseRecord = (
+  record: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined => (record === undefined ? undefined : asTaggedRecord(record.cause));
+
+const mergeExtraFields = (
+  primary: ReadonlyArray<readonly [string, string]>,
+  nested: ReadonlyArray<readonly [string, string]>,
+): ReadonlyArray<readonly [string, string]> => {
+  const seen = new Set(primary.map(([key]) => key));
+  const out: Array<readonly [string, string]> = [...primary];
+  for (const pair of nested) {
+    if (seen.has(pair[0])) continue;
+    seen.add(pair[0]);
+    out.push(pair);
+  }
+  return out;
+};
+
 const logsDirFor = (cacheRoot: string): string => `${cacheRoot.replace(/\/+$/u, "")}/logs`;
 
 export const buildBugReport = (input: {
@@ -192,14 +210,24 @@ export const buildBugReport = (input: {
   readonly context: BugReportContext;
 }): BugReportEnvelope => {
   const record = asTaggedRecord(input.error);
+  const causeRecord = extractCauseRecord(record);
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
-  const bodyRaw = extractMessage(record, input.error);
-  const remediationRaw = REDACTED_REMEDIATION_FALLBACK(record);
+  const wrapperBody = extractMessage(record, input.error);
+  const causeMessage = asString(causeRecord?.message);
+  const bodyRaw =
+    causeMessage !== undefined && causeMessage !== wrapperBody
+      ? `${wrapperBody}\n${causeMessage}`
+      : wrapperBody;
+  const remediationRaw = REDACTED_REMEDIATION_FALLBACK(record) ?? REDACTED_REMEDIATION_FALLBACK(causeRecord);
   const code = extractCode(record);
   const appId = ctx.appId ?? extractAppId(record);
-  const providerId = ctx.providerId ?? extractProviderId(record);
-  const extra = extractExtraTagFields(record).map(([key, value]) => {
+  const providerId = ctx.providerId ?? extractProviderId(record) ?? extractProviderId(causeRecord);
+  const causeTag = asString(causeRecord?._tag);
+  const extra = mergeExtraFields(
+    [...(causeTag === undefined ? [] : ([["cause", causeTag]] as const)), ...extractExtraTagFields(record)],
+    extractExtraTagFields(causeRecord),
+  ).map(([key, value]) => {
     const sanitized = key === "issues" ? value : redactString(value);
     return [key, sanitized] as readonly [string, string];
   });

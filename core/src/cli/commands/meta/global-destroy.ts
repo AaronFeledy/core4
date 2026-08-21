@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 export interface GlobalDestroyOptions {
   readonly yes?: boolean;
@@ -85,7 +86,7 @@ export const globalDestroy = (
     }
 
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const servicesDestroyed = Object.values(loaded.plan.services)
       .reverse()
       .map((service) => String(service.name));

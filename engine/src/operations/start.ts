@@ -27,6 +27,7 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-reso
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
+import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
@@ -129,7 +130,9 @@ export const startAppForTarget = (
               message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
               app: plan.name,
               services: [...neededGlobalServices],
-              remediation: "Start the global app manually with `lando global:start`, then retry.",
+              remediation:
+                taggedErrorRemediation(cause) ??
+                "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry `lando start`.",
               cause,
             }),
         ),
