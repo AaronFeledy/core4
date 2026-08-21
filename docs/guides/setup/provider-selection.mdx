@@ -28,17 +28,21 @@ Or set the provider for this shell:
 LANDO_PROVIDER=docker lando setup
 ```
 
-2. Verify:
+2. Verify with Docker still selected:
 
 ```sh
-lando doctor
+lando doctor --provider=docker
 ```
 
-Setup does not save Docker as your default. Keep passing `--provider=docker` or `LANDO_PROVIDER=docker` on later commands. `lando setup` and `lando setup --yes` do not honor leftover `defaultProviderId` in `~/.lando/config.yml`. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+Or:
+
+```sh
+LANDO_PROVIDER=docker lando doctor
+```
+
+Bare `lando doctor` reports the managed `lando` provider. Setup does not save Docker as your default. Keep passing `--provider=docker` or `LANDO_PROVIDER=docker` on later commands. `lando setup` and `lando setup --yes` do not honor leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
 System `podman` is also opt-in with `--provider=podman`. It needs an existing Podman install. Setup fails with remediation if that runtime is missing. It does not install Docker or Podman for you.
-
-Managed runtime bundles ship only for hosts Podman 6 supports. Intel macOS (`darwin-x64`) fails setup with remediation instead of downloading a bundle.
 
 ## Override the provider
 
@@ -48,10 +52,10 @@ Setup (`lando setup`, including `--yes`) uses:
 --provider > LANDO_PROVIDER > capability default (lando)
 ```
 
-App commands (`lando start`, `lando doctor`, the planner) use:
+App commands (`lando start`, `lando doctor`) use:
 
 ```
---provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)
+--provider > Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
 ```
 
 Force Docker for one command:
@@ -89,8 +93,14 @@ lando setup --provider=podman
 ## Verify with lando doctor
 
 ```sh
-lando doctor
+lando doctor --provider=docker
 lando --version
 ```
 
-`lando doctor` should name the provider you selected. If it still shows `lando` after a Docker fallback, you dropped `--provider=docker` or `LANDO_PROVIDER=docker`.
+Or:
+
+```sh
+LANDO_PROVIDER=docker lando doctor
+```
+
+Doctor should name the provider you selected. After a Docker fallback, bare `lando doctor` still reports managed `lando`.

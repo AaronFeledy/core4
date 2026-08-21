@@ -110,13 +110,19 @@ LANDO_PROVIDER=docker lando setup
 
 This is a fallback, not the default. See [Pick a container provider](./guides/setup/provider-selection.mdx).
 
-4. Verify:
+4. Verify with Docker still selected:
 
 ```bash
-lando doctor
+lando doctor --provider=docker
 ```
 
-If doctor still reports issues, try `lando doctor --fix` when it offers one.
+Or:
+
+```bash
+LANDO_PROVIDER=docker lando doctor
+```
+
+Bare `lando doctor` reports the managed `lando` provider. Setup does not persist Docker. If doctor still reports issues, try `lando doctor --provider=docker --fix` when it offers one.
 
 ## Installers and update manifests (not yet available)
 
