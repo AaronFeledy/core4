@@ -692,7 +692,7 @@ describe("@lando/service-lando registration", () => {
     expect(webSteps).not.toContain("service-lando.php:db-client:postgres");
     expect(apiSteps).toContain("service-lando.php:db-client:postgres");
     expect(apiSteps).not.toContain("service-lando.php:db-client:mysql");
-    expect(dbSteps ?? []).not.toContain("service-lando.php:db-client:mysql");
+    expect(dbSteps).not.toContain("service-lando.php:db-client:mysql");
   });
 
   test("AppPlanner fails closed when Varnish backend is unknown", async () => {

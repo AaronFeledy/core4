@@ -74,16 +74,15 @@ export const PHP_DB_CLIENT_REMEDIATION = `Set db_client: auto, db_client: false,
 export const resolvePhpDbClient = (value: unknown): PhpDbClientSelection => {
   if (value === undefined || value === "auto") return { mode: "auto" };
   if (value === false) return { mode: "disabled" };
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Unsupported database client ${JSON.stringify(value)}. ${PHP_DB_CLIENT_REMEDIATION}`);
+  if (typeof value === "string" && value.length > 0) {
+    const separator = value.indexOf(":");
+    const family = separator <= 0 ? "" : value.slice(0, separator);
+    const version = separator <= 0 ? "" : value.slice(separator + 1);
+    if (isFamily(family) && versionsFor(family).includes(version)) {
+      return { mode: "explicit", family, version };
+    }
   }
-  const separator = value.indexOf(":");
-  const family = separator <= 0 ? "" : value.slice(0, separator);
-  const version = separator <= 0 ? "" : value.slice(separator + 1);
-  if (!isFamily(family) || !versionsFor(family).includes(version)) {
-    throw new Error(`Unsupported database client ${JSON.stringify(value)}. ${PHP_DB_CLIENT_REMEDIATION}`);
-  }
-  return { mode: "explicit", family, version };
+  throw new Error(`Unsupported database client ${JSON.stringify(value)}. ${PHP_DB_CLIENT_REMEDIATION}`);
 };
 
 const compareVersions = (left: string, right: string): number =>
@@ -187,14 +186,13 @@ const mongodbCommand = (): string => {
   ].join(" && ");
 };
 
-const mongodbSource = (version: string) => ({
+const mongodbSource = {
   kind: "archive" as const,
   package: PHP_MONGOSH_RELEASE.package,
   packageVersion: PHP_MONGOSH_RELEASE.version,
   artifacts: PHP_MONGOSH_RELEASE.artifacts,
   command: mongodbCommand(),
-  version,
-});
+};
 
 const sourceFor = (install: ClientInstall) => {
   switch (install.family) {
@@ -205,7 +203,7 @@ const sourceFor = (install: ClientInstall) => {
     case "postgres":
       return postgresSource(install.version);
     case "mongodb":
-      return mongodbSource(install.version);
+      return mongodbSource;
     default: {
       const exhaustive: never = install.family;
       return exhaustive;
