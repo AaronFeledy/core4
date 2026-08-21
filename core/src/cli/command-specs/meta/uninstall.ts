@@ -281,6 +281,11 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _reportFallbackDir?: unknown;
     readonly _listDiscoveredApps?: unknown;
     readonly _cleanupDiscoveredApps?: unknown;
+    readonly _cgroupsDelegatePath?: unknown;
+    readonly _shellProfilePath?: unknown;
+    readonly _readText?: unknown;
+    readonly _writeText?: unknown;
+    readonly _terminateRuntimeBinProcesses?: unknown;
   };
   const purge = flags.purge === true;
   const hasInjectedDiscovery = typeof extra._listDiscoveredApps === "function";
@@ -327,6 +332,23 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
         }
       : {}),
     ...(typeof extra._reportFallbackDir === "string" ? { reportFallbackDir: extra._reportFallbackDir } : {}),
+    ...(typeof extra._cgroupsDelegatePath === "string"
+      ? { cgroupsDelegatePath: extra._cgroupsDelegatePath }
+      : {}),
+    ...(typeof extra._shellProfilePath === "string" ? { shellProfilePath: extra._shellProfilePath } : {}),
+    ...(typeof extra._readText === "function"
+      ? { readText: extra._readText as (path: string) => string }
+      : {}),
+    ...(typeof extra._writeText === "function"
+      ? { writeText: extra._writeText as (path: string, content: string) => Promise<void> | void }
+      : {}),
+    ...(typeof extra._terminateRuntimeBinProcesses === "function"
+      ? {
+          terminateRuntimeBinProcesses: extra._terminateRuntimeBinProcesses as NonNullable<
+            UninstallOptions["terminateRuntimeBinProcesses"]
+          >,
+        }
+      : {}),
   };
 };
 

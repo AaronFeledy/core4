@@ -34,6 +34,8 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
           _exists: () => false,
           _remove: async () => {},
           _teardownProviderMachines: async (rootPath: string) => {
@@ -66,6 +68,8 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
           _exists: () => false,
           _remove: async () => {},
           _teardownProviderMachines: async () => {
@@ -97,6 +101,8 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
           _exists: () => false,
           _remove: async () => {},
           _teardownProviderMachines: async () => {

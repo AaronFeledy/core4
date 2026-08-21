@@ -17,6 +17,11 @@ const makeRoots = () => {
   return { root, userDataRoot, userCacheRoot };
 };
 
+const sandboxUninstallIo = (root: string) => ({
+  cgroupsDelegatePath: join(root, "delegate.conf"),
+  shellProfilePath: join(root, ".profile"),
+});
+
 describe("runtime-service uninstall execution", () => {
   test("runs teardown from the host maintenance registry", async () => {
     // Given: an owned runtime directory and a host maintainer fake.
@@ -40,6 +45,7 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
         }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
       );
 
@@ -70,6 +76,7 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
         }),
       );
 
@@ -97,6 +104,7 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false }),
           remove: async (path: string) => {
             removed.push(path);
@@ -130,6 +138,7 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false, pid: 1234 }),
           remove: async (path: string) => {
             removed.push(path);
@@ -145,6 +154,37 @@ describe("runtime-service uninstall execution", () => {
       });
       expect(removed).not.toContain(runtimeDir);
       expect(existsSync(runtimeDir)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when the runtime directory still exists after removal", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
+          teardownRuntimeService: async () => ({ terminated: false }),
+          remove: async () => {
+            // Leave the runtime directory in place.
+          },
+        }),
+      );
+
+      expect(existsSync(runtimeDir)).toBe(true);
+      expect(result.failed).toBe(true);
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "failed",
+      });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

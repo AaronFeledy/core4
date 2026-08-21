@@ -13,8 +13,24 @@ const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-test-"));
   const userDataRoot = join(root, "data");
   const userCacheRoot = join(root, "cache");
-  return { root, userDataRoot, userCacheRoot };
+  return {
+    root,
+    userDataRoot,
+    userCacheRoot,
+    cgroupsDelegatePath: join(root, "delegate.conf"),
+    shellProfilePath: join(root, ".profile"),
+  };
 };
+
+const sandboxCliExtras = (root: string) => ({
+  _cgroupsDelegatePath: join(root, "delegate.conf"),
+  _shellProfilePath: join(root, ".profile"),
+});
+
+const sandboxUninstallIo = (root: string) => ({
+  cgroupsDelegatePath: join(root, "delegate.conf"),
+  shellProfilePath: join(root, ".profile"),
+});
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -66,19 +82,39 @@ describe("meta:uninstall", () => {
       keepData: false,
       purge: true,
     });
+    const readText = (path: string) => `text:${path}`;
+    const writeText = async () => {};
+    const terminateRuntimeBinProcesses = async () => {};
+    expect(
+      uninstallOptionsFromInput({
+        flags: { yes: true },
+        _cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
+        _shellProfilePath: "/tmp/sandbox/.profile",
+        _readText: readText,
+        _writeText: writeText,
+        _terminateRuntimeBinProcesses: terminateRuntimeBinProcesses,
+      }),
+    ).toMatchObject({
+      cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
+      shellProfilePath: "/tmp/sandbox/.profile",
+      readText,
+      writeText,
+      terminateRuntimeBinProcesses,
+    });
   });
 
   test("dry-run renders every uninstall step and previews the default keep-data mode", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       writeFileSync(join(root, "lando"), "binary", "utf-8");
-      const providerRuntime = join(userDataRoot, "providers", "lando");
+      const providerRuntime = join(userDataRoot, "providers", "provider-lando");
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { "dry-run": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _exists: (path: string) =>
             path === providerRuntime || path === userDataRoot || path === userCacheRoot,
         }),
@@ -95,6 +131,7 @@ describe("meta:uninstall", () => {
       expect(output).toContain("global app state");
       expect(output).toContain("caches");
       expect(output).toContain("installed binary");
+      expect(output).toContain("cgroups delegation drop-in");
       expect(output).toContain("shell entries");
       expect(output).toContain("user data root");
       expect(output).toContain("user cache root");
@@ -130,6 +167,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
         }),
       );
@@ -157,6 +195,7 @@ describe("meta:uninstall", () => {
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
+        ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir,
       });
 
@@ -181,6 +220,7 @@ describe("meta:uninstall", () => {
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
+        ...sandboxUninstallIo(root),
         exists: (path: string) => path === hostProxyRunDir,
       });
 
@@ -208,6 +248,7 @@ describe("meta:uninstall", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           exists: (path: string) => path === hostProxyRunDir,
           teardownHostProxySessions: async (rootPath: string) => {
             teardownRoots.push(rootPath);
@@ -236,6 +277,7 @@ describe("meta:uninstall", () => {
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
+        ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir,
       };
 
@@ -271,6 +313,7 @@ describe("meta:uninstall", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
             teardownRoots.push(rootPath);
@@ -310,6 +353,7 @@ describe("meta:uninstall", () => {
           yes: true,
           keepData: true,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
             teardownRoots.push(rootPath);
@@ -347,6 +391,7 @@ describe("meta:uninstall", () => {
           userDataRoot,
           userCacheRoot,
           execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
           exists: () => false,
           teardownRuntimeService: async () => {
             order.push("teardown");
@@ -375,11 +420,13 @@ describe("meta:uninstall", () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
-      const providerRuntime = join(userDataRoot, "providers", "lando");
+      const providerRuntime = join(userDataRoot, "providers", "provider-lando");
+      const legacyRuntime = join(userDataRoot, "providers", "lando");
       const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
         execPath: join(root, "lando"),
+        ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir || path === providerRuntime,
       });
 
@@ -389,6 +436,7 @@ describe("meta:uninstall", () => {
         status: "owned",
         detail: "Remove Lando-managed runtime bundles when present.",
       });
+      expect(plan.find((step) => step.id === "managed-provider-runtime")?.target).not.toBe(legacyRuntime);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -403,6 +451,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _exists: () => false,
         }),
       );
@@ -424,6 +473,8 @@ describe("meta:uninstall", () => {
         _userDataRoot: "/tmp/lando-data",
         _userCacheRoot: "/tmp/lando-cache",
         _execPath: "/tmp/lando-data/bin/lando",
+        _cgroupsDelegatePath: "/tmp/lando-data/delegate.conf",
+        _shellProfilePath: "/tmp/lando-data/.profile",
         _exists: () => true,
       }),
     );
@@ -440,6 +491,8 @@ describe("meta:uninstall", () => {
         _userDataRoot: String.raw`C:\Users\me\AppData\Local\lando`,
         _userCacheRoot: String.raw`C:\Users\me\AppData\Local\lando-cache`,
         _execPath: String.raw`C:\Users\me\AppData\Local\lando\bin\lando.exe`,
+        _cgroupsDelegatePath: String.raw`C:\Users\me\AppData\Local\lando\delegate.conf`,
+        _shellProfilePath: String.raw`C:\Users\me\AppData\Local\lando\.profile`,
         _exists: () => true,
       }),
     );
@@ -452,7 +505,7 @@ describe("meta:uninstall", () => {
   test("confirmed --keep-data removes owned toolchain entries but preserves data roots", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const runtime = join(userDataRoot, "providers", "lando");
+      const runtime = join(userDataRoot, "providers", "provider-lando");
       const mutagen = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
       const agents = join(userDataRoot, "bin", "mutagen-agents");
       const globalState = join(userDataRoot, "global");
@@ -467,6 +520,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: binary,
+          ...sandboxCliExtras(root),
         }),
       );
 
@@ -503,6 +557,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: binary,
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
       );
@@ -529,6 +584,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: binary,
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
       );
@@ -547,7 +603,7 @@ describe("meta:uninstall", () => {
   test("partial failures write a resumable uninstall report", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      const runtime = join(userDataRoot, "providers", "lando");
+      const runtime = join(userDataRoot, "providers", "provider-lando");
       const mutagen = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
       mkdirSync(runtime, { recursive: true });
       mkdirSync(join(userDataRoot, "bin"), { recursive: true });
@@ -559,6 +615,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _remove: async (path: string) => {
             if (path === runtime) throw new Error("locked runtime");
             rmSync(path, { recursive: true, force: true });
@@ -600,6 +657,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
           _remove: async (path: string) => {
@@ -653,6 +711,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
           _remove: async (path: string) => {
             if (path === userCacheRoot) throw new Error("locked cache root");
@@ -690,6 +749,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
           _remove: async (path: string) => {
@@ -710,6 +770,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
           _remove: async (path: string) => {
@@ -771,6 +832,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
               appId: "test-app",
@@ -840,6 +902,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
       );
@@ -877,6 +940,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error("docker ps query timed out after 1000ms");
           },
@@ -918,6 +982,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
               appId: "test-app",
@@ -966,6 +1031,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error(
               "Failed to query container runtimes: podman: command not found; docker: command not found",
@@ -1011,6 +1077,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
               appId: "orphaned-app",
@@ -1067,6 +1134,7 @@ describe("meta:uninstall", () => {
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
           _execPath: join(root, "lando"),
+          ...sandboxCliExtras(root),
         }),
       );
 
