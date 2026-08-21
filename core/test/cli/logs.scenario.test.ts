@@ -254,6 +254,7 @@ describe("lando logs", () => {
     const result = await Effect.runPromise(logsApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web", "database"]);
+    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
     expect(harness.logCalls.every((call) => call.options.follow === false)).toBe(true);
     expect(result.lines.map((line) => `${line.service}/${line.stream}/${line.line}`)).toEqual([
       "web/stdout/web line 1",
