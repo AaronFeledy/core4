@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
-import { CORE_VERSION } from "@lando/engine/version";
-
 import {
   ConfigService,
   PathsService,
@@ -27,6 +25,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
+import { CORE_VERSION } from "../../src/version.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 
