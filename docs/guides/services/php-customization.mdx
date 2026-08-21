@@ -32,12 +32,18 @@ gd, intl, mbstring, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 | `pdo_sqlite` | PDO driver for SQLite |
 | `zip` | ZIP archive support |
 
+## Xdebug
+
+Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode
+string) on the PHP service — see the Xdebug in PhpStorm guide. `xdebug: false`
+is the default and installs nothing; `XDEBUG_MODE` in `environment:` does not
+add the extension.
+
 ## Install an extra extension
 
 Add a `build.artifact` step to compile or install an extension the
 built-in set doesn't cover — Lando runs each entry as a build-time shell
-command against the service's build layer, honestly, the same way it runs
-its own prerequisite install:
+command against the service's build layer:
 
 ```yaml
 services:

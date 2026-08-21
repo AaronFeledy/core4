@@ -38,6 +38,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - `ProviderCapabilities` fields added with `optionalWith` defaults become required on the decoded Type; every capability fixture must set the new field, and adding a property re-diffs sibling `allOf` optional structs in schema-compatibility.
 - Cross-service catalog wiring that needs sibling discovery belongs in an `AppFeature` (`activatedBy` + `selectors`), not in `ServiceType.resolve`; resolve cannot see other services.
 - nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
+- PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -640,4 +641,30 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Serving-mode validation belongs in `ServiceType.resolve`, not only in the feature apply path, so custom `image:` still fail-closes invalid `via:` / mode-invalid keys.
   - Keep PHP serving-mode helpers in `php-via.ts`; `php.ts` is already near the 250-line ceiling.
+---
+
+## 2026-08-20 22:55 CDT - US-572
+- PHP `xdebug: true` / mode string now installs checksum-pinned Xdebug 3.5.3 for 8.1–8.5, writes host-gateway client settings on port 9003, and contributes `lando xdebug on|off|status` tooling that reloads Apache, FPM, or no-ops on cli without a rebuild. `xdebug: false` remains the default and installs nothing.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP xdebug/schema/prerequisites plus the three xdebug-phpstorm guide scenarios). Host `app:config` accepted `xdebug: true`; `app:cache:refresh` planned it and rejected `xdebug: nope` with remediation.
+- **Learnings for future iterations:**
+  - Keep Xdebug mode in `zz-lando-xdebug.ini` rather than `XDEBUG_MODE` env. Xdebug 3 lets the env override ini, which would make on/off require a container recreate.
+  - Pin the PECL tarball (URL + sha256) the same way Composer is pinned; do not `pecl install xdebug` unpinned. Include `phpVersion` in `buildKeyInputs` even when the tarball is shared, because the compiled `.so` is ABI-specific.
+  - `xdebug:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
+---
+
+## 2026-08-20 23:55 CDT - US-572 Review
+- Stopped injecting `XDEBUG_MODE` so `lando xdebug on|off` can rewrite `zz-lando-xdebug.ini` on custom images, and rejected Landofile `xdebug: "off"` so `on` cannot restore a disabled install mode.
+- Review notes (deferred/rejected): rejected requiring the hidden guide scenario to execute `php -m` because the test provider cannot compile PECL; unit tests lock that status command. Rejected replacing `host.docker.internal` with `host.lando.internal` extra_hosts because US-439 rejected privileged hosts-file mutation; the PhpStorm guide already documents the Linux extra_hosts caveat. Rejected treating AC 1's `XDEBUG_MODE` wording as a requirement to set the env var — that contradicts AC 2 and the recorded ini-toggle pattern. Review-work lanes expired or timed out without a deliverable; Bugbot plus focused tests were used instead.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 14 PHP xdebug tests and 3 schema tests passed.
+- **Learnings for future iterations:**
+  - Landofile `xdebug:` mode strings must not include `off`; that token is the runtime toggle, and seeding tooling with it makes `lando xdebug on` a no-op.
+---
+
+## 2026-08-21 00:33 CDT - US-572 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app with `xdebug: true`, and confirmed Xdebug 3.5.3 loaded (`php -m`), `xdebug.mode=debug`, `client_host=host.docker.internal`, port 9003, `XDEBUG_MODE` unset, and `lando xdebug status|off|on` toggling without rebuild. Invalid `xdebug: nope` and `xdebug: "off"` failed closed at plan time. via:cli and via:fpm planned with xdebug tooling; adjacent Composer 2.10.2 still worked. Destroyed the app.
+- Fixed the start blocker: the Xdebug build step used a heredoc, which `buildArtifact` rejects as CR/LF in a Dockerfile `RUN` command. Replaced it with a single-line `printf`.
+- **Out-of-scope finding:** Bugbot: `lando xdebug on` runs `php -m | grep -i xdebug` under `set -eu`, so grep's non-zero exit aborts after `write_ini` on custom `image:` services that skip the install step. Status already uses `|| true`; not blocking stock PHP verification.
+- **Learnings for future iterations:**
+  - Artifact build-step shell commands cannot contain real newlines (Dockerfile `RUN` token check). Write ini files with `printf`/`\n`, not heredocs.
+  - A failed `lando start` can leave a stale `plan.bin` keyed only on Landofile identity; plugin/binary changes do not invalidate it. Wipe `~/.cache/lando/apps/<app-*>` after rebuilding the binary or the old build-step command will keep failing.
 ---

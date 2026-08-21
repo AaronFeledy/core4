@@ -71,13 +71,11 @@ Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by 
 `lando rebuild -y` recreates containers from the current Landofile, so it discards changes that are
 not persisted in the Landofile or a mounted volume.
 
-PHP debugging needs Xdebug installed first — Lando's stock `php` service (the `appserver` service
-here) ships no Xdebug extension, so there's nothing for a `launch.json` PHP debug config to connect
-to out of the box. See the `php-customization` guide for adding the extension via `build.artifact`
-or a custom image. Once it's installed and enabled, a PHP debug config's `pathMappings` maps the
-in-container app path to your workspace folder so VS Code can set breakpoints against the files you
-actually edit; the Xdebug side listens on port `9003` by default. `app` is Lando's default
-in-container app mount; adjust the key if a service overrides its mount path.
+PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service (see the Xdebug in PhpStorm
+guide) so Lando installs the extension and listens on port `9003`. A `launch.json` PHP debug
+config's `pathMappings` maps the in-container app path to your workspace folder so VS Code can set
+breakpoints against the files you actually edit. `app` is Lando's default in-container app mount;
+adjust the key if a service overrides its mount path.
 
 For Node debugging, start your process with `node --inspect=0.0.0.0:9229 server.js`, publish the
 debug port on the node service, and attach with `address: localhost`, `port: 9229`,

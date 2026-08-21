@@ -15,6 +15,7 @@ export const PhpServiceConfig = Schema.extend(
     "allowOverride",
     "composer",
     "via",
+    "xdebug",
     "certs",
     "environment",
     "routes",
