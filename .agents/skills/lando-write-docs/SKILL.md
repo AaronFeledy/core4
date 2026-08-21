@@ -38,7 +38,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 
 1. Name the page type. Write only that type.
 2. Name the reader: user, contributor, or CI. User pages get the Lando+DDEV voice. CI pages stay dry and stay out of the user path.
-3. If you show a command: run it with an isolated `LANDO` home, or write `TODO: capture` and stop. Do not invent.
+3. If you show a command: run it with an isolated `LANDO` home and paste the real transcript, or show the command only (prose + fences). Do not invent stdout. Do not write `TODO: capture` on a user page.
 4. If Alpha cannot do it, say what *does* work. Do not stub.
 
 ## Voice
@@ -114,7 +114,7 @@ When `provider: test` cannot produce real stdout (it does not boot containers):
 
 - Prose + fences **outside** `<Scenario>`, or
 - An e2e public transcript, or
-- `TODO: capture`
+Do not invent stdout. Do not write `TODO: capture` on a user page.
 
 Never empty `<Inspect output />`. Never hand-edit `dist/transcripts/**` or `test/scenarios/generated/**`. Site hide-logic (`is-placeholder.ts`) is a safety net, not a license to ship stubs.
 
@@ -221,7 +221,7 @@ If static tests string-match guide phrases, update the test or restore the requi
 ## Exemplars
 
 - Shape, not voice: `docs/guides/services/postgres.mdx` and `docs/guides/tutorial/app-lifecycle.mdx`. Both still have em dashes and noun H1s. Copy the MDX shape. Do not copy the dashes or the titles.
-- Recipe shape only (not voice): `recipes/wordpress/README.mdx` (still has `<Inspect output />`; do not copy that leftover)
+- Recipe shape only (not voice): `recipes/wordpress/README.mdx`
 
 ## Good
 
@@ -251,7 +251,7 @@ This feature is not available in Alpha.
 - [ ] Opens on a command or outcome, not a lede
 - [ ] You + imperative; no robot voice; no DDEV-clone dryness
 - [ ] Zero em dashes; no throat-clearing; no banned adjectives
-- [ ] Transcripts are real isolated-home captures, or `TODO: capture`
+- [ ] Transcripts are real isolated-home captures, or the page does not claim captured output
 - [ ] No Traefik-by-hand; provider is `lando`; Docker is fallback, not default
 - [ ] No leftover Lando 3 product facts; no CI leaks on user pages
 - [ ] Humor at most one line, next to a command
