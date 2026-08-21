@@ -75,6 +75,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
+          { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Open a shell in a service", slug: "guides/cli/ssh" },
           { label: "Run commands inside a service", slug: "guides/cli/exec" },
           { label: "Init from a remote source", slug: "guides/cli/init-from-remote" },

@@ -77,7 +77,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
 | PRD-05 | US-119 | global-app integration with `lando doctor` | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | PRD-06 | US-122 | fork mode (`apps:scratch:start --fork=<app>`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
-| PRD-06 | US-123 | scratch mode (`apps:scratch:start --recipe=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
+| PRD-06 | US-123 | scratch mode (`apps:scratch:start --from=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
 | PRD-06 | US-126 | scratch registry garbage collection (`apps:scratch:gc`) | `docs/guides/scratch/scratch-gc.mdx` | Shipped |
 | PRD-06 | US-127 | `--mount-cwd` + `--share-global-storage` flags | `docs/guides/scratch/mount-and-share-flags.mdx` | Shipped |
 | PRD-06 | US-128 | `apps:scratch:list` + `apps:scratch:info` | `docs/guides/scratch/list-and-info.mdx` | Shipped |

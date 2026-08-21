@@ -22,7 +22,7 @@ There is no secret `db-import` button in core. You already have the client.
 The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
 
 ```sh
-lando exec db -- mysql -u lando -plando myapp < dump.sql
+lando exec --service db -- mysql -u lando -plando myapp < dump.sql
 ```
 
 Feed the dump on stdin from the host. Recipes do not ship a `db-import` alias.
@@ -32,7 +32,7 @@ Feed the dump on stdin from the host. Recipes do not ship a `db-import` alias.
 Postgres derives the password per app. Copy it from `lando info`. Do not hardcode it.
 
 ```sh
-lando exec db -- psql -U lando -d myapp
+lando exec --service db -- psql -U lando -d myapp < dump.sql
 ```
 
 Pipe the dump on stdin. `-f` only works when the file already exists inside the service.
