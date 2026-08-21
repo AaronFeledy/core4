@@ -404,6 +404,9 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
 
   apply: (plan) =>
     Effect.sync(() => {
+      if (plan == null || plan.extensions == null || plan.services == null) {
+        return { changed: false };
+      }
       let changed = false;
       const projectConfigs = Reflect.get(plan.extensions.compose ?? {}, "configs");
       const definitions =
