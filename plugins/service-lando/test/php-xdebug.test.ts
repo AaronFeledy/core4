@@ -120,13 +120,15 @@ describe("PHP xdebug option", () => {
     const plan = await composePhpPlan({ xdebug: true });
     const steps = buildStepsFor(plan);
     const xdebugStep = steps.find((step) => step.id === "service-lando.php:xdebug");
+    const command = String(xdebugStep?.command);
 
     expect(xdebugStep?.buildKeyInputs).toEqual({
       xdebug: { ...PHP_XDEBUG_RELEASE, phpVersion: "8.2", mode: "debug" },
     });
-    expect(String(xdebugStep?.command)).toContain(PHP_XDEBUG_RELEASE.url);
-    expect(String(xdebugStep?.command)).toContain(PHP_XDEBUG_RELEASE.sha256);
-    expect(String(xdebugStep?.command)).toContain("xdebug.mode=debug");
+    expect(command).toContain(PHP_XDEBUG_RELEASE.url);
+    expect(command).toContain(PHP_XDEBUG_RELEASE.sha256);
+    expect(command).toContain("xdebug.mode=debug");
+    expect(command).not.toMatch(/[\r\n]/);
     expect(plan.environment.XDEBUG_MODE).toBeUndefined();
     expect(plan.environment.XDEBUG_CONFIG).toBe(
       `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
@@ -138,6 +140,7 @@ describe("PHP xdebug option", () => {
     const xdebugStep = buildStepsFor(plan).find((step) => step.id === "service-lando.php:xdebug");
 
     expect(String(xdebugStep?.command)).toContain("xdebug.mode=debug,develop");
+    expect(String(xdebugStep?.command)).not.toMatch(/[\r\n]/);
     expect(xdebugStep?.buildKeyInputs).toMatchObject({
       xdebug: { mode: "debug,develop", version: PHP_XDEBUG_RELEASE.version },
     });
