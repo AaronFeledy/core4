@@ -16,6 +16,7 @@ export const PhpServiceConfig = Schema.extend(
     "composer",
     "via",
     "xdebug",
+    "db_client",
     "certs",
     "environment",
     "routes",
