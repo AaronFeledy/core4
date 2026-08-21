@@ -71,6 +71,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run test:unit");
     expect(runbook).toContain("bun run test:unit:shard 1/3");
     expect(runbook).toContain("bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json");
+    expect(runbook).toContain("`--parallel --no-isolate` was tried on the shard runtime and rejected");
     expect(runbook).toContain("bun run scripts/update-test-timings.ts");
     expect(runbook).toContain("refresh-test-timings-linux-x64");
     expect(runbook).toContain("Every platform cell runs the fork-safe portable static gates");

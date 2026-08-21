@@ -279,8 +279,13 @@ describe("ci workflow", () => {
 
     expect(refresh).toContain("    runs-on: ubuntu-24.04");
     expect(refresh).toContain("    timeout-minutes: 60");
+    expect(refresh).toContain("      - name: Regenerate derived sources");
+    expect(refresh).toContain("        run: bun run codegen");
     expect(refresh).toContain("      - name: Refresh unit-test timings");
     expect(refresh).toContain("        run: bun run scripts/update-test-timings.ts");
+    expect(refresh.indexOf("Regenerate derived sources")).toBeLessThan(
+      refresh.indexOf("Refresh unit-test timings"),
+    );
     expect(refresh).toContain("      - name: Upload refreshed timings");
     expect(refresh).toContain("          name: bun-test-timings");
     expect(refresh).toContain("          path: .bun-test-timings.json");

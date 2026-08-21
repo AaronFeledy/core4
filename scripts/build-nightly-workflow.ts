@@ -263,6 +263,9 @@ const refreshTestTimingsJob = `
       - uses: actions/checkout@v5
 ${bunSetupStep}
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Refresh unit-test timings
         run: bun run scripts/update-test-timings.ts
 

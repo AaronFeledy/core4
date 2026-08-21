@@ -4,8 +4,8 @@
  *
  * Default (no args): print the shard commands CI should run, one per line.
  * `--run <i>/<n>`: execute shard `i` of `n` via `bun --no-orphans test --shard`.
- * `--update-timings` (with `--run`): rewrite this shard's entries in the
- * committed timings file after the run.
+ * Do not pass `--update-timings` with `--run`: a single shard would overwrite
+ * the committed full timings file. Refresh with `update-test-timings.ts`.
  *
  * Native `bun test --shard` does not know this repo's exclusions, so this
  * script still collects the file set. Shards cover the same files as
@@ -148,6 +148,11 @@ const main = async (): Promise<void> => {
     const spec = rest.find((arg) => arg !== "--update-timings");
     if (spec === undefined) {
       throw new Error(`--run requires a shard spec, e.g. --run 1/${UNIT_SHARD_COUNT}`);
+    }
+    if (updateTimings) {
+      throw new Error(
+        "--update-timings on one shard would overwrite the committed full timings file; use bun run scripts/update-test-timings.ts",
+      );
     }
     const unknown = rest.filter((arg) => arg !== spec && arg !== "--update-timings");
     if (unknown.length > 0) {
