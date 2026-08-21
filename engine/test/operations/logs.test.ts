@@ -31,7 +31,7 @@ const makeService = (name: ServiceName) => ({
   type: "node",
   provider: providerId,
   primary: name === web,
-  artifact: { kind: "ref", ref: "node:22-alpine" },
+  artifact: { kind: "ref" as const, ref: "node:22-alpine" },
   command: ["node", "-e", "console.log('ready')"],
   environment: {},
   mounts: [],
@@ -90,7 +90,7 @@ const recordingProvider = (): {
 
 const provide = (provider: RuntimeProviderShape) =>
   Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([provider.id]),
+    list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
   });
