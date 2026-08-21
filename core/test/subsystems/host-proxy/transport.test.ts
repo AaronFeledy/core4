@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Effect, Exit, Layer } from "effect";
 
 import {
@@ -19,6 +19,7 @@ import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { resolveCompiledBinaryVersion } from "../../../../scripts/compiled-binary-version.ts";
 import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
@@ -35,9 +36,9 @@ import {
   defaultHostProxyShimArtifactPath,
   resolveHostProxyShimArtifactPath,
 } from "../../../src/testing/engine-layers.ts";
-import { CORE_VERSION } from "../../../src/testing/engine-layers.ts";
 
 const tempDirs: string[] = [];
+const repoRoot = resolve(import.meta.dirname, "../../../..");
 
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
@@ -923,7 +924,7 @@ describe("host-proxy runLando physical transport", () => {
       new Response(proc.stderr).text(),
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout.trim()).toBe(CORE_VERSION);
+    expect(stdout.trim()).toBe(resolveCompiledBinaryVersion({ cwd: repoRoot }));
     expect(stderr).toBe("");
   }, 120_000);
 });

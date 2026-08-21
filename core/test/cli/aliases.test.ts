@@ -1,10 +1,18 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { Effect } from "effect";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import {
+  appCommandCachePath,
+  appToolingCompilationCachePath,
+  decodeAppCommandIndex,
+  encodeAppCommandIndex,
+  writeAppCommandCacheStrict,
+} from "../../src/testing/engine-layers.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -99,10 +107,6 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       const cwd = await mkdtemp(join(tmpdir(), "lando-compiled-app-alias-"));
       const cacheRoot = join(cwd, "cache");
       try {
-        const [{ Effect }, { writeAppCommandCacheStrict }] = await Promise.all([
-          import("effect"),
-          import("../../src/testing/engine-layers.ts"),
-        ]);
         await mkdir(join(cwd, ".lando", "scripts"), { recursive: true });
         await writeFile(join(cwd, ".lando.yml"), "name: compiled-alias\n");
         await writeFile(join(cwd, ".lando", "scripts", "greet.bun.sh"), "echo -n compiled-alias-ok\n");
@@ -119,6 +123,15 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
             cacheRoot,
           }),
         );
+        const compiledVersion = (await runCommand([binaryPath, "--version"])).stdout.trim();
+        for (const path of [
+          appCommandCachePath(cacheRoot, "compiled-alias", cwd),
+          appToolingCompilationCachePath(cacheRoot, cwd),
+        ]) {
+          const payload = decodeAppCommandIndex(new Uint8Array(await readFile(path)));
+          if (payload === null) throw new Error(`Could not decode app command cache at ${path}`);
+          await writeFile(path, encodeAppCommandIndex({ ...payload, landoVersion: compiledVersion }));
+        }
         const env = { ...process.env, LANDO_USER_CACHE_ROOT: cacheRoot };
 
         const results = await Promise.all(

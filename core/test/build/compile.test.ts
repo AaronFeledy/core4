@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
 import { providerImages } from "../../src/testing/engine-layers.ts";
 
@@ -87,7 +88,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
 
     const version = await runCommand([binaryPath, "--version"]);
     expect(version.exitCode).toBe(0);
-    expect(version.stdout.trim()).toBe(corePackage.version);
+    expect(version.stdout.trim()).toBe(resolveCompiledBinaryVersion({ cwd: resolve(coreRoot, "..") }));
+    expect(version.stdout.trim()).not.toBe(corePackage.version);
     expect(version.stderr).toBe("");
 
     const help = await runCommand([binaryPath, "--help"]);
