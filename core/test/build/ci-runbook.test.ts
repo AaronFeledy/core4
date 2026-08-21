@@ -70,6 +70,9 @@ describe("ci runbook", () => {
     expect(runbook).toContain("scripts/boundary/rules/");
     expect(runbook).toContain("bun run test:unit");
     expect(runbook).toContain("bun run test:unit:shard 1/3");
+    expect(runbook).toContain("bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json");
+    expect(runbook).toContain("bun run scripts/update-test-timings.ts");
+    expect(runbook).toContain("refresh-test-timings-linux-x64");
     expect(runbook).toContain("Every platform cell runs the fork-safe portable static gates");
     expect(runbook).toContain(
       "The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix",

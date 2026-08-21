@@ -8,7 +8,7 @@ import {
 } from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
-import { NIGHTLY_TIER_TESTS } from "./test-shards.ts";
+import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/nightly.yml");
@@ -255,6 +255,26 @@ ${bunSetupStep}
       - name: Run nightly-tier unit tests
         run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
 
+const refreshTestTimingsJob = `
+  refresh-test-timings-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+${bunSetupStep}
+
+      - name: Refresh unit-test timings
+        run: bun run scripts/update-test-timings.ts
+
+      - name: Upload refreshed timings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bun-test-timings
+          path: ${TEST_TIMINGS_FILE}
+          if-no-files-found: error
+          retention-days: 14`;
+
 const runtimeBundleManifestLiveJob = `
   runtime-bundle-manifest-live:
     runs-on: ubuntu-24.04
@@ -272,6 +292,7 @@ export const renderNightlyWorkflow = (): string => {
     providerLandoE2eJob,
     publishedManifestSetupJob,
     nightlyTierUnitTestsJob,
+    refreshTestTimingsJob,
     runtimeBundleManifestLiveJob,
     distributionRehearsalJob,
   ].join("\n");

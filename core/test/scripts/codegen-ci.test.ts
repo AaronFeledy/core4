@@ -166,6 +166,8 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("Verify the published bundle downloaded, verified, and installed");
       expect(firstWorkflow).toContain("runtime-bundle-manifest-live:");
       expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
+      expect(firstWorkflow).toContain("refresh-test-timings-linux-x64:");
+      expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
 
       await runCodegen();
 
