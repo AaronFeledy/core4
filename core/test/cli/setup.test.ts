@@ -822,6 +822,61 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("records optional skipped evidence for docker host integration services that are absent", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-docker-optional-"));
+    const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-docker-optional-conf-"));
+    const previousConf = process.env.LANDO_USER_CONF_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = confRoot;
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "docker",
+        isAvailable: Effect.succeed(true),
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
+          .pipe(Effect.provide(buildSetupLayers(registry, { userDataRoot }))),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+        }>;
+      };
+
+      expect(readiness.status).toBe("ready");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "skipped"],
+        ["proxy", "skipped"],
+        ["shell", "skipped"],
+        ["file-sync", "satisfied"],
+      ]);
+      for (const stepId of ["ca", "proxy", "shell"]) {
+        const step = readiness.steps.find((entry) => entry.id === stepId);
+        expect(step?.evidence).toContain("optional on the docker system runtime");
+      }
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("docker"));
+    } finally {
+      if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConf;
+      await rm(userDataRoot, { recursive: true, force: true });
+      await rm(confRoot, { recursive: true, force: true });
+    }
+  });
+
   test("persists partial readiness with redacted remediation when setup is interrupted", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-fail-"));
     try {
@@ -2544,25 +2599,71 @@ describe("meta:setup command", () => {
       }
     });
 
-    test("does not persist docker or podman as defaultProviderId", async () => {
-      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-persist-docker-"));
+    for (const id of ["docker", "podman"] as const) {
+      test(`persists --provider=${id} as defaultProviderId`, async () => {
+        const confRoot = await mkdtemp(join(tmpdir(), `lando-setup-persist-${id}-`));
+        const previousConf = process.env.LANDO_USER_CONF_ROOT;
+        process.env.LANDO_USER_CONF_ROOT = confRoot;
+        try {
+          const provider = {
+            ...TestRuntimeProvider,
+            id,
+            isAvailable: Effect.succeed(true),
+            setup: () => Effect.void,
+          };
+          const { registry } = buildRegistryThatCapturesPlan(provider);
+          await Effect.runPromise(
+            setupSpec
+              .run({ installDir: "/opt/lando", flags: { provider: id } })
+              .pipe(Effect.provide(buildSetupLayers(registry))),
+          );
+          expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain(`defaultProviderId: ${id}`);
+        } finally {
+          if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+          else process.env.LANDO_USER_CONF_ROOT = previousConf;
+          await rm(confRoot, { recursive: true, force: true });
+        }
+      });
+    }
+
+    test("setup --yes after a persisted --provider=docker still selects lando", async () => {
+      const previous = process.env.LANDO_PROVIDER;
+      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-persist-then-yes-"));
       const previousConf = process.env.LANDO_USER_CONF_ROOT;
       process.env.LANDO_USER_CONF_ROOT = confRoot;
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       try {
-        const provider = {
+        const dockerProvider = {
           ...TestRuntimeProvider,
           id: "docker",
           isAvailable: Effect.succeed(true),
           setup: () => Effect.void,
         };
-        const { registry } = buildRegistryThatCapturesPlan(provider);
+        const { registry: dockerRegistry } = buildRegistryThatCapturesPlan(dockerProvider);
         await Effect.runPromise(
           setupSpec
             .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
-            .pipe(Effect.provide(buildSetupLayers(registry))),
+            .pipe(Effect.provide(buildSetupLayers(dockerRegistry))),
         );
-        expect(await Bun.file(join(confRoot, "config.yml")).exists()).toBe(false);
+        expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain("defaultProviderId: docker");
+
+        const landoProvider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const { registry, observed } = buildRegistryThatCapturesPlan(landoProvider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { yes: true } })
+            .pipe(
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
+            ),
+        );
+        expect(observed.providerId).toBe("lando");
       } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+        else process.env.LANDO_PROVIDER = previous;
         if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
         else process.env.LANDO_USER_CONF_ROOT = previousConf;
         await rm(confRoot, { recursive: true, force: true });
