@@ -39,7 +39,7 @@ describe("PodmanServiceRunner", () => {
       XDG_CONFIG_HOME: "/data/runtime/config",
       DISABLE_HC_SYSTEMD: "true",
     });
-    expect(spec.env?.PATH).toBeUndefined();
+    expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -57,7 +57,7 @@ describe("PodmanServiceRunner", () => {
     expect(spec.socketPath).toBe("/data/runtime/run/podman.sock");
   });
 
-  test("buildPodmanServiceArgs prepends runtime/bin when the systemd-run shim is required", () => {
+  test("buildPodmanServiceArgs always prepends runtime/bin so netavark can find nft", () => {
     const spec = buildPodmanServiceArgs({
       podmanBin: "/data/runtime/bin/podman",
       storageDir: "/data/runtime/storage",
@@ -133,7 +133,7 @@ describe("PodmanServiceRunner", () => {
     expect(spec.args.at(-1)).toBe("unix:///data/runtime/run/podman.sock");
   });
 
-  test("system runner launches Podman with managed config and the inherited host PATH", async () => {
+  test("system runner launches Podman with managed config and runtime bin prepended to PATH", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
@@ -156,7 +156,10 @@ describe("PodmanServiceRunner", () => {
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
-      expect(launchedEnv?.PATH).toBe(process.env.PATH);
+      expect(launchedEnv?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
+      if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
+        expect(launchedEnv?.PATH).toContain(process.env.PATH);
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

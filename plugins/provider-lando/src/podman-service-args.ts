@@ -1,7 +1,6 @@
 import { delimiter } from "node:path";
 
 import { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
-import { hasUsableUserSystemdSession } from "./user-systemd-session.ts";
 
 export interface PodmanServiceSpec {
   readonly command: string;
@@ -31,8 +30,9 @@ export const buildPodmanServiceArgs = (p: {
   readonly useSystemdRunShim?: boolean;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
-  const useShim = p.useSystemdRunShim ?? !hasUsableUserSystemdSession();
-  const pathValue = useShim ? managedServicePath(runtimeBinDir) : undefined;
+  // Always prepend the runtime bin so netavark can exec the bundled nft helper.
+  // The systemd-run shim (when present) lives in the same directory.
+  const pathValue = managedServicePath(runtimeBinDir);
   return {
     command: p.podmanBin,
     env: {
