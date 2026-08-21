@@ -87,6 +87,7 @@ import {
   setupProviderLando,
 } from "./setup.ts";
 import { runSmokeReadinessProbe } from "./smoke-probe.ts";
+import { hasHostSystemd } from "./user-systemd-session.ts";
 import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
@@ -611,6 +612,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
               user: process.env.USER,
+              hasSystemd: hasHostSystemd(),
             })
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
@@ -658,10 +660,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                           probes: rootlessProbes,
                           privilege: setupOptions.privilege,
                           user: process.env.USER,
+                          hasSystemd: hasHostSystemd(),
                         }).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {
-                              const failure = classifyRootlessFailure(rootlessProbes.probe());
+                              const failure = classifyRootlessFailure(rootlessProbes.probe(), undefined, {
+                                hasSystemd: hasHostSystemd(),
+                              });
                               return failure === undefined ? Effect.void : Effect.fail(failure);
                             }),
                           ),
