@@ -143,9 +143,6 @@ export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): strin
   return lines.join("\n");
 };
 
-const printPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): void =>
-  emitResultLine(renderPluginOwnedCommandHelp(spec));
-
 const defaultPluginRuntime = (bootstrap: ExecutableCommandSpec["bootstrap"]): PluginOwnedRuntime =>
   makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } })) as PluginOwnedRuntime;
 
@@ -174,6 +171,14 @@ const pluginOwnedCommandEffect = <A, E, R>(
   return validateEventCommandInput(spec, parsed).pipe(Effect.flatMap((input) => spec.run(input)));
 };
 
+const renderPluginOwnedPreCommandFailure = async (error: unknown, io?: RendererIO): Promise<void> => {
+  await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
+    failureExitCode: () => 2,
+    preCommand: true,
+    ...(io === undefined ? {} : { io }),
+  });
+};
+
 const runPluginOwnedCommand = (
   spec: ExecutableCommandSpec,
   argv: ReadonlyArray<string>,
@@ -182,11 +187,7 @@ const runPluginOwnedCommand = (
   runWithProcessAbortSignal(async () => {
     const flagError = pluginOwnedCliFlagError(spec, argv);
     if (flagError !== undefined) {
-      await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
-        failureExitCode: () => 2,
-        preCommand: true,
-        ...(options.io === undefined ? {} : { io: options.io }),
-      });
+      await renderPluginOwnedPreCommandFailure(flagError, options.io);
       return;
     }
     await runCompiledCommand(
@@ -209,13 +210,6 @@ const resolvePluginOwnedFromGraph = (commandId: string) =>
     return exit.right.kind === "plugin" ? exit.right.spec : undefined;
   });
 
-const renderPluginOwnedPreCommandFailure = async (error: unknown): Promise<void> => {
-  await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
-    failureExitCode: () => 2,
-    preCommand: true,
-  });
-};
-
 const dispatchPluginOwnedCommand = async (
   commandId: string,
   argv: ReadonlyArray<string>,
@@ -230,7 +224,7 @@ const dispatchPluginOwnedCommand = async (
   const spec = exit.value;
   if (spec === undefined) return "not-found";
   if (argv.includes("--help") || argv.includes("-h")) {
-    printPluginOwnedCommandHelp(spec);
+    emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
   await runPluginOwnedCommand(spec, argv);
