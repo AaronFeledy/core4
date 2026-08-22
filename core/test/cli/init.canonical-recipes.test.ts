@@ -283,7 +283,7 @@ describe("lando init — canonical common-stack recipes", () => {
   }
 });
 
-describe("lando init — managed-file ownership markers (US-353)", () => {
+describe("lando init — managed-file ownership markers", () => {
   test("node-postgres scaffold carries format-correct ownership markers and a ledger", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({

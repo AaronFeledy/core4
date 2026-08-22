@@ -92,11 +92,18 @@ describe("recipe option parity", () => {
   test("lamp CLI --yes writes the same default Landofile", async () => {
     await withTempCwd(async (dir) => {
       const spawned = await runCli(
-        ["init", "us576-lamp", "--recipe=lamp", "--yes", "--no-interactive", "--name=us576-lamp"],
+        [
+          "init",
+          "option-parity-lamp",
+          "--recipe=lamp",
+          "--yes",
+          "--no-interactive",
+          "--name=option-parity-lamp",
+        ],
         dir,
       );
       expect(spawned.exitCode).toBe(0);
-      const yaml = await Bun.file(join(dir, "us576-lamp", ".lando.yml")).text();
+      const yaml = await Bun.file(join(dir, "option-parity-lamp", ".lando.yml")).text();
       expect(yaml).toContain("type: php:8.3");
       expect(yaml).not.toContain("via:");
       expect(yaml).toContain('composer: "2"');
