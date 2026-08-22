@@ -59,10 +59,10 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "laravel",
-    answers: { name: "laravel-app", php: "8.3", database: "postgres", worker: "true" },
+    answers: { name: "laravel-app", php: "8.3", database: "postgres:16", worker: "true" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "postgres" },
+      { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
       { name: "worker", type: "php:8.3" },
     ],
@@ -70,10 +70,10 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "symfony",
-    answers: { name: "symfony-app", php: "8.3", database: "postgres" },
+    answers: { name: "symfony-app", php: "8.3", database: "postgres:16" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "postgres" },
+      { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
     ],
     expectedTooling: ["console", "composer"],

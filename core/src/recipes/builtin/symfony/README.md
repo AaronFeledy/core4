@@ -1,11 +1,11 @@
 # symfony
 
-Symfony scaffold with PHP, a database (PostgreSQL or MariaDB), and Redis.
+Symfony scaffold with PHP 8.1-8.5, Composer, PostgreSQL or MariaDB, and Redis.
 
 ## Generated services
 
-- `appserver` — `php:<8.2|8.3>`, `framework: symfony`.
-- `database` — `postgres` or `mariadb` (prompt: `database`).
+- `appserver` — `php:<8.1-8.5>`, `framework: symfony`, webroot `/app/public`.
+- `database` — `postgres:16` or `mariadb:11.4` (prompt: `database`).
 - `cache` — `redis`.
 
 ## Generated tooling
@@ -13,13 +13,11 @@ Symfony scaffold with PHP, a database (PostgreSQL or MariaDB), and Redis.
 - `lando console …` — Symfony console.
 - `lando composer …` — Composer.
 
-## Alpha limitations
+## Bootstrapping the codebase
 
-- No automatic Symfony source bootstrap; users run
-  `composer create-project symfony/skeleton .` through the generated tooling
-  after `lando start`.
-- Messenger transports beyond Redis and built-in mailer routing are deferred.
+The recipe writes a Landofile only. After `lando start`, create the Symfony
+project with the generated Composer tooling if the app root is empty.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.

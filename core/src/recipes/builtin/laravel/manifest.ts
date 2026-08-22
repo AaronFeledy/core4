@@ -1,3 +1,12 @@
+import {
+  DRUPAL_COMPOSER_OPTIONS,
+  LARAVEL_DATABASES,
+  composerPromptYaml,
+  databasePromptYaml,
+  phpPromptYaml,
+  webrootPromptYaml,
+} from "../php-stack";
+
 export const LARAVEL_RECIPE_ID = "laravel";
 
 export const laravelRecipeSource = `${LARAVEL_RECIPE_ID}/recipe.yml`;
@@ -18,20 +27,10 @@ prompts:
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
-  - name: php
-    type: select
-    message: PHP version
-    default: '8.3'
-    choices:
-      - value: '8.2'
-      - value: '8.3'
-  - name: database
-    type: select
-    message: Database engine
-    default: mariadb
-    choices:
-      - value: mariadb
-      - value: postgres
+${phpPromptYaml}
+${databasePromptYaml(LARAVEL_DATABASES)}
+${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
+${webrootPromptYaml("/app/public")}
   - name: worker
     type: confirm
     message: Add a queue worker service?

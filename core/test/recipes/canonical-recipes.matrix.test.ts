@@ -23,9 +23,9 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   wordpress: { name: "wp-canon", extras: { php: "8.3", redis: "false" } },
   laravel: {
     name: "laravel-canon",
-    extras: { php: "8.3", database: "postgres", worker: "true" },
+    extras: { php: "8.3", database: "postgres:16", worker: "true" },
   },
-  symfony: { name: "symfony-canon", extras: { php: "8.3", database: "postgres" } },
+  symfony: { name: "symfony-canon", extras: { php: "8.3", database: "postgres:16" } },
   lamp: { name: "lamp-canon", extras: { php: "8.3" } },
   lemp: { name: "lemp-canon", extras: { php: "8.3" } },
   "node-api": {

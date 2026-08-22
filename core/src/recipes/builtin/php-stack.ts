@@ -7,6 +7,8 @@ export const COMPOSER_OPTIONS = ["2", "2.7.7", "false"] as const;
 export const DRUPAL_COMPOSER_OPTIONS = ["2", "2.7.7"] as const;
 export const DRUPAL_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] as const;
 export const LAMP_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] as const;
+export const LARAVEL_DATABASES = ["mariadb:11.4", "postgres:16"] as const;
+export const SYMFONY_DATABASES = ["postgres:16", "mariadb:11.4"] as const;
 
 type PhpStackDefaults = {
   readonly php: string;
