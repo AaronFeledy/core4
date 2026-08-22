@@ -20,6 +20,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/ssh-agent",
   "@lando/template-handlebars",
   "@lando/template-mustache",
+  "@lando/sql",
 ];
 
 const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");

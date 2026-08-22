@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database]
 
 # Import a SQL dump
 
-Lando 4 has no core `db-import` command. Pipe the dump into the database client with `lando exec`.
+Prefer `lando db:import` from the bundled SQL plugin. See [Import and export app databases](/guides/tooling/db-import-export/). You can still pipe a dump through `lando exec` if you want the raw client.
 
 Read the database name, user, and password from `lando info` first.
 

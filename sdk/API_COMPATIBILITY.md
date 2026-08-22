@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, and `SqlConfirmRequiredError` for database helper target selection and confirmation.
+
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
 - `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.

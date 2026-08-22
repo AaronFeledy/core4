@@ -38,6 +38,7 @@ import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { runBuiltInCommand } from "./run-built-in-command";
+import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
@@ -49,6 +50,14 @@ export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
+
+const failUnknownCommand = (token: string) =>
+  renderPreCommandFailure({
+    commandId: "cli:unknown-command",
+    error: unknownCommandError(token),
+    rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+  });
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
@@ -143,12 +152,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
-      await renderPreCommandFailure({
-        commandId: "cli:unknown-command",
-        error: unknownCommandError(route.token),
-        rendererMode: activeRendererMode,
-        resultFormat: activeResultFormat,
-      });
+      await failUnknownCommand(route.token);
       return;
     } else if (await routeResolvedTooling(route, argvTail)) {
       return;
@@ -192,12 +196,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
     const helpCommand = resolveBuiltInCommand(commandArg);
     if (helpCommand === undefined) {
-      await renderPreCommandFailure({
-        commandId: "cli:unknown-command",
-        error: unknownCommandError(commandArg),
-        rendererMode: activeRendererMode,
-        resultFormat: activeResultFormat,
-      });
+      if (await tryPluginOwnedCommand(commandArg, argv.slice(1))) return;
+      await failUnknownCommand(commandArg);
       return;
     }
 
@@ -242,12 +242,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (found === undefined) {
-    await renderPreCommandFailure({
-      commandId: "cli:unknown-command",
-      error: unknownCommandError(argv[0] ?? ""),
-      rendererMode: activeRendererMode,
-      resultFormat: activeResultFormat,
-    });
+    const token = argv[0] ?? "";
+    if (await tryPluginOwnedCommand(token, argv.slice(1))) return;
+    await failUnknownCommand(token);
     return;
   }
 
