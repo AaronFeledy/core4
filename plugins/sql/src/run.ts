@@ -12,6 +12,7 @@ import {
   InteractionService,
   LandofileService,
   RuntimeProvider,
+  RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import {
@@ -198,7 +199,7 @@ export const runDbCommand = (input: DbCommandInput) =>
     Effect.gen(function* () {
       const landofiles = yield* LandofileService;
       const planner = yield* AppPlanner;
-      const provider = yield* RuntimeProvider;
+      const registry = yield* RuntimeProviderRegistry;
       const mover = yield* DataMover;
       const interaction = yield* InteractionService;
       const events = yield* EventService;
@@ -207,7 +208,9 @@ export const runDbCommand = (input: DbCommandInput) =>
       const prePlan = sqlPlanFromLandofile(authored);
       const earlyTarget = resolveSqlTarget(prePlan, input.service);
       if (earlyTarget._tag === "Left") return yield* Effect.fail(earlyTarget.left);
-      const planned = yield* planner.plan(landofile, provider.capabilities);
+      const capabilities = yield* registry.capabilities;
+      const planned = yield* planner.plan(landofile, capabilities);
+      const provider = yield* registry.select(planned);
       const plan = toSqlPlan(planned);
       return yield* executeDbCommand(
         {
@@ -219,7 +222,7 @@ export const runDbCommand = (input: DbCommandInput) =>
           exec: (service, command, env) =>
             provider
               .exec(
-                { app: AppId.make(plan.id), service: ServiceName.make(service) },
+                { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
                 { command, ...(env === undefined ? {} : { env }) },
               )
               .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
@@ -227,6 +230,6 @@ export const runDbCommand = (input: DbCommandInput) =>
           publish: (event) => events.publish(event),
         },
         input,
-      );
+      ).pipe(Effect.provideService(RuntimeProvider, provider));
     }),
   );
