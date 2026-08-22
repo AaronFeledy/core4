@@ -6,6 +6,12 @@ This PRD lands recipe-to-recipe composition (`extends:`, §8.8.15), brings the e
 
 Every recipe ships `recipes/<id>/README.mdx` as an executable guide (§19.13) feeding both scenario generation and scaffold README generation, plus registration in `scripts/build-bundled-recipes.ts` with clean codegen. Recipe work MUST load the `lando-write-docs` skill for README authoring.
 
+## Guide Coverage
+
+| User Story | Feature | Guide Path |
+|---|---|---|
+| US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` |
+
 ## Source References
 
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.8.2 layout, §8.8.10 amended bundle, §8.8.15 `extends:`, §8.8.16 option parity, §8.8.12 constraints.

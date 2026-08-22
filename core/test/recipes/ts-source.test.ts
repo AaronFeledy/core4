@@ -297,4 +297,32 @@ describe("resolveRecipeRef — programmatic recipe.ts", () => {
       }
     });
   });
+
+  test("given a recipe.ts factory that returns extends lamp, when resolved, then merge happens after the factory", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "extends-ts-child");
+      await Bun.write(
+        join(recipeDir, "recipe.ts"),
+        [
+          "export default async () => ({",
+          '  id: "extends-ts-child",',
+          '  title: "Factory Extends",',
+          '  description: "Factory returns extends lamp.",',
+          '  version: "0.1.0",',
+          '  extends: "lamp",',
+          '  prompts: [{ name: "php", type: "select", message: "PHP version", default: "8.2", choices: ["8.2", "8.3"] }],',
+          "});",
+          "",
+        ].join("\n"),
+      );
+      const exit = await runResolve("./extends-ts-child", dir);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      const manifest = exit.value.manifest;
+      expect(manifest?.id).toBe("extends-ts-child");
+      expect(manifest?.prompts?.some((prompt) => prompt.name === "name")).toBe(true);
+      expect(manifest?.prompts?.find((prompt) => prompt.name === "php")?.default).toBe("8.2");
+      expect(manifest !== undefined && "extends" in manifest).toBe(false);
+    });
+  });
 });

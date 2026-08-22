@@ -21,13 +21,16 @@ import { Effect } from "effect";
 
 import {
   NotImplementedError,
+  type RecipeExtendsError,
   RecipeManifestNotFoundError,
   type RecipeManifestParseError,
   RecipeManifestValidationError,
+  type RecipeSourceError,
 } from "@lando/sdk/errors";
 import type { RecipeManifest } from "@lando/sdk/schema";
 
 import { BUNDLED_RECIPES } from "./bundled";
+import { flattenRecipe } from "./manifest/flatten";
 import { validateRecipeManifestObject } from "./manifest/service";
 import { loadRecipeTs } from "./ts-loader";
 
@@ -128,7 +131,12 @@ const resolveLocalTs = (
   tsPath: string,
 ): Effect.Effect<
   ResolvedRecipe,
-  RecipeManifestNotFoundError | RecipeManifestValidationError | RecipeManifestParseError | NotImplementedError
+  | RecipeExtendsError
+  | RecipeManifestNotFoundError
+  | RecipeManifestValidationError
+  | RecipeManifestParseError
+  | RecipeSourceError
+  | NotImplementedError
 > =>
   Effect.gen(function* () {
     const content = yield* Effect.tryPromise({
@@ -140,7 +148,8 @@ const resolveLocalTs = (
         }),
     });
     const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
-    const manifest = yield* validateRecipeManifestObject(tsPath, parsed);
+    const flat = yield* flattenRecipe(tsPath, parsed);
+    const manifest = yield* validateRecipeManifestObject(tsPath, flat);
     const dirBasename = basename(expanded);
     if (manifest.id !== dirBasename) {
       return yield* Effect.fail(idMismatchError(manifest.id, dirBasename, tsPath));
@@ -153,7 +162,12 @@ const resolveLocal = (
   options: ResolveRecipeOptions,
 ): Effect.Effect<
   ResolvedRecipe,
-  RecipeManifestNotFoundError | RecipeManifestValidationError | RecipeManifestParseError | NotImplementedError
+  | RecipeExtendsError
+  | RecipeManifestNotFoundError
+  | RecipeManifestValidationError
+  | RecipeManifestParseError
+  | RecipeSourceError
+  | NotImplementedError
 > =>
   Effect.gen(function* () {
     const expanded = expandLocalPath(ref, options);
@@ -215,7 +229,12 @@ export const resolveRecipeRef = (
   options: ResolveRecipeOptions,
 ): Effect.Effect<
   ResolvedRecipe,
-  RecipeManifestNotFoundError | RecipeManifestValidationError | RecipeManifestParseError | NotImplementedError
+  | RecipeExtendsError
+  | RecipeManifestNotFoundError
+  | RecipeManifestValidationError
+  | RecipeManifestParseError
+  | RecipeSourceError
+  | NotImplementedError
 > => {
   if (ref.trim() === "") {
     return Effect.fail(notImplemented("unknown", ref));

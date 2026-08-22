@@ -101,9 +101,11 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RecipeExtendsError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
+  RecipeSourceError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -436,9 +438,11 @@ export declare class RecipeManifestService extends Context.Tag("@lando/core/Reci
       content: string,
     ) => Effect.Effect<
       RecipeManifest,
+      | RecipeExtendsError
       | RecipeManifestNotFoundError
       | RecipeManifestParseError
       | RecipeManifestValidationError
+      | RecipeSourceError
       | NotImplementedError
     >;
   }

@@ -57,6 +57,17 @@ export const RecipePrompt = Schema.Struct({
 });
 export type RecipePrompt = typeof RecipePrompt.Type;
 
+/** Authoring-only prompt drop — consumed by flatten on raw objects before RecipeManifest decode. */
+export const RecipePromptDrop = Schema.Struct({
+  name: Schema.String.annotations({
+    description: "Prompt name to remove from the inherited parent recipe.",
+  }),
+  drop: Schema.Literal(true).annotations({
+    description: "When true, remove the named parent prompt instead of merging it.",
+  }),
+});
+export type RecipePromptDrop = typeof RecipePromptDrop.Type;
+
 /** Recipe file-manifest entry. */
 export const RecipeFile = Schema.Struct({
   src: Schema.String,
@@ -182,6 +193,11 @@ export const RecipeManifest = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
   version: RecipeVersion,
+  extends: Schema.optional(
+    Schema.String.annotations({
+      description: "Parent recipe id or path flattened into this recipe before validation.",
+    }),
+  ),
   deprecated: Schema.optional(DeprecationNotice),
   authors: Schema.optional(Schema.Array(Schema.String)),
   tags: Schema.optional(Schema.Array(Schema.String)),

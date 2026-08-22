@@ -1,4 +1,5 @@
-import { cp, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
@@ -185,42 +186,50 @@ export const resolveGitRecipeSource = async (
     });
   });
 
-  const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
-  let commitSha: string;
-  try {
-    commitSha = (
-      await (options.cloner ?? options.gitRecipeCloner ?? defaultGitRecipeCloner).clone({
-        url: options.url,
-        dest: stagingDir,
-        stagingDir,
-      })
-    ).commitSha.trim();
-  } catch (cause) {
-    await rm(stagingDir, { recursive: true, force: true });
-    throw sourceError({
-      message: `Could not clone git recipe source ${options.url}: ${causeMessage(cause)}`,
-      source: options.url,
-      kind: authFailure(cause) ? "auth" : "clone-failed",
-      remediation: authFailure(cause)
-        ? "Check git credentials or use a public URL; Lando disables interactive git credential prompts during init."
-        : "Check that the git URL is reachable and retry lando init.",
-    });
+  const pointer = join(cacheRoot, ".url", createHash("sha256").update(options.url).digest("hex"));
+  const cachedSha = (await fileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
+  let commitSha = cachedSha !== "" && (await fileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;
+  if (commitSha === undefined) {
+    const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
+    try {
+      commitSha = (
+        await (options.cloner ?? options.gitRecipeCloner ?? defaultGitRecipeCloner).clone({
+          url: options.url,
+          dest: stagingDir,
+          stagingDir,
+        })
+      ).commitSha.trim();
+    } catch (cause) {
+      await rm(stagingDir, { recursive: true, force: true });
+      throw sourceError({
+        message: `Could not clone git recipe source ${options.url}: ${causeMessage(cause)}`,
+        source: options.url,
+        kind: authFailure(cause) ? "auth" : "clone-failed",
+        remediation: authFailure(cause)
+          ? "Check git credentials or use a public URL; Lando disables interactive git credential prompts during init."
+          : "Check that the git URL is reachable and retry lando init.",
+      });
+    }
+
+    const publishedDir = join(cacheRoot, commitSha);
+    if (await fileExists(publishedDir)) {
+      await rm(stagingDir, { recursive: true, force: true });
+    } else {
+      await publish(stagingDir, publishedDir).catch(async (cause) => {
+        await rm(stagingDir, { recursive: true, force: true });
+        throw sourceError({
+          message: `Could not publish git recipe cache at ${publishedDir}: ${causeMessage(cause)}`,
+          source: options.url,
+          kind: "cache",
+          remediation: "Check permissions for the Lando user data root and retry lando init.",
+        });
+      });
+    }
+    await mkdir(join(cacheRoot, ".url"), { recursive: true });
+    await writeFile(pointer, commitSha);
   }
 
   const publishedDir = join(cacheRoot, commitSha);
-  if (await fileExists(publishedDir)) {
-    await rm(stagingDir, { recursive: true, force: true });
-  } else {
-    await publish(stagingDir, publishedDir).catch(async (cause) => {
-      await rm(stagingDir, { recursive: true, force: true });
-      throw sourceError({
-        message: `Could not publish git recipe cache at ${publishedDir}: ${causeMessage(cause)}`,
-        source: options.url,
-        kind: "cache",
-        remediation: "Check permissions for the Lando user data root and retry lando init.",
-      });
-    });
-  }
 
   const recipeRoot = safeSubpath === undefined ? publishedDir : join(publishedDir, safeSubpath);
   const manifestPath = join(recipeRoot, "recipe.yml");

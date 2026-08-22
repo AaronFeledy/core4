@@ -1,0 +1,9 @@
+id: extends-a
+title: Extends A
+description: Child at three hops from the chain root.
+version: 0.0.1
+extends: ../extends-b
+prompts:
+  - name: from-a
+    type: text
+    message: From A?

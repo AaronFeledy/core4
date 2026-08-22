@@ -1,0 +1,97 @@
+---
+id: extending-recipes
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, recipes]
+---
+
+# Extend a bundled recipe
+
+Put `extends: lamp` in a child `recipe.yml`, then inspect the flattened result with `lando meta recipes describe ./`.
+
+You ship only the deltas. Lando walks the parent chain, merges prompts, files, and `postInit`, and hands every later command a single recipe. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
+
+## Write the child recipe.yml
+
+The directory basename must match `id`. This child sits on bundled `lamp`, drops the app-name prompt, overrides PHP, and adds one extra file:
+
+```yaml
+id: lamp-child
+title: Lamp Child
+description: Extends lamp with one prompt override and a dropped prompt.
+version: 0.1.0
+extends: lamp
+prompts:
+  - name: name
+    drop: true
+  - name: php
+    type: select
+    message: PHP version
+    default: "8.2"
+    choices:
+      - value: "8.2"
+      - value: "8.3"
+files:
+  - src: extra.txt
+    dest: extra.txt
+postInit:
+  - type: gitInit
+```
+
+Keep `extra.txt` next to `recipe.yml` so the `files:` entry is real.
+
+Merge is name-keyed, not "last array wins":
+
+- Prompts merge by `name`. A child prompt with the same name replaces the parent. `drop: true` removes that parent prompt.
+- Files merge by `dest`. The child dest wins.
+- `postInit` is parent actions, then child actions.
+- Scalar fields (`title`, `description`, `version`, and the rest) come from the child when set.
+
+A missing parent or a cycle fails with `RecipeExtendsError` before validate can say the file is fine.
+
+## Describe the flattened recipe
+
+From the child directory:
+
+```sh
+lando meta recipes describe ./ --format=json
+```
+
+You should see `lamp-child` and the overridden `php` prompt. The dropped `name` prompt is gone.
+
+## Validate the child
+
+```sh
+lando meta recipes validate ./ --format=json
+```
+
+`valid` is `true` and `id` is `lamp-child` when the parent resolves.
+
+<Guide>
+  <Scenario id="describe-and-validate-lamp-child" render>
+    <Step name="describe-flattened">
+      <UseFixture name="lamp-child" />
+      <Run command="lando meta recipes describe ./ --format=json" />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "lamp-child" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"php\"" } }} />
+    </Step>
+    <Step name="validate-child">
+      <Run command="lando meta recipes validate ./ --format=json" />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "lamp-child" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-missing-parent" render={false} reason="Missing parent is RecipeExtendsError">
+    <Step name="validate-missing-parent">
+      <UseFixture name="missing-parent" />
+      <Run command="lando meta recipes validate ./ --format=json" expectExit={1} />
+      <Verify errorTag="RecipeExtendsError" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+See [Change a LAMP stack after init](./lamp-stack-variants.mdx) for what `lamp` writes into `.lando.yml`.

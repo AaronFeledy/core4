@@ -1,0 +1,5 @@
+id: missing-parent
+title: Missing Parent
+description: Child that points at a recipe that does not exist.
+version: 0.1.0
+extends: definitely-not-a-recipe

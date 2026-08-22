@@ -1,0 +1,9 @@
+id: extends-e
+title: Extends E
+description: Child at four hops from the chain root.
+version: 0.0.1
+extends: ../extends-a
+prompts:
+  - name: from-e
+    type: text
+    message: From E?

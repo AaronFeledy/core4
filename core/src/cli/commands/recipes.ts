@@ -14,9 +14,11 @@ import { Effect, Schema } from "effect";
 
 import {
   type NotImplementedError,
+  type RecipeExtendsError,
   RecipeManifestNotFoundError,
   type RecipeManifestParseError,
   RecipeManifestValidationError,
+  type RecipeSourceError,
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
@@ -69,9 +71,11 @@ export const RecipesDescribeResultSchema = Schema.Struct({
 export type RecipesDescribeResult = typeof RecipesDescribeResultSchema.Type;
 
 export type RecipesManifestError =
+  | RecipeExtendsError
   | RecipeManifestNotFoundError
   | RecipeManifestParseError
   | RecipeManifestValidationError
+  | RecipeSourceError
   | NotImplementedError;
 
 const choiceValue = (choice: PromptChoice): string =>

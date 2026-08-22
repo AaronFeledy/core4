@@ -1,0 +1,16 @@
+id: extends-d
+title: Extends D
+description: Chain root with no parent.
+version: 0.0.1
+tags:
+  - chain-root
+prompts:
+  - name: from-d
+    type: text
+    message: From D?
+files:
+  - src: d.txt
+    dest: d.txt
+postInit:
+  - type: message
+    text: from-d
