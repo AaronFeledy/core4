@@ -83,6 +83,11 @@ export interface ExecutableCommandSpec<
    * captured streams; returns an Effect that performs framework-neutral output.
    */
   readonly render?: (context: ExecutableCommandRenderContext<A, Input>) => Effect.Effect<void, E, R>;
+  /**
+   * Exact secret values to seed RedactionService when encoding the command
+   * envelope. Tokens must not be required fields on resultSchema.
+   */
+  readonly redactionTokens?: (result: A) => ReadonlyArray<string>;
 }
 
 export type ExecutableCommandLoader = () => Promise<ExecutableCommandSpec>;

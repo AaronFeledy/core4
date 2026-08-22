@@ -11,8 +11,10 @@ export type ExtraSqlService = {
 
 export type SqlTestOptions = {
   readonly password: string;
+  readonly type?: string;
   readonly countStdout?: string;
   readonly countFails?: boolean;
+  readonly execFails?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
 };
@@ -33,6 +35,7 @@ export type SqlTestHarness = {
   readonly transfers: () => ReadonlyArray<DataTransferSpec>;
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly execs: () => ReadonlyArray<RecordedExec>;
+  readonly published: () => ReadonlyArray<string>;
   readonly redactionTokens: () => ReadonlyArray<string>;
 };
 
@@ -40,12 +43,13 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
   const snapshots: RecordedSnapshot[] = [];
   const execs: RecordedExec[] = [];
+  const published: string[] = [];
   const tokens: string[] = [];
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
       name: "database",
-      type: "mysql:8.0",
+      type: options.type ?? "mysql:8.0",
       environment: {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
@@ -103,14 +107,17 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         return Effect.succeed({ ok: true, stdout: options.countStdout ?? "0" });
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ ok: true, stdout: "" });
+      return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
     },
     confirm: () => Effect.succeed(false),
     registerSecrets: (secretTokens) =>
       Effect.sync(() => {
         tokens.push(...secretTokens);
       }),
-    publish: () => Effect.void,
+    publish: (event) =>
+      Effect.sync(() => {
+        published.push(String(event._tag));
+      }),
   };
 
   return {
@@ -118,6 +125,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     transfers: () => transfers,
     snapshots: () => snapshots,
     execs: () => execs,
+    published: () => published,
     redactionTokens: () => tokens,
   };
 };

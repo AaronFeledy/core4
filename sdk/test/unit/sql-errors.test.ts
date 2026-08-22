@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import {
+  SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
@@ -95,5 +96,26 @@ describe("SqlConfirmRequiredError", () => {
       },
     ]);
     expect(decoded.remediation).toBe("Re-run with --yes.");
+  });
+});
+
+describe("SqlCommandFailedError", () => {
+  test("encodes and decodes with _tag intact when an in-service command fails", () => {
+    const error = new SqlCommandFailedError({
+      message: "Database command failed in database.",
+      service: "database",
+      command: ["mysql", "-e", "DROP DATABASE app"],
+      remediation: "Inspect the service logs, then retry the import, export, or reset.",
+    });
+
+    expect(error._tag).toBe("SqlCommandFailedError");
+    expect(Schema.is(SqlCommandFailedError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlCommandFailedError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlCommandFailedError)(encoded);
+
+    expect(decoded._tag).toBe("SqlCommandFailedError");
+    expect(decoded.service).toBe("database");
+    expect(decoded.command).toEqual(["mysql", "-e", "DROP DATABASE app"]);
   });
 });

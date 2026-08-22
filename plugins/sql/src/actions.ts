@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { VolumeNotFoundError } from "@lando/sdk/errors";
+import { SqlCommandFailedError, VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -57,6 +57,22 @@ const requireVolume = (
   return Effect.succeed({ app: AppId.make(plan.id), store });
 };
 
+export const requireExecOk = (
+  result: { readonly ok: boolean },
+  service: string,
+  command: ReadonlyArray<string>,
+): Effect.Effect<void, SqlCommandFailedError> =>
+  result.ok
+    ? Effect.void
+    : Effect.fail(
+        new SqlCommandFailedError({
+          message: `Database command failed in ${service}.`,
+          service,
+          command,
+          remediation: "Inspect the service logs, then retry the import, export, or reset.",
+        }),
+      );
+
 export const runExport = (
   mover: SqlMover,
   exec: SqlExec,
@@ -75,9 +91,13 @@ export const runExport = (
   const path = AbsolutePath.make(input.file);
   if (input.family === "mssql") {
     const bak = mssqlBackupServicePath(input.creds.database);
+    const backup = mssqlBackupCommand(input.creds.database);
     return Effect.gen(function* () {
-      yield* exec(input.service, mssqlBackupCommand(input.creds.database), input.env);
-      if (input.gzip) yield* exec(input.service, ["gzip", bak], input.env);
+      yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
+      if (input.gzip) {
+        const gzip = ["gzip", bak] as const;
+        yield* requireExecOk(yield* exec(input.service, gzip, input.env), input.service, gzip);
+      }
       return yield* mover.transfer({
         from: {
           _tag: "servicePath",
@@ -132,8 +152,12 @@ export const runImport = (
         },
         overwrite: true,
       });
-      if (input.gzip) yield* exec(input.service, ["gunzip", "-f", `${bak}.gz`], input.env);
-      yield* exec(input.service, mssqlRestoreCommand(input.creds.database), input.env);
+      if (input.gzip) {
+        const gunzip = ["gunzip", "-f", `${bak}.gz`] as const;
+        yield* requireExecOk(yield* exec(input.service, gunzip, input.env), input.service, gunzip);
+      }
+      const restore = mssqlRestoreCommand(input.creds.database);
+      yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
       return { accelerated: true };
     });
   }
@@ -156,7 +180,12 @@ export const runReset = (
   family: SqlFamily,
   creds: SqlCreds,
   env: Readonly<Record<string, string>>,
-) => exec(service, resetCommand(family, creds), env);
+) => {
+  const command = resetCommand(family, creds);
+  return exec(service, command, env).pipe(
+    Effect.flatMap((result) => requireExecOk(result, service, command)),
+  );
+};
 
 export const runSnapshot = (
   mover: SqlMover,

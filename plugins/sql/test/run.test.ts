@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import { SqlConfirmRequiredError, SqlServiceAmbiguousError, VolumeNotFoundError } from "@lando/sdk/errors";
+import {
+  SqlCommandFailedError,
+  SqlConfirmRequiredError,
+  SqlServiceAmbiguousError,
+  VolumeNotFoundError,
+} from "@lando/sdk/errors";
 
 import { wrapExportCommand } from "../src/gzip.ts";
 import { executeDbCommand } from "../src/run.ts";
@@ -70,6 +75,7 @@ describe("executeDbCommand", () => {
       expect(error.steps.some((step) => step.destructive)).toBe(true);
     }
     expect(harness.transfers()).toEqual([]);
+    expect(harness.published()).toEqual([]);
   });
 
   test("imports with --yes even when the database is non-empty", async () => {
@@ -107,6 +113,37 @@ describe("executeDbCommand", () => {
     expect(exec?.command[0]).toBe("mysql");
     expect(exec?.env?.MYSQL_PWD).toBe(SECRET);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
+  });
+
+  test("does not start the task tree before a denied reset", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    const exit = await run(harness.deps, { action: "reset", yes: false });
+
+    expect(exit._tag).toBe("Failure");
+    expect(harness.execs()).toEqual([]);
+    expect(harness.published()).toEqual([]);
+  });
+
+  test("fails closed when reset exec returns a non-zero exit", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, execFails: true });
+
+    const exit = await run(harness.deps, { action: "reset", yes: true });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlCommandFailedError);
+  });
+
+  test("fails closed when an mssql backup exec returns a non-zero exit", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, type: "mssql:2022", execFails: true });
+
+    const exit = await run(harness.deps, { action: "export", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlCommandFailedError);
+    expect(harness.transfers()).toEqual([]);
   });
 
   test("snapshots the first service volume through DataMover", async () => {

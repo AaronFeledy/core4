@@ -175,8 +175,11 @@ describe("credsEnv", () => {
     const creds = { user: "alice", password: SECRET, database: "appdb" };
     const env = credsEnv("mongodb", creds);
     expect(env.MONGO_URI).toContain(SECRET);
+    expect(env.MONGO_URI).toContain("authSource=admin");
+    expect(env.MONGO_URI).toContain("127.0.0.1:27017");
     expect(dumpCommand("mongodb", creds).some((part) => part.includes(SECRET))).toBe(false);
     expect(loadCommand("mongodb", creds).some((part) => part.includes(SECRET))).toBe(false);
+    expect(dumpCommand("mongodb", creds)[2]).toContain('--uri="$MONGO_URI"');
   });
 
   test("puts the mssql secret in SQLCMDPASSWORD and SA_PASSWORD", () => {

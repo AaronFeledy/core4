@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, and `SqlConfirmRequiredError` for database helper target selection and confirmation.
+- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, and `SqlCommandFailedError` for database helper target selection, confirmation, and failed in-service dump/load/reset commands.
 
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
@@ -14,7 +14,9 @@
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
   `LandoPluginModule.commands` executable loaders. Manifest `contributes.commands` ids now require
   matching lazy loaders, allowing event `command:` steps to execute plugin commands rather than
-  treating manifest ids as unavailable metadata.
+  treating manifest ids as unavailable metadata. `ExecutableCommandSpec` additively accepts optional
+  `redactionTokens` so plugin commands can seed envelope redaction without putting secrets on
+  `resultSchema`.
 - `ToolingInvocation` additively gains optional structural `hostSteps` for Bun Shell host execution,
   and `ShellCommandOptions` additively gains optional `argv` so authored shell source and forwarded
   arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host

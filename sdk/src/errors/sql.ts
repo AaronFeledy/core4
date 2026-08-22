@@ -35,3 +35,13 @@ export class SqlConfirmRequiredError extends Schema.TaggedError<SqlConfirmRequir
     remediation: Schema.String,
   },
 ) {}
+
+export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedError>()(
+  "SqlCommandFailedError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    command: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}

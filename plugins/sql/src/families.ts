@@ -42,7 +42,7 @@ export const mssqlBackupCommand = (database: string): ReadonlyArray<string> => [
   "-U",
   "sa",
   "-Q",
-  `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}'`,
+  `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
 ];
 
 export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> => [
@@ -50,7 +50,7 @@ export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> => 
   "-U",
   "sa",
   "-Q",
-  `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}'`,
+  `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
 ];
 
 const mysqlClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
@@ -69,6 +69,14 @@ const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): R
   ...extra,
 ];
 
+const quoteShell = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
+
+const mongoTool = (program: string, extra: string): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  `${program} --uri="$MONGO_URI" ${extra}`,
+];
+
 export const dumpCommand = (
   family: Exclude<SqlFamily, "mssql">,
   creds: SqlCommandCreds,
@@ -80,7 +88,7 @@ export const dumpCommand = (
     case "postgres":
       return ["pg_dump", "-U", creds.user, "-d", creds.database];
     case "mongodb":
-      return ["mongodump", "--archive"];
+      return mongoTool("mongodump --archive", `--db=${quoteShell(creds.database)}`);
     default:
       return assertNever(family);
   }
@@ -94,7 +102,7 @@ export const loadCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonly
     case "postgres":
       return postgresClient(creds, []);
     case "mongodb":
-      return ["mongorestore", "--archive"];
+      return mongoTool("mongorestore --archive", `--nsInclude=${quoteShell(`${creds.database}.*`)}`);
     case "mssql":
       return mssqlRestoreCommand(creds.database);
     default:
@@ -107,6 +115,8 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mysql":
     case "mariadb":
       return mysqlClient(creds, [
+        "-D",
+        creds.database,
         "-N",
         "-e",
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE'",
@@ -117,9 +127,19 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
       ]);
     case "mongodb":
-      return ["mongosh", "--quiet", "--eval", "db.getCollectionNames().length"];
+      return mongoTool("mongosh --quiet", `--eval=${quoteShell("db.getCollectionNames().length")}`);
     case "mssql":
-      return ["sqlcmd", "-U", "sa", "-Q", "SELECT COUNT(*) FROM sys.tables", "-h", "-1"];
+      return [
+        "sqlcmd",
+        "-U",
+        "sa",
+        "-d",
+        creds.database,
+        "-Q",
+        "SELECT COUNT(*) FROM sys.tables",
+        "-h",
+        "-1",
+      ];
     default:
       return assertNever(family);
   }
@@ -139,7 +159,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         `DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${creds.user};`,
       ]);
     case "mongodb":
-      return ["mongosh", "--eval", "db.dropDatabase()"];
+      return mongoTool("mongosh", `--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
       return [
         "sqlcmd",

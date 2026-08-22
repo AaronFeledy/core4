@@ -8,6 +8,7 @@ import {
   familyFromServiceType,
   isSqlServiceType,
   loadCommand,
+  mssqlBackupCommand,
   mssqlBackupServicePath,
   resetCommand,
 } from "../src/families.ts";
@@ -92,8 +93,13 @@ describe("family command builders", () => {
     expect(dumpCommand("postgres", creds)).toEqual(["pg_dump", "-U", "alice", "-d", "appdb"]);
   });
 
-  test("mongodb dump is archive-only", () => {
-    expect(dumpCommand("mongodb", creds)).toEqual(["mongodump", "--archive"]);
+  test("mongodb dump uses MONGO_URI from the environment", () => {
+    const argv = dumpCommand("mongodb", creds);
+    expect(argv[0]).toBe("sh");
+    expect(argv[1]).toBe("-c");
+    expect(argv[2]).toContain('mongodump --archive --uri="$MONGO_URI"');
+    expect(argv[2]).toContain("--db='appdb'");
+    expect(argvHasSecret(argv)).toBe(false);
   });
 
   test("mysql load uses mysql -u without -p", () => {
@@ -104,14 +110,24 @@ describe("family command builders", () => {
     expect(loadCommand("postgres", creds)).toEqual(["psql", "-U", "alice", "-d", "appdb"]);
   });
 
-  test("mongodb load is archive restore", () => {
-    expect(loadCommand("mongodb", creds)).toEqual(["mongorestore", "--archive"]);
+  test("mongodb load uses MONGO_URI from the environment", () => {
+    const argv = loadCommand("mongodb", creds);
+    expect(argv[0]).toBe("sh");
+    expect(argv[2]).toContain('mongorestore --archive --uri="$MONGO_URI"');
+    expect(argv[2]).toContain("--nsInclude='appdb.*'");
+    expect(argvHasSecret(argv)).toBe(false);
   });
 
   test("mssql load is sqlcmd without -P", () => {
     const argv = loadCommand("mssql", creds);
     expect(argv[0]).toBe("sqlcmd");
     expect(argv).not.toContain("-P");
+    expect(argv.some((part) => part.includes("WITH REPLACE"))).toBe(true);
+  });
+
+  test("mssql backup overwrites an existing bak file", () => {
+    const argv = mssqlBackupCommand("appdb");
+    expect(argv.some((part) => part.includes("WITH INIT"))).toBe(true);
   });
 
   test("countCommand uses family-specific emptiness probes", () => {
@@ -119,6 +135,8 @@ describe("family command builders", () => {
       "mysql",
       "-u",
       "alice",
+      "-D",
+      "appdb",
       "-N",
       "-e",
       "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE'",
@@ -132,16 +150,16 @@ describe("family command builders", () => {
       "-tAc",
       "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
     ]);
-    expect(countCommand("mongodb", creds)).toEqual([
-      "mongosh",
-      "--quiet",
-      "--eval",
-      "db.getCollectionNames().length",
-    ]);
+    const mongoCount = countCommand("mongodb", creds);
+    expect(mongoCount[0]).toBe("sh");
+    expect(mongoCount[2]).toContain('mongosh --quiet --uri="$MONGO_URI"');
+    expect(mongoCount[2]).toContain("db.getCollectionNames().length");
     expect(countCommand("mssql", creds)).toEqual([
       "sqlcmd",
       "-U",
       "sa",
+      "-d",
+      "appdb",
       "-Q",
       "SELECT COUNT(*) FROM sys.tables",
       "-h",
@@ -166,7 +184,10 @@ describe("family command builders", () => {
       "-c",
       "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO alice;",
     ]);
-    expect(resetCommand("mongodb", creds)).toEqual(["mongosh", "--eval", "db.dropDatabase()"]);
+    const mongoReset = resetCommand("mongodb", creds);
+    expect(mongoReset[0]).toBe("sh");
+    expect(mongoReset[2]).toContain('mongosh --uri="$MONGO_URI"');
+    expect(mongoReset[2]).toContain("db.dropDatabase()");
     const mssql = resetCommand("mssql", creds);
     expect(mssql[0]).toBe("sqlcmd");
     expect(mssql).toContain(
@@ -208,6 +229,15 @@ describe("gzip helpers", () => {
       "-c",
       "'mysqldump' '-u' 'alice' | gzip",
     ]);
+  });
+
+  test("wrapExportCommand appends gzip to an existing mongo shell script", () => {
+    const dump = dumpCommand("mongodb", creds);
+    const wrapped = wrapExportCommand(dump, true);
+    expect(wrapped[0]).toBe("sh");
+    expect(wrapped[2]).toContain('mongodump --archive --uri="$MONGO_URI"');
+    expect(wrapped[2]?.endsWith(" | gzip")).toBe(true);
+    expect(argvHasSecret(wrapped)).toBe(false);
   });
 
   test("wrap quotes single quotes with POSIX escaping", () => {

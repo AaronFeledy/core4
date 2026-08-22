@@ -94,7 +94,7 @@ export const resolveSqlCreds = (input: ResolveSqlCredsInput): SqlCreds => {
 };
 
 const mongoUri = (creds: SqlCreds): string =>
-  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@localhost/${encodeURIComponent(creds.database)}`;
+  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`;
 
 export const credsEnv = (family: SqlFamily, creds: SqlCreds): Record<string, string> => {
   switch (family) {

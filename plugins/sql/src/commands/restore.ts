@@ -1,6 +1,6 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 
-import { dbInputFromCommand, runDbCommand } from "../run.ts";
+import { dbCommandRedactionTokens, dbInputFromCommand, runDbCommand } from "../run.ts";
 import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "../schemas.ts";
 
 export const spec = {
@@ -16,5 +16,6 @@ export const spec = {
     snapshot: { type: "string", required: true, description: "Snapshot id to restore." },
   },
   resultSchema: DbCommandResultSchema,
+  redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("restore", input)),
 } as const satisfies ExecutableCommandSpec<DbCommandResult>;

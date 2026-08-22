@@ -37,7 +37,9 @@ describe("db command machine output", () => {
     expect(envelope.ok).toBe(true);
     expect(envelope.result).toMatchObject({ service: "database", family: "mysql" });
     expect(encoded).not.toContain(secret);
+    expect(encoded).not.toContain("redactionTokens");
     expect(harness.redactionTokens()).toContain(secret);
+    expect("redactionTokens" in (exit.value as object)).toBe(true);
   });
 
   test("encodes ambiguous-service and confirm-required failures with tags", async () => {

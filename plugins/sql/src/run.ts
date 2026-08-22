@@ -5,7 +5,6 @@ import { Effect } from "effect";
 import { SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 import { AppId, type DataTransferResult, ServiceName } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   DataMover,
@@ -73,6 +72,17 @@ const parseCount = (stdout: string): number | undefined => {
   return Number.isFinite(value) ? value : undefined;
 };
 
+const secretTokens = (creds: { readonly password?: string; readonly rootPassword?: string }): string[] =>
+  [creds.password, creds.rootPassword].flatMap((token) =>
+    token === undefined || token.length === 0 ? [] : [token],
+  );
+
+export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {
+  if (typeof result !== "object" || result === null || !("redactionTokens" in result)) return [];
+  const tokens = result.redactionTokens;
+  return Array.isArray(tokens) ? tokens.filter((token): token is string => typeof token === "string") : [];
+};
+
 export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
   Effect.gen(function* () {
     const resolved = resolveSqlTarget(deps.plan, input.service);
@@ -97,9 +107,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       ...(authored === undefined ? {} : { landofileService: authored }),
       planEnvironment: service.environment,
     });
-    yield* deps.registerSecrets(
-      [creds.password, creds.rootPassword].flatMap((token) => (token === undefined ? [] : [token])),
-    );
+    const tokens = secretTokens(creds);
+    yield* deps.registerSecrets(tokens);
     const env = credsEnv(target.family, creds);
     const file = hostFile(deps.plan, target.name, input.file);
     const gzip = isGzipPath(file);
@@ -112,7 +121,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         destructive: action === "import" || action === "reset" || action === "restore",
       },
     ];
-    yield* publishTree(deps.publish, `db:${action}`, steps);
 
     if (action === "import") {
       const counted = yield* deps
@@ -138,6 +146,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         `Reset will destroy data in ${target.name}.`,
       );
     }
+
+    yield* publishTree(deps.publish, `db:${action}`, steps);
 
     const io = { plan: deps.plan, service: target.name, family: target.family, creds, env, file, gzip };
     let snapshotId: string | undefined;
@@ -170,6 +180,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       service: target.name,
       family: target.family,
       steps,
+      redactionTokens: tokens,
       ...(action === "import" || action === "export" ? { file } : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(transfer?.accelerated === undefined ? {} : { accelerated: transfer.accelerated }),
@@ -200,22 +211,6 @@ export const runDbCommand = (input: DbCommandInput) =>
       const prePlan = sqlPlanFromLandofile(authored);
       const earlyTarget = resolveSqlTarget(prePlan, input.service);
       if (earlyTarget._tag === "Left") return yield* Effect.fail(earlyTarget.left);
-      if (input.action === "reset") {
-        yield* confirmOrFail(
-          input,
-          (message) => Effect.scoped(interaction.confirm({ message, default: false })),
-          earlyTarget.right.name,
-          [
-            {
-              id: "reset",
-              label: `reset ${earlyTarget.right.name}`,
-              target: earlyTarget.right.name,
-              destructive: true,
-            },
-          ],
-          `Reset will destroy data in ${earlyTarget.right.name}.`,
-        );
-      }
       const planned = yield* planner.plan(landofile, provider.capabilities);
       const plan = toSqlPlan(planned);
       return yield* executeDbCommand(
@@ -233,10 +228,7 @@ export const runDbCommand = (input: DbCommandInput) =>
               )
               .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
           confirm: (message) => Effect.scoped(interaction.confirm({ message, default: false })),
-          registerSecrets: (tokens) =>
-            Effect.sync(() => {
-              createRedactor("secrets", { values: tokens });
-            }),
+          registerSecrets: () => Effect.void,
           publish: (event) => events.publish(event),
         },
         input,
