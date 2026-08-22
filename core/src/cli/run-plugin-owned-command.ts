@@ -143,7 +143,7 @@ export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): strin
   return lines.join("\n");
 };
 
-export const printPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): void =>
+const printPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): void =>
   emitResultLine(renderPluginOwnedCommandHelp(spec));
 
 const defaultPluginRuntime = (bootstrap: ExecutableCommandSpec["bootstrap"]): PluginOwnedRuntime =>
@@ -160,7 +160,7 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
     : { redactionTokens: (result: unknown) => spec.redactionTokens?.(result) ?? [] }),
 });
 
-export const pluginOwnedCommandEffect = <A, E, R>(
+const pluginOwnedCommandEffect = <A, E, R>(
   spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "flags" | "args" | "strict" | "run">,
   argv: ReadonlyArray<string>,
 ): Effect.Effect<
@@ -174,7 +174,7 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   return validateEventCommandInput(spec, parsed).pipe(Effect.flatMap((input) => spec.run(input)));
 };
 
-export const runPluginOwnedCommand = (
+const runPluginOwnedCommand = (
   spec: ExecutableCommandSpec,
   argv: ReadonlyArray<string>,
   options: RunPluginOwnedCommandOptions = {},
@@ -209,13 +209,6 @@ const resolvePluginOwnedFromGraph = (commandId: string) =>
     return exit.right.kind === "plugin" ? exit.right.spec : undefined;
   });
 
-export const resolvePluginOwnedCommandSpec = (
-  commandId: string,
-): Promise<ExecutableCommandSpec | undefined> =>
-  Effect.runPromise(
-    Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
-  );
-
 const renderPluginOwnedPreCommandFailure = async (error: unknown): Promise<void> => {
   await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
     failureExitCode: () => 2,
@@ -223,7 +216,7 @@ const renderPluginOwnedPreCommandFailure = async (error: unknown): Promise<void>
   });
 };
 
-export const dispatchPluginOwnedCommand = async (
+const dispatchPluginOwnedCommand = async (
   commandId: string,
   argv: ReadonlyArray<string>,
 ): Promise<"dispatched" | "not-found"> => {
