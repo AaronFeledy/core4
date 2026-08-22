@@ -9,6 +9,7 @@ import {
 } from "@lando/landofile/version-constraint";
 import {
   CapabilityError,
+  type CommandAliasConflictError,
   LandofileValidationError,
   type NotImplementedError,
   type PublicationUnsupportedError,
@@ -70,7 +71,11 @@ import {
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
 import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
-import { attachEffectiveTooling, compileEffectiveTooling } from "./effective-tooling.ts";
+import {
+  attachEffectiveTooling,
+  compileEffectiveTooling,
+  validateServiceTypeReservedToolingNames,
+} from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
@@ -123,7 +128,11 @@ export const planApp = (
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<
   AppPlan,
-  LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+  | LandofileValidationError
+  | CapabilityError
+  | NotImplementedError
+  | PublicationUnsupportedError
+  | CommandAliasConflictError
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = `${appRoot}/.lando.yml`;
@@ -368,13 +377,20 @@ export const planApp = (
     }
 
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
+    const toolingServices = resolvedServices.map((entry) => ({
+      name: entry.name,
+      serviceTypeId: entry.serviceType.id,
+      ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
+    }));
     const effectiveTooling = compileEffectiveTooling({
       landofile,
-      services: resolvedServices.map((entry) => ({
-        name: entry.name,
-        ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-      })),
+      services: toolingServices,
     });
+    const reservedToolingConflict = validateServiceTypeReservedToolingNames({
+      landofile,
+      services: toolingServices,
+    });
+    if (reservedToolingConflict !== undefined) yield* Effect.fail(reservedToolingConflict);
     const effectiveEvents = compileEffectiveEvents({ landofile });
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,

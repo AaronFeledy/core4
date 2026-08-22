@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import type { PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   NoProviderInstalledError,
   ProviderConfigError,
   ProviderUnavailableError,
@@ -121,6 +122,7 @@ export interface RemoteSetupOptions extends RemoteTestOptions {
 type AppPlanResolutionError =
   | UserLandofileError
   | CapabilityError
+  | CommandAliasConflictError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError

@@ -344,8 +344,8 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Plan-time reserved-name rejection; topLevelAlias enforcement deferred to 4.1 tooling schema graduation."
     },
     {
       "id": "US-581",

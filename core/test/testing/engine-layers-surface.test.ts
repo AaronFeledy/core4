@@ -79,7 +79,6 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "applySetMutation",
   "applyUnsetMutation",
   "assertLandoVersionConstraint",
-  "assertToolingNameClaimable",
   "assertUserAppIdNotReserved",
   "attachEffectiveEvents",
   "attachEffectiveTooling",

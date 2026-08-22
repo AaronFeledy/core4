@@ -5,6 +5,7 @@ import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -69,6 +70,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 });
 
 export type GlobalStartError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError
