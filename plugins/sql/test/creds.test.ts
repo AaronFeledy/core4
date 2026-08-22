@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { credsEnv, resolveSqlCreds } from "../src/creds.ts";
 import { dumpCommand, loadCommand } from "../src/families.ts";
+import { toSqlLandofile } from "../src/views.ts";
 
 const SECRET = "env-s3cret";
 
@@ -142,6 +143,31 @@ describe("resolveSqlCreds", () => {
     expect(creds.password).toBe("app-pass");
     expect(creds.database).toBe("appdb");
     expect(creds.rootPassword).toBe(SECRET);
+  });
+
+  test("partial authored creds do not shadow env or appName defaults", () => {
+    const landofile = toSqlLandofile({
+      name: "myapp",
+      services: { database: { type: "mysql:8", creds: { user: "alice" } } },
+    });
+    const authored = landofile.services?.database;
+    if (authored === undefined) throw new Error("expected authored database service");
+    const creds = resolveSqlCreds({
+      family: "mysql",
+      serviceName: "database",
+      appName: "myapp",
+      landofileService: authored,
+      planEnvironment: {
+        MYSQL_PASSWORD: SECRET,
+        MYSQL_DATABASE: "envdb",
+      },
+    });
+
+    expect(creds).toEqual({
+      user: "alice",
+      password: SECRET,
+      database: "envdb",
+    });
   });
 
   test("defaults to lando/lando and the app name when nothing is authored", () => {

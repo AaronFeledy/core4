@@ -2,7 +2,7 @@ import type { SqlCreds } from "./creds.ts";
 
 export type SqlLandofileService = {
   readonly type?: string;
-  readonly creds?: SqlCreds;
+  readonly creds?: Partial<SqlCreds>;
 };
 
 export type SqlLandofile = {
@@ -29,14 +29,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
-const authoredCreds = (value: Record<string, unknown>): SqlCreds => {
-  const creds: SqlCreds = {
-    user: asString(value.user) ?? "lando",
-    password: asString(value.password) ?? "lando",
-    database: asString(value.database) ?? "lando",
-  };
+const authoredCreds = (value: Record<string, unknown>): Partial<SqlCreds> | undefined => {
+  const user = asString(value.user);
+  const password = asString(value.password);
+  const database = asString(value.database);
   const rootPassword = asString(value.rootPassword);
-  return rootPassword === undefined ? creds : { ...creds, rootPassword };
+  const creds: Partial<SqlCreds> = {
+    ...(user === undefined ? {} : { user }),
+    ...(password === undefined ? {} : { password }),
+    ...(database === undefined ? {} : { database }),
+    ...(rootPassword === undefined ? {} : { rootPassword }),
+  };
+  return Object.keys(creds).length === 0 ? undefined : creds;
 };
 
 export const toSqlLandofile = (value: unknown): SqlLandofile => {

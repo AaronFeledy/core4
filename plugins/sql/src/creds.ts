@@ -11,7 +11,7 @@ export type ResolveSqlCredsInput = {
   readonly family: SqlFamily;
   readonly serviceName: string;
   readonly appName: string;
-  readonly landofileService?: { readonly creds?: SqlCreds };
+  readonly landofileService?: { readonly creds?: Partial<SqlCreds> };
   readonly planEnvironment: Readonly<Record<string, string>>;
 };
 
