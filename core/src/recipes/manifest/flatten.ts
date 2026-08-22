@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
 
@@ -23,6 +23,10 @@ export interface FlattenRecipeContext {
   readonly chain: ReadonlyArray<string>;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
+  /** When false, local parent hops load YAML only and never execute recipe.ts. */
+  readonly allowRecipeTs?: boolean;
+  /** When set, local parent hops must stay inside this published recipe root. */
+  readonly jailRoot?: string;
 }
 
 type ParentScheme = "builtin" | "local" | "git" | "github" | "npm" | "registry" | "unknown";
@@ -32,6 +36,8 @@ type FlattenError =
   | RecipeManifestParseError
   | RecipeManifestValidationError
   | RecipeSourceError;
+
+const REMOTE_SCHEMES = new Set<ParentScheme>(["git", "github", "npm", "registry"]);
 
 const detectParentScheme = (ref: string): ParentScheme => {
   if (ref.startsWith("github:")) return "github";
@@ -114,6 +120,11 @@ const expandLocalParent = (ref: string, childSource: string): string => {
   return resolve(cwd, ref);
 };
 
+const escapesJail = (expanded: string, jailRoot: string): boolean => {
+  const rel = relative(resolve(jailRoot), resolve(expanded));
+  return rel === ".." || rel.startsWith(`..${rel.includes("\\") ? "\\" : "/"}`) || isAbsolute(rel);
+};
+
 const parentIdentity = (ref: string, childSource: string): string => {
   const scheme = detectParentScheme(ref);
   switch (scheme) {
@@ -162,15 +173,18 @@ const readBuiltinParent = (
 const readLocalParent = (
   ref: string,
   childSource: string,
-  chain: ReadonlyArray<string>,
+  ctx: FlattenRecipeContext,
 ): Effect.Effect<RawParent, FlattenError> =>
   Effect.gen(function* () {
     const expanded = expandLocalParent(ref, childSource);
+    if (ctx.jailRoot !== undefined && escapesJail(expanded, ctx.jailRoot)) {
+      return yield* Effect.fail(parentNotFound(ref, ctx.chain));
+    }
     const ymlPath = resolve(expanded, "recipe.yml");
     const tsPath = resolve(expanded, "recipe.ts");
     const [ymlExists, tsExists] = yield* Effect.tryPromise({
       try: () => Promise.all([Bun.file(ymlPath).exists(), Bun.file(tsPath).exists()]),
-      catch: () => parentNotFound(ref, chain),
+      catch: () => parentNotFound(ref, ctx.chain),
     });
     if (ymlExists && tsExists) {
       return yield* Effect.fail(
@@ -181,13 +195,22 @@ const readLocalParent = (
         }),
       );
     }
+    if (tsExists && ctx.allowRecipeTs === false) {
+      return yield* Effect.fail(
+        new RecipeManifestValidationError({
+          message: `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
+          source: tsPath,
+          issues: ["remote extends hops load YAML only; recipe.ts is not executed from a remote parent tree"],
+        }),
+      );
+    }
     if (tsExists) {
-      const content = yield* readText(tsPath, ref, chain);
+      const content = yield* readText(tsPath, ref, ctx.chain);
       const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
       return { source: tsPath, parsed };
     }
-    if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, chain));
-    const content = yield* readText(ymlPath, ref, chain);
+    if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
+    const content = yield* readText(ymlPath, ref, ctx.chain);
     return { source: ymlPath, parsed: yield* parseRecipeYaml({ source: ymlPath, content }) };
   });
 
@@ -201,7 +224,7 @@ const readParent = (
     case "builtin":
       return readBuiltinParent(ref, ctx.chain);
     case "local":
-      return readLocalParent(ref, childSource, ctx.chain);
+      return readLocalParent(ref, childSource, ctx);
     case "github":
     case "git":
     case "npm":
@@ -214,6 +237,24 @@ const readParent = (
       return _exhaustive;
     }
   }
+};
+
+const nextFlattenContext = (
+  ctx: FlattenRecipeContext,
+  ref: string,
+  parentSource: string,
+  nextIdentity: string,
+): FlattenRecipeContext => {
+  const scheme = detectParentScheme(ref);
+  const remoteJail = REMOTE_SCHEMES.has(scheme)
+    ? { allowRecipeTs: false as const, jailRoot: localIdentity(parentSource) }
+    : {};
+  return {
+    ...ctx,
+    hops: ctx.hops + 1,
+    chain: [...ctx.chain, nextIdentity],
+    ...remoteJail,
+  };
 };
 
 const flattenRaw = (
@@ -235,11 +276,11 @@ const flattenRaw = (
     }
 
     const parent = yield* readParent(ref, source, ctx);
-    const parentFlat = yield* flattenRaw(parent.source, parent.parsed, {
-      ...ctx,
-      hops: ctx.hops + 1,
-      chain: [...ctx.chain, nextIdentity],
-    });
+    const parentFlat = yield* flattenRaw(
+      parent.source,
+      parent.parsed,
+      nextFlattenContext(ctx, ref, parent.source, nextIdentity),
+    );
     return mergeRecipeManifests(parentFlat, parsed);
   });
 
@@ -254,5 +295,7 @@ export const flattenRecipe = (
     chain: ctx?.chain ?? [identityOf(source)],
     ...(ctx?.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
     ...(ctx?.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
+    ...(ctx?.allowRecipeTs === undefined ? {} : { allowRecipeTs: ctx.allowRecipeTs }),
+    ...(ctx?.jailRoot === undefined ? {} : { jailRoot: ctx.jailRoot }),
   });
 };

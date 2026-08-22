@@ -17,7 +17,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 ## Recipe composition
 
-- `extends:` flattens in `manifest/flatten.ts` before `validateRecipeManifestObject`. Do not import `service.ts` from `flatten.ts` (import cycle). Remote parents go through `parent-source.ts` and the existing git/npm/registry adapters.
+- `extends:` flattens in `manifest/flatten.ts` before `validateRecipeManifestObject`. Do not import `service.ts` from `flatten.ts` (import cycle). Remote parents go through `parent-source.ts` and the existing git/npm/registry adapters. After a remote hop, further local parents stay inside that published tree and load YAML only — never execute `recipe.ts`.
 - `meta recipes describe/validate .` is not a local path; use `./` or a `recipe.yml` path.
 
 ## Programmatic `recipe.ts`

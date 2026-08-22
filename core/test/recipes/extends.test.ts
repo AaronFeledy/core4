@@ -77,6 +77,7 @@ const makeCloner = (
   options: {
     readonly commitSha?: string;
     readonly manifest?: string;
+    readonly extraFiles?: ReadonlyArray<{ readonly path: string; readonly contents: string }>;
     readonly calls?: Array<{ readonly url: string; readonly stagingDir: string }>;
   } = {},
 ): GitRecipeCloner => ({
@@ -84,6 +85,10 @@ const makeCloner = (
     options.calls?.push({ url, stagingDir });
     await mkdir(stagingDir, { recursive: true });
     if (options.manifest !== undefined) await writeFile(join(stagingDir, "recipe.yml"), options.manifest);
+    for (const file of options.extraFiles ?? []) {
+      await mkdir(dirname(join(stagingDir, file.path)), { recursive: true });
+      await writeFile(join(stagingDir, file.path), file.contents);
+    }
     return { commitSha: options.commitSha ?? "abc123def456" };
   },
 });
@@ -213,6 +218,112 @@ describe("flattenRecipe — remote git parent", () => {
       expect(second.value.id).toBe("remote-child");
       expect(calls).toHaveLength(1);
       expect(calls[0]?.url).toBe("https://example.test/parent.git");
+    });
+  });
+
+  test("given a remote parent that extends a sibling YAML, when flatten runs, then the in-tree YAML merges", async () => {
+    await withTempRoot(async (dir) => {
+      const userDataRoot = join(dir, "data");
+      const gitRecipeCloner = makeCloner({
+        manifest: `id: remote-parent
+title: Remote Parent
+description: Extends a sibling YAML recipe.
+version: 0.1.0
+extends: ./hook
+`,
+        extraFiles: [
+          {
+            path: "hook/recipe.yml",
+            contents: `id: hook
+title: Hook
+description: In-tree YAML parent.
+version: 0.1.0
+prompts:
+  - name: from-hook
+    type: text
+    message: Hook prompt
+    default: hook-default
+`,
+          },
+        ],
+        commitSha: "cafef00d",
+      });
+      const parsed = await Effect.runPromise(
+        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
+      );
+      const exit = await Effect.runPromiseExit(
+        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
+      );
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
+        expect.arrayContaining(["from-hook", "from-child"]),
+      );
+    });
+  });
+
+  test("given a remote parent that extends sibling recipe.ts, when flatten runs, then recipe.ts is not executed", async () => {
+    await withTempRoot(async (dir) => {
+      const marker = join(dir, "executed");
+      const userDataRoot = join(dir, "data");
+      const gitRecipeCloner = makeCloner({
+        manifest: `id: remote-parent
+title: Remote Parent
+description: Tries to execute sibling recipe.ts.
+version: 0.1.0
+extends: ./hook
+`,
+        extraFiles: [
+          {
+            path: "hook/recipe.ts",
+            contents: [
+              "export default async () => {",
+              `  await Bun.write(${JSON.stringify(marker)}, "pwned");`,
+              "  return {",
+              '    id: "hook",',
+              '    title: "Hook",',
+              '    description: "Should not run.",',
+              '    version: "0.1.0",',
+              "  };",
+              "};",
+              "",
+            ].join("\n"),
+          },
+        ],
+        commitSha: "deadbeef",
+      });
+      const parsed = await Effect.runPromise(
+        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
+      );
+      const exit = await Effect.runPromiseExit(
+        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
+      );
+      const error = expectFailure(exit);
+      expect(error).toMatchObject({ _tag: "RecipeManifestValidationError" });
+      expect(await Bun.file(marker).exists()).toBe(false);
+    });
+  });
+
+  test("given a remote parent that extends a host-absolute path, when flatten runs, then the hop is rejected", async () => {
+    await withTempRoot(async (dir) => {
+      const userDataRoot = join(dir, "data");
+      const gitRecipeCloner = makeCloner({
+        manifest: `id: remote-parent
+title: Remote Parent
+description: Tries to escape the published tree.
+version: 0.1.0
+extends: ~/not-a-recipe
+`,
+        commitSha: "baddcafe",
+      });
+      const parsed = await Effect.runPromise(
+        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
+      );
+      const exit = await Effect.runPromiseExit(
+        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
+      );
+      const error = expectFailure(exit);
+      expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
     });
   });
 });
