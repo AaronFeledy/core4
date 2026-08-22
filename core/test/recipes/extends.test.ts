@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +78,7 @@ const makeCloner = (
     readonly commitSha?: string;
     readonly manifest?: string;
     readonly extraFiles?: ReadonlyArray<{ readonly path: string; readonly contents: string }>;
+    readonly extraSymlinks?: ReadonlyArray<{ readonly path: string; readonly target: string }>;
     readonly calls?: Array<{ readonly url: string; readonly stagingDir: string }>;
   } = {},
 ): GitRecipeCloner => ({
@@ -88,6 +89,10 @@ const makeCloner = (
     for (const file of options.extraFiles ?? []) {
       await mkdir(dirname(join(stagingDir, file.path)), { recursive: true });
       await writeFile(join(stagingDir, file.path), file.contents);
+    }
+    for (const link of options.extraSymlinks ?? []) {
+      await mkdir(dirname(join(stagingDir, link.path)), { recursive: true });
+      await symlink(link.target, join(stagingDir, link.path));
     }
     return { commitSha: options.commitSha ?? "abc123def456" };
   },
@@ -315,6 +320,45 @@ version: 0.1.0
 extends: ~/not-a-recipe
 `,
         commitSha: "baddcafe",
+      });
+      const parsed = await Effect.runPromise(
+        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
+      );
+      const exit = await Effect.runPromiseExit(
+        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
+      );
+      const error = expectFailure(exit);
+      expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
+    });
+  });
+  test("given a remote parent whose local hop is a symlink out of the cache, when flatten runs, then the hop is rejected", async () => {
+    await withTempRoot(async (dir) => {
+      const outside = join(dir, "outside");
+      await mkdir(outside);
+      await writeFile(
+        join(outside, "recipe.yml"),
+        [
+          "id: escaped",
+          "title: Escaped",
+          "description: Host YAML reached through a symlink.",
+          "version: 0.1.0",
+          "prompts:",
+          "  - name: from-outside",
+          "    type: text",
+          "    message: Should not merge",
+          "",
+        ].join("\n"),
+      );
+      const userDataRoot = join(dir, "data");
+      const gitRecipeCloner = makeCloner({
+        manifest: `id: remote-parent
+title: Remote Parent
+description: Ships a symlink parent hop.
+version: 0.1.0
+extends: ./hook
+`,
+        extraSymlinks: [{ path: "hook", target: outside }],
+        commitSha: "symlink1",
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),

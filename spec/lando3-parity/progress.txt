@@ -732,7 +732,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 ---
 
 ## 2026-08-21 19:45 CDT - US-575 Review
-- Blocked remote-parent YAML from executing in-tree or host `recipe.ts` during flatten. Nested local hops from a git/npm/registry parent now stay inside the published recipe root and load YAML only.
+- Blocked remote-parent YAML from executing in-tree or host `recipe.ts` during flatten. Nested local hops from a git/npm/registry parent now stay inside the published recipe root (realpath jail, including symlink hops) and load YAML only.
 - Review notes (deferred/rejected): rejected treating git/npm SSRF and `github:@ref` ignore as US-575 blockers — those are the existing init `--source=git` trust/pin model reused by parent-source; lockfile pinning is the SHA recipe-cache pin, not a new `.lock`; tarball parent refs stay out because `detectScheme` has no tarball form; guide “when set” scalar wording is a docs nit against spec “come from the child”. Bugbot found no bugs.
 - Verification: lint passed; focused extends (12), ts-source (13), and recipes-commands (16) tests passed. Typecheck still reports only pre-existing windows-arm64 and mcp memoryPressure errors.
 - **Learnings for future iterations:**

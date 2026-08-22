@@ -1,4 +1,5 @@
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { Effect } from "effect";
 
@@ -120,10 +121,28 @@ const expandLocalParent = (ref: string, childSource: string): string => {
   return resolve(cwd, ref);
 };
 
-const escapesJail = (expanded: string, jailRoot: string): boolean => {
-  const rel = relative(resolve(jailRoot), resolve(expanded));
-  return rel === ".." || rel.startsWith(`..${rel.includes("\\") ? "\\" : "/"}`) || isAbsolute(rel);
+const escapesJail = (candidate: string, jailRoot: string): boolean => {
+  const rel = relative(jailRoot, candidate);
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
 };
+
+const realpathOf = (
+  path: string,
+  ref: string,
+  chain: ReadonlyArray<string>,
+): Effect.Effect<string, RecipeExtendsError> =>
+  Effect.tryPromise({
+    try: () => realpath(path),
+    catch: () => parentNotFound(ref, chain),
+  });
+
+const rejectIfOutsideJail = (
+  candidate: string,
+  jailRoot: string,
+  ref: string,
+  chain: ReadonlyArray<string>,
+): Effect.Effect<void, RecipeExtendsError> =>
+  escapesJail(candidate, jailRoot) ? Effect.fail(parentNotFound(ref, chain)) : Effect.void;
 
 const parentIdentity = (ref: string, childSource: string): string => {
   const scheme = detectParentScheme(ref);
@@ -177,8 +196,11 @@ const readLocalParent = (
 ): Effect.Effect<RawParent, FlattenError> =>
   Effect.gen(function* () {
     const expanded = expandLocalParent(ref, childSource);
-    if (ctx.jailRoot !== undefined && escapesJail(expanded, ctx.jailRoot)) {
-      return yield* Effect.fail(parentNotFound(ref, ctx.chain));
+    const jailReal = ctx.jailRoot === undefined ? undefined : yield* realpathOf(ctx.jailRoot, ref, ctx.chain);
+    if (jailReal !== undefined) {
+      yield* rejectIfOutsideJail(resolve(expanded), jailReal, ref, ctx.chain);
+      const expandedReal = yield* realpathOf(expanded, ref, ctx.chain);
+      yield* rejectIfOutsideJail(expandedReal, jailReal, ref, ctx.chain);
     }
     const ymlPath = resolve(expanded, "recipe.yml");
     const tsPath = resolve(expanded, "recipe.ts");
@@ -205,11 +227,17 @@ const readLocalParent = (
       );
     }
     if (tsExists) {
+      if (jailReal !== undefined) {
+        yield* rejectIfOutsideJail(yield* realpathOf(tsPath, ref, ctx.chain), jailReal, ref, ctx.chain);
+      }
       const content = yield* readText(tsPath, ref, ctx.chain);
       const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
       return { source: tsPath, parsed };
     }
     if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
+    if (jailReal !== undefined) {
+      yield* rejectIfOutsideJail(yield* realpathOf(ymlPath, ref, ctx.chain), jailReal, ref, ctx.chain);
+    }
     const content = yield* readText(ymlPath, ref, ctx.chain);
     return { source: ymlPath, parsed: yield* parseRecipeYaml({ source: ymlPath, content }) };
   });
