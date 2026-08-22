@@ -375,15 +375,14 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     };
     const startStdinPump = () => {
       if (input.stdin === undefined || stdinPump !== undefined) return;
-      stdinIterator = input.stdin[Symbol.asyncIterator]();
+      const iterator = input.stdin[Symbol.asyncIterator]();
+      stdinIterator = iterator;
       stdinPump = (async () => {
         while (true) {
-          const next = await stdinIterator?.next();
-          if (next === undefined || next.done === true) {
-            if (next?.done === true) {
-              stdinExhausted = true;
-              maybeEndStdin();
-            }
+          const next = await iterator.next();
+          if (next.done === true) {
+            stdinExhausted = true;
+            maybeEndStdin();
             return;
           }
           writeStdin(next.value);
