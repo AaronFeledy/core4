@@ -32,6 +32,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/ssh-agent",
   "@lando/template-handlebars",
   "@lando/template-mustache",
+  "@lando/sql",
 ];
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
