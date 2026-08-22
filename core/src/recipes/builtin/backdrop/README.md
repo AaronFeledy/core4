@@ -15,11 +15,11 @@ on the appserver. There is no network scaffold.
 - `lando composer …` - Composer.
 - `lando php …` - PHP CLI inside the appserver service.
 
-## Alpha limitations
+## Bootstrapping the codebase
 
-- The recipe writes a Landofile only.
-- Prompts flatten from lamp.
+The recipe writes a Landofile only. Prompts flatten from lamp. After
+`lando start`, install Backdrop into the app root if it is empty.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
