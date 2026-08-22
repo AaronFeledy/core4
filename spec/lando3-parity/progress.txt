@@ -47,6 +47,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Laravel/symfony reuse php-stack like lamp; optional queue workers are a hand-written `via: cli` service, not a php-stack helper.
 - A bundled child that `extends:` a parent still needs its own renderer registered under the child id. Flatten merges the manifest only; init looks up `lookupRecipeRenderer(manifest.id)` and never calls the parent renderer.
 - Plugin-owned app commands that select among Landofile services should resolve the target from authored service types before `AppPlanner.plan`. Planner capability failures otherwise swallow tagged selection errors.
+- Exec `AttachStdin` must be true when `stdinStream` is set, not only for `stdin: inherit`. After a finite stdin stream, half-close the write side (`socket.end()`) once headers are flushed; do not destroy the hijack or mysql hangs or never sees the dump.
+- Native volume restore must stop the database container first. `RuntimeProvider.start/stop` are the per-service hooks; app CLI start/stop stay apply/destroy. Do not force `volumeSnapshot: copy` for InnoDB.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -867,4 +869,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Out-of-scope finding:** `lando scratch list` is parsed as `apps:scratch:start` with `InvalidCliInvocationError` / unexpected argument `list`. `lando apps:scratch:list` works.
 - **Learnings for future iterations:**
   - Native volume restore onto a running mysqld is a no-op for InnoDB; Build needs a real per-service stop/start (not the no-op provider methods) around restore.
+---
+
+## 2026-08-22 09:15 CDT - US-579
+- Streamed database imports now attach and EOF-close exec stdin, so gzip dumps actually reach mysql. Per-service start/stop/restart now POST to the planned container on the bundled providers, and restore stops the target service, restores the volume, then starts it again so InnoDB reloads the snapshot.
+- Verification: typecheck, lint passed; relevant test spot checks passed. Compiled CLI in lando4-dev imported a gzip dump, snapshotted, mutated, and restored to the pre-mutate schema.
+- **Learnings for future iterations:**
+  - `stdinStream` is not `stdin: inherit`. Attach stdin for the stream, then half-close the write side after headers flush so pending dump bytes are not dropped.
+  - App `lando start`/`stop` remain apply/destroy. Plugins that need a running container bounced must call `RuntimeProvider.start`/`stop`, which must not be no-ops and must not remove the container.
 ---
