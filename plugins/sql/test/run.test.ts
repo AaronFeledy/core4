@@ -113,6 +113,25 @@ describe("executeDbCommand", () => {
     expect(transfer?.to._tag).toBe("hostPath");
   });
 
+  test("imports mssql by transferring the bak then restoring in-service", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mssql:2022",
+      environment: { SA_PASSWORD: SECRET },
+      countStdout: "0",
+    });
+
+    const exit = await run(harness.deps, { action: "import", file: "dump.bak", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected success");
+    const transfer = harness.transfers()[0];
+    expect(transfer?.from._tag).toBe("hostPath");
+    expect(transfer?.to._tag).toBe("servicePath");
+    expect(harness.execs()[0]?.command[0]).toBe("sqlcmd");
+    expect(exit.value.sizeBytes).toBe(12);
+  });
+
   test("fails closed with available services when more than one SQL target exists", async () => {
     const harness = makeSqlTestDeps({
       password: SECRET,

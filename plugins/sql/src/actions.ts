@@ -142,7 +142,7 @@ export const runImport = (
   if (input.family === "mssql") {
     const bak = mssqlBackupServicePath(input.creds.database);
     return Effect.gen(function* () {
-      yield* mover.transfer({
+      const transfer = yield* mover.transfer({
         from: { _tag: "hostPath", path },
         to: {
           _tag: "servicePath",
@@ -158,7 +158,7 @@ export const runImport = (
       }
       const restore = mssqlRestoreCommand(input.creds.database);
       yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
-      return { accelerated: true };
+      return transfer;
     });
   }
   return mover.transfer({
