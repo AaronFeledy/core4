@@ -93,7 +93,7 @@ const createExec = (
       body: {
         AttachStdout: true,
         AttachStderr: true,
-        AttachStdin: command.stdin === "inherit",
+        AttachStdin: command.stdin === "inherit" || command.stdinStream !== undefined,
         Cmd: command.command,
         Tty: command.tty === true,
         ...(command.cwd === undefined ? {} : { WorkingDir: command.cwd }),

@@ -37,6 +37,7 @@ import {
   makePodmanApiClient as makeUnixPodmanApiClient,
   podmanComposeKnobs,
   podmanVersionMeetsFloor,
+  postServiceLifecycle,
   providerStatePath as providerLandoStatePath,
   pullImage,
   waitForExit,
@@ -740,9 +741,48 @@ export const makeRuntimeProvider = (
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberPlan(plan))),
-        start: () => Effect.void,
-        stop: () => Effect.void,
-        restart: () => Effect.void,
+        start: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeNoPlanError(target.app, "start"))
+                : postServiceLifecycle({
+                    api: podmanApi,
+                    plan,
+                    target,
+                    action: "start",
+                    providerId: PROVIDER_ID,
+                  }),
+            ),
+          ),
+        stop: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeNoPlanError(target.app, "stop"))
+                : postServiceLifecycle({
+                    api: podmanApi,
+                    plan,
+                    target,
+                    action: "stop",
+                    providerId: PROVIDER_ID,
+                  }),
+            ),
+          ),
+        restart: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeNoPlanError(target.app, "restart"))
+                : postServiceLifecycle({
+                    api: podmanApi,
+                    plan,
+                    target,
+                    action: "restart",
+                    providerId: PROVIDER_ID,
+                  }),
+            ),
+          ),
         waitForExit: (target, waitOptions) =>
           resolvePlan(target).pipe(
             Effect.flatMap((plan) =>

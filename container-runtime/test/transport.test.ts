@@ -20,15 +20,21 @@ async function* stdinBytes(...values: ReadonlyArray<string>): AsyncGenerator<Byt
 class FakeConnection implements SocketHttpConnection {
   readonly writes: Array<string> = [];
   destroyed = false;
+  ended = false;
 
   constructor(private readonly chunks: ReadonlyArray<Bytes>) {}
 
   write(data: string | Uint8Array): void {
+    if (this.ended) return;
     this.writes.push(typeof data === "string" ? data : decoder.decode(data));
   }
 
   destroy(): void {
     this.destroyed = true;
+  }
+
+  end(): void {
+    this.ended = true;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
@@ -56,8 +62,10 @@ class WaitingConnection extends FakeConnection {
 class DelayedUpgradeConnection implements SocketHttpConnection {
   readonly writes: Array<string> = [];
   destroyed = false;
+  ended = false;
 
   write(data: string | Uint8Array): void {
+    if (this.ended) return;
     const text = typeof data === "string" ? data : decoder.decode(data);
     this.writes.push(text);
   }
@@ -66,10 +74,39 @@ class DelayedUpgradeConnection implements SocketHttpConnection {
     this.destroyed = true;
   }
 
+  end(): void {
+    this.ended = true;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
     await waitFor(() => this.writes.length > 0);
     await sleep(5);
     yield bytes("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\ndone");
+  }
+}
+
+class HeldReadConnection extends FakeConnection {
+  private resume: (() => void) | undefined;
+
+  constructor() {
+    super([]);
+  }
+
+  finishRead(): void {
+    this.resume?.();
+  }
+
+  override destroy(): void {
+    super.destroy();
+    this.resume?.();
+  }
+
+  override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+    await waitFor(() => this.writes.length > 0);
+    yield bytes("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n");
+    await new Promise<void>((resolve) => {
+      this.resume = resolve;
+    });
   }
 }
 
@@ -168,6 +205,30 @@ describe("socket HTTP transport", () => {
     expect(connection.writes.at(-1)).toBe("typed\n");
   });
 
+  test("half-closes the writable side when finite stdin completes", async () => {
+    const connection = new HeldReadConnection();
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    const streamed = Array.fromAsync(
+      client.stream({
+        method: "POST",
+        path: "/exec/abc/start",
+        headers: { Connection: "Upgrade", Upgrade: "tcp" },
+        body: { Detach: false, Tty: false },
+        stdin: stdinBytes("typed\n"),
+      }),
+    );
+
+    try {
+      await waitFor(() => connection.writes.at(-1) === "typed\n");
+      expect(connection.ended).toBe(true);
+      expect(connection.destroyed).toBe(false);
+      expect(connection.writes[0]).toContain("POST /v1.43/exec/abc/start HTTP/1.1\r\n");
+    } finally {
+      connection.finishRead();
+      await streamed;
+    }
+  });
+
   test("sends stdin bytes as the request body for non-hijacked requests", async () => {
     const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n{}")]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
@@ -193,6 +254,30 @@ describe("socket HTTP transport", () => {
       client.stream({ method: "POST", path: "/exec/abc/start", signal: controller.signal }),
     );
     await sleep(1);
+    controller.abort();
+    await streamed;
+
+    expect(connection.destroyed).toBe(true);
+  });
+
+  test("destroys the socket when aborted during an in-flight stdin stream", async () => {
+    const connection = new WaitingConnection([]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    const controller = new AbortController();
+    async function* hangingStdin(): AsyncGenerator<Bytes> {
+      yield bytes("partial");
+      await new Promise<void>(() => {});
+    }
+
+    const streamed = Array.fromAsync(
+      client.stream({
+        method: "POST",
+        path: "/exec/abc/start",
+        stdin: hangingStdin(),
+        signal: controller.signal,
+      }),
+    );
+    await waitFor(() => connection.writes.at(-1) === "partial");
     controller.abort();
     await streamed;
 

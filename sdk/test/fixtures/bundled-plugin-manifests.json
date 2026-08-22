@@ -359,6 +359,24 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
+        "commands": ["db:import", "db:export", "db:snapshot", "db:restore", "db:reset"]
+      },
+      "description": "Bundled database import, export, snapshot, restore, and reset commands.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/sql",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/sql"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
         "globalServices": [
           {
             "enabledByDefault": true,

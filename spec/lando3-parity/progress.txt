@@ -46,6 +46,9 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Bundled PHP recipes emit versioned database types (`mariadb:11.4`) that plan through `loadServiceTypeWithVersion`. `allowOverride` is rejected on `via: fpm`; nginx+FPM recipes must omit it and add an `edge` service with `backend:`.
 - Laravel/symfony reuse php-stack like lamp; optional queue workers are a hand-written `via: cli` service, not a php-stack helper.
 - A bundled child that `extends:` a parent still needs its own renderer registered under the child id. Flatten merges the manifest only; init looks up `lookupRecipeRenderer(manifest.id)` and never calls the parent renderer.
+- Plugin-owned app commands that select among Landofile services should resolve the target from authored service types before `AppPlanner.plan`. Planner capability failures otherwise swallow tagged selection errors.
+- Exec `AttachStdin` must be true when `stdinStream` is set, not only for `stdin: inherit`. After a finite stdin stream, half-close the write side (`socket.end()`) once headers are flushed; do not destroy the hijack or mysql hangs or never sees the dump.
+- Native volume restore must stop the database container first. `RuntimeProvider.start/stop` are the per-service hooks; app CLI start/stop stay apply/destroy. Do not force `volumeSnapshot: copy` for InnoDB.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -812,4 +815,86 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Tooling `cmds:` items are sequential steps, not argv. Multi-word CLIs belong in one string (`php artisan`, `php cli/joomla.php`).
   - Bundled MariaDB/MySQL/MongoDB default to user/password `lando`/`lando` and database=`appName`; recipe env/settings must match those defaults.
+---
+
+## 2026-08-22 03:31 CDT - Babysit
+- PR: #836 https://github.com/AaronFeledy/core4/pull/836
+- CI outcome: pass
+- Review feedback: fixed (committed generated backdrop/joomla/mean recipe scaffolds that codegen:check required)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-22 05:43 CDT - US-579
+- Bundled `@lando/sql` now imports, exports, snapshots, restores, and resets creds-bearing database services. Family comes from the service type, a single database needs no `--service`, and multi-database apps fail closed listing candidates. Dump bytes go through DataMover host/service endpoints with gzip on `.gz` paths; snapshots use the DataMover snapshot store. Import into a non-empty database and every reset require confirmation unless `--yes` is set.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Plugin-owned `db:*` commands must resolve the target from the authored Landofile before planning. Planner capability failures would otherwise hide `SqlServiceAmbiguousError`.
+  - Plugin tests cannot import `@lando/core` or `@lando/data-mover`. Keep fakes local and call DataMover through the SDK tag.
+  - Count-probe and confirm failures should fail closed into `SqlConfirmRequiredError` so non-interactive hosts never hang.
+---
+
+## 2026-08-22 07:20 CDT - US-579 Review
+- Fixed MySQL/MariaDB import confirmation counting the selected database, Mongo dump/load/count/reset using MONGO_URI with authSource=admin, MSSQL count/backup/restore targeting the user database and overwriting existing files, fail-closed in-service exec, confirmation before the task tree, and envelope redaction via plugin spec tokens. Also stopped `lando --help db:*` from treating leftover argv as a dump file, and retargeted leftover first-hour docs that still denied a bundled importer.
+- Review notes (deferred/rejected): rejected restore confirmation because the source AC only names non-empty import and reset; rejected live guide `<Run>` for import/export/gzip/snapshot because `provider: test` cannot run a database; rejected expanding the built-in machine-output conformance gate to plugin ids because all five commands share one result schema and local envelope tests; rejected identifier sanitization and snapshot-label path hardening as landofile-author / DataMover concerns outside this story.
+- Verification: typecheck, lint, lint:guides, package-dag, explicit-base guide drift, and 72 focused sql/sdk/dispatch tests passed.
+- **Learnings for future iterations:**
+  - MySQL `DATABASE()` is null unless the client selects a schema (`-D`); do not use it as an emptiness probe without that.
+  - Official Mongo tools do not read `MONGO_URI`; pass `--uri="$MONGO_URI"` through one `sh -c` so gzip wrap can append `| gzip` without quoting away expansion.
+  - Plugin-owned help from `lando --help <id>` must pass `--help` into the plugin dispatcher, not `argv.slice(1)`.
+---
+
+## 2026-08-22 07:36 CDT - US-579 Drift Audit
+- Trigger: 2 cycles, 2915 changed lines, 4 commits
+- Category 2: Orchestration proofs were mysql-only and machine-output constructed envelopes without the spec token hook; import gzip and empty-DB import were unasserted
+- Category 3: Production registerSecrets was a no-op test seam beside result redactionTokens
+- Category 4: views.ts defaulted incomplete authored creds to lando, shadowing env/appName; requireExecOk was an unused export
+- Category 6: Guide still documents all five commands; live dump Runs stay rejected as host-unsafe under provider:test
+- Fixed: Partial authored creds now fall through; deleted the no-op secret registrar; restored multi-family execute, import gzip, empty-DB import, progress tags, and envelope encoding through dbCommandRedactionTokens
+- Split/excise decisions: None; plugin CLI dispatch remains the required composition-root arm, not a second OCLIF engine; passes stays true
+- Verification: typecheck, lint, 78 sql/sdk/dispatch spot checks passed
+---
+
+## 2026-08-22 08:05 CDT - US-579 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a mysql-only app, and exercised the five db helpers against the compiled binary. Export, reset confirmation, reset --yes, snapshot, multi-DB `--service` ambiguity, and adjacent info/exec/help worked after selecting the live provider. Import still fails: hostPath→serviceCmd stdin does not complete against provider-lando (fail-closed DataTransferError; AttachStdin hangs). Restore reports success after a native volume snapshot but the live MySQL schema is unchanged. Story returned to Build.
+- Blockers: plugin commands used the bootstrap stub RuntimeProvider, so DataMover execStream was empty and snapshot required ephemeral mounts. Fixed by resolving DataMover's provider at call time and selecting via RuntimeProviderRegistry.
+- **Learnings for future iterations:**
+  - DataMoverLive must not capture the bootstrap stub RuntimeProvider; resolve it at call time and have plugin commands provide the selected provider.
+  - provider-lando exec AttachStdin is only on `stdin: inherit`; stdinStream alone does not feed mysql, and turning AttachStdin on without a closed stdin hang-kills import.
+---
+
+## 2026-08-22 08:20 CDT - US-579 Verify
+- Restarted after the prior Verify timeout. Fresh `core/dist/lando` + `lando setup --yes --no-interactive` in lando4-dev. Export, reset confirmation, reset --yes, snapshot, multi-DB `SqlServiceAmbiguousError`, and adjacent info/exec/help still work. Import still fails closed with `DataTransferError` (hostPath→serviceCmd stdin). Restore still reports success while the live MySQL schema is unchanged. `passes` stays false.
+- Restore cannot be patched from the plugin alone: provider-lando `start`/`restart` are no-ops, so a stop-restore-start sequence has no provider hook.
+- **Out-of-scope finding:** `lando scratch list` is parsed as `apps:scratch:start` with `InvalidCliInvocationError` / unexpected argument `list`. `lando apps:scratch:list` works.
+- **Learnings for future iterations:**
+  - Native volume restore onto a running mysqld is a no-op for InnoDB; Build needs a real per-service stop/start (not the no-op provider methods) around restore.
+---
+
+## 2026-08-22 09:15 CDT - US-579
+- Streamed database imports now attach and EOF-close exec stdin, so gzip dumps actually reach mysql. Per-service start/stop/restart now POST to the planned container on the bundled providers, and restore stops the target service, restores the volume, then starts it again so InnoDB reloads the snapshot.
+- Verification: typecheck, lint passed; relevant test spot checks passed. Compiled CLI in lando4-dev imported a gzip dump, snapshotted, mutated, and restored to the pre-mutate schema.
+- **Learnings for future iterations:**
+  - `stdinStream` is not `stdin: inherit`. Attach stdin for the stream, then half-close the write side after headers flush so pending dump bytes are not dropped.
+  - App `lando start`/`stop` remain apply/destroy. Plugins that need a running container bounced must call `RuntimeProvider.start`/`stop`, which must not be no-ops and must not remove the container.
+---
+
+## 2026-08-22 09:27 CDT - US-579 Review
+- Restore now captures the restore Exit so interrupt still restarts the database, and a later start failure no longer hides the restore error. Unknown plugin flags now fail closed before they can be rebound as dump paths.
+- Review notes (deferred/rejected): rejected Bugbot's pre-plan landofile target map — authored types must be resolved before planning so capability failures cannot swallow SqlServiceAmbiguousError; rejected snapshot-label path hardening and identifier interpolation as previously rejected DataMover/landofile-author concerns; rejected restore confirmation because the source AC only names non-empty import and reset; rejected attaching AppPlan onto DataMover serviceCmd — provider-lando already reloads the persisted applied plan, and docker's in-memory-only resolvePlan is a pre-existing exec-after-restart gap, not a US-579 AC miss.
+- Verification: typecheck, lint passed; 18 focused sql run tests and 7 plugin-dispatch tests passed.
+- **Learnings for future iterations:**
+  - After stop-then-restore, capture restore with Effect.exit (not either) so start still runs on interrupt, then re-raise the restore cause ahead of a start failure.
+  - Plugin-owned argv must run validateCommandCliFlags before parse; dropped unknown flags turn the next token into a positional.
+---
+
+## 2026-08-22 10:00 CDT - US-579 Drift Audit
+- Trigger: 6 cycles, 4468 changed lines, 20 commits
+- Category 2: MSSQL import discarded the DataMover transfer result and hardcoded acceleration; that family import path was unasserted
+- Category 4: Plugin dispatcher exported an unused spec resolver and several internals nothing outside the module imported
+- Category 1: Per-service provider start/stop/restart stays — restore cannot work without it and does not split cleanly
+- Category 7: Re-examined restore confirmation, identifier interpolation, live dump Runs, and the built-in machine-output gate; still correctly out of scope
+- Fixed: MSSQL import now returns the transfer metadata and has a family import proof; deleted the unused resolver and un-exported unused dispatcher internals
+- Split/excise decisions: None; passes stays true
+- Verification: typecheck, lint, 28 sql/dispatch/machine-output spot checks passed
 ---

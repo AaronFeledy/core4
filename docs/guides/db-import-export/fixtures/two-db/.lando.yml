@@ -1,0 +1,6 @@
+name: two-db
+services:
+  database:
+    type: mysql
+  analytics:
+    type: postgres

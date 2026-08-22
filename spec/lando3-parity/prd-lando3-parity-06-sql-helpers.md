@@ -27,3 +27,9 @@ The plugin is a new `plugins/sql` workspace package (plugins may not depend on `
 - [ ] Credentials route through `RedactionService` everywhere; progress renders as renderer task frames; `--format json` emits the §8.11 envelope/stream frames for all five commands with machine-output conformance coverage.
 - [ ] Executable guide `docs/guides/tooling/db-import-export.mdx` (import, export, gzip, snapshot/restore, reset, multi-DB `--service`); coverage/INDEX gates green.
 - [ ] Tests pass; typecheck passes; lint passes.
+
+## Guide Coverage
+
+| User Story | Feature | Guide Path | Status |
+|---|---|---|---|
+| US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |

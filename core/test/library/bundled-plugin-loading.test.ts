@@ -23,6 +23,7 @@ const fullBundledPluginNames = [
   "@lando/ssh-agent",
   "@lando/template-handlebars",
   "@lando/template-mustache",
+  "@lando/sql",
 ] as const;
 const bundledPluginRuntimeDependencies = ["@opentui/core", "handlebars", "mustache"] as const;
 

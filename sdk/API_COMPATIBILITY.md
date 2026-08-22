@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, and `SqlCommandFailedError` for database helper target selection, confirmation, and failed in-service dump/load/reset commands.
+
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
 - `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
@@ -12,7 +14,9 @@
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
   `LandoPluginModule.commands` executable loaders. Manifest `contributes.commands` ids now require
   matching lazy loaders, allowing event `command:` steps to execute plugin commands rather than
-  treating manifest ids as unavailable metadata.
+  treating manifest ids as unavailable metadata. `ExecutableCommandSpec` additively accepts optional
+  `redactionTokens` so plugin commands can seed envelope redaction without putting secrets on
+  `resultSchema`.
 - `ToolingInvocation` additively gains optional structural `hostSteps` for Bun Shell host execution,
   and `ShellCommandOptions` additively gains optional `argv` so authored shell source and forwarded
   arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host

@@ -73,6 +73,7 @@ import {
 import { PULL_REMEDIATION, buildImageInspectRequest, pullImage } from "./image-pull.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
+import { postServiceLifecycle } from "./service-lifecycle.ts";
 import { waitForExit } from "./wait-for-exit.ts";
 
 export {
@@ -1344,7 +1345,7 @@ const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, a
       body: {
         AttachStdout: true,
         AttachStderr: true,
-        AttachStdin: command.stdin === "inherit",
+        AttachStdin: command.stdin === "inherit" || command.stdinStream !== undefined,
         Cmd: command.command,
         Tty: command.tty === true,
         ...(command.cwd === undefined ? {} : { WorkingDir: command.cwd }),
@@ -1694,9 +1695,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           bringUp(plan, dockerApi, applyOptions.signal).pipe(
             Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
           ),
-        start: () => Effect.void,
-        stop: () => Effect.void,
-        restart: () => Effect.void,
+        start: (target) => {
+          const plan = resolvePlan(target);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("start"))
+            : postServiceLifecycle({ api: dockerApi, plan, target, action: "start" });
+        },
+        stop: (target) => {
+          const plan = resolvePlan(target);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("stop"))
+            : postServiceLifecycle({ api: dockerApi, plan, target, action: "stop" });
+        },
+        restart: (target) => {
+          const plan = resolvePlan(target);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("restart"))
+            : postServiceLifecycle({ api: dockerApi, plan, target, action: "restart" });
+        },
         waitForExit: (target, options) => {
           const plan = resolvePlan(target);
           return plan === undefined

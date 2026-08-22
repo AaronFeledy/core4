@@ -220,3 +220,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | mssql service type | `docs/guides/services/mssql.mdx` | Shipped |
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
+| L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |

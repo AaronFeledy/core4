@@ -109,6 +109,7 @@ export const buildConfig: BuildConfig = {
       path: "plugins/template-mustache",
       contributes: { templateEngines: ["mustache"] },
     },
+    { name: "@lando/sql", path: "plugins/sql" },
   ],
   bundledRecipes: [
     { id: "node-postgres" },
