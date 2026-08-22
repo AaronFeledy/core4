@@ -8,14 +8,14 @@ export const DRUPAL_COMPOSER_OPTIONS = ["2", "2.7.7"] as const;
 export const DRUPAL_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] as const;
 export const LAMP_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] as const;
 
-export type PhpStackDefaults = {
+type PhpStackDefaults = {
   readonly php: string;
   readonly database: string;
   readonly webroot: string;
   readonly composer: string;
 };
 
-export type ResolvedPhpStack = {
+type ResolvedPhpStack = {
   readonly php: string;
   readonly database: string;
   readonly webroot: string;
@@ -87,7 +87,7 @@ export const resolvePhpStackAnswers = (
   };
 };
 
-export type PhpAppserverLinesInput = {
+type PhpAppserverLinesInput = {
   readonly php: string;
   readonly webroot: string;
   readonly composer: string | false;
