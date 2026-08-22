@@ -1,0 +1,9 @@
+name: cache-refresh-demo
+services:
+  app:
+    type: "node:lts"
+    primary: true
+tooling:
+  hello:
+    service: app
+    cmd: echo hello
