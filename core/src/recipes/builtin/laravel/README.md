@@ -1,15 +1,15 @@
 # laravel
 
-Laravel scaffold with PHP, a database (MariaDB or PostgreSQL), Redis, and an
-optional queue worker.
+Laravel scaffold with PHP 8.1-8.5, Composer, MariaDB or PostgreSQL, Redis, and
+an optional `via: cli` queue worker.
 
 ## Generated services
 
-- `appserver` — `php:<8.2|8.3>`, `framework: laravel`.
-- `database` — `mariadb` or `postgres` (prompt: `database`).
+- `appserver` — `php:<8.1-8.5>`, `framework: laravel`, webroot `/app/public`.
+- `database` — `mariadb:11.4` or `postgres:16` (prompt: `database`).
 - `cache` — `redis`.
-- `worker` — additional `php:<version>` running `php artisan queue:work` when
-  prompt `worker` answers `true`.
+- `worker` — additional `php:<version>` with `via: cli` running
+  `php artisan queue:work` when prompt `worker` answers `true`.
 
 ## Generated tooling
 
@@ -17,13 +17,11 @@ optional queue worker.
 - `lando composer …` — Composer.
 - `lando npm …` — npm inside the appserver.
 
-## Alpha limitations
+## Bootstrapping the codebase
 
-- No automatic Laravel source bootstrap; the recipe writes a Landofile only.
-  Users run `composer create-project laravel/laravel .` (or similar) through
-  the generated tooling once the app starts.
-- Horizon, Telescope, and additional queue connectors are deferred to Beta.
+The recipe writes a Landofile only. After `lando start`, create the Laravel
+project with the generated Composer tooling if the app root is empty.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
