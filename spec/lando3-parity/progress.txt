@@ -852,3 +852,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Split/excise decisions: None; plugin CLI dispatch remains the required composition-root arm, not a second OCLIF engine; passes stays true
 - Verification: typecheck, lint, 78 sql/sdk/dispatch spot checks passed
 ---
+
+## 2026-08-22 08:05 CDT - US-579 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a mysql-only app, and exercised the five db helpers against the compiled binary. Export, reset confirmation, reset --yes, snapshot, multi-DB `--service` ambiguity, and adjacent info/exec/help worked after selecting the live provider. Import still fails: hostPath→serviceCmd stdin does not complete against provider-lando (fail-closed DataTransferError; AttachStdin hangs). Restore reports success after a native volume snapshot but the live MySQL schema is unchanged. Story returned to Build.
+- Blockers: plugin commands used the bootstrap stub RuntimeProvider, so DataMover execStream was empty and snapshot required ephemeral mounts. Fixed by resolving DataMover's provider at call time and selecting via RuntimeProviderRegistry.
+- **Learnings for future iterations:**
+  - DataMoverLive must not capture the bootstrap stub RuntimeProvider; resolve it at call time and have plugin commands provide the selected provider.
+  - provider-lando exec AttachStdin is only on `stdin: inherit`; stdinStream alone does not feed mysql, and turning AttachStdin on without a closed stdin hang-kills import.
+---
