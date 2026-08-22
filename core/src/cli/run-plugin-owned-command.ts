@@ -139,6 +139,9 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
   ...(spec.successExitCode === undefined
     ? {}
     : { successExitCode: (result: unknown) => spec.successExitCode?.(result) }),
+  ...(spec.redactionTokens === undefined
+    ? {}
+    : { redactionTokens: (result: unknown) => spec.redactionTokens?.(result) ?? [] }),
 });
 
 export const pluginOwnedCommandEffect = <A, E, R>(

@@ -196,7 +196,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
     const helpCommand = resolveBuiltInCommand(commandArg);
     if (helpCommand === undefined) {
-      if (await tryPluginOwnedCommand(commandArg, argv.slice(1))) return;
+      if (await tryPluginOwnedCommand(commandArg, ["--help"])) return;
       await failUnknownCommand(commandArg);
       return;
     }
