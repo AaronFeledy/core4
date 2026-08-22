@@ -7,13 +7,13 @@ tags: [beta, docs, recipes, lamp, php, database]
 
 # Change a LAMP stack after init
 
-`lando init --recipe lamp` writes Apache, PHP 8.3, and MariaDB. Edit `.lando.yml` after that, then `lando rebuild -y`.
+`lando init --recipe lamp` writes Apache, PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Edit `.lando.yml` after that, then `lando rebuild -y`.
 
-The recipe prompt is an app name and PHP `8.2` or `8.3` (default `8.3`). There is no prompt for the database engine, database version, Composer, or webroot.
+Init prompts for PHP 8.1 through 8.5, MariaDB or MySQL (with versions), Composer, and webroot. `--yes` keeps PHP 8.3, `mariadb:11.4`, Composer 2, and `/app`.
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.3` (or `8.2` if you chose it), `framework: none`, port `80`, a `database` service with `type: mariadb` and no version, plus `composer` and `php` tooling.
+The generated Landofile is an Apache-backed `appserver` on `php:8.3`, `framework: none`, port `80`, `composer: "2"`, `webroot: /app`, a `database` service with `type: mariadb:11.4`, plus `composer` and `php` tooling.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -24,7 +24,7 @@ The generated Landofile is an Apache-backed `appserver` on `php:8.3` (or `8.2` i
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{" } }} />
     </Step>
   </Scenario>

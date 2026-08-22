@@ -1,10 +1,20 @@
+import {
+  DRUPAL_COMPOSER_OPTIONS,
+  DRUPAL_DATABASES,
+  composerPromptYaml,
+  databasePromptYaml,
+  phpPromptYaml,
+  webrootPromptYaml,
+  webserverPromptYaml,
+} from "../php-stack";
+
 export const DRUPAL_CMS_RECIPE_ID = "drupal-cms";
 
 export const drupalCmsRecipeSource = `${DRUPAL_CMS_RECIPE_ID}/recipe.yml`;
 
 export const drupalCmsRecipeYaml = `id: ${DRUPAL_CMS_RECIPE_ID}
 title: Drupal CMS
-description: Drupal CMS 2 with PHP, a database (MariaDB or PostgreSQL), and Drush.
+description: Drupal CMS with PHP, a database, and project-local Drush.
 version: 0.1.0
 authors:
   - Lando Core Team
@@ -20,24 +30,16 @@ prompts:
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
-  - name: php
-    type: select
-    message: PHP version
-    default: '8.3'
-    choices:
-      - value: '8.3'
-  - name: database
-    type: select
-    message: Database engine
-    default: mariadb
-    choices:
-      - value: mariadb
-      - value: postgres
+${phpPromptYaml}
+${webserverPromptYaml}
+${databasePromptYaml(DRUPAL_DATABASES)}
+${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
+${webrootPromptYaml("/app/web")}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
     template: true
 postInit:
   - type: message
-    text: Run 'lando start', then scaffold Drupal CMS 2 with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.
+    text: Run 'lando start', then scaffold Drupal CMS with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.
 `;

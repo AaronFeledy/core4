@@ -1,5 +1,19 @@
+import {
+  composerToolingLines,
+  renderDatabaseLines,
+  renderNginxEdgeLines,
+  renderPhpAppserverLines,
+  resolvePhpStackAnswers,
+} from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { DRUPAL_CMS_RECIPE_ID } from "./manifest";
+
+const DRUPAL_CMS_DEFAULTS = {
+  php: "8.3",
+  database: "mariadb:11.4",
+  webroot: "/app/web",
+  composer: "2",
+} as const;
 
 export const DRUPAL_CMS_SCAFFOLD_COMMAND = [
   "set -eu",
@@ -43,44 +57,42 @@ export const DRUPAL_CMS_SCAFFOLD_COMMAND = [
   'rm -f "$manifest"',
 ].join("\n");
 
-const renderLandofile = (appName: string, php: string, database: string): string => {
-  const dbDriver = database === "postgres" ? "pgsql" : "mysql";
+const renderLandofile = (
+  appName: string,
+  answers: Parameters<RecipeRenderer["render"]>[0]["answers"],
+): string => {
+  const stack = resolvePhpStackAnswers(answers, DRUPAL_CMS_DEFAULTS);
+  const postgres = stack.database.startsWith("postgres");
+  const dbDriver = postgres ? "pgsql" : "mysql";
   const dbName = appName;
-
-  // For postgres, compute the password hash as the postgres service does
-  // For mariadb, use the hardcoded "lando" password
-  const dbPasswordExpr =
-    database === "postgres"
-      ? `$(printf '%s' '${appName}' | sha256sum | cut -c1-16 | sed 's/^/lando-/')`
-      : "lando";
+  const dbPasswordExpr = postgres
+    ? `$(printf '%s' '${appName}' | sha256sum | cut -c1-16 | sed 's/^/lando-/')`
+    : "lando";
 
   return [
     `name: ${appName}`,
     "runtime: 4",
     `recipe: ${DRUPAL_CMS_RECIPE_ID}`,
     "services:",
-    "  appserver:",
-    `    type: php:${php}`,
-    "    framework: drupal",
-    "    webroot: /app/web",
-    "    allowOverride: true",
-    "    port: 80",
-    "    dependsOn:",
-    "      - database",
-    "  database:",
-    `    type: ${database}`,
-    `    database: ${dbName}`,
+    ...renderPhpAppserverLines({
+      php: stack.php,
+      webroot: stack.webroot,
+      composer: stack.composer,
+      webserver: stack.webserver,
+      allowOverride: true,
+      port: 80,
+      dependsOn: ["database"],
+      framework: "drupal",
+    }),
+    ...(stack.webserver === "nginx" ? renderNginxEdgeLines(stack.webroot) : []),
+    ...renderDatabaseLines(stack.database, { databaseName: dbName }),
     "tooling:",
     "  drush:",
     "    service: appserver",
     "    description: Run Drush inside the appserver service.",
     "    cmds:",
     "      - vendor/bin/drush",
-    "  composer:",
-    "    service: appserver",
-    "    description: Run Composer inside the appserver service.",
-    "    cmds:",
-    "      - composer",
+    ...(stack.composer === false ? [] : composerToolingLines()),
     "  drupal-cms-scaffold:",
     "    service: appserver",
     "    description: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
@@ -97,9 +109,5 @@ const renderLandofile = (appName: string, php: string, database: string): string
 
 export const drupalCmsRenderer: RecipeRenderer = {
   id: DRUPAL_CMS_RECIPE_ID,
-  render: ({ appName, answers }) => {
-    const php = typeof answers.php === "string" ? answers.php : "8.3";
-    const database = typeof answers.database === "string" ? answers.database : "mariadb";
-    return new Map([[".lando.yml", renderLandofile(appName, php, database)]]);
-  },
+  render: ({ appName, answers }) => new Map([[".lando.yml", renderLandofile(appName, answers)]]),
 };

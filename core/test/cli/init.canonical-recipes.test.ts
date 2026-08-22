@@ -83,7 +83,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     answers: { name: "lamp-app", php: "8.3" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "mariadb" },
+      { name: "database", type: "mariadb:11.4" },
     ],
     expectedTooling: ["composer", "php"],
   },
@@ -99,19 +99,19 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "drupal",
-    answers: { name: "drupal-app", php: "8.3", database: "mariadb" },
+    answers: { name: "drupal-app", php: "8.3", database: "mariadb:11.4" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "mariadb" },
+      { name: "database", type: "mariadb:11.4" },
     ],
     expectedTooling: ["drush", "composer", "drupal-scaffold"],
   },
   {
     recipe: "drupal-cms",
-    answers: { name: "drupal-cms-app", php: "8.3", database: "mariadb" },
+    answers: { name: "drupal-cms-app", php: "8.3", database: "mariadb:11.4" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "mariadb" },
+      { name: "database", type: "mariadb:11.4" },
     ],
     expectedTooling: ["drush", "composer", "drupal-cms-scaffold", "drupal-cms-install"],
   },
@@ -283,7 +283,7 @@ describe("lando init — canonical common-stack recipes", () => {
   }
 });
 
-describe("lando init — managed-file ownership markers (US-353)", () => {
+describe("lando init — managed-file ownership markers", () => {
   test("node-postgres scaffold carries format-correct ownership markers and a ledger", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({

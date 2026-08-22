@@ -69,6 +69,25 @@ describe("makeTestInteractionService", () => {
     expect(reads).toBe(0);
   });
 
+  test("uses defaults and never opens stdin when the caller requests interactive mode", async () => {
+    const handle = makeTestInteractionService({ answers: {} });
+    const answers = await runScoped(
+      handle.service.promptAll([{ name: "app", type: "text", message: "Name?", default: "blog" }], {
+        interactive: true,
+      }),
+    );
+    expect(answers).toEqual({ app: "blog" });
+  });
+
+  test("fails fast on an unseeded required prompt even when the caller requests interactive mode", async () => {
+    const handle = makeTestInteractionService({ answers: {} });
+    const exit = await runScopedExit(
+      handle.service.promptAll([{ name: "app", type: "text", message: "Name?" }], { interactive: true }),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(failureTag(exit)).toBe("InteractionRequiredError");
+  });
+
   test("secret answers are carried as Redacted and never echoed", async () => {
     const handle = makeTestInteractionService({ answers: { token: "hunter2" } });
     const value = await runScoped(handle.service.secret({ name: "token", message: "Token?" }));

@@ -1,26 +1,41 @@
+import {
+  composerToolingLines,
+  renderDatabaseLines,
+  renderPhpAppserverLines,
+  resolvePhpStackAnswers,
+} from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { LAMP_RECIPE_ID } from "./manifest";
 
-const renderLandofile = (appName: string, php: string): string =>
-  [
+const LAMP_DEFAULTS = {
+  php: "8.3",
+  database: "mariadb:11.4",
+  webroot: "/app",
+  composer: "2",
+} as const;
+
+const renderLandofile = (
+  appName: string,
+  answers: Parameters<RecipeRenderer["render"]>[0]["answers"],
+): string => {
+  const stack = resolvePhpStackAnswers(answers, LAMP_DEFAULTS);
+  return [
     `name: ${appName}`,
     "runtime: 4",
     `recipe: ${LAMP_RECIPE_ID}`,
     "services:",
-    "  appserver:",
-    `    type: php:${php}`,
-    "    framework: none",
-    "    port: 80",
-    "    dependsOn:",
-    "      - database",
-    "  database:",
-    "    type: mariadb",
+    ...renderPhpAppserverLines({
+      php: stack.php,
+      webroot: stack.webroot,
+      composer: stack.composer,
+      webserver: "apache",
+      port: 80,
+      dependsOn: ["database"],
+      framework: "none",
+    }),
+    ...renderDatabaseLines(stack.database),
     "tooling:",
-    "  composer:",
-    "    service: appserver",
-    "    description: Run Composer inside the appserver service.",
-    "    cmds:",
-    "      - composer",
+    ...(stack.composer === false ? [] : composerToolingLines()),
     "  php:",
     "    service: appserver",
     "    description: Run the PHP CLI inside the appserver service.",
@@ -28,11 +43,9 @@ const renderLandofile = (appName: string, php: string): string =>
     "      - php",
     "",
   ].join("\n");
+};
 
 export const lampRenderer: RecipeRenderer = {
   id: LAMP_RECIPE_ID,
-  render: ({ appName, answers }) => {
-    const php = typeof answers.php === "string" ? answers.php : "8.3";
-    return new Map([[".lando.yml", renderLandofile(appName, php)]]);
-  },
+  render: ({ appName, answers }) => new Map([[".lando.yml", renderLandofile(appName, answers)]]),
 };

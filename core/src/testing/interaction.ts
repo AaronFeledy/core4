@@ -64,7 +64,14 @@ const recordPrompt = (records: TestPromptRecord[], spec: PromptSpec): void => {
 const mergeAnswers = (
   seeded: Readonly<Record<string, string>>,
   options: PromptBatchOptions | undefined,
-): PromptBatchOptions => ({ ...options, answers: { ...seeded, ...(options?.answers ?? {}) } });
+): PromptBatchOptions => ({
+  ...options,
+  answers: { ...seeded, ...(options?.answers ?? {}) },
+  // Callers such as apps:init pass interactive:true whenever a prompter exists.
+  // This double's contract is never-open-a-terminal: keep non-interactive so
+  // defaults apply and missing required answers fail fast instead of reading stdin.
+  interactive: false,
+});
 
 /** Build an in-memory `InteractionService` for tests with seeded answers. */
 export const makeTestInteractionService = (
