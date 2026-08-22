@@ -761,3 +761,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Drupal and Drupal CMS no longer offer `composer: false`. Their scaffold tooling still runs `composer create-project` on the appserver, so disabling Composer left a stack choice that could not finish init. LAMP still allows `false`.
 - Verification: lint passed; focused php-stack and option-parity tests passed, including Drupal rejecting `composer: false`.
 ---
+
+## 2026-08-21 21:48 CDT - US-576 Drift Audit
+- Trigger: 3 cycles, 912 changed lines, 3 commits
+- Category 4: Shared helper exported unused internal types.
+- Category 6: After-init Drupal guide heading still said PHP 8.4 after the recipe grew 8.5.
+- Fixed: Unexported the unused types; aligned the heading with the offered PHP range.
+- Split/excise decisions: None; no absorbed SDK surface and only this story's pass state changed.
+- Verification: typecheck (only pre-existing windows-arm64 and mcp memoryPressure errors), lint passed; 65 focused php-stack, option-parity, canonical-recipe, Drupal recipe, and scaffold-protocol tests passed.
+---
