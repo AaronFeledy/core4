@@ -13,13 +13,16 @@ import { type Context, Effect, Layer, ParseResult } from "effect";
 
 import {
   NotImplementedError,
+  type RecipeExtendsError,
   type RecipeManifestParseError,
   RecipeManifestValidationError,
+  type RecipeSourceError,
 } from "@lando/sdk/errors";
 import { RecipeManifest } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { decodeOrFail } from "@lando/landofile/decode";
+import { flattenRecipe } from "./flatten";
 import { parseRecipeYaml } from "./parser";
 
 export { RecipeManifestService } from "@lando/sdk/services";
@@ -130,7 +133,6 @@ const validateSemantics = (
   const issues: string[] = [];
 
   if (manifest.prompts !== undefined) {
-    // Prompt `name` values must be unique within a recipe.
     const seen = new Set<string>();
     for (const prompt of manifest.prompts) {
       if (seen.has(prompt.name)) {
@@ -228,10 +230,15 @@ const parseRecipe = (
   content: string,
 ): Effect.Effect<
   typeof RecipeManifest.Type,
-  RecipeManifestParseError | RecipeManifestValidationError | NotImplementedError
+  | RecipeExtendsError
+  | RecipeManifestParseError
+  | RecipeManifestValidationError
+  | RecipeSourceError
+  | NotImplementedError
 > =>
   parseRecipeYaml({ source, content }).pipe(
-    Effect.flatMap((parsed) => validateRecipeManifestObject(source, parsed)),
+    Effect.flatMap((parsed) => flattenRecipe(source, parsed)),
+    Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
   );
 
 const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> = {

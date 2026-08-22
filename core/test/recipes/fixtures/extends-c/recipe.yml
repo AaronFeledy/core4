@@ -1,0 +1,9 @@
+id: extends-c
+title: Extends C
+description: Second hop in the chain.
+version: 0.0.1
+extends: ../extends-d
+prompts:
+  - name: from-c
+    type: text
+    message: From C?

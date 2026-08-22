@@ -41,6 +41,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
 - An AppFeature with no selectors selects every service and will cycle with nginx PHP-FPM wiring; select PHP via `hasFeature` plus database `types:` when sibling discovery must not include nginx.
 - File-backed Compose `configs:` hash into the app-plan cache like `env_file`. Bundled providers declare `composeProjectFields`/`composeServiceFields` `configs` and realize grants as read-only binds; `external: true` fails closed.
+- Recipe `extends:` flattens before RecipeManifest validate. `flatten.ts` must not import `service.ts` (cycle). Bare `.` is not a local recipe path; use `./` or a `recipe.yml` path.
+- Remote `extends` hops are YAML-only and jailed to the published parent root; `recipe.ts` is not executed from a remote parent tree.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -718,4 +720,21 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Fixed: Unexported the unused type; locked bind-string `:ro` and cache-hit-then-miss proofs; corrected remount guidance
 - Split/excise decisions: None; skip-create stale mode-copy, unparseable mode, and tmpdir hardening stay rejected as recorded
 - Verification: typecheck, lint, lint:guides, and 9 focused tests passed
+---
+
+## 2026-08-21 18:15 CDT - US-575
+- Recipe `extends:` now flattens single-inheritance chains before validation: prompts merge by name with `drop: true`, files merge by dest, postInit concatenates parent-then-child, and child scalars win with no parent fallback. Cycle and depth>3 fail with RecipeExtendsError naming the chain. Remote parents reuse the git/npm/registry adapters and recipe-cache pin identity. `meta recipes describe` and `validate` show the flattened child; recipe.ts factories merge after they run. The extending-recipes guide covers a lamp child plus a missing-parent failure.
+- Verification: sdk and core typecheck passed; lint, boundaries, guide lint/coverage, and the two-scenario extending-recipes guide passed; 111 focused recipe/CLI tests plus 12 git-source tests passed. CLI describe/validate of a lamp child returned the flattened prompts/files/postInit; a missing parent failed with RecipeExtendsError. Root `tsc -b` still reports pre-existing windows-arm64 and mcp memoryPressure errors on files this story did not change.
+- **Learnings for future iterations:**
+  - Flatten and validate must stay in separate modules. Importing `validateRecipeManifestObject` from flatten re-creates a service/flatten import cycle and fails `check:boundaries`.
+  - `meta recipes describe .` is not a local path (unknown scheme). Use `./` or a `recipe.yml` path.
+  - Git recipe cache is SHA-keyed; a URL-to-SHA pointer is what lets a second parent resolve skip clone.
+---
+
+## 2026-08-21 19:45 CDT - US-575 Review
+- Blocked remote-parent YAML from executing in-tree or host `recipe.ts` during flatten. Nested local hops from a git/npm/registry parent now stay inside the published recipe root (realpath jail, including symlink hops) and load YAML only.
+- Review notes (deferred/rejected): rejected treating git/npm SSRF and `github:@ref` ignore as US-575 blockers — those are the existing init `--source=git` trust/pin model reused by parent-source; lockfile pinning is the SHA recipe-cache pin, not a new `.lock`; tarball parent refs stay out because `detectScheme` has no tarball form; guide “when set” scalar wording is a docs nit against spec “come from the child”. Bugbot found no bugs.
+- Verification: lint passed; focused extends (12), ts-source (13), and recipes-commands (16) tests passed. Typecheck still reports only pre-existing windows-arm64 and mcp memoryPressure errors.
+- **Learnings for future iterations:**
+  - Remote recipe material is YAML-only today. Flatten must not reclassify a remote parent's `extends: ./` hop as a trusted local `recipe.ts` factory.
 ---

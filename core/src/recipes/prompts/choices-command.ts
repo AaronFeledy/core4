@@ -55,10 +55,14 @@ export const defaultChoicesCommandSpawner: ChoicesCommandSpawner = {
  * `undefined` when the property is missing so callers can fall back to
  * `$bunfs` / `argv[1]` matching.
  */
-export const readStandaloneExecutable = (
-  bun: { readonly isStandaloneExecutable?: unknown } = Bun,
-): boolean | undefined =>
-  typeof bun.isStandaloneExecutable === "boolean" ? bun.isStandaloneExecutable : undefined;
+export const readStandaloneExecutable = (bun?: { readonly isStandaloneExecutable?: unknown }):
+  | boolean
+  | undefined => {
+  const candidate = bun ?? Bun;
+  if (candidate === null || typeof candidate !== "object") return undefined;
+  if (!("isStandaloneExecutable" in candidate)) return undefined;
+  return typeof candidate.isStandaloneExecutable === "boolean" ? candidate.isStandaloneExecutable : undefined;
+};
 
 /**
  * Build the argv prefix that re-invokes the Lando CLI.

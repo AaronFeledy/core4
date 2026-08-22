@@ -1,0 +1,9 @@
+id: extends-b
+title: Extends B
+description: Third hop in the chain.
+version: 0.0.1
+extends: ../extends-c
+prompts:
+  - name: from-b
+    type: text
+    message: From B?

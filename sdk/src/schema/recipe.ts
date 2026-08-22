@@ -3,9 +3,7 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
 
-// Recipe manifest schema with prompt and post-init action shapes. Recipe
-// prompts reuse the generalized `PromptSpec` vocabulary (`sdk/src/schema/
-// prompt.ts`) plus the recipe-only `when:`/`deprecated:` fields.
+// ==== Recipe manifest: PromptSpec fields plus recipe-only when:/deprecated:
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =
@@ -56,6 +54,17 @@ export const RecipePrompt = Schema.Struct({
   deprecated: Schema.optional(DeprecationNotice),
 });
 export type RecipePrompt = typeof RecipePrompt.Type;
+
+/** Authoring-only prompt drop — consumed by flatten on raw objects before RecipeManifest decode. */
+export const RecipePromptDrop = Schema.Struct({
+  name: Schema.String.annotations({
+    description: "Prompt name to remove from the inherited parent recipe.",
+  }),
+  drop: Schema.Literal(true).annotations({
+    description: "When true, remove the named parent prompt instead of merging it.",
+  }),
+});
+export type RecipePromptDrop = typeof RecipePromptDrop.Type;
 
 /** Recipe file-manifest entry. */
 export const RecipeFile = Schema.Struct({
@@ -182,6 +191,11 @@ export const RecipeManifest = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
   version: RecipeVersion,
+  extends: Schema.optional(
+    Schema.String.annotations({
+      description: "Parent recipe id or path flattened into this recipe before validation.",
+    }),
+  ),
   deprecated: Schema.optional(DeprecationNotice),
   authors: Schema.optional(Schema.Array(Schema.String)),
   tags: Schema.optional(Schema.Array(Schema.String)),

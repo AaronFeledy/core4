@@ -53,6 +53,7 @@ export const sidebar = [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
+          { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
         ],
       },
       {

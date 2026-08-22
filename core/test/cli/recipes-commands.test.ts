@@ -165,6 +165,28 @@ describe("meta:recipes:describe", () => {
     expect(envelope.ok).toBe(false);
     expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestValidationError");
   }, 30_000);
+
+  test("given a child that extends lamp, when describe runs as JSON, then the child id and inherited lamp prompts appear without extends", async () => {
+    const result = await runCli([
+      "meta",
+      "recipes",
+      "describe",
+      "core/test/recipes/fixtures/extends-lamp-child",
+      "--format",
+      "json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(true);
+    const described = envelope.result as {
+      id: string;
+      prompts: ReadonlyArray<{ name: string; default?: string }>;
+    };
+    expect(described.id).toBe("extends-lamp-child");
+    expect(described.prompts.map((prompt) => prompt.name)).toEqual(expect.arrayContaining(["name", "php"]));
+    expect(described.prompts.find((prompt) => prompt.name === "php")?.default).toBe("8.2");
+    expect("extends" in described).toBe(false);
+  }, 30_000);
 });
 
 describe("meta:recipes:validate", () => {
@@ -237,5 +259,21 @@ describe("meta:recipes:validate", () => {
     const envelope = lastJsonLine(result.stdout);
     expect(envelope.ok).toBe(false);
     expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
+  }, 30_000);
+
+  test("given a child that extends lamp, when validate runs, then valid is true", async () => {
+    const result = await runCli([
+      "meta",
+      "recipes",
+      "validate",
+      "core/test/recipes/fixtures/extends-lamp-child",
+      "--format",
+      "json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(true);
+    expect((envelope.result as { valid: boolean; id: string }).valid).toBe(true);
+    expect((envelope.result as { id: string }).id).toBe("extends-lamp-child");
   }, 30_000);
 });

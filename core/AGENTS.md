@@ -15,6 +15,11 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - `lando init --source=tarball` downloads through the resolver seam, SHA-256-verifies before extraction, uses the pure-JS tar(.gz) reader, and publishes under `<userDataRoot>/recipe-cache/tarball/<sha256>/`. `--checksum` hard-fails on mismatch; without it, verification/prompt handling belongs in `loadTarballRecipe` in `init.ts`, not the resolver.
 - Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; the single native dispatcher must preserve identical `--source`/`--url`/`--path`/`--checksum` acceptance and exact missing-url wording (`<git-url>` vs `<tarball-url>`) for source and compiled entries. The default git cloner must stay non-interactive.
 
+## Recipe composition
+
+- `extends:` flattens in `manifest/flatten.ts` before `validateRecipeManifestObject`. Do not import `service.ts` from `flatten.ts` (import cycle). Remote parents go through `parent-source.ts` and the existing git/npm/registry adapters. After a remote hop, further local parents stay inside that published tree and load YAML only — never execute `recipe.ts`.
+- `meta recipes describe/validate .` is not a local path; use `./` or a `recipe.yml` path.
+
 ## Programmatic `recipe.ts`
 
 - A local recipe directory may contain `recipe.ts` or `recipe.yml`, never both (`resolveLocal` rejects both). `recipe.ts` default-exports a `Recipe` object or async factory, loads through `loadRecipeTs`, reuses Landofile sandbox scanning, imports via Bun's TS loader, and times out via `LANDO_RECIPE_TS_TIMEOUT_MS`.
