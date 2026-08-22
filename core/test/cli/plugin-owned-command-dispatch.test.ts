@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
@@ -8,8 +7,10 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
+import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
 import {
   isPluginOwnedCommandId,
+  pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "../../src/cli/run-plugin-owned-command.ts";
@@ -38,6 +39,18 @@ const makeDbImportSpec = (): ExecutableCommandSpec => ({
       imported: true,
       ...(typeof input.flags.host === "string" ? { host: input.flags.host } : {}),
     }),
+});
+
+const makeStrictDbImportSpec = (): ExecutableCommandSpec => ({
+  ...makeDbImportSpec(),
+  flags: {
+    service: { type: "string", description: "Target database service." },
+    yes: { type: "boolean", description: "Skip confirmation prompts." },
+  },
+  args: {
+    file: { type: "string", required: true },
+  },
+  strict: true,
 });
 
 const makeDbImportPlugin = () => {
@@ -155,5 +168,19 @@ describe("plugin-owned command dispatch", () => {
       imported: true,
       host: "db.example",
     });
+  });
+
+  test("rejects unknown flags instead of binding their values as dump paths", () => {
+    const spec = makeStrictDbImportSpec();
+    const argv = ["--servce", "database", "dump.sql"];
+
+    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    expect(parsed.args.file).toBe("database");
+
+    const error = pluginOwnedCliFlagError(spec, argv);
+    expect(error).toBeInstanceOf(UnknownCliFlagError);
+    if (error instanceof UnknownCliFlagError) {
+      expect(error.flag).toBe("--servce");
+    }
   });
 });

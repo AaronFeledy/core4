@@ -1,4 +1,4 @@
-import { Context, Effect, type Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import type { RendererIO } from "@lando/renderer/io";
 import {
@@ -18,7 +18,12 @@ import { type OclifFlagDefinition, flagNameByToken, setParsedFlag } from "./comp
 import { emitResultLine, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
-import { normalizeCliFlagTokens } from "./flag-value-validation";
+import {
+  type MalformedCliFlagValueError,
+  type UnknownCliFlagError,
+  normalizeCliFlagTokens,
+  validateCommandCliFlags,
+} from "./flag-value-validation";
 import { universalFormatFlagDefs } from "./format-flags";
 
 const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
@@ -46,6 +51,17 @@ const pluginFlagDefinitions = (
   }
   return flags;
 };
+
+export const pluginOwnedCliFlagError = (
+  spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict">,
+  argv: ReadonlyArray<string>,
+): MalformedCliFlagValueError | UnknownCliFlagError | undefined =>
+  validateCommandCliFlags({
+    commandId: spec.id,
+    argv,
+    definitions: pluginFlagDefinitions(spec),
+    allowUnknownFlags: spec.strict === false,
+  });
 
 export const pluginOwnedCommandInputFromArgv = (
   spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict">,
@@ -147,7 +163,13 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
 export const pluginOwnedCommandEffect = <A, E, R>(
   spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "flags" | "args" | "strict" | "run">,
   argv: ReadonlyArray<string>,
-): Effect.Effect<A, E | CommandInputValidationError, R> => {
+): Effect.Effect<
+  A,
+  E | CommandInputValidationError | MalformedCliFlagValueError | UnknownCliFlagError,
+  R
+> => {
+  const flagError = pluginOwnedCliFlagError(spec, argv);
+  if (flagError !== undefined) return Effect.fail(flagError);
   const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
   return validateEventCommandInput(spec, parsed).pipe(Effect.flatMap((input) => spec.run(input)));
 };
@@ -157,14 +179,23 @@ export const runPluginOwnedCommand = (
   argv: ReadonlyArray<string>,
   options: RunPluginOwnedCommandOptions = {},
 ): Promise<void> =>
-  runWithProcessAbortSignal(() =>
-    runCompiledCommand(
+  runWithProcessAbortSignal(async () => {
+    const flagError = pluginOwnedCliFlagError(spec, argv);
+    if (flagError !== undefined) {
+      await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
+        failureExitCode: () => 2,
+        preCommand: true,
+        ...(options.io === undefined ? {} : { io: options.io }),
+      });
+      return;
+    }
+    await runCompiledCommand(
       pluginOwnedCommandEffect(spec, argv),
       defaultPluginRuntime(spec.bootstrap),
       () => undefined,
       compiledPluginOptions(spec, options),
-    ),
-  );
+    );
+  });
 
 const resolvePluginOwnedFromGraph = (commandId: string) =>
   Effect.gen(function* () {
