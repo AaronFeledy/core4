@@ -49,6 +49,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Plugin-owned app commands that select among Landofile services should resolve the target from authored service types before `AppPlanner.plan`. Planner capability failures otherwise swallow tagged selection errors.
 - Exec `AttachStdin` must be true when `stdinStream` is set, not only for `stdin: inherit`. After a finite stdin stream, half-close the write side (`socket.end()`) once headers are flushed; do not destroy the hijack or mysql hangs or never sees the dump.
 - Native volume restore must stop the database container first. `RuntimeProvider.start/stop` are the per-service hooks; app CLI start/stop stay apply/destroy. Do not force `volumeSnapshot: copy` for InnoDB.
+- `app:cache:refresh` has no top-level alias; teach `lando app:cache:refresh`. `--renderer=verbose` dumps every event payload and is not the OpenTUI task tree.
+- DNS rebinding for custom loopback names is environmental. There is no Lando flag or doctor check; document remediations on the external-access guide.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -897,4 +899,28 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Fixed: MSSQL import now returns the transfer metadata and has a family import proof; deleted the unused resolver and un-exported unused dispatcher internals
 - Split/excise decisions: None; passes stays true
 - Verification: typecheck, lint, 28 sql/dispatch/machine-output spot checks passed
+---
+
+## 2026-08-22 11:34 CDT - Babysit
+- PR: #837 https://github.com/AaronFeledy/core4/pull/837
+- CI outcome: pass
+- Review feedback: fixed (regenerated bundled-plugin fixture and added @lando/sql to expected inventories)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-22 12:27 CDT - US-580
+- Users can now refresh a stale app plan without starting services, pick renderer modes as the v3 `--debug` analog, and read why custom loopback domains fail behind DNS-rebinding routers. `lando app:cache:refresh` has a before/after executable walkthrough; verbosity covers `lando`/`plain`/`json`/`verbose` plus `LANDO_RENDERER`; the external-access guide names the remediations and cross-links host-proxy and Traefik.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - There is no `lando cache:refresh` alias and no `--debug` flag. Guides must teach `app:cache:refresh` and `--renderer=verbose`.
+  - `output-streaming.mdx` still groups verbose with the task tree. Do not copy that row; verbose is a payload dump.
+---
+
+## 2026-08-22 12:41 CDT - US-580 Review
+- Reviewed the residual cache-refresh, verbosity, and DNS-rebinding guides against the source ACs. No in-scope defect required a code change; the story keeps `passes: true`.
+- Review notes (deferred/rejected): rejected Code Quality's demand that `refresh-before-after` mutate the Landofile and prove a stale tooling command becomes fresh. The source AC asks for when/why caches go stale plus a rendered before/after walkthrough; inspect-config then refresh then JSON envelope satisfies that, and a mutation-plus-router-miss proof would invent a stronger contract the Goal lane already marked achieved. Rejected requiring an executed `--renderer=verbose` dump because AC 2 is renderer-mode and debug-env guidance, and the rendered `version --renderer=json` envelope is the host-safe executable path. Rejected treating `app:config` "authored Landofile" as a factual error; that is the repo's term for the resolved Landofile versus planner-derived output. Rejected fixing `output-streaming.mdx` grouping verbose with the task tree and the README bare `cache:refresh` sample; both pre-exist this branch and are out of US-580's file list. Bugbot found no bugs.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main guide-drift passed; QA ran both focused guides (`cache-refresh` 1/15, `verbosity-and-debug` 1/7), lint:guides, and check:guide-coverage with positive counts.
+- **Learnings for future iterations:**
+  - Guide fixtures resolve from `docs/guides/<frontmatter id>/fixtures/`, not the MDX directory. A `cli/*.mdx` page with `id: cache-refresh` loads `docs/guides/cache-refresh/fixtures/`.
 ---

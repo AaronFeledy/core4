@@ -1,0 +1,83 @@
+---
+id: cache-refresh
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, cli, cache]
+---
+
+# Refresh a stale app cache
+
+`lando app:cache:refresh` rebuilds the app plan, tooling graph, and command index without starting services.
+
+```sh
+lando app:cache:refresh
+```
+
+There is no top-level `lando cache:refresh` alias. Use the `app:` form.
+
+## When the cache goes stale
+
+Lando caches the planned app so later commands can skip a full plan. That cache is stale after you:
+
+- Edit `.lando.yml` or another merged Landofile layer
+- Change an `includes:` fragment or its lockfile
+- Change a file the Landofile `load()`s or `import()`s
+- Add, remove, or update a plugin
+- Upgrade Lando itself
+
+A missing tooling command after one of those edits is the usual tell. The router says to run `lando app:cache:refresh`, `lando start`, or `lando rebuild`.
+
+`lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner-derived commands or a fresh plan cache.
+
+## Inspect, then refresh
+
+This walkthrough reads the authored Landofile first, then rebuilds the caches.
+
+```yaml
+name: cache-refresh-demo
+services:
+  app:
+    type: "node:lts"
+    primary: true
+tooling:
+  hello:
+    service: app
+    cmd: echo hello
+```
+
+<Guide>
+  <Scenario id="refresh-before-after" render>
+    <Step name="scaffold">
+      <UseFixture name="cache-refresh-demo" />
+    </Step>
+    <Step name="inspect-before">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"cache-refresh-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hello\"" } }} />
+    </Step>
+    <Step name="refresh">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: cache-refresh-demo" } }} />
+    </Step>
+    <Step name="inspect-after">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:cache:refresh\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Machine output
+
+```sh
+lando app:cache:refresh --format=json
+```
+
+The envelope includes `result.app`, `result.commandsCompiled`, and cache paths. Failures carry a tagged `error._tag` plus remediation.
+
+Need more CLI output? See [See more CLI output](./verbosity-and-debug.mdx).
