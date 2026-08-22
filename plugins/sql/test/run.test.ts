@@ -8,7 +8,7 @@ import {
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
 
-import { wrapExportCommand } from "../src/gzip.ts";
+import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 import { executeDbCommand } from "../src/run.ts";
 import { makeSqlTestDeps } from "./support/fakes.ts";
 
@@ -31,6 +31,13 @@ describe("executeDbCommand", () => {
     expect(exit.value.family).toBe("mysql");
     expect(exit.value.file).toBe("/tmp/sql-app/database.sql.gz");
     expect(exit.value.steps.length).toBeGreaterThan(0);
+    expect(exit.value.redactionTokens).toContain(SECRET);
+    expect(harness.published()).toEqual([
+      "task.tree.start",
+      "task.start",
+      "task.complete",
+      "task.tree.complete",
+    ]);
 
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
@@ -40,7 +47,70 @@ describe("executeDbCommand", () => {
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }
-    expect(harness.redactionTokens()).toContain(SECRET);
+  });
+
+  test("exports postgres through serviceCmd with gzip wrap", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "postgres:16",
+      environment: { POSTGRES_USER: "lando", POSTGRES_PASSWORD: SECRET, POSTGRES_DB: "sql-app" },
+    });
+
+    const exit = await run(harness.deps, { action: "export", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    expect(transfer?.from._tag).toBe("serviceCmd");
+    if (transfer?.from._tag === "serviceCmd") {
+      expect(transfer.from.command).toEqual(
+        wrapExportCommand(["pg_dump", "-U", "lando", "-d", "sql-app"], true),
+      );
+      expect(transfer.from.env?.PGPASSWORD).toBe(SECRET);
+    }
+  });
+
+  test("exports mongodb through serviceCmd with gzip wrap", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mongodb:7",
+      environment: {
+        MONGO_INITDB_ROOT_USERNAME: "lando",
+        MONGO_INITDB_ROOT_PASSWORD: SECRET,
+        MONGO_INITDB_DATABASE: "sql-app",
+      },
+    });
+
+    const exit = await run(harness.deps, { action: "export", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    expect(transfer?.from._tag).toBe("serviceCmd");
+    if (transfer?.from._tag === "serviceCmd") {
+      const command = transfer.from.command;
+      expect(Array.isArray(command)).toBe(true);
+      if (!Array.isArray(command)) throw new Error("expected argv command");
+      expect(command[0]).toBe("sh");
+      expect(command.join(" ")).toContain("mongodump --archive");
+      expect(command.join(" ")).toContain("| gzip");
+      expect(transfer.from.env?.MONGO_URI).toContain(SECRET);
+      expect(JSON.stringify(command)).not.toContain(SECRET);
+    }
+  });
+
+  test("exports mssql by backing up in-service then transferring the bak", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mssql:2022",
+      environment: { SA_PASSWORD: SECRET },
+    });
+
+    const exit = await run(harness.deps, { action: "export", file: "dump.bak", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.execs()[0]?.command[0]).toBe("sqlcmd");
+    const transfer = harness.transfers()[0];
+    expect(transfer?.from._tag).toBe("servicePath");
+    expect(transfer?.to._tag).toBe("hostPath");
   });
 
   test("fails closed with available services when more than one SQL target exists", async () => {
@@ -78,6 +148,15 @@ describe("executeDbCommand", () => {
     expect(harness.published()).toEqual([]);
   });
 
+  test("imports an empty database without confirmation", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+
+    const exit = await run(harness.deps, { action: "import", file: "dump.sql.gz", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.transfers()).toHaveLength(1);
+  });
+
   test("imports with --yes even when the database is non-empty", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "3" });
 
@@ -87,6 +166,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
+    if (transfer?.to._tag === "serviceCmd") {
+      expect(transfer.to.command).toEqual(wrapImportCommand(["mysql", "-u", "lando", "sql-app"], true));
+    }
   });
 
   test("treats a failed count probe as non-empty and requires confirmation", async () => {
@@ -146,7 +228,7 @@ describe("executeDbCommand", () => {
     expect(harness.transfers()).toEqual([]);
   });
 
-  test("snapshots the first service volume through DataMover", async () => {
+  test("requests a volume snapshot with tar.gz format and optional label", async () => {
     const harness = makeSqlTestDeps({ password: SECRET });
 
     const exit = await run(harness.deps, { action: "snapshot", label: "before-change", yes: false });

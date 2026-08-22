@@ -57,7 +57,7 @@ const requireVolume = (
   return Effect.succeed({ app: AppId.make(plan.id), store });
 };
 
-export const requireExecOk = (
+const requireExecOk = (
   result: { readonly ok: boolean },
   service: string,
   command: ReadonlyArray<string>,

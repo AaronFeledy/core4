@@ -31,8 +31,6 @@ import type { DbCommandStep } from "./schemas.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { type SqlLandofile, type SqlPlan, sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
 
-export type { SqlLandofile, SqlPlan } from "./views.ts";
-
 export type DbAction = "import" | "export" | "snapshot" | "restore" | "reset";
 
 export type DbCommandInput = {
@@ -49,7 +47,6 @@ export type SqlCommandDeps = SqlMover & {
   readonly plan: SqlPlan;
   readonly exec: SqlExec;
   readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
-  readonly registerSecrets: (tokens: ReadonlyArray<string>) => Effect.Effect<void>;
   readonly publish: (event: { readonly _tag: string; readonly [key: string]: unknown }) => Effect.Effect<
     void,
     unknown
@@ -108,7 +105,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       planEnvironment: service.environment,
     });
     const tokens = secretTokens(creds);
-    yield* deps.registerSecrets(tokens);
     const env = credsEnv(target.family, creds);
     const file = hostFile(deps.plan, target.name, input.file);
     const gzip = isGzipPath(file);
@@ -228,7 +224,6 @@ export const runDbCommand = (input: DbCommandInput) =>
               )
               .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
           confirm: (message) => Effect.scoped(interaction.confirm({ message, default: false })),
-          registerSecrets: () => Effect.void,
           publish: (event) => events.publish(event),
         },
         input,

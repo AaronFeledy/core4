@@ -2,7 +2,8 @@ import { Effect } from "effect";
 
 import type { DataTransferResult, DataTransferSpec, SnapshotHandle } from "@lando/sdk/schema";
 
-import type { SqlCommandDeps, SqlLandofile, SqlPlan } from "../../src/run.ts";
+import type { SqlCommandDeps } from "../../src/run.ts";
+import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
 
 export type ExtraSqlService = {
   readonly name: string;
@@ -12,6 +13,7 @@ export type ExtraSqlService = {
 export type SqlTestOptions = {
   readonly password: string;
   readonly type?: string;
+  readonly environment?: Readonly<Record<string, string>>;
   readonly countStdout?: string;
   readonly countFails?: boolean;
   readonly execFails?: boolean;
@@ -36,7 +38,6 @@ export type SqlTestHarness = {
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly execs: () => ReadonlyArray<RecordedExec>;
   readonly published: () => ReadonlyArray<string>;
-  readonly redactionTokens: () => ReadonlyArray<string>;
 };
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
@@ -44,13 +45,12 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const snapshots: RecordedSnapshot[] = [];
   const execs: RecordedExec[] = [];
   const published: string[] = [];
-  const tokens: string[] = [];
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
-      environment: {
+      environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
         MYSQL_DATABASE: "sql-app",
@@ -110,10 +110,6 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
     },
     confirm: () => Effect.succeed(false),
-    registerSecrets: (secretTokens) =>
-      Effect.sync(() => {
-        tokens.push(...secretTokens);
-      }),
     publish: (event) =>
       Effect.sync(() => {
         published.push(String(event._tag));
@@ -126,6 +122,5 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     snapshots: () => snapshots,
     execs: () => execs,
     published: () => published,
-    redactionTokens: () => tokens,
   };
 };

@@ -6,40 +6,50 @@ import { SqlConfirmRequiredError, SqlServiceAmbiguousError } from "@lando/sdk/er
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { executeDbCommand } from "../src/run.ts";
+import { type DbCommandInput, dbCommandRedactionTokens, executeDbCommand } from "../src/run.ts";
 import { DbCommandResult } from "../src/schemas.ts";
 import { makeSqlTestDeps } from "./support/fakes.ts";
 
 const decodeEnvelope = (encoded: string) =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(encoded));
 
-describe("db command machine output", () => {
-  test("encodes a successful export as a v4 command envelope", async () => {
-    const secret = "s3cret-pass";
-    const harness = makeSqlTestDeps({ password: secret });
-    const exit = await Effect.runPromiseExit(
-      Effect.scoped(executeDbCommand(harness.deps, { action: "export", yes: false })),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isFailure(exit)) throw new Error("expected success");
+const successInputs: ReadonlyArray<{ readonly command: string; readonly input: DbCommandInput }> = [
+  { command: "db:export", input: { action: "export", yes: false } },
+  { command: "db:import", input: { action: "import", file: "dump.sql.gz", yes: true } },
+  { command: "db:snapshot", input: { action: "snapshot", label: "before-change", yes: false } },
+  { command: "db:restore", input: { action: "restore", snapshotId: "before-change", yes: false } },
+  { command: "db:reset", input: { action: "reset", yes: true } },
+];
 
-    const encoded = await Effect.runPromise(
-      encodeCommandResult({
-        command: "db:export",
-        resultSchema: DbCommandResult,
-        outcome: { _tag: "success", value: exit.value },
-        redactor: createRedactor("secrets", { values: [secret] }),
-      }),
-    );
-    const envelope = decodeEnvelope(encoded);
-    expect(envelope.apiVersion).toBe("v4");
-    expect(envelope.command).toBe("db:export");
-    expect(envelope.ok).toBe(true);
-    expect(envelope.result).toMatchObject({ service: "database", family: "mysql" });
-    expect(encoded).not.toContain(secret);
-    expect(encoded).not.toContain("redactionTokens");
-    expect(harness.redactionTokens()).toContain(secret);
-    expect("redactionTokens" in (exit.value as object)).toBe(true);
+describe("db command machine output", () => {
+  test("encodes every command result through the spec redactionTokens hook", async () => {
+    const secret = "s3cret-pass";
+
+    for (const { command, input } of successInputs) {
+      const harness = makeSqlTestDeps({ password: secret });
+      const exit = await Effect.runPromiseExit(Effect.scoped(executeDbCommand(harness.deps, input)));
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isFailure(exit)) throw new Error(`expected ${command} success`);
+
+      const tokens = dbCommandRedactionTokens(exit.value);
+      expect(tokens).toContain(secret);
+
+      const encoded = await Effect.runPromise(
+        encodeCommandResult({
+          command,
+          resultSchema: DbCommandResult,
+          outcome: { _tag: "success", value: exit.value },
+          redactor: createRedactor("secrets", { values: tokens }),
+        }),
+      );
+      const envelope = decodeEnvelope(encoded);
+      expect(envelope.apiVersion).toBe("v4");
+      expect(envelope.command).toBe(command);
+      expect(envelope.ok).toBe(true);
+      expect(envelope.result).toMatchObject({ service: "database", family: "mysql" });
+      expect(encoded).not.toContain(secret);
+      expect(encoded).not.toContain("redactionTokens");
+    }
   });
 
   test("encodes ambiguous-service and confirm-required failures with tags", async () => {
