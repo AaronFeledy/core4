@@ -1,0 +1,65 @@
+---
+id: joomla
+provider: test
+timeout: 60000
+tags: [recipe, joomla, php]
+---
+
+# Joomla
+
+`lando init --recipe joomla` scaffolds PHP, Composer, and MariaDB or MySQL.
+
+```sh
+lando init --recipe joomla --name=my-joomla-app --yes
+lando start
+lando info
+```
+
+`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Pass `--answer` to change those.
+
+```sh
+lando init --recipe joomla --name=my-joomla-mysql --yes \
+  --answer=php=8.1 \
+  --answer=database=mysql:8.0 \
+  --answer=composer=2.7.7 \
+  --answer=webroot=/app
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="joomla" display="my-joomla-app" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="non-default-options" render>
+    <Step name="init">
+      <Variable name="appName" value="joomla-mysql" display="my-joomla-mysql" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes --answer=php=8.1 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.1\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"joomla\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
