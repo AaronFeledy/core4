@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   GlobalAppError,
   LandofileParseError,
   LandofileValidationError,
@@ -74,6 +75,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
 });
 
 type GlobalStatusError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | FileSystemError

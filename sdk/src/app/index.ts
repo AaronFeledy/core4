@@ -208,6 +208,7 @@ export type StartAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | CommandAliasConflictError
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | HostProxySocketStaleError
@@ -250,6 +251,7 @@ export type StopAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | CommandAliasConflictError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -361,6 +363,7 @@ export type InfoAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | CommandAliasConflictError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -410,6 +413,7 @@ export type ExecAppError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | CommandAliasConflictError
   | ToolingExecError;
 
 /**
@@ -487,6 +491,7 @@ export type LogsAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | CommandAliasConflictError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError

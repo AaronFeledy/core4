@@ -90,10 +90,7 @@ export type { InfoAppResult } from "@lando/engine/operations/info";
 export { logsAppForTarget } from "@lando/engine/operations/logs";
 export { PLUGIN_NEW_TEMPLATE_IDS } from "@lando/engine/operations/plugin-scaffold";
 export { publishTaskStart } from "@lando/engine/operations/progress";
-export {
-  assertToolingNameClaimable,
-  reservedTopLevelAliasOwner,
-} from "@lando/engine/operations/reserved-aliases";
+export { reservedTopLevelAliasOwner } from "@lando/engine/operations/reserved-aliases";
 export { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 export {
   buildToolingInvocation,

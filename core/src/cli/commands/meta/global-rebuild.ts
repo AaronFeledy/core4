@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -68,6 +69,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 });
 
 export type GlobalRebuildError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

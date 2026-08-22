@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 
 import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { assertToolingNameClaimable, reservedTopLevelAliasOwner } from "../../src/testing/engine-layers";
+import { reservedTopLevelAliasOwner } from "../../src/testing/engine-layers";
 
 describe("reservedTopLevelAliasOwner", () => {
   test("reserves the bare run alias for apps:scratch:run", () => {
@@ -59,16 +59,5 @@ describe("validateCommandSpec alias reservation", () => {
         topLevelAlias: ["scratch:start", "scratch"],
       }),
     ).not.toThrow();
-  });
-});
-
-describe("assertToolingNameClaimable", () => {
-  test("fails a tooling task claiming run with CommandAliasConflictError", async () => {
-    expect(() => assertToolingNameClaimable("run", "tooling task run")).toThrow(CommandAliasConflictError);
-  });
-
-  test("accepts ordinary tooling task names", () => {
-    expect(() => assertToolingNameClaimable("composer", "tooling task composer")).not.toThrow();
-    expect(() => assertToolingNameClaimable("scratchpad", "tooling task scratchpad")).not.toThrow();
   });
 });

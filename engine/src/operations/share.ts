@@ -3,6 +3,7 @@ import { Effect, type ParseResult, Schema, type Scope } from "effect";
 import type { ShareAppError } from "@lando/sdk/app";
 import {
   type CapabilityError,
+  type CommandAliasConflictError,
   type NoProviderInstalledError,
   type ProviderConfigError,
   type ProviderUnavailableError,
@@ -69,6 +70,7 @@ type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
 type AppPlanResolutionError =
   | UserLandofileError
   | CapabilityError
+  | CommandAliasConflictError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError

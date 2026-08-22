@@ -38,8 +38,10 @@ export const assertTopLevelAliasesClaimable = (commandId: string, aliases: Reado
   }
 };
 
-export const assertToolingNameClaimable = (name: string, claimedBy: string): void => {
-  if (reservedTopLevelAliasOwner(name) !== undefined) {
-    throw commandAliasConflictError(name, claimedBy);
-  }
+export const reservedToolingNameConflict = (
+  name: string,
+  claimedBy: string,
+): CommandAliasConflictError | undefined => {
+  if (reservedTopLevelAliasOwner(name) === undefined) return undefined;
+  return commandAliasConflictError(name, claimedBy);
 };
