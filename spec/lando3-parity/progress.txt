@@ -841,3 +841,14 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Official Mongo tools do not read `MONGO_URI`; pass `--uri="$MONGO_URI"` through one `sh -c` so gzip wrap can append `| gzip` without quoting away expansion.
   - Plugin-owned help from `lando --help <id>` must pass `--help` into the plugin dispatcher, not `argv.slice(1)`.
 ---
+
+## 2026-08-22 07:36 CDT - US-579 Drift Audit
+- Trigger: 2 cycles, 2915 changed lines, 4 commits
+- Category 2: Orchestration proofs were mysql-only and machine-output constructed envelopes without the spec token hook; import gzip and empty-DB import were unasserted
+- Category 3: Production registerSecrets was a no-op test seam beside result redactionTokens
+- Category 4: views.ts defaulted incomplete authored creds to lando, shadowing env/appName; requireExecOk was an unused export
+- Category 6: Guide still documents all five commands; live dump Runs stay rejected as host-unsafe under provider:test
+- Fixed: Partial authored creds now fall through; deleted the no-op secret registrar; restored multi-family execute, import gzip, empty-DB import, progress tags, and envelope encoding through dbCommandRedactionTokens
+- Split/excise decisions: None; plugin CLI dispatch remains the required composition-root arm, not a second OCLIF engine; passes stays true
+- Verification: typecheck, lint, 78 sql/sdk/dispatch spot checks passed
+---
