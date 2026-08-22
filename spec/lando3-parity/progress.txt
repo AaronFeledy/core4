@@ -43,6 +43,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - File-backed Compose `configs:` hash into the app-plan cache like `env_file`. Bundled providers declare `composeProjectFields`/`composeServiceFields` `configs` and realize grants as read-only binds; `external: true` fails closed.
 - Recipe `extends:` flattens before RecipeManifest validate. `flatten.ts` must not import `service.ts` (cycle). Bare `.` is not a local recipe path; use `./` or a `recipe.yml` path.
 - Remote `extends` hops are YAML-only and jailed to the published parent root; `recipe.ts` is not executed from a remote parent tree.
+- Bundled PHP recipes emit versioned database types (`mariadb:11.4`) that plan through `loadServiceTypeWithVersion`. `allowOverride` is rejected on `via: fpm`; nginx+FPM recipes must omit it and add an `edge` service with `backend:`.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -737,4 +738,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Verification: lint passed; focused extends (12), ts-source (13), and recipes-commands (16) tests passed. Typecheck still reports only pre-existing windows-arm64 and mcp memoryPressure errors.
 - **Learnings for future iterations:**
   - Remote recipe material is YAML-only today. Flatten must not reclassify a remote parent's `extends: ./` hop as a trusted local `recipe.ts` factory.
+---
+
+## 2026-08-21 21:14 CDT - US-576
+- Drupal, Drupal CMS, and LAMP init now offer real stack choices: PHP 8.1-8.5, Composer 2/2.7.7/false, webroot, and versioned databases. Drupal and CMS also choose Apache or nginx+FPM; Drupal chooses major 10 or 11 for the scaffold constraint. Defaults stay PHP 8.3, MariaDB 11.4, Composer 2, and `/app` (LAMP) or `/app/web` (Drupal/CMS).
+- Each recipe README exercises a non-default init plus `app:config`. Drupal CMS now has the same scaffold + project-local Drush e2e path as Drupal.
+- Verification: typecheck (only pre-existing windows-arm64 and mcp memoryPressure errors), lint passed; relevant test spot checks passed (option-parity, php-stack helper, canonical recipes, Drupal scaffold protocol); guide lint and coverage passed. CLI init confirmed lamp defaults and Drupal nginx/postgres/Composer/Drupal 10 output.
+- **Learnings for future iterations:**
+  - Extra `--answer` keys that are not in the recipe prompt list are ignored. Invalid values only fail closed after the prompt exists with choices or a validate pattern.
+  - `initApp` writes into `cwd`; CLI `lando init <dir>` creates that directory. Adjacent init tests need a fresh empty directory per recipe.
 ---

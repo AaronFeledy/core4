@@ -58,7 +58,7 @@ describe("lando init — Drupal recipe", () => {
           "--no-interactive",
           "--answer=name=drupal-app",
           "--answer=php=8.3",
-          "--answer=database=mariadb",
+          "--answer=database=mariadb:11.4",
         ],
         dir,
         { LANDO_USER_DATA_ROOT: join(dir, "lando-data") },

@@ -1,6 +1,6 @@
 # Drupal CMS
 
-`lando init --recipe drupal-cms` scaffolds PHP, MariaDB, Drush, and Composer.
+`lando init --recipe drupal-cms` scaffolds PHP, a database, Drush, and Composer.
 
 ```sh
 lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
@@ -8,13 +8,24 @@ lando start
 lando info
 ```
 
+`--yes` uses PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Pass `--answer` to change those.
+
+```sh
+lando init --recipe drupal-cms --name=my-drupal-cms-app --yes \
+  --answer=php=8.5 \
+  --answer=webserver=nginx \
+  --answer=database=postgres:16 \
+  --answer=composer=2.7.7
+```
+
 `lando start` prints the app URL(s). `lando info` repeats them.
 
-After start, scaffold the codebase, then install:
+After start, scaffold the codebase, then install. Drush comes from the project's Composer manifest:
 
 ```sh
 lando drupal-cms-scaffold
 lando drupal-cms-install
+lando drush --version
 ```
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
@@ -22,7 +33,7 @@ lando drupal-cms-install
 ## 1. scaffold
 
 ```bash
-lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
+lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes
 ```
 
 ## 2. start
@@ -31,10 +42,28 @@ lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
 lando start
 ```
 
-## 3. info
+## 3. scaffold-cms
 
 ```bash
-lando info
+lando drupal-cms-scaffold
+```
+
+## 4. check-drush
+
+```bash
+lando drush --version
+```
+
+## 5. init
+
+```bash
+lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=/app/web
+```
+
+## 6. inspect
+
+```bash
+lando app:config --format=json
 ```
 
 ## Cleanup
