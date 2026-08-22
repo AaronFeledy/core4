@@ -16,4 +16,4 @@ always included.
 - `package.json` with Express
 - `server.js` Express hello-world
 
-The recipe does not run `npm install`.
+The recipe does not run `npm install`. The `api` service uses the Node idle command so `lando start` succeeds; run `lando npm install` and `lando npm start` when you want the Express hello-world.

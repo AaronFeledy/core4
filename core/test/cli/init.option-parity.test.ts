@@ -483,7 +483,7 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain("type: node:lts");
       expect(yaml).toContain("type: mongodb");
-      expect(yaml).toContain("npm start");
+      expect(yaml).not.toContain("command: npm start");
       expect(yaml).toContain("mongodb://lando:lando@database:27017/mean-defaults?authSource=admin");
       expect(yaml).not.toContain("type: redis");
 

@@ -10,7 +10,6 @@ const renderLandofile = (appName: string, node: string, redis: boolean): string 
     "  api:",
     `    type: node:${node}`,
     "    port: 3000",
-    "    command: npm start",
     "    environment:",
     "      NODE_ENV: development",
     "      PORT: 3000",

@@ -805,7 +805,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 ---
 
 ## 2026-08-22 02:25 CDT - US-578 Review
-- Aligned Backdrop settings and MEAN `MONGO_URL` with catalog `lando`/`lando` creds, and collapsed Joomla CLI tooling into one `cmds` step so `lando joomla` actually runs `php cli/joomla.php`.
+- Aligned Backdrop settings and MEAN `MONGO_URL` with catalog `lando`/`lando` creds, collapsed Joomla CLI tooling into one `cmds` step so `lando joomla` actually runs `php cli/joomla.php`, and dropped MEAN `command: npm start` so start uses the Node idle default instead of failing before `npm install`.
 - Review notes (deferred/rejected): rejected treating missing committed `recipes/*/.scaffold/` as a blocker (codegen-derived, not an AC); rejected requiring child prompt overrides (lamp prompts are the intended flatten proof); rejected demanding US-581 `.local` parity flips. Code-quality/security lanes treated the cred mismatches as unused-until-install; Bugbot confirmed they are real recipe-emitted contracts, so they were fixed.
 - Verification: typecheck (only pre-existing mcp memoryPressure errors), lint passed; 80 focused option-parity/canonical/extends/matrix tests passed.
 - Guide-Coverage-Skip: Recipe READMEs do not document BACKDROP_SETTINGS payload, Joomla argv shape, or MONGO_URL auth; no public guide contract changed.
