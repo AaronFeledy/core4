@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Layer } from "effect";
 
 import type { RendererIO } from "@lando/renderer/io";
 import {
@@ -216,11 +216,25 @@ export const resolvePluginOwnedCommandSpec = (
     Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
   );
 
+const renderPluginOwnedPreCommandFailure = async (error: unknown): Promise<void> => {
+  await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
+    failureExitCode: () => 2,
+    preCommand: true,
+  });
+};
+
 export const dispatchPluginOwnedCommand = async (
   commandId: string,
   argv: ReadonlyArray<string>,
 ): Promise<"dispatched" | "not-found"> => {
-  const spec = await resolvePluginOwnedCommandSpec(commandId);
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
+  );
+  if (Exit.isFailure(exit)) {
+    await renderPluginOwnedPreCommandFailure(Cause.squash(exit.cause));
+    return "dispatched";
+  }
+  const spec = exit.value;
   if (spec === undefined) return "not-found";
   if (argv.includes("--help") || argv.includes("-h")) {
     printPluginOwnedCommandHelp(spec);
