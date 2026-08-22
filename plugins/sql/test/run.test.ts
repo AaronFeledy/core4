@@ -10,7 +10,7 @@ import {
 
 import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 import { executeDbCommand } from "../src/run.ts";
-import { makeSqlTestDeps } from "./support/fakes.ts";
+import { FakeRestoreError, makeSqlTestDeps } from "./support/fakes.ts";
 
 const SECRET = "s3cret-pass";
 
@@ -248,5 +248,26 @@ describe("executeDbCommand", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
     expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(VolumeNotFoundError);
+    expect(harness.lifecycle()).toEqual([]);
+  });
+
+  test("restores a snapshot by stopping, restoring, then starting the service", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
+  });
+
+  test("starts the service after a failed restore", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, restoreFails: true });
+
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
+    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
   });
 });

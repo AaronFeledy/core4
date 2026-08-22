@@ -205,8 +205,13 @@ export const runRestore = (
   service: SqlPlanService,
   name: string,
   snapshotId: string,
+  start: (service: string) => Effect.Effect<void, unknown>,
+  stop: (service: string) => Effect.Effect<void, unknown>,
 ) =>
   Effect.gen(function* () {
     const store = yield* requireVolume(plan, service, name);
-    yield* mover.restore(snapshotId, store);
+    yield* stop(name);
+    const restored = yield* mover.restore(snapshotId, store).pipe(Effect.either);
+    yield* start(name);
+    if (restored._tag === "Left") return yield* Effect.fail(restored.left);
   });

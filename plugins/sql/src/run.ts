@@ -47,6 +47,8 @@ export type SqlCommandDeps = SqlMover & {
   readonly landofile: SqlLandofile;
   readonly plan: SqlPlan;
   readonly exec: SqlExec;
+  readonly start: (service: string) => Effect.Effect<void, unknown>;
+  readonly stop: (service: string) => Effect.Effect<void, unknown>;
   readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
   readonly publish: (event: { readonly _tag: string; readonly [key: string]: unknown }) => Effect.Effect<
     void,
@@ -166,7 +168,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       }
       case "restore":
         snapshotId = input.snapshotId ?? "";
-        yield* runRestore(deps, deps.plan, service, target.name, snapshotId);
+        yield* runRestore(deps, deps.plan, service, target.name, snapshotId, deps.start, deps.stop);
         break;
       default:
         return assertNever(action);
@@ -226,6 +228,10 @@ export const runDbCommand = (input: DbCommandInput) =>
                 { command, ...(env === undefined ? {} : { env }) },
               )
               .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
+          start: (service) =>
+            provider.start({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned }),
+          stop: (service) =>
+            provider.stop({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned }),
           confirm: (message) => Effect.scoped(interaction.confirm({ message, default: false })),
           publish: (event) => events.publish(event),
         },

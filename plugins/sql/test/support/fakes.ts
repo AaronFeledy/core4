@@ -17,6 +17,7 @@ export type SqlTestOptions = {
   readonly countStdout?: string;
   readonly countFails?: boolean;
   readonly execFails?: boolean;
+  readonly restoreFails?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
 };
@@ -32,12 +33,23 @@ export type RecordedSnapshot = {
   readonly label?: string;
 };
 
+export type SqlLifecycleStep = "stop" | "restore" | "start";
+
+export class FakeRestoreError extends Error {
+  readonly _tag = "FakeRestoreError";
+  constructor() {
+    super("restore failed");
+    this.name = "FakeRestoreError";
+  }
+}
+
 export type SqlTestHarness = {
   readonly deps: SqlCommandDeps;
   readonly transfers: () => ReadonlyArray<DataTransferSpec>;
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly execs: () => ReadonlyArray<RecordedExec>;
   readonly published: () => ReadonlyArray<string>;
+  readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;
 };
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
@@ -45,6 +57,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const snapshots: RecordedSnapshot[] = [];
   const execs: RecordedExec[] = [];
   const published: string[] = [];
+  const lifecycle: SqlLifecycleStep[] = [];
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
@@ -98,7 +111,10 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         });
         return { id: opts?.label ?? `snap-${store.store}`, store };
       }),
-    restore: () => Effect.void,
+    restore: () => {
+      lifecycle.push("restore");
+      return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;
+    },
     exec: (_service, command, env) => {
       const joined = command.join(" ");
       const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
@@ -110,6 +126,14 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
     },
     confirm: () => Effect.succeed(false),
+    start: () =>
+      Effect.sync(() => {
+        lifecycle.push("start");
+      }),
+    stop: () =>
+      Effect.sync(() => {
+        lifecycle.push("stop");
+      }),
     publish: (event) =>
       Effect.sync(() => {
         published.push(String(event._tag));
@@ -122,5 +146,6 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     snapshots: () => snapshots,
     execs: () => execs,
     published: () => published,
+    lifecycle: () => lifecycle,
   };
 };
