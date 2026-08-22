@@ -78,6 +78,7 @@ import {
   probeRuntimeServiceStatus,
   teardownRuntimeService as teardownManagedRuntimeService,
 } from "./runtime-status.ts";
+import { postServiceLifecycle } from "./service-lifecycle.ts";
 import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
@@ -158,6 +159,8 @@ export { inspect, waitForExit } from "./inspect.ts";
 export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
+export { postServiceLifecycle } from "./service-lifecycle.ts";
+export type { ServiceLifecycleAction, ServiceLifecycleInput } from "./service-lifecycle.ts";
 export {
   RuntimeLaunchError,
   buildPodmanServiceArgs,
@@ -761,9 +764,45 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           yield* rememberPlan(plan);
           return result;
         }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
-      restart: () => Effect.void,
+      start: (target) =>
+        Effect.gen(function* () {
+          const plan = yield* resolvePlan(target);
+          if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "start"));
+          yield* ensureEffect;
+          return yield* postServiceLifecycle({
+            ...(podmanApi === undefined ? {} : { api: podmanApi }),
+            plan,
+            target,
+            action: "start",
+            providerId: "lando",
+          });
+        }),
+      stop: (target) =>
+        Effect.gen(function* () {
+          const plan = yield* resolvePlan(target);
+          if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "stop"));
+          yield* ensureEffect;
+          return yield* postServiceLifecycle({
+            ...(podmanApi === undefined ? {} : { api: podmanApi }),
+            plan,
+            target,
+            action: "stop",
+            providerId: "lando",
+          });
+        }),
+      restart: (target) =>
+        Effect.gen(function* () {
+          const plan = yield* resolvePlan(target);
+          if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "restart"));
+          yield* ensureEffect;
+          return yield* postServiceLifecycle({
+            ...(podmanApi === undefined ? {} : { api: podmanApi }),
+            plan,
+            target,
+            action: "restart",
+            providerId: "lando",
+          });
+        }),
       waitForExit: (target, waitOptions) =>
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);
