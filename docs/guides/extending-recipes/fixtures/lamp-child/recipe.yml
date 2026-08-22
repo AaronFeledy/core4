@@ -1,0 +1,20 @@
+id: lamp-child
+title: Lamp Child
+description: Extends lamp with one prompt override and a dropped prompt.
+version: 0.1.0
+extends: lamp
+prompts:
+  - name: name
+    drop: true
+  - name: php
+    type: select
+    message: PHP version
+    default: "8.2"
+    choices:
+      - value: "8.2"
+      - value: "8.3"
+files:
+  - src: extra.txt
+    dest: extra.txt
+postInit:
+  - type: gitInit

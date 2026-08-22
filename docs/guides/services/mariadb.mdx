@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, mariadb, service, database]
 ---
 
-# MariaDB
+# Add MariaDB
 
-Add a MariaDB database to your app by declaring `type: mariadb` in your
-services block. Lando pulls `mariadb:11.4` by default and listens on the
-standard TCP port `3306`:
+Put `type: mariadb` in your services block. Lando pulls `mariadb:11.4` and listens on `3306`:
 
 ```yaml
 name: mariadb-demo
@@ -18,7 +16,7 @@ services:
     type: mariadb
 ```
 
-Start it and Lando wires the database into your app's network:
+Start it. Lando puts the database on the app network:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -33,10 +31,9 @@ Start it and Lando wires the database into your app's network:
     </Step>
   </Scenario>
 
-## Connection details
+## Connect from another service
 
-Other services in your app connect using the service name as the hostname —
-here that's `db`. The defaults:
+Other services use the service name as the hostname. Here that's `db`. Defaults:
 
 | Setting | Value |
 | --- | --- |
@@ -45,9 +42,7 @@ here that's `db`. The defaults:
 | User | `lando` |
 | Password | `lando` |
 
-MariaDB also exports the `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
-env names, so MySQL clients and frameworks connect unchanged. From inside
-the app network the connection URL is:
+MariaDB also exports the `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` env names, so MySQL clients and frameworks connect unchanged. From inside the app network the connection URL is:
 
 ```
 mysql://lando:lando@db:3306/mariadb-demo
@@ -55,26 +50,19 @@ mysql://lando:lando@db:3306/mariadb-demo
 
 MariaDB speaks the MySQL wire protocol, so that's the right scheme.
 
-## CLI access
+## Open the client
 
-Declare a tooling alias targeting the `db` service to open the `mariadb`
-client:
+Add a tooling alias on `db` to open the `mariadb` client:
 
 ```sh
 lando mariadb
 ```
 
-A common companion is a `db-import` tooling alias that pipes a SQL file into
-the client:
-
-```sh
-lando db-import dump.sql
-```
+There is no core `db-import`. Pipe a dump into the client with `lando exec`, or add your own tooling alias. See [Import a SQL dump](../tooling/import-a-database.mdx).
 
 ## Pin a version
 
-Use `image:` to pin a specific MariaDB version when the default
-`mariadb:11.4` isn't what you want. For example, the 10.11 LTS line:
+Set `image:` when `mariadb:11.4` isn't the version you want. For example, the 10.11 LTS line:
 
 ```yaml
 services:

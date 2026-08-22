@@ -6,74 +6,40 @@ timeout: 60000
 tags: [beta, docs, subsystems, proxy, traefik]
 ---
 
-# Proxy (Traefik)
+# Use the Traefik proxy
 
-## HTTPS routes require an active certificate authority
+Start an app. Lando starts Traefik for you. You do not start Traefik by hand.
 
-Traefik only terminates TLS for a route when a certificate authority has issued the cert. Run
-`lando setup` before starting HTTPS routes so the active `CertificateAuthority` is prepared; the
-bundled default is the [mkcert plugin](./certificates-mkcert.mdx). HTTP-only routes never resolve
-or set up a CA, so a project with no HTTPS endpoints has no cert dependency at all.
+```sh
+lando start
+lando info
+```
 
-Browsers trust the certificates Traefik serves because `lando setup` installs the active
-`CertificateAuthority`'s root into the host trust store, as described in the
-[mkcert host CA trust guide](./certificates-mkcert.mdx). That host trust store install is separate
-from the corporate and service CA injection covered in the
-[corporate network trust guide](../config/corporate-network-trust.mdx); injected corporate CAs let
-in-container runtimes trust outbound HTTPS calls, while host trust store installation is what makes
-a browser trust the proxy's own HTTPS certificates. Run `lando doctor` to check proxy TLS material
-readiness through the `proxy-tls` check documented in the
-[doctor walkthrough](./doctor-walkthrough.mdx). SSH agent forwarding uses sockets and agent
-identity, not TLS certificates, so it is unrelated to proxy TLS or CA trust state.
+Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
 
-## The ProxyService contract
+## Prepare HTTPS
 
-`ProxyService` is the Effect Service tag published in `@lando/sdk`; plugins implement
-`ProxyServiceShape`. The contract suite `runProxyServiceContractSuite` from `@lando/sdk/test` (alias
-`makeProxyServiceContractSuite`) validates `capabilities`, `setup`, `applyRoutes`, `removeRoutes`,
-`status`, and `stop`. `TestProxyService` (built with `makeTestProxyService`) is the in-memory test
-double, tracking routes by `appId`.
+HTTPS routes need a certificate authority. Run `lando setup` first so mkcert can issue certs and trust the local CA:
 
-When zero `ProxyService` plugins are registered, `ProxyServiceRegistry` falls back to
-`ProxyServiceUnavailableLive`, which fails closed with remediation to install/select a plugin and
-rerun setup. Otherwise `SelectedProxyServiceLive` is resolved from `ProxyServiceRegistry`, built from
-each installed plugin's `proxyServices:` manifest contribution using explicit-selection / default /
-sole-installed-implementation precedence. Core supplies the selected proxy with a deferred active
-`CertificateAuthority`, while bundled Traefik also depends on `GlobalAppService.ensureRunning` for
-ingress.
+```sh
+lando setup
+lando start
+lando info
+```
 
-## Route derivation
+HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-The default proxy domain is `lndo.site`, producing hostnames like `web.myapp.lndo.site`. The planner
-auto-derives one canonical route per service from its published HTTP/HTTPS endpoints — no `routes:`
-Landofile block is required. Authored `routes:` entries resolve against named endpoints only when
-disambiguation is needed. Each derived route becomes a `RoutePlan` with `hostname=service.app.lndo.site`,
-`scheme=https`, and `backend={service,protocol,port}`; the planner populates `AppPlan.routes:
-RoutePlan[]` with derived or authored route plans, each carrying a plan-time-resolved backend.
+The default domain is `lndo.site`. `lando setup` writes `*.lndo.site` into this machine's DNS. Other devices on the LAN do not get that entry. See [Reach an app from another device](./external-access.mdx).
 
-Two apps with overlapping default ports never conflict, because Traefik routes by hostname: app1's
-`web.app1.lndo.site` and app2's `web.app2.lndo.site` are distinct hostnames pointing at each app's own
-web service port, with no host-port collision.
+You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
 
-## Certificate material
+## Verify
 
-The default wildcard certificate covers the wildcard, apex, and Traefik dashboard hostname
-(`*.lndo.site`, `lndo.site`, `traefik.lndo.site`). Each app's certificate filename is keyed by its
-encoded `AppId`, and the certificate is reissued whenever the app's HTTPS route hostname coverage
-changes. Issued certificate and key PEMs are copied into the existing dynamic file-provider mount at
-`<globalAppRoot>/proxy-traefik/dynamic/certs` before the app route YAML is replaced. The dynamic YAML
-references `/etc/traefik/dynamic/certs` paths using Traefik v3 file-provider TLS configuration
-(`tls.certificates` + `tls.stores.default.defaultCertificate`); an empty `tls: {}` on a router remains
-the HTTPS activation marker.
+```sh
+lando doctor
+lando info
+```
 
-HTTPS route application resolves the active CA lazily through `CertificateAuthorityResolver`;
-HTTP-only routes never resolve, set up, or issue through a CA.
+Doctor's proxy check should pass after setup. If it fails, rerun `lando setup`, then start the app again.
 
-<Guide>
-  <Scenario id="proxy-config-check" render={false} reason="The contract, route derivation, and certificate wiring above are covered by unit tests against an in-memory test double and core/test/services/app-planner.test.ts; the Traefik Live Layer needs the global app and running containers. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+Lando starts the proxy. Do not launch Traefik yourself.

@@ -11,12 +11,15 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/testing/engine-layers.ts";
-import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import {
+  APP_PLAN_CACHE_HEADER_BYTES,
+  AppPlannerLive,
+  CacheServiceLive,
+  FileSystemLive,
+  PluginRegistryLive,
+  appPlanCachePath,
+  writeCachedAppPlan,
+} from "../../src/testing/engine-layers.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -43,6 +46,11 @@ test("Given a cached plan with configs, when support is omitted, then the cache 
   const plannerLayer = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
   );
+  const unsupported: ProviderCapabilities = {
+    ...TestRuntimeProvider.capabilities,
+    composeProjectFields: { supported: [] },
+    composeServiceFields: { supported: ["labels"] },
+  };
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
@@ -51,7 +59,7 @@ test("Given a cached plan with configs, when support is omitted, then the cache 
     );
 
   try {
-    const seeded = await runPlan(TestRuntimeProvider.capabilities);
+    const seeded = await runPlan(unsupported);
     expect(Exit.isSuccess(seeded)).toBe(true);
     if (Exit.isSuccess(seeded)) {
       const cachedBytes = await readFile(appPlanCachePath(cacheRoot, "cached-project-field", appRoot));
@@ -76,7 +84,7 @@ test("Given a cached plan with configs, when support is omitted, then the cache 
     }
 
     // When
-    const exit = await runPlan(TestRuntimeProvider.capabilities);
+    const exit = await runPlan(unsupported);
 
     // Then
     const failure = expectFailure(exit);

@@ -1,7 +1,16 @@
 # WordPress
 
-Spin up a WordPress stack with PHP and MariaDB, plus WP-CLI and Composer tooling.
-The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+`lando init --recipe wordpress` scaffolds PHP, MariaDB, WP-CLI, and Composer.
+
+```sh
+lando init --recipe wordpress --name=my-wordpress-app --yes
+lando start
+lando info
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
 ## 1. scaffold
 
@@ -15,10 +24,10 @@ lando init --recipe wordpress --name=my-wordpress-app --yes
 lando start
 ```
 
-## 3. inspect
+## 3. info
 
-```
-(generated at runtime)
+```bash
+lando info
 ```
 
 ## Cleanup

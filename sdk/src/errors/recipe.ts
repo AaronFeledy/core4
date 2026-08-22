@@ -12,6 +12,13 @@ export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError"
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class RecipeExtendsError extends Schema.TaggedError<RecipeExtendsError>()("RecipeExtendsError", {
+  message: Schema.String,
+  chain: Schema.Array(Schema.String),
+  kind: Schema.Literal("cycle", "depth", "parent-not-found"),
+  remediation: Schema.String,
+}) {}
+
 export class RecipeMissingPluginError extends Schema.TaggedError<RecipeMissingPluginError>()(
   "RecipeMissingPluginError",
   {

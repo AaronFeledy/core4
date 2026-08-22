@@ -38,6 +38,13 @@ export interface BunSelfInstallOptions extends Omit<BunSelfRunOptions, "argv" | 
 export const BUN_SELF_REENTRY_ENV = "LANDO_DISALLOW_BUN_BE_BUN_REENTRY" as const;
 export const BUN_BE_BUN_ENV = "BUN_BE_BUN" as const;
 
+/**
+ * `lando bun` re-enters through `process.execPath` plus `BUN_BE_BUN=1`.
+ * Compiled / standalone binaries already *are* the execPath (Bun 1.4
+ * `Bun.isStandaloneExecutable`); source mode uses the Bun binary. Unlike
+ * `landoInvocationPrefix`, this path never appends `argv[1]` / `$bunfs`.
+ */
+
 const isReentryBlocked = (env: NodeJS.ProcessEnv): boolean => {
   const value = env[BUN_SELF_REENTRY_ENV];
   return typeof value === "string" && value !== "" && value !== "0";

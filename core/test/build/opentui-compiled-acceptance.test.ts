@@ -55,7 +55,7 @@ const readProbe = async (tracePath: string): Promise<ReadonlyArray<LoaderProbeEv
 const nativeAssetPattern = (target: string): RegExp => {
   if (target.startsWith("darwin-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.dylib/gu;
   if (target.startsWith("linux-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.so/gu;
-  if (target === "windows-x64") return /B:\/~BUN\/root\/opentui-[a-z0-9]+\.dll/gu;
+  if (target.startsWith("windows-")) return /B:\/~BUN\/root\/opentui-[a-z0-9]+\.dll/gu;
   throw new Error(`Unsupported OpenTUI acceptance target: ${target}.`);
 };
 
@@ -139,8 +139,18 @@ const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
   }
 };
 
+const closeSpawnStdin = async (proc: { readonly stdin: { end(): unknown } }): Promise<void> => {
+  try {
+    await proc.stdin.end();
+  } catch {
+    // Already closed when the child exited or was taskkilled.
+  }
+};
+
 const removeRelocatedBinaryRoot = async (root: string): Promise<void> => {
-  const retryableCodes = new Set(["EACCES", "EBUSY", "ENOTEMPTY"]);
+  // Bun 1.4 on Windows reports EPERM (not only EACCES/EBUSY) while the compiled
+  // image is still mapped after spawn exit. Retry until the handle drops.
+  const retryableCodes = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
   for (let attempt = 0; attempt < 20; attempt += 1) {
     try {
       await rm(root, { recursive: true, force: true });
@@ -195,9 +205,11 @@ const runPrompt = async (
     } catch (cause) {
       proc.kill();
       await proc.exited;
+      await closeSpawnStdin(proc);
       throw cause;
     }
     await proc.exited;
+    await closeSpawnStdin(proc);
     output = `${await stdout}${await stderr}`;
   } else {
     const proc = Bun.spawn({

@@ -31,13 +31,13 @@ export const installSignalHandlers = (
         options.fiber.unsafeInterruptAsFork(interruptor);
         for (const fiber of Fiber.unsafeRoots(void 0)) fiber.unsafeInterruptAsFork(interruptor);
       };
-      process.once(signal, handler);
+      (process as NodeJS.EventEmitter).once(signal, handler);
       return { signal, handler };
     });
 
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        for (const { signal, handler } of handlers) process.off(signal, handler);
+        for (const { signal, handler } of handlers) (process as NodeJS.EventEmitter).off(signal, handler);
       }),
     );
   });

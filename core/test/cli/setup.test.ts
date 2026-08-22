@@ -25,7 +25,12 @@ import { makeHttpClientLive } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
-import { InteractionCancelledError, InteractionUnavailableError, ProxySetupError } from "@lando/sdk/errors";
+import {
+  AmbiguousCertificateAuthoritiesError,
+  InteractionCancelledError,
+  InteractionUnavailableError,
+  ProxySetupError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -39,9 +44,11 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
+import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
   SetupResultSchema,
+  SetupStepFailedError,
   maybeSelectSetupProvider,
   setupDeferredFileSyncPath,
   setupSpec,
@@ -55,8 +62,11 @@ import {
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
-import { HostProxyServiceDisabledLive } from "../../src/testing/engine-layers.ts";
-import { stripHostProxyRunLando } from "../../src/testing/engine-layers.ts";
+import {
+  CertificateAuthorityResolver,
+  HostProxyServiceDisabledLive,
+  stripHostProxyRunLando,
+} from "../../src/testing/engine-layers.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
@@ -821,6 +831,61 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("records skipped evidence when docker host-integration services are absent from this layer", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-docker-optional-"));
+    const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-docker-optional-conf-"));
+    const previousConf = process.env.LANDO_USER_CONF_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = confRoot;
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "docker",
+        isAvailable: Effect.succeed(true),
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
+          .pipe(Effect.provide(buildSetupLayers(registry, { userDataRoot }))),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+        }>;
+      };
+
+      expect(readiness.status).toBe("ready");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "skipped"],
+        ["proxy", "skipped"],
+        ["shell", "skipped"],
+        ["file-sync", "satisfied"],
+      ]);
+      for (const stepId of ["ca", "proxy", "shell"]) {
+        const step = readiness.steps.find((entry) => entry.id === stepId);
+        expect(step?.evidence).toContain("host-integration service is not provided on this layer");
+      }
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("docker"));
+    } finally {
+      if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConf;
+      await rm(userDataRoot, { recursive: true, force: true });
+      await rm(confRoot, { recursive: true, force: true });
+    }
+  });
+
   test("persists partial readiness with redacted remediation when setup is interrupted", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-fail-"));
     try {
@@ -885,6 +950,70 @@ describe("meta:setup command", () => {
       expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain(
         `On ${process.platform}`,
       );
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("fails with SetupStepFailedError when a recorded failed step does not abort the effect", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-first-failed-step-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const ambiguous = new AmbiguousCertificateAuthoritiesError({
+        message: "Multiple certificate authorities are available.",
+        candidates: [
+          { id: "mkcert", pluginName: "ca-mkcert", source: "a.ts" },
+          { id: "other", pluginName: "ca-other", source: "b.ts" },
+        ],
+        remediation: "Keep a single certificate authority plugin.",
+      });
+
+      const exit = await Effect.runPromiseExit(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              buildSetupLayersWithHostIntegrations(
+                registry,
+                {
+                  ca: makeTestCertificateAuthority(),
+                  proxy: makeTestProxyService(),
+                  ssh: makeTestSshService(),
+                  fileSync: TestFileSyncEngine,
+                },
+                { userDataRoot },
+              ),
+              Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.fail(ambiguous) }),
+            ),
+          ),
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected SetupStepFailedError");
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag !== "Some") throw new Error("expected SetupStepFailedError");
+      expect(failure.value).toBeInstanceOf(SetupStepFailedError);
+      expect((failure.value as SetupStepFailedError).stepId).toBe("ca");
+      expect((failure.value as SetupStepFailedError).message).toBe(ambiguous.message);
+      expect((failure.value as SetupStepFailedError).remediation).toBe(ambiguous.remediation);
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{ readonly id: string; readonly status: string }>;
+      };
+      expect(readiness.status).toBe("failed");
+      expect(readiness.steps.find((step) => step.id === "ca")?.status).toBe("failed");
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }
@@ -1979,6 +2108,9 @@ describe("meta:setup command", () => {
         expect(error._tag).toBe("ProviderUnavailableError");
         expect(error.providerId).toBe(id);
         expect(error.remediation ?? "").toContain(`lando setup --provider=${id}`);
+        expect(error.remediation ?? "").toContain("lando setup --provider=lando");
+        expect(error.remediation ?? "").not.toContain("`lando setup` (the default)");
+        expect(error.remediation ?? "").not.toMatch(/lando setup(?! --provider)/u);
         expect(setupCalls).toBe(0);
       });
 
@@ -2379,7 +2511,7 @@ describe("meta:setup command", () => {
       return { registry, observed };
     };
 
-    test("LANDO_PROVIDER env var overrides config default", async () => {
+    test("LANDO_PROVIDER overrides leftover config and the capability default", async () => {
       const previous = process.env.LANDO_PROVIDER;
       process.env.LANDO_PROVIDER = "podman";
       try {
@@ -2390,7 +2522,11 @@ describe("meta:setup command", () => {
         };
         const { registry, observed } = buildRegistryThatCapturesPlan(provider);
         await Effect.runPromise(
-          setupSpec.run({ installDir: "/opt/lando" }).pipe(Effect.provide(buildSetupLayers(registry))),
+          setupSpec
+            .run({ installDir: "/opt/lando" })
+            .pipe(
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
+            ),
         );
         expect(observed.providerId).toBe("podman");
       } finally {
@@ -2421,24 +2557,83 @@ describe("meta:setup command", () => {
       }
     });
 
-    test("falls back to ~/.lando/config.yml defaultProviderId when neither flag nor env is set", async () => {
+    test("ignores leftover defaultProviderId when neither flag nor env is set", async () => {
       const previous = process.env.LANDO_PROVIDER;
       Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       try {
         const provider = {
           ...TestRuntimeProvider,
-          id: "docker",
+          id: "lando",
           setup: () => Effect.void,
         };
         const { registry, observed } = buildRegistryThatCapturesPlan(provider);
         await Effect.runPromise(
           setupSpec
-            .run({ installDir: "/opt/lando" })
+            .run({ installDir: "/opt/lando", flags: { "no-interactive": true } })
             .pipe(
               Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
             ),
         );
-        expect(observed.providerId).toBe("docker");
+        expect(observed.providerId).toBe("lando");
+      } finally {
+        if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
+      }
+    });
+
+    test("--yes with leftover defaultProviderId: docker selects lando without prompting", async () => {
+      const previous = process.env.LANDO_PROVIDER;
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      try {
+        const recorder = recordingPrompter("docker");
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const { registry, observed } = buildRegistryThatCapturesPlan(provider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { yes: true } })
+            .pipe(
+              Effect.provide(
+                Layer.mergeAll(
+                  Layer.succeed(RuntimeProviderRegistry, registry),
+                  Layer.succeed(
+                    ConfigService,
+                    makeConfigService({ defaultProviderId: ProviderId.make("docker") }),
+                  ),
+                  Layer.succeed(Downloader, testDownloader.service),
+                  Layer.succeed(InteractionService, recorder.prompter),
+                  makeHttpClientLive(okProbeFetch),
+                ),
+              ),
+            ),
+        );
+        expect(observed.providerId).toBe("lando");
+        expect(recorder.calls).toBe(0);
+      } finally {
+        if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
+      }
+    });
+
+    test("explicit --provider=lando selects lando even when leftover defaultProviderId is docker", async () => {
+      const previous = process.env.LANDO_PROVIDER;
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      try {
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const { registry, observed } = buildRegistryThatCapturesPlan(provider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: "lando" } })
+            .pipe(
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
+            ),
+        );
+        expect(observed.providerId).toBe("lando");
       } finally {
         if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
       }
@@ -2462,6 +2657,146 @@ describe("meta:setup command", () => {
         expect(observed.providerId).toBe("lando");
       } finally {
         if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
+      }
+    });
+
+    test("systemRuntimeUnavailableError remediation does not recommend plain lando setup", () => {
+      for (const id of ["docker", "podman"] as const) {
+        const error = systemRuntimeUnavailableError(id);
+        expect(error._tag).toBe("ProviderUnavailableError");
+        expect(error.providerId).toBe(id);
+        expect(error.remediation).toContain(`lando setup --provider=${id}`);
+        expect(error.remediation).toContain("lando setup --provider=lando");
+        expect(error.remediation).not.toContain("`lando setup` (the default)");
+        expect(error.remediation).not.toMatch(/lando setup(?! --provider)/u);
+      }
+    });
+
+    for (const id of ["docker", "podman"] as const) {
+      test(`persists --provider=${id} as defaultProviderId`, async () => {
+        const confRoot = await mkdtemp(join(tmpdir(), `lando-setup-persist-${id}-`));
+        const previousConf = process.env.LANDO_USER_CONF_ROOT;
+        process.env.LANDO_USER_CONF_ROOT = confRoot;
+        try {
+          const provider = {
+            ...TestRuntimeProvider,
+            id,
+            isAvailable: Effect.succeed(true),
+            setup: () => Effect.void,
+          };
+          const { registry } = buildRegistryThatCapturesPlan(provider);
+          await Effect.runPromise(
+            setupSpec
+              .run({ installDir: "/opt/lando", flags: { provider: id } })
+              .pipe(Effect.provide(buildSetupLayers(registry))),
+          );
+          expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain(`defaultProviderId: ${id}`);
+        } finally {
+          if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+          else process.env.LANDO_USER_CONF_ROOT = previousConf;
+          await rm(confRoot, { recursive: true, force: true });
+        }
+      });
+    }
+
+    test("setup --yes after a persisted --provider=docker still selects lando", async () => {
+      const previous = process.env.LANDO_PROVIDER;
+      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-persist-then-yes-"));
+      const previousConf = process.env.LANDO_USER_CONF_ROOT;
+      process.env.LANDO_USER_CONF_ROOT = confRoot;
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      try {
+        const dockerProvider = {
+          ...TestRuntimeProvider,
+          id: "docker",
+          isAvailable: Effect.succeed(true),
+          setup: () => Effect.void,
+        };
+        const { registry: dockerRegistry } = buildRegistryThatCapturesPlan(dockerProvider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: "docker" } })
+            .pipe(Effect.provide(buildSetupLayers(dockerRegistry))),
+        );
+        expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain("defaultProviderId: docker");
+
+        const landoProvider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const { registry, observed } = buildRegistryThatCapturesPlan(landoProvider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { yes: true } })
+            .pipe(
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
+            ),
+        );
+        expect(observed.providerId).toBe("lando");
+        expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain("defaultProviderId: docker");
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+        else process.env.LANDO_PROVIDER = previous;
+        if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previousConf;
+        await rm(confRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("LANDO_PROVIDER=docker selects docker without writing defaultProviderId", async () => {
+      const previous = process.env.LANDO_PROVIDER;
+      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-env-no-write-"));
+      const previousConf = process.env.LANDO_USER_CONF_ROOT;
+      process.env.LANDO_USER_CONF_ROOT = confRoot;
+      process.env.LANDO_PROVIDER = "docker";
+      try {
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "docker",
+          isAvailable: Effect.succeed(true),
+          setup: () => Effect.void,
+        };
+        const { registry, observed } = buildRegistryThatCapturesPlan(provider);
+        await Effect.runPromise(
+          setupSpec.run({ installDir: "/opt/lando" }).pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+        expect(observed.providerId).toBe("docker");
+        await expect(readFile(join(confRoot, "config.yml"), "utf8")).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+        else process.env.LANDO_PROVIDER = previous;
+        if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previousConf;
+        await rm(confRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("persists --provider=lando as defaultProviderId", async () => {
+      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-persist-lando-"));
+      const previousConf = process.env.LANDO_USER_CONF_ROOT;
+      process.env.LANDO_USER_CONF_ROOT = confRoot;
+      try {
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const { registry } = buildRegistryThatCapturesPlan(provider);
+        await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: "lando" } })
+            .pipe(
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
+            ),
+        );
+        expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain("defaultProviderId: lando");
+      } finally {
+        if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previousConf;
+        await rm(confRoot, { recursive: true, force: true });
       }
     });
   });

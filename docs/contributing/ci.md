@@ -9,20 +9,21 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.4.0`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
 ```bash
 bun run codegen:check
 bun run lint
+bun run audit
 bun run check:boundaries
 bun run check:telemetry-inventory
 bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
 
 Run typecheck separately:
 
@@ -32,7 +33,7 @@ bun run typecheck
 
 `bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts.
 
-The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` collects that file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table. Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
 `bun run test` prints the exact shard commands CI runs:
 
@@ -41,6 +42,14 @@ bun run test:unit:shard 1/3
 bun run test:unit:shard 2/3
 bun run test:unit:shard 3/3
 ```
+
+Refresh the committed `.bun-test-timings.json` after a suite-shape change:
+
+```bash
+bun run scripts/update-test-timings.ts
+```
+
+Nightly runs the same refresh in `refresh-test-timings-linux-x64` and uploads the timings file; commit the artifact when the split has drifted. `NIGHTLY_TIER_TESTS` stay out of both the PR shards and the timings refresh.
 
 The unsharded full pass remains available locally:
 
@@ -80,6 +89,7 @@ CI builds and smokes one binary per required PR platform:
 - `build-linux-arm64` on `ubuntu-24.04-arm` → `lando-linux-arm64`
 - `build-linux-x64` on `ubuntu-24.04` → `lando-linux-x64`
 - `build-windows-x64` on `windows-2022` → `lando-windows-x64`
+- `build-windows-arm64` on `windows-11-arm` → `lando-windows-arm64` (`lando update` on win-arm64 still maps to the published `windows-x64` update-manifest key; the 5-key schema is unchanged)
 
 ```bash
 bun run build
@@ -96,7 +106,26 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
+
+## Local Bun profiling
+
+Keep these off the default PR gate. Use them locally when hunting cold-start or compile-graph regressions against the `core/test/cli/fast-path.test.ts` budget.
+
+```bash
+bun --cpu-prof-md ./core/bin/lando.ts --version
+bun --heap-prof-md ./core/bin/lando.ts --version
+BUN_CPU_PROFILE=1 bun ./core/bin/lando.ts --version
+```
+
+The compiled-binary wrapper can also emit Bun's markdown module graph without changing default compile flags:
+
+```bash
+LANDO_COMPILE_METAFILE=1 bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external
+bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external --metafile-md ./dist/lando.metafile.md
+```
+
+Do not commit profile dumps or `*.metafile.md` artifacts.
 
 ## Tooling hot-path perf budget
 
@@ -267,17 +296,20 @@ Protect `main` in GitHub with required status checks enabled. All required statu
 - `guide-scenarios-linux-arm64`
 - `guide-scenarios-linux-x64`
 - `guide-scenarios-windows-x64`
+- `guide-scenarios-windows-arm64`
 - `build-darwin-arm64`
 - `build-darwin-x64`
 - `build-linux-arm64`
 - `build-linux-x64`
 - `build-windows-x64`
+- `build-windows-arm64`
 - `perf-budget-linux-x64`
 - `provider-integration-darwin-arm64`
 - `provider-integration-darwin-x64`
 - `provider-integration-linux-arm64`
 - `provider-integration-linux-x64`
 - `provider-integration-windows-x64`
+- `provider-integration-windows-arm64`
 
 ## Bun upgrade smoke checks
 
@@ -292,4 +324,12 @@ bun run build
 ./core/dist/lando --help
 ```
 
-`BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated` is useful for local/CI cache experiments, but keep release builds on `bun install --frozen-lockfile` until Bun's global store is no longer experimental.
+The default developer and CI install remains hoisted `bun install --frozen-lockfile`. Do not commit `linker = "isolated"` and do not make the global store the local default. `bun run dedupe` and `bun run prune` are maintainer recipes; prune is destructive and must not run in CI. `bun dedupe` is not a no-op on the current lockfile, so it is not scheduled.
+
+A non-blocking linux-x64 experiment job (`bun-install-isolated-experiment`, `continue-on-error: true`) runs:
+
+```bash
+BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+```
+
+That command succeeds against this lockfile without rewriting it. The hoisted frozen install stays the merge gate until the isolated global store is no longer experimental.

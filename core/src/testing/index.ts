@@ -36,6 +36,7 @@ export { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/land
 export { buildKeyForService } from "@lando/engine/services/build-key";
 export { EventServiceLive } from "@lando/engine/services/event-service";
 export { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
+export { FileSystemLive } from "@lando/engine/services/file-system";
 export { loadLandofileFile } from "@lando/engine/services/landofile-live";
 export {
   AppPlanner,

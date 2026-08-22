@@ -54,6 +54,8 @@ describe("RuntimeProvider contract", () => {
         ...TestRuntimeProvider.capabilities,
         composeSpec: "portable" as const,
         composeKnobs: { supported: ["restart"] as const },
+        composeServiceFields: { supported: [] as const },
+        composeProjectFields: { supported: [] as const },
       },
     } satisfies typeof TestRuntimeProvider;
 
@@ -68,6 +70,7 @@ describe("RuntimeProvider contract", () => {
         composeSpec: "portable" as const,
         composeKnobs: { supported: [] },
         composeServiceFields: { supported: ["labels"] as const },
+        composeProjectFields: { supported: [] as const },
       },
     } satisfies typeof TestRuntimeProvider;
 
@@ -81,6 +84,7 @@ describe("RuntimeProvider contract", () => {
         ...TestRuntimeProvider.capabilities,
         composeSpec: "portable" as const,
         composeKnobs: { supported: [] },
+        composeServiceFields: { supported: [] as const },
         composeProjectFields: { supported: ["configs"] as const },
       },
     } satisfies typeof TestRuntimeProvider;
@@ -107,6 +111,8 @@ describe("RuntimeProvider contract", () => {
         ...TestRuntimeProvider.capabilities,
         composeSpec: "portable" as const,
         composeKnobs: { supported: [] },
+        composeServiceFields: { supported: [] as const },
+        composeProjectFields: { supported: [] as const },
         composePreservedPaths: { supported: ["healthcheck.start_interval"] as const },
       },
     } satisfies typeof TestRuntimeProvider;

@@ -6,18 +6,17 @@ timeout: 60000
 tags: [beta, docs, landofile, config, version-constraint]
 ---
 
-# Version constraints
+# Constrain the Lando version
 
-Declare the running Lando core semver range at the top level of `.lando.yml`
-with `lando:`:
+Set `lando:` at the top of `.lando.yml`:
 
 ```yaml
 lando: ">=4.1 <5"
 ```
 
-The value supports the full npm-semver range grammar — comparators, unions
+The value supports the full npm-semver range grammar: comparators, unions
 (`||`), hyphen ranges, x-ranges, `^`, `~`, and exact versions. Prereleases
-participate in ordering, and build metadata doesn't affect precedence. The
+participate in ordering, and build metadata does not affect precedence. The
 `lando:` key constrains the Lando core binary only; `runtime:` and
 `services.*.api` remain separate surfaces.
 
@@ -26,7 +25,7 @@ participate in ordering, and build metadata doesn't affect precedence. The
 Unsatisfied constraints fail before app planning or provider action, with a
 tagged `LandofileVersionConstraintError`. The message carries the declared
 range, source layer, and running version, so agents don't have to scrape
-prose — JSON envelopes serialize `_tag`, `message`, and `remediation`
+prose. JSON envelopes serialize `_tag`, `message`, and `remediation`
 directly:
 
 ```
@@ -36,8 +35,8 @@ directly:
 ## Skipping the check
 
 `LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades an unsatisfied valid range to a
-warning for the current invocation only. The skip doesn't rewrite the
-Landofile, mutate the app-plan cache, or mark the constraint satisfied — it
+warning for the current invocation only. The skip does not rewrite the
+Landofile, mutate the app-plan cache, or mark the constraint satisfied. It
 applies to the current process only. `lando doctor --app` reports when the
 skip env is active and includes the same source-layer context.
 

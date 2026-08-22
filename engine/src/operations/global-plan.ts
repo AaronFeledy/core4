@@ -24,6 +24,8 @@ import {
 import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
 
+import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+
 export interface MissingGlobalPlanResult {
   readonly materialized: false;
   readonly paths: GlobalAppPaths;
@@ -122,9 +124,12 @@ export const loadGlobalPlan = (): Effect.Effect<
       cwd: paths.root,
     });
     const registry = yield* RuntimeProviderRegistry;
-    const capabilities = yield* registry.capabilities;
+    const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const planner = yield* AppPlanner;
-    const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, capabilities));
+    const landofileForPlan = { ...landofile, provider: MANAGED_PROVIDER_ID };
+    const plan = yield* withProcessCwd(paths.root, () =>
+      planner.plan(landofileForPlan, managed.capabilities),
+    );
 
-    return { materialized: true, paths, landofile, plan };
+    return { materialized: true, paths, landofile: landofileForPlan, plan };
   });

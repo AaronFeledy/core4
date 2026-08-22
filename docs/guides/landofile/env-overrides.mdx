@@ -6,56 +6,41 @@ timeout: 60000
 tags: [beta, docs, landofile, config, env]
 ---
 
-# Env overrides
+# Override config with env
 
-## Generic overlay
-
-Prefix that marks an env var as a config overlay.
-
-```sh
-LANDO_CONFIG__
-```
-
-Double underscore separates path segments (a.b.c) (`__`).
-
-Sets telemetry.enabled to true with no edits to config.yml.
+Prefix an env var with `LANDO_CONFIG__` to overlay global config without editing `config.yml`. Double underscore separates path segments:
 
 ```sh
 LANDO_CONFIG__telemetry__enabled=true
 ```
 
-A single underscore inside a segment maps to a camelCase key (defaultProviderId)
+A single underscore inside a segment maps to a camelCase key:
 
 ```sh
 LANDO_CONFIG__default_provider_id
 ```
 
-JSON-parseable values are parsed into objects and arrays.
-
-Values that are not valid JSON are kept verbatim as strings.
+JSON-parseable values become objects and arrays. Values that are not valid JSON stay as strings:
 
 ```sh
 LANDO_CONFIG__default_provider_id=podman
 ```
 
-## Precedence
+## Read precedence
 
-Highest-precedence source wins for any given value.
-
-An env overlay overrides the on-disk config value.
-
-A command flag overrides an env-resolved value.
+Highest-precedence source wins. An env overlay overrides the on-disk config value. A command flag overrides an env-resolved value:
 
 ```sh
-lando <cmd> --provider=docker beats LANDO_PROVIDER=podman
+lando start --provider=docker
 ```
+
+That flag wins over `LANDO_PROVIDER=podman` for that command. `LANDO_PROVIDER` does not persist. After a successful `lando setup --provider=docker`, later commands stay on Docker without repeating the flag.
 
 A local Landofile overrides the main Landofile during merge.
 
 ## Share env files across services
 
-Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win,
-then a service's own `env_file` and `environment` values override the shared values.
+Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win, then a service's own `env_file` and `environment` values override the shared values.
 
 ```yaml
 name: env-overrides-shared
@@ -70,8 +55,7 @@ services:
       APP_STAGE: worker
 ```
 
-Lando fails with the resolved path and a fix when a declared file is missing instead of quietly
-starting services with incomplete environment values.
+Lando fails with the resolved path and a fix when a declared file is missing, instead of starting services with a half-loaded environment.
 
 <Guide>
   <Scenario id="top-level-env-file" render>
@@ -90,22 +74,12 @@ starting services with incomplete environment values.
   </Scenario>
 </Guide>
 
-## Inspect
-
-Print the resolved global config (env overlay already applied)
+## Inspect the resolved config
 
 ```sh
 lando config
-```
-
-Read a single resolved value to confirm an override took effect.
-
-```sh
 lando config get defaultProviderId
-```
-
-Emit the resolved config as JSON for scripts.
-
-```sh
 lando config --format=json
 ```
+
+`lando config` prints the resolved global config with the env overlay already applied. `lando config get` reads one key. `--format=json` is for scripts.

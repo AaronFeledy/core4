@@ -26,6 +26,14 @@ let allHtml = "";
 let buildExitCode = -1;
 let transcriptBytes: Uint8Array | undefined;
 
+/** Captured-output chrome only — Inspect's target label lives outside these blocks. */
+const capturedOutputChromeOf = (html: string): string =>
+  (
+    html.match(
+      /<(?:pre|figure)\s[^>]*class="[^"]*\blando-frame-output\b[^"]*"[^>]*>[\s\S]*?<\/(?:pre|figure)>/g,
+    ) ?? []
+  ).join("\n");
+
 beforeAll(async () => {
   // Given: fresh public transcripts with one rendered scenario intentionally left uncaptured.
   const codegen = Bun.spawnSync(["bun", "run", "codegen:guide-scenarios"], {
@@ -61,21 +69,35 @@ afterAll(async () => {
 
 describe("rendered guide transcripts", () => {
   test("renders captured run and verify frames inside their vocabulary wrappers", () => {
-    // Then: captured commands and summaries stay attached to their authored components.
+    // Then: captured commands stay attached to their authored components.
+    // Placeholder summaries (expected exit 0, command succeeds) are not published.
     expect(capturedHtml).toMatch(
-      /class="lando-run"[^>]*>[\s\S]*?lando app:config:lint --format=json[\s\S]*?expected exit 0[\s\S]*?<\/div>/,
+      /class="lando-run"[^>]*>[\s\S]*?lando app:config:lint --format=json[\s\S]*?<\/div>/,
     );
     expect(capturedHtml).toMatch(
-      /class="lando-verify"[^>]*>[\s\S]*?lando app:config:lint --format=json[\s\S]*?command &quot;lando app:config:lint --format=json&quot; succeeds[\s\S]*?<\/div>/,
+      /class="lando-verify"[^>]*>[\s\S]*?lando app:config:lint --format=json[\s\S]*?<\/div>/,
     );
+    expect(capturedHtml).not.toContain("expected exit 0");
+    expect(capturedHtml).not.toContain("command &quot;lando app:config:lint --format=json&quot; succeeds");
   });
 
-  test("renders the authored command and placeholder when a transcript is absent", () => {
-    // Then: a missing capture is visible and does not fail the build.
+  test("renders the authored command and omits empty captured-output chrome", () => {
+    // Then: a missing capture does not fail the build and does not publish a placeholder.
     expect(buildExitCode).toBe(0);
-    expect(missingHtml).toMatch(
-      /class="lando-run"[^>]*>[\s\S]*?lando start[\s\S]*?No captured output yet[\s\S]*?<\/div>/,
-    );
+    expect(missingHtml).toMatch(/class="lando-run"[^>]*>[\s\S]*?lando start[\s\S]*?<\/div>/);
+    expect(missingHtml).not.toContain("No captured output yet");
+  });
+
+  test("public HTML does not publish placeholder captured output", () => {
+    expect(allHtml).not.toContain("No captured output yet");
+    expect(allHtml).not.toMatch(/expected exit \d+/);
+    expect(allHtml).not.toContain("event &quot;post-start&quot; observed");
+
+    // Inspect's default target is authored UI (`<code>command output</code>`), not
+    // placeholder chrome. Only lando-frame-output may not publish that label.
+    expect(capturedHtml).toContain('class="lando-inspect"');
+    expect(capturedHtml).toContain(">command output<");
+    expect(capturedOutputChromeOf(allHtml)).not.toContain(">command output<");
   });
 
   test("renders step names as headings", () => {

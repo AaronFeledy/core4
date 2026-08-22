@@ -1,0 +1,17 @@
+name: your-landofile-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - hostname: app.your-landofile-demo.lndo.site
+        scheme: both
+  db:
+    type: postgres
+tooling:
+  node:
+    service: app
+    cmd: node
+  psql:
+    service: db
+    cmd: psql

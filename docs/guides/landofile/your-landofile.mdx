@@ -1,0 +1,91 @@
+---
+id: your-landofile
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile]
+---
+
+# Write a Landofile
+
+A Landofile is `.lando.yml` in the app root. Services, tooling, and proxy routes live in one file.
+
+```yaml
+name: your-landofile-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+  db:
+    type: postgres
+tooling:
+  node:
+    service: app
+    cmd: node
+  psql:
+    service: db
+    cmd: psql
+```
+
+Start it. Lando starts Traefik for you. You do not start Traefik by hand.
+
+```sh
+lando start
+lando info
+```
+
+That's the whole product in one file. The rest of this site is footnotes.
+
+## Add a hostname
+
+Most apps skip `routes:`. Default hostnames look like `app.your-landofile-demo.lndo.site`. Author extra routes when you need another name:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - hostname: app.your-landofile-demo.lndo.site
+        scheme: both
+```
+
+Top-level `proxy:` is the other spelling: a map of service name to the same route list.
+
+## Reach for other keys
+
+| Key | What it does |
+| --- | --- |
+| `events:` | Tasks at start, stop, rebuild, and destroy. |
+| `includes:` | Pull in Landofile or tooling fragments. |
+| `env_file:` | Shared `KEY=VALUE` files for every service. |
+| `environment:` | Per-service env. There is no top-level `env:` key. |
+
+## Verify
+
+```sh
+lando app:config --format=json
+lando info
+```
+
+`app:config` prints the resolved Landofile. `info` prints URLs and connection details.
+
+<Guide>
+  <Scenario id="landofile-shape" render>
+    <Step name="scaffold">
+      <UseFixture name="your-landofile-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"your-landofile-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"tooling\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Everyday commands](../cli/everyday-commands.mdx)
+- [Use the Traefik proxy](../subsystems/proxy-traefik.mdx)
+- [Run tasks at app lifecycle events](./events.mdx)
+- [Includes and the lockfile](./includes-and-lockfile.mdx)
+- [Env overrides](./env-overrides.mdx)

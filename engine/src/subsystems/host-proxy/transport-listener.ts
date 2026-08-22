@@ -1,6 +1,7 @@
-import { chmod } from "node:fs/promises";
+import { chmod, lstat } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { setImmediate as waitImmediate } from "node:timers/promises";
 
 import { Effect } from "effect";
 
@@ -58,30 +59,50 @@ const tcpListenResult = (
   });
 };
 
+const unixSocketUnavailable = (socketPath: string, cause: unknown): HostProxyTransportUnavailableError =>
+  new HostProxyTransportUnavailableError({
+    message: cause instanceof Error ? cause.message : String(cause),
+    socketPath,
+    remediation: "Ensure the app run directory is writable.",
+  });
+
+export const closeListeningServer = (server: Server): Promise<void> =>
+  new Promise((resolve) => {
+    const finish = (): void => resolve();
+    try {
+      if (typeof server.closeAllConnections === "function") {
+        server.closeAllConnections();
+      }
+      server.close(finish);
+    } catch (cause) {
+      if (!(cause instanceof Error)) {
+        finish();
+        return;
+      }
+      finish();
+    }
+  });
+
+const lockDownUnixSocket = async (socketPath: string): Promise<void> => {
+  await chmod(socketPath, 0o600);
+  // Yield so a concurrent unlink/replace is visible before we publish the session.
+  await waitImmediate();
+  const info = await lstat(socketPath);
+  if (!info.isSocket() || (info.mode & 0o777) !== 0o600) {
+    throw new Error(`Host-proxy socket at ${socketPath} is not a mode-0600 unix socket.`);
+  }
+};
+
 const secureSocket = (
   server: Server,
   paths: HostProxySessionPaths,
 ): Effect.Effect<void, HostProxyTransportUnavailableError> => {
   if (paths.transport !== "unix-socket" || paths.socketPath === undefined) return Effect.void;
   const socketPath = paths.socketPath;
-  return Effect.async<void, HostProxyTransportUnavailableError>((resume) => {
-    void chmod(socketPath, 0o600).then(
-      () => resume(Effect.void),
-      (cause) => {
-        server.close(() => {
-          resume(
-            Effect.fail(
-              new HostProxyTransportUnavailableError({
-                message: cause instanceof Error ? cause.message : String(cause),
-                socketPath,
-                remediation: "Ensure the app run directory is writable.",
-              }),
-            ),
-          );
-        });
-      },
-    );
-  });
+  return Effect.tryPromise({
+    try: () => lockDownUnixSocket(socketPath),
+    catch: (cause) => unixSocketUnavailable(socketPath, cause),
+  }).pipe(Effect.tapError(() => Effect.promise(() => closeListeningServer(server))));
 };
 
 export const listenHostProxyServer = (

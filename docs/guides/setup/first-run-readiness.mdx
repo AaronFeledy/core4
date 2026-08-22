@@ -6,45 +6,46 @@ timeout: 60000
 tags: [beta, docs, setup, readiness]
 ---
 
-# First-run readiness for the managed runtime
+# Check first-run readiness
 
-The managed runtime bundle extracts into Lando's private runtime bin
-directory, `<userDataRoot>/runtime/bin`. Runtime sockets and PID files live
-beside it under `<userDataRoot>/runtime/run` — not in system Podman or
-Docker locations. Setup records the installed runtime bin directory and
-bundle version in `provider-lando/setup-state.json` for later readiness
-checks.
+Run `lando doctor` after `lando setup`. Doctor reports whether the managed runtime is up.
 
-## Safe extraction
+```sh
+lando setup
+lando doctor
+```
 
-Bundle bytes are SHA-256 verified with `verifyRuntimeBundle` before any
-extraction work starts. The same safe entry validation covers both
-`.tar.gz` (Linux/macOS) and `.zip` (Windows) bundles. Unsafe archive
-entries — path traversal, absolute paths, symlinks, hardlinks — fail with
-remediation and leave `runtimeBinDir` untouched.
+The default provider is `lando` (managed Podman). Setup extracts a private runtime into Lando's own data directory, not into system Podman or Docker paths. On Linux that data root is `$XDG_DATA_HOME/lando` (`~/.local/share/lando`).
 
-## Installs are idempotent
+## When setup fails
 
-A `.runtime-installed-version` marker records the installed bundle version;
-a matching version skips re-extraction on the next setup run. A changed
-version installs into a sibling temp directory before replacing the old bin
-tree — temp dir plus rename, never an in-place overwrite. Runtime binaries
-and helpers (`podman`, `gvproxy`, `conmon`, `crun`/`runc`, `netavark`,
-`aardvark-dns`) install with executable bits on POSIX hosts.
+Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders.
 
-## Runtime service status
+If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
 
-`lando doctor` reports the managed `runtime-service` check from a real
-socket/PID probe, not a hardcoded running state. If the service stopped or
-got killed, the next runtime-needing command self-heals by rerunning
-`ensureRuntime` and relaunching the private socket. Setup records running
-state, socket path, PID, and runtime version in `setup/readiness.json` under
-`runtimeService`, which doctor shows as the last-recorded readiness
-context.
+If the managed runtime still cannot install and you have working system Docker:
 
-`apps:poweroff` stops the managed runtime service after app shutdown, while
-preserving keep-global and keep-scratch app filtering. Uninstall plans and
-executes runtime-service teardown before removing the private runtime
-directory, under both keep-data and purge modes. If a `runtime-service` PID
-ends up orphaned, doctor surfaces it with manual remediation rather than
-promising an unsupported `doctor --fix` path.
+```sh
+lando setup --provider=docker
+```
+
+After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. `LANDO_PROVIDER` does not persist.
+
+`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+
+## What doctor checks
+
+Doctor probes the managed runtime. If the runtime stopped, the next command that needs it starts it again.
+
+`lando poweroff` stops apps and then the managed runtime. Uninstall tears the runtime down before it removes Lando's private runtime directory.
+
+If doctor reports an orphaned runtime process, follow the printed remediation.
+
+## Verify
+
+```sh
+lando doctor
+lando --version
+```
+
+Doctor should name the provider you are on.

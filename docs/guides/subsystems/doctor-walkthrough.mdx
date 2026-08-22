@@ -6,182 +6,52 @@ timeout: 60000
 tags: [beta, docs, subsystems, doctor, diagnostics]
 ---
 
-# Doctor walkthrough
+# Run lando doctor
 
-`lando doctor` starts at bootstrap level `none`, including when you pass `--app`; that flag adds
-isolated Landofile lint and version-constraint checks without changing the command's bootstrap level.
-Doctor builds one provider runtime inside its own scope and keeps going even when that build fails, so a
-broken provider produces a diagnostic instead of aborting the whole report. Individual sections are
-isolated too: a failing, defective, or slow section is attributed and reported, while every other section
-still runs.
+```sh
+lando doctor
+```
 
-The combined subsystem check runs in a fixed order: proxy, certs, ssh, healthcheck, scanner, host-proxy,
-and finally network-trust. Pass `--app` to add Landofile lint and version-constraint checks for the
-current app, `--deprecations` to add a deprecations section, and `--format=json` or `--format=yaml` for
-machine-readable output consumed by scripts and agents. The `network-trust` and `proxy-tls` checks never
-emit proxy URLs, PEM certificate bodies, or certificate digests; any known secret segment in their context
-is replaced with `[redacted]`. See the [corporate network trust guide](../config/corporate-network-trust.mdx)
-for the CA and proxy settings doctor is validating, and run `lando setup` first, as described in the
-[provider auto-setup guide](../setup/provider-auto-setup.mdx), to produce the readiness state doctor reports.
+Doctor reports whether setup, the provider, the proxy, certs, and related checks are healthy. A failing section does not abort the rest of the report.
 
-## Subsystem checks
+Run it after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, bare `lando doctor` stays on Docker. `LANDO_PROVIDER` does not persist.
 
-Each subsystem — proxy, certs, ssh, healthcheck, scanner, host-proxy, and network-trust — reports a
-status alongside the selected provider, using a shared diagnostic record shape:
-`{ status, severity, context, solutions }`. `status` is one of `pass | warn | fail`; `severity` is one
-of `info | warn | error`.
+## Read the report
 
-| Subsystem | Degraded remediation |
+Each check is `pass`, `warn`, or `fail`. Failed checks print remediation. Most point you at `lando setup`.
+
+| Check | What to do |
 | --- | --- |
-| proxy | Run `lando setup` and start the global app to enable Traefik routing. |
-| certs | Run `lando setup` to install and trust the dev CA. |
-| host-proxy (intentionally disabled) | Informational pass with structured status context (`active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1`), not a failure. |
+| proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| certs | Run `lando setup` to install and trust the local CA. |
+| setup readiness | Rerun `lando setup` to resume the first failed step. |
 
-Degraded subsystem remediations use a `manual` solution kind, and the suggested command is
-`lando setup`.
+Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
-Certs status is resolved through the optional `CertificateAuthorityResolver` service (via
-`Effect.serviceOption`), not a hard subsystem requirement — the check reflects resolver/plugin
-availability, not the mkcert binary or trust-store install state:
+`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
 
-- A successful resolve reports a pass with the winning candidate's plugin id and no extra context keys.
-- `certsReason=unavailable` — no candidate authority is registered; `certsDetail` carries the redacted
-  `NoCertificateAuthorityError` message and remediation.
-- `certsReason=ambiguous` — more than one authority plugin is registered; `certsCandidateIds` is a
-  comma-joined, redacted list of candidate ids.
-- `certsReason=load-failed` — the resolver plugin itself failed to load, or the resolver defected;
-  `certsPlugin` is `unknown` for a bare resolver defect.
+## Check the current app
 
-Every degraded certs status keeps the manual `lando setup` remediation used to install and trust the
-dev CA.
+```sh
+lando doctor --app
+```
 
-## Host-proxy transport checks
+That adds Landofile lint and version-constraint checks for this app. A missing or invalid Landofile shows up as its own section. The rest of the report still runs.
 
-`host-proxy-transport` reports one informational or warning check per persisted app host-proxy
-worker. Host-proxy reachability uses persisted worker ownership plus the authenticated production
-control endpoint. Transports are `unix-socket` or `tcp-host-gateway`: Unix requires the authenticated
-endpoint to be a socket with mode `0600`; current TCP records run `lando open --print` in a sorted
-persisted eligible service against the persisted container URL, and any schema-valid `app:open`
-result or error envelope proves transport reachability.
+## Machine-readable output
 
-Worker state — `absent | current | legacy | malformed | unreadable` — governs what's reported: a
-missing worker root or `worker.json` stays silent; an unreadable worker root or malformed
-`worker.json` emits a redacted `host-proxy-state` warning; legacy Unix behavior is preserved. A
-worker owned by another provider is never executed through the selected provider and is reported as
-informational without remediation. Current or legacy TCP records missing provider/container/probe
-metadata are persisted pre-upgrade artifacts and stay informational without restart remediation
-(`not-probed`).
+```sh
+lando doctor --format=json
+lando doctor --format=yaml
+```
 
-`control-probe-failed` and `container-probe-failed` distinguish authenticated worker-control failures
-from failed in-container `app:open` probes. Diagnosis is bounded — 32 sorted workers, 8 sorted probe
-services, a 15 second aggregate budget — and hitting a cap stops diagnosis without turning unprobed
-work into a warning. A separate `host-proxy-allowlist` warning with codegen remediation appears when
-the generated `runLando` allowlist differs from `hostProxyAllowed` metadata in the literal compiled
-manifest. With a fresh generated allowlist and no persisted host-proxy worker, there's no host-proxy
-diagnostic at all. An unreachable authenticated bridge reports structured `lando restart` remediation.
+Use those formats in scripts. Doctor redacts secrets, certificate bodies, and proxy URLs.
 
-## Network trust checks
+## Verify
 
-`network-trust` is the last subsystem check in the combined order. A pass/info result exposes only
-these safe, boolean/count-shaped context keys, in this exact order: `caConfigured`, `caCount`,
-`caLoaded`, `caTrustHost`, `caInjectIntoServices`, `proxyConfigured`, `proxyInjectIntoServices`,
-`noProxyCount`.
+```sh
+lando doctor
+lando --version
+```
 
-An unreadable configured CA path, or a malformed `LANDO_NETWORK_CA_CERTS` environment array, both
-resolve to a warn status with context `{ failure: 'missing-custom-ca', message, remediation }`, and
-every network-trust warning carries the manual `lando setup` remediation. A configured, loaded CA
-with `caInjectIntoServices` or `caTrustHost` turned off stays an informational pass — disabling
-injection is not itself a failure. The check never emits proxy URLs (credentials included), PEM
-certificate bodies, or certificate digests; an unreadable CA path preserves its path shape while any
-known secret segment is replaced with `[redacted]`.
-
-## Proxy TLS checks
-
-`proxy-tls` is a plugin-contributed check (through the `doctorChecks` seam) that reports one
-pass/warn result only when a persisted app has at least one HTTPS route. A warn result sets
-`runtimeStatus=tls-material-missing` when the default certificate or an app's certificate is missing
-or unreadable. Its context carries `proxyId`, `httpsApps`, `defaultTlsConfig`, `defaultCertificate`,
-and `appsMissingCertificates`; the warn remediation names `lando setup` and configuring an active
-`CertificateAuthority` plugin. The check emits nothing when no persisted app has an HTTPS route, so
-HTTP-only projects stay silent.
-
-## Running without a live app or provider
-
-Doctor's `meta:doctor` command stays at bootstrap `none`; `--app` adds isolated Landofile checks
-without switching to app bootstrap. Doctor safely builds one provider runtime whose scope remains open
-for every runtime-dependent report section. A provider runtime build failure produces an empty
-provider section and structured remediation instead of aborting the report; sections that don't
-require the provider runtime (subsystems, global-app, mcp, optional app checks) still run.
-
-The subsystem diagnostics require only five subsystem service tags — `ProxyService`, `SshService`,
-`HealthcheckRunner`, `UrlScanner`, `HostProxyService` — no `AppPlanner` or app context. Certs is
-resolved separately through the optional `CertificateAuthorityResolver` service and is not one of the
-five required tags.
-
-Doctor's resilience runs deep: a failed section contributes its fallback plus one `doctor-self` check
-naming the section and reason (`failure | defect | timeout`) while other sections continue. Arbitrary
-failure detail is redacted before the bounded message reaches any report format. Self checks appear in
-machine output and summary counts, and make the doctor command exit non-zero. Each contributed check
-has its own isolation and `plugin-check:<id>` context, including when sibling checks run concurrently
-— a hanging or throwing contribution cannot abort built-in or sibling diagnostics, and a throwing
-relevance predicate drops only that contribution. Ctrl-C cancels the whole doctor run, while a section
-that interrupts itself is attributed as a section defect; section and provider-runtime resources
-remain scoped and finalize when work times out, the report completes, or caller cancellation closes
-the run.
-
-## App-scoped checks
-
-`lando doctor --app` reads the current app's Landofile from disk and reuses the
-`app:config:lint` implementation, adding an `app-config-lint: pass | fail` section that reports
-whether the current app's Landofile passes canonical-schema validation. Violations use the same text
-formatting as `lando app:config:lint`. A missing Landofile is reported in the `app-config-lint`
-section instead of aborting the whole doctor report.
-
-`lando doctor --app` also adds an `app-version-constraint: pass | warn | fail` check when the current
-app declares `lando:` or the skip env is active. It fails for unsatisfied constraints, warns when
-`LANDO_SKIP_VERSION_CONSTRAINT=1` is active, and passes when declared ranges are satisfied. Structured
-context (`runningVersion`, `declared`, `unsatisfied`, `skipped`, `skipEnv`) carries source-layer
-provenance and the invocation-scoped skip state, and remediation matches the tagged command failure:
-run `lando update` or edit the Landofile's `lando:` range.
-
-## Setup readiness and runtime OOM
-
-`lando setup` writes a persisted readiness summary to `<userDataRoot>/setup/readiness.json`; doctor
-reports the latest setup readiness state as a dedicated `setup-readiness` check, exposing each setup
-step's status (`provider`, `ca`, `proxy`, `shell`, `file-sync`) in structured context. The file-sync
-step reports installed only when the managed Mutagen binary and pinned marker
-(`$LANDO_DATA_DIR/bin/mutagen` + `.mutagen-installed-version`) match. Failed or unavailable setup
-steps surface the manual remediation: "Rerun `lando setup` to resume or repair the first failed setup
-step."
-
-`runtime-oom` reads provider-recorded container-died events and only reports containers with
-`OOMKilled` set, adding a failing `runtime-oom` check and marking `runtime.running=false` and
-`runtime.oomKilled=true` for machine-output consumers. Structured context (`containerName`, `image`,
-`exitCode`, `app`, `service`) correlates the died event to the affected app/service while redacting
-credential-bearing values. Doctor gives an OOM-specific memory remediation instead of a generic
-provider-not-running message: "Increase runtime memory or inspect the affected service with
-`lando logs`."
-
-## Deprecations and MCP
-
-`lando doctor --deprecations` adds a `deprecations` section listing deprecated surfaces used by the
-current app and loaded plugins. When none are registered, text output reports: "No deprecations were
-used or registered for the app." Text output otherwise shows one row per deprecated surface — `kind`,
-`id`, `severity`, `since`, `removeIn`, `replacement`, `note`, `docsUrl`, `source`, `count` — and
-`--format=json`/`--format=yaml` include the same data while suppressing separate deprecation warning
-diagnostics.
-
-`lando doctor` also includes an `mcp: pass | fail` section reporting whether the default allowlist
-cache, catalog generation, and canary tool round-trip are healthy, with structured fields
-(`allowlistFresh`, `allowlistSize`, `catalogGenerated`, `catalogTools`, `canaryRoundTrip`,
-`canaryRedacted`) for machine-output consumers. Doctor dispatches an in-memory canary tool and
-verifies its planted secret is redacted before output.
-
-<Guide>
-  <Scenario id="doctor-app-config-check" render={false} reason="Every doctor section above is covered by focused doctor-report, doctor-certs-status, doctor-mcp, and resilience unit tests against synthetic providers and test runtimes; a live combined report needs the global app and a running provider. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+Doctor should name the provider you selected.

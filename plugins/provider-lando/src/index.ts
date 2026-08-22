@@ -33,7 +33,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { bringDown } from "./bring-down.ts";
 import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
@@ -87,11 +87,13 @@ import {
   setupProviderLando,
 } from "./setup.ts";
 import { runSmokeReadinessProbe } from "./smoke-probe.ts";
+import { hasHostSystemd } from "./user-systemd-session.ts";
 import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
 export {
   appliedPlanPath,
   appliedPlansDir,
+  listAppliedPlans,
   loadAppliedPlan,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -135,7 +137,12 @@ export type {
   VolumePruneReport,
 } from "./volume-prune.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
-export { bringUp, scratchLabelsForPlan } from "./bring-up.ts";
+export {
+  bringUp,
+  isManagedNftMissingMessage,
+  scratchLabelsForPlan,
+  startFailureRemediation,
+} from "./bring-up.ts";
 export { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 export type { BringUpOptions } from "./bring-up.ts";
 export { podmanComposeKnobs } from "./compose-knobs.ts";
@@ -249,6 +256,15 @@ export type {
   RuntimeBundleManifest,
 } from "./runtime-bundle.ts";
 
+export {
+  NFT_MANIFEST,
+  NFT_TOOL_VERSION,
+  ensureManagedNft,
+  hasUsableManagedNft,
+  managedNftBinPath,
+} from "./nft-provision.ts";
+export type { EnsureManagedNftOptions, NftManifest } from "./nft-provision.ts";
+
 export { probeRuntimeServiceStatus, teardownRuntimeService } from "./runtime-status.ts";
 export type { RuntimeServiceStatus, RuntimeStatusDeps } from "./runtime-status.ts";
 
@@ -324,8 +340,10 @@ export interface ProviderLayerOptions {
   readonly arch?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
+  readonly nftCacheDir?: string;
   readonly stateDir?: string;
   readonly appliedPlanState?: PluginStateStore;
+  readonly appliedPlanStateDir?: string;
   readonly runtimeBinDir?: string;
   readonly runtimeRunDir?: string;
   readonly runtimeStorageDir?: string;
@@ -456,6 +474,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   readiness: (body) => progress.run("readiness", body),
                 },
               }),
+          ...(options.artifactDownload !== undefined &&
+          options.nftCacheDir !== undefined &&
+          runtimeBinDir !== undefined &&
+          family === "linux"
+            ? {
+                nftProvision: {
+                  download: options.artifactDownload,
+                  cacheDir: options.nftCacheDir,
+                  ...(arch === undefined ? {} : { arch }),
+                },
+              }
+            : {}),
         })
       : Effect.void;
   const ensureEffect = ensureEffectFor();
@@ -501,6 +531,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       ? Effect.void
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
+
+  const hydratePlansFromDisk: Effect.Effect<void> =
+    options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+      ? Effect.void
+      : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+          Effect.tap((diskPlans) =>
+            Effect.sync(() => {
+              for (const diskPlan of diskPlans) {
+                if (!plans.has(diskPlan.id)) {
+                  plans.set(diskPlan.id, diskPlan);
+                }
+              }
+            }),
+          ),
+          Effect.asVoid,
+        );
 
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
@@ -584,6 +630,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
               user: process.env.USER,
+              hasSystemd: hasHostSystemd(),
             })
           : Effect.succeed({ providerId, changes: [] }),
       setup: (plan: ProviderSetupPlan, setupOptions) =>
@@ -594,6 +641,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
             ...(options.artifactDownload === undefined ? {} : { artifactDownload: options.artifactDownload }),
+            ...(options.artifactDownload !== undefined && options.nftCacheDir !== undefined
+              ? {
+                  nftArtifactDownload: options.artifactDownload,
+                  nftCacheDir: options.nftCacheDir,
+                }
+              : {}),
             platform,
             ...(arch === undefined ? {} : { arch }),
             ...(() => {
@@ -625,10 +678,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                           probes: rootlessProbes,
                           privilege: setupOptions.privilege,
                           user: process.env.USER,
+                          hasSystemd: hasHostSystemd(),
                         }).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {
-                              const failure = classifyRootlessFailure(rootlessProbes.probe());
+                              const failure = classifyRootlessFailure(rootlessProbes.probe(), undefined, {
+                                hasSystemd: hasHostSystemd(),
+                              });
                               return failure === undefined ? Effect.void : Effect.fail(failure);
                             }),
                           ),
@@ -808,7 +864,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         }),
       list: (filter) =>
         ensureEffect.pipe(
-          Effect.zipRight(
+          Effect.zipRight(hydratePlansFromDisk),
+          Effect.flatMap(() =>
             Effect.forEach(Array.from(plans.values()), (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>
                 inspect(
@@ -943,6 +1000,7 @@ export const plugin = definePlugin({
               platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
+              appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
               runtimeBinDir: paths.runtimeBinDir,
               runtimeRunDir: paths.runtimeRunDir,
               runtimeStorageDir: paths.runtimeStorageDir,
@@ -950,6 +1008,7 @@ export const plugin = definePlugin({
               providerSocketPath: paths.providerSocketPath,
               providerPidPath: paths.providerPidPath,
               artifactDownload: makePluginArtifactDownload(downloader),
+              nftCacheDir: paths.toolDownloadsDir("nft"),
               logFileHelperPayloads,
               sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
               ...runtimeState,

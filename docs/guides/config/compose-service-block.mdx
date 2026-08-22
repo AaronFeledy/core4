@@ -5,10 +5,31 @@ timeout: 90000
 tags: [beta, docs, config, compose]
 ---
 
-# Compose service block
+# Paste a Compose service into a Landofile
 
+Put `type: compose` on a service and keep the Compose keys the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) accepts. `extra_hosts`, published `ports`, and `depends_on` conditions all survive into the plan.
 
-Use the disposition and remediation details in the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) when porting additional Compose keys.
+`configs:` grants are realized as read-only binds. Declare the file at the top level, grant it onto a service with `source` / `target` / `mode`, and the bundled providers mount it. Handy for a drop-in `php.ini` without a bind-mount workaround.
+
+```yaml
+name: compose-service-block-demo
+services:
+  cache:
+    type: compose
+    image: valkey/valkey:8-alpine
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    ports:
+      - target: 80
+        published: "8080"
+        protocol: tcp
+    depends_on:
+      cache:
+        condition: service_started
+    extra_hosts:
+      - "internal.test:127.0.0.1"
+```
 
 <Guide>
   <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>
@@ -42,6 +63,24 @@ Use the disposition and remediation details in the [generated Compose key matrix
     </Step>
     <Step name="cleanup-remediation">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="configs-phpini" render>
+    <Step name="scaffold">
+      <UseFixture name="compose-configs-phpini" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpini\"[\\s\\S]*zz-custom\\.ini" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: compose-configs-phpini" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>

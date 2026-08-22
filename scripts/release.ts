@@ -15,7 +15,8 @@ import {
   checkRuntimeBundleManifestInvariant,
   resolveManifestRepository,
 } from "./check-runtime-bundle-manifest.ts";
-import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform, releaseBinaryFileName } from "./ci-platforms.ts";
+import { resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
 
@@ -142,7 +143,7 @@ const hasMacosPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
   platforms.some((platform) => platform.id.startsWith("darwin-"));
 
 const hasWindowsPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
-  platforms.some((platform) => platform.id === "windows-x64");
+  platforms.some((platform) => isWindowsCiPlatform(platform));
 
 const targetFlags = {
   "--all": "all",
@@ -528,7 +529,7 @@ const manifestSigningScript = (env: ReleaseEnvironment, platforms: ReadonlyArray
   ].join("\n");
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
-  `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+  `./dist/${releaseBinaryFileName(platform)}`;
 
 interface ReleaseBinarySignatureArtifact {
   readonly binaryPath: string;
@@ -693,7 +694,15 @@ const releaseBinaryVerificationNotesScript = (
     "LANDO_RELEASE_NOTES",
   ].join("\n");
 
-const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO_RELEASE_VERSION") ?? "0.0.0";
+const configuredReleaseVersion = (env: ReleaseEnvironment): string | undefined =>
+  envValue(env, "LANDO_RELEASE_VERSION");
+
+const releaseVersion = (env: ReleaseEnvironment): string =>
+  configuredReleaseVersion(env) ??
+  resolveCompiledBinaryVersion({
+    env,
+    cwd: resolve(import.meta.dirname, ".."),
+  });
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
@@ -955,58 +964,68 @@ const provenanceCosignCommands = (
     cosignSignAndVerifyBlobCommands(env, provenancePath, `${provenancePath}.sig`, `${provenancePath}.crt`),
   );
 
-const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const windowsReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  platforms
+    .filter((platform) => isWindowsCiPlatform(platform))
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map(releaseBinaryPath);
+
+const windowsSigningCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
   const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
   const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
   const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
-  const binaryPath = releaseBinaryPath({ id: "windows-x64" });
-  const signaturePath = `${binaryPath}.sig`;
-  const certificatePath = `${binaryPath}.crt`;
 
-  return [
-    [
-      "signtool",
-      "sign",
-      "/tr",
-      timestampUrl,
-      "/td",
-      "sha256",
-      "/fd",
-      "sha256",
-      "/f",
-      certificate,
-      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
-      binaryPath,
-    ],
-    [
-      "cosign",
-      "sign-blob",
-      "--yes",
-      "--output-signature",
-      signaturePath,
-      "--output-certificate",
-      certificatePath,
-      binaryPath,
-    ],
-    ["signtool", "verify", "/pa", "/v", binaryPath],
-    [
-      "cosign",
-      "verify-blob",
-      "--certificate-identity-regexp",
-      certificateIdentityRegexp,
-      "--certificate-oidc-issuer",
-      COSIGN_OIDC_ISSUER,
-      "--signature",
-      signaturePath,
-      "--certificate",
-      certificatePath,
-      binaryPath,
-    ],
-  ];
+  return windowsReleaseArtifactPaths(platforms).flatMap((binaryPath) => {
+    const signaturePath = `${binaryPath}.sig`;
+    const certificatePath = `${binaryPath}.crt`;
+    return [
+      [
+        "signtool",
+        "sign",
+        "/tr",
+        timestampUrl,
+        "/td",
+        "sha256",
+        "/fd",
+        "sha256",
+        "/f",
+        certificate,
+        ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
+        binaryPath,
+      ],
+      [
+        "cosign",
+        "sign-blob",
+        "--yes",
+        "--output-signature",
+        signaturePath,
+        "--output-certificate",
+        certificatePath,
+        binaryPath,
+      ],
+      ["signtool", "verify", "/pa", "/v", binaryPath],
+      [
+        "cosign",
+        "verify-blob",
+        "--certificate-identity-regexp",
+        certificateIdentityRegexp,
+        "--certificate-oidc-issuer",
+        COSIGN_OIDC_ISSUER,
+        "--signature",
+        signaturePath,
+        "--certificate",
+        certificatePath,
+        binaryPath,
+      ],
+    ];
+  });
 };
 
-const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<string> => [
+const compileCommand = (platform: CiPlatform, version?: string): ReadonlyArray<string> => [
   "bun",
   "run",
   "scripts/build-compiled-binary.ts",
@@ -1014,8 +1033,7 @@ const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<st
   platform.bunTarget,
   "--outfile",
   releaseBinaryPath(platform),
-  "--version",
-  version,
+  ...(version === undefined ? [] : ["--version", version]),
   "--minify",
   "--sourcemap=external",
 ];
@@ -1029,7 +1047,8 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
   const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
-  const version = releaseVersion(context.env);
+  // Omit --version when unset so the stamp resolver derives a real 4.x instead of 0.0.0.
+  const version = configuredReleaseVersion(context.env);
 
   await context.runner.spawn({
     stageId: "7-compile",
@@ -1249,7 +1268,7 @@ const platformSigningPlans: ReadonlyArray<PlatformSigningPlan> = [
     selected: hasWindowsPlatform,
     credentialLabel: "Windows signing credentials",
     credentials: windowsSigningCredentials,
-    commands: (env) => windowsSigningCommands(env),
+    commands: windowsSigningCommands,
   },
 ];
 

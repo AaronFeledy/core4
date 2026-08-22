@@ -1,9 +1,10 @@
 /**
  * `lando meta:setup` prepares the host provider, CA, proxy, and shell integration.
  *
- * Provider selection uses `flag > Landofile > env > config > capability-default`.
- * This command skips Landofile loading, so the effective inputs are
- * `--provider > LANDO_PROVIDER > config > default`.
+ * Setup ignores leftover `defaultProviderId` in user config so a last-used
+ * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
+ * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
+ * App commands may still honor leftover config as a last-used hint.
  */
 import { Effect } from "effect";
 
@@ -57,6 +58,7 @@ import {
 } from "./setup-provider-selection";
 import { runCaSetupStep, runProxySetupStep, runShellServiceSetupStep } from "./setup-service-steps";
 import {
+  SetupStepFailedError,
   ShellProfileIntegrationError,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
@@ -66,7 +68,7 @@ import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-
 
 export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
+export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
 const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, never> =>
   Effect.gen(function* () {
@@ -122,7 +124,6 @@ export const setupSpec: LandoCommandSpec<
       const resolution = resolveProviderSelection({
         ...(flag === undefined ? {} : { flag }),
         ...(env === undefined ? {} : { env }),
-        ...(config === undefined ? {} : { config }),
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       });
 
@@ -151,7 +152,9 @@ export const setupSpec: LandoCommandSpec<
         Effect.tapError((cause) => recorder.recordFailure("network", cause)),
       );
 
-      // Track if provider selection came from --provider flag to persist it
+      // Persist an explicit --provider as a last-used hint for doctor / start /
+      // planner / app commands. Setup itself still ignores leftover
+      // defaultProviderId so a later `lando setup --yes` stays on lando.
       const shouldPersistProvider = flag !== undefined && flag !== config;
 
       if (!inputBooleanFlag(input, "skip-provider")) {
@@ -209,9 +212,9 @@ export const setupSpec: LandoCommandSpec<
         });
       }
 
-      yield* runCaSetupStep(input, privilegeOptions, recorder);
-      yield* runProxySetupStep(input, recorder);
-      yield* runShellServiceSetupStep(input, recorder);
+      yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId);
+      yield* runProxySetupStep(input, recorder, selectedProviderId);
+      yield* runShellServiceSetupStep(input, recorder, selectedProviderId);
 
       if (shouldDisableHostProxyForSetup(input)) {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
@@ -242,6 +245,21 @@ export const setupSpec: LandoCommandSpec<
         network,
         recorder,
       });
+
+      const failedStep = recorder.firstFailedStep();
+      if (failedStep !== undefined) {
+        const setupCommand =
+          selectedProviderId in SYSTEM_RUNTIME_PROVIDERS
+            ? `lando setup --provider=${selectedProviderId}`
+            : "lando setup";
+        return yield* Effect.fail(
+          new SetupStepFailedError({
+            stepId: failedStep.id,
+            message: failedStep.evidence,
+            remediation: failedStep.remediation ?? `Rerun \`${setupCommand}\` to resume host setup.`,
+          }),
+        );
+      }
 
       const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
 

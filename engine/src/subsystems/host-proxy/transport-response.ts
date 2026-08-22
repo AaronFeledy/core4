@@ -19,6 +19,7 @@ export const writeTransportResponse = (
   payload: ReturnType<typeof errorResponse> | WireOk,
   options: { readonly close?: boolean } = {},
 ): void => {
+  if (response.destroyed || response.writableEnded) return;
   if (options.close === true) response.shouldKeepAlive = false;
   response.writeHead(status, {
     "content-type": "application/x-ndjson",

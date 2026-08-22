@@ -77,7 +77,7 @@ const listenTcp = (server: Server): Promise<number> =>
     });
   });
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -94,6 +94,8 @@ describe("provider-docker capabilities", () => {
 
     expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
     expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(linux.artifactPull).toBe(true);
+    expect(macos.artifactPull).toBe(true);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(linux.architectureEmulation).toBe(false);
@@ -103,8 +105,8 @@ describe("provider-docker capabilities", () => {
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(linux.composePreservedPaths).toBeUndefined();
     expect(macos.composePreservedPaths).toBeUndefined();
-    expect(linux.composeProjectFields).toBeUndefined();
-    expect(macos.composeProjectFields).toBeUndefined();
+    expect(linux.composeProjectFields).toEqual({ supported: ["configs"] });
+    expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
   test("classifies Docker host bind mount performance", () => {
@@ -386,11 +388,12 @@ describe("provider-docker capabilities", () => {
     const windows = dockerCapabilitiesForPlatform("win32");
 
     expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
+    expect(windows.artifactPull).toBe(true);
     expect(windows.bindMountPerformance).toBe("slow");
     expect(windows.bindMounts).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
     expect(windows.composePreservedPaths).toBeUndefined();
-    expect(windows.composeProjectFields).toBeUndefined();
+    expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
     expect(windows).toEqual(windowsDockerCapabilities);
   });
 

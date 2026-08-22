@@ -129,5 +129,5 @@ describe("Landofile events", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });

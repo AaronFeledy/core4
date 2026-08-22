@@ -34,6 +34,8 @@ jobs:
             runs-on: ubuntu-26.04
           - platform: windows-x64
             runs-on: windows-2022
+          - platform: windows-arm64
+            runs-on: windows-11-arm
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -55,6 +57,9 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      - name: Audit dependencies
+        run: bun run audit
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -90,6 +95,29 @@ jobs:
             exit 1
           fi
           echo "static-checks platform matrix passed"
+
+  bun-install-isolated-experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Isolated global-store install experiment
+        run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::bun-install-isolated-experiment completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   unit-tests-linux-x64-shard:
     strategy:
@@ -860,6 +888,58 @@ jobs:
         run: |
           echo "::notice title=ci-timing::guide-scenarios-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
+  guide-scenarios-windows-arm64:
+    needs: [static-checks]
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
   build-darwin-arm64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
     runs-on: macos-15
@@ -1180,6 +1260,71 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::build-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+
+  build-windows-arm64:
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]
+    runs-on: windows-11-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Linux sidecars from Linux artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: lando-linux-x64
+          path: linux-sidecars
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Build windows-arm64 binary
+        run: |
+          mkdir -p dist
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-arm64.exe
+
+      - name: Smoke test binary
+        run: |
+          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-arm64.exe
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: windows-arm64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Upload windows-arm64 binary
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: lando-windows-arm64
+          path: |
+            dist/lando-windows-arm64.exe
+            dist/host-proxy/**
+            dist/log-file-access/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::build-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   runtime-bundle-linux-x64:
     runs-on: ubuntu-24.04
@@ -1780,3 +1925,55 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::provider-integration-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+
+  provider-integration-windows-arm64:
+    needs: [build-windows-arm64]
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Download windows-arm64 binary artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: lando-windows-arm64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando-windows-arm64.exe
+
+      - name: Run provider contract tests
+        run: |
+          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
+          bun test plugins/provider-lando/test/contract.integration.test.ts
+          bun test plugins/provider-docker/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/capabilities.test.ts
+
+      - name: Upload provider integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: provider-integration-diagnostics-windows-arm64
+          path: provider-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::provider-integration-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"

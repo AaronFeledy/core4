@@ -6,82 +6,93 @@ timeout: 120000
 tags: [beta, docs, providers, setup, selection]
 ---
 
-# Provider selection
+# Pick a container provider
 
-## Provider selection precedence
+Run `lando setup`, then `lando doctor`. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
 
-Lando picks a provider from the highest-priority input available, in this order:
+If that setup fails, switch to system Docker. That is the supported Linux fallback, not an advanced preference.
 
-```
---provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)
-```
+## Fall back to Docker
 
-Force a specific provider for the current command:
+You need working system Docker.
+
+1. Run setup with Docker:
 
 ```sh
-lando setup --provider=podman
+lando setup --provider=docker
 ```
 
-Or override the active provider for a single shell:
+Or set the provider for this shell:
+
+```sh
+LANDO_PROVIDER=docker lando setup
+```
+
+2. Verify:
+
+```sh
+lando doctor
+```
+
+After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
+
+`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
+
+`lando setup` and `lando setup --yes` with no `--provider` still ignore leftover `defaultProviderId` in user config, so a leftover Docker value does not pick Docker on setup. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+
+System `podman` is also opt-in with `--provider=podman`. It needs an existing Podman install. Setup fails with remediation if that runtime is missing. It does not install Docker or Podman for you.
+
+## Override the provider
+
+Setup (`lando setup`, including `--yes`) uses:
+
+```
+--provider > LANDO_PROVIDER > capability default (lando)
+```
+
+App commands (`lando start`, `lando doctor`) use:
+
+```
+--provider > Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
+```
+
+Force Docker for one command:
+
+```sh
+lando start --provider=docker
+```
+
+Or for one shell:
 
 ```sh
 LANDO_PROVIDER=docker lando start
 ```
 
-## Doctor reports resolution
+## Resolve a provider conflict
 
-Plain-text fields surfaced by `lando doctor`
-
-NDJSON shape on every selected-provider check.
-
-## CI managed lando default
-
-linux-x64 provider-integration CI selects the lando capability default through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET.
-
-CI provider-integration-linux-x64 runs dist/lando setup --yes --provider=lando and resolves the managed socket from Paths for contract and integration suites.
-
-Local rehearsal may still point live tests at a manual socket when the managed runtime is unavailable.
+If `lando doctor` reports a conflict between the managed Lando runtime and system Podman, pick one provider explicitly:
 
 ```sh
-LANDO_TEST_PODMAN_SOCKET
+lando setup --provider=lando
 ```
 
-## Lando podman socket conflict
-
-Reported in the provider-conflict check context (`provider-lando-podman-socket`).
-
-provider-lando records its bound Podman socket here when set up (`$LANDO_DATA_DIR/providers/provider-lando/setup-state.json`).
-
-Pick one provider explicitly to resolve the ambiguity.
+or, when you already have system Docker:
 
 ```sh
-lando setup --provider=podman or lando setup --provider=lando
+lando setup --provider=docker
 ```
 
-## Lando managed runtime paths
-
-provider-lando installs verified runtime bundle binaries in Lando's private runtime bin directory (`$LANDO_DATA_DIR/runtime/bin`).
-
-provider-lando resolves the managed Podman socket from Paths instead of a system Podman location (`$LANDO_DATA_DIR/runtime/run/podman.sock`).
-
-Setup state records the installed runtime version and runtimeBinDir for doctor and later provider resolution (`$LANDO_DATA_DIR/providers/provider-lando/setup-state.json`).
-
-Runtime bundle extraction fails closed before install when gzip or zip inflation exceeds the default decompressed-size cap; tests may override the cap with this environment variable.
+or, when you already have system Podman:
 
 ```sh
-LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES
+lando setup --provider=podman
 ```
 
-provider-lando ships managed runtime bundles only for hosts supported by Podman 6; Intel macOS (darwin-x64) fails setup with remediation instead of downloading a bundle.
+## Verify with lando doctor
 
-## Provider data plane capabilities
+```sh
+lando doctor
+lando --version
+```
 
-provider-lando advertises native volume snapshots through the managed runtime data plane.
-
-provider-docker and provider-podman advertise copy-mode volume snapshots over their Docker-compatible APIs.
-
-All bundled providers advertise native service file copy for host↔container byte movement.
-
-All bundled providers advertise image artifact import and export when their runtime API is available (`enabled`).
-
-Bundled providers only advertise service log source following when the host injects log-file access; generic provider contracts still use runtime logs when that capability is false.
+Doctor should name the provider you selected. After `lando setup --provider=docker`, bare `lando doctor` should report Docker.

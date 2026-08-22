@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import type { Context, Effect, Fiber } from "effect";
+import type { Context, Fiber } from "effect";
 
 import type { AppRef } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
@@ -12,6 +12,7 @@ import type { HostProxyTransportKind } from "./transport.ts";
 export interface HostProxyInFlightRequest {
   readonly fiber: Fiber.RuntimeFiber<void, never>;
   readonly response: ServerResponse;
+  readonly releaseSlot: () => void;
 }
 
 export interface HandlerOptions {
@@ -23,7 +24,7 @@ export interface HandlerOptions {
   readonly maxDepth: number;
   readonly concurrency: number;
   readonly bodyReadTimeoutMs: number;
-  readonly semaphore: Effect.Semaphore;
+  readonly slots: { count: number };
   readonly inFlight: Set<HostProxyInFlightRequest>;
   readonly session: {
     readonly appId: string;

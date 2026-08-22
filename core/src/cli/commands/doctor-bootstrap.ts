@@ -23,6 +23,7 @@ import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-statu
 import { collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
+import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
@@ -77,6 +78,17 @@ const collectResilientDoctorReport = (
           context === undefined
             ? Effect.succeed({ entries: [] })
             : doctorDeprecations().pipe(Effect.provide(context)),
+        ...(context === undefined
+          ? {}
+          : {
+              // First provide in the pipe wins: selected Traefik/SSH overlay the
+              // unavailable stubs in DefaultSubsystemDoctorLayer.
+              subsystems: (subsystemOptions) =>
+                subsystemDoctor(subsystemOptions).pipe(
+                  Effect.provide(context),
+                  Effect.provide(DefaultSubsystemDoctorLayer),
+                ),
+            }),
         ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
       }).pipe(Effect.provide(ConfigServiceLive));
     }),

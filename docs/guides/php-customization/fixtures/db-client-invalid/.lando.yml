@@ -1,0 +1,6 @@
+name: php-db-client-invalid
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    db_client: "nope"

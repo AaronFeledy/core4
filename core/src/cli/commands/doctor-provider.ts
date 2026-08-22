@@ -32,6 +32,21 @@ export const SETUP_REMEDIATION: DoctorSolution = {
   command: "lando setup",
 };
 
+const SYSTEM_RUNTIME_SETUP_PROVIDERS = new Set(["docker", "podman"]);
+
+export const setupCommandForProvider = (providerId: string): string =>
+  SYSTEM_RUNTIME_SETUP_PROVIDERS.has(providerId) ? `lando setup --provider=${providerId}` : "lando setup";
+
+export const setupRemediationFor = (providerId: string): DoctorSolution => {
+  if (!SYSTEM_RUNTIME_SETUP_PROVIDERS.has(providerId)) return SETUP_REMEDIATION;
+  const command = setupCommandForProvider(providerId);
+  return {
+    kind: "manual",
+    description: `Selected runtime provider is not running. Run \`${command}\` to prepare that runtime, then retry.`,
+    command,
+  };
+};
+
 export const UNKNOWN_PROVIDER_VERSION = "unknown";
 
 export const providerStubFor = (providerId: string): PluginDoctorProvider => ({
@@ -72,7 +87,7 @@ export const providerUnavailableCheck = (input: {
     runtime: { running: false, message },
     capabilities: {},
     context,
-    solutions: [SETUP_REMEDIATION],
+    solutions: [setupRemediationFor(input.providerId)],
     selection: input.selection,
   };
 };
@@ -154,7 +169,7 @@ export const diagnosePrimaryProvider = (input: {
       runtime,
       capabilities,
       context,
-      solutions: statusKnown && status.running ? [] : [SETUP_REMEDIATION],
+      solutions: statusKnown && status.running ? [] : [setupRemediationFor(provider.id)],
       selection: input.selection,
     },
     providerKind,

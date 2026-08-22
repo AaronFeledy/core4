@@ -1,0 +1,9 @@
+flags:
+  yes: yes
+  no: no
+  on: on
+  off: off
+  y: y
+  Y: Y
+  true: true
+  false: false

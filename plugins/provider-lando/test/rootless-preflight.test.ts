@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  CGROUPS_V2_DELEGATION_NO_SYSTEMD_REMEDIATION,
   RootlessPrerequisiteError,
   type RootlessProbeResults,
   classifyRootlessFailure,
@@ -19,8 +20,8 @@ const allSatisfied: RootlessProbeResults = {
   hasXdgRuntimeDir: true,
 };
 
-const classify = (overrides: Partial<RootlessProbeResults>) =>
-  classifyRootlessFailure({ ...allSatisfied, ...overrides });
+const classify = (overrides: Partial<RootlessProbeResults>, host?: { readonly hasSystemd?: boolean }) =>
+  classifyRootlessFailure({ ...allSatisfied, ...overrides }, undefined, host);
 
 describe("rootless preflight", () => {
   test("classifyRootlessFailure flags missing subuid/subgid with usermod remediation", () => {
@@ -59,11 +60,23 @@ describe("rootless preflight", () => {
   });
 
   test("flags missing cgroups v2 delegation", () => {
-    const error = classify({ cgroupsV2Delegated: false });
+    const error = classify({ cgroupsV2Delegated: false }, { hasSystemd: true });
 
     expect(error).toBeInstanceOf(RootlessPrerequisiteError);
     expect(error?.prerequisite).toBe("cgroups-v2-delegation");
     expect(error?.remediation).toContain("Delegate");
+    expect(error?.remediation).toContain("lando setup --provider=docker");
+  });
+
+  test("no-systemd / tini host cgroup rem names missing systemd and Docker fallback", () => {
+    const error = classify({ cgroupsV2Delegated: false }, { hasSystemd: false });
+
+    expect(error).toBeInstanceOf(RootlessPrerequisiteError);
+    expect(error?.prerequisite).toBe("cgroups-v2-delegation");
+    expect(error?.remediation).toBe(CGROUPS_V2_DELEGATION_NO_SYSTEMD_REMEDIATION);
+    expect(error?.remediation).toMatch(/not running systemd/i);
+    expect(error?.remediation).toContain("lando setup --provider=docker");
+    expect(error?.remediation).not.toContain("systemctl daemon-reload");
   });
 
   test("flags missing XDG_RUNTIME_DIR", () => {
@@ -114,14 +127,23 @@ describe("rootless preflight", () => {
     expect(error._tag.length).toBeGreaterThan(0);
   });
 
-  test("cgroups v2 delegation requires controllers on the user service cgroup", async () => {
+  test("cgroups v2 delegation is unused when the host has no systemd user.slice", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-cgroups-"));
     try {
       await writeFile(join(dir, "cgroup.controllers"), "cpu memory pids\n");
-      expect(hasCgroupsV2Delegation(dir, "1000")).toBe(false);
+      expect(hasCgroupsV2Delegation(dir, "1000")).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
+  test("cgroups v2 delegation requires controllers on the user service cgroup", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-cgroups-"));
+    try {
       const userServiceDir = join(dir, "user.slice", "user-1000.slice", "user@1000.service");
       await mkdir(userServiceDir, { recursive: true });
+      expect(hasCgroupsV2Delegation(dir, "1000")).toBe(false);
+
       await writeFile(join(userServiceDir, "cgroup.controllers"), "cpu memory pids\n");
 
       expect(hasCgroupsV2Delegation(dir, "1000")).toBe(true);

@@ -18,9 +18,10 @@ from `GlobalAppService`, `PluginRegistry`, and `FileSystem`.
 
 ## Not installed
 
-If `meta:global:install` hasn't run yet, the check `warn`s: `context.installed`
-is `false`, and the solution surfaces `lando global:install` as a manual
-remediation command.
+If the global app has not been materialized yet, the check `warn`s:
+`context.installed` is `false`. Starting an app that needs Traefik, Mailpit,
+or ssh-agent provisions it automatically. The solution also surfaces
+`lando global:install` if you want to materialize the stack now.
 
 ## Installed
 

@@ -283,7 +283,17 @@ describe("evaluateExpression eval errors", () => {
     expect(evaluateExpressionFailure("{{ nope() }}")._tag).toBe("LandofileExpressionEvalError");
   });
 
-  for (const helper of ["yaml", "fromYaml", "fromToml"] as const) {
+  for (const helper of [
+    "yaml",
+    "fromYaml",
+    "fromToml",
+    "json5",
+    "fromJson5",
+    "jsonc",
+    "fromJsonc",
+    "jsonl",
+    "fromJsonl",
+  ] as const) {
     test(`rejects unsupported ${helper} decoder`, () => {
       const error = evaluateExpressionFailure(`{{ ${helper}("x") }}`);
 

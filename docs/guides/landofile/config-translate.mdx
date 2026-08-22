@@ -6,57 +6,32 @@ timeout: 60000
 tags: [beta, docs, landofile, config, translate]
 ---
 
-# Translate a foreign config into a Landofile
-
-Plugin authors contribute a config translator through the `ConfigTranslator`
-SDK service tag. Every translator declares a stable `id`, a user-facing
-`summary`, supported input kinds, and Effect-powered `detect`/`translate`
-hooks. `detect` receives the app root plus optional candidate file paths
-(`{ appRoot, files? }`) and returns translator matches with confidence.
-
-Core runs resolved translators in declared order through
-`runConfigTranslators`. `translate` receives the app root, selected files,
-current Landofile, and command/plugin options
-(`{ appRoot, files, current, options }`). Each translator returns a partial
-canonical Landofile fragment plus generated/unsupported/non-portable/
-needs-review diagnostics (`{ fragment, diagnostics }`).
-
-## Deterministic resolution
-
-Distinct translator ids keep their declared order during detect and
-translate. `runConfigTranslators` merges partial Landofile fragments in
-execution order while appending diagnostics — later fragment keys override
-earlier fragment keys. Duplicate translator ids fail with
-`ConfigTranslatorConflictError` before any translator runs.
-
-## Running the command
-
-Run from an app directory to translate the discovered `.lando.yml` into a
-canonical v4 Landofile via registered translators:
+# Translate a config into a Landofile
 
 ```sh
 lando app:config:translate
 ```
 
-By default the canonical Landofile is written next to the input as
-`.lando.yml.canonical`, leaving the original untouched. `--format json`
-prints the structured result (paths + diagnostics); `text` is the default
-human-readable summary. Library and embedding consumers can use the same
-canonical Landofile parse/emit helpers through `@lando/core/landofile` when
-they need this command's serializer behavior without invoking the CLI.
+Run that from an app directory. Registered translators turn the discovered `.lando.yml` into a canonical v4 Landofile.
 
-`--write` overwrites the input Landofile in place, after preserving the
-original as `.lando.yml.bak`:
+By default the canonical Landofile is written next to the input as `.lando.yml.canonical`, leaving the original untouched. `--format json` prints the structured result (paths plus diagnostics). `text` is the default human-readable summary.
+
+Overwrite the input in place with `--write`. Lando keeps the original as `.lando.yml.bak` first:
 
 ```sh
 lando app:config:translate --write
 ```
 
-With zero translators registered the command exits non-zero before touching
-any file, with a `ConfigTranslateNoTranslatorsError` pointing at the
-install path — concrete translators ship as plugins:
+With zero translators registered, the command exits non-zero before touching any file, with `ConfigTranslateNoTranslatorsError`. Concrete translators ship as plugins:
 
 ```sh
 lando plugin:add <translator-plugin>
 ```
 
+## Know how translators resolve
+
+Plugin authors contribute a translator through the `ConfigTranslator` SDK service tag. Every translator declares a stable `id`, a user-facing `summary`, supported input kinds, and `detect`/`translate` hooks. `detect` receives the app root plus optional candidate file paths and returns matches with confidence.
+
+Core runs resolved translators in declared order. Distinct translator ids keep that order. Partial Landofile fragments merge in execution order while diagnostics append. Later fragment keys override earlier ones. Duplicate translator ids fail with `ConfigTranslatorConflictError` before any translator runs.
+
+Library and embedding consumers can use the same parse/emit helpers through `@lando/core/landofile` when they need this serializer without invoking the CLI.

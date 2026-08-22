@@ -15,3 +15,19 @@ for (const host of ["127.0.0.1", "localhost"]) {
   if (!entries.includes(host)) entries.push(host);
 }
 process.env.NO_PROXY = entries.join(",");
+
+// Bun 1.4 stores `process.env.X = undefined` as the string "undefined" on
+// every platform (1.3 did this on Windows only). Tests that restore a missing
+// key with assignment then leak that string into later Bun.spawn env spreads.
+const env = process.env;
+process.env = new Proxy(env, {
+  set(target, prop, value) {
+    if (typeof prop !== "string") return false;
+    if (value === undefined || value === null) {
+      delete target[prop];
+      return true;
+    }
+    target[prop] = String(value);
+    return true;
+  },
+});

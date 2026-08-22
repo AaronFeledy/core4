@@ -356,6 +356,47 @@ describe("provider-lando cross-process state", () => {
     });
   });
 
+  test("a fresh provider layer can list an app applied by an earlier layer", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakePodmanState();
+
+      const providerA = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
+              appliedPlanStateDir: stateDir,
+              platform: "linux",
+            }),
+          ),
+        ),
+      );
+      await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
+
+      const providerB = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
+              appliedPlanStateDir: stateDir,
+              platform: "linux",
+            }),
+          ),
+        ),
+      );
+
+      const snapshots = await runOnce(providerB.list({}));
+      expect(snapshots.map((snapshot) => String(snapshot.app))).toContain(String(plan.id));
+      expect(snapshots.map((snapshot) => String(snapshot.service)).sort()).toEqual(["database", "web"]);
+    });
+  });
+
   test("a fresh provider layer can inspect and destroy an app applied by an earlier layer", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakePodmanState();

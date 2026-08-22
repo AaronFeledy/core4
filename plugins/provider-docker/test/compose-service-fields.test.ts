@@ -7,6 +7,7 @@ describe("provider-docker Compose service field capabilities", () => {
     const capabilities = dockerCapabilitiesForPlatform("linux");
 
     expect(capabilities.composeSpec).toBe("native");
-    expect(capabilities.composeServiceFields).toEqual({ supported: ["labels"] });
+    expect(capabilities.composeServiceFields).toEqual({ supported: ["labels", "configs"] });
+    expect(capabilities.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 });

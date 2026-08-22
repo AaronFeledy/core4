@@ -137,7 +137,7 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
   const counts = countByStatus(report);
   const rowTones = sections.flatMap((section) => section.rows.map((row) => row.tone ?? "info"));
   return {
-    title: "DOCTOR",
+    title: report.version === undefined || report.version === "" ? "DOCTOR" : `DOCTOR ${report.version}`,
     tone: rowTones.length === 0 ? "info" : worstSummaryTone(rowTones),
     sections,
     footer: `${counts.checks} checks · ${counts.failed} failed`,
@@ -208,7 +208,9 @@ export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): s
     report.deprecations === undefined ? "" : renderDeprecationsSection(report.deprecations);
   const appConfig = report.appConfig === undefined ? "" : renderAppConfigSection(report.appConfig);
   const self = report.self === undefined ? "" : renderSelfSection(report.self);
+  const version = report.version === undefined || report.version === "" ? "" : `version: ${report.version}`;
   const parts = [
+    version,
     provider,
     subsystems,
     globalApp,

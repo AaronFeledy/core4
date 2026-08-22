@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -401,7 +402,48 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   pullArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: spec.ref }),
   removeArtifact: (_ref) => Effect.void,
 
-  apply: (_plan, _options) => Effect.succeed({ changed: false }),
+  apply: (plan) =>
+    Effect.sync(() => {
+      if (plan == null || plan.extensions == null || plan.services == null) {
+        return { changed: false };
+      }
+      let changed = false;
+      const projectConfigs = Reflect.get(plan.extensions.compose ?? {}, "configs");
+      const definitions =
+        typeof projectConfigs === "object" && projectConfigs !== null && !Array.isArray(projectConfigs)
+          ? projectConfigs
+          : {};
+      for (const service of Object.values(plan.services)) {
+        const serviceConfigs = Reflect.get(service.extensions.compose ?? {}, "configs");
+        const grants = Array.isArray(serviceConfigs) ? serviceConfigs : [];
+        for (const grant of grants) {
+          if (typeof grant !== "object" || grant === null || !("source" in grant)) continue;
+          const sourceName = grant.source;
+          if (typeof sourceName !== "string") continue;
+          const definition = Reflect.get(definitions, sourceName);
+          const file =
+            typeof definition === "object" && definition !== null
+              ? Reflect.get(definition, "file")
+              : undefined;
+          if (typeof file !== "string") continue;
+          const sourcePath = join(plan.root, file);
+          const target =
+            "target" in grant && typeof grant.target === "string" && grant.target.length > 0
+              ? grant.target
+              : `/${sourceName}`;
+          const payload = readFileSync(sourcePath);
+          testServicePathBytes.set(
+            servicePathKey(
+              { app: plan.id, service: service.name },
+              Schema.decodeUnknownSync(PortablePath)(target),
+            ),
+            cloneBytes(payload),
+          );
+          changed = true;
+        }
+      }
+      return { changed };
+    }),
   start: (_target) => Effect.void,
   stop: (_target) => Effect.void,
   restart: (_target) => Effect.void,

@@ -10,6 +10,10 @@ import { UpdateManifestSchema } from "@lando/sdk/schema";
 import { buildUpdateManifest, updateChannelForReleaseVersion } from "../../../scripts/build-update-manifest";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
+import {
+  isPlaceholderCoreVersion,
+  resolveCompiledBinaryVersion,
+} from "../../../scripts/compiled-binary-version.ts";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
@@ -408,7 +412,9 @@ describe("release orchestrator", () => {
         expect(decoded.latest).toBe("4.0.0-beta.2");
         expect(decoded.minimum).toBe("4.0.0-alpha.1");
         expect(Object.keys(decoded.binaries).sort()).toEqual(
-          CI_PLATFORMS.map((platform) => platform.id).sort(),
+          CI_PLATFORMS.filter((platform) => platform.id !== "windows-arm64")
+            .map((platform) => platform.id)
+            .sort(),
         );
         expect(decoded.binaries["linux-x64"]).toEqual({
           url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/lando-linux-x64",
@@ -509,6 +515,9 @@ describe("release orchestrator", () => {
     expect(manifestScripts.some((script) => script.includes("dist/SHA256SUMS"))).toBe(true);
     expect(manifestScripts.some((script) => script.includes("dist/SHA512SUMS"))).toBe(true);
     expect(manifestScripts.some((script) => script.includes("dist/update-manifest.json"))).toBe(true);
+    expect(manifestScripts.some((script) => script.includes("build-update-manifest.ts"))).toBe(true);
+    expect(manifestScripts.some((script) => script.includes("'--version'"))).toBe(true);
+    expect(manifestScripts.every((script) => !script.includes("'0.0.0'"))).toBe(true);
     expect(
       shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
     ).toBe(false);
@@ -1192,6 +1201,29 @@ describe("release orchestrator", () => {
           "dist/lando-windows-x64.exe.crt",
           "dist/lando-windows-x64.exe",
         ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-windows-arm64.exe.sig",
+          "--output-certificate",
+          "dist/lando-windows-arm64.exe.crt",
+          "dist/lando-windows-arm64.exe",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-windows-arm64.exe.sig",
+          "--certificate",
+          "dist/lando-windows-arm64.exe.crt",
+          "dist/lando-windows-arm64.exe",
+        ],
       ]);
       expect(releaseNoteScripts).toHaveLength(1);
       const notes = releaseNoteScripts[0] ?? "";
@@ -1547,7 +1579,11 @@ describe("release orchestrator", () => {
         await withFixtureCwd(root, async () => {
           await provenanceStage.run({
             target: "all",
-            env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+            env: {
+              ...provenanceSigningEnv,
+              LANDO_RELEASE_PLATFORM: "linux-x64",
+              LANDO_RELEASE_VERSION: "0.0.0",
+            },
             localRehearsal: false,
             runner: {
               spawn: async () => {},
@@ -1872,6 +1908,54 @@ describe("release orchestrator", () => {
       expect(spawnStages.findIndex(({ stageId }) => stageId === "9-sign")).toBeLessThan(
         logs.findIndex((line) => line.startsWith("[release] -> 11-manifest")),
       );
+    });
+
+    test("Authenticode-signs every selected Windows release binary", async () => {
+      const signedBinaries: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
+        target: "binary",
+        throughStage: "9-sign",
+        env: { ...macosSigningEnv, ...windowsSigningEnv },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+              const binaryPath = cmd.at(-1);
+              if (binaryPath !== undefined) signedBinaries.push(binaryPath);
+            }
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+
+      expect(signedBinaries).toEqual(["./dist/lando-windows-arm64.exe", "./dist/lando-windows-x64.exe"]);
+    });
+
+    test("LANDO_RELEASE_PLATFORM=windows-arm64 Authenticode-signs only the arm64 binary", async () => {
+      const signedBinaries: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
+        target: "binary",
+        throughStage: "9-sign",
+        env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-arm64" },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+              const binaryPath = cmd.at(-1);
+              if (binaryPath !== undefined) signedBinaries.push(binaryPath);
+            }
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+
+      expect(signedBinaries).toEqual(["./dist/lando-windows-arm64.exe"]);
     });
 
     test("supports configured timestamp URL, certificate password, and certificate identity verification", async () => {
@@ -2225,7 +2309,7 @@ describe("release orchestrator", () => {
 
       for (const platform of CI_PLATFORMS) {
         await writeArtifactEntry(
-          `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`,
+          `lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`,
           "binary",
         );
       }
@@ -2287,7 +2371,7 @@ describe("release orchestrator", () => {
     expect(githubScript).toContain("'--target' '0123456789abcdef0123456789abcdef01234567'");
     expect(githubScript).toContain("'--notes-file' 'dist/release-notes.md'");
     for (const platform of CI_PLATFORMS) {
-      const binaryName = `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+      const binaryName = `lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
       const binaryStem = binaryName.endsWith(".exe") ? binaryName.slice(0, -".exe".length) : binaryName;
       expect(githubScript).toContain(`'dist/${binaryName}'`);
       expect(githubScript).toContain(`'dist/${binaryName}.sig'`);
@@ -2403,8 +2487,6 @@ describe("release orchestrator", () => {
       "bun-windows-x64",
       "--outfile",
       "./dist/lando-windows-x64.exe",
-      "--version",
-      "0.0.0",
       "--minify",
       "--sourcemap=external",
     ]);
@@ -2443,7 +2525,7 @@ describe("release orchestrator", () => {
     expect(compileCommands.map(({ cmd }) => cmd)).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
       ...CI_PLATFORMS.flatMap((platform) => {
-        const outfile = `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+        const outfile = `./dist/lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
         return [
           [
             "bun",
@@ -2453,8 +2535,6 @@ describe("release orchestrator", () => {
             platform.bunTarget,
             "--outfile",
             outfile,
-            "--version",
-            "0.0.0",
             "--minify",
             "--sourcemap=external",
           ],
@@ -2468,6 +2548,7 @@ describe("release orchestrator", () => {
       "linux-arm64",
       "linux-x64",
       "windows-x64",
+      "windows-arm64",
     ]);
   });
 
@@ -2497,6 +2578,39 @@ describe("release orchestrator", () => {
       ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
     );
     expect(compileCmd?.cmd).toContain("4.1.0-beta.2");
+  });
+
+  test("local rehearsal compile without LANDO_RELEASE_VERSION omits placeholder stamp", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      target: "binary",
+      throughStage: "7-compile",
+      env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    const compileCmd = spawnStages.find(
+      ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
+    )?.cmd;
+    expect(compileCmd).toBeDefined();
+    expect(compileCmd).not.toContain("--version");
+    expect(compileCmd).not.toContain("0.0.0");
+
+    const stamp = resolveCompiledBinaryVersion({
+      env: {},
+      cwd: join(import.meta.dirname, "../../.."),
+    });
+    expect(isPlaceholderCoreVersion(stamp)).toBe(false);
+    expect(stamp).toMatch(/^4\.\d+\.\d+/);
   });
 
   test("compile stage reports duration and fails the linux-x64 cold-build budget", async () => {

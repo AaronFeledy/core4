@@ -67,6 +67,12 @@ interface UpdateHostPlatform {
 
 export const updatePlatformId = (host: UpdateHostPlatform): string => `${host.platform}-${host.arch}`;
 
+/**
+ * Map the running host onto a published update-manifest binary key.
+ * Every win32 host, including win32-arm64, still uses `windows-x64`
+ * because the published 5-key schema has no windows-arm64 entry.
+ * `lando update` on windows-arm64 therefore still downloads windows-x64.
+ */
 export const updateManifestPlatform = (
   host: UpdateHostPlatform = process,
 ): keyof UpdateManifest["binaries"] =>

@@ -6,55 +6,25 @@ timeout: 60000
 tags: [beta, docs, cli, prompts]
 ---
 
-# Interactive prompts
+# Answer or skip prompts
 
-Lando's interactive prompts render through OpenTUI instead of a bare
-readline prompt. Free-text prompts (recipe name, description, path) render
-as a focused single-line input field with the spaceship-console palette;
-longer answers use a textarea so the value stays readable while typing.
-Choice prompts with more than a few options render as a vertical select list
-with arrow-key navigation and an explicit indicator on the highlighted row,
-so the current choice reads without relying on color alone. Multi-choice
-prompts use the same vertical list: Space toggles the focused row's
-persistent checkbox indicator while the highlighted-row cursor stays
-independent, and Enter submits every checked choice at once. Confirmations
-and two-to-four-option choices render as a horizontal tab-select so yes/no
-and small option sets read as a single line.
+```sh
+lando init --recipe lamp --yes
+lando setup --no-interactive
+```
 
-The prompt message is carried on the panel's border title rather than a
-separate interior row, so the question frames the control instead of
-stacking above it. The bordered panel uses the spaceship-console accent
-color so an active prompt is visually distinct from surrounding scrollback.
+`--yes` resolves every prompt from recipe defaults and never opens a prompt surface. `--no-interactive` disables prompting and fails with a tagged missing-answer error when a required value has no answer or default.
 
-These prompt controls appear everywhere Lando asks for input: recipe prompt
-collection during `apps:init`, the container runtime provider choice during
-`lando setup` (when not pinned by flag or environment), and the trust
-confirmation before a plugin runs as trusted host code.
+Values supplied via `--answer` or an `--answers` file are validated and used directly, so the matching prompt is never shown. A non-TTY stdin keeps the line-based path. `LANDO_NO_OPENTUI_PROMPTS=1` forces that same line-based reader even on an interactive TTY. Any renderer import or probe failure degrades to that fallback.
 
-## Skipping prompts
+These controls appear wherever Lando asks for input: recipe prompts during `apps:init`, the provider choice during `lando setup` when you have not pinned it, and the trust confirmation before a plugin runs as trusted host code.
 
-- `--yes` resolves every prompt from recipe defaults and never opens an
-  OpenTUI surface.
-- `--no-interactive` disables prompting and surfaces a tagged missing-answer
-  error when a required value has no answer or default.
-- Values supplied via `--answer` or an `--answers` file are validated and
-  used directly, so the matching prompt is never shown.
-- A CI environment or a non-TTY stdin keeps the existing deterministic
-  line-based path with byte-for-byte output, never the OpenTUI surface.
-- `LANDO_NO_OPENTUI_PROMPTS=1` forces the line-based reader even on an
-  interactive TTY, and any renderer import or probe failure degrades to the
-  same fallback.
+## How prompts look
+
+Free-text prompts (recipe name, description, path) render as a focused single-line input. Longer answers use a textarea. Choice prompts with more than a few options render as a vertical select list with arrow-key navigation and an explicit indicator on the highlighted row. Multi-choice uses the same list: Space toggles the focused row while the highlighted-row cursor stays independent, and Enter submits every checked choice. Confirmations and two-to-four-option choices render as a horizontal tab-select.
+
+The prompt message lives on the panel's border title. Secret prompts decline the graphical surface and keep the line-based reader, so secret values are never echoed, logged, or captured in a transcript.
 
 ## Validation and cancellation
 
-A value that fails the recipe constraint re-prompts in place with the
-validation message shown inline, so context isn't lost. In non-interactive
-paths the same failure surfaces as a tagged error carrying the `--answer`
-remediation instead of an inline retry. Ctrl-C or Esc cancels the prompt,
-restores the terminal, and aborts the command rather than falling through to
-a partial answer.
-
-Secret prompts are the one exception: they decline the OpenTUI surface and
-keep the line-based reader, so secret values are never echoed, logged, or
-captured in a transcript.
-
+A value that fails the recipe constraint re-prompts in place with the validation message shown inline. In non-interactive paths the same failure is a tagged error carrying the `--answer` remediation. Ctrl-C or Esc cancels the prompt, restores the terminal, and aborts the command.

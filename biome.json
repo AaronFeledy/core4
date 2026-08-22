@@ -18,7 +18,9 @@
       "**/*.tsbuildinfo",
       "bun.lock",
       "vendor/compose/compose-spec.json",
-      "docs/test/fixtures/transcripts/corrupt/invalid-json.json"
+      "docs/test/fixtures/transcripts/corrupt/invalid-json.json",
+      "landofile/test/fixtures/sample.jsonc",
+      "landofile/test/fixtures/bad.jsonc"
     ]
   },
   "formatter": {
@@ -58,6 +60,14 @@
     "enabled": true
   },
   "overrides": [
+    {
+      "include": ["**/tsconfig*.json"],
+      "json": {
+        "parser": {
+          "allowComments": true
+        }
+      }
+    },
     {
       "include": ["**/*.astro"],
       "linter": {

@@ -5,29 +5,28 @@ timeout: 90000
 tags: [beta, docs, php, tooling, debugging, xdebug, phpstorm]
 ---
 
-# Xdebug in PhpStorm
+# Debug PHP with Xdebug in PhpStorm
 
-Lando's stock `php` service does not install Xdebug. The `-apache-bookworm` image ships with only
-`gd`, `intl`, `mbstring`, `opcache`, the PDO drivers, and `zip` — there's no PECL install, no
-`docker-php-ext-enable`, and no runtime toggle that adds the extension for you. The `xdebug-demo`
-fixture below sets `XDEBUG_MODE`/`XDEBUG_CONFIG` under `environment:` purely to prove those values
-survive Landofile resolution into the running container; without the extension present, PHP ignores
-them entirely and no debug connection can occur. Getting an actual listener connection requires
-adding the extension yourself first — see the `php-customization` guide for installing it via
-`build.artifact` or a custom image — after which the env vars below start doing real work.
+Turn Xdebug on with `xdebug: true` (or a mode string). Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.docker.internal`, and listens on port `9003`. Then toggle it without a rebuild:
 
 ```yaml
 services:
   app:
     type: "php:8.3"
     primary: true
-    environment:
-      XDEBUG_MODE: debug
-      XDEBUG_CONFIG: "client_host=host.docker.internal"
+    xdebug: true
 ```
 
+```sh
+lando xdebug on
+lando xdebug off
+lando xdebug status
+```
+
+`xdebug: true` enables mode `debug`. A string such as `xdebug: "debug,develop"` sets `xdebug.mode` to that list. `xdebug: false` (the default) installs nothing. Setting `XDEBUG_MODE` in `environment:` does not add the extension.
+
 <Guide>
-  <Scenario id="env-vars-resolve-without-xdebug" render>
+  <Scenario id="xdebug-option-resolves" render>
     <Step name="scaffold">
       <UseFixture name="xdebug-demo" />
     </Step>
@@ -37,8 +36,7 @@ services:
     </Step>
     <Step name="verify-config">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "XDEBUG_MODE" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "client_host=host.docker.internal" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"xdebug\":\\s*true" } }} />
     </Step>
     <Step name="lint-config">
       <Run command="lando app:config:lint --format=json" />
@@ -49,46 +47,47 @@ services:
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
-  <Scenario id="phpstorm-listener-setup" render={false} reason="PhpStorm's debug listener, breakpoint mapping, and browser trigger cookie run entirely inside the IDE and browser once a real Xdebug extension is installed, and Lando's stock php service ships no such extension to originate a connection, so this scenario keeps one real CLI check while the workflow below documents external IDE behavior the guide harness cannot exercise.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
+  <Scenario id="extension-loads" render={false} reason="The test provider does not compile PECL, so php -m cannot load xdebug.so here; this scenario proves xdebug: true plans, and unit tests lock the php -m status command plus the checksum-pinned install.">
+    <Step name="scaffold">
+      <UseFixture name="xdebug-demo" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"xdebug\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+  <Scenario id="invalid-mode-fails" render={false} reason="Unknown xdebug: values must fail closed at plan time with remediation.">
+    <Step name="scaffold">
+      <UseFixture name="xdebug-invalid" />
+    </Step>
+    <Step name="refresh">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported Xdebug mode" }} />
     </Step>
   </Scenario>
 </Guide>
 
-## XDEBUG_MODE values
+## Pick an XDEBUG_MODE
 
-These are Xdebug 3's own mode values — they only take effect once you've added the extension
-yourself (see the intro above); the stock `php` service never reads them:
+These are Xdebug 3 mode values. They take effect once `xdebug:` installs the extension:
 
-- `off` — disable Xdebug entirely.
-- `debug` — enable step debugging (breakpoints, step-in/over/out), which PhpStorm needs.
-- `develop` — enable enhanced `var_dump()` output, stack traces on errors, and the built-in function trace.
-- `debug,develop` — combine modes as a comma-separated list.
-- `coverage` — enable code coverage collection.
+- `off` disables Xdebug entirely (`lando xdebug off`).
+- `debug` is step debugging (breakpoints, step-in/over/out). PhpStorm needs this.
+- `develop` gives richer `var_dump()` and stack traces on errors.
+- `debug,develop` combines modes as a comma-separated list.
+- `coverage` collects code coverage.
 
-## PhpStorm listener setup
+## Listen in PhpStorm
 
-Everything below assumes you've already installed Xdebug into your PHP image (see the
-`php-customization` guide) — Lando's stock `php` service has no listener to connect to without it.
-Once the extension is present, start listening for PHP debug connections from
-`Run > Start Listening for PHP Debug Connections` (or the phone-handset icon) before triggering a
-request. PhpStorm listens on port `9003` by default, matching Xdebug 3's default.
+Start listening from `Run > Start Listening for PHP Debug Connections` (or the phone-handset icon) before you trigger a request. PhpStorm listens on port `9003` by default, matching Xdebug 3.
 
-A browser extension or manual `XDEBUG_SESSION=PHPSTORM` cookie/query param triggers the debug
-connection per request. For CLI scripts, set `XDEBUG_TRIGGER=1` as a one-off env var on the command
-instead.
+A browser extension or `XDEBUG_SESSION=PHPSTORM` cookie/query param triggers the debug connection per request. For CLI scripts, set `XDEBUG_TRIGGER=1` as a one-off env var.
 
-Add a server in `Settings > PHP > Servers` whose name matches the value your app sends (or use the
-"absolute path on server" mapping without a name), and map `/app` to your project's local root so
-PhpStorm resolves breakpoints to the right file. On the first accepted debug connection, PhpStorm
-offers to auto-create the server entry and path mapping from the incoming request.
+Add a server in `Settings > PHP > Servers` whose name matches the value your app sends (or use the "absolute path on server" mapping without a name), and map `/app` to your project's local root so breakpoints land on the file you edit. On the first accepted debug connection, PhpStorm offers to auto-create the server entry and path mapping.
 
-On Docker Desktop (macOS, Windows), `host.docker.internal` resolves automatically. On Linux without
-Docker Desktop, either add `host.docker.internal` via `extra_hosts` or set `XDEBUG_CONFIG` to the
-docker0 bridge gateway IP directly. If PhpStorm never receives a connection, first confirm the
-extension is actually installed and enabled in the container, then check the listener, port 9003,
-`XDEBUG_MODE includes debug`, and `client_host`. If a breakpoint hits but the wrong (or no) file
-opens, the server's path mapping doesn't match the container path — correct it under
-`Settings > PHP > Servers`.
+On Docker Desktop (macOS, Windows), `host.docker.internal` resolves automatically. On Linux without Docker Desktop, add `host.docker.internal` via `extra_hosts` or set `client_host` to the bridge gateway IP. If PhpStorm never receives a connection, confirm `lando xdebug status` shows the extension, then check the listener, port 9003, mode `debug`, and `client_host`. If a breakpoint hits but the wrong file opens, the server's path mapping does not match the container path. Fix it under `Settings > PHP > Servers`.

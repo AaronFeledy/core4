@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
@@ -185,11 +186,131 @@ if (response.status !== 200 || body !== "alias-ok") {
 console.log(body);
 `;
 
+const imageInspectAndPullResponse = (
+  images: Set<string>,
+  request: DockerHttpRequest,
+): DockerHttpResponse | undefined => {
+  if (request.method === "GET" && request.path.startsWith("/images/") && request.path.endsWith("/json")) {
+    const ref = decodeURIComponent(request.path.slice("/images/".length, -"/json".length));
+    if (!images.has(ref)) {
+      return { status: 404, body: JSON.stringify({ message: `No such image: ${ref}` }) };
+    }
+    return {
+      status: 200,
+      body: JSON.stringify({ Id: "sha256:test", RepoDigests: [`${ref}@sha256:test`] }),
+    };
+  }
+  if (request.method === "POST" && request.path.startsWith("/images/create?")) {
+    const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
+    const fromImage = params.get("fromImage") ?? "";
+    const tag = params.get("tag") ?? "";
+    if (fromImage.length > 0) {
+      images.add(fromImage);
+      if (tag.length > 0) {
+        images.add(`${fromImage}:${tag}`);
+        images.add(`${fromImage}@${tag}`);
+      }
+    }
+    return { status: 200, body: '{"status":"Pull complete"}\n' };
+  }
+  return undefined;
+};
+
+const tarBlockSize = 512;
+
+const padToBlock = (size: number): number => Math.ceil(size / tarBlockSize) * tarBlockSize;
+
+const writeAscii = (target: Uint8Array, offset: number, value: string, length: number) => {
+  target.set(new TextEncoder().encode(value).slice(0, length), offset);
+};
+
+const octal = (value: number, width: number): string | undefined => {
+  const text = value.toString(8);
+  if (text.length > width - 1) return undefined;
+  return text.padStart(width - 1, "0");
+};
+
+const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined => {
+  if (name.length === 0 || new TextEncoder().encode(name).byteLength > 100) return undefined;
+  const mode = octal(0o644, 8);
+  const uid = octal(0, 8);
+  const gid = octal(0, 8);
+  const size = octal(payload.byteLength, 12);
+  const mtime = octal(0, 12);
+  if (
+    mode === undefined ||
+    uid === undefined ||
+    gid === undefined ||
+    size === undefined ||
+    mtime === undefined
+  ) {
+    return undefined;
+  }
+  const header = new Uint8Array(tarBlockSize);
+  writeAscii(header, 0, name, 100);
+  writeAscii(header, 100, `${mode}\0`, 8);
+  writeAscii(header, 108, `${uid}\0`, 8);
+  writeAscii(header, 116, `${gid}\0`, 8);
+  writeAscii(header, 124, `${size}\0`, 12);
+  writeAscii(header, 136, `${mtime}\0`, 12);
+  header.fill(32, 148, 156);
+  header[156] = 48;
+  writeAscii(header, 257, "ustar", 6);
+  writeAscii(header, 263, "00", 2);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  const checksumOctal = octal(checksum, 7);
+  if (checksumOctal === undefined) return undefined;
+  writeAscii(header, 148, `${checksumOctal}\0 `, 8);
+  const output = new Uint8Array(tarBlockSize + padToBlock(payload.byteLength) + tarBlockSize * 2);
+  output.set(header, 0);
+  output.set(payload, tarBlockSize);
+  return output;
+};
+
+const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
+  const parsed =
+    typeof body === "string"
+      ? (() => {
+          try {
+            return JSON.parse(body) as unknown;
+          } catch {
+            return undefined;
+          }
+        })()
+      : body;
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const hostConfig = Reflect.get(parsed, "HostConfig");
+  if (typeof hostConfig !== "object" || hostConfig === null) return [];
+  const binds = Reflect.get(hostConfig, "Binds");
+  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
+};
+
+const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
+  for (const bind of binds) {
+    const withoutOptions = bind.endsWith(":ro") || bind.endsWith(":rw") ? bind.slice(0, -3) : bind;
+    const separator = withoutOptions.lastIndexOf(":");
+    if (separator < 0) continue;
+    const host = withoutOptions.slice(0, separator);
+    const target = withoutOptions.slice(separator + 1);
+    if (target !== archivePath) continue;
+    try {
+      const payload = readFileSync(host);
+      const name = target.slice(target.lastIndexOf("/") + 1) || target;
+      return archiveFile(name, payload);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
+  const containerBinds = new Map<string, ReadonlyArray<string>>();
   const volumes = new Set<string>();
+  const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -197,6 +318,9 @@ const makeFakeApi = () => {
     request: (request) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(request);
+
+        const imageResponse = imageInspectAndPullResponse(images, request);
+        if (imageResponse !== undefined) return imageResponse;
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -227,10 +351,13 @@ const makeFakeApi = () => {
         ) {
           return { status: 200, body: "" };
         }
-        if (request.path.startsWith("/containers/create?name=")) {
-          const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
-          existing.add(name);
-          return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
+        if (request.path.startsWith("/containers/create")) {
+          const name = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("name");
+          if (name !== null && name.length > 0) {
+            existing.add(name);
+            containerBinds.set(name, createBodyBinds(request.body));
+            return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
+          }
         }
         if (request.path.endsWith("/exec") && request.method === "POST") {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/exec".length));
@@ -301,6 +428,14 @@ const makeFakeApi = () => {
       }
       if (request.path.includes("/logs?")) {
         return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+      }
+      if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
+        );
+        const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
+        const archive = archiveForBindTarget(containerBinds.get(name) ?? [], params.get("path") ?? "");
+        if (archive !== undefined) return Stream.make(archive);
       }
       return Stream.empty;
     },
@@ -537,6 +672,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const volumes = hooks.volumes ?? new Set<string>();
+  const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -544,6 +680,8 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     request: (request) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(request);
+        const imageResponse = imageInspectAndPullResponse(images, request);
+        if (imageResponse !== undefined) return imageResponse;
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
@@ -903,6 +1041,9 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
+      "GET /images/node%3A22-alpine/json",
+      "POST /images/create?fromImage=node&tag=22-alpine",
+      "GET /images/node%3A22-alpine/json",
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
@@ -1272,6 +1413,9 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
+      "GET /images/node%3A22-alpine/json",
+      "POST /images/create?fromImage=node&tag=22-alpine",
+      "GET /images/node%3A22-alpine/json",
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",

@@ -1766,6 +1766,11 @@ describe("lando start", () => {
           );
           expect(error.services).toEqual(["traefik"]);
           expect(error.cause).toBeInstanceOf(GlobalServiceMissingError);
+          expect(error.remediation).toBe(
+            "Run `lando global:install <plugin>` to enable the required global service(s).",
+          );
+          expect(error.remediation).not.toContain("manually");
+          expect(error.remediation).not.toContain("global:start");
         }
         expect(harness.events.map((event) => event._tag)).toContain("pre-global-start");
         expect(harness.events.map((event) => event._tag)).toContain("pre-app-start");

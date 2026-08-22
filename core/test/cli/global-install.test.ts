@@ -90,6 +90,7 @@ describe("global:install command operation", () => {
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
+      expect(distContent).toContain("provider: lando");
       expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
       expect(distContent).toContain("mailpit:");
@@ -124,6 +125,7 @@ describe("global:install command operation", () => {
         expect(parsed).toEqual({
           name: "global",
           runtime: 4,
+          provider: ProviderId.make("lando"),
           services: {
             [ServiceName.make("fakegs")]: { api: 4, type: "lando" },
           },
@@ -154,6 +156,46 @@ describe("global:install command operation", () => {
           }
         }
       }
+    });
+  });
+
+  test("selects the Lando-managed provider even when leftover config would pick docker", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const selected: Array<string | undefined> = [];
+      const dockerProvider = { ...TestRuntimeProvider, id: "docker" };
+      const landoProvider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+      };
+      const layer = Layer.mergeAll(
+        GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+        Layer.succeed(PluginRegistry, {
+          list: Effect.succeed([]),
+          load: () => Effect.die("not needed"),
+          loadServiceType: () => Effect.die("not needed"),
+          loadServiceFeature: () => Effect.die("not needed"),
+          loadAppFeature: () => Effect.die("not needed"),
+        }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+          capabilities: Effect.succeed(dockerProvider.capabilities),
+          select: (plan) => {
+            selected.push(plan === undefined ? undefined : String(plan.provider));
+            return Effect.succeed(
+              plan !== undefined && String(plan.provider) === "lando" ? landoProvider : dockerProvider,
+            );
+          },
+        }),
+      );
+
+      await Effect.runPromise(globalInstall({}).pipe(Effect.provide(layer)));
+
+      expect(selected).toContain("lando");
+      expect(selected).not.toContain(undefined);
+      const dist = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      expect(dist).toContain("provider: lando");
+      expect(dist).not.toContain("provider: docker");
     });
   });
 });

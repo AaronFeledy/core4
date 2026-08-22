@@ -5,6 +5,7 @@ import {
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
+  isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import {
   RUNTIME_BUNDLE_ACTION_PINS,
@@ -91,6 +92,9 @@ ${setupBunSteps}
 
       - name: Lint
         run: bun run lint
+
+      - name: Audit dependencies
+        run: bun run audit
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -183,7 +187,7 @@ ${timingNoticeStep("test-isolation-linux-x64", 10)}
 `;
 
 const renderSmokeCommands = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
     : `          test -f dist/${platform.binaryName}
           ./dist/${platform.binaryName} --version
@@ -191,19 +195,19 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} shellenv`;
 
 const renderBuildNeeds = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
     : buildNeeds;
 
 const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
     : `          bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
 
 const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
-  platform.id === "windows-x64"
+  isWindowsCiPlatform(platform)
     ? `
 
       - name: Download Linux sidecars from Linux artifact
@@ -805,6 +809,26 @@ ${renderLinuxX64MatrixGate(
 )}`;
 };
 
+const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Isolated global-store install experiment
+        run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile
+
+${timingNoticeStep("bun-install-isolated-experiment", 10)}
+`;
+
 export const renderCiWorkflow = (): string => {
   const buildJobs = CI_PLATFORMS.map(renderBuildJob).join("\n");
   const perfBudgetJob = renderPerfBudgetJob();
@@ -831,6 +855,7 @@ permissions:
 
 jobs:
 ${renderStaticChecks()}
+${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}

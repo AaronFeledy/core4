@@ -1,8 +1,10 @@
+import { readdir } from "node:fs/promises";
+
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { type AppId, AppPlan } from "@lando/sdk/schema";
+import { AppId, AppPlan } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
 const APPLIED_STATE_VERSION = 1;
@@ -62,4 +64,24 @@ export const removeAppliedPlan = (stateStore: PluginStateStore, appId: AppId): E
   openAppliedPlanBucket(stateStore, appId).pipe(
     Effect.flatMap((bucket) => bucket.remove),
     Effect.catchAll(() => Effect.void),
+  );
+
+export const listAppliedPlans = (
+  stateStore: PluginStateStore,
+  stateDir: string,
+): Effect.Effect<ReadonlyArray<AppPlan>, never> =>
+  Effect.tryPromise(() => readdir(appliedPlansDir(stateDir))).pipe(
+    Effect.map((entries) =>
+      entries.flatMap((entry) => {
+        if (!entry.endsWith(".json")) return [];
+        try {
+          return [AppId.make(entry.slice(0, -".json".length))];
+        } catch {
+          return [];
+        }
+      }),
+    ),
+    Effect.flatMap((ids) => Effect.forEach(ids, (id) => loadAppliedPlan(stateStore, id))),
+    Effect.map((plans) => plans.filter((plan): plan is AppPlan => plan !== undefined)),
+    Effect.catchAll(() => Effect.succeed([])),
   );

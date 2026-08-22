@@ -1,0 +1,10 @@
+id: extends-drop-child
+title: Drop Child
+description: Extends lamp and drops the name prompt.
+version: 0.1.0
+extends: lamp
+prompts:
+  - name: name
+    type: text
+    message: App name
+    drop: true

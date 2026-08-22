@@ -5,12 +5,9 @@ timeout: 90000
 tags: [beta, docs, php, service, runtime]
 ---
 
-# PHP version matrix
+# Pin a PHP version
 
-`type: php:<version>` accepts exactly `8.1`, `8.2`, `8.3`, `8.4`, or `8.5`.
-Every other version — including `8.0` and `8.6` — fails Landofile validation
-before any build or container work happens. Each supported version
-resolves to the matching stock upstream image, `php:<version>-apache-bookworm`:
+Set `type: php:<version>` to `8.1`, `8.2`, `8.3`, `8.4`, or `8.5`. Every other version, including `8.0` and `8.6`, fails Landofile validation before any build or container work happens. Each supported version resolves to `php:<version>-apache-bookworm`:
 
 ```yaml
 name: php-version-matrix-demo
@@ -20,8 +17,7 @@ services:
     primary: true
 ```
 
-`lando app:cache:refresh` rebuilds the app plan without starting anything —
-a fast way to prove a `type:` resolves:
+`lando app:cache:refresh` rebuilds the app plan without starting anything. Use it to prove a `type:` resolves:
 
 <Guide>
   <Scenario id="php-8-1-resolves" render>
@@ -89,7 +85,7 @@ a fast way to prove a `type:` resolves:
     </Step>
   </Scenario>
 
-## Unsupported versions fail honestly
+## Reject unsupported versions
 
 `php:8.0` and `php:8.6` are outside the supported catalog. Landofile
 validation rejects them immediately, before any build or container work
@@ -124,7 +120,7 @@ starts, and names the supported alternatives:
 ## Pin a version
 
 Pin any of the five supported minors under `type:`. There is no bare
-`type: php` alias — always include the version:
+`type: php` alias. Always include the version:
 
 ```yaml
 services:

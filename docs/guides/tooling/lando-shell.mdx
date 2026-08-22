@@ -6,18 +6,13 @@ timeout: 60000
 tags: [beta, docs, tooling, shell]
 ---
 
-# The lando shell
-
-## Host mode is the default
+# Open a Lando shell
 
 ```sh
 lando shell
 ```
 
-With no `--service` flag, `lando shell` opens the host shell scoped to the app root, running on the
-host through `ShellRunner`. The host shell receives the app-scoped Lando environment
-(`LANDO_APP_NAME`, `LANDO_APP_ROOT`). `--host` is deprecated: host mode is already the default, so
-`lando shell --host` is redundant.
+With no `--service` flag, that opens a host shell scoped to the app root. The host shell gets the app-scoped Lando environment (`LANDO_APP_NAME`, `LANDO_APP_ROOT`). `--host` is deprecated. Host mode is already the default, so `lando shell --host` is redundant.
 
 ## Open a shell in a service
 
@@ -25,64 +20,37 @@ host through `ShellRunner`. The host shell receives the app-scoped Lando environ
 lando shell --service appserver
 ```
 
-`--service` selects service mode explicitly via provider exec, starting a login shell (`sh -l`) in
-the selected container. `lando shell` takes no positional arguments — `lando shell appserver` is
-rejected with `Unexpected argument: appserver` instead of silently opening a host shell; use
-`--service appserver`.
+`--service` starts a login shell (`sh -l`) in that container. `lando shell` takes no positional arguments. `lando shell appserver` is rejected with `Unexpected argument: appserver` instead of silently opening a host shell.
 
-## Agent-context env forwarding
+## Forward agent-context env
 
-`lando exec` and `lando shell --service` forward host agent-context markers into the target service.
-Only the built-in agent marker allowlist is copied from the host environment:
+`lando exec` and `lando shell --service` copy host agent-context markers into the target service. Only this allowlist is forwarded:
 
 ```text
 CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI
 ```
 
-Forwarded markers are the lowest-precedence layer, so configured service env and explicit command env
-always win.
+Forwarded markers are the lowest-precedence layer. Configured service env and explicit command env always win.
 
-## Terminal forwarding
+## Drive an interactive service shell
 
-While a service shell is interactive: stdin is attached and forwarded to the provider exec stream,
-stdout/stderr stream back to the CLI renderer, terminal resize (`SIGWINCH`) updates the running
-service shell via provider exec resize, and Ctrl-C cancels the exec stream through an `AbortSignal`.
+While a service shell is interactive: stdin is attached, stdout and stderr stream back, terminal resize (`SIGWINCH`) updates the running shell, and Ctrl-C cancels the exec stream.
 
-## Host-mode REPL semantics
+## Use host-mode REPL
 
-Host mode reads one line at a time from the REPL prompt and evaluates it as a single Bun Shell
-(`Bun.$`) template through `ShellRunner`, rather than spawning a raw `$SHELL` process. Each accepted
-line composes with Bun Shell's pipes, redirection, globs, command substitution, and built-ins
-(`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank or
-whitespace-only line re-prompts without evaluating or recording anything.
+Host mode reads one line at a time and evaluates it as a Bun Shell template. Each accepted line composes with pipes, redirection, globs, command substitution, and built-ins (`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank line re-prompts without evaluating anything.
 
-A `${secret:<id>}` reference in a typed line resolves through `SecretStore` only at the moment that
-line runs — the REPL never preloads or injects secret values into the shell environment ahead of
-time. Once a secret value is resolved, it's redacted through `RedactionService` before it reaches
-stdout, stderr, lifecycle events, or history.
+A `${secret:<id>}` reference resolves only when that line runs. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
-Host-mode history persists per accepted line to a per-app history file under the user cache root.
-`--no-history` disables history persistence for the whole session — no history file is read or
-written. History is bounded to a fixed number of most-recent lines, so the file can't grow without
-limit across long-lived sessions, and every line is redacted through `RedactionService` before it's
-appended, so a line that resolved a secret never lands on disk in raw form.
+Host-mode history persists per accepted line to a per-app history file under the user cache root. `--no-history` disables history for the session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
 
-Every accepted line publishes a `pre-shell-exec` event before it runs and a `post-shell-exec` event
-with its exit code after it completes; subscribers receive the redacted command text, cwd, and
-output, not the raw line typed at the prompt.
+Every accepted line publishes `pre-shell-exec` before it runs and `post-shell-exec` with its exit code after. Subscribers receive the redacted command text, cwd, and output, not the raw line.
 
-Ctrl+C aborts only the currently running line via `AbortSignal` — the REPL prompt returns and accepts
-the next line, and the session isn't corrupted or torn down. An interrupted line reports exit status
-130, matching a SIGINT-terminated shell command.
+Ctrl+C aborts only the currently running line. The REPL prompt returns. An interrupted line reports exit status 130.
 
-Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit`
-does the same; `exit <code>` ends it with that explicit numeric status instead. On both paths, the
-REPL restores the terminal (raw mode, stdin pause state) before the `ShellRunner` Scope closes and
-`lando shell` returns.
+Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit` does the same. `exit <code>` ends it with that status. On both paths, the REPL restores the terminal before `lando shell` returns.
 
-`lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected/CI invocation never opens the
-REPL — the command fails fast with the tagged `ShellRequiresTtyError` instead of hanging on a REPL
-nobody can drive. The error's remediation points at the non-interactive, scriptable equivalent:
+`lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 
 ```sh
 app:exec --interactive --tty -- <command>

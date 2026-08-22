@@ -19,7 +19,7 @@ const [kind, target] =
       : events === true
         ? ["events", "event stream"]
         : ["output", "command output"];
-const { dataAttributes, resolution, frame } = await componentFramePropsFor(Astro.props, "inspect");
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "inspect");
 const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(frame.resultSummary);
 ---
 
@@ -28,5 +28,4 @@ const showCapturedOutput = frame?.resultSummary && !isPlaceholderResultSummary(f
   <pre><code>{target}</code></pre>
   {showCapturedOutput && <pre class="lando-frame-output"><code>{frame.resultSummary}</code></pre>}
   {frame && <a class="lando-frame__source" href={frame.sourceHref}>source</a>}
-  {resolution.status === "missing" && <p class="lando-transcript-placeholder"><em>{resolution.label}</em></p>}
 </figure>

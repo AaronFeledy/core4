@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/services";
 
 import { lintLandofile } from "@lando/engine/services/landofile-live";
+import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
@@ -28,7 +29,12 @@ import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
 import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
+import {
+  DefaultSubsystemDoctorLayer,
+  type SubsystemDoctorOptions,
+  type SubsystemDoctorResult,
+  subsystemDoctor,
+} from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 
 export type {
@@ -152,6 +158,13 @@ export interface CollectDoctorReportInput<R> {
   readonly provider: Effect.Effect<DoctorResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
+  /**
+   * Injected subsystem doctor. Callers that already built a provider runtime
+   * should provide that runtime first so selected ProxyService/SshService win
+   * over `DefaultSubsystemDoctorLayer`. `doctorReport()` omits this and keeps
+   * the stub-backed default layer.
+   */
+  readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<SubsystemDoctorResult, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
 }
@@ -195,13 +208,16 @@ export const collectDoctorReport = <R>(
       networkTrustDoctorStatus(sourceEnv),
       undefined,
     );
+    const subsystemOptions: SubsystemDoctorOptions = {
+      fix: options.fix === true,
+      certs,
+      ...(networkTrust === undefined ? {} : { networkTrust }),
+    };
     const subsystems = yield* section(
       "subsystems",
-      subsystemDoctor({
-        fix: options.fix === true,
-        certs,
-        ...(networkTrust === undefined ? {} : { networkTrust }),
-      }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+      input.subsystems !== undefined
+        ? input.subsystems(subsystemOptions)
+        : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       EMPTY_CHECKS,
     );
     const globalApp = yield* section(
@@ -221,6 +237,7 @@ export const collectDoctorReport = <R>(
     const appConfig =
       options.app === true ? yield* section("app-config", appConfigForReport(), undefined) : undefined;
     return {
+      version: CORE_VERSION,
       provider: { checks: provider.checks },
       subsystems,
       globalApp,

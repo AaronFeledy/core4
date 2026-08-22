@@ -1,0 +1,47 @@
+---
+id: ssh
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, ssh]
+---
+
+# Open a shell in a service
+
+`lando ssh` opens an interactive login shell (`sh -l`) in a running service. It is `app:exec` with a TTY.
+
+```sh
+lando ssh
+```
+
+It is a shell, not a remote login ceremony.
+
+## Pick a service or user
+
+The primary service is the default target.
+
+```sh
+lando ssh --service db
+lando ssh --user www-data
+```
+
+Pass a command instead of the default shell:
+
+```sh
+lando ssh -- ls -la
+```
+
+## Host keys
+
+The bundled SSH-agent sidecar loads default keys from the host `~/.ssh` directory (`id_rsa`, `id_ed25519`, and the other `ssh-add` defaults). Passphrase-protected keys are skipped.
+
+Do not set `sshAgent.sidecar: false`. That direct host-socket mount is rejected. `sshAgent.sidecar: true` is the accepted sidecar setting.
+
+`lando ssh --sidecar` and `lando ssh --subsystem` are rejected in Alpha.
+
+A Landofile `keys:` list is not a canonical key.
+
+## Next
+
+- [Run commands inside a service](./exec.mdx)
+- [Everyday commands](./everyday-commands.mdx)

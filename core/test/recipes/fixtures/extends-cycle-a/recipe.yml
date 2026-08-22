@@ -1,0 +1,9 @@
+id: extends-cycle-a
+title: Cycle A
+description: Points at cycle B.
+version: 0.0.1
+extends: ../extends-cycle-b
+prompts:
+  - name: from-cycle-a
+    type: text
+    message: From cycle A?

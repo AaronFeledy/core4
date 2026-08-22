@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, valkey, service]
 ---
 
-# Valkey
+# Add Valkey
 
-Add Valkey to your app by declaring `type: valkey` in your services block.
-Lando pulls `valkey/valkey:8` by default and listens on the standard port
-`6379`:
+Put `type: valkey` in your services block. Lando pulls `valkey/valkey:8` and listens on `6379`:
 
 ```yaml
 name: valkey-demo
@@ -38,21 +36,18 @@ tooling:
     </Step>
   </Scenario>
 
-## Connection endpoints
+## Connect from another service
 
-`lando info` advertises both a `valkey://` endpoint (primary) and a
-`redis://` alias, so new and existing client libraries connect without code
-changes:
+`lando info` advertises both a `valkey://` endpoint (primary) and a `redis://` alias, so new and existing client libraries connect without code changes:
 
 ```
 valkey://localhost:6379
 redis://localhost:6379
 ```
 
-## CLI access
+## Open the client
 
-The fixture above declares `valkey-cli` as an app tooling alias. Ping the
-cache to verify it's reachable:
+The fixture above declares `valkey-cli` as an app tooling alias. Ping the cache to verify it's reachable:
 
 ```sh
 lando valkey-cli ping
@@ -67,8 +62,7 @@ lando valkey-cli get hello
 
 ## Pin a version
 
-Use `image:` to pin a specific Valkey major version when the default image
-isn't what you want:
+Set `image:` when the default image isn't the version you want:
 
 ```yaml
 services:

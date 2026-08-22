@@ -657,6 +657,44 @@ describe("@lando/service-lando registration", () => {
     expect(appserver.command?.[2]).toContain("listen = 9070");
   });
 
+  test("AppPlanner installs PHP db clients from sibling database types", async () => {
+    const landofile: LandofileShape = {
+      name: "php-db-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("web")]: { type: "php:8.2" },
+        [ServiceName.make("api")]: { type: "php:8.3", db_client: "postgres:16" },
+        [ServiceName.make("db")]: { type: "mysql" },
+        [ServiceName.make("cache")]: { type: "redis" },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const web = appPlan.services[ServiceName.make("web")];
+    const api = appPlan.services[ServiceName.make("api")];
+    const db = appPlan.services[ServiceName.make("db")];
+    if (web === undefined || api === undefined || db === undefined) {
+      throw new Error("php db-client planner services missing");
+    }
+
+    const BuildStepIds = Schema.Struct({
+      buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+    });
+    const stepIds = (service: typeof web) =>
+      Schema.decodeUnknownSync(BuildStepIds)(
+        service.extensions["@lando/core/service-features"],
+      ).buildSteps?.map((step) => step.id) ?? [];
+    const webSteps = stepIds(web);
+    const apiSteps = stepIds(api);
+    const dbSteps = stepIds(db);
+
+    expect(webSteps).toContain("service-lando.php:db-client:mysql");
+    expect(webSteps).not.toContain("service-lando.php:db-client:postgres");
+    expect(apiSteps).toContain("service-lando.php:db-client:postgres");
+    expect(apiSteps).not.toContain("service-lando.php:db-client:mysql");
+    expect(dbSteps).not.toContain("service-lando.php:db-client:mysql");
+  });
+
   test("AppPlanner fails closed when Varnish backend is unknown", async () => {
     const landofile: LandofileShape = {
       name: "catalog-app",

@@ -1,9 +1,14 @@
 #!/usr/bin/env bun
-/** Runs generators in catalog order because some outputs feed later steps. */
+/** Runs generators in dependency waves so independent entries can proceed together. */
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { CODEGEN_CATALOG, type CodegenCommand, resolveCodegenCommand } from "./codegen-catalog.ts";
+import {
+  CODEGEN_CATALOG,
+  type CodegenCommand,
+  groupCodegenWaves,
+  resolveCodegenCommand,
+} from "./codegen-catalog.ts";
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "..");
 const BOOTSTRAP_MODULES = [
@@ -53,9 +58,14 @@ const run = async (command: CodegenCommand): Promise<void> => {
 
 const main = async (): Promise<void> => {
   await ensureCodegenBootstrapModules();
-  for (const entry of CODEGEN_CATALOG) {
-    console.log(`[codegen] run ${entry.id}`);
-    await run(resolveCodegenCommand(entry));
+  for (const [waveIndex, wave] of groupCodegenWaves(CODEGEN_CATALOG).entries()) {
+    console.log(`[codegen] wave ${waveIndex} (${wave.map((entry) => entry.id).join(", ")})`);
+    await Promise.all(
+      wave.map(async (entry) => {
+        console.log(`[codegen] run ${entry.id}`);
+        await run(resolveCodegenCommand(entry));
+      }),
+    );
   }
 };
 

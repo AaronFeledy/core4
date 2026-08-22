@@ -82,9 +82,9 @@ describe("@lando/core/cli/operations package export", () => {
       });
 
       const result = await Effect.runPromise(
-        invokeOperation(listServices({ userCacheRoot }), { render: renderAppsListResult }).pipe(
-          Effect.provide(runtime),
-        ),
+        invokeOperation(listServices({ userCacheRoot, userDataRoot, discoverContainers: async () => [] }), {
+          render: renderAppsListResult,
+        }).pipe(Effect.provide(runtime)),
       );
 
       expect(result).toEqual({

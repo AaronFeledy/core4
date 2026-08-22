@@ -166,6 +166,8 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("Verify the published bundle downloaded, verified, and installed");
       expect(firstWorkflow).toContain("runtime-bundle-manifest-live:");
       expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
+      expect(firstWorkflow).toContain("refresh-test-timings-linux-x64:");
+      expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
 
       await runCodegen();
 
@@ -277,16 +279,13 @@ describe("ci workflow codegen", () => {
       const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
-      const bunVersion = (await readFile(resolve(repoRoot, ".bun-version"), "utf8")).trim();
-
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(26);
+      expect(versionFileMatches).toBe(27);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
-      expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
-      expect(releaseWorkflow.match(/bun-version: /g) ?? []).toHaveLength(1);
-      expect(releaseWorkflow).toContain(`bun-version: ${bunVersion}`);
+      expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
+      expect(releaseWorkflow).not.toContain("bun-version: ");
       expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
@@ -319,7 +318,7 @@ describe("ci workflow codegen", () => {
       }
 
       const originalPackageJson = await readFile(packageJsonPath, "utf8");
-      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.3.14"', '"bun": ">=9.8.7"');
+      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.4.0"', '"bun": ">=9.8.7"');
       expect(mutatedPackageJson).not.toBe(originalPackageJson);
 
       try {
@@ -446,7 +445,14 @@ describe("ci workflow codegen", () => {
       const staticChecksPlatform = workflow.slice(staticChecksStart, staticChecksEnd);
 
       expect(workflow).toContain("static-checks-platform:");
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
@@ -454,6 +460,15 @@ describe("ci workflow codegen", () => {
       expect(staticChecksPlatform).not.toContain("- name: Typecheck");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
+      expect(staticChecksPlatform).toContain("- name: Audit dependencies");
+      expect(staticChecksPlatform).toContain("run: bun run audit");
+      expect(staticChecksPlatform).not.toContain("bun audit fix");
+      expect(workflow).toContain("bun-install-isolated-experiment:");
+      expect(workflow).toContain("continue-on-error: true");
+      expect(workflow).toContain(
+        "run: BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated --frozen-lockfile",
+      );
+      expect(workflow).not.toContain('linker = "isolated"');
       expect(workflow.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
       expect(workflow.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
       expect(workflow).toContain("- name: Telemetry inventory lint");
@@ -487,7 +502,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
       expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(21);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(24);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -611,13 +626,20 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates the five-platform PR CI matrix with timing and timeout instrumentation",
+    "generates the six-platform PR CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
 
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`build-${platform}:`);
         expect(workflow).toContain(`provider-integration-${platform}:`);
         expect(workflow).toContain(`name: lando-${platform}`);
@@ -627,7 +649,14 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("unit-tests-linux-x64:");
       expect(workflow).toContain("needs: [static-checks-platform]");
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+      for (const platform of [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "windows-x64",
+        "windows-arm64",
+      ]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
       expect(workflow).toContain(
@@ -642,34 +671,21 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates npm alpha package publishing with dry-run coverage",
+    "does not generate npm alpha package publishing jobs",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(releaseWorkflowPath, "utf8");
 
-      expect(workflow).toContain("id-token: write");
-      expect(workflow).toContain("npm-alpha-packages:");
-      expect(workflow).toContain("needs: [dev-prerelease-linux-x64]");
-      expect(workflow).toContain("Setup Node for npm trusted publishing");
-      expect(workflow).toContain("registry-url: https://registry.npmjs.org");
-      expect(workflow).toContain("bun run --filter='@lando/sdk' build");
-      expect(workflow).toContain("bun run --filter='@lando/core' typecheck");
-      expect(workflow).toContain("bun run --filter='@lando/core' build:manifest");
-      expect(workflow).toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
-      expect(workflow).toContain("run: bun run scripts/prepare-npm-dev-packages.ts");
-      expect(workflow).toContain("npm publish --workspace @lando/sdk --dry-run --access public --tag dev");
-      expect(workflow).toContain("npm publish --workspace @lando/core --dry-run --access public --tag dev");
-      expect(workflow).toContain(
-        "npm publish --workspace @lando/service-lando --dry-run --access public --tag dev",
-      );
-      expect(workflow).toContain("npm publish --workspace @lando/sdk --access public --tag dev --provenance");
-      expect(workflow).toContain(
-        "npm publish --workspace @lando/core --access public --tag dev --provenance",
-      );
-      expect(workflow).toContain('test "$before_latest" = "$after_latest"');
-      expect(workflow).toContain("npm view @lando/core dist-tags.dev --json");
-      expect(workflow).toContain(`grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'`);
+      expect(workflow).not.toContain("id-token: write");
+      expect(workflow).not.toContain("npm-alpha-packages:");
+      expect(workflow).not.toContain("npm-alpha-smoke:");
+      expect(workflow).not.toContain("Setup Node for npm trusted publishing");
+      expect(workflow).not.toContain("registry-url: https://registry.npmjs.org");
+      expect(workflow).not.toContain("run: bun run scripts/prepare-npm-dev-packages.ts");
+      expect(workflow).not.toContain("npm publish --workspace @lando/sdk");
+      expect(workflow).not.toContain("npm publish --workspace @lando/core");
+      expect(workflow).not.toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
       expect(workflow).not.toContain("NPM_TOKEN");
       expect(workflow).not.toContain("NODE_AUTH_TOKEN");
     },
@@ -677,30 +693,16 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "regenerates all derived sources before the npm alpha package build and dry-run publish",
+    "keeps GitHub binary prerelease in generated workflow",
     async () => {
-      // Given
       await runCodegen();
       const workflow = await readFile(releaseWorkflowPath, "utf8");
-      const jobStart = workflow.indexOf("  npm-alpha-packages:");
-      expect(jobStart).toBeGreaterThanOrEqual(0);
-      const job = workflow.slice(jobStart);
 
-      // When
-      const installPosition = job.indexOf("run: bun install --frozen-lockfile");
-      const codegenPosition = job.indexOf("run: bun run codegen");
-      const buildPosition = job.indexOf("- name: Build package artifacts");
-      const dryRunPosition = job.indexOf("- name: Dry-run npm dev publishes");
-
-      // Then
-      expect(installPosition).toBeGreaterThanOrEqual(0);
-      expect(codegenPosition).toBeGreaterThanOrEqual(0);
-      expect(buildPosition).toBeGreaterThanOrEqual(0);
-      expect(dryRunPosition).toBeGreaterThanOrEqual(0);
-      expect(job).toContain("- name: Regenerate derived sources");
-      expect(codegenPosition).toBeGreaterThan(installPosition);
-      expect(codegenPosition).toBeLessThan(buildPosition);
-      expect(codegenPosition).toBeLessThan(dryRunPosition);
+      expect(workflow).toContain("dev-prerelease-linux-x64:");
+      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
+      expect(workflow).toContain("dist/lando");
+      expect(workflow).toContain("dist/SHA256SUMS");
     },
     codegenTestTimeout,
   );

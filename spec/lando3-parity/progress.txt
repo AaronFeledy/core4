@@ -38,6 +38,12 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - `ProviderCapabilities` fields added with `optionalWith` defaults become required on the decoded Type; every capability fixture must set the new field, and adding a property re-diffs sibling `allOf` optional structs in schema-compatibility.
 - Cross-service catalog wiring that needs sibling discovery belongs in an `AppFeature` (`activatedBy` + `selectors`), not in `ServiceType.resolve`; resolve cannot see other services.
 - nginx PHP FastCGI preset activates on `backend: <service>` and fastcgi_passes to that service on port 9000; omit `backend:` for stock static nginx.
+- PHP `xdebug:` mode lives in `zz-lando-xdebug.ini`, not `XDEBUG_MODE` env, so `lando xdebug on|off` can reload Apache/FPM without a rebuild; env would win over the ini rewrite.
+- An AppFeature with no selectors selects every service and will cycle with nginx PHP-FPM wiring; select PHP via `hasFeature` plus database `types:` when sibling discovery must not include nginx.
+- File-backed Compose `configs:` hash into the app-plan cache like `env_file`. Bundled providers declare `composeProjectFields`/`composeServiceFields` `configs` and realize grants as read-only binds; `external: true` fails closed.
+- Recipe `extends:` flattens before RecipeManifest validate. `flatten.ts` must not import `service.ts` (cycle). Bare `.` is not a local recipe path; use `./` or a `recipe.yml` path.
+- Remote `extends` hops are YAML-only and jailed to the published parent root; `recipe.ts` is not executed from a remote parent tree.
+- Bundled PHP recipes emit versioned database types (`mariadb:11.4`) that plan through `loadServiceTypeWithVersion`. `allowOverride` is rejected on `via: fpm`; nginx+FPM recipes must omit it and add an `edge` service with `backend:`.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -640,4 +646,132 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Serving-mode validation belongs in `ServiceType.resolve`, not only in the feature apply path, so custom `image:` still fail-closes invalid `via:` / mode-invalid keys.
   - Keep PHP serving-mode helpers in `php-via.ts`; `php.ts` is already near the 250-line ceiling.
+---
+
+## 2026-08-20 22:55 CDT - US-572
+- PHP `xdebug: true` / mode string now installs checksum-pinned Xdebug 3.5.3 for 8.1–8.5, writes host-gateway client settings on port 9003, and contributes `lando xdebug on|off|status` tooling that reloads Apache, FPM, or no-ops on cli without a rebuild. `xdebug: false` remains the default and installs nothing.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP xdebug/schema/prerequisites plus the three xdebug-phpstorm guide scenarios). Host `app:config` accepted `xdebug: true`; `app:cache:refresh` planned it and rejected `xdebug: nope` with remediation.
+- **Learnings for future iterations:**
+  - Keep Xdebug mode in `zz-lando-xdebug.ini` rather than `XDEBUG_MODE` env. Xdebug 3 lets the env override ini, which would make on/off require a container recreate.
+  - Pin the PECL tarball (URL + sha256) the same way Composer is pinned; do not `pecl install xdebug` unpinned. Include `phpVersion` in `buildKeyInputs` even when the tarball is shared, because the compiled `.so` is ABI-specific.
+  - `xdebug:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
+---
+
+## 2026-08-20 23:55 CDT - US-572 Review
+- Stopped injecting `XDEBUG_MODE` so `lando xdebug on|off` can rewrite `zz-lando-xdebug.ini` on custom images, and rejected Landofile `xdebug: "off"` so `on` cannot restore a disabled install mode.
+- Review notes (deferred/rejected): rejected requiring the hidden guide scenario to execute `php -m` because the test provider cannot compile PECL; unit tests lock that status command. Rejected replacing `host.docker.internal` with `host.lando.internal` extra_hosts because US-439 rejected privileged hosts-file mutation; the PhpStorm guide already documents the Linux extra_hosts caveat. Rejected treating AC 1's `XDEBUG_MODE` wording as a requirement to set the env var — that contradicts AC 2 and the recorded ini-toggle pattern. Review-work lanes expired or timed out without a deliverable; Bugbot plus focused tests were used instead.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; 14 PHP xdebug tests and 3 schema tests passed.
+- **Learnings for future iterations:**
+  - Landofile `xdebug:` mode strings must not include `off`; that token is the runtime toggle, and seeding tooling with it makes `lando xdebug on` a no-op.
+---
+
+## 2026-08-21 00:33 CDT - US-572 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app with `xdebug: true`, and confirmed Xdebug 3.5.3 loaded (`php -m`), `xdebug.mode=debug`, `client_host=host.docker.internal`, port 9003, `XDEBUG_MODE` unset, and `lando xdebug status|off|on` toggling without rebuild. Invalid `xdebug: nope` and `xdebug: "off"` failed closed at plan time. via:cli and via:fpm planned with xdebug tooling; adjacent Composer 2.10.2 still worked. Destroyed the app.
+- Fixed the start blocker: the Xdebug build step used a heredoc, which `buildArtifact` rejects as CR/LF in a Dockerfile `RUN` command. Replaced it with a single-line `printf`.
+- **Out-of-scope finding:** Bugbot: `lando xdebug on` runs `php -m | grep -i xdebug` under `set -eu`, so grep's non-zero exit aborts after `write_ini` on custom `image:` services that skip the install step. Status already uses `|| true`; not blocking stock PHP verification.
+- **Learnings for future iterations:**
+  - Artifact build-step shell commands cannot contain real newlines (Dockerfile `RUN` token check). Write ini files with `printf`/`\n`, not heredocs.
+  - A failed `lando start` can leave a stale `plan.bin` keyed only on Landofile identity; plugin/binary changes do not invalidate it. Wipe `~/.cache/lando/apps/<app-*>` after rebuilding the binary or the old build-step command will keep failing.
+---
+
+## 2026-08-21 01:17 CDT - US-573
+- PHP `db_client: auto` (default) inspects sibling MySQL/MariaDB/Postgres/MongoDB service types and installs matching client CLIs as checksum- or repo-pinned build steps. `false` installs none; `"<family>:<version>"` forces a catalog pin. Invalid values fail at plan time with remediation even on custom `image:`, which still skips the install steps. mssql is ignored. Cross-service install runs in an AppFeature so PHP resolve stays sibling-blind.
+- Verification: typecheck, lint passed; relevant test spot checks passed (PHP db-client/schema/registration plus adjacent PHP/xdebug/composer/phpmyadmin/nginx tests and the php-customization guide scenarios). Host `app:config` accepted `db_client: auto`; `app:cache:refresh` planned auto/false/explicit and rejected `db_client: "nope"` with tagged remediation.
+- **Learnings for future iterations:**
+  - An AppFeature with no selectors selects every service and forms a mutation cycle with nginx PHP-FPM wiring. Select PHP via `hasFeature` plus database `types:` so siblings are visible without selecting nginx.
+  - `db_client:` must be a `ServiceConfig` field. The Landofile unknown-key allowlist is `Object.keys(ServiceConfig.fields)`.
+---
+
+## 2026-08-21 03:20 CDT - US-573 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 + mysql app with `db_client: auto`, and confirmed mysql 8.0.46 in the PHP container, a live `SELECT 1` against the database service, HTTP `us573-ok`, and adjacent PHP 8.3.33 / Composer 2.10.2. Invalid `db_client: "nope"` failed closed at plan time; `false` and `mariadb:11.4` planned. Destroyed the app.
+- Fixed the start blocker: MySQL apt `RPM-GPG-KEY-mysql-2023` expired 2025-10-22 (and the pin fingerprint was the 2022 key). Switched to `RPM-GPG-KEY-mysql-2025` / `BCA43417C3B485DD128EC6D4B7B3B788A8D3785C`.
+- **Out-of-scope finding:** authored `creds: user: app` did not apply; the mysql container used `MYSQL_USER=lando` / `MYSQL_DATABASE=us573-verify`. Query succeeded with those values. Suspected mysql service creds path, not db_client.
+- **Out-of-scope finding:** `lando mysql --version` failed with `ToolingCompileError` (app command cache missing `app:mysql`) after start and `app:cache:refresh`. Suspected mysql service-type tooling contribution / command cache, not db_client.
+- **Learnings for future iterations:**
+  - Pin MySQL apt GPG keys to the unexpired `RPM-GPG-KEY-mysql-YYYY` whose fingerprint matches the live InRelease signer; the 2023 file is the same key id with an expired self-signature.
+---
+
+## 2026-08-21 05:50 CDT - US-574
+- Compose `configs:` now realize as read-only file mounts on the bundled providers and TestRuntimeProvider. Top-level `file:` entries plus service short/long grants honor source, target, and mode; content changes bust the app-plan cache; missing files and `external: true` fail closed with tagged remediation.
+- php-customization and compose-service-block guides show a `configs:` php.ini drop-in instead of documenting the old bind-mount-only workaround.
+- Verification: typecheck, lint passed; relevant test spot checks passed (planner identity, provider contract, capabilities, conformance, both executable guides); CLI `app:config` accepted configs and `app:cache:refresh` planned, then failed closed after deleting the source file.
+- **Learnings for future iterations:**
+  - Hash config file bytes only when the provider declares both project and service `configs` support, otherwise the existing CapabilityError gate must fire first.
+  - Upstream Compose conformance fixtures are YAML-only; stub missing `configs.*.file` paths in the harness so preservation proofs still plan after realization hashing lands.
+---
+
+## 2026-08-21 05:59 CDT - US-574
+- Story verified complete on branch (no new code).
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-21 06:35 CDT - US-574 Review
+- Fixed mode-bearing config copies that failed on rebuild once the dest was chmod 0444, and the stale Podman/Lando composeServiceFields exact-match tests that still expected labels only.
+- Review notes (deferred/rejected): rejected Bugbot High that start of an existing container keeps a stale mode-copy — skip-create is existing provider bring-up semantics; plan identity plus rebuild is the re-apply contract, and mode-less grants already bind the source file live. Rejected Bugbot Medium unparseable mode fail-open because the schema accepts arbitrary number|string and realization still mounts read-only. Rejected code-quality tmpdir/symlink hardening; copies must outlive apply, and that is not a US-574 recreate contract. Security review-work lane aborted on usage limit; Bugbot plus local review used instead. Goal/QA/context lanes did not return a deliverable before wrap.
+- Verification: typecheck, lint passed; explicit-base guide drift passed; focused compose-configs, knobs-declaration, planner identity, provider contract, and capabilities tests passed.
+- **Learnings for future iterations:**
+  - A 0444 staged copy must be chmod'd writable before copyFileSync on re-apply, or rebuild EACCES after the first start.
+---
+
+## 2026-08-21 06:58 CDT - US-574 Drift Audit
+- Trigger: 3 cycles, 744 changed lines, 5 commits
+- Category 2: Identity proof only asserted cache miss; production bind strings never asserted `:ro`
+- Category 4: Planner config-file input type was exported with no consumer
+- Category 6: php.ini guide claimed cache:refresh remounts; rebuild remounts mode-bearing copies, mode-less binds stay live
+- Fixed: Unexported the unused type; locked bind-string `:ro` and cache-hit-then-miss proofs; corrected remount guidance
+- Split/excise decisions: None; skip-create stale mode-copy, unparseable mode, and tmpdir hardening stay rejected as recorded
+- Verification: typecheck, lint, lint:guides, and 9 focused tests passed
+---
+
+## 2026-08-21 18:15 CDT - US-575
+- Recipe `extends:` now flattens single-inheritance chains before validation: prompts merge by name with `drop: true`, files merge by dest, postInit concatenates parent-then-child, and child scalars win with no parent fallback. Cycle and depth>3 fail with RecipeExtendsError naming the chain. Remote parents reuse the git/npm/registry adapters and recipe-cache pin identity. `meta recipes describe` and `validate` show the flattened child; recipe.ts factories merge after they run. The extending-recipes guide covers a lamp child plus a missing-parent failure.
+- Verification: sdk and core typecheck passed; lint, boundaries, guide lint/coverage, and the two-scenario extending-recipes guide passed; 111 focused recipe/CLI tests plus 12 git-source tests passed. CLI describe/validate of a lamp child returned the flattened prompts/files/postInit; a missing parent failed with RecipeExtendsError. Root `tsc -b` still reports pre-existing windows-arm64 and mcp memoryPressure errors on files this story did not change.
+- **Learnings for future iterations:**
+  - Flatten and validate must stay in separate modules. Importing `validateRecipeManifestObject` from flatten re-creates a service/flatten import cycle and fails `check:boundaries`.
+  - `meta recipes describe .` is not a local path (unknown scheme). Use `./` or a `recipe.yml` path.
+  - Git recipe cache is SHA-keyed; a URL-to-SHA pointer is what lets a second parent resolve skip clone.
+---
+
+## 2026-08-21 19:45 CDT - US-575 Review
+- Blocked remote-parent YAML from executing in-tree or host `recipe.ts` during flatten. Nested local hops from a git/npm/registry parent now stay inside the published recipe root (realpath jail, including symlink hops) and load YAML only.
+- Review notes (deferred/rejected): rejected treating git/npm SSRF and `github:@ref` ignore as US-575 blockers — those are the existing init `--source=git` trust/pin model reused by parent-source; lockfile pinning is the SHA recipe-cache pin, not a new `.lock`; tarball parent refs stay out because `detectScheme` has no tarball form; guide “when set” scalar wording is a docs nit against spec “come from the child”. Bugbot found no bugs.
+- Verification: lint passed; focused extends (12), ts-source (13), and recipes-commands (16) tests passed. Typecheck still reports only pre-existing windows-arm64 and mcp memoryPressure errors.
+- **Learnings for future iterations:**
+  - Remote recipe material is YAML-only today. Flatten must not reclassify a remote parent's `extends: ./` hop as a trusted local `recipe.ts` factory.
+---
+
+## 2026-08-21 21:14 CDT - US-576
+- Drupal, Drupal CMS, and LAMP init now offer real stack choices: PHP 8.1-8.5, Composer 2/2.7.7/false, webroot, and versioned databases. Drupal and CMS also choose Apache or nginx+FPM; Drupal chooses major 10 or 11 for the scaffold constraint. Defaults stay PHP 8.3, MariaDB 11.4, Composer 2, and `/app` (LAMP) or `/app/web` (Drupal/CMS).
+- Each recipe README exercises a non-default init plus `app:config`. Drupal CMS now has the same scaffold + project-local Drush e2e path as Drupal.
+- Verification: typecheck (only pre-existing windows-arm64 and mcp memoryPressure errors), lint passed; relevant test spot checks passed (option-parity, php-stack helper, canonical recipes, Drupal scaffold protocol); guide lint and coverage passed. CLI init confirmed lamp defaults and Drupal nginx/postgres/Composer/Drupal 10 output.
+- **Learnings for future iterations:**
+  - Extra `--answer` keys that are not in the recipe prompt list are ignored. Invalid values only fail closed after the prompt exists with choices or a validate pattern.
+  - `initApp` writes into `cwd`; CLI `lando init <dir>` creates that directory. Adjacent init tests need a fresh empty directory per recipe.
+---
+
+## 2026-08-21 21:32 CDT - US-576 Review
+- Reviewed option parity against §8.8.16. Nginx Drupal/CMS now authors the same webroot on the FastCGI edge, so the scaffold docroot `/app/web` is the nginx `root` instead of the `/app` fallback (same class of bug as #768).
+- Review notes (deferred/rejected): rejected rewriting Drupal/CMS scaffold to follow arbitrary webroots — `create-project` still emits `web/`, and the prompt default remains `/app/web`; rejected requiring a `name` prompt default (`--name` is the existing identity flag); rejected `primary: true` on FPM appserver (not in the ACs; nginx owns HTTP :80); rejected WEBROOT_PATTERN `..` as a host-injection issue (container DocumentRoot, same charset as PhpWebroot).
+- Verification: typecheck (only pre-existing windows-arm64 and mcp memoryPressure errors), lint passed; explicit-base guide drift passed; focused php-stack, option-parity, canonical-recipe, and Drupal recipe tests passed.
+- **Learnings for future iterations:**
+  - nginx FastCGI uses `service.webroot ?? /app` and does not copy the PHP backend webroot. Drupal/CMS `edge` must author `webroot:` or nginx serves `/app`.
+---
+
+## 2026-08-21 21:37 CDT - US-576 Review
+- Drupal and Drupal CMS no longer offer `composer: false`. Their scaffold tooling still runs `composer create-project` on the appserver, so disabling Composer left a stack choice that could not finish init. LAMP still allows `false`.
+- Verification: lint passed; focused php-stack and option-parity tests passed, including Drupal rejecting `composer: false`.
+---
+
+## 2026-08-21 21:48 CDT - US-576 Drift Audit
+- Trigger: 3 cycles, 912 changed lines, 3 commits
+- Category 4: Shared helper exported unused internal types.
+- Category 6: After-init Drupal guide heading still said PHP 8.4 after the recipe grew 8.5.
+- Fixed: Unexported the unused types; aligned the heading with the offered PHP range.
+- Split/excise decisions: None; no absorbed SDK surface and only this story's pass state changed.
+- Verification: typecheck (only pre-existing windows-arm64 and mcp memoryPressure errors), lint passed; 65 focused php-stack, option-parity, canonical-recipe, Drupal recipe, and scaffold-protocol tests passed.
+---
+
+## 2026-08-21 22:05 CDT - US-576 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, inited lamp (php 8.1 / mysql:8.0 / composer 2.7.7 / webroot /app/public) and started it: PHP 8.1.34, Composer 2.7.7, MySQL 8.0.46, HTTPS served the public webroot. Inited and started drupal nginx+postgres+8.5+Drupal 10: PHP 8.5.9, Composer 2.7.7, PostgreSQL 16.15, nginx edge served `/app/web` not `/app`. Drupal-cms inherit + `/app/web` confirmed via init/`app:config`. Adjacent default lamp, lemp, wordpress inits worked; Drupal `composer=false` failed closed. Destroyed both apps.
+- **Out-of-scope finding:** `lando exec --service appserver -- composer -V` on php:8.5 + composer 2.7.7 printed `E_STRICT` and React promise semicolon-case deprecations. Expected a quiet version line; Composer 2.7.7 predates PHP 8.5. Does not block option parity.
 ---

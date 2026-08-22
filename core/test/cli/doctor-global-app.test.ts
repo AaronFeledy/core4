@@ -59,7 +59,23 @@ const unreadableFileSystemLayer = Layer.succeed(FileSystem, {
   writeFile: () => Effect.void,
 } satisfies typeof FileSystem.Service);
 
+const missingDistFileSystemLayer = Layer.succeed(FileSystem, {
+  read: () => Stream.empty,
+  readText: () => Effect.succeed(""),
+  write: () => Effect.void,
+  writeAtomic: () => Effect.void,
+  exists: () => Effect.succeed(false),
+  stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+  lstat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+  mkdir: () => Effect.void,
+  remove: () => Effect.void,
+  readDir: () => Effect.succeed([]),
+  readFile: () => Effect.succeed(""),
+  writeFile: () => Effect.void,
+} satisfies typeof FileSystem.Service);
+
 const layer = Layer.mergeAll(globalAppLayer, pluginRegistryLayer, unreadableFileSystemLayer);
+const notInstalledLayer = Layer.mergeAll(globalAppLayer, pluginRegistryLayer, missingDistFileSystemLayer);
 
 const writeInstalledPlugin = async (pluginsRoot: string, name: string) => {
   const packageRoot = join(pluginsRoot, name, "1.0.0");
@@ -113,6 +129,19 @@ describe("global-app doctor check", () => {
     const text = renderGlobalAppDoctorResult(result);
     expect(text).toContain("global-app: fail");
     expect(text).toContain("readError: permission denied");
+  });
+
+  test("not-installed solution points at global:install and auto-provision on start", async () => {
+    const result = await Effect.runPromise(globalAppDoctor().pipe(Effect.provide(notInstalledLayer)));
+    const check = result.checks[0];
+
+    expect(check?.status).toBe("warn");
+    expect(check?.context.installed).toBe("false");
+    expect(check?.solutions[0]?.command).toBe("lando global:install");
+    expect(check?.solutions[0]?.description).toContain("automatically");
+    expect(check?.solutions[0]?.description).toContain("lando global:install");
+    expect(check?.solutions[0]?.description).not.toContain("manually");
+    expect(check?.solutions[0]?.description).not.toContain("global:start");
   });
 
   test("DefaultGlobalAppDoctorLayer provides ConfigService to PluginRegistryLive", async () => {

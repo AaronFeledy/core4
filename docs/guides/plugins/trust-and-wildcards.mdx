@@ -1,0 +1,36 @@
+---
+id: trust-and-wildcards
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, trust]
+---
+
+# Trust plugins by name
+
+Trust matches one plugin name. Org globs are not up.
+
+```sh
+lando plugin:trust list
+```
+
+Trust is a guest list, not a glob.
+
+## What works today
+
+List trusted names. Add one package name. Revoke that name.
+
+```sh
+lando plugin:trust @lando/plugin-php
+lando plugin:trust revoke @lando/plugin-php
+```
+
+Authorize a local checkout with an absolute path.
+
+Relative paths are rejected.
+
+```sh
+lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
+```
+
+See [Manage plugin trust](./trust-management.mdx).

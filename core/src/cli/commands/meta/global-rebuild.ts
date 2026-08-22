@@ -33,6 +33,7 @@ import {
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -105,7 +106,7 @@ export const globalRebuild = (
     if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
 
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan);
+    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const events = yield* EventService;
     const builder = yield* BuildOrchestrator;
 

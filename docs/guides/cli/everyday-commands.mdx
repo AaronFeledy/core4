@@ -1,0 +1,85 @@
+---
+id: everyday-commands
+provider: test
+timeout: 60000
+tags: [beta, docs, cli]
+---
+
+# Run the everyday CLI loop
+
+Start the app, inspect it, work inside it, then tear it down.
+
+```sh
+lando start
+lando info
+```
+
+If you only memorize four of these, make them `start`, `info`, `exec`, and `destroy`.
+
+## Everyday commands
+
+| Command | What it does |
+| --- | --- |
+| `lando start` | Start this app. Alias of `app:start`. |
+| `lando info` | Print services, URLs, and connection details. Alias of `app:info`. |
+| `lando exec -- <cmd>` | Run a one-off command in the primary service. Alias of `app:exec`. |
+| `lando logs` | Stream service logs. Alias of `app:logs`. |
+| `lando stop` | Stop this app. Keeps volumes. Alias of `app:stop`. |
+| `lando restart` | Stop then start. Alias of `app:restart`. |
+| `lando rebuild` | Recreate containers from the current Landofile. Alias of `app:rebuild`. |
+| `lando destroy -y` | Remove this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
+| `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
+| `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
+| `lando list` | List apps on this host. Alias of `apps:list`. |
+
+## Work inside a service
+
+```sh
+lando exec -- node --version
+lando exec --service db -- psql --version
+lando logs --service app --follow
+```
+
+`lando ssh` opens an interactive `sh -l` in the primary service. See [Open a shell in a service](./ssh.mdx).
+
+## Stop, restart, rebuild
+
+```sh
+lando stop
+lando start
+lando restart
+lando rebuild
+```
+
+`restart` cycles running processes. `rebuild` recreates containers. Use `rebuild` after you change service types, images, or build steps.
+
+## Tear down
+
+`destroy` deletes this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+```sh
+lando destroy -y
+```
+
+`-y` skips the confirmation prompt.
+
+To stop everything Lando is running:
+
+```sh
+lando list
+lando poweroff -y
+```
+
+`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up.
+
+## Check the host
+
+```sh
+lando doctor
+```
+
+Run doctor after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later doctor and start stay on Docker. `LANDO_PROVIDER` does not persist.
+
+## Next
+
+Walk the same loop as a tutorial: [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx).

@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, python, service, runtime]
 ---
 
-# Python
+# Add Python
 
-Add a Python service to your app by declaring `type: python:3.12` for the
-primary service — Python has no bare `type: python` alias, so pin a
-version. Lando currently supports `python:3.12`, and the default image is
+Put `type: python:3.12` on the primary service. Python has no bare `type: python` alias, so pin a version. Lando currently supports `python:3.12`, and the default image is
 `python:3.12-slim`. Your repository is bind-mounted read-write at `/app`,
 which is also the working directory:
 
@@ -52,8 +50,7 @@ lando exec app -- python manage.py runserver 0.0.0.0:8000
 ## Pin a version
 
 Set `image:` to use the full (non-slim) or an alternate Python base image
-when the default `python:3.12-slim` isn't what you want — slim lacks build
-tools that some packages need:
+when `python:3.12-slim` isn't what you want. Slim lacks build tools that some packages need:
 
 ```yaml
 services:

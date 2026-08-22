@@ -375,7 +375,7 @@ const composeConfigOrSecretInput = (description: string) =>
   ).annotations({ description });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
-  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose, capability-checked, and realized as read-only file mounts honoring source, target, and mode.";
 
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
@@ -553,6 +553,16 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     via: Schema.optional(Schema.String).annotations({
       description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
+    }),
+    xdebug: Schema.optional(Schema.Union(Schema.Boolean, Schema.String)).annotations({
+      description:
+        'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
+    }),
+    db_client: Schema.optional(
+      Schema.Union(Schema.Literal("auto"), Schema.Literal(false), Schema.String),
+    ).annotations({
+      description:
+        'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
     root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),

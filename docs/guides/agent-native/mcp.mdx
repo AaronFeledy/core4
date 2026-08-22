@@ -186,7 +186,7 @@ if (exitCode !== 0) throw new Error(stderr);`}
 
 Serve mode rejects a TTY because an MCP client must own both protocol pipes.
 It also rejects unavailable descriptors and character devices, and it rejects
-command-result machine output — use `lando mcp --list --format=json` instead
+command-result machine output. Use `lando mcp --list --format=json` instead
 of `lando mcp --format=json`.
 
   <Scenario id="startup-refusals" render>
@@ -235,9 +235,9 @@ const tools = JSON.parse(stdout);`}
 
 The two read-only tools are `app:config:get`, which reads one resolved
 configuration key (`args.key` is required), and `app:config:view`, which
-reads the complete resolved Landofile. Umbrella and write-capable ids —
+reads the complete resolved Landofile. Umbrella and write-capable ids:
 `app:config`, `app:config:set`, `app:config:unset`, `app:config:edit`,
-`app:config:validate` — are not MCP tools, even through explicit allow
+`app:config:validate` are not MCP tools, even through explicit allow
 configuration.
 
 Protocol input and output stay bounded: a complete inbound frame and a

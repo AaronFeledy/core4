@@ -6,90 +6,53 @@ timeout: 60000
 tags: [beta, docs, scratch, recipe]
 ---
 
-# Scratch from recipe
+# Start a scratch app from a recipe
 
-## Scratch recipe command
-
-Materializes the named recipe into an ephemeral scratch app instead of scaffolding into the current directory.
-
-The scratch namespace alias reaches the same recipe mode behavior.
-
-apps:scratch:start requires exactly one of --fork or --from `<recipe-ref>`; passing both or neither fails with ScratchSourceUnresolvedError.
+`lando scratch:start --from <recipe>` materializes a recipe into a throwaway app. It does not write a Landofile into the current directory.
 
 ```sh
---fork XOR --from
+lando scratch:start --from lamp --yes --detach
 ```
 
-Returns after the provider apply starts the recipe resources instead of keeping an attached command session (`--detach`).
+Scratch is a hotel room. Init is a lease.
 
-## Scratch recipe answers
+## Pick exactly one source
 
-Recipe prompts are auto-answered from flags so scratch mode can run non-interactively in CI.
-
-Repeatable; supplies a recipe prompt answer so prompts that take defaults can be auto-answered.
+Pass exactly one of `--from` or `--fork`. Both or neither fails.
 
 ```sh
---answer key=value
+lando scratch:start --from wordpress --yes --detach
+lando scratch:start --fork --detach
 ```
 
-Synonym for --answer; on a key collision --option wins because answers are merged before options (last write wins)
+`--from` takes a recipe reference. Bundled recipes include `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. There is no `--recipe` flag on this command.
+
+`--fork` uses the current app's Landofile as the scratch source. You must be in an app root.
+
+`--yes` accepts recipe prompt defaults. `--answer key=value` (repeatable) fills prompts. `--option` is an alias for `--answer`.
+
+## Inspect and destroy
 
 ```sh
---option key=value
+lando scratch:list
+lando scratch:info <id>
+lando scratch:destroy <id>
 ```
 
-Accepts every recipe prompt's default without asking; the -y shorthand is equivalent (`--yes`).
+`--detach` returns after the scratch starts. Without it the session stays attached.
 
-Never prompts; remaining prompts must be satisfied by defaults or --answer, otherwise the recipe fails; --non-interactive is accepted as a synonym (`--no-interactive`).
+`lando run --from lamp -- composer --version` runs one command in a disposable scratch app. When `--from` is omitted, `lando run` uses the bundled toolbox recipe.
 
-## Scratch recipe run
+## Keep a real app instead
 
-Runs the command tail in a disposable scratch app and exits with the tool command's exit code.
-
-The top-level run alias reaches the same disposable scratch execution path.
+To scaffold into this directory, use init:
 
 ```sh
-lando run -- composer install
+lando init --recipe lamp --yes
+lando start
 ```
 
-When --from is omitted, scratch run uses the bundled toolbox recipe instead of the current app.
+## Next
 
-Overrides the recipe used for the disposable scratch app before the command is executed.
-
-```sh
---from lamp
-```
-
-Runs in the requested service; an unknown service fails with the available service names.
-
-```sh
---service appserver
-```
-
-The current working directory is mounted into the scratch app unless --no-mount is passed.
-
-Retains the scratch app after the command exits and prints the kept scratch id (`--keep`).
-
-stdout and stderr are forwarded as renderer stream frames; non-json output renders both streams, while json keeps stderr out of the result body.
-
-Allowed agent-context environment values are forwarded below service environment values and registered as redaction tokens.
-
-## Scratch recipe render
-
-The recipe is rendered into the scratch cache root and planned under a generated identity, mirroring fork mode's materialize then plan then apply shape.
-
-The recipe renders into `<userCacheRoot>`/scratch/`<id>`/root/, never into the current working directory.
-
-The scratch id is generated from --name, then the recipe reference as a fallback, and forced onto the rendered Landofile name (`scratch-<base>-<6hex>`).
-
-The rendered Landofile is re-planned under the scratch id so plan id, name, and slug all match the scratch identity.
-
-The recipe's postInit: actions are not run for scratch mode; --run-post-init opt-in is a later flag (`skipped`).
-
-## Scratch recipe unresolved
-
-A recipe reference that cannot be resolved fails before any scratch app is created so no partial state is left behind.
-
-An unknown or unresolvable --from `<recipe-ref>` maps recipe-resolution failures to ScratchSourceUnresolvedError.
-
-Render, IO, or parse failures of an otherwise resolvable recipe surface as ScratchAppError instead.
+- [Write a Landofile](../landofile/your-landofile.mdx)
+- [Everyday commands](../cli/everyday-commands.mdx)

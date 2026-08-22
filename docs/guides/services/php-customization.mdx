@@ -5,17 +5,13 @@ timeout: 90000
 tags: [beta, docs, php, service, customization]
 ---
 
-# PHP customization
+# Customize PHP
 
-`type: php:8.3` (and the other supported minors) ships a fixed set of
-built-in PHP extensions. When your app needs something outside that set, or
-a `php.ini` tweak, or a fully custom image, this guide covers the three
-supported paths and what each one costs you.
+Start from `type: php:8.3` (or another supported minor). That image ships a fixed set of built-in PHP extensions. Add an extra extension, mount a `php.ini`, or replace the image. Each path costs you something different.
 
-## Built-in extensions
+## See built-in extensions
 
-The default `-apache` build compiles and enables exactly these extensions —
-no more, no less:
+The default `-apache` build compiles and enables exactly these extensions. No more, no less:
 
 ```text
 gd, intl, mbstring, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
@@ -32,12 +28,43 @@ gd, intl, mbstring, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 | `pdo_sqlite` | PDO driver for SQLite |
 | `zip` | ZIP archive support |
 
+## Turn on Xdebug
+
+Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode string) on the PHP service. See the Xdebug in PhpStorm guide. `xdebug: false` is the default and installs nothing. `XDEBUG_MODE` in `environment:` does not add the extension.
+
+## Install a database client
+
+`db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. You can force one with
+`db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
+Detection is deterministic from the resolved plan; it never probes the
+provider. Changing `db_client` changes the build key, so a running app needs
+`lando rebuild -y`. A custom `image:` still validates the option but skips
+the install steps.
+
+```yaml
+services:
+  app:
+    type: "php:8.3"
+    db_client: auto
+  database:
+    type: mysql
+    creds:
+      user: app
+      password: secret
+      database: app
+tooling:
+  db-query:
+    service: app
+    cmd: mysql -h database -u app app -e "SELECT 1"
+```
+
+`lando mysql` / `lando psql` still run in the database service. Point a PHP
+task at those same `services.<db>.creds.*` values when you want the client
+that lives next to your app code. `db-query` above is that pattern.
+
 ## Install an extra extension
 
-Add a `build.artifact` step to compile or install an extension the
-built-in set doesn't cover — Lando runs each entry as a build-time shell
-command against the service's build layer, honestly, the same way it runs
-its own prerequisite install:
+Add a `build.artifact` step to compile or install an extension the built-in set doesn't cover. Lando runs each entry as a build-time shell command against the service's build layer:
 
 ```yaml
 services:
@@ -52,8 +79,7 @@ services:
 An artifact step runs after Lando's own PHP prerequisite build steps, in
 the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
-build key, so `lando rebuild -y` is required for it to take effect —
-restart alone reuses the previous image.
+build key, so `lando rebuild -y` is required for it to take effect. Restart alone reuses the previous image.
 
 ## Mount a custom php.ini
 
@@ -72,39 +98,44 @@ services:
 
 php.ini drop-ins are read alphabetically after the base `php.ini`, so a
 `zz-` prefix guarantees this file loads last and wins. Mark the mount
-read-only — the container never needs to write back to your source
-`php.ini`.
+read-only. The container never needs to write back to your source `php.ini`.
 
-## Custom image or Dockerfile tradeoffs
+## Grant a php.ini with Compose configs
 
-Setting `image:` on a `php` service — or switching to `build.context` with
-your own Dockerfile — replaces the default `-apache` base entirely.
+`configs:` grants are realized as read-only binds, the same path apply
+uses. Declare the file at the top level, then grant it onto the PHP service:
+
+```yaml
+configs:
+  phpini:
+    file: ./php.ini
+services:
+  app:
+    type: "php:8.3"
+    configs:
+      - source: phpini
+        target: /usr/local/etc/php/conf.d/zz-custom.ini
+        mode: "0444"
+```
+
+Changing the source file busts the app-plan cache. Run
+`lando app:cache:refresh` to rehash. Rebuild to remount a `mode:` copy.
+A mode-less grant binds the live host file.
+
+## Replace the image
+
+Setting `image:` on a `php` service, or switching to `build.context` with your own Dockerfile, replaces the default `-apache` base entirely.
 `service-lando.php` only adds its prerequisite build steps (the apt
-packages, `docker-php-ext-install` compilation, and Composer install) and
-generates the Apache virtual-host command when `image:` is left unset. Set
-`image:` and both are skipped: you get none of the built-in extensions
-above and no generated Apache startup — the image's own `CMD`/`ENTRYPOINT`
-runs instead.
+packages, `docker-php-ext-install` compilation, Composer install, and
+database clients) and generates the Apache virtual-host command when
+`image:` is left unset. Set `image:` and those install steps are skipped:
+you get none of the built-in extensions above, no generated Apache
+startup, and no `db_client:` packages. The image's own `CMD`/`ENTRYPOINT` runs instead. Invalid `db_client:` values still fail at plan time.
 
 What still applies regardless of `image:`: the `/app` bind mount, HTTP
 endpoint, healthcheck, working directory, and `LANDO_*` environment.
 
-## Compose configs: is not a supported delivery path
-
-Compose's own `configs:` key looks like the natural way to deliver a
-`php.ini`, but the default `provider-lando` capability set only realizes
-the `labels` Compose service field — `configs` and `secrets` content lives
-only in `AppPlan.extensions.compose`, with no provider step that
-materializes it into the container. Planning fails closed with a tagged
-`CapabilityError` before any container work happens.
-
-Declaring `configs:` on a service authors a Compose config grant that
-decodes and merges into the Landofile without error, but planning still
-fails closed once provider capabilities are checked. Replace `configs:`
-with a `mounts:` bind mount, as shown in the php.ini section above, to
-actually deliver the file.
-
-## Executable coverage
+## Prove the config
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -138,6 +169,92 @@ actually deliver the file.
     <Step name="confirm-mount">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zz-custom\\.ini\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="custom-ini-configs" render>
+    <Step name="scaffold">
+      <UseFixture name="php-ini-configs" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpini\"[\\s\\S]*zz-custom\\.ini" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-customization-ini-configs" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-auto" render>
+    <Step name="scaffold">
+      <UseFixture name="db-client-auto" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*\"auto\"" } }} />
+    </Step>
+    <Step name="verify-tooling">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "db-query" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-auto" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-disabled" render={false} reason="db_client false must plan with no database client install.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-disabled" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*false" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-disabled" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-explicit" render={false} reason="Explicit mariadb:11.4 must plan without a database sibling.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-explicit" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db_client\":\\s*\"mariadb:11.4\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-db-client-explicit" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="db-client-invalid" render={false} reason="Unknown db_client values must fail closed at plan time with remediation.">
+    <Step name="scaffold">
+      <UseFixture name="db-client-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported database client" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>

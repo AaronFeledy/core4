@@ -23,9 +23,12 @@ export const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<s
     let body = "";
     let settled = false;
     let draining = false;
+    const socket = request.socket;
     const timeout = setTimeout(() => {
+      // Bun 1.4 IncomingMessage/socket destroy does not close the client while a
+      // large Content-Length is still pending. Reject and let the handler write
+      // Connection: close so the peer is released.
       rejectOnce(new Error("Host-proxy request body timed out."));
-      request.destroy();
     }, timeoutMs);
     const cleanup = (): void => {
       clearTimeout(timeout);
@@ -33,14 +36,15 @@ export const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<s
       request.off("end", resolveOnce);
       request.off("close", rejectClosed);
       if (!draining) request.off("error", rejectOnce);
+      socket?.off("close", rejectClosed);
+      socket?.off("error", rejectSocket);
     };
     const rejectOnce = (cause: Error): void => {
       if (settled) return;
       settled = true;
       draining = true;
       body = "";
-      request.off("end", resolveOnce);
-      request.resume();
+      cleanup();
       reject(cause);
     };
     const resolveOnce = (): void => {
@@ -62,11 +66,16 @@ export const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<s
       }
       body += chunk;
     };
+    const rejectSocket = (cause: Error): void => {
+      rejectOnce(cause instanceof Error ? cause : new Error(String(cause)));
+    };
     request.setEncoding("utf8");
     request.on("data", onData);
     request.on("error", rejectOnce);
     request.on("end", resolveOnce);
     request.on("close", rejectClosed);
+    socket?.on("close", rejectClosed);
+    socket?.on("error", rejectSocket);
   });
 
 export const messageHeaders = (

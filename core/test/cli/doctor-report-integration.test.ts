@@ -2,12 +2,18 @@ import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
-import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  ConfigService,
+  PathsService,
+  ProxyService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
+import { makeTestCertificateAuthority, makeTestProxyService, makeTestSshService } from "@lando/sdk/test";
 
 import {
   DoctorReportSchema,
@@ -17,7 +23,9 @@ import {
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
+import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
+import { CORE_VERSION } from "../../src/version.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 
@@ -93,9 +101,22 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
+    expect(report.version).toBe(CORE_VERSION);
+    expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
     expect(report.subsystems.checks.find((check) => check.name === "certs")?.context.subsystemId).toBe(
       "injected-ca",
     );
+  });
+
+  test("DoctorReportSchema requires version", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(DoctorReportSchema)({
+        provider: { checks: [] },
+        subsystems: { checks: [] },
+        globalApp: { checks: [] },
+        mcp: { checks: [] },
+      }),
+    ).toThrow();
   });
 
   test("redacts a failing network trust path in every format and keeps the report schema stable", async () => {
@@ -160,5 +181,90 @@ describe("combined doctor certificate and network-trust wiring", () => {
     expect(report.self?.checks).toContainEqual(
       expect.objectContaining({ section: "network-trust", reason: "failure" }),
     );
+  });
+});
+
+const mentionsUnavailableStub = (value: unknown): boolean => {
+  const dump = JSON.stringify(value);
+  return dump.includes("full implementation is not available yet") || dump.includes("not available yet");
+};
+
+describe("runtime-wired subsystem doctor", () => {
+  test("uses injected Traefik running + SSH sidecar instead of unavailable stubs", async () => {
+    // Given a provider-shaped layer with selected, running proxy and sidecar SSH
+    const config = makeConfig({});
+    const proxy = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })));
+    const wired = Layer.mergeAll(
+      Layer.succeed(ProxyService, proxy),
+      Layer.succeed(SshService, { ...makeTestSshService(), id: "sidecar" }),
+    );
+
+    // When
+    const report = await Effect.runPromise(
+      collectDoctorReport({
+        options: {},
+        provider: Effect.succeed({ checks: [] }),
+        deprecations: Effect.succeed({ entries: [] }),
+        subsystems: (options) =>
+          subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+      }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
+    );
+
+    // Then
+    const proxyCheck = report.subsystems.checks.find((check) => check.name === "proxy");
+    const sshCheck = report.subsystems.checks.find((check) => check.name === "ssh");
+    expect(proxyCheck).toMatchObject({
+      status: "pass",
+      context: { subsystemId: "traefik", ready: "true", state: "running" },
+    });
+    expect(sshCheck).toMatchObject({
+      status: "pass",
+      context: { subsystemId: "sidecar", ready: "true" },
+    });
+    expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
+  });
+
+  test("--fix invokes the injected stopped Traefik setup, not ProxyServiceUnavailableLive", async () => {
+    // Given a selected Traefik proxy that is stopped
+    const config = makeConfig({});
+    let setupCalls = 0;
+    const proxyService = makeTestProxyService();
+    const stoppedTraefik = {
+      ...proxyService,
+      id: "traefik",
+      setup: (setupConfig: ProxyConfig) =>
+        Effect.tap(proxyService.setup(setupConfig), () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+        ),
+    };
+    const wired = Layer.mergeAll(
+      Layer.succeed(ProxyService, stoppedTraefik),
+      Layer.succeed(SshService, { ...makeTestSshService(), id: "sidecar" }),
+    );
+
+    // When
+    const report = await Effect.runPromise(
+      collectDoctorReport({
+        options: { fix: true },
+        provider: Effect.succeed({ checks: [] }),
+        deprecations: Effect.succeed({ entries: [] }),
+        subsystems: (options) =>
+          subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+      }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
+    );
+
+    // Then
+    const proxyCheck = report.subsystems.checks.find((check) => check.name === "proxy");
+    expect(setupCalls).toBe(1);
+    expect(proxyCheck).toMatchObject({
+      status: "pass",
+      context: { subsystemId: "traefik", ready: "true", state: "running", fixOutcome: "recovered" },
+    });
+    expect(proxyCheck?.context.state).not.toBe("stopped");
+    expect(proxyCheck?.context.fixError).toBeUndefined();
+    expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
   });
 });

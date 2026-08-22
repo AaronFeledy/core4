@@ -55,7 +55,17 @@ const FORBIDDEN_HELPERS = new Set([
   "fs.isDir",
   "fs.size",
 ]);
-const UNSUPPORTED_DECODERS = new Set(["yaml", "fromYaml", "fromToml"]);
+const UNSUPPORTED_DECODERS = new Set([
+  "yaml",
+  "fromYaml",
+  "fromToml",
+  "json5",
+  "fromJson5",
+  "jsonc",
+  "fromJsonc",
+  "jsonl",
+  "fromJsonl",
+]);
 const EVAL_REMEDIATION = "Check the expression and the context values available to the sandboxed evaluator.";
 const FORBIDDEN_REMEDIATION =
   "Use a pre-materialized value from the expression context instead of this helper.";

@@ -10,6 +10,7 @@ import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import {
   type SetupReadinessRecorder,
+  makeSetupReadinessRecorder,
   runFileSyncSetupStep,
   setupDeferredFileSyncPath,
 } from "../../src/cli/command-specs/meta/setup-steps.ts";
@@ -128,5 +129,25 @@ describe("file-sync setup step", () => {
 
     expect(status).toBe("satisfied");
     expect(steps.map((step) => step.status)).toEqual(["satisfied"]);
+  });
+});
+
+describe("setup readiness recorder", () => {
+  test("firstFailedStep returns the first failed record and ignores later failures", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-first-failed-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(userDataRoot, "lando");
+      expect(recorder.firstFailedStep()).toBeUndefined();
+      await Effect.runPromise(recorder.record({ id: "provider", status: "satisfied", evidence: "ok" }));
+      expect(recorder.firstFailedStep()).toBeUndefined();
+      await Effect.runPromise(recorder.recordFailure("ca", new Error("ca boom")));
+      await Effect.runPromise(recorder.recordFailure("proxy", new Error("proxy boom")));
+      const first = recorder.firstFailedStep();
+      expect(first?.id).toBe("ca");
+      expect(first?.status).toBe("failed");
+      expect(first?.evidence).toContain("ca boom");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
   });
 });

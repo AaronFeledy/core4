@@ -6,43 +6,24 @@ timeout: 120000
 tags: [beta, docs, provider-podman, setup, windows, podman-desktop]
 ---
 
-# Podman provider on Windows (Podman Desktop)
+# Use Podman Desktop on Windows
 
-## Socket discovery
+Alpha binaries are Linux x64 today. This page documents the Windows Podman provider path so the facts are here when that host is supported.
 
-The default Podman Desktop machine named pipe on Windows is
-`npipe://./pipe/podman-machine-default`. Override the machine name — for
-example to target a rootful machine — without editing config:
+The default Podman Desktop machine named pipe on Windows is `npipe://./pipe/podman-machine-default`. Override the machine name, for example to target a rootful machine, without editing config:
 
 ```sh
 LANDO_PODMAN_MACHINE=podman-machine-default-root
 ```
 
-Bind mounts are WSL2-mediated on Windows Podman Desktop, so
-`bindMountPerformance` reports `slow`.
+Bind mounts are WSL2-mediated on Windows Podman Desktop, so `bindMountPerformance` reports `slow`.
 
-## Machine not running
+## Start the machine
 
-If the Podman Desktop machine pipe is unreachable, Lando raises
-`PodmanMachineNotRunningError`, a tagged subclass of
-`ProviderUnavailableError`. Remediate from the CLI:
+If the Podman Desktop machine pipe is unreachable, Lando raises `PodmanMachineNotRunningError`, a tagged subclass of `ProviderUnavailableError`. Remediate from the CLI:
 
 ```sh
 podman machine start podman-machine-default
 ```
 
-or from the GUI: open Podman Desktop on Windows and start the
-`podman-machine-default` machine.
-
-## Live contract suite
-
-The live SDK contract suite for Podman Desktop is gated by
-`LANDO_TEST_PODMAN_DESKTOP_SOCKET` and skipped by default. Opt in by
-setting it:
-
-```sh
-LANDO_TEST_PODMAN_DESKTOP_SOCKET=npipe://./pipe/podman-machine-default
-```
-
-The gated scenario lives in
-`plugins/provider-podman/test/desktop.integration.test.ts`.
+Or from the GUI: open Podman Desktop on Windows and start the `podman-machine-default` machine.

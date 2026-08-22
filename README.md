@@ -112,7 +112,7 @@ Development follows this phase ladder:
 
 ## Toolchain
 
-- **Runtime:** Bun (>=1.3.14, see `engines` and `.bun-version`). Node is not supported.
+- **Runtime:** Bun (>=1.4.0, see `engines` and `.bun-version`). Node is not supported.
 - **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
@@ -203,9 +203,9 @@ All command output flows through the `Renderer` service; pick a mode with
 ## Building from source
 
 The compiled binary is produced with `bun build --compile --bytecode` targeting
-`core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for five
-platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
-`windows-x64`. Source and compiled entries now share the native dispatcher in
+`core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for six
+platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+`windows-x64`, and `windows-arm64`. Source and compiled entries now share the native dispatcher in
 `core/src/cli/run.ts`. The retired split existed because `@oclif/core`'s
 `execute()` cannot dispatch inside a compiled Bun binary:
 a probe importing only `@oclif/core` and calling `execute()` was compiled with
@@ -242,9 +242,9 @@ This repository is unstable by design. A few practical caveats:
 - **Installer trust roots are placeholders.** The embedded GPG public key
   and cosign identity/issuer used by the installers are verification-test
   placeholders, not production release keys.
-- **`tsconfig.skipLibCheck: true`.** `@types/bun` and `@types/node` currently
-  conflict on `stream/web` and a few other globals. Revisit once Bun's type
-  packaging stabilizes.
+- **`tsconfig.skipLibCheck: true`.** `@types/bun@1.4` still clashes with
+  `@types/node` on `stream/web` and other globals, so `skipLibCheck` stays on
+  after the Bun 1.4 pin.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
   version `0.0.0` in the working tree; the publish pipeline
   (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites

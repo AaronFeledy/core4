@@ -46,11 +46,11 @@ import {
 import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
+import { buildProxyCheck } from "./doctor-proxy-check";
 import {
   CERTS_SPEC,
   type DoctorSubsystemCheck,
   HEALTHCHECK_SPEC,
-  PROXY_SPEC,
   SCANNER_SPEC,
   SSH_SPEC,
   buildIdCheck,
@@ -78,9 +78,10 @@ export interface SubsystemDoctorOptions {
   readonly networkTrust?: NetworkTrustDoctorStatus;
 }
 
-// `subsystemDoctor` reads only the runner `id`, never invoking `run()`/`scan()`,
-// so the bootstrap placeholder provider satisfies the real layers' dependencies
-// while keeping `DefaultSubsystemDoctorLayer` self-contained.
+// Healthcheck/scanner doctor reads only the runner `id`, never invoking
+// `run()`/`scan()`, so the bootstrap placeholder provider satisfies the real
+// layers' dependencies while keeping `DefaultSubsystemDoctorLayer` self-contained.
+// Proxy readiness additionally reads `status()`.
 const DoctorRuntimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
 
 const HealthcheckRunnerDoctorLive = HealthcheckRunnerLive.pipe(Layer.provide(DoctorRuntimeProviderLive));
@@ -114,9 +115,7 @@ export const subsystemDoctor = (
     const scanner = yield* UrlScanner;
     const hostProxy = yield* HostProxyService;
 
-    const proxyCheck = yield* buildIdCheck(PROXY_SPEC, proxy.id, fix, () =>
-      Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })),
-    );
+    const proxyCheck = yield* buildProxyCheck(proxy, fix);
     const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
     const certsCheck = yield* buildIdCheck(CERTS_SPEC, certsSubsystemId(certs), fix).pipe(
       Effect.map((check) => ({
@@ -161,6 +160,7 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "subsystem",
   "subsystemId",
   "ready",
+  "state",
   "certsReason",
   "certsCandidateIds",
   "certsPlugin",

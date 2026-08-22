@@ -6,30 +6,22 @@ timeout: 60000
 tags: [beta, docs, landofile, template, handlebars, mustache]
 ---
 
-# Template engines
+# Render a Landofile as a template
 
-Put a column-0 directive on the first content line of `.lando.yml` to render
-it as a template before parsing:
+Put a column-0 directive on the first content line of `.lando.yml` to render it as a template before parsing:
 
 ```yaml
 template: handlebars
 ```
 
-Template engines receive the pre-planning Landofile render context (`env`,
-`bootstrapLevel`, `scope`). No directive, or `template: none`, leaves the
-Landofile as raw YAML. Whole-file template rendering happens before strict
-Landofile parsing, in this order: template render, then YAML parse, then
-includes resolve, then expression evaluate. Syntax and render errors point
-at the authored template source, not the post-render YAML.
+Template engines receive the pre-planning Landofile render context (`env`, `bootstrapLevel`, `scope`). No directive, or `template: none`, leaves the Landofile as raw YAML.
 
-## Mustache
+Whole-file template rendering happens before strict Landofile parsing, in this order: template render, then YAML parse, then includes resolve, then expression evaluate. Syntax and render errors point at the authored template source, not the post-render YAML.
+
+## Use Mustache
 
 ```yaml
 template: mustache
 ```
 
-Use the bundled Mustache engine for whole-file Landofile rendering. It
-doesn't HTML-escape rendered YAML values. Both engines —
-`@lando/template-handlebars` and `@lando/template-mustache` — ship as
-bundled template-engine plugins and are available in compiled binaries.
-
+The bundled Mustache engine does not HTML-escape rendered YAML values. Both `@lando/template-handlebars` and `@lando/template-mustache` ship as bundled template-engine plugins and are available in compiled binaries.

@@ -170,6 +170,39 @@ describe("provider-lando Compose emission", () => {
     );
   });
 
+  test("renders Compose config grants as read-only bind volumes", () => {
+    const webWithConfigs: ServicePlan = {
+      ...web,
+      extensions: {
+        compose: {
+          configs: [
+            { source: "phpini" },
+            { source: "phpini", target: "/usr/local/etc/php/conf.d/zz-custom.ini" },
+          ],
+        },
+      },
+    };
+    const content = renderCompose({
+      ...plan,
+      services: { [webWithConfigs.name]: webWithConfigs, [database.name]: database },
+      extensions: {
+        compose: {
+          configs: {
+            phpini: { file: "./php.ini" },
+          },
+        },
+      },
+    });
+
+    expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
+    expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
+    expect(content).toContain('      - "/srv/apps/myapp/php.ini:/phpini:ro"\n');
+    expect(content).toContain(
+      '      - "/srv/apps/myapp/php.ini:/usr/local/etc/php/conf.d/zz-custom.ini:ro"\n',
+    );
+    expect(content).not.toContain("configs:");
+  });
+
   test("keeps Compose output inside the MVP key allowlist", () => {
     const content = renderCompose(plan);
 

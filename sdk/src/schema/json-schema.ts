@@ -2172,6 +2172,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RecipeManifest.authors",
   "RecipeManifest.deprecated",
   "RecipeManifest.description",
+  "RecipeManifest.extends",
   "RecipeManifest.fetchAllowlist",
   "RecipeManifest.files",
   "RecipeManifest.postInit",

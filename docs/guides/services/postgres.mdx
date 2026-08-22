@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, postgres, service, database]
 ---
 
-# PostgreSQL
+# Add PostgreSQL
 
-Add a PostgreSQL database to your app by declaring `type: postgres` in your
-services block. Lando pulls `postgres:16` by default and listens on the
-standard port `5432`:
+Put `type: postgres` in your services block. Lando pulls `postgres:16` and listens on `5432`:
 
 ```yaml
 name: postgres-demo
@@ -18,7 +16,7 @@ services:
     type: postgres
 ```
 
-Start it and Lando wires the database into your app's network:
+Start it. Lando puts the database on the app network:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -33,10 +31,9 @@ Start it and Lando wires the database into your app's network:
     </Step>
   </Scenario>
 
-## Connection details
+## Connect from another service
 
-Other services in your app connect using the service name as the hostname —
-here that's `db`. The defaults:
+Other services use the service name as the hostname. Here that's `db`. Defaults:
 
 | Setting | Value |
 | --- | --- |
@@ -45,32 +42,25 @@ here that's `db`. The defaults:
 | User | `lando` |
 | Password | derived per app (`lando-<hash>`) |
 
-The password is derived per app, so read the exact value from `lando info`
-rather than hardcoding it. From inside the app network the connection URL is:
+The password is derived per app, so read the exact value from `lando info`. Don't hardcode it. From inside the app network the connection URL is:
 
 ```
 postgresql://lando:<password>@db:5432/postgres-demo
 ```
 
-## CLI access
+## Open the client
 
-Declare a tooling alias targeting the `db` service to open the `psql` client:
+Add a tooling alias on `db` to open `psql`:
 
 ```sh
 lando psql
 ```
 
-A common companion is a `db-import` tooling alias that pipes a SQL file into
-`psql`:
-
-```sh
-lando db-import dump.sql
-```
+There is no core `db-import`. Pipe a dump into `psql` with `lando exec`, or add your own tooling alias. See [Import a SQL dump](../tooling/import-a-database.mdx).
 
 ## Pin a version
 
-Use `image:` to pin a specific PostgreSQL version when the default
-`postgres:16` isn't what you want:
+Set `image:` when `postgres:16` isn't the version you want:
 
 ```yaml
 services:

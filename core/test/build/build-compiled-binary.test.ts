@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
+import { resolve } from "node:path";
+
 import {
   CompiledBinaryBuildError,
   type CompiledBinaryBuildRunner,
+  CompiledBinaryVersionError,
   buildCompiledBinary,
   createOpenTuiPruningPlugin,
   parseCompiledBinaryArgs,
@@ -14,7 +17,7 @@ const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 
 describe("compiled binary OpenTUI native pruning", () => {
   test.each(releaseTargets)("keeps only the selected native root for %s", (target, selectedRoot) => {
-    // Given: one of the five release targets and all eight catalog roots.
+    // Given: one of the six release targets and all eight catalog roots.
     // When: each exact native root is resolved for that target.
     const resolutions = opentuiNativeCatalog.allNativeRoots.map((root) => ({
       root,
@@ -87,6 +90,7 @@ describe("compiled binary OpenTUI native pruning", () => {
         __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(opentuiNativeCatalog.targetToNativeRoot["linux-x64"]),
       },
     });
+    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando-linux-x64" });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
   });
@@ -135,6 +139,95 @@ describe("compiled binary OpenTUI native pruning", () => {
       target: "windows-x64",
       outfile: "./dist/lando-windows-x64.exe",
       version: "4.0.0-beta.2",
+    });
+  });
+
+  test("build stamps a resolved 4.x version when none is supplied", async () => {
+    // Given: a build runner that records the programmatic Bun build configuration.
+    let received: Bun.BuildConfig | undefined;
+    const runner: CompiledBinaryBuildRunner = async (config) => {
+      received = config;
+      return { success: true, logs: [], outputs: [] };
+    };
+
+    // When: a binary is built without an explicit --version.
+    await buildCompiledBinary({ target: "linux-x64", outfile: "./dist/lando-linux-x64" }, runner);
+
+    // Then: the compile-time token is always a real prerelease, never the working-tree pin.
+    const stamped = received?.define?.__LANDO_CORE_VERSION__;
+    expect(typeof stamped).toBe("string");
+    const version = JSON.parse(String(stamped));
+    expect(version).not.toBe("0.0.0");
+    expect(version).toMatch(/^4\.\d+\.\d+/);
+  });
+
+  test("build refuses to stamp the 0.0.0 placeholder", async () => {
+    const runner: CompiledBinaryBuildRunner = async () => ({ success: true, logs: [], outputs: [] });
+
+    await expect(
+      buildCompiledBinary(
+        { target: "linux-x64", outfile: "./dist/lando-linux-x64", version: "0.0.0" },
+        runner,
+      ),
+    ).rejects.toBeInstanceOf(CompiledBinaryVersionError);
+  });
+
+  test("CLI reports a placeholder version as a clean failure", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "run",
+        "scripts/build-compiled-binary.ts",
+        "--target",
+        "linux-x64",
+        "--outfile",
+        "./dist/lando-linux-x64",
+        "--version",
+        "0.0.0",
+      ],
+      cwd: resolve(import.meta.dirname, "../../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Refusing to stamp compiled binary with placeholder version 0.0.0.");
+    expect(stderr).not.toContain("Uncaught");
+  });
+
+  test("CLI accepts --metafile-md and LANDO_COMPILE_METAFILE without changing default compile flags", () => {
+    // Given / When
+    const flagged = parseCompiledBinaryArgs(
+      ["--target=linux-x64", "--outfile=./dist/lando", "--metafile-md", "./dist/lando.metafile.md"],
+      {},
+    );
+    const fromEnv = parseCompiledBinaryArgs(["--target=linux-x64", "--outfile=./dist/lando"], {
+      LANDO_COMPILE_METAFILE: "1",
+    });
+    const defaults = parseCompiledBinaryArgs(["--target=linux-x64", "--outfile=./dist/lando"], {});
+
+    // Then: the debug flag is opt-in and does not appear on the default compile path.
+    expect(flagged.metafileMd).toBe("./dist/lando.metafile.md");
+    expect(fromEnv.metafileMd).toBe("./dist/lando.metafile.md");
+    expect(defaults.metafileMd).toBeUndefined();
+  });
+
+  test("CLI accepts bun-windows-arm64 and normalizes the target", () => {
+    const options = parseCompiledBinaryArgs([
+      "--target=bun-windows-arm64",
+      "--outfile",
+      "./dist/lando-windows-arm64.exe",
+    ]);
+
+    expect(options).toEqual({
+      target: "windows-arm64",
+      outfile: "./dist/lando-windows-arm64.exe",
     });
   });
 });

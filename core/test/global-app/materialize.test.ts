@@ -132,7 +132,12 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(unchanged).toEqual({ path: AbsolutePath.make(distPath), status: "unchanged", serviceIds: [] });
       expect(secondContent).toBe(firstContent);
       expect(secondStat.mtimeMs).toBe(firstStat.mtimeMs);
-      expect(parsed).toEqual({ name: "global", runtime: 4, services: {} });
+      expect(parsed).toEqual({
+        name: "global",
+        runtime: 4,
+        provider: ProviderId.make("lando"),
+        services: {},
+      });
     });
   });
 
@@ -150,6 +155,7 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(parsed).toEqual({
         name: "global",
         runtime: 4,
+        provider: ProviderId.make("lando"),
         services: {
           [ServiceName.make("web")]: { type: "node", image: "node:lts", primary: true },
         },
@@ -493,7 +499,9 @@ describe("globalInstall command operation", () => {
         },
         userLandofileCreated: true,
       });
-      expect(await readFile(result.dist.path, "utf8")).toContain("name: global\nruntime: 4\nservices:\n");
+      expect(await readFile(result.dist.path, "utf8")).toContain(
+        "name: global\nruntime: 4\nprovider: lando\nservices:\n",
+      );
       expect(await readFile(result.paths.userLandofile, "utf8")).toBe(overlayContent);
     });
   });

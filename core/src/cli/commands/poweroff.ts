@@ -20,6 +20,7 @@ export interface PoweroffOptions {
   readonly userCacheRoot?: string;
   readonly stopApp?: (entry: AppsListEntry) => Promise<void>;
   readonly stopRuntimeService?: (userDataRoot: string) => Promise<RuntimeServiceStopResult>;
+  readonly discoverContainers?: (userDataRoot: string) => Promise<ReadonlyArray<AppsListEntry>>;
 }
 
 export interface PoweroffResult {
@@ -79,6 +80,7 @@ export const poweroff = (
     const list = yield* listServices({
       ...(userDataRoot === undefined ? {} : { userDataRoot }),
       ...(options.userCacheRoot === undefined ? {} : { userCacheRoot: options.userCacheRoot }),
+      ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
     });
 
     const stopApp =

@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, events]
 
 # Run tasks at app lifecycle events
 
-Use `events:` when work must run every time an app reaches a lifecycle point, whether the command came from the CLI or an embedding host.
+Use `events:` when work must run every time an app reaches a lifecycle point:
 
 ```yaml
 name: events-demo
@@ -27,7 +27,9 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal task-detail renderer and secret redaction. A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"` to run on the host instead. Use `pre-stop` for work inside a running service; `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
+`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal renderer and secret redaction.
+
+A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"`. Use `pre-stop` for work inside a running service. `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
@@ -59,4 +61,4 @@ tooling:
 
 ## Available events
 
-You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Your steps run in declaration order.
+You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in declaration order.

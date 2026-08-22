@@ -5,11 +5,9 @@ timeout: 90000
 tags: [beta, docs, memcached, service]
 ---
 
-# Memcached
+# Add Memcached
 
-Add Memcached to your app by declaring `type: memcached` in your services
-block. Lando pulls `memcached:1.6` by default and listens on the standard
-port `11211`:
+Put `type: memcached` in your services block. Lando pulls `memcached:1.6` and listens on `11211`:
 
 ```yaml
 name: memcached-demo
@@ -43,8 +41,7 @@ tooling:
 
 ## Inspect runtime stats
 
-The fixture above declares `memcached-tool` as an app tooling alias. Run it
-after start to inspect the live Memcached service:
+The fixture above declares `memcached-tool` as an app tooling alias. Run it after start to inspect the live Memcached service:
 
 ```sh
 lando memcached-tool stats
@@ -52,8 +49,7 @@ lando memcached-tool stats
 
 ## Pin a version
 
-Use `image:` to pin a compatible Memcached Docker image when the default
-image isn't sufficient — for example, a Debian-based image:
+Set `image:` when the default image isn't enough. For example, a Debian-based image:
 
 ```yaml
 services:

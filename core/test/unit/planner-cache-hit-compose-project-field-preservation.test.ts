@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,10 +9,12 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import {
+  AppPlannerLive,
+  CacheServiceLive,
+  FileSystemLive,
+  PluginRegistryLive,
+} from "../../src/testing/engine-layers.ts";
 
 test("Given supported project fields, when planning twice, then the cache hit retains the Compose extension", async () => {
   // Given
@@ -22,6 +24,7 @@ test("Given supported project fields, when planning twice, then the cache hit re
   const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
   process.chdir(appRoot);
   process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+  await writeFile(join(appRoot, "app.conf"), "app=true\n");
   const configs = { app: { file: "./app.conf" } } as const;
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "preserved-project-field",
