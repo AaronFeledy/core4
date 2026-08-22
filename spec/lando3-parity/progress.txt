@@ -45,6 +45,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Remote `extends` hops are YAML-only and jailed to the published parent root; `recipe.ts` is not executed from a remote parent tree.
 - Bundled PHP recipes emit versioned database types (`mariadb:11.4`) that plan through `loadServiceTypeWithVersion`. `allowOverride` is rejected on `via: fpm`; nginx+FPM recipes must omit it and add an `edge` service with `backend:`.
 - Laravel/symfony reuse php-stack like lamp; optional queue workers are a hand-written `via: cli` service, not a php-stack helper.
+- A bundled child that `extends:` a parent still needs its own renderer registered under the child id. Flatten merges the manifest only; init looks up `lookupRecipeRenderer(manifest.id)` and never calls the parent renderer.
 
 ## 2026-08-14 10:04 CDT - US-562
 - Top-level `env_file` now accepts scalar or ordered-list authoring, applies app-root-relative files to every service below service-level env files and direct environment values, fails closed with tagged remediation, and invalidates cached plans when file content changes.
@@ -792,4 +793,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Bundled laravel/symfony already shipped as stubs. Upgrade the builtin manifest/renderer in place; do not add a second `recipes/<id>/recipe.yml` runtime source.
   - `meta recipes validate` takes a filesystem path, not a bundled id. List/describe are the machine-output proofs for bundled recipes.
   - Extra `--answer` values that are not valid choices can fall through to the default. Fail-closed tests should use a value the prompt actually rejects, such as `composer: false` or a relative webroot.
+---
+
+## 2026-08-22 01:10 CDT - US-578
+- Backdrop and Joomla now init as bundled lamp children: their manifests declare `extends: lamp`, flatten inherits the lamp prompts, and each child renderer writes Apache PHP plus versioned MariaDB with CMS tooling (Bee / `php cli/joomla.php`). MEAN is a standalone Node + MongoDB stack with optional Redis, npm tooling, and an Express-style default scaffold.
+- Executable recipe READMEs cover the default path plus a non-default `app:config` variant.
+- Verification: typecheck (only pre-existing mcp memoryPressure errors), lint passed; 83 focused canonical/option-parity/extends/bundled tests and six recipe guide scenarios passed. CLI init wrote the expected Landofiles; `meta recipes list/describe` show flattened lamp prompts on backdrop/joomla.
+- **Learnings for future iterations:**
+  - Bundled `extends:` proves composition on real recipes. Do not call the parent renderer from the child. Parent-then-child `postInit` messages both print, which is the concatenate contract.
+  - MEAN belongs next to node-api in the ship list, not under PHP stacks. Always emit `type: mongodb`; optional Redis follows the wordpress confirm pattern.
 ---
