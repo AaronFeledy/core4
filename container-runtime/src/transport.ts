@@ -19,6 +19,7 @@ export interface SocketHttpResponse {
 
 export interface SocketHttpConnection extends AsyncIterable<Bytes> {
   write(data: string | Uint8Array): void;
+  end(): void;
   destroy(): void;
 }
 
@@ -356,9 +357,13 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     let stdinPump: Promise<void> | undefined;
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     let stdinReady = false;
+    let stdinExhausted = false;
     const pendingStdin: Bytes[] = [];
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
+    const maybeEndStdin = (): void => {
+      if (stdinReady && stdinExhausted) connection.end();
+    };
     const writeStdin = (chunk: Bytes): void => {
       if (stdinReady) connection.write(chunk);
       else pendingStdin.push(chunk);
@@ -366,6 +371,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     const flushStdin = (): void => {
       stdinReady = true;
       for (const chunk of pendingStdin.splice(0)) connection.write(chunk);
+      maybeEndStdin();
     };
     const startStdinPump = () => {
       if (input.stdin === undefined || stdinPump !== undefined) return;
@@ -373,7 +379,13 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       stdinPump = (async () => {
         while (true) {
           const next = await stdinIterator?.next();
-          if (next === undefined || next.done === true) return;
+          if (next === undefined || next.done === true) {
+            if (next?.done === true) {
+              stdinExhausted = true;
+              maybeEndStdin();
+            }
+            return;
+          }
           writeStdin(next.value);
         }
       })();
