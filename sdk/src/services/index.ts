@@ -1,4 +1,3 @@
-/** Effect service tags for the SDK. */
 import type { Context, Effect, Option, Queue, Redacted, Schema, Scope, Stream } from "effect";
 
 export type _ServiceTagCompatContext = typeof Context.Tag;
@@ -70,6 +69,8 @@ import type {
   CapabilityError,
   ComposeKeyRejectedError,
   ConfigError,
+  DeprecatedSurfaceError,
+  DeprecationContradictionError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -117,8 +118,6 @@ import type {
   ToolingExecError,
   ToolingIncludeCycleError,
 } from "../errors/index.ts";
-
-import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../errors/index.ts";
 
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";

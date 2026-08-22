@@ -3,9 +3,7 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
 
-// Recipe manifest schema with prompt and post-init action shapes. Recipe
-// prompts reuse the generalized `PromptSpec` vocabulary (`sdk/src/schema/
-// prompt.ts`) plus the recipe-only `when:`/`deprecated:` fields.
+// ==== Recipe manifest: PromptSpec fields plus recipe-only when:/deprecated:
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =

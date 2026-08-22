@@ -179,8 +179,7 @@ extends: definitely-not-a-recipe
   });
 
   test("given a child YAML with extends lamp, when parseRecipe runs, then the result is a valid flattened RecipeManifest", async () => {
-    const source = join(FIXTURE_ROOT, "extends-lamp-child", "recipe.yml");
-    const exit = await runParse(source, await Bun.file(source).text());
+    const exit = await parseFixture("extends-lamp-child");
     expect(Exit.isSuccess(exit)).toBe(true);
     if (!Exit.isSuccess(exit)) return;
     expect(exit.value.id).toBe("extends-lamp-child");
@@ -331,6 +330,7 @@ extends: ~/not-a-recipe
       expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
     });
   });
+
   test("given a remote parent whose local hop is a symlink out of the cache, when flatten runs, then the hop is rejected", async () => {
     await withTempRoot(async (dir) => {
       const outside = join(dir, "outside");

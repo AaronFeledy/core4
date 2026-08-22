@@ -133,7 +133,6 @@ const validateSemantics = (
   const issues: string[] = [];
 
   if (manifest.prompts !== undefined) {
-    // Prompt `name` values must be unique within a recipe.
     const seen = new Set<string>();
     for (const prompt of manifest.prompts) {
       if (seen.has(prompt.name)) {

@@ -60,7 +60,7 @@ const parseGithubRef = (ref: string): { readonly url: string; readonly path?: st
   const path = parts.length > 2 ? parts.slice(2).join("/") : undefined;
   return {
     url: `https://github.com/${owner}/${repo}.git`,
-    ...(path === undefined || path === "" ? {} : { path }),
+    ...(path === undefined ? {} : { path }),
   };
 };
 

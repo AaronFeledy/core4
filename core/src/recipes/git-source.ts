@@ -43,8 +43,6 @@ const gitEnv = {
   GIT_SSH_COMMAND: "ssh -o BatchMode=yes",
 } as const;
 
-const text = (stream: ReadableStream<Uint8Array>): Promise<string> => new Response(stream).text();
-
 const runGit = async (args: ReadonlyArray<string>, cwd?: string): Promise<string> => {
   const proc = Bun.spawn({
     cmd: ["git", ...args],
@@ -54,7 +52,11 @@ const runGit = async (args: ReadonlyArray<string>, cwd?: string): Promise<string
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [exitCode, stdout, stderr] = await Promise.all([proc.exited, text(proc.stdout), text(proc.stderr)]);
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
     throw new Error(
       stderr.trim() === "" ? `git ${args.join(" ")} failed with exit code ${exitCode}` : stderr.trim(),
@@ -248,7 +250,7 @@ export const resolveGitRecipeSource = async (
     });
   }
 
-  // Intentional: git recipes cache under the user DATA root (not the cache root other caches use), keyed by resolved commit SHA.
+  // Git recipes cache under the user data root (not the cache root), keyed by commit SHA.
   return {
     id: options.url,
     source: manifestPath,

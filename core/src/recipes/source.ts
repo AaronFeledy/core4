@@ -76,13 +76,11 @@ const detectScheme = (ref: string): RecipeRefScheme => {
   return "unknown";
 };
 
-const BETA_REMEDIATION = "Remove the source scheme; remote recipe sources are not supported yet.";
-
 const notImplemented = (scheme: string, ref: string): NotImplementedError =>
   new NotImplementedError({
     message: `Recipe source scheme "${scheme}" (ref "${ref}") is not supported yet.`,
     commandId: "recipe.source.resolve",
-    remediation: BETA_REMEDIATION,
+    remediation: "Remove the source scheme; remote recipe sources are not supported yet.",
   });
 
 const resolveBuiltin = (ref: string): Effect.Effect<ResolvedRecipe, RecipeManifestNotFoundError> => {
@@ -105,12 +103,11 @@ const resolveBuiltin = (ref: string): Effect.Effect<ResolvedRecipe, RecipeManife
   });
 };
 
-const expandLocalPath = (ref: string, options: ResolveRecipeOptions): string =>
-  ref.startsWith("~/")
-    ? resolve(process.env.HOME ?? options.cwd, ref.slice(2))
-    : isAbsolute(ref)
-      ? ref
-      : resolve(options.cwd, ref);
+const expandLocalPath = (ref: string, options: ResolveRecipeOptions): string => {
+  if (ref.startsWith("~/")) return resolve(process.env.HOME ?? options.cwd, ref.slice(2));
+  if (isAbsolute(ref)) return ref;
+  return resolve(options.cwd, ref);
+};
 
 const idMismatchError = (
   declaredId: string,
@@ -236,9 +233,6 @@ export const resolveRecipeRef = (
   | RecipeSourceError
   | NotImplementedError
 > => {
-  if (ref.trim() === "") {
-    return Effect.fail(notImplemented("unknown", ref));
-  }
   const scheme = detectScheme(ref);
   switch (scheme) {
     case "builtin":
