@@ -1494,13 +1494,37 @@ export const DataMoverLive: Layer.Layer<
   Layer.effect(
     DataMover,
     Effect.gen(function* () {
-      const provider = yield* RuntimeProvider;
       const paths = yield* PathsService;
       const stateStore = yield* StateStore;
       const eventService = yield* Effect.serviceOption(EventService);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
-      return makeDataMoverService(provider, events, { paths, stateStore });
+      const fallback = yield* RuntimeProvider;
+      const persistence = { paths, stateStore };
+      // Prefer the call-time RuntimeProvider so plugin commands can override
+      // the bootstrap stub. Fall back to the construction provider for
+      // callers that only provided it to this layer.
+      const service = () =>
+        Effect.serviceOption(RuntimeProvider).pipe(
+          Effect.map((option) =>
+            makeDataMoverService(
+              Option.getOrElse(option, () => fallback),
+              events,
+              persistence,
+            ),
+          ),
+        );
+      return {
+        transfer: (spec) => service().pipe(Effect.flatMap((mover) => mover.transfer(spec))),
+        transferStream: (spec) =>
+          Stream.unwrap(service().pipe(Effect.map((mover) => mover.transferStream(spec)))),
+        snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),
+        restore: (handle, store) => service().pipe(Effect.flatMap((mover) => mover.restore(handle, store))),
+        listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
+        removeSnapshot: (id, store) =>
+          service().pipe(Effect.flatMap((mover) => mover.removeSnapshot(id, store))),
+        pruneSnapshots: (policy) => service().pipe(Effect.flatMap((mover) => mover.pruneSnapshots(policy))),
+      };
     }),
   ),
 );
