@@ -359,8 +359,8 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Audit refreshed 2026-08-22; remaining deferred trio is 4.1; recipes/ and catalog families locked."
     }
   ]
 }
