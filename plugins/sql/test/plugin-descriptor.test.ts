@@ -8,8 +8,6 @@ const contributionIds = (
 
 describe("@lando/sql plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
-    // Given / When the additive descriptor is exported
-    // Then
     expect(plugin.name).toBe(manifest.name);
     expect(plugin.name).toBe(PLUGIN_NAME);
   });
@@ -43,8 +41,6 @@ describe("@lando/sql plugin descriptor", () => {
   });
 
   test("descriptor values are reference-identical to existing exports", () => {
-    // Given / When the descriptor wraps existing package exports
-    // Then
     expect(plugin.manifest).toBe(manifest);
   });
 });

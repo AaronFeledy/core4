@@ -76,21 +76,17 @@ const envCreds = (family: SqlFamily, environment: Readonly<Record<string, string
   }
 };
 
-const withOptionalRoot = (creds: SqlCreds, rootPassword: string | undefined): SqlCreds =>
-  rootPassword === undefined ? creds : { ...creds, rootPassword };
-
 export const resolveSqlCreds = (input: ResolveSqlCredsInput): SqlCreds => {
   const authored = input.landofileService?.creds;
   const fromEnv = envCreds(input.family, input.planEnvironment);
   const defaultUser = input.family === "mssql" ? "sa" : "lando";
-  return withOptionalRoot(
-    {
-      user: authored?.user ?? fromEnv.user ?? defaultUser,
-      password: authored?.password ?? fromEnv.password ?? "lando",
-      database: authored?.database ?? fromEnv.database ?? input.appName,
-    },
-    authored?.rootPassword ?? fromEnv.rootPassword,
-  );
+  const rootPassword = authored?.rootPassword ?? fromEnv.rootPassword;
+  return {
+    user: authored?.user ?? fromEnv.user ?? defaultUser,
+    password: authored?.password ?? fromEnv.password ?? "lando",
+    database: authored?.database ?? fromEnv.database ?? input.appName,
+    ...(rootPassword === undefined ? {} : { rootPassword }),
+  };
 };
 
 const mongoUri = (creds: SqlCreds): string =>

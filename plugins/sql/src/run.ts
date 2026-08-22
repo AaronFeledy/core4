@@ -27,7 +27,7 @@ import {
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
 import { countCommand } from "./families.ts";
 import { isGzipPath } from "./gzip.ts";
-import { completeTree, confirmOrFail, publishTree } from "./progress.ts";
+import { type SqlPublisher, completeTree, confirmOrFail, publishTree } from "./progress.ts";
 import type { DbCommandStep } from "./schemas.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { type SqlLandofile, type SqlPlan, sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
@@ -50,20 +50,15 @@ export type SqlCommandDeps = SqlMover & {
   readonly start: (service: string) => Effect.Effect<void, unknown>;
   readonly stop: (service: string) => Effect.Effect<void, unknown>;
   readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
-  readonly publish: (event: { readonly _tag: string; readonly [key: string]: unknown }) => Effect.Effect<
-    void,
-    unknown
-  >;
+  readonly publish: SqlPublisher;
 };
 
 const assertNever = (value: never): never => {
   throw new Error(`unexpected db action: ${String(value)}`);
 };
 
-const hostFile = (plan: SqlPlan, service: string, file: string | undefined): string => {
-  if (file === undefined) return join(plan.root, `${service}.sql.gz`);
-  return isAbsolute(file) ? file : join(plan.root, file);
-};
+const hostFile = (plan: SqlPlan, service: string, file = `${service}.sql.gz`): string =>
+  isAbsolute(file) ? file : join(plan.root, file);
 
 const parseCount = (stdout: string): number | undefined => {
   const match = stdout.trim().match(/\d+/u);
@@ -126,7 +121,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         .exec(target.name, countCommand(target.family, creds), env)
         .pipe(Effect.catchAll(() => Effect.succeed({ ok: false, stdout: "" })));
       const count = counted.ok ? parseCount(counted.stdout) : undefined;
-      if (!counted.ok || count === undefined || count > 0) {
+      if (count === undefined || count > 0) {
         yield* confirmOrFail(
           input,
           deps.confirm,

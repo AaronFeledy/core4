@@ -23,13 +23,9 @@ const assertNever = (value: never): never => {
   throw new Error(`unexpected SQL family: ${String(value)}`);
 };
 
-const typePrefix = (type: string): string => {
-  const separator = type.indexOf(":");
-  return separator === -1 ? type : type.slice(0, separator);
-};
-
 export const familyFromServiceType = (type: string): SqlFamily | undefined => {
-  const prefix = typePrefix(type);
+  const separator = type.indexOf(":");
+  const prefix = separator === -1 ? type : type.slice(0, separator);
   return isSqlFamilyKey(prefix) ? SQL_FAMILIES[prefix] : undefined;
 };
 
