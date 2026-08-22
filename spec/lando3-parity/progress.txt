@@ -878,3 +878,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - `stdinStream` is not `stdin: inherit`. Attach stdin for the stream, then half-close the write side after headers flush so pending dump bytes are not dropped.
   - App `lando start`/`stop` remain apply/destroy. Plugins that need a running container bounced must call `RuntimeProvider.start`/`stop`, which must not be no-ops and must not remove the container.
 ---
+
+## 2026-08-22 09:27 CDT - US-579 Review
+- Restore now captures the restore Exit so interrupt still restarts the database, and a later start failure no longer hides the restore error.
+- Review notes (deferred/rejected): rejected Bugbot's pre-plan landofile target map — authored types must be resolved before planning so capability failures cannot swallow SqlServiceAmbiguousError; rejected snapshot-label path hardening and identifier interpolation as previously rejected DataMover/landofile-author concerns; rejected restore confirmation because the source AC only names non-empty import and reset.
+- Verification: typecheck, lint passed; 18 focused sql run tests passed.
+- **Learnings for future iterations:**
+  - After stop-then-restore, capture restore with Effect.exit (not either) so start still runs on interrupt, then re-raise the restore cause ahead of a start failure.
+---

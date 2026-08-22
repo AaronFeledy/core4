@@ -211,7 +211,8 @@ export const runRestore = (
   Effect.gen(function* () {
     const store = yield* requireVolume(plan, service, name);
     yield* stop(name);
-    const restored = yield* mover.restore(snapshotId, store).pipe(Effect.either);
-    yield* start(name);
-    if (restored._tag === "Left") return yield* Effect.fail(restored.left);
+    const restored = yield* mover.restore(snapshotId, store).pipe(Effect.exit);
+    const started = yield* start(name).pipe(Effect.either);
+    if (restored._tag === "Failure") return yield* Effect.failCause(restored.cause);
+    if (started._tag === "Left") return yield* Effect.fail(started.left);
   });

@@ -18,6 +18,7 @@ export type SqlTestOptions = {
   readonly countFails?: boolean;
   readonly execFails?: boolean;
   readonly restoreFails?: boolean;
+  readonly startFails?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
 };
@@ -40,6 +41,14 @@ export class FakeRestoreError extends Error {
   constructor() {
     super("restore failed");
     this.name = "FakeRestoreError";
+  }
+}
+
+export class FakeStartError extends Error {
+  readonly _tag = "FakeStartError";
+  constructor() {
+    super("start failed");
+    this.name = "FakeStartError";
   }
 }
 
@@ -127,8 +136,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     },
     confirm: () => Effect.succeed(false),
     start: () =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         lifecycle.push("start");
+        if (options.startFails === true) {
+          return yield* Effect.fail(new FakeStartError());
+        }
       }),
     stop: () =>
       Effect.sync(() => {

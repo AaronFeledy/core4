@@ -270,4 +270,15 @@ describe("executeDbCommand", () => {
     expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
     expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
   });
+
+  test("starts the service after a failed restore even when start then fails", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, restoreFails: true, startFails: true });
+
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
+    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
+  });
 });
