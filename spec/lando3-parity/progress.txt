@@ -916,3 +916,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - There is no `lando cache:refresh` alias and no `--debug` flag. Guides must teach `app:cache:refresh` and `--renderer=verbose`.
   - `output-streaming.mdx` still groups verbose with the task tree. Do not copy that row; verbose is a payload dump.
 ---
+
+## 2026-08-22 12:41 CDT - US-580 Review
+- Reviewed the residual cache-refresh, verbosity, and DNS-rebinding guides against the source ACs. No in-scope defect required a code change; the story keeps `passes: true`.
+- Review notes (deferred/rejected): rejected Code Quality's demand that `refresh-before-after` mutate the Landofile and prove a stale tooling command becomes fresh. The source AC asks for when/why caches go stale plus a rendered before/after walkthrough; inspect-config then refresh then JSON envelope satisfies that, and a mutation-plus-router-miss proof would invent a stronger contract the Goal lane already marked achieved. Rejected requiring an executed `--renderer=verbose` dump because AC 2 is renderer-mode and debug-env guidance, and the rendered `version --renderer=json` envelope is the host-safe executable path. Rejected treating `app:config` "authored Landofile" as a factual error; that is the repo's term for the resolved Landofile versus planner-derived output. Rejected fixing `output-streaming.mdx` grouping verbose with the task tree and the README bare `cache:refresh` sample; both pre-exist this branch and are out of US-580's file list. Bugbot found no bugs.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main guide-drift passed; QA ran both focused guides (`cache-refresh` 1/15, `verbosity-and-debug` 1/7), lint:guides, and check:guide-coverage with positive counts.
+- **Learnings for future iterations:**
+  - Guide fixtures resolve from `docs/guides/<frontmatter id>/fixtures/`, not the MDX directory. A `cli/*.mdx` page with `id: cache-refresh` loads `docs/guides/cache-refresh/fixtures/`.
+---
