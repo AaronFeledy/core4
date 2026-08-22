@@ -28,7 +28,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Service types live in plugins/service-lando/src/services/*.ts with _schema-helpers/_port-helpers/_volume-helpers; php build steps in php-prerequisites.ts (checksum-pinned downloads).
 - Landofile service keys that are not Compose aliases must be added to `ServiceConfig` fields; the unknown-key allowlist is `Object.keys(ServiceConfig.fields)`, so a PHP-only schema does not make `composer:` authorable.
 - The GHCR PHP base-image workflow matrix is hardcoded in `scripts/build-php-base-workflow.ts`, not derived from `SUPPORTED_PHP_VERSIONS`.
-- Deferred commands: core/src/cli/deferred-commands.ts + per-spec `deferred:` blocks.
+- Deferred commands: ids live on `LandoCommandSpec.deferred` plus `core/test/cli/fixtures/deferred-commands.json`; `deferred-commands.ts` is only `notImplementedErrorForSpec`. Remaining trio: `meta:events:follow`, `meta:plugin:login`, `meta:plugin:logout` (4.1).
+- `recipes/` is the v4.0 shipped recipe set. `core/build.config.ts` `bundledRecipes` is a superset (staged ids plus `node-postgres`/`node-ts`); do not treat binary embed as the public table.
 - Recipe manifests: recipes/<id>/recipe.yml + README.mdx (executable, feeds scaffold README generation); bundled registration via scripts/build-bundled-recipes.ts.
 - Guide INDEX at docs/guides/INDEX.md; coverage enforced by check:guide-coverage.
 - Planner-read file content outside Landofile expression provenance must contribute source/hash metadata to `deriveAppPlanCacheKey`; embedding parsed values in a service type's normalized config is not a reliable cache identity.
@@ -932,4 +933,19 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - Keep reserved-name validation as a sibling of `compileEffectiveTooling`, not inside it, so merge characterization tests stay characterization tests.
   - Widening `AppPlanner.plan` is not a one-file change: every operation and `meta:global:*` error union that plans must list the new tag or typecheck fails across the tree.
+---
+
+## 2026-08-22 14:05 CDT - US-582 Review
+- Reviewed plan-time reserved-name enforcement against the source ACs. No in-scope defect required a code change; the story keeps `passes: true`.
+- Review notes (deferred/rejected): rejected Code Quality's optional extra unit cases for two-service first-wins and overlay-of-run-still-failing-scratch. Both invariants already hold; QA probed them host-safe and Goal marked the ACs achieved. Rejected treating the duplicated first-wins walk as a blocker: the sibling split is the recorded learning so compile characterization stays frozen. Bugbot found no bugs.
+- Guide-Coverage-Skip: Plugin-author planner reserved-name enforcement is not a user CLI/guide contract; US-582 ACs do not require a guide and prd-02 is outside check:guide-coverage sources.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main guide-drift passed; 29 focused reserved-alias/planner tests passed with positive counts.
+---
+
+## 2026-08-22 15:10 CDT - US-581
+- Parity audit refreshed against the finished wave: former functionality gaps (events, env_file, toolingDefaults, commandAliases, catalog services, PHP depth, recipe composition/option parity, SQL helpers, residual CLI guides) are now marked shipped. Hosters, sidecar-only SSH, staged recipes, plugin login/logout, and events:follow stay cited as 4.1 or rejected. Shipped `recipes/` ids and catalog service-type families are locked by tests. Deferred map remains the three 4.1 specs; `deferred-commands.ts` is only the NotImplementedError helper.
+- Verification: typecheck, lint, codegen:check, boundaries, guide-coverage, public-transcripts, and lint:guides passed; guide-drift skipped without PR context; focused shipped-recipe, catalog-family, and deferred-command tests passed. Full `bun test` not run locally (loop contract; CI owns the suite).
+- **Learnings for future iterations:**
+  - Deferred command ids live on `LandoCommandSpec.deferred` plus `core/test/cli/fixtures/deferred-commands.json`, not as a list in `deferred-commands.ts`.
+  - `recipes/` is the v4.0 shipped set. `core/build.config.ts` `bundledRecipes` is a superset (staged ids plus `node-postgres`/`node-ts`); do not treat binary embed as the public recipe table.
 ---
