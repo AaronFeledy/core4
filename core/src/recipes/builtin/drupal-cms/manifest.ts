@@ -1,4 +1,5 @@
 import {
+  DRUPAL_COMPOSER_OPTIONS,
   DRUPAL_DATABASES,
   composerPromptYaml,
   databasePromptYaml,
@@ -32,7 +33,7 @@ prompts:
 ${phpPromptYaml}
 ${webserverPromptYaml}
 ${databasePromptYaml(DRUPAL_DATABASES)}
-${composerPromptYaml}
+${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
 ${webrootPromptYaml("/app/web")}
 files:
   - src: templates/.lando.yml.tmpl

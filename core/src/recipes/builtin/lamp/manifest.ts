@@ -30,7 +30,7 @@ prompts:
       message: App name must be lowercase kebab-case.
 ${phpPromptYaml}
 ${databasePromptYaml(LAMP_DATABASES)}
-${composerPromptYaml}
+${composerPromptYaml()}
 ${webrootPromptYaml("/app")}
 files:
   - src: templates/.lando.yml.tmpl

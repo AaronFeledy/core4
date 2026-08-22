@@ -756,3 +756,8 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - **Learnings for future iterations:**
   - nginx FastCGI uses `service.webroot ?? /app` and does not copy the PHP backend webroot. Drupal/CMS `edge` must author `webroot:` or nginx serves `/app`.
 ---
+
+## 2026-08-21 21:37 CDT - US-576 Review
+- Drupal and Drupal CMS no longer offer `composer: false`. Their scaffold tooling still runs `composer create-project` on the appserver, so disabling Composer left a stack choice that could not finish init. LAMP still allows `false`.
+- Verification: lint passed; focused php-stack and option-parity tests passed, including Drupal rejecting `composer: false`.
+---

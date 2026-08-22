@@ -205,6 +205,20 @@ describe("recipe option parity", () => {
     });
   });
 
+  test("drupal rejects composer false because scaffold needs Composer", async () => {
+    await withTempCwd(async (dir) => {
+      const promise = initApp({
+        cwd: dir,
+        full: false,
+        recipe: "drupal",
+        nonInteractive: true,
+        answers: { name: "needs-composer", composer: "false" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      await expect(promise).rejects.toBeInstanceOf(PromptValidationError);
+    });
+  });
+
   test("relative webroot fails closed with PromptValidationError", async () => {
     await withTempCwd(async (dir) => {
       const promise = initApp({

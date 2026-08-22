@@ -4,6 +4,7 @@ export const WEBROOT_PATTERN = /^\/[A-Za-z0-9._/-]*$/u;
 
 export const PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5"] as const;
 export const COMPOSER_OPTIONS = ["2", "2.7.7", "false"] as const;
+export const DRUPAL_COMPOSER_OPTIONS = ["2", "2.7.7"] as const;
 export const DRUPAL_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] as const;
 export const LAMP_DATABASES = ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] as const;
 
@@ -32,12 +33,14 @@ export const phpPromptYaml = `  - name: php
     choices:
 ${yamlChoices(PHP_VERSIONS)}`;
 
-export const composerPromptYaml = `  - name: composer
+export const composerPromptYaml = (
+  values: ReadonlyArray<string> = COMPOSER_OPTIONS,
+): string => `  - name: composer
     type: select
     message: Composer version
     default: '2'
     choices:
-${yamlChoices(COMPOSER_OPTIONS)}`;
+${yamlChoices(values)}`;
 
 export const webrootPromptYaml = (fallback: string): string => `  - name: webroot
     type: text
