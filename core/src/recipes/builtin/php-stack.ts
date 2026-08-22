@@ -117,10 +117,11 @@ export const renderDatabaseLines = (
   return lines;
 };
 
-export const renderNginxEdgeLines = (): ReadonlyArray<string> => [
+export const renderNginxEdgeLines = (webroot: string): ReadonlyArray<string> => [
   "  edge:",
   "    type: nginx",
   "    backend: appserver",
+  `    webroot: ${webroot}`,
 ];
 
 export const composerToolingLines = (): ReadonlyArray<string> => [

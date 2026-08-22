@@ -83,7 +83,7 @@ const renderLandofile = (
       dependsOn: ["database"],
       framework: "drupal",
     }),
-    ...(stack.webserver === "nginx" ? renderNginxEdgeLines() : []),
+    ...(stack.webserver === "nginx" ? renderNginxEdgeLines(stack.webroot) : []),
     ...renderDatabaseLines(stack.database),
     "tooling:",
     "  drush:",

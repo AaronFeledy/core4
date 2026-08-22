@@ -59,7 +59,9 @@ describe("php-stack helper", () => {
     expect(yaml).toContain("via: fpm");
     expect(yaml).not.toContain("allowOverride:");
     expect(yaml).not.toContain("port: 80");
-    expect(renderNginxEdgeLines().join("\n")).toContain("backend: appserver");
+    const edge = renderNginxEdgeLines("/app/web").join("\n");
+    expect(edge).toContain("backend: appserver");
+    expect(edge).toContain("webroot: /app/web");
   });
 
   test("composer false emits a boolean and skips the quoted string", () => {

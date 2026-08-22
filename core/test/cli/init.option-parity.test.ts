@@ -137,6 +137,7 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
+      expect(String(landofile.services?.[ServiceName.make("edge")]?.webroot ?? "")).toBe("/app/web");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
     });
   });
