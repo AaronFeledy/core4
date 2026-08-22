@@ -427,6 +427,9 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("allowOverride: true");
       expect(yaml).toContain("bee:");
       expect(yaml).toContain("BACKDROP_SETTINGS");
+      expect(yaml).toContain('"database":"backdrop-defaults"');
+      expect(yaml).toContain('"username":"lando"');
+      expect(yaml).toContain('"password":"lando"');
       expect(yaml).not.toContain("via:");
 
       const landofile = await discoverFrom(result.directory);
@@ -455,7 +458,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("type: mariadb:11.4");
       expect(yaml).toContain("framework: joomla");
       expect(yaml).toContain("joomla:");
-      expect(yaml).toContain("cli/joomla.php");
+      expect(yaml).toContain("- php cli/joomla.php");
       expect(yaml).not.toContain("via:");
 
       const landofile = await discoverFrom(result.directory);
@@ -481,6 +484,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("type: node:lts");
       expect(yaml).toContain("type: mongodb");
       expect(yaml).toContain("npm start");
+      expect(yaml).toContain("mongodb://lando:lando@database:27017/mean-defaults?authSource=admin");
       expect(yaml).not.toContain("type: redis");
 
       const packageJson = await Bun.file(join(result.directory, "package.json")).text();

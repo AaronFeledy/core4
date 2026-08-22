@@ -14,7 +14,7 @@ const renderLandofile = (appName: string, node: string, redis: boolean): string 
     "    environment:",
     "      NODE_ENV: development",
     "      PORT: 3000",
-    `      MONGO_URL: mongodb://database:27017/${appName}`,
+    `      MONGO_URL: mongodb://lando:lando@database:27017/${appName}?authSource=admin`,
   ];
   if (redis) lines.push("      REDIS_URL: redis://cache:6379");
   lines.push("    dependsOn:", "      - database");

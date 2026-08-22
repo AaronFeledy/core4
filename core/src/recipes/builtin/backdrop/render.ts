@@ -14,8 +14,21 @@ const BACKDROP_DEFAULTS = {
   composer: "2",
 } as const;
 
-const BACKDROP_SETTINGS =
-  '{"databases":{"default":{"default":{"driver":"mysql","database":"backdrop","username":"backdrop","password":"backdrop","host":"database","port":3306}}}}';
+const backdropSettings = (database: string): string =>
+  JSON.stringify({
+    databases: {
+      default: {
+        default: {
+          driver: "mysql",
+          database,
+          username: "lando",
+          password: "lando",
+          host: "database",
+          port: 3306,
+        },
+      },
+    },
+  });
 
 const renderLandofile = (
   appName: string,
@@ -38,7 +51,7 @@ const renderLandofile = (
       framework: "backdrop",
     }),
     "    environment:",
-    `      BACKDROP_SETTINGS: '${BACKDROP_SETTINGS}'`,
+    `      BACKDROP_SETTINGS: '${backdropSettings(appName)}'`,
     ...renderDatabaseLines(stack.database),
     "tooling:",
     "  bee:",

@@ -803,3 +803,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Bundled `extends:` proves composition on real recipes. Do not call the parent renderer from the child. Parent-then-child `postInit` messages both print, which is the concatenate contract.
   - MEAN belongs next to node-api in the ship list, not under PHP stacks. Always emit `type: mongodb`; optional Redis follows the wordpress confirm pattern.
 ---
+
+## 2026-08-22 02:25 CDT - US-578 Review
+- Aligned Backdrop settings and MEAN `MONGO_URL` with catalog `lando`/`lando` creds, and collapsed Joomla CLI tooling into one `cmds` step so `lando joomla` actually runs `php cli/joomla.php`.
+- Review notes (deferred/rejected): rejected treating missing committed `recipes/*/.scaffold/` as a blocker (codegen-derived, not an AC); rejected requiring child prompt overrides (lamp prompts are the intended flatten proof); rejected demanding US-581 `.local` parity flips. Code-quality/security lanes treated the cred mismatches as unused-until-install; Bugbot confirmed they are real recipe-emitted contracts, so they were fixed.
+- Verification: typecheck (only pre-existing mcp memoryPressure errors), lint passed; 80 focused option-parity/canonical/extends/matrix tests passed.
+- Guide-Coverage-Skip: Recipe READMEs do not document BACKDROP_SETTINGS payload, Joomla argv shape, or MONGO_URL auth; no public guide contract changed.
+- **Learnings for future iterations:**
+  - Tooling `cmds:` items are sequential steps, not argv. Multi-word CLIs belong in one string (`php artisan`, `php cli/joomla.php`).
+  - Bundled MariaDB/MySQL/MongoDB default to user/password `lando`/`lando` and database=`appName`; recipe env/settings must match those defaults.
+---
