@@ -860,3 +860,11 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - DataMoverLive must not capture the bootstrap stub RuntimeProvider; resolve it at call time and have plugin commands provide the selected provider.
   - provider-lando exec AttachStdin is only on `stdin: inherit`; stdinStream alone does not feed mysql, and turning AttachStdin on without a closed stdin hang-kills import.
 ---
+
+## 2026-08-22 08:20 CDT - US-579 Verify
+- Restarted after the prior Verify timeout. Fresh `core/dist/lando` + `lando setup --yes --no-interactive` in lando4-dev. Export, reset confirmation, reset --yes, snapshot, multi-DB `SqlServiceAmbiguousError`, and adjacent info/exec/help still work. Import still fails closed with `DataTransferError` (hostPath→serviceCmd stdin). Restore still reports success while the live MySQL schema is unchanged. `passes` stays false.
+- Restore cannot be patched from the plugin alone: provider-lando `start`/`restart` are no-ops, so a stop-restore-start sequence has no provider hook.
+- **Out-of-scope finding:** `lando scratch list` is parsed as `apps:scratch:start` with `InvalidCliInvocationError` / unexpected argument `list`. `lando apps:scratch:list` works.
+- **Learnings for future iterations:**
+  - Native volume restore onto a running mysqld is a no-op for InnoDB; Build needs a real per-service stop/start (not the no-op provider methods) around restore.
+---
