@@ -75,7 +75,7 @@ services:
 `rebuild` recreates the container; it does not convert your data. Swapping
 `type: mysql` for `type: postgres` and rebuilding gets you a fresh, empty
 Postgres volume. Your old MySQL data stays in the old MySQL volume and is
-not converted or copied. Lando 4 ships no `db-import` or `db-export` command to bridge engines for you.
+not converted or copied. `lando db:export` and `lando db:import` move dumps for the same engine. They do not convert MySQL SQL into Postgres.
 
 Always export your data from the old engine before you change `type:` and
 rebuild, or you'll be staring at an empty database.

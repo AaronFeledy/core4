@@ -15,7 +15,7 @@ Read the database name, user, and password from `lando info` first.
 lando info
 ```
 
-There is no secret `db-import` button in core. You already have the client.
+Use `lando db:import dump.sql.gz --yes` when you want the bundled helper. `lando exec` is still there if you want the raw client.
 
 ## Import into MySQL or MariaDB
 
@@ -25,7 +25,7 @@ The service name is the hostname. Defaults are user `lando`, password `lando`, a
 lando exec --service db -- mysql -u lando -plando myapp < dump.sql
 ```
 
-Feed the dump on stdin from the host. Recipes do not ship a `db-import` alias.
+Feed the dump on stdin from the host. Recipes do not add a second alias on top of `lando db:import`.
 
 ## Import into Postgres
 
@@ -53,7 +53,7 @@ tooling:
     cmd: mysql -u lando -plando import-a-database-demo
 ```
 
-Then `lando mysql` runs that client. A bundled `db:import` helper is not up.
+Then `lando mysql` runs that client. For dump files, prefer `lando db:import`.
 
 <Guide>
   <Scenario id="client-alias" render>
@@ -69,6 +69,7 @@ Then `lando mysql` runs that client. A bundled `db:import` helper is not up.
 
 ## Next
 
+- [Import and export app databases](./db-import-export.mdx)
 - [Run commands inside a service](../cli/exec.mdx)
 - [Add MySQL](../services/mysql.mdx)
 - [Add PostgreSQL](../services/postgres.mdx)

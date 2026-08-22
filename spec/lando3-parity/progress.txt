@@ -831,3 +831,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
   - Plugin tests cannot import `@lando/core` or `@lando/data-mover`. Keep fakes local and call DataMover through the SDK tag.
   - Count-probe and confirm failures should fail closed into `SqlConfirmRequiredError` so non-interactive hosts never hang.
 ---
+
+## 2026-08-22 07:20 CDT - US-579 Review
+- Fixed MySQL/MariaDB import confirmation counting the selected database, Mongo dump/load/count/reset using MONGO_URI with authSource=admin, MSSQL count/backup/restore targeting the user database and overwriting existing files, fail-closed in-service exec, confirmation before the task tree, and envelope redaction via plugin spec tokens. Also stopped `lando --help db:*` from treating leftover argv as a dump file, and retargeted leftover first-hour docs that still denied a bundled importer.
+- Review notes (deferred/rejected): rejected restore confirmation because the source AC only names non-empty import and reset; rejected live guide `<Run>` for import/export/gzip/snapshot because `provider: test` cannot run a database; rejected expanding the built-in machine-output conformance gate to plugin ids because all five commands share one result schema and local envelope tests; rejected identifier sanitization and snapshot-label path hardening as landofile-author / DataMover concerns outside this story.
+- Verification: typecheck, lint, lint:guides, package-dag, explicit-base guide drift, and 72 focused sql/sdk/dispatch tests passed.
+- **Learnings for future iterations:**
+  - MySQL `DATABASE()` is null unless the client selects a schema (`-D`); do not use it as an emptiness probe without that.
+  - Official Mongo tools do not read `MONGO_URI`; pass `--uri="$MONGO_URI"` through one `sh -c` so gzip wrap can append `| gzip` without quoting away expansion.
+  - Plugin-owned help from `lando --help <id>` must pass `--help` into the plugin dispatcher, not `argv.slice(1)`.
+---
