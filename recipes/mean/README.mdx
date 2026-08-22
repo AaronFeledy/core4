@@ -1,0 +1,60 @@
+---
+id: mean
+provider: test
+timeout: 60000
+tags: [recipe, mean, node]
+---
+
+# MEAN
+
+`lando init --recipe mean` scaffolds Node, MongoDB, optional Redis, npm tooling, and an Express-style default scaffold. There is no framework picker.
+
+```sh
+lando init --recipe mean --name=my-mean-app --yes
+lando start
+lando info
+```
+
+`--yes` uses Node lts, MongoDB, and no Redis. Pass `--answer` to change those.
+
+```sh
+lando init --recipe mean --name=my-mean-app --yes \
+  --answer=node=22 \
+  --answer=redis=true
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="mean" display="my-mean-app" />
+      <Run command="lando init --recipe mean --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="non-default-options" render>
+    <Step name="init">
+      <Variable name="appName" value="mean-redis" display="my-mean-redis" />
+      <Run command="lando init --recipe mean --name={{appName}} --yes --answer=node=22 --answer=redis=true" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"redis\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>

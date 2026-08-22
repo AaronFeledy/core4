@@ -125,6 +125,33 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     expectedTooling: ["npm", "node"],
   },
   {
+    recipe: "backdrop",
+    answers: { name: "backdrop-app", php: "8.3", database: "mariadb:11.4" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+    ],
+    expectedTooling: ["bee", "composer", "php"],
+  },
+  {
+    recipe: "joomla",
+    answers: { name: "joomla-app", php: "8.3", database: "mariadb:11.4" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+    ],
+    expectedTooling: ["joomla", "composer", "php"],
+  },
+  {
+    recipe: "mean",
+    answers: { name: "mean-app", node: "lts", redis: "false" },
+    expectedServices: [
+      { name: "api", type: "node:lts" },
+      { name: "database", type: "mongodb" },
+    ],
+    expectedTooling: ["npm", "node"],
+  },
+  {
     recipe: "astro",
     answers: { name: "astro-app", node: "lts", database: "none" },
     expectedServices: [{ name: "web", type: "node:lts" }],
@@ -235,6 +262,9 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
       "empty",
       "node-ts",
       "toolbox",
+      "backdrop",
+      "joomla",
+      "mean",
     ];
     expect([...ids].sort()).toEqual([...required].sort());
     for (const id of required) {

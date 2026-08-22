@@ -170,6 +170,9 @@ outside `docs/guides/` so they are not gate-validated here.
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+| `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
+| `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
+| `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 

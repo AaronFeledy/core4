@@ -406,4 +406,111 @@ describe("recipe option parity", () => {
       await expect(relativeWebroot).rejects.toBeInstanceOf(PromptValidationError);
     });
   });
+
+  test("backdrop --yes fills php, composer, webroot, versioned mariadb, bee, and BACKDROP_SETTINGS", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "backdrop",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "backdrop-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("type: mariadb:11.4");
+      expect(yaml).toContain("framework: backdrop");
+      expect(yaml).toContain("allowOverride: true");
+      expect(yaml).toContain("bee:");
+      expect(yaml).toContain("BACKDROP_SETTINGS");
+      expect(yaml).toContain('"database":"backdrop-defaults"');
+      expect(yaml).toContain('"username":"lando"');
+      expect(yaml).toContain('"password":"lando"');
+      expect(yaml).not.toContain("via:");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
+    });
+  });
+
+  test("joomla --yes fills php, composer, webroot, versioned mariadb, and joomla cli", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "joomla",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "joomla-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("type: mariadb:11.4");
+      expect(yaml).toContain("framework: joomla");
+      expect(yaml).toContain("joomla:");
+      expect(yaml).toContain("- php cli/joomla.php");
+      expect(yaml).not.toContain("via:");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
+    });
+  });
+
+  test("mean --yes fills node lts, mongodb, npm start, and express scaffold files", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "mean",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "mean-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: node:lts");
+      expect(yaml).toContain("type: mongodb");
+      expect(yaml).not.toContain("command: npm start");
+      expect(yaml).toContain("mongodb://lando:lando@database:27017/mean-defaults?authSource=admin");
+      expect(yaml).not.toContain("type: redis");
+
+      const packageJson = await Bun.file(join(result.directory, "package.json")).text();
+      const serverJs = await Bun.file(join(result.directory, "server.js")).text();
+      expect(packageJson).toContain("express");
+      expect(serverJs).toContain("express");
+    });
+  });
+
+  test("mean redis true adds a redis cache and REDIS_URL", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "mean",
+        nonInteractive: true,
+        answers: { name: "mean-redis", node: "22", redis: "true" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: redis");
+      expect(yaml).toContain("REDIS_URL");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("api")]?.type).toBe("node:22");
+      expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
+    });
+  });
 });

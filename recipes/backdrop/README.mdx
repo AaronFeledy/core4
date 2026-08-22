@@ -1,0 +1,65 @@
+---
+id: backdrop
+provider: test
+timeout: 60000
+tags: [recipe, backdrop, php]
+---
+
+# Backdrop
+
+`lando init --recipe backdrop` scaffolds PHP, Composer, and MariaDB or MySQL for a Backdrop CMS app.
+
+```sh
+lando init --recipe backdrop --name=my-backdrop-app --yes
+lando start
+lando info
+```
+
+`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app`. Pass `--answer` to change those.
+
+```sh
+lando init --recipe backdrop --name=my-backdrop-app --yes \
+  --answer=php=8.1 \
+  --answer=database=mysql:8.0 \
+  --answer=composer=2.7.7 \
+  --answer=webroot=/app
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="backdrop" display="my-backdrop-app" />
+      <Run command="lando init --recipe backdrop --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="non-default-options" render>
+    <Step name="init">
+      <Variable name="appName" value="backdrop-mysql" display="my-backdrop-mysql" />
+      <Run command="lando init --recipe backdrop --name={{appName}} --yes --answer=php=8.1 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.1\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>

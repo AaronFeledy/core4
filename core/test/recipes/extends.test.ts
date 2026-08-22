@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
+import { backdropRecipeSource, backdropRecipeYaml } from "../../src/recipes/builtin/backdrop/manifest.ts";
+import { joomlaRecipeSource, joomlaRecipeYaml } from "../../src/recipes/builtin/joomla/manifest.ts";
 import type { GitRecipeCloner } from "../../src/recipes/git-source.ts";
 import { flattenRecipe } from "../../src/recipes/manifest/flatten.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
@@ -185,6 +187,30 @@ extends: definitely-not-a-recipe
     expect(exit.value.id).toBe("extends-lamp-child");
     expect(exit.value.title).toBe("Lamp Child");
     expect(exit.value.version).toBe("0.2.0");
+    expect("extends" in exit.value).toBe(false);
+  });
+
+  test("given backdrop YAML extends lamp, when parseRecipe flattens it, then id prompts and extends match the lamp child contract", async () => {
+    expect(backdropRecipeYaml).toContain("extends: lamp");
+    const exit = await runParse(backdropRecipeSource, backdropRecipeYaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.id).toBe("backdrop");
+    expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
+      expect.arrayContaining(["php", "database", "composer", "webroot"]),
+    );
+    expect("extends" in exit.value).toBe(false);
+  });
+
+  test("given joomla YAML extends lamp, when parseRecipe flattens it, then id prompts and extends match the lamp child contract", async () => {
+    expect(joomlaRecipeYaml).toContain("extends: lamp");
+    const exit = await runParse(joomlaRecipeSource, joomlaRecipeYaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.id).toBe("joomla");
+    expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
+      expect.arrayContaining(["php", "database", "composer", "webroot"]),
+    );
     expect("extends" in exit.value).toBe(false);
   });
 });
