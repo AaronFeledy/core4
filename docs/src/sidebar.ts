@@ -80,7 +80,10 @@ export const sidebar = [
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
           { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },
           { label: "List scratch apps", slug: "guides/scratch/list-and-info" },
-          { label: "Mount the working directory into a scratch", slug: "guides/scratch/mount-and-share-flags" },
+          {
+            label: "Mount the working directory into a scratch",
+            slug: "guides/scratch/mount-and-share-flags",
+          },
           { label: "Reap orphaned scratch apps", slug: "guides/scratch/scratch-gc" },
           { label: "Open a shell in a service", slug: "guides/cli/ssh" },
           { label: "Run commands inside a service", slug: "guides/cli/exec" },
