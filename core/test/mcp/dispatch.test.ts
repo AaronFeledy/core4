@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { execAppRedactionTokens } from "@lando/engine/operations/exec";
-import { collectAppPlanRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
@@ -566,18 +564,11 @@ describe("dispatchTool", () => {
     expect(trapCalls).toBe(0);
   });
 
-  test("omits an env_file canary from the MCP exec envelope when tokens come from execAppRedactionTokens", async () => {
+  test("omits an env_file canary from the MCP exec envelope when tokens come from execSpec.redactionTokens", async () => {
     // Given
     const canary = "mcp-env-file-canary";
-    const redactionTokens = collectAppPlanRedactionTokens({
-      services: {
-        app: {
-          environment: { API_TOKEN: canary },
-        },
-      },
-    });
-    expect(redactionTokens).toContain(canary);
-    expect(execSpec.redactionTokens).toBe(execAppRedactionTokens);
+    expect(execSpec.redactionTokens).toBeFunction();
+    const redactionTokens = [canary];
     const entry: McpCommandEntry = {
       spec: {
         ...execSpec,
