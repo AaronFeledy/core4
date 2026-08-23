@@ -1782,7 +1782,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     ...(destroyOptions.purgeCaches === undefined
                       ? {}
                       : { purgeCaches: destroyOptions.purgeCaches }),
-                  }).pipe(Effect.tap(() => forgetPlan(target.app))),
+                  }).pipe(
+                    Effect.tap(() =>
+                      destroyOptions.removeState === false ? Effect.void : forgetPlan(target.app),
+                    ),
+                  ),
             ),
           ),
         exec: (target, command) =>

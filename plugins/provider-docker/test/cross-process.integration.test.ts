@@ -266,4 +266,18 @@ describe("provider-docker cross-process state", () => {
       expect(await fileExists(path)).toBe(false);
     });
   });
+
+  test("stop-style destroy keeps the persisted applied-plan file", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakeApi();
+      await applyPlan(stateDir, fake.api);
+      const path = appliedPlanPath(stateDir, plan.id);
+      expect(await fileExists(path)).toBe(true);
+
+      const providerB = await makeProvider(stateDir, fake.api);
+      await Effect.runPromise(providerB.destroy({ app: plan.id }, { volumes: false, removeState: false }));
+
+      expect(await fileExists(path)).toBe(true);
+    });
+  });
 });
