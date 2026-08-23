@@ -423,7 +423,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-572 Verify. File-only Landofile freshness stays; this adds implementation identity only."
     },
     {

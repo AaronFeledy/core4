@@ -24,6 +24,7 @@ import {
 } from "@lando/landofile/version-constraint";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
+import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
@@ -45,6 +46,7 @@ export interface AppPlanCacheKeyInput {
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
   readonly sourceFingerprint?: AppPlanSourceFingerprint;
+  readonly planningRuntime?: string;
   readonly includedFragmentShas?: ReadonlyArray<string>;
   readonly config?: unknown;
   readonly serviceInputs?: unknown;
@@ -157,6 +159,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       cache: "app-plan",
       schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
       landoVersion: CORE_VERSION,
+      planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
       appRoot: input.appRoot,
       landofile: input.landofile,
       sourceFingerprint:
