@@ -325,3 +325,12 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint reused from Build (no source change). QA re-ran leftover-proxy-ports, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service, runtime-status, import-boundary, doctor-plugin-contributions: 51 pass / 0 fail.
 - Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false, and doctor-walkthrough proxy setup prose still holds.
 ---
+
+## 2026-08-23 15:50 CDT - US-591 Review
+- Re-review confirmed the leftover doctor check can miss AC1: isolate budget is ~3.3s (`probeBudgetMs`), leftover is the only path that walks process fds, and timeout becomes a generic plugin-check self-check instead of `proxy-loopback-ports`. Bound the holder scan (comm-first, 800ms deadline, parallel port probes) so leftover still reports.
+- Review notes (deferred/rejected): Darwin/win32 live comm ID — leftover `rootlessport` is Linux/WSL managed Podman; AC does not require other platforms. Sharing `TRAEFIK_*_PORT` into provider-lando — plugins cannot share that constant; hard-coded 38080/38443 match the lock-token duplication. `rejectUnauthorized: false` — localhost Traefik TLS probe, security lane PASS. `Effect.tryPromise` catch style — nit. Foreign bind on 38080 still gets leftover start copy — matches AC2 wording.
+- Verification: typecheck, lint passed; leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service — 40 pass.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false.
+- **Learnings for future iterations:**
+  - Plugin doctor isolate is `min(5000, floor(sectionBudget/3))` (~3.3s), not the 5s constant. Leftover `/proc` work must finish inside that or the check is abandoned as `plugin-check:<id>`.
+---
