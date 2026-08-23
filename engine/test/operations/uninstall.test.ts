@@ -83,7 +83,17 @@ describe("uninstall runtime overlay removal", () => {
     const invocation = managedPodmanUnshareRmInvocation(runtimeDir);
     expect(invocation.command).toBe(join(runtimeDir, "bin", "podman"));
     expect(invocation.command).not.toBe("podman");
-    expect(invocation.args).toEqual(["unshare", "rm", "-rf", runtimeDir]);
+    expect(invocation.args).toEqual([
+      "--config",
+      join(runtimeDir, "config"),
+      "unshare",
+      "rm",
+      "-rf",
+      runtimeDir,
+    ]);
+    expect(invocation.env).toEqual({
+      CONTAINERS_CONF: join(runtimeDir, "config", "containers.conf"),
+    });
   });
 
   test("defaultRemoveRuntimeDir invokes the managed podman unshare binary when present", async () => {
@@ -101,7 +111,13 @@ describe("uninstall runtime overlay removal", () => {
       const decoyLog = join(roots.root, "decoy-podman.log");
       writeFileSync(
         join(binDir, "podman"),
-        ["#!/bin/sh", `printf '%s\\n' "$0 $*" >> "${managedLog}"`, "exit 0", ""].join("\n"),
+        [
+          "#!/bin/sh",
+          `printf '%s\\n' "CONTAINERS_CONF=$CONTAINERS_CONF" >> "${managedLog}"`,
+          `printf '%s\\n' "$0 $*" >> "${managedLog}"`,
+          "exit 0",
+          "",
+        ].join("\n"),
         { mode: 0o755 },
       );
       writeFileSync(
@@ -116,6 +132,8 @@ describe("uninstall runtime overlay removal", () => {
       expect(existsSync(runtimeDir)).toBe(false);
       const managed = existsSync(managedLog) ? readFileSync(managedLog, "utf8") : "";
       expect(managed).toContain(join(binDir, "podman"));
+      expect(managed).toContain(`CONTAINERS_CONF=${join(runtimeDir, "config", "containers.conf")}`);
+      expect(managed).toContain(`--config ${join(runtimeDir, "config")}`);
       const storageUnshare = `unshare rm -rf ${join(runtimeDir, "storage")}`;
       const runtimeUnshare = `unshare rm -rf ${runtimeDir}`;
       expect(managed).toContain(storageUnshare);
@@ -213,7 +231,7 @@ describe("uninstall managed volume purge", () => {
       const runtimeDir = join(roots.userDataRoot, "runtime");
       const volumeFile = managedVolumeDataFile(runtimeDir);
       writeManagedVolumeTree(runtimeDir);
-      writeFakeManagedPodman(join(runtimeDir, "bin"), ["#!/bin/sh", 'rm -rf "$4"', "exit 0", ""].join("\n"));
+      writeFakeManagedPodman(join(runtimeDir, "bin"), ["#!/bin/sh", 'rm -rf "$6"', "exit 0", ""].join("\n"));
 
       const result = await Effect.runPromise(
         uninstall(
@@ -248,7 +266,7 @@ describe("uninstall managed volume purge", () => {
         join(runtimeDir, "bin"),
         [
           "#!/bin/sh",
-          `if [ "$4" = "${storageDir}" ]; then rm -rf "$4"; exit 0; fi`,
+          `if [ "$6" = "${storageDir}" ]; then rm -rf "$6"; exit 0; fi`,
           `rm -f "${join(runtimeDir, "bin", "podman")}"`,
           "exit 1",
           "",
