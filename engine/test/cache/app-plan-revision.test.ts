@@ -7,16 +7,46 @@ import { serialize } from "node:v8";
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
-import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, PluginName, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   APP_PLAN_CACHE_MAGIC,
   APP_PLAN_CACHE_SCHEMA_VERSION,
   deriveAppPlanCacheKey,
   readCachedAppPlan,
+  writeCachedAppPlan,
 } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
+import { CacheServiceLive } from "../../src/cache/service.ts";
 import { CORE_VERSION } from "../../src/version.ts";
+
+const runtimeLandofileInput = {
+  appRoot: "/workspace/runtime-key",
+  landofile: { name: "runtime-key", runtime: 4 as const },
+  pluginManifests: [],
+};
+
+const runtimeAppPlan: AppPlan = {
+  id: AppId.make("runtime-key"),
+  name: "runtime-key",
+  slug: "runtime-key",
+  root: AbsolutePath.make("/workspace/runtime-key"),
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    source: "/workspace/runtime-key/.lando.yml",
+    runtime: 4,
+  },
+  extensions: {},
+};
+
+const runWithCache = <A, E>(effect: Effect.Effect<A, E, import("@lando/sdk/services").CacheService>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
 
 test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
   // Given
@@ -141,4 +171,100 @@ test("changes the app-plan cache key when env-file content or resolved path chan
   // Then
   expect(changedContent).not.toBe(original);
   expect(changedPath).not.toBe(original);
+});
+
+test("keeps the app-plan cache key and hits plan.bin when planning runtime and Landofile are unchanged", async () => {
+  // Given
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-runtime-hit-"));
+  const appRoot = runtimeLandofileInput.appRoot;
+  const appName = "runtime-key";
+  const first = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+  const second = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+
+  // When
+  const cachePath = await runWithCache(
+    writeCachedAppPlan({
+      cacheRoot,
+      appName,
+      appRoot,
+      key: first,
+      plan: runtimeAppPlan,
+      now: () => 1,
+    }),
+  );
+  const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key: second }));
+
+  // Then
+  expect(first).toBe(second);
+  expect(cachePath).toBe(appPlanCachePath(cacheRoot, appName, appRoot));
+  expect(read?.name).toBe("runtime-key");
+});
+
+test("misses plan.bin when the planning runtime fingerprint changes", async () => {
+  // Given
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-runtime-miss-"));
+  const appRoot = runtimeLandofileInput.appRoot;
+  const appName = "runtime-key";
+  const writtenKey = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+  const nextKey = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-b" });
+  const cachePath = await runWithCache(
+    writeCachedAppPlan({
+      cacheRoot,
+      appName,
+      appRoot,
+      key: writtenKey,
+      plan: runtimeAppPlan,
+      now: () => 1,
+    }),
+  );
+
+  // When
+  const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key: nextKey }));
+
+  // Then
+  expect(nextKey).not.toBe(writtenKey);
+  expect(read).toBeNull();
+  expect((await readFile(cachePath)).length).toBeGreaterThan(0);
+});
+
+test("does not change the app-plan cache key for env, host, or template inputs", () => {
+  // Given
+  const probe = "LANDO_PLAN_CACHE_ENV_PROBE";
+  const previous = process.env[probe];
+  const baseline = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+
+  // When
+  process.env[probe] = "1";
+  const afterEnvSet = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+  delete process.env[probe];
+  const afterEnvDelete = deriveAppPlanCacheKey({ ...runtimeLandofileInput, planningRuntime: "runtime-a" });
+  if (previous === undefined) {
+    delete process.env[probe];
+  } else {
+    process.env[probe] = previous;
+  }
+  const pluginVersionChanged = deriveAppPlanCacheKey({
+    ...runtimeLandofileInput,
+    planningRuntime: "runtime-a",
+    pluginManifests: [
+      {
+        name: PluginName.make("@lando/node"),
+        version: "1.0.1",
+        api: 4 as const,
+        bootstrap: "app",
+        contributes: { serviceTypes: ["node"] },
+      },
+    ],
+  });
+  const envFileChanged = deriveAppPlanCacheKey({
+    ...runtimeLandofileInput,
+    planningRuntime: "runtime-a",
+    serviceInputs: { envFileInputs: [{ source: "/workspace/runtime-key/.env", hash: "second" }] },
+  });
+
+  // Then
+  expect(afterEnvSet).toBe(baseline);
+  expect(afterEnvDelete).toBe(baseline);
+  expect(pluginVersionChanged).not.toBe(baseline);
+  expect(envFileChanged).not.toBe(baseline);
 });

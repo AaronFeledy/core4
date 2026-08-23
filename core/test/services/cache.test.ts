@@ -408,6 +408,12 @@ describe("CacheServiceLive", () => {
         },
       }),
     ).not.toBe(deriveAppPlanCacheKey({ ...base, landofile: { name: "cache-plan", services: {} } }));
+    expect(deriveAppPlanCacheKey({ ...base, planningRuntime: "a" })).toBe(
+      deriveAppPlanCacheKey({ ...base, planningRuntime: "a" }),
+    );
+    expect(deriveAppPlanCacheKey({ ...base, planningRuntime: "b" })).not.toBe(
+      deriveAppPlanCacheKey({ ...base, planningRuntime: "a" }),
+    );
   });
 
   test("changes app-plan cache key for a toolingDefaults-only Landofile edit", () => {
