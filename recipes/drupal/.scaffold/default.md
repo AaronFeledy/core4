@@ -15,7 +15,7 @@ lando init --recipe drupal --name=my-drupal-app --yes \
   --answer=php=8.5 \
   --answer=webserver=nginx \
   --answer=database=postgres:16 \
-  --answer=composer=2.7.7 \
+  --answer=composer=2 \
   --answer=drupal=10
 ```
 
@@ -57,7 +57,7 @@ lando drush --version
 ## 5. init
 
 ```bash
-lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2.7.7 --answer=drupal=10 --answer=webroot=/app/web
+lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=/app/web
 ```
 
 ## 6. inspect
