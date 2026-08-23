@@ -21,7 +21,7 @@ lando info
 lando init --recipe symfony --name=my-symfony-app --yes \
   --answer=php=8.5 \
   --answer=database=mariadb:11.4 \
-  --answer=composer=2.7.7 \
+  --answer=composer=2 \
   --answer=webroot=/app/public
 ```
 
@@ -51,13 +51,13 @@ lando init --recipe symfony --name=my-symfony-app --yes \
   <Scenario id="non-default-options" render>
     <Step name="init">
       <Variable name="appName" value="symfony-mariadb" display="my-symfony-mariadb" />
-      <Run command="lando init --recipe symfony --name={{appName}} --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2.7.7 --answer=webroot=/app/public" />
+      <Run command="lando init --recipe symfony --name={{appName}} --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2 --answer=webroot=/app/public" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.5\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb:11\\.4\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/public\"" } }} />
     </Step>
   </Scenario>
