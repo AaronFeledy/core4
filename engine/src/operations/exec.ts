@@ -23,9 +23,21 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
+
+export type ExecAppResultWithTokens = ExecAppResult & {
+  readonly redactionTokens?: ReadonlyArray<string>;
+};
+
+export const execAppRedactionTokens = (result: unknown): ReadonlyArray<string> => {
+  if (result === null || typeof result !== "object" || !("redactionTokens" in result)) return [];
+  const tokens = result.redactionTokens;
+  if (!Array.isArray(tokens)) return [];
+  return tokens.filter((token): token is string => typeof token === "string");
+};
 
 export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
@@ -128,12 +140,14 @@ export const execApp = (
 
     const result = yield* provider.exec(target, spec);
 
-    return {
+    const withTokens: ExecAppResultWithTokens = {
       app: plan.name,
       service: String(service.name),
       command: options.command,
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
+      redactionTokens: collectAppPlanRedactionTokens(plan),
     };
+    return withTokens;
   });

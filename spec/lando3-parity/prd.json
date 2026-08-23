@@ -451,7 +451,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-580 Review (docs nits) and US-562 Review (§8.11 envelope gap). Expanded to includes:* sample aliases."
     },
     {

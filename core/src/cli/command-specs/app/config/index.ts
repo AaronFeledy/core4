@@ -6,6 +6,7 @@ import {
   type AppConfigResult,
   AppConfigResultSchema,
   appConfig,
+  appConfigRedactionTokens,
   renderAppConfigResult,
 } from "../../../commands/app-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
@@ -79,6 +80,7 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
   },
   run: (input) => appConfig(appConfigOptionsFromInput(input)),
+  redactionTokens: appConfigRedactionTokens,
   render: (result, input) => {
     const format = appConfigOptionsFromInput(input).format ?? "table";
     return renderAppConfigResult(result as AppConfigResult, format);
@@ -97,6 +99,7 @@ export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>>
       key: { type: "string", required: true, description: "Dot-path key selector." },
     },
     run: (input) => appConfig({ ...appConfigOptionsFromInput(input), subcommand: "get" }),
+    redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
       return renderAppConfigResult(result as AppConfigResult, format);
@@ -110,6 +113,7 @@ export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>>
     bootstrap: "app",
     mcpAllowed: true,
     run: () => appConfig({ subcommand: "view" }),
+    redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
       return renderAppConfigResult(result as AppConfigResult, format);

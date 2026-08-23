@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { execAppRedactionTokens } from "@lando/engine/operations/exec";
+import { collectAppPlanRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
@@ -9,6 +11,7 @@ import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "@land
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
@@ -561,5 +564,57 @@ describe("dispatchTool", () => {
     }
     expect(getterCalls).toBe(0);
     expect(trapCalls).toBe(0);
+  });
+
+  test("omits an env_file canary from the MCP exec envelope when tokens come from execAppRedactionTokens", async () => {
+    // Given
+    const canary = "mcp-env-file-canary";
+    const redactionTokens = collectAppPlanRedactionTokens({
+      services: {
+        app: {
+          environment: { API_TOKEN: canary },
+        },
+      },
+    });
+    expect(redactionTokens).toContain(canary);
+    expect(execSpec.redactionTokens).toBe(execAppRedactionTokens);
+    const entry: McpCommandEntry = {
+      spec: {
+        ...execSpec,
+        resultSchema: Schema.Struct({
+          stdout: Schema.String,
+          stderr: Schema.String,
+          exitCode: Schema.Number,
+        }),
+        redactionTokens: execAppRedactionTokens,
+      },
+    };
+    const { deps } = harness([entry]);
+
+    // When
+    const result = await Effect.runPromise(
+      dispatchTool(
+        { toolId: "app:exec" },
+        {
+          ...deps,
+          execute: () =>
+            Effect.succeed({
+              _tag: "success",
+              value: {
+                app: "demo",
+                service: "app",
+                command: ["printenv", "API_TOKEN"],
+                exitCode: 0,
+                stdout: `token=${canary}`,
+                stderr: "",
+                redactionTokens,
+              },
+            }),
+        },
+      ),
+    );
+
+    // Then
+    expect(JSON.stringify(result.envelope)).not.toContain(canary);
   });
 });
