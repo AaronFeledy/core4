@@ -12,6 +12,32 @@ This page is a contributor design-token dump for the bundled `lando` renderer. I
 
 Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat status chips, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
-The default TTY path can draw a compact task tree. `plain`, `json`, non-TTY, and CI stay undecorated. A missing native binding never fails the command. The process falls back to line input.
+The default TTY path can draw a compact task tree. plain, json, non-TTY, and CI output stay undecorated. A missing native binding never fails the command. The process falls back to line input.
 
 If you are changing renderer goldens, start from the contributing visual-QA page, not this dump.
+
+## Spaceship-console tokens
+
+The TTY `lando` frame uses a deep-space base with cyan/teal telemetry accents. Status is never color-only. Every state is glyph plus text status.
+
+Status chips: [RUNNING], [ONLINE], [CACHED], [SKIPPED], [BLOCKED], [WAIT].
+
+Layout tokens:
+
+- 80 columns is the minimum proven width (also 100 and 120)
+- LANDO OPS headings for cockpit phase identity
+- two-space row rhythm for dense scannable rows
+- dimmed detail tails behind status rows
+- progress rails stay semantic (live RUNNING only)
+
+Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients, no dense ASCII art, no decorative motion.
+
+## Desktop notification policy
+
+The `@lando/notify-lando` plugin, not core or the renderer, decides when a command completion publishes `notify.desktop`. It ships bundled and enabled by default.
+
+`notify.commands` adds canonical command ids. Entries are ordered, deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry. Landofile-derived tooling and app-local plugin ids fail with `ConfigError` regardless of cwd. Configured `none`, `minimal`, and `plugins` commands acquire subscribers without changing their declared bootstrap metadata.
+
+`notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
+
+Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`.
