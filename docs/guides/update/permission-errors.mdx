@@ -1,39 +1,17 @@
 ---
 id: update-permission-errors
 provider: test
-platforms: [darwin, linux, win32, wsl]
+platforms: [linux]
 timeout: 60000
-tags: [beta, docs, update, permissions, telemetry]
+tags: [beta, docs, update, permissions]
 ---
 
 # Update permission errors
 
-## Manual remediation on POSIX
+> **Alpha status:** In-place `lando update` is **not a shipping user path**. `update.lando.dev` is down, and there is no signed Windows or macOS binary to replace. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-`UpdatePermissionError` surfaces when there is `EACCES` or `EPERM` while staging, backing up,
-replacing, rolling back, or re-executing the binary. POSIX remediation names the install path and
-shows the manual `sudo` install command, but it doesn't run `sudo` for the user. The update path does
-not invoke `PrivilegeService`, `sudo`, UAC prompts, or any other silent elevation mechanism.
+If you cannot execute the Linux x64 binary you downloaded, you do not have an updater problem. You have a file you do not own. Put `lando` in a directory you can write, `chmod +x`, and rerun `lando --version`.
 
-## Windows fallback
+Alpha does not elevate for you. It will not run `sudo`, UAC, or any other silent privilege hop to overwrite an install path.
 
-When Windows replacement fails because the executable is locked, remediation tells the user to close
-Lando processes and run the same file moves manually from an elevated shell if UAC is required. The
-manual steps preserve the backup path `lando.exe.bak` so the user can restore the previous executable
-if replacement fails.
-
-## Telemetry categories
-
-Update records only the categorized success or failure outcome through the `update-outcome` event.
-The canonical telemetry fields are `version`, `targetVersion`, `channel`, `platform`, `outcome`.
-`UpdatePermissionError` maps to the `permission_failure` telemetry category, and telemetry omits
-install paths, hostnames, user ids, URLs with tokens, and raw command output.
-
-<Guide>
-  <Scenario id="permission-errors-config-check" render={false} reason="Permission failures and telemetry categories above are covered by command tests and telemetry tests without modifying the host install path. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+When in-place update does ship, a permission failure will name the path and stop. The code path does not invoke elevation. Until that ship date, replace the binary yourself from a `v4.0.0-dev.N` prerelease or from source.

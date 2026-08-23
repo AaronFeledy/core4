@@ -7,32 +7,19 @@ tags: [beta, docs, installer]
 
 # Verify the installer scripts
 
-> **Alpha status:** The published installer URLs described below are **not yet
-> available**. The host `get.lando.dev` is not yet serving v4 installers. See
-> [alpha install and bug reports](../../alpha-install-and-bug-reports.md) for
-> current install options.
+> **Alpha status:** Published installer URLs are **not live**. `get.lando.dev` is not serving v4 installers. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-Don't pipe an installer to your shell blind. Both installer scripts will publish
-detached signatures you can check first once they're available.
+Do not pipe a get.lando.dev URL into a shell. Those hosts are not up.
 
-## Published URLs (not yet live)
+The scripts in this repo (`scripts/install.sh`, `scripts/install.ps1`) will one day fetch a signed channel manifest. They do not work without `https://update.lando.dev`.
 
-| Script | URL |
+## Published URLs (not live)
+
+| Script | Planned URL |
 | --- | --- |
 | POSIX installer | `https://get.lando.dev/install.sh` |
 | Windows installer | `https://get.lando.dev/install.ps1` |
 
-Each script's detached signature will be published next to it, at the same URL
-with `.sig` appended: `install.sh.sig` and `install.ps1.sig`.
+Treat those as reserved names, not download links. For a binary you can run today, use a Linux x64 `v4.0.0-dev.N` prerelease and check `SHA256SUMS` as [Install from a GitHub release](./github-releases.mdx) describes.
 
-## Verify before running
-
-Release notes will include the exact `cosign` command for each installer script:
-
-```sh
-cosign verify-blob --signature <script>.sig --certificate <script>.crt <script>
-```
-
-Publication fails closed: if a required installer script, signature,
-certificate, or trust root is missing, the release artifacts never get
-generated in the first place.
+When installer signatures do publish, release notes will carry the exact `cosign` or `gpg` command. Until then, there is no trust root URL to copy from this page.
