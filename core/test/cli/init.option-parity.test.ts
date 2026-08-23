@@ -124,7 +124,7 @@ describe("recipe option parity", () => {
           php: "8.5",
           webserver: "nginx",
           database: "postgres:16",
-          composer: "2.7.7",
+          composer: "2",
           drupal: "10",
           webroot: "/app/web",
         },
@@ -137,7 +137,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("backend: appserver");
       expect(yaml).not.toContain("allowOverride:");
       expect(yaml).toContain("type: postgres:16");
-      expect(yaml).toContain('composer: "2.7.7"');
+      expect(yaml).toContain('composer: "2"');
       expect(yaml).toContain("recommended-project:^10");
 
       const landofile = await discoverFrom(result.directory);
@@ -511,6 +511,27 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("api")]?.type).toBe("node:22");
       expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
+    });
+  });
+
+  test("lamp rejects Composer 2.7.7 on PHP 8.5", async () => {
+    await withTempCwd(async (dir) => {
+      const promise = initApp({
+        cwd: dir,
+        full: false,
+        recipe: "lamp",
+        nonInteractive: true,
+        answers: { name: "php85-incompat", php: "8.5", composer: "2.7.7" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      await expect(promise).rejects.toBeInstanceOf(PromptValidationError);
+      const error = await promise.catch((cause: unknown) => cause);
+      if (!(error instanceof PromptValidationError)) {
+        throw new Error(`expected PromptValidationError, got ${String(error)}`);
+      }
+      const text = `${error.message}\n${error.issue}`;
+      expect(text).toMatch(/cannot run on PHP 8\.5/);
+      expect(text).toMatch(/2\.10\.2/);
     });
   });
 });
