@@ -318,3 +318,10 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - A healthy Traefik publish is also `rootlessport` on these ports. Doctor leftover means listening AND HTTP-dead AND rootlessport-shaped. Injected `kind: "healthy-proxy"` must stay silent.
   - Plugins cannot share a remediation string. Duplicate the lock tokens (`lando global:stop`, `rootlessport`, `lando setup`) and assert them in both packages.
 ---
+
+## 2026-08-23 15:32 CDT - US-591 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed leftover loopback doctor + start remaps address-already-in-use on 38080/38443 to global:stop / reap / setup. No in-scope code fix.
+- Review notes (deferred/rejected): unbounded /proc walk vs 5s doctor budget — leftover walk is rare (TCP open + HTTP-dead); start-path still remediates; not an AC miss. Missing /proc parser fixtures — QA inspected endianness/field indexes; not a PRD gap. Test-local snapshot type copies and darwin test name — style. rejectUnauthorized:false — intentional localhost self-signed Traefik probe. Linux-only live comm ID — rootlessport is Podman linux/WSL; AC does not require darwin/win32 holder identification.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint reused from Build (no source change). QA re-ran leftover-proxy-ports, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service, runtime-status, import-boundary, doctor-plugin-contributions: 51 pass / 0 fail.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false, and doctor-walkthrough proxy setup prose still holds.
+---
