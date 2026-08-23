@@ -694,5 +694,29 @@
     "changeKind": "unsupported-construct",
     "path": "$.hostProxy.allOf",
     "justification": "The optional architectureEmulation boolean is additive; the existing hostProxy reference shape and accepted values are unchanged (US-569)."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional ServiceInfo/phpMyAdmin creds is additive; $defs gained the ServiceCreds definition while previously accepted forms remain accepted (US-585)."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional ServiceInfo/phpMyAdmin creds is additive; $defs gained the ServiceCreds definition while previously accepted forms remain accepted (US-585)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional ServiceInfo/phpMyAdmin creds is additive; $defs gained the ServiceCreds definition while previously accepted forms remain accepted (US-585)."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional ServiceInfo/phpMyAdmin creds is additive; $defs gained the ServiceCreds definition while previously accepted forms remain accepted (US-585)."
   }
 ]
