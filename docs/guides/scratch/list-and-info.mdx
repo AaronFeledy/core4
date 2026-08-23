@@ -6,44 +6,49 @@ timeout: 60000
 tags: [beta, docs, scratch, list, info]
 ---
 
-# List and info
+# List scratch apps
 
-## Scratch list columns
-
-Lists every registered scratch app with its id, source, mode, creation time, and lifetime status.
-
-```sh
-lando apps:scratch:list
-```
-
-The scratch namespace alias reaches the same listing.
+`lando scratch:list` prints every registered scratch: id, source, isolation mode, created time, and status.
 
 ```sh
 lando scratch:list
 ```
 
-The default table renders one row per scratch app across these five columns.
+Need more than a roster? `lando scratch:info <id>` adds mounts, networks, and endpoints.
 
-The JSON renderer emits the same fields as a machine-readable array for scripting.
+## List
 
-## Scratch list status
+```sh
+lando scratch:list
+lando scratch:list --format json
+```
 
-Lifetime status is derived from the local registry entry; classification needs no provider.
+`lando scratch:list` is the alias of `apps:scratch:list`. The table columns are `ID`, `SOURCE`, `MODE`, `CREATED`, and `STATUS`. `--format json` emits the same fields as an array.
 
-An attached scratch is a foreground app whose owning CLI process is still running.
+Source is `fork` or `recipe:<ref>`. Mode is `full`, `baked`, or `cwd`.
 
-A detached scratch (`--detach`) outlives the command that created it and survives until explicit destroy or gc.
+## Read status
 
-An orphan is a foreground scratch whose owner process exited without cleanup, making it a reap candidate for apps:scratch:gc.
+Status comes from the local registry. No provider call.
 
-## Scratch info detail
+| Status | Meaning |
+| --- | --- |
+| `attached` | Foreground scratch whose owning CLI process is still running. |
+| `detached` | Started with `--detach` or kept with `--keep`. Lives until destroy or gc. |
+| `orphan` | Foreground scratch whose owner exited without cleanup. `scratch:gc --prune` can reap it. |
 
-Shows the same id / source / mode / created / status data plus the realized detail for one scratch app.
+## Inspect one scratch
 
-Each mount lists the owning service, the container target, the host path or volume source, the mount kind, and whether it is read-only.
+```sh
+lando scratch:info <id>
+lando scratch:info <id> --format json
+```
 
-Network membership reports the per-app bridge network and, when the app joined it, the shared cross-app network.
+`lando scratch:info` is the alias of `apps:scratch:info`. The id is required.
 
-Endpoints are grouped by service and show each protocol, port, and optional name.
+Info repeats the list fields, then prints `root`, the per-app bridge (and the shared network when the scratch joined it), each mount (service, target, source, kind, read-only), and endpoints grouped by service.
 
-The JSON renderer emits the enriched detail object for scripting.
+## Next
+
+- [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
+- [Reap orphaned scratch apps](./scratch-gc.mdx)

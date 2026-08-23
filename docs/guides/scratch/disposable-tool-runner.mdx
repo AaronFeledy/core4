@@ -6,86 +6,61 @@ timeout: 60000
 tags: [beta, docs, scratch, run]
 ---
 
-# Disposable tool runner
+# Run a command in a disposable scratch
 
-## Run default toolbox
-
-Disposable tool runs boot a real container and exec a tool inside it, so this scenario documents the command surface without a live provider.
-
-Runs the tool tail in a one-shot toolbox scratch that lives exactly as long as the command.
+`lando run` boots a throwaway scratch app, runs the argv after `--`, then destroys the scratch.
 
 ```sh
-lando run -- composer install
+lando run -- composer --version
 ```
 
-The top-level run alias reaches the canonical apps:scratch:run command.
+No `--from` means the bundled `toolbox` recipe. Tokens after `--` are the tool, not Lando flags. Think hotel minibar: use it, then it is gone.
 
-With no --from, the bundled toolbox recipe supplies one general-purpose CLI service on a version-pinned image.
-
-Tokens after -- are passed to the tool unchanged and never parsed as Lando flags.
-
-Normal exit, non-zero exit, and Ctrl+C all converge on the finalizer that destroys the scratch and its resources.
-
-## Run source and service
-
-Swaps the disposable recipe from the default toolbox to any recipe the standard source registry resolves.
+## Pick a recipe and service
 
 ```sh
---from lamp
+lando run --from lamp --yes -- composer --version
+lando run --from lamp --service appserver -- composer --version
 ```
 
-Runs the command in the named service; the default is the recipe's primary or only service.
+`--from` is a recipe reference, the same kind `scratch:start --from` takes. See [Start a scratch app from a recipe](./scratch-from-recipe.mdx).
+
+`--service` selects the service. The default is the recipe's primary (or only) service. An unknown name fails with `ScratchRunTargetError`.
+
+`--answer key=value` (repeatable) fills recipe prompts so the one-shot path does not block.
+
+## Mount the project
+
+By default the current directory is bind-mounted so the tool sees your files.
 
 ```sh
---service appserver
+lando run --no-mount -- composer --version
 ```
 
-An unknown --service fails with ScratchRunTargetError listing the recipe's available services.
+`--no-mount` keeps `$PWD` out of the disposable app.
 
-Repeatable; supplies recipe prompt answers so the one-shot path never blocks on a prompt.
+## Keep the scratch
 
 ```sh
---answer key=value
+lando run --keep -- composer --version
+lando scratch:list
 ```
 
-## Run mount
+`--keep` detaches the scratch after the command exits and prints the id. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
 
-cwd mounting binds real host files into a running container, which requires a live provider.
+Normal exit, a non-zero tool exit, and Ctrl+C all run the destroy finalizer unless you passed `--keep`.
 
-By default the current working directory is bind-mounted into the scratch so tools operate on real project files.
+## Exit codes
 
-Switches to baked isolation so the run cannot see the current working directory (`--no-mount`).
-
-## Run keep and GC
-
-Detaching a kept scratch and reaping it through gc touches the registry and provider resources, so this scenario documents the lifecycle without a live provider.
-
-Converts the scratch to detached after exec completes instead of destroying it, and prints the kept scratch id (`--keep`).
-
-A kept run appears here with its source, isolation mode, scratch id, and detached status.
-
-```sh
-lando apps:scratch:list
-```
-
-Reaps an orphaned kept scratch and its provider resources through the registry plus the provider-label scan.
-
-## Run exit and streaming
-
-Exit-code propagation and JSON stream frames come from a live tool process, so this scenario documents the machine surface without executing a tool.
-
-The tool process exit code becomes the command exit code; a non-zero tool exit is not a Lando tagged error.
-
-Exits 7 with no tagged error and no remediation, just the propagated code.
+The tool's exit code becomes the CLI exit code. `exit 7` from the tool is `7`, not a tagged Lando error.
 
 ```sh
 lando run -- sh -c 'exit 7'
 ```
 
-Emits StreamFrame NDJSON for stdout and stderr plus a terminal result frame carrying the exit code and scratch id.
+`lando run` and `lando scratch:run` are aliases of `apps:scratch:run`.
 
-```sh
---format json
-```
+## Next
 
-A second run against the same toolbox reuses the content-addressed recipe render and the standard buildKey up-to-date check, so it pays container start, not recipe resolution or image build.
+- [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
+- [List scratch apps](./list-and-info.mdx)

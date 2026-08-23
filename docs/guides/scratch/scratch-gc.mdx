@@ -6,42 +6,50 @@ timeout: 60000
 tags: [beta, docs, scratch, gc]
 ---
 
-# Scratch GC
+# Reap orphaned scratch apps
 
-## Scratch GC command
-
-Inspects registered scratch apps, scratch cache directories, and provider resources tagged with scratch labels.
-
-```sh
-lando apps:scratch:gc
-```
-
-The scratch namespace alias reaches the same garbage-collection helper.
+`lando scratch:gc` reports leftover scratch apps. It deletes nothing until you pass `--prune`.
 
 ```sh
 lando scratch:gc
 ```
 
-Without --prune, garbage collection reports inspected and orphan counts without deleting registry entries, directories, or provider resources.
+Dry run first. Then prune. Scratch gc is a janitor with a clipboard, not a flamethrower.
 
-## Scratch GC prune
+## Inspect
 
-Pruning removes local and provider-side scratch orphans, which requires a real provider and host cache state.
+```sh
+lando scratch:gc
+lando scratch:list
+```
 
-Reaps orphaned scratch ids by pruning provider resources, removing the cache directory, and deleting the registry entry.
+`lando scratch:gc` is the alias of `apps:scratch:gc`. The report prints `inspected`, `reaped`, and `errors` counts.
 
-A missing provider resource or scratch directory is treated as success, so a second --prune pass reports no remaining work.
+Without `--prune`, Lando only counts orphans. Registry entries, cache directories, and provider resources stay put.
 
-The durable scratch registry is a versioned StateStore bucket (registry.bin); legacy registry.json envelopes are migrated on first read and list/info/gc all use the same store (`<userCacheRoot>/scratch/registry.bin`).
+## Prune
 
-Provider containers for scratch apps carry the scratch id label so GC can find resources whose registry entry is gone (`dev.lando.scratch-id`).
+```sh
+lando scratch:gc --prune
+```
 
-## Scratch GC orphans
+`--prune` removes orphaned scratch ids: provider resources, the scratch cache directory, and the registry entry.
 
-Orphan categories are classified by cross-referencing local registry state, cache dirs, and provider labels.
+A missing resource or directory still counts as success. A second `--prune` should report no remaining work.
 
-A scratch cache directory with no registry entry is removable with --prune.
+Orphans include:
 
-A provider resource tagged with a scratch id but missing from the registry is pruned via the provider scanner seam.
+- a cache directory with no registry entry
+- a provider resource tagged with a scratch id that is gone from the registry
+- a foreground registry entry whose owner process is gone
 
-A foreground registry entry whose owner process is gone is considered orphaned and eligible for prune.
+Destroy a known id instead of sweeping:
+
+```sh
+lando scratch:destroy <id>
+```
+
+## Next
+
+- [List scratch apps](./list-and-info.mdx)
+- [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
