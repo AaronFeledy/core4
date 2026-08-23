@@ -23,7 +23,7 @@ requires:
 
 ## Where it lives
 
-`lando meta:plugin:new` writes the same map on `plugin.yaml` and on `package.json` `landoPlugin`. Install and authoring commands decode `landoPlugin` first, then fall back to a root-level manifest object.
+`lando meta:plugin:new` writes the same map on `plugin.yaml` and on `package.json` `landoPlugin`. Install and authoring commands decode `package.json` `landoPlugin` first, then fall back to a root-level `package.json` object. `plugin.yaml` is written by scaffold and is not read on install.
 
 The SDK plugin contract accepts only that exact `@lando/core` string. Missing, `^3.0.0`, `^5.0.0`, and `4.x` all fail the contract as missing, overly-broad, or incompatible.
 

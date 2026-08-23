@@ -33,7 +33,7 @@ A non-zero Bun exit is a non-zero Lando exit.
 lando meta:plugin:build
 ```
 
-Build reads `package.json` `exports`, compiles those entrypoints to `./dist` as ESM for Bun, emits declaration files, then writes `dist/package.json`. Mixed source trees that the builder cannot place under one `rootDir` fail closed.
+Build reads `package.json` `exports`, compiles those entrypoints to `./dist` as ESM for Bun, emits declaration files, then writes `dist/package.json`. Nested `dist/` under a source export tree, or `package.json` `exports` that mix source and dist entrypoints, fail closed.
 
 ## Verify
 

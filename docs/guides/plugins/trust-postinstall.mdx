@@ -26,7 +26,7 @@ lando plugin:trust list
 
 Names persist in `<userConfRoot>/plugin-trust.yml`. Org globs are not up.
 
-`--trust` and `-y` on `plugin:add` also persist that name. Non-interactive add without `--trust` fails unless the name is already trusted.
+`--trust` and `-y` on `plugin:add` also persist that name. Non-interactive add without `--trust` fails with InteractionRequiredError when the package has no `scripts.postinstall` (the same prompt path as explicit `--trust`). If the package has `scripts.postinstall` and you omit `--trust`, the tarball still lands and the script is skipped (`trustSource: untrusted`).
 
 ## Trust a checkout
 
