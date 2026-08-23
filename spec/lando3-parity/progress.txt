@@ -58,6 +58,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Bundled providers persist applied plans under plugin state (`applied-plans/<appId>.json` or `applied-plans.json`). `apps:list` reads those paths. `resolvePlan` must reload from `PluginStateStore` after process restart; an in-memory Map is not enough. Do not attach `AppPlan` onto DataMover.
 - App-plan cache identity includes `planningRuntime`: source-mode digest of engine planner/cache plus service-lando `src`, compiled-mode exec size+mtime. `CORE_VERSION` / plugin semver at `0.0.0` is not enough.
 - Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
+- JSON/MCP envelopes redact env_file secrets only when the command spec supplies `redactionTokens`. Harvest with `collectAppPlanRedactionTokens` (planned service env, including env_file) or `collectLandofileRedactionTokens` (authored Landofile env/tooling env). Extractors must accept `unknown`.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -267,4 +268,19 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Blocker fixed: managed `podman unshare rm` now uses the runtime config so bundled conmon is found.
 - **Out-of-scope finding:** after a successful purge, a short-lived `runtime/bin/podman` process can remain with a deleted exe. Uninstall already finished; not AC-blocking.
 - **Learnings for future iterations:** Managed Podman needs `--config <runtime>/config` and `CONTAINERS_CONF=<runtime>/config/containers.conf`. `--config` alone does not load `containers.conf`.
+---
+
+## 2026-08-23 08:15 CDT - US-589
+- README CLI sample now names `app:cache:refresh`, `app:includes:update`, and `app:includes:verify`. `output-streaming.mdx` treats `--renderer=verbose` as a payload dump, not the task tree. Secret-shaped values from planned service env (including env_file) and authored Landofile environment/tooling env are redacted in JSON command results and MCP envelopes via the existing `spec.redactionTokens` → `RedactionService` seam. `app:exec` attaches plan tokens; `app:config` harvests Landofile env maps.
+- Verification: typecheck, lint passed; relevant test spot checks passed (env-file machine-output, MCP dispatch, renderer-boundary redaction, info-no-secret, events). Guide lint, coverage, and `dev:guides output-streaming.mdx --once` passed (1 test). Surface: `lando app:config --format=json` printed `PASSWORD: [redacted]`.
+- **Learnings for future iterations:**
+  - `LandoCommandSpec.redactionTokens` is `(result: unknown) => string[]`. Token extractors must accept `unknown` and narrow; do not type them against the result interface.
+  - Do not put `redactionTokens` on public result schemas. Attach them off-schema on the value (tooling/exec) or harvest from `result.landofile` (config).
+  - `output-streaming.mdx` lives under `docs/guides/tooling/`, not `docs/guides/cli/`.
+---
+
+## 2026-08-23 08:59 CDT - US-589 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed README real command ids, verbose as a payload dump, and JSON/MCP env-file redaction via the existing `redactionTokens` seam. No in-scope code fix.
+- Review notes (deferred/rejected): tests inject planned `environment` maps rather than real env_file I/O — same harvest events already use after assemble merges env files; not an AC miss. Empty-array `redactionTokens` skip of landofile harvest — production view/get always attach computed tokens. Duplicate token-filter helpers — existing pattern, not a leak.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; typecheck/lint/spot checks reused from Build (no source change). QA re-ran env-file machine-output, MCP dispatch, events, info-no-secret, renderer-boundary redaction: all pass.
 ---

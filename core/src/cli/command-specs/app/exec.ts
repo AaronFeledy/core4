@@ -1,6 +1,6 @@
 import { Args, Flags } from "../../spec/metadata";
 
-import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
+import { type ExecAppResult, execApp, execAppRedactionTokens } from "@lando/engine/operations/exec";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
@@ -45,6 +45,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },
+  redactionTokens: execAppRedactionTokens,
   successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };

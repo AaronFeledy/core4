@@ -186,7 +186,7 @@ The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
 
 - **Per-app:** `lando start`, `stop`, `restart`, `rebuild`, `destroy`, `info`,
   `logs`, `exec`, `ssh`, `shell`, `config`, `config:lint`, `config:translate`,
-  `includes:update`, `includes:verify`, `cache:refresh`
+  `app:includes:update`, `app:includes:verify`, `app:cache:refresh`
 - **Multi-app:** `lando init`, `apps:list`, `apps:poweroff`
 - **Scratch apps:** `lando scratch start`/`stop`/`list`/`info`/`logs`/`destroy`/`gc`
 - **Host integration:** `lando setup`, `lando uninstall`, `lando shellenv`,

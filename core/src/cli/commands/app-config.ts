@@ -38,6 +38,7 @@ import {
   emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "@lando/engine/config-write/write-core";
+import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import {
   findDiscoveredLandofilePath,
   loadLandofileLayers,
@@ -76,7 +77,19 @@ export interface AppConfigResult {
   readonly valid?: boolean;
   readonly issues?: ReadonlyArray<string>;
   readonly filePath?: string;
+  readonly redactionTokens?: ReadonlyArray<string>;
 }
+
+export const appConfigRedactionTokens = (result: unknown): ReadonlyArray<string> => {
+  if (result === null || typeof result !== "object") return [];
+  if ("redactionTokens" in result && Array.isArray(result.redactionTokens)) {
+    return result.redactionTokens.filter((token): token is string => typeof token === "string");
+  }
+  if (!("landofile" in result) || result.landofile === null || typeof result.landofile !== "object") {
+    return [];
+  }
+  return collectLandofileRedactionTokens(result.landofile);
+};
 
 export const AppConfigResultSchema = Schema.Struct({
   app: Schema.optional(Schema.String),
@@ -383,6 +396,7 @@ export const appConfigGet = (
       subcommand: "get",
       key,
       value: getAtPath(landofile, key),
+      redactionTokens: collectLandofileRedactionTokens(landofile),
     };
   });
 
@@ -461,5 +475,6 @@ export const appConfig = (
       app: landofile.name ?? "",
       source: "resolved",
       landofile,
+      redactionTokens: collectLandofileRedactionTokens(landofile),
     };
   });

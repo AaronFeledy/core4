@@ -22,7 +22,8 @@ A non-zero exit follows the same shape. Stderr still streams. The failing child 
 
 | Mode | Behavior |
 | --- | --- |
-| `lando` (default), `verbose` | Concurrent task tree. A parent line plus an indented child per service, each with a spinner and the most recent output lines. |
+| `lando` (default) | Concurrent task tree. A parent line plus an indented child per service, each with a spinner and the most recent output lines. |
+| `verbose` | The human line plus the full event payload for every event. This is the debug dump, not the task tree. |
 | `plain` | Flat stream. One `[stepId]`-prefixed line per output event, no tree, no spinners. |
 | `json` | Structured `task.*` events on stderr. |
 
