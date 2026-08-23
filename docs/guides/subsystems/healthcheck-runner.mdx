@@ -10,9 +10,9 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
 
 This page is a contributor SDK dump for `HealthcheckRunner`. It stays off the user nav.
 
-If you author a service `healthcheck:` block, use the canonical fields: `kind` (`command`, `http`, `tcp`, or `none`), `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`. Compose spellings `test`, `disable`, and duration strings (`interval`, `timeout`, `start_period`) also decode. Do not invent other keys.
+If you author a service `healthcheck:` block, the plan schema accepts `kind` (`command`, `http`, `tcp`, or `none`), plus `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`. Compose spellings `test`, `disable`, and duration strings (`interval`, `timeout`, `start_period`) also decode. `start_interval` / `startInterval` decode as a raw duration string and are preserved losslessly for runtime extensions. Do not invent other keys.
 
-`kind: command` runs inside the container. `tcp` and `http` probe from inside the per-app network. `none` disables the probe.
+The shipped `provider-exec` runner is command-only. `kind: command` runs via `RuntimeProvider.exec` in the container (a string command is wrapped as `sh -c`; an argv array is passed through). `kind: none` skips the probe and returns `healthy=true` with `lastStatus: skipped`. `kind: http` and `kind: tcp` fail with `The provider-exec healthcheck runner only supports command healthchecks.` There is no CLI or product HTTP/TCP probe. `url` and `port` are schema fields only.
 
 This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
