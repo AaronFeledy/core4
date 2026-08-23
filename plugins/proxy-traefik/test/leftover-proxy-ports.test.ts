@@ -3,22 +3,12 @@ import { Effect } from "effect";
 
 import type { HostPlatform } from "@lando/sdk/schema";
 
-import { makeLeftoverProxyPortsCheck } from "../src/leftover-proxy-ports.ts";
+import {
+  type LoopbackPortReaders,
+  type LoopbackPortSnapshot,
+  makeLeftoverProxyPortsCheck,
+} from "../src/leftover-proxy-ports.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
-
-type LoopbackPortKind = "leftover-rootlessport" | "healthy-proxy" | "foreign" | "unknown";
-
-interface LoopbackPortSnapshot {
-  readonly port: number;
-  readonly host: "127.0.0.1";
-  readonly listening: boolean;
-  readonly comm?: string;
-  readonly kind?: LoopbackPortKind;
-}
-
-interface LoopbackPortReaders {
-  readonly readPort: (port: number, platform: HostPlatform) => Promise<LoopbackPortSnapshot>;
-}
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
 

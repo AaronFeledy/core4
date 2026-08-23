@@ -7,7 +7,7 @@ const IPV6_LOOPBACK = "00000000000000000000000001000000";
 const IPV6_V4MAPPED_LOOPBACK = "0000000000000000FFFF00000100007F";
 
 /** Stay inside probeBudgetMs (min(5000, section/3) ≈ 3.3s) even with two leftover ports. */
-export const COMM_SCAN_BUDGET_MS = 800;
+const COMM_SCAN_BUDGET_MS = 800;
 
 export interface ProcWalk {
   readonly names: (path: string) => Promise<ReadonlyArray<string> | undefined>;
@@ -51,7 +51,7 @@ const systemWalk: ProcWalk = {
 
 export const commLooksLikeRootlessport = (comm: string): boolean => /rootlessport|rootlessp\b/iu.test(comm);
 
-export const isLoopbackLocalHex = (hex: string): boolean => {
+const isLoopbackLocalHex = (hex: string): boolean => {
   const normalized = hex.toUpperCase();
   return (
     normalized === IPV4_LOOPBACK || normalized === IPV6_LOOPBACK || normalized === IPV6_V4MAPPED_LOOPBACK

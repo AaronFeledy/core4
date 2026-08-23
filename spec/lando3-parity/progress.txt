@@ -334,3 +334,12 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - **Learnings for future iterations:**
   - Plugin doctor isolate is `min(5000, floor(sectionBudget/3))` (~3.3s), not the 5s constant. Leftover `/proc` work must finish inside that or the check is abandoned as `plugin-check:<id>`.
 ---
+
+## 2026-08-23 16:10 CDT - US-591 Drift Audit
+- Trigger: 3 cycles, 824 insertions, 5 commits
+- Review scar tissue: leftover classifier had an unused comm-fallback beside the kind the production reader always sets
+- Ceremony: dead package re-export of the check factory; unused linux helper exports; tests copied snapshot types
+- Fixed: dropped the comm-fallback and tryPromise error-as-success dance; unexported unused helpers; tests import production types
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service) — pass
+---

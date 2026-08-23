@@ -32,25 +32,8 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
-export { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
-
-export const isLeftoverRootlessportHolder = (snapshot: LoopbackPortSnapshot): boolean => {
-  if (!snapshot.listening) return false;
-  const kind = snapshot.kind;
-  if (kind === undefined) {
-    return snapshot.comm !== undefined && commLooksLikeRootlessport(snapshot.comm);
-  }
-  switch (kind) {
-    case "leftover-rootlessport":
-      return true;
-    case "healthy-proxy":
-    case "foreign":
-    case "unknown":
-      return false;
-    default:
-      return assertNever(kind);
-  }
-};
+const isLeftoverRootlessportHolder = (snapshot: LoopbackPortSnapshot): boolean =>
+  snapshot.listening && snapshot.kind === "leftover-rootlessport";
 
 const idleSnapshot = (port: number): LoopbackPortSnapshot => ({
   port,
@@ -142,10 +125,7 @@ export const makeLeftoverProxyPortsCheck = (
       const snapshots = yield* Effect.forEach(
         PROBED_PORTS,
         (port) =>
-          Effect.tryPromise({
-            try: () => readers.readPort(port, input.platform),
-            catch: (): LoopbackPortSnapshot => ({ port, host: "127.0.0.1", listening: false }),
-          }).pipe(Effect.catchAll((snapshot) => Effect.succeed(snapshot))),
+          Effect.promise(() => readers.readPort(port, input.platform).catch(() => idleSnapshot(port))),
         { concurrency: "unbounded" },
       );
 
