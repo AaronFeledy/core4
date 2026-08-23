@@ -6,7 +6,7 @@ import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/s
 import type { HostPlatform } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
-import { identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
+import { commLooksLikeRootlessport, identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 
 export type LoopbackPortKind = "leftover-rootlessport" | "healthy-proxy" | "foreign" | "unknown";
@@ -32,7 +32,7 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
-export const commLooksLikeRootlessport = (comm: string): boolean => /rootlessport|rootlessp\b/iu.test(comm);
+export { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
 
 export const isLeftoverRootlessportHolder = (snapshot: LoopbackPortSnapshot): boolean => {
   if (!snapshot.listening) return false;
@@ -139,15 +139,15 @@ export const makeLeftoverProxyPortsCheck = (
   id: "proxy-loopback-ports",
   run: (input) =>
     Effect.gen(function* () {
-      const snapshots: LoopbackPortSnapshot[] = [];
-      for (const port of PROBED_PORTS) {
-        snapshots.push(
-          yield* Effect.tryPromise({
+      const snapshots = yield* Effect.forEach(
+        PROBED_PORTS,
+        (port) =>
+          Effect.tryPromise({
             try: () => readers.readPort(port, input.platform),
-            catch: () => ({ port, host: "127.0.0.1" as const, listening: false }),
+            catch: (): LoopbackPortSnapshot => ({ port, host: "127.0.0.1", listening: false }),
           }).pipe(Effect.catchAll((snapshot) => Effect.succeed(snapshot))),
-        );
-      }
+        { concurrency: "unbounded" },
+      );
 
       const leftover = snapshots.filter(isLeftoverRootlessportHolder);
       const first = leftover[0];
