@@ -90,6 +90,27 @@ describe("commForSocketInode", () => {
     expect(fdWalks).toBe(1);
   });
 
+  test("identifies an early leftover before later pids exhaust the budget", async () => {
+    // Given: leftover is the first numeric pid; later comm reads would miss the deadline
+    let now = 0;
+    const walk: ProcWalk = {
+      now: () => now,
+      names: async (path) => (path === "/proc" ? ["2", "3"] : ["3"]),
+      text: async (path) => {
+        if (path === "/proc/2/comm") return "rootlessport";
+        now = 2;
+        return "nginx";
+      },
+      link: async () => "socket:[424242]",
+    };
+
+    // When
+    const comm = await commForSocketInode("424242", walk, 1);
+
+    // Then: the already-seen holder is reported
+    expect(comm).toBe("rootlessport");
+  });
+
   test("returns undefined once the comm-scan budget elapses", async () => {
     // Given: a clock that is already past the deadline after listing /proc
     let now = 0;

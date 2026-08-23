@@ -95,25 +95,19 @@ export const commForSocketInode = async (
   const pids = await walk.names("/proc");
   if (pids === undefined) return undefined;
 
-  const candidates: Array<{ readonly pid: string; readonly comm: string }> = [];
   for (const pid of pids) {
     if (pastDeadline(walk, deadline)) return undefined;
     if (!/^\d+$/u.test(pid)) continue;
     const comm = await walk.text(`/proc/${pid}/comm`);
     if (comm === undefined) continue;
     const trimmed = comm.trim();
-    if (commLooksLikeRootlessport(trimmed)) candidates.push({ pid, comm: trimmed });
-  }
-
-  for (const candidate of candidates) {
-    if (pastDeadline(walk, deadline)) return undefined;
-    const fds = await walk.names(`/proc/${candidate.pid}/fd`);
+    if (!commLooksLikeRootlessport(trimmed)) continue;
+    const fds = await walk.names(`/proc/${pid}/fd`);
     if (fds === undefined) continue;
     for (const fd of fds) {
       if (pastDeadline(walk, deadline)) return undefined;
-      const target = await walk.link(`/proc/${candidate.pid}/fd/${fd}`);
-      if (target !== `socket:[${inode}]`) continue;
-      return candidate.comm;
+      const target = await walk.link(`/proc/${pid}/fd/${fd}`);
+      if (target === `socket:[${inode}]`) return trimmed;
     }
   }
   return undefined;
