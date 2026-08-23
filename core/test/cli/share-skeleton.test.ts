@@ -318,6 +318,9 @@ describe("share command skeleton", () => {
         ["app:share:stop", "sess"],
         ["share:stop", "sess"],
         ["share", "stop", "sess"],
+        ["app:share:stop", "--session", "sess"],
+        ["share:stop", "--session", "sess"],
+        ["share", "stop", "--session", "sess"],
       ];
       for (const form of stopForms) {
         const result = await runCli([...form, "--format", "json"]);
@@ -325,6 +328,14 @@ describe("share command skeleton", () => {
         expect(result.stderr).not.toContain("Unexpected argument");
         const envelope = parseEnvelope(result.stdout);
         expect(envelope.command, `stop form ${form.join(" ")} command identity`).toBe("app:share:stop");
+        const error = envelope.error;
+        expect(error, `stop form ${form.join(" ")} must parse`).toBeDefined();
+        expect(
+          error === null || typeof error !== "object"
+            ? undefined
+            : (error as { readonly _tag?: unknown })._tag,
+          `stop form ${form.join(" ")} must not reject the session id as an unexpected argument`,
+        ).not.toBe("InvalidCliInvocationError");
       }
 
       const bareShare = await runCli(["share", "--format", "json"]);
