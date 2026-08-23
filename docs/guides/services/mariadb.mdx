@@ -16,6 +16,19 @@ services:
     type: mariadb
 ```
 
+Set `creds:` when you want explicit values. Defaults stay `lando` / `lando` / the app name, plus a generated root password. `creds.user` is the database username. Container `user:` is not.
+
+```yaml
+services:
+  db:
+    type: mariadb
+    creds:
+      user: lando
+      password: lando
+      database: mariadb-demo
+      rootPassword: secret
+```
+
 Start it. Lando puts the database on the app network:
 
 <Guide>
@@ -52,7 +65,7 @@ MariaDB speaks the MySQL wire protocol, so that's the right scheme.
 
 ## Open the client
 
-Add a tooling alias on `db` to open the `mariadb` client:
+The `mariadb` type ships the client task. After start:
 
 ```sh
 lando mariadb

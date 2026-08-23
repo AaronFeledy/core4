@@ -4,15 +4,11 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { PortablePath, type ServiceCreds } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
-import type {
-  ServiceFeatureContext,
-  ServiceFeatureDefinition,
-  ServiceType,
-  ServiceTypeInput,
-} from "@lando/sdk/services";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_PORT = 1433;
@@ -37,21 +33,27 @@ const appNameFor = (input: { readonly appName?: string | undefined; readonly app
 const defaultRootPassword = (appName: string, serviceName: string): string =>
   `Lando!${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
 
-const credsFor = (input: ServiceTypeInput): ServiceCreds => {
-  const appName = appNameFor(input);
-  const authored = input.service.creds;
-  return {
-    user: authored?.user ?? "lando",
-    password: authored?.password ?? "lando",
-    database: authored?.database ?? appName,
-    rootPassword: authored?.rootPassword ?? defaultRootPassword(appName, input.name),
-  };
-};
+const defaultCreds = (appName: string, serviceName: string) => ({
+  user: "lando",
+  password: "lando",
+  database: appName,
+  rootPassword: defaultRootPassword(appName, serviceName),
+});
 
-const sqlcmdArgv = (rootPassword: string, query?: string): readonly string[] => {
-  const argv = [SQLCMD, "-S", "localhost", "-U", "sa", "-P", rootPassword, "-C"];
-  return query === undefined ? argv : [...argv, "-Q", query];
-};
+const sqlcmdToolingArgv = (): readonly string[] => [SQLCMD, "-S", "localhost", "-U", "sa", "-C"];
+
+const sqlcmdHealthcheckArgv = (rootPassword: string): readonly string[] => [
+  SQLCMD,
+  "-S",
+  "localhost",
+  "-U",
+  "sa",
+  "-P",
+  rootPassword,
+  "-C",
+  "-Q",
+  "SELECT 1",
+];
 
 const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCHES.has(arch);
 
@@ -59,13 +61,23 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
-  const rootPassword =
-    environment.SA_PASSWORD ?? service.creds?.rootPassword ?? defaultRootPassword(appName, ctx.serviceName);
+  const creds = resolveServiceCreds({
+    family: "mssql",
+    environment,
+    defaults: defaultCreds(appName, ctx.serviceName),
+    ...(service.creds === undefined ? {} : { authored: service.creds }),
+  });
+  const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, ctx.serviceName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["2022"] });
   ctx.addEnv("ACCEPT_EULA", environment.ACCEPT_EULA ?? "Y");
   ctx.addEnv("MSSQL_PID", environment.MSSQL_PID ?? "Developer");
-  ctx.addEnv("SA_PASSWORD", rootPassword);
+  for (const [key, value] of Object.entries({
+    ...familyEnvFor("mssql", creds),
+    ...landoDbEnvFor(creds),
+  })) {
+    ctx.addEnv(key, value);
+  }
   ctx.addStorage({
     store: `${appName}-mssql-data`,
     target: DATA_TARGET,
@@ -74,7 +86,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
   ctx.setHealthcheck({
     kind: "command",
-    command: [...sqlcmdArgv(rootPassword, "SELECT 1")],
+    command: [...sqlcmdHealthcheckArgv(rootPassword)],
     intervalSeconds: 10,
     timeoutSeconds: 5,
     retries: 5,
@@ -121,11 +133,15 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
+    const appName = appNameFor(input);
     const authoredEnv = input.service.environment ?? {};
-    const baseCreds = credsFor(input);
-    const rootPassword =
-      authoredEnv.SA_PASSWORD ?? baseCreds.rootPassword ?? defaultRootPassword(appNameFor(input), input.name);
-    const creds = { ...baseCreds, rootPassword };
+    const creds = resolveServiceCreds({
+      family: "mssql",
+      environment: authoredEnv,
+      defaults: defaultCreds(appName, input.name),
+      ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
+    });
+    const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, input.name);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
@@ -135,14 +151,15 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         creds,
         environment: {
           ...authoredEnv,
-          SA_PASSWORD: rootPassword,
+          ...familyEnvFor("mssql", creds),
         },
       },
       features: [{ id: MSSQL_FEATURE_ID }],
       tooling: {
         sqlcmd: {
           service: input.name,
-          cmd: [...sqlcmdArgv(rootPassword)],
+          cmd: [...sqlcmdToolingArgv()],
+          env: { SQLCMDPASSWORD: rootPassword },
         },
       },
     });

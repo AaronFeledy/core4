@@ -72,10 +72,21 @@ export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleErro
 }) {}
 
 /**
+ * phpMyAdmin hosts/creds resolution failed: hosts named a service that has no
+ * usable credentials, or authored creds were incomplete. The
+ * `PhpMyAdminHostsCredsError` member of the {@link AppFeatureError} union.
+ */
+export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHostsCredsError>()(
+  "PhpMyAdminHostsCredsError",
+  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+) {}
+
+/**
  * The tagged union an `AppFeature.apply` may fail with:
- * `SelectorMatchedNothing` | `MutationConflict` | `CycleDetected`.
+ * `SelectorMatchedNothing` | `MutationConflict` | `CycleDetected` | `PhpMyAdminHostsCredsError`.
  */
 export type AppFeatureError =
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
-  | AppFeatureCycleError;
+  | AppFeatureCycleError
+  | PhpMyAdminHostsCredsError;

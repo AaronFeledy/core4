@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
@@ -67,5 +67,25 @@ describe("redis ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "redis:6-alpine" });
     expect(plan.command).toEqual(["redis-server", "--maxmemory", "256mb"]);
     expect(firstEndpointPort(plan)).toBe(16379);
+  });
+
+  test("resolves redis-cli tooling as literal argv", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { cache: { type: "redis" } },
+    });
+    const service = landofile.services?.[ServiceName.make("cache")];
+    if (service === undefined) throw new Error("cache service missing");
+
+    const resolution = await Effect.runPromise(
+      redisServiceType.resolve({
+        name: "cache",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      }),
+    );
+
+    expect(resolution.tooling?.["redis-cli"]).toEqual({ service: "cache", cmd: ["redis-cli"] });
   });
 });

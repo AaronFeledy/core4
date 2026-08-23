@@ -394,7 +394,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-573 Verify + US-569 Review. Expanded to mssql LANDO_DB_*, redis-cli, healthchecks, and phpMyAdmin hosts: creds."
     },
     {

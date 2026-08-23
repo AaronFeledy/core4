@@ -140,7 +140,10 @@ describe("mssql ServiceType", () => {
           SA_PASSWORD: rootPassword,
         });
         expect(plan.environment.MSSQL_SA_PASSWORD).toBeUndefined();
-        expect(plan.environment.LANDO_DB_USER).toBeUndefined();
+        expect(plan.environment.LANDO_DB_USER).toBe("lando");
+        expect(plan.environment.LANDO_DB_PASSWORD).toBe("lando");
+        expect(plan.environment.LANDO_DB_NAME).toBe("myapp");
+        expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(rootPassword);
         expect(plan.healthcheck).toEqual({
           kind: "command",
           command: [SQLCMD, "-S", "localhost", "-U", "sa", "-P", rootPassword, "-C", "-Q", "SELECT 1"],
@@ -164,9 +167,14 @@ describe("mssql ServiceType", () => {
         expect(resolution.tooling).toEqual({
           sqlcmd: {
             service: "database",
-            cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-P", rootPassword, "-C"],
+            cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-C"],
+            env: { SQLCMDPASSWORD: rootPassword },
           },
         });
+        expect(resolution.normalizedConfig.environment?.LANDO_DB_USER).toBeUndefined();
+        expect(resolution.normalizedConfig.environment?.LANDO_DB_PASSWORD).toBeUndefined();
+        expect(resolution.normalizedConfig.environment?.LANDO_DB_NAME).toBeUndefined();
+        expect(resolution.normalizedConfig.environment?.LANDO_DB_ROOT_PASSWORD).toBeUndefined();
       });
 
       test("authored creds win over defaults", async () => {
@@ -180,10 +188,15 @@ describe("mssql ServiceType", () => {
         const resolution = await resolveMssqlService(serviceType, { type: id, creds });
 
         expect(plan.environment.SA_PASSWORD).toBe(creds.rootPassword);
+        expect(plan.environment.LANDO_DB_USER).toBe(creds.user);
+        expect(plan.environment.LANDO_DB_PASSWORD).toBe(creds.password);
+        expect(plan.environment.LANDO_DB_NAME).toBe(creds.database);
+        expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(creds.rootPassword);
         expect(resolution.normalizedConfig.creds).toEqual(creds);
         expect(resolution.tooling?.sqlcmd).toEqual({
           service: "database",
-          cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-P", creds.rootPassword, "-C"],
+          cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-C"],
+          env: { SQLCMDPASSWORD: creds.rootPassword },
         });
         expect(plan.healthcheck?.command).toEqual([
           SQLCMD,
@@ -214,7 +227,8 @@ describe("mssql ServiceType", () => {
         expect(resolution.normalizedConfig.creds?.rootPassword).toBe(saPassword);
         expect(resolution.tooling?.sqlcmd).toEqual({
           service: "database",
-          cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-P", saPassword, "-C"],
+          cmd: [SQLCMD, "-S", "localhost", "-U", "sa", "-C"],
+          env: { SQLCMDPASSWORD: saPassword },
         });
         expect(plan.healthcheck?.command).toEqual([
           SQLCMD,

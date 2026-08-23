@@ -16,6 +16,17 @@ services:
     type: postgres
 ```
 
+Set `creds:` when you want explicit values. Omit `password` and Lando generates one. Do not assume it is `lando`.
+
+```yaml
+services:
+  db:
+    type: postgres
+    creds:
+      user: lando
+      database: postgres-demo
+```
+
 Start it. Lando puts the database on the app network:
 
 <Guide>
@@ -40,9 +51,9 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Host | `db` |
 | Database | the app name (`postgres-demo`); override with `database:` under `services.db` |
 | User | `lando` |
-| Password | derived per app (`lando-<hash>`) |
+| Password | generated when omitted; read it from `lando info` |
 
-The password is derived per app, so read the exact value from `lando info`. Don't hardcode it. From inside the app network the connection URL is:
+The password is generated when you omit it, so read the exact value from `lando info`. Don't hardcode it. From inside the app network the connection URL is:
 
 ```
 postgresql://lando:<password>@db:5432/postgres-demo
@@ -50,7 +61,7 @@ postgresql://lando:<password>@db:5432/postgres-demo
 
 ## Open the client
 
-Add a tooling alias on `db` to open `psql`:
+The `postgres` type ships the `psql` client task. After start:
 
 ```sh
 lando psql

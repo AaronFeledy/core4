@@ -14,6 +14,7 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { REDACTED } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -76,8 +77,16 @@ const postgres: ServicePlan = {
   artifact: { kind: "ref", ref: "postgres:16-alpine" },
   command: ["postgres"],
   // The service carries a secret-shaped value in its environment; info must
-  // never serialize this.
-  environment: { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: SECRET_VALUE },
+  // never serialize this. LANDO_DB_* is the published creds surface and must
+  // emit redacted password fields only.
+  environment: {
+    POSTGRES_USER: "lando",
+    POSTGRES_DB: "appdb",
+    POSTGRES_PASSWORD: SECRET_VALUE,
+    LANDO_DB_USER: "lando",
+    LANDO_DB_PASSWORD: SECRET_VALUE,
+    LANDO_DB_NAME: "appdb",
+  },
   mounts: [],
   storage: [],
   endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
@@ -190,5 +199,6 @@ describe("lando info never leaks secret values", () => {
     expect(text).not.toContain(SECRET_VALUE);
     expect(json).not.toContain(SECRET_VALUE);
     expect(json).toContain("postgres");
+    expect(result.services[0]?.creds?.password).toBe(REDACTED);
   });
 });

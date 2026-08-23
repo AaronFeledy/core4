@@ -75,6 +75,7 @@ import type {
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
+  ServiceCreds,
   SyncResult,
   TunnelSession,
   TunnelTarget,
@@ -333,6 +334,7 @@ export interface InfoAppService {
   readonly status: InfoServiceStatus;
   readonly endpoints: ReadonlyArray<string>;
   readonly logSources?: ReadonlyArray<InfoLogSource>;
+  readonly creds?: ServiceCreds;
 }
 
 export interface InfoAppAgentEnv {

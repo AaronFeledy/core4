@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { AppFeatureSelectorMatchedNothingError } from "@lando/sdk/errors";
+import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import type {
@@ -145,6 +145,23 @@ const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
   };
 
   return { context, captures };
+};
+
+const applyWireExit = (views: ReadonlyArray<AppFeatureServiceView>) => {
+  const { context, captures } = applyWire(views);
+  return Effect.runPromiseExit(phpMyAdminWireFeature.apply(context)).then((result) => ({ result, captures }));
+};
+
+const expectHostsCredsFailure = (result: Awaited<ReturnType<typeof Effect.runPromiseExit>>) => {
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.cause._tag).toBe("Fail");
+  if (result.cause._tag !== "Fail") return;
+  const error = result.cause.error;
+  expect(error).toBeInstanceOf(PhpMyAdminHostsCredsError);
+  if (!(error instanceof PhpMyAdminHostsCredsError)) return;
+  expect(error._tag).toBe("PhpMyAdminHostsCredsError");
+  expect(error.remediation).toContain("creds:");
 };
 
 describe("phpmyadmin ServiceType", () => {
@@ -342,31 +359,126 @@ describe("phpMyAdmin AppFeature", () => {
     ]);
   });
 
-  test("hosts scalar completely overrides inferred siblings", async () => {
+  test("uses agreed sibling creds when multiple siblings share user and password", async () => {
     const { context, captures } = applyWire([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
+      viewOf({
+        serviceName: "zdb",
+        serviceType: "mysql",
+        creds: { user: "alice", password: "s3cret", database: "app" },
+      }),
+      viewOf({
+        serviceName: "adb",
+        serviceType: "mariadb",
+        creds: { user: "alice", password: "s3cret", database: "other" },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.env).toEqual({
+      PMA_HOSTS: "adb,zdb",
+      PMA_USER: "alice",
+      PMA_PASSWORD: "s3cret",
+    });
+  });
+
+  test("hosts scalar completely overrides inferred siblings", async () => {
+    const { result } = await applyWireExit([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: "remote.example.com" }),
+      viewOf({ serviceName: "database", serviceType: "mysql" }),
+    ]);
+
+    expectHostsCredsFailure(result);
+  });
+
+  test("hosts array completely overrides inferred siblings", async () => {
+    const { context, captures } = applyWire([
+      viewOf({
+        serviceName: "pma",
+        serviceType: "phpmyadmin",
+        hosts: ["db-a", "db-b"],
+        creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
+      }),
       viewOf({ serviceName: "database", serviceType: "mysql" }),
     ]);
 
     await Effect.runPromise(phpMyAdminWireFeature.apply(context));
 
     expect(captures.get("pma")?.env).toEqual({
-      PMA_HOSTS: "remote.example.com",
-      PMA_USER: "lando",
-      PMA_PASSWORD: "lando",
+      PMA_HOSTS: "db-a,db-b",
+      PMA_USER: "pmauser",
+      PMA_PASSWORD: "pmapass",
     });
     expect(captures.get("pma")?.deps).toEqual([]);
   });
 
-  test("hosts array completely overrides inferred siblings", async () => {
+  test("uses matched sibling creds when hosts names that sibling", async () => {
     const { context, captures } = applyWire([
-      viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: ["db-a", "db-b"] }),
-      viewOf({ serviceName: "database", serviceType: "mysql" }),
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: "database" }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mysql",
+        creds: { user: "alice", password: "s3cret", database: "app" },
+        healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+      }),
     ]);
 
     await Effect.runPromise(phpMyAdminWireFeature.apply(context));
 
-    expect(captures.get("pma")?.env.PMA_HOSTS).toBe("db-a,db-b");
+    expect(captures.get("pma")?.env).toEqual({
+      PMA_HOSTS: "database",
+      PMA_USER: "alice",
+      PMA_PASSWORD: "s3cret",
+    });
+    expect(captures.get("pma")?.deps).toEqual([
+      { service: "database", condition: "service_healthy", required: true },
+    ]);
+  });
+
+  test("fails tagged when hosts is unmatched and phpmyadmin has no creds", async () => {
+    const { result } = await applyWireExit([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: "remote.example.com" }),
+    ]);
+
+    expectHostsCredsFailure(result);
+  });
+
+  test("fails tagged when matched sibling creds disagree and phpmyadmin has no creds", async () => {
+    const { result } = await applyWireExit([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: ["adb", "zdb"] }),
+      viewOf({
+        serviceName: "adb",
+        serviceType: "mariadb",
+        creds: { user: "alice", password: "one", database: "app" },
+      }),
+      viewOf({
+        serviceName: "zdb",
+        serviceType: "mysql",
+        creds: { user: "bob", password: "two", database: "other" },
+      }),
+    ]);
+
+    expectHostsCredsFailure(result);
+  });
+
+  test("uses phpmyadmin creds when hosts is unmatched", async () => {
+    const { context, captures } = applyWire([
+      viewOf({
+        serviceName: "pma",
+        serviceType: "phpmyadmin",
+        hosts: "remote.example.com",
+        creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.env).toEqual({
+      PMA_HOSTS: "remote.example.com",
+      PMA_USER: "pmauser",
+      PMA_PASSWORD: "pmapass",
+    });
     expect(captures.get("pma")?.deps).toEqual([]);
   });
 

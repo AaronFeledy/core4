@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
+
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, and `SqlCommandFailedError` for database helper target selection, confirmation, and failed in-service dump/load/reset commands.

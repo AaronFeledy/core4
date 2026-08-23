@@ -13,6 +13,7 @@ export const PhpMyAdminServiceConfig = Schema.extend(
     "user",
     "certs",
     "hosts",
+    "creds",
     "environment",
     "routes",
     "ports",

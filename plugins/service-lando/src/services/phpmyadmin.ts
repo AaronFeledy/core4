@@ -2,21 +2,32 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { AppFeatureSelectorMatchedNothingError, ServiceFeatureError } from "@lando/sdk/errors";
+import {
+  AppFeatureSelectorMatchedNothingError,
+  type PhpMyAdminHostsCredsError,
+  ServiceFeatureError,
+} from "@lando/sdk/errors";
 import { PortNumber, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import type {
   AppFeatureContext,
   AppFeatureDefinition,
+  AppFeatureServiceMutators,
   AppFeatureServiceView,
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
 
+import {
+  type AuthoredHostsWire,
+  type PmaCreds,
+  authoredPmaCreds,
+  credentialsFor,
+  resolveAuthoredHosts,
+} from "./_phpmyadmin-hosts.ts";
+
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
-const DEFAULT_PMA_USER = "lando";
-const DEFAULT_PMA_PASSWORD = "lando";
 const DB_TYPES = ["mysql", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {
@@ -118,52 +129,80 @@ const discoveredSiblings = (
     .filter((view) => isDbType(view.serviceType))
     .sort((left, right) => left.serviceName.localeCompare(right.serviceName));
 
-const credentialsFor = (
-  siblings: ReadonlyArray<AppFeatureServiceView>,
-): { readonly user: string; readonly password: string } => {
-  const sibling = siblings.length === 1 ? siblings[0] : undefined;
-  if (sibling === undefined) return { user: DEFAULT_PMA_USER, password: DEFAULT_PMA_PASSWORD };
-  const creds = sibling.normalizedConfig.creds;
-  const environment = sibling.normalizedConfig.environment ?? {};
-  const pairs = [
-    [creds?.user, creds?.password],
-    [environment.MYSQL_USER, environment.MYSQL_PASSWORD],
-    [environment.MARIADB_USER, environment.MARIADB_PASSWORD],
-  ] as const;
-  for (const [user, password] of pairs) {
-    if (user !== undefined && password !== undefined) return { user, password };
-  }
-  return { user: DEFAULT_PMA_USER, password: DEFAULT_PMA_PASSWORD };
-};
-
 const siblingHasHealthProbe = (sibling: AppFeatureServiceView): boolean => {
   const healthcheck = sibling.normalizedConfig.healthcheck;
   return healthcheck !== undefined && healthcheck.kind !== "none";
 };
 
-const applyPhpMyAdminWire = (ctx: AppFeatureContext): void => {
+const assertNever = (value: never): never => {
+  throw new Error(`unexpected authored hosts wire: ${String(value)}`);
+};
+
+const addSiblingDependencies = (
+  mutator: AppFeatureServiceMutators,
+  siblings: ReadonlyArray<AppFeatureServiceView>,
+): void => {
+  for (const sibling of siblings) {
+    mutator.addDependency({
+      service: ServiceName.make(sibling.serviceName),
+      condition: siblingHasHealthProbe(sibling) ? "service_healthy" : "service_started",
+      required: true,
+    });
+  }
+};
+
+const applyPmaEnv = (
+  mutator: AppFeatureServiceMutators,
+  hosts: ReadonlyArray<string>,
+  creds: PmaCreds,
+): void => {
+  mutator.addEnv("PMA_HOSTS", hosts.join(","));
+  mutator.addEnv("PMA_USER", creds.user);
+  mutator.addEnv("PMA_PASSWORD", creds.password);
+};
+
+type AuthoredHostsOk = Extract<AuthoredHostsWire, { readonly _tag: "ok" }>;
+
+const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyAdminHostsCredsError> => {
   const siblings = discoveredSiblings(ctx.selected);
+  const authored = new Map<string, AuthoredHostsOk>();
+  for (const view of ctx.selected) {
+    if (view.serviceType !== "phpmyadmin") continue;
+    const hosts = authoredHosts(view.normalizedConfig);
+    if (hosts === undefined) continue;
+    const resolved = resolveAuthoredHosts({
+      hosts,
+      siblings,
+      pmaCreds: authoredPmaCreds(view.normalizedConfig),
+      feature: ctx.featureId,
+    });
+    switch (resolved._tag) {
+      case "fail":
+        return Effect.fail(resolved.error);
+      case "ok":
+        authored.set(view.serviceName, resolved);
+        break;
+      default:
+        return assertNever(resolved);
+    }
+  }
+
   ctx.forEachSelected((mutator) => {
     if (mutator.service.serviceType !== "phpmyadmin") return;
-    const override = authoredHosts(mutator.service.normalizedConfig);
+    const override = authored.get(mutator.service.serviceName);
     if (override !== undefined) {
-      mutator.addEnv("PMA_HOSTS", override.join(","));
-      mutator.addEnv("PMA_USER", DEFAULT_PMA_USER);
-      mutator.addEnv("PMA_PASSWORD", DEFAULT_PMA_PASSWORD);
+      applyPmaEnv(mutator, override.hosts, override.creds);
+      addSiblingDependencies(mutator, override.matched);
       return;
     }
-    const credentials = credentialsFor(siblings);
-    mutator.addEnv("PMA_HOSTS", siblings.map((sibling) => sibling.serviceName).join(","));
-    mutator.addEnv("PMA_USER", credentials.user);
-    mutator.addEnv("PMA_PASSWORD", credentials.password);
-    for (const sibling of siblings) {
-      mutator.addDependency({
-        service: ServiceName.make(sibling.serviceName),
-        condition: siblingHasHealthProbe(sibling) ? "service_healthy" : "service_started",
-        required: true,
-      });
-    }
+    applyPmaEnv(
+      mutator,
+      siblings.map((sibling) => sibling.serviceName),
+      credentialsFor(siblings),
+    );
+    addSiblingDependencies(mutator, siblings);
   });
+  return Effect.void;
 };
 
 export const phpMyAdminWireFeature: AppFeatureDefinition = {
@@ -185,6 +224,6 @@ export const phpMyAdminWireFeature: AppFeatureDefinition = {
           }),
         );
       }
-      applyPhpMyAdminWire(ctx);
+      yield* applyPhpMyAdminWire(ctx);
     }),
 };

@@ -16,7 +16,16 @@ services:
     type: mongodb
 ```
 
-Default root credentials are `lando` / `lando`, set via `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+Set `creds:` when you want explicit values. Defaults are `lando` / `lando` via `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+
+```yaml
+services:
+  db:
+    type: mongodb
+    creds:
+      user: lando
+      password: lando
+```
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -35,7 +44,7 @@ Default root credentials are `lando` / `lando`, set via `MONGO_INITDB_ROOT_USERN
 
 ## Check that it's healthy
 
-`mongosh` needs a running MongoDB container. Run it after start:
+The `mongodb` type ships the `mongosh` client task. After start:
 
 ```sh
 lando mongosh --eval "db.runCommand('ping')"
