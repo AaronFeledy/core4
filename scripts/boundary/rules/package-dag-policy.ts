@@ -87,7 +87,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/logger-pretty": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/sql": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/provider-docker": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/provider-docker": {
+    dependencies: PLUGIN_RUNTIME_TARGETS,
+    devDependencies: ["@lando/core"],
+  },
   "@lando/provider-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: ["@lando/core"],
