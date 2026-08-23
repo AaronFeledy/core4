@@ -8,25 +8,36 @@ tags: [beta, docs, plugins, compatibility]
 
 # Declare SDK compatibility
 
-Every Lando v4 plugin manifest must declare a `requires` map pinning the
-`@lando/core` major version it targets. The map lives alongside `name`,
-`version`, and `api` on the plugin manifest the SDK decodes before any
-plugin module loads:
+Put the core range on the plugin manifest. The supported pin is exact: `"@lando/core": "^4.0.0"`.
 
-```json
-{
-  "requires": { "@lando/core": "^4.0.0" }
-}
+```yaml
+name: "@acme/lando-plugin-demo"
+version: 0.0.0
+api: 4
+entry: ./src/index.ts
+requires:
+  "@lando/core": "^4.0.0"
 ```
 
-A scaffolded plugin `package.json` ships this already set to the supported
-core range:
+`api` is `4`. Close-enough ranges are not close enough.
 
-```json
-{
-  "name": "@acme/lando-plugin-foo",
-  "api": 4,
-  "requires": { "@lando/core": "^4.0.0" }
-}
+## Where it lives
+
+`lando meta:plugin:new` writes the same map on `plugin.yaml` and on `package.json` `landoPlugin`. Install and authoring commands decode `package.json` `landoPlugin` first, then fall back to a root-level `package.json` object. `plugin.yaml` is written by scaffold and is not read on install.
+
+The SDK plugin contract accepts only that exact `@lando/core` string. Missing, `^3.0.0`, `^5.0.0`, and `4.x` all fail the contract as missing, overly-broad, or incompatible.
+
+## Verify
+
+Open `plugin.yaml` after a scaffold and confirm the `^4.0.0` pin.
+
+```sh
+lando meta:plugin:test
 ```
 
+The starter test asserts the same pin.
+
+## Next
+
+- [Scaffold a plugin](./authoring-new-plugin.mdx)
+- [Deprecate plugin surfaces](./deprecating-plugin-surfaces.mdx)

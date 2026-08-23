@@ -8,14 +8,43 @@ tags: [beta, docs, plugins, authoring]
 
 # Test and build a plugin
 
-Run the current plugin's Bun test suite from the detected plugin root,
-forwarding post-dash Bun arguments unchanged:
+Run these from the plugin root (or a nested cwd). Lando walks up to the nearest plugin `package.json`.
+
+```sh
+lando meta:plugin:test
+lando meta:plugin:build
+```
+
+Dash, then Bun flags. Everything after `--` is none of Lando's business.
+
+## Test
 
 ```sh
 lando meta:plugin:test test/plugin.test.ts -- --bail
 ```
 
-The command emits plugin-test lifecycle events around the `BunSelfRunner`
-test execution: `cli-meta:plugin:test-start`, `pre-bun-self-exec`,
-`post-bun-self-exec`, `cli-meta:plugin:test-complete`.
+Paths before `--` are test files. Flags after `--` go to Bun `test` unchanged. The command validates the plugin manifest first.
 
+A non-zero Bun exit is a non-zero Lando exit.
+
+## Build
+
+```sh
+lando meta:plugin:build
+```
+
+Build reads `package.json` `exports`, compiles those entrypoints to `./dist` as ESM for Bun, emits declaration files, then writes `dist/package.json`. Nested `dist/` under a source export tree, or `package.json` `exports` that mix source and dist entrypoints, fail closed.
+
+## Verify
+
+```sh
+lando meta:plugin:test
+lando meta:plugin:build
+```
+
+A passing pair leaves `dist/` with the built entrypoints.
+
+## Next
+
+- [Link a local plugin](./link-local-plugin.mdx)
+- [Publish a plugin](./publish-plugin.mdx)
