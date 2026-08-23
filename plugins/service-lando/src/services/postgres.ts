@@ -113,6 +113,7 @@ export const postgresServiceType: ServiceType = {
       normalizedConfig: {
         ...input.service,
         type: "postgres",
+        creds,
         environment: {
           ...input.service.environment,
           ...familyEnvFor("postgres", creds),

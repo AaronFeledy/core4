@@ -43,8 +43,8 @@ const credsFor = (
   });
 };
 
-const mongoUri = (creds: ServiceCreds): string =>
-  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`;
+const mongoUri = (creds: ServiceCreds, port: number): string =>
+  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:${port}/${encodeURIComponent(creds.database)}?authSource=admin`;
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -109,6 +109,7 @@ export const mongodbServiceType: ServiceType = {
       normalizedConfig: {
         ...input.service,
         type: "mongodb",
+        creds,
         environment: {
           ...input.service.environment,
           ...familyEnvFor(FAMILY, creds),
@@ -119,7 +120,7 @@ export const mongodbServiceType: ServiceType = {
         mongosh: {
           service: input.name,
           cmd: ["mongosh"],
-          env: { MONGO_URI: mongoUri(creds) },
+          env: { MONGO_URI: mongoUri(creds, input.service.port ?? DEFAULT_PORT) },
         },
       },
     });

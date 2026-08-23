@@ -121,6 +121,11 @@ describe("postgres ServiceType", () => {
       cmd: ["psql", "-U", "lando", "-d", "myapp"],
       env: { PGPASSWORD: DEFAULT_PASSWORD },
     });
+    expect(resolution.normalizedConfig.creds).toEqual({
+      user: "lando",
+      password: DEFAULT_PASSWORD,
+      database: "myapp",
+    });
     expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_USER");
     expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_PASSWORD");
     expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_NAME");

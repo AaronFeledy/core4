@@ -193,6 +193,16 @@ describe("mongodb ServiceType", () => {
         },
       },
     });
+    expect(resolution.normalizedConfig.creds).toEqual(creds);
+  });
+
+  test("mongosh MONGO_URI uses the overridden service port", async () => {
+    const creds = { user: "lando", password: "lando", database: "myapp" };
+    const resolution = await resolveMongodb({ type: "mongodb", port: 47017, creds });
+
+    expect(resolution.tooling?.mongosh?.env).toEqual({
+      MONGO_URI: `mongodb://${creds.user}:${creds.password}@127.0.0.1:47017/${creds.database}?authSource=admin`,
+    });
   });
 
   test("LANDO_DB_* is not on normalizedConfig.environment", async () => {
@@ -211,5 +221,6 @@ describe("mongodb ServiceType", () => {
     expect(resolution.normalizedConfig.environment?.LANDO_DB_PASSWORD).toBeUndefined();
     expect(resolution.normalizedConfig.environment?.LANDO_DB_NAME).toBeUndefined();
     expect(resolution.normalizedConfig.environment?.LANDO_DB_ROOT_PASSWORD).toBeUndefined();
+    expect(resolution.normalizedConfig.creds).toEqual(creds);
   });
 });

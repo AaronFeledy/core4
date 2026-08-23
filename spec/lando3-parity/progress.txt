@@ -178,3 +178,9 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - Keep `ServiceCreds` fields required. Partial means no `creds:` block plus family env / top-level `database:`.
   - phpMyAdmin `hosts:` that do not match a mysql/mariadb sibling need explicit `creds:` on the phpMyAdmin service (`PhpMyAdminHostsCredsError`).
 ---
+
+## 2026-08-22 22:12 CDT - US-585 Review
+- Review-work and Bugbot confirmed the connect contract; fixed postgres/mongodb `resolve()` omitting `normalizedConfig.creds` (AC for expressions/phpMyAdmin/@lando/sql) and mongosh `MONGO_URI` ignoring `service.port`.
+- Review notes (deferred/rejected): mssql default `creds.user=lando` — AC keeps existing defaults; `sa`+`SA_PASSWORD` is the root login via `rootPassword`, not a rewrite of the app user. mongosh `--uri` on argv — AC compile is `--version`; password-on-argv is worse than env-only `MONGO_URI`.
+- Verification: typecheck, lint passed; guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; spot checks postgres/mongodb passed.
+---
