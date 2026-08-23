@@ -55,6 +55,9 @@ export const sidebar = [
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
+          { label: "Declare a recipe runs allowlist", slug: "guides/recipes/authoring-runs-allowlist" },
+          { label: "Declare a recipe fetch allowlist", slug: "guides/recipes/authoring-fetch-allowlist" },
+          { label: "Write a programmatic recipe", slug: "guides/recipes/programmatic-recipe" },
         ],
       },
       {

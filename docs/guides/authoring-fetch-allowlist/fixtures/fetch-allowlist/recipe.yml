@@ -1,0 +1,7 @@
+id: fetch-allowlist
+title: Fetch allowlist
+description: Recipe that may fetch from one API host.
+version: 0.1.0
+fetchAllowlist:
+  - https://api.example.com/**
+  - https://registry.lando.dev/recipes/*

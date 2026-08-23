@@ -3,41 +3,50 @@ id: remote-sources
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, recipes, git, tarball, npm, registry]
+tags: [beta, docs, recipes, git]
 ---
 
-# Recipes from remote sources
+# Init from a remote recipe source
 
-`lando init` can scaffold a recipe from git, a tarball, npm, or the Lando
-recipe registry instead of a bundled recipe. Every remote source resolves
-to recipe manifest parsing and prompt collection; rendering a non-bundled
-recipe's files isn't implemented yet.
-
-## Git
-
-Clone a git repository as the recipe source, then read `recipe.yml` from
-the clone root:
+Pass a git URL with the source and url flags. `--yes` is consent for remaining prompts.
 
 ```sh
-lando init --source=git --url=<git-url>
+lando init --source=git --url=<git-url> --yes
 ```
 
-`--path=packages/my-recipe` selects an optional monorepo subdirectory;
-`recipe.yml` must live at the top level of that subpath.
+Alpha still cannot write files for that recipe. After the clone and parse, init throws that file rendering is not implemented yet and that only bundled built-in recipes are supported. Use a bundled recipe id when you need a Landofile on disk.
 
-Git recipes are cached under the Lando user data root, keyed by the
-resolved HEAD commit SHA: `<userDataRoot>/recipe-cache/git/<commitSha>/`.
-The default cloner performs a shallow clone (`git clone --depth 1`), then
-runs `git rev-parse HEAD` to pin the cache directory. If the commit
-directory already exists, Lando discards the staging clone and reuses the
-published cache entry.
+The flags are real. The app files are not. Do not pretend a git URL is a second `lamp`.
 
-Failure modes: `--source=git` requires `--url=<git-url>` (`missing-url`);
-other `--source` values are rejected until their stories land
-(`unsupported-source`); absolute paths and `..` escapes in `--path` are
-rejected before cloning (`subpath-invalid`); a valid `--path` without
-`recipe.yml` fails with git-specific remediation (`subpath-missing`);
-interactive git credential prompts are disabled with
-`GIT_TERMINAL_PROMPT=0` so auth failures fail fast (`auth`). All of these
-surface as `RecipeSourceError` with the matching `kind`.
+## Fail fast before a clone
 
+The git source without a url exits `1` with `RecipeSourceError` kind `missing-url`.
+
+```sh
+lando init --source=git --yes --no-interactive
+```
+
+A tarball source needs a url. A registry source needs an id. Any other source value is `unsupported-source`.
+
+`--path=packages/my-recipe` selects a subdirectory. Absolute paths and `..` escapes fail with `subpath-invalid` before cloning. A valid `--path` without `recipe.yml` at its top level is `subpath-missing`.
+
+## How git caching works
+
+Clones land under the Lando user data root at `<userDataRoot>/recipe-cache/git/<commitSha>/`. The default cloner is a shallow clone (`--depth 1`), then `git rev-parse HEAD`. If that commit directory already exists, Lando drops the staging clone and reuses the cache.
+
+Interactive git prompts are off (`GIT_TERMINAL_PROMPT=0`). Auth failures fail fast as `RecipeSourceError` kind `auth`.
+
+Other source kinds parse the same way and hit the same file-rendering stop. They are not a finished init path either.
+
+<Guide>
+  <Scenario id="git-without-url" render>
+    <Step name="missing-url">
+      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+See [Init from a remote recipe](../cli/init-from-remote.mdx) for the remaining flag names. Use a bundled recipe when you want `lando init` to write files.
