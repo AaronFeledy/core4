@@ -24,7 +24,7 @@ Then verify:
 lando doctor --provider=podman
 ```
 
-After `lando setup --provider=podman`, later commands go back to the default `lando` provider unless you keep `--provider=podman`, keep `LANDO_PROVIDER=podman`, or set Landofile `provider: podman`.
+After a successful `lando setup --provider=podman`, later commands stay on Podman. You do not need to repeat the flag.
 
 `LANDO_PROVIDER=podman lando setup` does not persist. If you only set the env, keep it for later commands.
 
