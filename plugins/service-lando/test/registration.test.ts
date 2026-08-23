@@ -403,6 +403,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("pma")]: {
           type: "phpmyadmin",
           hosts: ["db-a", "db-b"],
+          creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
           certs: false,
         },
       },
@@ -414,7 +415,11 @@ describe("@lando/service-lando registration", () => {
     if (pma === undefined) throw new Error("phpmyadmin planner service missing");
 
     // Then
-    expect(pma.environment.PMA_HOSTS).toBe("db-a,db-b");
+    expect(pma.environment).toMatchObject({
+      PMA_HOSTS: "db-a,db-b",
+      PMA_USER: "pmauser",
+      PMA_PASSWORD: "pmapass",
+    });
     expect(pma.dependsOn).toEqual([]);
   });
 
