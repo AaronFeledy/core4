@@ -92,7 +92,7 @@ const digestTree = (
 
 const resolvePackageRoot = (requireId: string, climb = 0): string | undefined => {
   try {
-    let resolved = createRequire(import.meta.url).resolve(requireId);
+    let resolved = createRequire(join(process.cwd(), "package.json")).resolve(requireId);
     for (let step = 0; step < climb; step += 1) {
       resolved = dirname(resolved);
     }
