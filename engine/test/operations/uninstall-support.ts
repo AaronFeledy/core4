@@ -28,11 +28,8 @@ export const sandboxUninstallOptions = (
   ...extra,
 });
 
-export const managedVolumeDataFile = (runtimeDir: string): string =>
-  join(runtimeDir, "storage", "volumes", "app-mariadb-data", "_data", "ibdata1");
-
 export const writeManagedVolumeTree = (runtimeDir: string): string => {
-  const file = managedVolumeDataFile(runtimeDir);
+  const file = join(runtimeDir, "storage", "volumes", "app-mariadb-data", "_data", "ibdata1");
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, "mariadb-data");
   return file;

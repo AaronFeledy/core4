@@ -25,13 +25,10 @@ import {
 } from "../../src/operations/uninstall.ts";
 import {
   makeUninstallRoots,
-  managedVolumeDataFile,
   sandboxUninstallOptions,
   writeFakeManagedPodman,
   writeManagedVolumeTree,
 } from "./uninstall-support.ts";
-
-const removeRuntimeDir = defaultRemoveRuntimeDir;
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);
@@ -229,8 +226,7 @@ describe("uninstall managed volume purge", () => {
       mkdirSync(roots.userDataRoot, { recursive: true });
       mkdirSync(roots.userCacheRoot, { recursive: true });
       const runtimeDir = join(roots.userDataRoot, "runtime");
-      const volumeFile = managedVolumeDataFile(runtimeDir);
-      writeManagedVolumeTree(runtimeDir);
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(join(runtimeDir, "bin"), ["#!/bin/sh", 'rm -rf "$6"', "exit 0", ""].join("\n"));
 
       const result = await Effect.runPromise(
@@ -260,8 +256,7 @@ describe("uninstall managed volume purge", () => {
     try {
       const runtimeDir = join(roots.userDataRoot, "runtime");
       const storageDir = join(runtimeDir, "storage");
-      const volumeFile = managedVolumeDataFile(runtimeDir);
-      writeManagedVolumeTree(runtimeDir);
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(
         join(runtimeDir, "bin"),
         [
@@ -273,7 +268,7 @@ describe("uninstall managed volume purge", () => {
         ].join("\n"),
       );
 
-      await removeRuntimeDir(runtimeDir, {
+      await defaultRemoveRuntimeDir(runtimeDir, {
         removeTree: async (path) => {
           if (existsSync(volumeFile)) {
             throw Object.assign(new Error("EACCES"), { code: "EACCES" });
@@ -293,8 +288,7 @@ describe("uninstall managed volume purge", () => {
     const roots = makeUninstallRoots("lando-uninstall-volume-s2-direct-");
     try {
       const runtimeDir = join(roots.userDataRoot, "runtime");
-      const volumeFile = managedVolumeDataFile(runtimeDir);
-      writeManagedVolumeTree(runtimeDir);
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
       const heldVolume: RemoveRuntimeDirDeps = {
         unshareRm: async () => {
@@ -305,9 +299,14 @@ describe("uninstall managed volume purge", () => {
         },
       };
 
-      const act = removeRuntimeDir(runtimeDir, heldVolume);
-      await expect(act).rejects.toBeInstanceOf(UninstallRuntimeDirError);
-      await expect(act).rejects.toMatchObject({
+      const thrown = await defaultRemoveRuntimeDir(runtimeDir, heldVolume).then(
+        () => {
+          throw new Error("expected defaultRemoveRuntimeDir to reject");
+        },
+        (cause: unknown) => cause,
+      );
+      expect(thrown).toBeInstanceOf(UninstallRuntimeDirError);
+      expect(thrown).toMatchObject({
         _tag: "UninstallRuntimeDirError",
         path: volumeFile,
         remediation: uninstallRuntimeDirRemediation(volumeFile, true, join(runtimeDir, "bin", "podman")),
@@ -324,8 +323,7 @@ describe("uninstall managed volume purge", () => {
       mkdirSync(roots.userDataRoot, { recursive: true });
       mkdirSync(roots.userCacheRoot, { recursive: true });
       const runtimeDir = join(roots.userDataRoot, "runtime");
-      const volumeFile = managedVolumeDataFile(runtimeDir);
-      writeManagedVolumeTree(runtimeDir);
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
       const heldVolume: RemoveRuntimeDirDeps = {
         unshareRm: async () => {
@@ -342,7 +340,7 @@ describe("uninstall managed volume purge", () => {
             yes: true,
             purge: true,
             listDiscoveredApps: async () => [],
-            remove: (path) => removeRuntimeDir(path, heldVolume),
+            remove: (path) => defaultRemoveRuntimeDir(path, heldVolume),
           }),
         ),
       );
@@ -353,11 +351,9 @@ describe("uninstall managed volume purge", () => {
       const formatted = formatUninstallRuntimeDirStepError(
         leftoverUninstallRuntimeDirError(runtimeDir, existsSync),
       );
-      const error = step?.error ?? "";
-      expect(
-        error === formatted ||
-          (error.includes(volumeFile) && error.includes("lando uninstall --purge --yes")),
-      ).toBe(true);
+      expect(step?.error).toBe(formatted);
+      expect(step?.error).toContain(volumeFile);
+      expect(step?.error).toContain("lando uninstall --purge --yes");
     } finally {
       await chmodTreeUserWritable(roots.root);
       rmSync(roots.root, { recursive: true, force: true });
