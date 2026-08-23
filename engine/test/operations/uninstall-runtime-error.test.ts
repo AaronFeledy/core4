@@ -69,16 +69,26 @@ describe("preferLeftoverRuntimePath", () => {
 });
 
 describe("uninstallRuntimeDirRemediation", () => {
-  test("uses managed podman unshare when managed podman exists", () => {
+  test("uses managed podman unshare on linux when managed podman exists", () => {
     // Given / When / Then
-    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman")).toBe(
+    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman", "linux")).toBe(
       "Run `CONTAINERS_CONF=/rt/config/containers.conf /rt/bin/podman --config /rt/config unshare rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
     );
   });
 
   test("uses sudo rm when managed podman is absent", () => {
     // Given / When / Then
-    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", false, "/rt/bin/podman")).toBe(
+    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", false, "/rt/bin/podman", "linux")).toBe(
+      "Run `sudo rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
+    );
+  });
+
+  test("uses sudo rm on non-linux even when managed podman exists", () => {
+    // Given / When / Then — unshare is Linux-only; match defaultRemoveRuntimeDir
+    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman", "darwin")).toBe(
+      "Run `sudo rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
+    );
+    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman", "win32")).toBe(
       "Run `sudo rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
     );
   });

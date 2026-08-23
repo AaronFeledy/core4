@@ -309,7 +309,12 @@ describe("uninstall managed volume purge", () => {
       expect(thrown).toMatchObject({
         _tag: "UninstallRuntimeDirError",
         path: volumeFile,
-        remediation: uninstallRuntimeDirRemediation(volumeFile, true, join(runtimeDir, "bin", "podman")),
+        remediation: uninstallRuntimeDirRemediation(
+          volumeFile,
+          true,
+          join(runtimeDir, "bin", "podman"),
+          "linux",
+        ),
       });
     } finally {
       await chmodTreeUserWritable(roots.root);

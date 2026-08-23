@@ -18,8 +18,10 @@ export const uninstallRuntimeDirRemediation = (
   path: string,
   managedPodmanExists: boolean,
   managedPodman: string,
+  platform: NodeJS.Platform = process.platform,
 ): string => {
-  if (!managedPodmanExists) {
+  // Managed unshare is only used on Linux; other platforms never invoke it.
+  if (platform !== "linux" || !managedPodmanExists) {
     return `Run \`sudo rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`;
   }
   const configDir = join(dirname(dirname(managedPodman)), "config");
