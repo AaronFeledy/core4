@@ -8,27 +8,21 @@ tags: [beta, docs, subsystems, ssh, sidecar]
 
 # SSH sidecar
 
-`SshService` is the Effect Service tag published in `@lando/sdk`; plugins implement
-`SshServiceShape`. The `runSshServiceContract` runner from `@lando/sdk/test` validates a plugin's
-`id`, `setup`, and `getAgentSocket`. `TestSshService` (built with `makeTestSshService`) is the
-in-memory test double — it records calls and returns fake socket paths, so contract-level tests don't
-need a running SSH agent sidecar container.
+This page is a contributor SDK dump for `SshService`. It stays off the user nav.
 
-## Sidecar design
+The only Landofile knob is top-level `sshAgent` with `sidecar: true`:
 
-Services opt in to SSH agent forwarding with `sshAgent: true` per service in the Landofile. A direct
-host SSH-agent socket mount (`sshAgent.sidecar: false`) is reserved and rejected — use the sidecar
-default instead. The forwarded socket path is exposed as `SshAgentSocket.socketPath`, a Unix socket
-the sidecar forwards into the app network. The service feature identifier contributed by
-`@lando/service-lando` is `lando.ssh-agent` (`SSH_AGENT_FEATURE_ID`).
+```yaml
+name: myapp
+sshAgent:
+  sidecar: true
+```
 
-## Composer over SSH
+`sidecar: false` is rejected. There is no per-service `sshAgent` key.
 
-`lando composer install` against a private package server with SSH-agent auth is the scenario the
-`SshService` contract protects: it needs a real SSH agent, a running sidecar container, and the
-Composer binary, so it's exercised at the contract level in
-`sdk/test/contract/ssh-service.test.ts` rather than end to end here. A live sidecar test is gated
-behind `LANDO_TEST_SSH_LIVE=1` and skipped by default.
+Lando starts the sidecar with the global app when a start needs it. You do not start an SSH agent by hand.
+
+This is not a user how-to. For a shell inside a service, see [Open a shell in a service](../cli/ssh.mdx).
 
 <Guide>
   <Scenario id="ssh-sidecar-config-check" render={false} reason="The contract and sidecar design above are covered by sdk/test/contract/ssh-service.test.ts against TestSshService; the sidecar Live Layer needs a running SSH agent sidecar container. This scenario keeps one real CLI check in the guide harness.">
