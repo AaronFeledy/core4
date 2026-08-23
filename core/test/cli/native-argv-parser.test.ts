@@ -261,6 +261,34 @@ describe("native argv parser seam", () => {
     expect(normalizeCompiledCommandArgv(["meta", "global", "restart"])).toEqual(["meta:global:restart"]);
     expect(normalizeCompiledCommandArgv(["global", "rebuild"])).toEqual(["global:rebuild"]);
     expect(normalizeCompiledCommandArgv(["meta", "global", "rebuild"])).toEqual(["meta:global:rebuild"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "start"])).toEqual(["apps:scratch:start"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "stop", "x"])).toEqual(["apps:scratch:stop", "x"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "destroy", "x"])).toEqual(["apps:scratch:destroy", "x"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "list"])).toEqual(["apps:scratch:list"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "info", "x"])).toEqual(["apps:scratch:info", "x"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "logs", "x"])).toEqual(["apps:scratch:logs", "x"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "gc"])).toEqual(["apps:scratch:gc"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "run", "--", "echo"])).toEqual([
+      "apps:scratch:run",
+      "--",
+      "echo",
+    ]);
+    expect(normalizeCompiledCommandArgv(["recipes", "list"])).toEqual(["meta:recipes:list"]);
+    expect(normalizeCompiledCommandArgv(["recipes", "describe", "toolbox"])).toEqual([
+      "meta:recipes:describe",
+      "toolbox",
+    ]);
+    expect(normalizeCompiledCommandArgv(["recipes", "validate", "./"])).toEqual([
+      "meta:recipes:validate",
+      "./",
+    ]);
+    expect(normalizeCompiledCommandArgv(["share", "list"])).toEqual(["app:share:list"]);
+    expect(normalizeCompiledCommandArgv(["share", "stop", "sess"])).toEqual(["app:share:stop", "sess"]);
+    expect(normalizeCompiledCommandArgv(["scratch"])).toEqual(["scratch"]);
+    expect(normalizeCompiledCommandArgv(["scratch", "--detach"])).toEqual(["scratch", "--detach"]);
+    expect(normalizeCompiledCommandArgv(["recipes"])).toEqual(["recipes"]);
+    expect(normalizeCompiledCommandArgv(["share"])).toEqual(["share"]);
+    expect(normalizeCompiledCommandArgv(["apps", "scratch", "list"])).toEqual(["apps", "scratch", "list"]);
   });
 
   test("setup, shellenv, and uninstall helpers consume native argv input", () => {

@@ -1,34 +1,34 @@
 {
-  "project": "Lando v4 \u2014 Lando 3 Parity",
+  "project": "Lando v4 — Lando 3 Parity",
   "branchName": "feat/lando3-parity",
-  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-583) plus residual hardening (US-584..US-591): close the audited Lando 3 \u2192 4 functionality gaps before feature freeze, then finish holes in shipped functionality (CLI verb routing, catalog connect contract, applied-plan inventory, plan-cache identity, uninstall purge, docs+JSON/MCP redaction, PHP\u00d7Composer compatibility, leftover proxy-port doctor). Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged \u00a78.8.10 recipes, image save/load, 4.1 deferred commands.",
+  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-583) plus residual hardening (US-584..US-591): close the audited Lando 3 → 4 functionality gaps before feature freeze, then finish holes in shipped functionality (CLI verb routing, catalog connect contract, applied-plan inventory, plan-cache identity, uninstall purge, docs+JSON/MCP redaction, PHP×Composer compatibility, leftover proxy-port doctor). Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load, 4.1 deferred commands.",
   "userStories": [
     {
       "id": "US-561",
       "title": "Spec contract for the Lando 3 parity wave",
       "description": "As a maintainer, the spec authorizes every implementation story in this wave: amended service catalog, PHP depth, recipe composition/option parity, reconciled recipe bundle, and the pulled-forward @lando/sql plugin, without weakening any recorded rejection.",
       "acceptanceCriteria": [
-        "\u00a76.12.1 php row lists 8.5 and references \u00a76.12.5; catalog gains tomcat, varnish, dotnet, mssql, phpmyadmin rows.",
-        "\u00a76.12.5 normatively defines via:, composer:, xdebug:, db_client: with defaults, fail-closed invalid combos, buildKey participation.",
-        "\u00a78.8.10 bundled table matches the target bundle; staged additions and hoster exclusions explicit; stale Drupal out-of-scope sentence gone.",
-        "\u00a78.8.15 defines extends: (single inheritance, depth <= 3, id-keyed prompt merge, path-keyed file merge, concatenated postInit, flattened validation).",
-        "\u00a78.8.16 defines option-parity floors for drupal, drupal-cms, lamp.",
-        "\u00a710.7 names bundled @lando/sql as the reference SQL-helper plugin on DataMover with its command surface.",
+        "§6.12.1 php row lists 8.5 and references §6.12.5; catalog gains tomcat, varnish, dotnet, mssql, phpmyadmin rows.",
+        "§6.12.5 normatively defines via:, composer:, xdebug:, db_client: with defaults, fail-closed invalid combos, buildKey participation.",
+        "§8.8.10 bundled table matches the target bundle; staged additions and hoster exclusions explicit; stale Drupal out-of-scope sentence gone.",
+        "§8.8.15 defines extends: (single inheritance, depth <= 3, id-keyed prompt merge, path-keyed file merge, concatenated postInit, flattened validation).",
+        "§8.8.16 defines option-parity floors for drupal, drupal-cms, lamp.",
+        "§10.7 names bundled @lando/sql as the reference SQL-helper plugin on DataMover with its command surface.",
         "ROADMAP Phase 5 concurrent-wave note added; Phase 9 @lando/sql and recipe lines marked superseded.",
-        "No change to \u00a710.4 SSH rejection, \u00a710.12 RemoteSource freeze, or \u00a77.4 Compose rejected-key list.",
+        "No change to §10.4 SSH rejection, §10.12 RemoteSource freeze, or §7.4 Compose rejected-key list.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "PRD-01 contract \u2014 normative \u00a76.12.1/\u00a76.12.5/\u00a78.8.10/\u00a78.8.15/\u00a78.8.16/\u00a710.7 + ROADMAP supersession landed with PRD set"
+      "notes": "PRD-01 contract — normative §6.12.1/§6.12.5/§8.8.10/§8.8.15/§8.8.16/§10.7 + ROADMAP supersession landed with PRD set"
     },
     {
       "id": "US-562",
       "title": "Top-level env_file",
-      "description": "As a user, I can declare top-level env_file: in my Landofile and have those files apply to every service, matching v3 semantics and \u00a77.6 override order.",
+      "description": "As a user, I can declare top-level env_file: in my Landofile and have those files apply to every service, matching v3 semantics and §7.6 override order.",
       "acceptanceCriteria": [
         "env_file removed from BETA_TOP_LEVEL_KEYS; schema accepts string | string[] at top level; SDK schema + snapshots updated.",
-        "Entries resolve app-root-relative, apply to every service, merge below service-level envFile/environment per \u00a77.6; missing files fail with tagged error + remediation.",
+        "Entries resolve app-root-relative, apply to every service, merge below service-level envFile/environment per §7.6; missing files fail with tagged error + remediation.",
         "Values pass standard redaction before events/transcripts/info.",
         "Plan cache invalidates on referenced env-file content change.",
         "docs/guides/landofile/env-overrides.mdx gains a rendered top-level env_file scenario; guide gates green.",
@@ -41,11 +41,11 @@
     {
       "id": "US-563",
       "title": "toolingDefaults",
-      "description": "As a user, I can set app-wide tooling defaults (vars/env/service/dir) that every tooling task inherits unless overridden, per \u00a78.5.",
+      "description": "As a user, I can set app-wide tooling defaults (vars/env/service/dir) that every tooling task inherits unless overridden, per §8.5.",
       "acceptanceCriteria": [
-        "toolingDefaults removed from BETA_TOP_LEVEL_KEYS; schema per \u00a78.5; SDK snapshots updated.",
+        "toolingDefaults removed from BETA_TOP_LEVEL_KEYS; schema per §8.5; SDK snapshots updated.",
         "Tooling compiler applies spec precedence (task > recipe > defaults) for vars, env, service, dir; hot-path cache key includes defaults; compiled output byte-stable.",
-        "Precedence vs service-type-contributed tooling (\u00a76.11.3) deterministic with tests.",
+        "Precedence vs service-type-contributed tooling (§6.11.3) deterministic with tests.",
         "docs/guides/tooling/defaults-and-aliases.mdx shows defaults applied and overridden; guide gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -56,11 +56,11 @@
     {
       "id": "US-564",
       "title": "commandAliases",
-      "description": "As a user, I can define per-app command aliases (remap + disable) resolved by the CLI dispatcher per \u00a78.1 without canonical-id collisions.",
+      "description": "As a user, I can define per-app command aliases (remap + disable) resolved by the CLI dispatcher per §8.1 without canonical-id collisions.",
       "acceptanceCriteria": [
-        "commandAliases removed from BETA_TOP_LEVEL_KEYS; schema per \u00a78.1; SDK snapshots updated.",
+        "commandAliases removed from BETA_TOP_LEVEL_KEYS; schema per §8.1; SDK snapshots updated.",
         "Native dispatcher resolves app aliases after canonical ids and registered aliases; shadowing a canonical id rejected with CommandAliasConflictError; disablement works.",
-        "Identical resolution in source and compiled dispatch and on the tooling hot path (cached app plan, no full bootstrap) for Landofiles fully determined by file inputs (declarative YAML, no template rendering). Dynamic forms (.lando.ts, template-rendered) serve aliases from the last full decode per \u00a77.1.1 and are excluded from freshness parity; no environment/host/template-input fingerprints as cache invalidation triggers.",
+        "Identical resolution in source and compiled dispatch and on the tooling hot path (cached app plan, no full bootstrap) for Landofiles fully determined by file inputs (declarative YAML, no template rendering). Dynamic forms (.lando.ts, template-rendered) serve aliases from the last full decode per §7.1.1 and are excluded from freshness parity; no environment/host/template-input fingerprints as cache invalidation triggers.",
         "--format json reports resolved canonical id; help lists active app aliases in app context.",
         "Guide coverage in docs/guides/tooling/defaults-and-aliases.mdx; gates green.",
         "Tests pass; typecheck passes; lint passes"
@@ -72,14 +72,14 @@
     {
       "id": "US-565",
       "title": "events: (events-as-tasks)",
-      "description": "As a user, I can declare events: entries (pre-start, post-start, post-rebuild, ...) whose steps run as tooling-style tasks at matching lifecycle points \u2014 the v4 analog of v3 hooks.",
+      "description": "As a user, I can declare events: entries (pre-start, post-start, post-rebuild, ...) whose steps run as tooling-style tasks at matching lifecycle points — the v4 analog of v3 hooks.",
       "acceptanceCriteria": [
-        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the full \u00a78.5 events map and \u00a78.5.2 step contract (same step types as cmds: and service targeting). Per \u00a78.5.2.1, command: steps resolve built-in, plugin-contributed, and tooling canonical ids and validate flags, args, and raw against the target LandoCommandSpec at compile time for literal values and invocation time for expression-resolved values. US-565 proves built-in targets through the shared native CLI/runtime path; extracting and self-registering the complete class-free built-in executable catalog for makeLandoRuntime/openLandoRuntime embedding is the \u00a716.7 work owned by US-583, not this story. US-565 must neither import the CLI-only registry into the default library entry nor create a second dispatcher.",
-        "Event names validate against the \u00a73/\u00a711 app-scoped lifecycle taxonomy; unknown names fail closed at plan time listing valid names.",
-        "Subscribers execute at correct points of the \u00a73 standard sequences in declaration order through the shared tooling graph compiler and ToolingEngine: service-targeted steps use providerExec by default, while service: :host steps use ShellRunnerBunLive/Bun.$ per \u00a73.4 and \u00a78.6. Host steps must not synthesize sh -c, invoke an external system shell, or re-encode argv as a literal shell string; no new execution path.",
+        "events removed from BETA_TOP_LEVEL_KEYS; schema accepts the full §8.5 events map and §8.5.2 step contract (same step types as cmds: and service targeting). Per §8.5.2.1, command: steps resolve built-in, plugin-contributed, and tooling canonical ids and validate flags, args, and raw against the target LandoCommandSpec at compile time for literal values and invocation time for expression-resolved values. US-565 proves built-in targets through the shared native CLI/runtime path; extracting and self-registering the complete class-free built-in executable catalog for makeLandoRuntime/openLandoRuntime embedding is the §16.7 work owned by US-583, not this story. US-565 must neither import the CLI-only registry into the default library entry nor create a second dispatcher.",
+        "Event names validate against the §3/§11 app-scoped lifecycle taxonomy; unknown names fail closed at plan time listing valid names.",
+        "Subscribers execute at correct points of the §3 standard sequences in declaration order through the shared tooling graph compiler and ToolingEngine: service-targeted steps use providerExec by default, while service: :host steps use ShellRunnerBunLive/Bun.$ per §3.4 and §8.6. Host steps must not synthesize sh -c, invoke an external system shell, or re-encode argv as a literal shell string; no new execution path.",
         "Failing pre-* subscriber aborts the operation with tagged error (step identity + output tail); post-* failures surface as warnings per spec.",
         "Step output routes through Renderer as task detail; event-bus publication with redaction.",
-        "Event steps come only from the resolved Landofile top-level events: map (\u00a77.2 merge, including events from includes: fragments per \u00a77.7), in authored declaration order. No runtime recipe or service-type event-contribution surface is introduced: \u00a76.11.3 is tooling-only and \u00a78.8 recipes are inert after init, so ServiceTypeResolution gains no events field and the planner performs no recipe or service-type event merge (adjudicated 2026-08-17: prior wording generalized tooling precedence to events).",
+        "Event steps come only from the resolved Landofile top-level events: map (§7.2 merge, including events from includes: fragments per §7.7), in authored declaration order. No runtime recipe or service-type event-contribution surface is introduced: §6.11.3 is tooling-only and §8.8 recipes are inert after init, so ServiceTypeResolution gains no events field and the planner performs no recipe or service-type event merge (adjudicated 2026-08-17: prior wording generalized tooling precedence to events).",
         "New docs/guides/landofile/events.mdx with failure-path hidden scenario; coverage/INDEX updated; gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -92,7 +92,7 @@
       "title": "Embedding-safe built-in executable command catalog",
       "description": "As an embedding host, App-handle lifecycle events and tooling command steps can invoke built-in canonical commands through the same class-free Effect operations as the CLI, without importing CLI-only command adapters or creating a second dispatcher.",
       "acceptanceCriteria": [
-        "Extract one class-free executable-command catalog covering every \u00a78.2 built-in canonical id, including explicit deferred or \u00a716.7-exempt status where no programmatic operation exists. The catalog is derived from the canonical LandoCommandSpec registry rather than maintained as a second command list, and completeness is enforced against the full built-in registry.",
+        "Extract one class-free executable-command catalog covering every §8.2 built-in canonical id, including explicit deferred or §16.7-exempt status where no programmatic operation exists. The catalog is derived from the canonical LandoCommandSpec registry rather than maintained as a second command list, and completeness is enforced against the full built-in registry.",
         "The native CLI registry/dispatcher, @lando/core/cli command operations, and EventCommandExecutor consume the same executable entries and preserve canonical spec identity, input validation, lifecycle correlation, success-exit semantics, rendering, redaction, and interruption. No second dispatcher or duplicate executable metadata is introduced.",
         "makeLandoRuntime/openLandoRuntime self-register the built-in executable targets without importing CLI-only command classes/adapters through the default @lando/core entry or creating a generated-bootstrap import cycle. Existing host-provided plugin discovery policy remains unchanged.",
         "An App handle driven through an embedding runtime executes Landofile event/tooling command: steps targeting representative app, apps, and meta built-ins identically to the native CLI path; unknown, deferred, and invalid-input targets fail with the same tagged errors and remediation.",
@@ -101,12 +101,12 @@
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Split from US-565 by adjudication on 2026-08-17; owns the \u00a716.7 full-catalog extraction and embedding registration needed for \u00a78.5.2.1 CLI/embedding parity."
+      "notes": "Split from US-565 by adjudication on 2026-08-17; owns the §16.7 full-catalog extraction and embedding registration needed for §8.5.2.1 CLI/embedding parity."
     },
     {
       "id": "US-566",
       "title": "rabbitmq, minio, localstack service types",
-      "description": "As a user, I can declare type: rabbitmq | minio | localstack exactly as the \u00a76.12.1 catalog promises.",
+      "description": "As a user, I can declare type: rabbitmq | minio | localstack exactly as the §6.12.1 catalog promises.",
       "acceptanceCriteria": [
         "Three service types registered per their catalog rows (rabbitmq 3/4 + management route + volume; minio + console route + bucket init; localstack).",
         "Each passes runServiceCompositionContract, declares base: lando, ships row-appropriate tooling/healthchecks, publishes @lando/sdk/schema/services/<type> with snapshots.",
@@ -120,10 +120,10 @@
     {
       "id": "US-567",
       "title": "App-scoped mailpit + deprecated mailhog types",
-      "description": "As a user, I can declare an app-scoped type: mailpit service, and legacy type: mailhog still validates while emitting the \u00a718.4 deprecation event.",
+      "description": "As a user, I can declare an app-scoped type: mailpit service, and legacy type: mailhog still validates while emitting the §18.4 deprecation event.",
       "acceptanceCriteria": [
         "mailpit ships as app-scoped service type per catalog row without disturbing the global-app Mailpit contribution; both coexist.",
-        "mailhog registers as working compat type; use emits deprecation-used with the \u00a718 notice (since 4.2.0, removal 5.0.0, replacement mailpit); renderer dedupes; doctor reports it.",
+        "mailhog registers as working compat type; use emits deprecation-used with the §18 notice (since 4.2.0, removal 5.0.0, replacement mailpit); renderer dedupes; doctor reports it.",
         "Both pass composition contract; schemas + snapshots published.",
         "docs/guides/services/mailpit.mdx guide with hidden mailhog-deprecation scenario asserting the warning; gates green.",
         "Tests pass; typecheck passes; lint passes"
@@ -153,8 +153,8 @@
       "description": "As a user, I can run .NET apps, SQL Server, and phpMyAdmin per the amended catalog rows, completing the L3 service set.",
       "acceptanceCriteria": [
         "dotnet (8.0/9.0): SDK + ASP.NET runtime, command: dev-server support, NuGet cache mount; contract + snapshot.",
-        "mssql (2019/2022): \u00a76.12.4 creds opt-in with rootPassword -> SA_PASSWORD, healthcheck, persistent volume, sqlcmd tooling; non-amd64 without emulation capability fails closed at plan time with spec'd remediation.",
-        "phpmyadmin (5/latest): auto-wires to all MySQL-family services via \u00a76.12.4 cross-service creds scope; proxy route; zero-config single-DB; hosts: override supported.",
+        "mssql (2019/2022): §6.12.4 creds opt-in with rootPassword -> SA_PASSWORD, healthcheck, persistent volume, sqlcmd tooling; non-amd64 without emulation capability fails closed at plan time with spec'd remediation.",
+        "phpmyadmin (5/latest): auto-wires to all MySQL-family services via §6.12.4 cross-service creds scope; proxy route; zero-config single-DB; hosts: override supported.",
         "docs/guides/services/{dotnet,mssql,phpmyadmin}.mdx guides (mssql notes platform constraint); gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -165,7 +165,7 @@
     {
       "id": "US-570",
       "title": "PHP 8.5 + Composer selection",
-      "description": "As a user, I can run php:8.5 and choose my Composer version (or disable it) per \u00a76.12.5.",
+      "description": "As a user, I can run php:8.5 and choose my Composer version (or disable it) per §6.12.5.",
       "acceptanceCriteria": [
         "SUPPORTED_PHP_VERSIONS gains 8.5 with registered php85ServiceType; extension-set parity verified for 8.5 images.",
         "composer: \"<major>\" | \"<exact>\" | false implemented; explicit versions fetched checksum-verified via standard build-step path; false skips; participates in buildKey.",
@@ -180,9 +180,9 @@
     {
       "id": "US-571",
       "title": "PHP serving modes (via:)",
-      "description": "As a user, I can choose via: apache (default), fpm (fronted by nginx), or cli (workers/tooling) per \u00a76.12.5.",
+      "description": "As a user, I can choose via: apache (default), fpm (fronted by nginx), or cli (workers/tooling) per §6.12.5.",
       "acceptanceCriteria": [
-        "via: selects image variant + service shape per \u00a76.12.5; mode-invalid keys fail closed at plan time with remediation.",
+        "via: selects image variant + service shape per §6.12.5; mode-invalid keys fail closed at plan time with remediation.",
         "via: fpm exposes port 9000; nginx type's shared PHP presets front a named FPM service end-to-end.",
         "via: cli produces an idling container for tooling/command: workers with no web server or HTTP route.",
         "All modes pass composition contract; schemas + snapshots updated.",
@@ -196,9 +196,9 @@
     {
       "id": "US-572",
       "title": "Xdebug (xdebug:)",
-      "description": "As a user, I can enable Xdebug with xdebug: true (or a mode string) and toggle it with lando xdebug on|off|status \u2014 no manual image surgery.",
+      "description": "As a user, I can enable Xdebug with xdebug: true (or a mode string) and toggle it with lando xdebug on|off|status — no manual image surgery.",
       "acceptanceCriteria": [
-        "xdebug: true | \"<modes>\" installs the extension as a checksum-pinned build step per PHP version (8.1\u20138.5), enables XDEBUG_MODE from the option, client_host at host gateway, port 9003; false default installs nothing.",
+        "xdebug: true | \"<modes>\" installs the extension as a checksum-pinned build step per PHP version (8.1–8.5), enables XDEBUG_MODE from the option, client_host at host gateway, port 9003; false default installs nothing.",
         "lando xdebug on|off|status service tooling toggles without rebuild across all via: modes.",
         "Participates in buildKey; nothing sensitive emitted to events/transcripts.",
         "xdebug-phpstorm.mdx + vscode.mdx rewritten to real end-to-end flows (hidden scenario asserts extension loads via php -m); php-customization.mdx updated; gates green.",
@@ -213,7 +213,7 @@
       "title": "Database client auto-detection (db_client:)",
       "description": "As a user, my PHP container automatically gets the right database client CLI for the databases in my app (auto default), or exactly what I ask for.",
       "acceptanceCriteria": [
-        "auto inspects resolved plan services with \u00a76.12.4 creds opt-in and installs matching clients (mysql/mariadb client, postgresql-client, mongosh) as build steps; false installs none; explicit \"<family>:<version>\" forces; deterministic from the plan; participates in buildKey.",
+        "auto inspects resolved plan services with §6.12.4 creds opt-in and installs matching clients (mysql/mariadb client, postgresql-client, mongosh) as build steps; false installs none; explicit \"<family>:<version>\" forces; deterministic from the plan; participates in buildKey.",
         "Tooling invocations from DB service types work from the PHP service against services.<db>.creds.*.",
         "Schema + snapshots updated; invalid values fail at plan time.",
         "Rendered db_client scenario in switching-databases.mdx or php-customization.mdx; gates green.",
@@ -241,11 +241,11 @@
     {
       "id": "US-575",
       "title": "Recipe composition (extends:)",
-      "description": "As a recipe author, I can declare extends: <recipe-ref> and ship only my deltas, per \u00a78.8.15.",
+      "description": "As a recipe author, I can declare extends: <recipe-ref> and ship only my deltas, per §8.8.15.",
       "acceptanceCriteria": [
         "RecipeManifest schema gains extends: (+ prompt drop: true); SDK snapshots updated.",
         "Resolution flattens single-inheritance chains (depth <= 3, acyclic; violations tagged errors naming the chain) before validation; downstream sees only flattened manifests.",
-        "Merge semantics per \u00a78.8.15: prompts by id (override/append/drop), files: by path (child wins), postInit: concatenated parent-then-child, scalars from child.",
+        "Merge semantics per §8.8.15: prompts by id (override/append/drop), files: by path (child wins), postInit: concatenated parent-then-child, scalars from child.",
         "Non-bundled parents resolve through the source registry with lockfile pinning; meta recipes describe shows flattened result; validate works with resolvable parent.",
         "recipe.ts manifests may return extends:; merge runs post-factory.",
         "docs/guides/recipes/extending-recipes.mdx guide; coverage/INDEX gates green.",
@@ -258,9 +258,9 @@
     {
       "id": "US-576",
       "title": "Option parity for drupal, drupal-cms, lamp",
-      "description": "As a user initializing drupal/drupal-cms/lamp, I get real stack choices (PHP version, webserver, DB engine+version, Composer version, webroot) per \u00a78.8.16.",
+      "description": "As a user initializing drupal/drupal-cms/lamp, I get real stack choices (PHP version, webserver, DB engine+version, Composer version, webroot) per §8.8.16.",
       "acceptanceCriteria": [
-        "drupal: Drupal major choice, PHP 8.1\u20138.5 choice, apache | nginx+FPM webserver choice (\u00a76.12.5 via:), MariaDB/MySQL/PostgreSQL choice with versions, webroot: prompt, Composer option; non-interactive defaults everywhere.",
+        "drupal: Drupal major choice, PHP 8.1–8.5 choice, apache | nginx+FPM webserver choice (§6.12.5 via:), MariaDB/MySQL/PostgreSQL choice with versions, webroot: prompt, Composer option; non-interactive defaults everywhere.",
         "drupal-cms: inherits drupal surface; generated app serves the scaffold's real docroot (/app/web); README exercises scaffold + project-local Drush end-to-end.",
         "lamp: MariaDB/MySQL choice with versions, PHP version choice, Composer option, webroot: prompt.",
         "Each README.mdx exercises at least one non-default variant; recipe test layer + guide gates green; bundled-recipe codegen clean.",
@@ -273,11 +273,11 @@
     {
       "id": "US-577",
       "title": "laravel + symfony recipes",
-      "description": "As a user, I can lando init --recipe laravel or --recipe symfony and get the \u00a78.8.10 promised stacks.",
+      "description": "As a user, I can lando init --recipe laravel or --recipe symfony and get the §8.8.10 promised stacks.",
       "acceptanceCriteria": [
         "laravel: PHP with Composer, MariaDB-or-PostgreSQL choice, Redis, optional queue-worker service (via: cli PHP worker); artisan/composer tooling wired.",
         "symfony: PHP with Composer, PostgreSQL-or-MariaDB choice, Redis; console/composer tooling wired.",
-        "Both use \u00a76.12.5 options where prompts call for them, non-interactive defaults everywhere, bundled-recipe codegen registration, executable README.mdx with a non-default variant.",
+        "Both use §6.12.5 options where prompts call for them, non-interactive defaults everywhere, bundled-recipe codegen registration, executable README.mdx with a non-default variant.",
         "Recipe test layer + guide gates green; meta recipes list/describe/validate pass through machine output.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -290,7 +290,7 @@
       "title": "backdrop, joomla, mean recipes",
       "description": "As a user, I can initialize Backdrop, Joomla, and MEAN-style stacks, completing the L3 recipe parity set.",
       "acceptanceCriteria": [
-        "backdrop and joomla extend lamp per \u00a78.8.15, overriding prompts/files for CMS-specific scaffolding and tooling.",
+        "backdrop and joomla extend lamp per §8.8.15, overriding prompts/files for CMS-specific scaffolding and tooling.",
         "mean: Node service with MongoDB and optional Redis; npm-script tooling; framework-agnostic Express-style default scaffold.",
         "All three: non-interactive defaults, bundled-recipe codegen registration, executable README.mdx with a non-default variant, recipe test layer + guide gates green.",
         "Tests pass; typecheck passes; lint passes"
@@ -305,10 +305,10 @@
       "description": "As a user, I can import and export databases and snapshot/restore/reset them against any creds-bearing bundled database type.",
       "acceptanceCriteria": [
         "New bundled plugins/sql package contributing the five commands; wired through bundled-plugin codegen + composition root; bun install run; test shards include it.",
-        "Engine support per family: MySQL-family, PostgreSQL, MongoDB, mssql (sqlcmd); family resolved from target service type + \u00a76.12.4 creds; single-DB apps need no flag; ambiguity is a tagged error listing candidates (--service).",
+        "Engine support per family: MySQL-family, PostgreSQL, MongoDB, mssql (sqlcmd); family resolved from target service type + §6.12.4 creds; single-DB apps need no flag; ambiguity is a tagged error listing candidates (--service).",
         "All byte movement rides DataMover/provider data plane; no bespoke tar/stream code; gzip both directions; snapshots in the DataMover snapshot store indexed via StateStore.",
         "db:import into non-empty DB and db:reset require confirmation (--yes bypass); destructive steps enumerated before execution.",
-        "Credentials via RedactionService everywhere; renderer progress frames; --format json emits \u00a78.11 envelope/stream frames with machine-output conformance coverage.",
+        "Credentials via RedactionService everywhere; renderer progress frames; --format json emits §8.11 envelope/stream frames with machine-output conformance coverage.",
         "docs/guides/tooling/db-import-export.mdx guide; coverage/INDEX gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -322,7 +322,7 @@
       "description": "As a user, I can find executable guidance for app:cache:refresh, CLI verbosity/debug output, and the DNS-rebinding caveat for custom domains.",
       "acceptanceCriteria": [
         "docs/guides/cli/cache-refresh.mdx: stale plan caches, lando cache:refresh walkthrough with rendered before/after scenario.",
-        "docs/guides/cli/verbosity-and-debug.mdx: renderer modes (--renderer=verbose|plain|json), debug env/log guidance \u2014 the v3 lando --debug analog.",
+        "docs/guides/cli/verbosity-and-debug.mdx: renderer modes (--renderer=verbose|plain|json), debug env/log guidance — the v3 lando --debug analog.",
         "DNS-rebinding note added to the external-access or proxy guide with remediation; cross-linked.",
         "INDEX + check:guide-coverage, check:guide-drift, lint:guides green.",
         "Tests pass; typecheck passes; lint passes"
@@ -336,11 +336,11 @@
       "title": "Service-type tooling precedence reconciliation + reserved-name enforcement",
       "description": "As a plugin author, the normative service-type tooling contract matches shipped behavior, and a service type cannot silently contribute a reserved top-level task name into the app tooling map.",
       "acceptanceCriteria": [
-        "\u00a76.11.3 and \u00a710 state the shipped two-rank model (resolved Landofile tooling: > service-type tooling:), whole-task replacement keyed on task name, and the ordinal service-name tie-break. Prose landed 2026-08-17 ahead of this story; verify no further drift and that no other spec site restates a recipe tooling: rank.",
-        "Decide, and state normatively in \u00a76.11.3, whether reserved top-level tooling names (run, scratch, scratch:* per reservedTopLevelAliasOwner) are rejected at plan time when contributed by a service type, or remain guarded only at invocation time. \u00a76.11.3 says contributions merge \"at plan time\" while compileEffectiveTooling/assemble validate no names today; the guards live at invocation in engine/src/operations/tooling.ts and tooling-bun-script.ts.",
+        "§6.11.3 and §10 state the shipped two-rank model (resolved Landofile tooling: > service-type tooling:), whole-task replacement keyed on task name, and the ordinal service-name tie-break. Prose landed 2026-08-17 ahead of this story; verify no further drift and that no other spec site restates a recipe tooling: rank.",
+        "Decide, and state normatively in §6.11.3, whether reserved top-level tooling names (run, scratch, scratch:* per reservedTopLevelAliasOwner) are rejected at plan time when contributed by a service type, or remain guarded only at invocation time. §6.11.3 says contributions merge \"at plan time\" while compileEffectiveTooling/assemble validate no names today; the guards live at invocation in engine/src/operations/tooling.ts and tooling-bun-script.ts.",
         "If plan-time is chosen, the merged tooling map is validated during planning and fails with the tagged CommandAliasConflictError naming the contributing service type and task, surfaced as an Effect failure rather than a thrown exception per the core tagged-failure tenet.",
         "assertToolingNameClaimable (engine/src/operations/reserved-aliases.ts) is either wired into that production path or deleted together with its unit test. No helper may remain with zero production callers and a green test that proves nothing shipped.",
-        "topLevelAlias: sits in BETA_TOOLING_TASK_KEYS and is rejected for every tooling task today, so \u00a710's \"Service-type tooling MUST NOT use topLevelAlias:\" is currently vacuous. Record the follow-up so the rule gains real enforcement when the beta gate lifts.",
+        "topLevelAlias: sits in BETA_TOOLING_TASK_KEYS and is rejected for every tooling task today, so §10's \"Service-type tooling MUST NOT use topLevelAlias:\" is currently vacuous. Record the follow-up so the rule gains real enforcement when the beta gate lifts.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 22,
@@ -352,10 +352,10 @@
       "title": "Parity refresh + wave closure",
       "description": "As a maintainer, the parity audit reflects reality after this wave and the whole wave's verification contract is green on one tree.",
       "acceptanceCriteria": [
-        ".local/LANDO3-PARITY.md refreshed: every previously-\u274c row now \u2705 or carries a recorded decision citation (hosters -> 4.1 RemoteSource; SSH mounts -> rejected; staged recipes -> \u00a78.8.10 staged list); stale 2026-08-09 rows corrected.",
+        ".local/LANDO3-PARITY.md refreshed: every previously-❌ row now ✅ or carries a recorded decision citation (hosters -> 4.1 RemoteSource; SSH mounts -> rejected; staged recipes -> §8.8.10 staged list); stale 2026-08-09 rows corrected.",
         "core/src/cli/deferred-commands.ts reviewed: implemented entries removed; remaining entries carry accurate phase notes.",
         "Full gate sweep on the closure tree: bun test (positive counts), typecheck, lint, codegen:check, check:boundaries, check:guide-coverage, check:guide-drift, check:public-transcripts, lint:guides.",
-        "\u00a78.8.10 table verified against recipes/ contents; \u00a76.12.1 rows verified against the runtime registry (every row registered, every registration in a row).",
+        "§8.8.10 table verified against recipes/ contents; §6.12.1 rows verified against the runtime registry (every row registered, every registration in a row).",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 23,
@@ -367,7 +367,7 @@
       "title": "Space-separated CLI verbs",
       "description": "As a user, lando scratch list, lando recipes describe, and lando share list dispatch to the matching canonical command instead of being swallowed by the bare topic alias.",
       "acceptanceCriteria": [
-        "\u00a78.4 shipped parser taxonomy gains scratch <start|stop|destroy|list|info|logs|gc|run>, recipes <list|describe|validate>, and share <list|stop> as compatibility forms alongside apps scratch run / meta recipes / global forms.",
+        "§8.4 shipped parser taxonomy gains scratch <start|stop|destroy|list|info|logs|gc|run>, recipes <list|describe|validate>, and share <list|stop> as compatibility forms alongside apps scratch run / meta recipes / global forms.",
         "Bare scratch with no verb (or only start flags) remains apps:scratch:start. Bare recipes remains meta:recipes:list. Bare share remains app:share.",
         "Space-separated, colon-alias, and canonical forms share JSON command identity.",
         "lando scratch list no longer raises InvalidCliInvocationError / unexpected argument list; same class of failure is gone for recipes and share.",
@@ -375,7 +375,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-579 Verify, expanded to the same swallow class on recipes and share."
     },
     {
@@ -418,7 +418,7 @@
       "description": "As a user, rebuilding the Lando binary or changing a bundled service-type plugin does not reuse a stale plan.bin whose Dockerfile RUN already failed.",
       "acceptanceCriteria": [
         "deriveAppPlanCacheKey includes a non-secret fingerprint of the planning implementation (binary version and/or bundled plugin/source identity). Landofile-only identity is insufficient.",
-        "Do not fingerprint environment, host, or template-render inputs (\u00a77.1.1 / US-564 adjudication).",
+        "Do not fingerprint environment, host, or template-render inputs (§7.1.1 / US-564 adjudication).",
         "Changing the fingerprint forces a cache miss; the same fingerprint + same Landofile remains a hit.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -444,7 +444,7 @@
       "title": "Residual docs + machine-output env-file redaction",
       "description": "As a user, published docs name the real command ids, and JSON/MCP results do not leak env-file secrets.",
       "acceptanceCriteria": [
-        "README CLI sample lists app:cache:refresh, app:includes:update, and app:includes:verify \u2014 not bare cache:refresh / includes:* aliases.",
+        "README CLI sample lists app:cache:refresh, app:includes:update, and app:includes:verify — not bare cache:refresh / includes:* aliases.",
         "docs/guides/cli/output-streaming.mdx does not group --renderer=verbose with the task tree; verbose is a payload dump, consistent with verbosity-and-debug.mdx.",
         "Secret-shaped values from top-level and service-level env_file are redacted in --format=json command results and MCP envelopes the same way events already redact them.",
         "Guide gates green for touched docs; focused redaction tests cover JSON + MCP.",
@@ -452,16 +452,16 @@
       ],
       "priority": 29,
       "passes": false,
-      "notes": "Residual from US-580 Review (docs nits) and US-562 Review (\u00a78.11 envelope gap). Expanded to includes:* sample aliases."
+      "notes": "Residual from US-580 Review (docs nits) and US-562 Review (§8.11 envelope gap). Expanded to includes:* sample aliases."
     },
     {
       "id": "US-590",
-      "title": "PHP \u00d7 Composer compatibility",
+      "title": "PHP × Composer compatibility",
       "description": "As a user, I cannot init or plan a PHP + Composer pair that the pinned Composer release cannot run cleanly.",
       "acceptanceCriteria": [
         "Plan time fails closed when an exact Composer pin is known-incompatible with the PHP version (shipped case: php:8.5 + composer: \"2.7.7\"), with tagged remediation pointing at composer: \"2\" (2.10.2) or a newer exact pin.",
         "Bundled recipe prompts that offer both PHP versions and Composer pins do not present the incompatible pair. Hand-written Landofiles still hit the plan-time gate.",
-        "composer: \"2\" remains the 2.10.2 channel pin and stays valid on PHP 8.1\u20138.5. Do not silently rewrite an authored exact pin.",
+        "composer: \"2\" remains the 2.10.2 channel pin and stays valid on PHP 8.1–8.5. Do not silently rewrite an authored exact pin.",
         "php-composer-workflows and the affected recipe READMEs stay true; guide gates green.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -472,7 +472,7 @@
     {
       "id": "US-591",
       "title": "Doctor leftover proxy ports",
-      "description": "As a user, a leftover host rootlessport on the Traefik loopback ports is a diagnosed, remediable problem \u2014 not an opaque GlobalAutoStartError / ProviderUnavailableError.",
+      "description": "As a user, a leftover host rootlessport on the Traefik loopback ports is a diagnosed, remediable problem — not an opaque GlobalAutoStartError / ProviderUnavailableError.",
       "acceptanceCriteria": [
         "lando doctor probes the bundled proxy loopback ports (127.0.0.1:38080 and the matching TLS port) and, when a leftover Lando/rootlessport holder is present, reports a tagged check with remediation (global:stop, reap, or setup).",
         "Start / global:start maps address-already-in-use on those ports to that same tagged remediation instead of a generic bind / ProviderUnavailableError.",

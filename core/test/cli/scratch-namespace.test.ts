@@ -23,12 +23,6 @@ import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
-const parseEnvelopeResult = <A>(stdout: string): A => {
-  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
-  expect(envelope.ok).toBe(true);
-  return envelope.result as A;
-};
-
 let cacheRoot = "";
 let dataRoot = "";
 let confRoot = "";
@@ -147,12 +141,22 @@ describe("apps:scratch:* command operations", () => {
 
 describe("apps:scratch:* source CLI routing", () => {
   test("scratch list canonical and alias routes render the empty list", async () => {
-    const canonical = await runSource(["apps:scratch:list", "--format", "json"]);
-    const alias = await runSource(["scratch:list", "--format", "json"]);
-    expect(canonical.exitCode).toBe(0);
-    expect(parseEnvelopeResult<ReadonlyArray<unknown>>(canonical.stdout)).toEqual([]);
-    expect(alias.exitCode).toBe(canonical.exitCode);
-    expect(parseEnvelopeResult<ReadonlyArray<unknown>>(alias.stdout)).toEqual([]);
+    for (const args of [
+      ["apps:scratch:list", "--format", "json"],
+      ["scratch:list", "--format", "json"],
+      ["scratch", "list", "--format", "json"],
+    ] as const) {
+      const result = await runSource([...args]);
+      expect(result.exitCode, args.join(" ")).toBe(0);
+      const envelope = JSON.parse(result.stdout) as {
+        readonly ok?: boolean;
+        readonly command?: string;
+        readonly result?: unknown;
+      };
+      expect(envelope.ok, args.join(" ")).toBe(true);
+      expect(envelope.command, args.join(" ")).toBe("apps:scratch:list");
+      expect(envelope.result, args.join(" ")).toEqual([]);
+    }
   }, 30_000);
 
   test("scratch gc alias routes to the real orphan-reap seam", async () => {
@@ -186,4 +190,120 @@ describe("apps:scratch:* source CLI routing", () => {
       expect(result.stderr, command).not.toContain('{"id"');
     }
   }, 30_000);
+
+  test("space, colon-alias, and canonical scratch verbs share command identity", async () => {
+    const cases: ReadonlyArray<{
+      readonly label: string;
+      readonly argSets: ReadonlyArray<ReadonlyArray<string>>;
+      readonly assert: (result: RunResult, label: string) => void;
+    }> = [
+      {
+        label: "start",
+        argSets: [
+          ["apps:scratch:start", "--detach"],
+          ["scratch:start", "--detach"],
+          ["scratch", "start", "--detach"],
+        ],
+        assert: (result, label) => {
+          expect(result.stderr, label).toContain("commandId: apps:scratch:start");
+          expect(result.stderr, label).not.toContain("InvalidCliInvocationError");
+          expect(result.stderr, label).not.toContain("Unexpected argument");
+        },
+      },
+      {
+        label: "stop",
+        argSets: [
+          ["apps:scratch:stop", "x"],
+          ["scratch:stop", "x"],
+          ["scratch", "stop", "x"],
+        ],
+        assert: (result, label) => {
+          expect(result.stderr, label).toContain("commandId: apps:scratch:stop");
+          expect(result.stderr, label).toContain("ScratchAppNotFoundError");
+        },
+      },
+      {
+        label: "destroy",
+        argSets: [
+          ["apps:scratch:destroy", "x"],
+          ["scratch:destroy", "x"],
+          ["scratch", "destroy", "x"],
+        ],
+        assert: (result, label) => {
+          expect(result.stderr, label).toContain("commandId: apps:scratch:destroy");
+          expect(result.stderr, label).toContain("ScratchAppNotFoundError");
+        },
+      },
+      {
+        label: "info",
+        argSets: [
+          ["apps:scratch:info", "nonexistent"],
+          ["scratch:info", "nonexistent"],
+          ["scratch", "info", "nonexistent"],
+        ],
+        assert: (result, label) => {
+          expect(result.stderr, label).toContain("commandId: apps:scratch:info");
+          expect(result.stderr, label).toContain("ScratchAppNotFoundError");
+        },
+      },
+      {
+        label: "logs",
+        argSets: [
+          ["apps:scratch:logs", "nonexistent"],
+          ["scratch:logs", "nonexistent"],
+          ["scratch", "logs", "nonexistent"],
+        ],
+        assert: (result, label) => {
+          expect(result.stderr, label).toContain("commandId: apps:scratch:logs");
+          expect(result.stderr, label).toContain("ScratchAppNotFoundError");
+        },
+      },
+      {
+        label: "gc",
+        argSets: [
+          ["apps:scratch:gc", "--format", "json"],
+          ["scratch:gc", "--format", "json"],
+          ["scratch", "gc", "--format", "json"],
+        ],
+        assert: (result, label) => {
+          const envelope = JSON.parse(result.stdout) as { readonly command?: string };
+          expect(envelope.command, label).toBe("apps:scratch:gc");
+        },
+      },
+      {
+        label: "run",
+        argSets: [
+          ["apps:scratch:run", "--format", "json"],
+          ["scratch:run", "--format", "json"],
+          ["scratch", "run", "--format", "json"],
+        ],
+        assert: (result, label) => {
+          const jsonLine = result.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith("{"))
+            .at(-1);
+          expect(jsonLine, label).toBeDefined();
+          if (jsonLine === undefined) {
+            throw new Error(`${label}: expected JSON line`);
+          }
+          const parsed = JSON.parse(jsonLine) as {
+            readonly command?: string;
+            readonly envelope?: { readonly command?: string };
+          };
+          const command = parsed.command ?? parsed.envelope?.command;
+          expect(command, label).toBe("apps:scratch:run");
+          expect(result.stderr, label).not.toContain("commandId: apps:scratch:start");
+          expect(result.stderr, label).not.toContain("Unexpected argument");
+        },
+      },
+    ];
+
+    for (const { label, argSets, assert } of cases) {
+      for (const args of argSets) {
+        const result = await runSource([...args]);
+        assert(result, `${label}: ${args.join(" ")}`);
+      }
+    }
+  }, 60_000);
 });

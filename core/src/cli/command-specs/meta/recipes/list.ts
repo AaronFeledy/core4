@@ -14,7 +14,8 @@ export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   mcpAllowed: true,
   summary: "List canonical recipes shipped with the binary.",
   namespace: "meta",
-  topLevelAlias: "recipes",
+  topLevelAlias: ["recipes:list", "recipes"],
+  aliases: ["recipes:list", "recipes"],
   bootstrap: "none",
   flags: {
     format: Flags.string({

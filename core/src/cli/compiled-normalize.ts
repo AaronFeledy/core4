@@ -1,7 +1,5 @@
 import { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
 
-export { normalizeScratchRunArgvForParsing };
-
 export const GLOBAL_COMMAND_VERBS = new Set([
   "config",
   "destroy",
@@ -21,7 +19,41 @@ export const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"])
 
 export const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
 
+export const SCRATCH_COMMAND_VERBS = new Set([
+  "start",
+  "stop",
+  "destroy",
+  "list",
+  "info",
+  "logs",
+  "gc",
+  "run",
+]);
+export const SHARE_COMMAND_VERBS = new Set(["list", "stop"]);
+
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "scratch") {
+    const verb = argv[1];
+    if (verb !== undefined && SCRATCH_COMMAND_VERBS.has(verb)) {
+      return [`apps:scratch:${verb}`, ...argv.slice(2)];
+    }
+    return argv;
+  }
+  if (argv[0] === "recipes") {
+    const verb = argv[1];
+    if (verb !== undefined && RECIPES_COMMAND_VERBS.has(verb)) {
+      return [`meta:recipes:${verb}`, ...argv.slice(2)];
+    }
+    return argv;
+  }
+  if (argv[0] === "share") {
+    const verb = argv[1];
+    if (verb !== undefined && SHARE_COMMAND_VERBS.has(verb)) {
+      return [`app:share:${verb}`, ...argv.slice(2)];
+    }
+    return argv;
+  }
+
   if (argv[0] === "apps" && argv[1] === "scratch" && argv[2] === "run") {
     return ["apps:scratch:run", ...argv.slice(3)];
   }
