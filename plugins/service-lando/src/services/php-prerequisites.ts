@@ -102,6 +102,22 @@ export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false =
   throw new Error(`Unsupported Composer version "${value}". ${composerRemediation}`);
 };
 
+export const assertPhpComposerCompatible = (phpVersion: string, composerValue: unknown): void => {
+  const match = /^(\d+)\.(\d+)$/.exec(phpVersion);
+  if (match === null) return;
+  if (composerValue !== "2.7.7") return;
+  const majorText = match[1];
+  const minorText = match[2];
+  if (majorText === undefined || minorText === undefined) return;
+  const major = Number(majorText);
+  const minor = Number(minorText);
+  if (major > 8 || (major === 8 && minor >= 5)) {
+    throw new Error(
+      `Composer "2.7.7" cannot run on PHP ${phpVersion}. Set composer: "2" (2.10.2) or a newer exact pin.`,
+    );
+  }
+};
+
 export const phpPrerequisiteBuildSteps = (
   composer: unknown = undefined,
 ): ReadonlyArray<ServiceBuildStepIntent> => {

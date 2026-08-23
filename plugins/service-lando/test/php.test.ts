@@ -259,6 +259,13 @@ describe("php:8.5 ServiceType", () => {
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.5");
     expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.5" });
   });
+
+  test("rejects composer 2.7.7 when planning php:8.5", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php85ServiceType, { type: "php:8.5", composer: "2.7.7" }),
+      /cannot run on PHP 8\.5/,
+    );
+  });
 });
 
 describe("php serving modes (via:)", () => {

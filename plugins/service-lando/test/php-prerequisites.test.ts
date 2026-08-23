@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import type { ServiceType } from "@lando/sdk/services";
 
 import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
 import {
@@ -12,6 +13,8 @@ import {
   PHP_FEATURE_ID,
   PHP_PREREQUISITES_COMMAND,
   php82ServiceType,
+  php84ServiceType,
+  php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -28,15 +31,18 @@ const BuildSteps = Schema.Struct({
   ),
 });
 
-const composePhpPlan = (overrides: Record<string, unknown> = {}): Promise<ServicePlan> => {
+const composePhpPlan = (
+  overrides: Record<string, unknown> = {},
+  serviceType: ServiceType = php82ServiceType,
+): Promise<ServicePlan> => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "php-prerequisites",
-    services: { web: { type: "php:8.2", ...overrides } },
+    services: { web: { type: serviceType.id, ...overrides } },
   });
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return composeServicePlan({
-    serviceType: php82ServiceType,
+    serviceType,
     service,
     appRoot: "/srv/apps/php-prerequisites",
     appName: "php-prerequisites",
@@ -127,5 +133,43 @@ describe("stock PHP prerequisite plan", () => {
     await expectRejectsToThrow(planned, /Unsupported Composer version "nope"/);
     await expectRejectsToThrow(planned, /composer: "2"/);
     await expectRejectsToThrow(planned, /composer: false/);
+  });
+});
+
+describe("PHP Composer compatibility", () => {
+  test("rejects composer 2.7.7 when planning php:8.5", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan({ composer: "2.7.7" }, php85ServiceType),
+      /cannot run on PHP 8\.5/,
+    );
+    await expectRejectsToThrow(composePhpPlan({ composer: "2.7.7" }, php85ServiceType), /composer: "2"/);
+    await expectRejectsToThrow(composePhpPlan({ composer: "2.7.7" }, php85ServiceType), /2\.10\.2/);
+  });
+
+  test("plans composer major 2 when php is 8.5", async () => {
+    const steps = buildStepsFor(await composePhpPlan({ composer: "2" }, php85ServiceType));
+    const composerStep = steps.find((step) => step.id === "service-lando.php:composer");
+
+    expect(composerStep?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
+  });
+
+  test("keeps authored composer 2.10.2 pin when php is 8.5", async () => {
+    const steps = buildStepsFor(await composePhpPlan({ composer: "2.10.2" }, php85ServiceType));
+    const composerStep = steps.find((step) => step.id === "service-lando.php:composer");
+
+    expect(composerStep?.buildKeyInputs?.composer).toMatchObject({ version: "2.10.2" });
+  });
+
+  test("omits composer build step when php:8.5 sets composer false", async () => {
+    const steps = buildStepsFor(await composePhpPlan({ composer: false }, php85ServiceType));
+
+    expect(steps.map(({ id }) => id)).toEqual(["lando.boot:scaffold", "service-lando.php:prerequisites"]);
+  });
+
+  test("plans composer 2.7.7 when php is 8.4", async () => {
+    const steps = buildStepsFor(await composePhpPlan({ composer: "2.7.7" }, php84ServiceType));
+    const composerStep = steps.find((step) => step.id === "service-lando.php:composer");
+
+    expect(composerStep?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER_RELEASES["2.7.7"] });
   });
 });

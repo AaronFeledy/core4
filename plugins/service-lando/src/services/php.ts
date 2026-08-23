@@ -7,7 +7,11 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
-import { phpPrerequisiteBuildSteps, resolvePhpComposer } from "./php-prerequisites.ts";
+import {
+  assertPhpComposerCompatible,
+  phpPrerequisiteBuildSteps,
+  resolvePhpComposer,
+} from "./php-prerequisites.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
   PHP_FPM_LOG_SOURCES,
@@ -198,6 +202,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
         resolvePhpComposer(input.service.composer);
+        assertPhpComposerCompatible(resolvedVersion, input.service.composer);
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);
         const xdebug = resolvePhpXdebug(input.service.xdebug);
