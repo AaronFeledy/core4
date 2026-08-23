@@ -6,36 +6,29 @@ timeout: 60000
 tags: [beta, docs, global, setup]
 ---
 
-# Install and bundled services
+# Install the global app
 
-## Global app reserved id
+Do not name a project `global`. That id is reserved. A Landofile that resolves to `name: global` fails with `AppIdReservedError` before any plan is built.
 
-The reserved-id guard runs during user-app resolution; declaring name: global is rejected before any plan is built.
+The global app lives under `<userDataRoot>/global`. It is not picked up from your cwd. Use `lando global:*` (aliases of `lando meta:global:*`).
 
-The app id `global` is owned by the global Lando app and cannot be used by a project.
+## Materialize the stack
 
-A Landofile that resolves to name: global is rejected with this tagged error (`AppIdReservedError`).
+Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
 
-The remediation surfaced to the user.
+```sh
+lando global:install
+```
 
-The rejection happens during user-app resolution, before any AppPlan is built (`plan`).
+`--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
 
-## Global app root
+Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik. You do not start Traefik by hand.
 
-GlobalAppService resolves and materializes the global app directory under the per-user data root; production materialization lands with the bundled global services.
+Edit overrides in `<userDataRoot>/global/.lando.yml`. Do not edit `.lando.dist.yml`.
 
-The global app is Lando-owned and lives under the per-user data root (`userDataRoot/global`).
+## Verify
 
-The core service that resolves the root and ensures the directory exists (`GlobalAppService`).
-
-The global app directory is excluded from cwd-based app discovery; only meta:global:* commands resolve it.
-
-## Global app bundled services
-
-Traefik and Mailpit ship as bundled global services in a later Beta story; this scenario documents the install surface they materialize into.
-
-Traefik runs inside the global app and backs the default proxy referenced by per-app services (`traefik`).
-
-Mailpit runs inside the global app and captures mail for every per-app service (`mailpit`).
-
-Plugins contribute additional global services through this manifest surface (`globalServices:`).
+```sh
+lando global:status
+lando doctor
+```

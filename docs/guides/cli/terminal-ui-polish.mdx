@@ -8,139 +8,36 @@ tags: [beta, docs, cli, renderer]
 
 # Terminal UI polish
 
-The default `lando` renderer presents task progress like mission-control
-telemetry, not generic colorful logs — a compact spaceship operations
-console. Color creates hierarchy, but every status also carries text, so
-status is never color-only: a deep-space base, cyan/teal telemetry accents,
-amber for warning, red for blocked, green for online. Frames use quiet panel
-separators, cockpit-style section headers, and dimmed detail tails rather
-than dense ASCII art.
+This page is a contributor design-token dump for the bundled `lando` renderer. It stays off the user nav.
 
+Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat status chips, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
-## Design tokens (spaceship-console)
+The default TTY path can draw a compact task tree. plain, json, non-TTY, and CI output stay undecorated. A missing native binding never fails the command. The process falls back to line input.
 
-The spaceship-console visual language is defined by these durable tokens:
+If you are changing renderer goldens, start from the contributing visual-QA page, not this dump.
 
-- deep-space base with cyan/teal telemetry accents
-- Status chips: [RUNNING], [ONLINE], [CACHED], [SKIPPED], [BLOCKED], [WAIT]
+## Spaceship-console tokens
+
+The TTY `lando` frame uses a deep-space base with cyan/teal telemetry accents. Status is never color-only. Every state is glyph plus text status.
+
+Status chips: [RUNNING], [ONLINE], [CACHED], [SKIPPED], [BLOCKED], [WAIT].
+
+Layout tokens:
+
 - 80 columns is the minimum proven width (also 100 and 120)
-- plain, json, non-TTY, and CI output stay undecorated
 - LANDO OPS headings for cockpit phase identity
 - two-space row rhythm for dense scannable rows
-- glyph plus text status on every state
 - dimmed detail tails behind status rows
 - progress rails stay semantic (live RUNNING only)
-- Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients,
-  no dense ASCII art, no decorative motion
 
-## Status chips
+Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients, no dense ASCII art, no decorative motion.
 
-Active tasks and parent frames use a scanner/progress state with a
-`[RUNNING]` text chip. Completed work renders with an explicit `[ONLINE]`
-chip plus the existing success glyph. Completed work reused from cache
-renders with a `[CACHED]` chip plus the success glyph, derived from a
-delimited summary marker such as `(cached)` or `· cached`. Work skipped
-because it was unnecessary renders with a `[SKIPPED]` chip plus the success
-glyph instead of a silent omission, derived from a `(skipped)` or
-`· skipped` summary marker. Failures render with a `[BLOCKED]` chip,
-exit/remediation text, and a red accent in TTY mode. Declared-but-not-started
-children stay visible as `[WAIT]`-state rows.
+## Desktop notification policy
 
-## Layout
+The `@lando/notify-lando` plugin, not core or the renderer, decides when a command completion publishes `notify.desktop`. It ships bundled and enabled by default.
 
-Every panel opens with a compact cockpit heading so you can identify the
-current phase before reading task rows. Task rows, detail tails, and footer
-telemetry keep consistent two-space row spacing so dense output stays
-scannable. Glyphs such as check, cross, warning, and wait markers never
-stand alone; each state also carries a status chip or remediation text.
-Low-priority task detail lines and telemetry separators dim behind the
-status rows while preserving readable contrast. Progress rails and scanner
-motion are reserved for live `RUNNING` work; static summaries use telemetry
-footers instead of decorative animation.
+`notify.commands` adds canonical command ids. Entries are ordered, deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry. Landofile-derived tooling and app-local plugin ids fail with `ConfigError` regardless of cwd. Configured `none`, `minimal`, and `plugins` commands acquire subscribers without changing their declared bootstrap metadata.
 
-Golden fixtures prove common terminal widths — 80, 100, and 120 columns —
-stay readable, with long paths wrapped inside the panel rhythm. Machine-
-readable and non-interactive paths (plain, json, non-TTY, CI) keep stable
-parseable output; decorative ANSI belongs only to TTY `lando` frames.
-Renderer authors can inspect the bundled `@lando/renderer-lando` plugin
-(`contributes.renderers: [lando]`) as the maintained example for renderer
-contribution metadata.
+`notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
 
-## Anti-patterns
-
-Color is constrained to telemetry accents and status severity instead of
-cycling arbitrary rainbow output. The palette avoids default purple-on-white
-SaaS styling in favor of deep-space contrast and cyan/teal accents. Panel
-borders stay sparse and scan-friendly — decoration must not make small
-terminals harder to read. Animation belongs only to live state transitions,
-never as unrelated ornament.
-
-## The OpenTUI substrate
-
-The bundled renderer owns the `@opentui/core` (`^0.4.3`) dependency and
-loads it lazily, only for an interactive TTY prompt or task tree.
-Cold-start and machine-readable paths (level-none, plain, json, non-TTY, CI)
-never load OpenTUI.
-
-Running task rows stay pinned at the bottom in a split-footer while messages
-and completed summaries commit once to native terminal scrollback above
-them. A terminal resize reflows the current footer and replays retained
-committed lines without cursor rewinds, duplicates, or torn regions.
-Pressing Enter uses the alternate screen for full-tail output; Esc restores
-the split-footer. Output capture is suspended before the screen-mode
-transition and restored only after returning to split-footer. Continuous
-rendering starts only when a spinner is visible (a 100ms threshold, at no
-more than 30fps) and stops on progress, completion, failure, or scope
-cleanup.
-
-A missing native binding or unsupported terminal never fails the command:
-one debug notice records the permanent degradation, and the command falls
-back to line input for the remainder of the process. Relocated binaries
-embed one target-matching native library per release binary, so they need
-no `node_modules` or loose native-library sidecar.
-
-## Desktop notifications
-
-Every renderer publishes a four-field `RendererCapabilities` snapshot —
-`color`, `interactive`, `animation`, `notifications` — and the default TTY
-path may promote color and notifications once after a short substrate
-probe. Machine and debug modes never claim interactive animation or desktop
-notification support: plain, json, verbose non-TTY, and non-TTY `lando`
-report all-false; verbose TTY is color-only.
-
-A desktop notification is a foreground render event from the command that
-finished, not a container-to-host relay (`notify.desktop`). When
-`renderer.capabilities.notifications` is false the event is dropped; when
-true the default renderer calls OpenTUI `triggerNotification` after
-sanitizing the title and body. `json` mode still emits `notify.desktop` as a
-structured event so agents can present it themselves.
-
-## Notification policy
-
-The `@lando/notify-lando` plugin — not core or the renderer — decides when a
-command completion publishes `notify.desktop`, and ships bundled and enabled
-by default. The fixed default command family (`app:start`, `app:stop`,
-`app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`) is
-always eligible before user additions. The default duration threshold is
-15000ms; `notify.thresholdMs 0` qualifies every eligible completed command.
-
-`notify.commands` adds canonical command ids; entries are ordered and
-deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry, so Landofile-derived tooling and
-app-local plugin ids fail with `ConfigError` regardless of the current
-working directory. Configured `none`, `minimal`, and `plugins` commands
-acquire subscribers without changing their declared bootstrap metadata.
-
-Either standard plugin disablement or the `notify.enabled: false` master
-switch silences desktop notification policy entirely. Environment overrides
-`LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and
-`LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and
-the JSON-array `notify.commands` value.
-
-Only the outer invocation (`parentInvocationId` absent) may publish one
-success or failure notification after meeting command and duration policy.
-Nested canonical command lifecycle events — produced in Beta 1 primarily by
-MCP tool dispatch — carry `parentInvocationId` and remain observable but
-never independently trigger foreground presentation. The renderer, not the
-policy plugin, decides whether the terminal can present the published
-desktop notification, through `renderer.capabilities.notifications`.
-
+Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`.

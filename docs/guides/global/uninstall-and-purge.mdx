@@ -6,106 +6,56 @@ timeout: 60000
 tags: [beta, docs, global, lifecycle]
 ---
 
-# Uninstall and purge
+# Uninstall the global app
 
-## Global lifecycle namespace
+This is the host-level global app. It is not `lando uninstall` for the CLI.
 
-Materializes the global Landofile and installs bundled global services.
-
-```sh
-lando meta:global:install
-```
-
-Applies the global-rooted plan and brings every global service up.
-
-```sh
-lando meta:global:start
-```
-
-Destroys the running provider resources without removing volumes or state.
-
-```sh
-lando meta:global:stop
-```
-
-Inspects each planned global service and reports its runtime status.
-
-```sh
-lando meta:global:status
-```
-
-Prints the generated global Landofile and the hand-editable overlay path.
-
-```sh
-lando meta:global:config
-```
-
-Clears global services from the materialized Landofile; --purge also removes data.
-
-```sh
-lando meta:global:uninstall
-```
-
-Tears down the global app provider resources behind a --yes confirmation.
-
-```sh
-lando meta:global:destroy
-```
-
-## Global lifecycle aliases
-
-Each meta:global:* command publishes a top-level global:* alias (the global: prefix is reserved for meta:global:*; other plugin- or tooling-contributed aliases starting with global: are rejected) so operators can use the shorter form.
-
-`lando global:install` is the alias for `lando meta:global:install`
-
-```sh
-lando global:install
-```
-
-`lando global:start` is the alias for `lando meta:global:start`
-
-```sh
-lando global:start
-```
-
-`lando global:status` is the alias for `lando meta:global:status`
-
-```sh
-lando global:status
-```
-
-`lando global:uninstall` is the alias for `lando meta:global:uninstall`
+## Clear generated services
 
 ```sh
 lando global:uninstall
 ```
 
-`lando global:destroy` is the alias for `lando meta:global:destroy`
+That regenerates the global Landofile with services cleared and leaves provider volumes in place. Uninstall does not require `--yes`.
+
+To destroy provider resources and volumes first, then clear services:
 
 ```sh
-lando global:destroy
+lando global:uninstall --purge
 ```
 
-The compiled $bunfs binary routes every meta:global:* command and its alias through the same dispatcher as source mode.
+A plugin argument is not available yet. It fails with `GlobalAppError` before any provider or dist mutation.
 
-## Global uninstall vs purge
+## Destroy provider resources
 
-meta:global:uninstall unregisters global services from the materialized Landofile while --purge additionally destroys the provider data; neither path requires a confirmation flag.
+`lando global:destroy` needs `--yes`. Without it the command fails with `GlobalDestroyConfirmationError` and touches nothing. `--yes` is consent.
 
-Without --purge, uninstall regenerates the global Landofile with its services cleared and leaves provider volumes untouched (`unregister`).
+```sh
+lando global:destroy --yes
+```
 
-With --purge, uninstall first destroys the provider resources and volumes, then clears the services.
+Volumes stay unless you also pass `--purge`:
 
-Passing a plugin argument that is not installed fails with a tagged error before any provider or dist mutation (`GlobalAppError`).
+```sh
+lando global:destroy --yes --purge
+```
 
-## Global destroy confirmation
+## Related commands
 
-meta:global:destroy is a destructive command gated behind the cross-cutting --yes confirmation rule; running it without --yes fails before any provider call.
+```sh
+lando global:start
+lando global:stop
+lando global:status
+lando global:config
+```
 
-meta:global:destroy requires --yes (or -y); without it the command fails with GlobalDestroyConfirmationError and touches nothing.
+`global:stop` tears down running provider resources and keeps volumes. `global:config` prints the generated Landofile and the hand-editable overlay.
 
-The tagged error surfaced when --yes is omitted (`GlobalDestroyConfirmationError`).
+Each `meta:global:*` command publishes a `global:*` alias.
 
-With --yes the provider state is removed but service data volumes are preserved unless --purge is also passed.
+## Verify
 
-meta:global:destroy --yes --purge removes provider state and the data volumes together.
+```sh
+lando global:status
+lando doctor
+```

@@ -5,10 +5,20 @@ timeout: 60000
 tags: [alpha2, docs, node, postgres]
 ---
 
-# Node and Postgres
+# Scaffold a Node and Postgres app
 
-Scaffold a Node app with a Postgres database from the bundled recipe, start
-it, and tear it back down:
+Init the bundled `node-postgres` walking skeleton, start it, then tear it down.
+
+```sh
+lando init --recipe node-postgres --name=node-postgres --yes
+lando start
+```
+
+`--yes` is consent. It skips prompts. It does not pick a provider.
+
+The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. `LANDO_PROVIDER` does not persist. An explicit setup --provider flag writes defaultProviderId when it differs from config.
+
+## Init and start
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -34,3 +44,20 @@ it, and tear it back down:
     </Step>
   </Scenario>
 </Guide>
+
+## Read the scaffold
+
+The recipe writes three files.
+It does not run a package manager after init.
+
+web is node:lts on 3000:3000 with the app root bind-mounted to /app. database is postgres. The server replies Hello from Lando. That is the whole walking skeleton. If you wanted a CMS, you picked the wrong recipe.
+
+## Use another recipe
+
+For a public stack recipe, init drupal, drupal-cms, lamp, lemp, toolbox, or wordpress.
+
+## Verify
+
+```sh
+lando info
+```

@@ -8,36 +8,13 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
 
 # Healthcheck runner
 
-`HealthcheckRunner` is the Effect Service tag published in `@lando/sdk`; plugins implement
-`HealthcheckRunnerShape`. The `runHealthcheckContract` runner from `@lando/sdk/test` validates a
-plugin's `id` and that `run()` resolves with a `HealthcheckResult`. `TestHealthcheckRunner` (built
-with `makeTestHealthcheckRunner`) is the in-memory test double — it records run calls and returns
-`healthy=true` — while core tests inject a fake provider exec to cover provider-exec behavior without
-a live container.
+This page is a contributor SDK dump for `HealthcheckRunner`. It stays off the user nav.
 
-## Probe types
+If you author a service `healthcheck:` block, the plan schema accepts `kind` (`command`, `http`, `tcp`, or `none`), plus `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`. Compose spellings `test`, `disable`, and duration strings (`interval`, `timeout`, `start_period`) also decode. `start_interval` / `startInterval` decode as a raw duration string and are preserved losslessly for runtime extensions. Do not invent other keys.
 
-`HealthcheckPlan` supports three probe kinds:
+The shipped `provider-exec` runner is command-only. `kind: command` runs via `RuntimeProvider.exec` in the container (a string command is wrapped as `sh -c`; an argv array is passed through). `kind: none` skips the probe and returns `healthy=true` with `lastStatus: skipped`. `kind: http` and `kind: tcp` fail with `The provider-exec healthcheck runner only supports command healthchecks.` There is no CLI or product HTTP/TCP probe. `url` and `port` are schema fields only.
 
-- `cmd` (`kind: command`) — runs inside the container via `RuntimeProvider.exec`.
-- `tcp` (`kind: tcp`) — checks TCP port reachability from inside the per-app network.
-- `http` (`kind: http`) — checks that the service URL returns a 2xx response from inside the per-app
-  network.
-
-## Failures and timeouts
-
-`HealthcheckTimeoutError` is raised when a healthcheck fails within its timeout; it includes
-`service`, `probe`, and `lastStatus`. `HealthcheckError` is raised for other healthcheck failures,
-such as provider-exec being unavailable. Unit tests verify the `HealthcheckRunner` contract against
-`TestHealthcheckRunner` in `sdk/test/contract/healthcheck-runner.test.ts`.
-
-## Retry primitive
-
-The provider-exec `HealthcheckRunner` uses `runProbe` from `@lando/sdk/probe` for its
-retry/delay/timeout loops, not a hand-rolled `Effect.retry` or `Schedule` (enforced by
-`bun run scripts/check-boundaries.ts probe`). `ProbeResult.lastError` is redacted via `RedactionService` before it reaches
-events or transcripts. `HealthcheckRunnerLive` (in `engine/src/subsystems/healthcheck/live.ts`) wires
-provider-exec to `RuntimeProvider.exec` and redacts the final provider status.
+This is not a user how-to. For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
 <Guide>
   <Scenario id="healthcheck-config-check" render={false} reason="The contract, probe types, timeout error, and probe primitive above are covered by sdk/test/contract/healthcheck-runner.test.ts and core/test/subsystems/healthcheck/live.test.ts against test doubles and a fake provider exec; live probe execution needs a running container. This scenario keeps one real CLI check in the guide harness.">
