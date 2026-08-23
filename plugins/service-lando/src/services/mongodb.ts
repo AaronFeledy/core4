@@ -3,30 +3,62 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { PortablePath } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
 const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
+const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
+const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
+  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
+  return basename(input.appRoot) || "app";
 };
+
+const credsFor = (
+  input: { readonly appName?: string | undefined; readonly appRoot: string },
+  service: ServiceConfig,
+): ServiceCreds => {
+  const creds = service.creds;
+  return resolveServiceCreds({
+    family: FAMILY,
+    ...(creds === undefined
+      ? {}
+      : {
+          authored: {
+            user: creds.user,
+            password: creds.password,
+            database: creds.database,
+            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
+          },
+        }),
+    ...(service.environment === undefined ? {} : { environment: service.environment }),
+    defaults: { user: "lando", password: "lando", database: appNameFor(input) },
+    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
+  });
+};
+
+const mongoUri = (creds: ServiceCreds, port: number): string =>
+  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:${port}/${encodeURIComponent(creds.database)}?authSource=admin`;
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
   const port = service.port ?? DEFAULT_PORT;
+  const creds = credsFor(ctx, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.addEnv("MONGO_INITDB_ROOT_USERNAME", service.user ?? "lando");
-  ctx.addEnv("MONGO_INITDB_ROOT_PASSWORD", "lando");
-  ctx.addEnv("MONGO_INITDB_DATABASE", service.database ?? appName);
+  for (const [key, value] of Object.entries({
+    ...familyEnvFor(FAMILY, creds),
+    ...landoDbEnvFor(creds),
+  })) {
+    ctx.addEnv(key, value);
+  }
   ctx.addStorage({
     store: `${appName}-mongodb-data`,
     target: DATA_TARGET,
@@ -70,10 +102,27 @@ export const mongodbServiceType: ServiceType = {
   name: "mongodb",
   base: "lando",
   schema: Schema.Unknown,
-  resolve: (input) =>
-    Effect.succeed({
+  resolve: (input) => {
+    const creds = credsFor(input, input.service);
+    return Effect.succeed({
       base: "lando",
-      normalizedConfig: { ...input.service, type: "mongodb" },
+      normalizedConfig: {
+        ...input.service,
+        type: "mongodb",
+        creds,
+        environment: {
+          ...input.service.environment,
+          ...familyEnvFor(FAMILY, creds),
+        },
+      },
       features: [{ id: MONGODB_FEATURE_ID }],
-    }),
+      tooling: {
+        mongosh: {
+          service: input.name,
+          cmd: ["mongosh"],
+          env: { MONGO_URI: mongoUri(creds, input.service.port ?? DEFAULT_PORT) },
+        },
+      },
+    });
+  },
 };

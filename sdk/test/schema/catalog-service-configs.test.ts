@@ -155,6 +155,23 @@ describe("catalog service config schemas", () => {
     expect(result._tag).toBe("Right");
   });
 
+  test("Given phpMyAdmin with complete creds, when decoding, then it succeeds", () => {
+    // Given
+    const input = {
+      type: "phpmyadmin",
+      image: "phpmyadmin:5",
+      port: 80,
+      hosts: ["database"],
+      creds: { user: "lando", password: "secret", database: "app" },
+    };
+
+    // When
+    const result = strictDecode(PhpMyAdminServiceConfig, input);
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
   test.each([
     ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", image: "minio/minio", port: 9000 }],
     [

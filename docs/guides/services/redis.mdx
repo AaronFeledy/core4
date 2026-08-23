@@ -41,13 +41,13 @@ redis://cache:6379
 
 ## Open the client
 
-Add a `redis-cli` tooling alias on `cache` to verify it responds:
+The `redis` type ships the `redis-cli` client task. After start:
 
 ```sh
 lando redis-cli ping
 ```
 
-Store and read keys from the host via the alias:
+Store and read keys from the host with the same command:
 
 ```sh
 lando redis-cli set hello world

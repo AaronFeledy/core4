@@ -54,6 +54,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - `app:cache:refresh` has no top-level alias; teach `lando app:cache:refresh`. `--renderer=verbose` dumps every event payload and is not the OpenTUI task tree.
 - DNS rebinding for custom loopback names is environmental. There is no Lando flag or doctor check; document remediations on the external-access guide.
 - Topic-first space verbs rewrite to canonical ids in `normalizeCompiledCommandArgv`. Alias-token rewrites lose to `run.ts` early rawHead alias resolution of the bare topic.
+- `LANDO_DB_*` is emitted with `ctx.addEnv` in the catalog type feature (priority 600). Never put reserved `LANDO_*` keys in `normalizedConfig.environment`; `lando.env` (700) rejects them and would otherwise overwrite resolved family env.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -160,4 +161,41 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks (native-argv-parser, aliases, recipes-commands, scratch-namespace, share-skeleton) — pass
+---
+
+## 2026-08-22 20:54 CDT - Babysit
+- PR: #841 https://github.com/AaronFeledy/core4/pull/841
+- CI outcome: pass
+- Review feedback: fixed (regenerated command reference for space-separated verb aliases)
+- Merge: merged (squash)
+---
+
+## 2026-08-22 22:15 CDT - US-585
+- Authored `creds:` now provisions mysql, mariadb, postgres, mongodb, and mssql accounts (family env + `LANDO_DB_*`). Container `user:` is no longer a database username. Omitted creds keep existing defaults (`lando`/`lando`/appName + generated root; postgres generated password; mssql `sa` + `SA_PASSWORD`). Resolved creds land on `normalizedConfig.creds` and redacted `lando info` creds. Catalog client tooling ships (`mysql`, `mariadb`, `psql`, `mongosh`, `sqlcmd`, `redis-cli`) with secrets in task env. mysql/mariadb/postgres gained real healthchecks. phpMyAdmin `hosts:` uses matching sibling creds or fails closed instead of silent `lando`/`lando`.
+- Verification: typecheck, lint passed; relevant test spot checks passed (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret, sql creds, php-db-client). Guide lint and coverage passed.
+- **Learnings for future iterations:**
+  - `LANDO_*` keys are reserved. `lando.env` (priority 700) rejects them in `normalizedConfig.environment`. Emit `LANDO_DB_*` only via `ctx.addEnv` in the type feature (priority 600). Write resolved family env (`MYSQL_*`, etc.) into `normalizedConfig.environment` so 700 cannot clobber authored `creds:` with stale env.
+  - Keep `ServiceCreds` fields required. Partial means no `creds:` block plus family env / top-level `database:`.
+  - phpMyAdmin `hosts:` that do not match a mysql/mariadb sibling need explicit `creds:` on the phpMyAdmin service (`PhpMyAdminHostsCredsError`).
+---
+
+## 2026-08-22 22:12 CDT - US-585 Review
+- Review-work and Bugbot confirmed the connect contract; fixed postgres/mongodb `resolve()` omitting `normalizedConfig.creds` (AC for expressions/phpMyAdmin/@lando/sql) and mongosh `MONGO_URI` ignoring `service.port`.
+- Review notes (deferred/rejected): mssql default `creds.user=lando` — AC keeps existing defaults; `sa`+`SA_PASSWORD` is the root login via `rootPassword`, not a rewrite of the app user. mongosh `--uri` on argv — AC compile is `--version`; password-on-argv is worse than env-only `MONGO_URI`.
+- Verification: typecheck, lint passed; guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; spot checks postgres/mongodb passed.
+---
+
+## 2026-08-22 22:25 CDT - US-585 Drift Audit
+- Trigger: 2 cycles, 1856 insertions / 370 deletions, 2 commits
+- Scar tissue: mysql apply trusted a complete-looking authored creds object instead of the shared resolver
+- Ceremony: unused phpMyAdmin host helper exports dropped
+- Re-examined Review deferrals: mssql default user stays lando; mongosh URI stays env-only
+- Fixed: mysql apply always resolves through the shared helper; dead host-helper exports removed
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret) — pass
+---
+
+## 2026-08-22 22:34 CDT - US-585 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started a mysql+postgres+redis+phpMyAdmin app with authored creds and a second mysql+redis app with omitted creds. Authored accounts provisioned (`appuser`/`pguser`), defaults stayed `lando`/`lando`/appName, `LANDO_DB_*` and family env matched, `lando mysql --version` / `psql --version` / `redis-cli ping` compiled, phpMyAdmin reused sibling creds (`PMA_USER=appuser`) and served HTTP 200, unknown `hosts:` failed closed. Adjacent `db:import --help` still works. Teardown destroyed both apps.
+- **Out-of-scope finding:** `lando info` (plain TSV) prints `password=[redacted]]` / `rootPassword=[redacted]]` (extra `]`). JSON info is `[redacted]` and does not leak. Suspected renderer/TSV wrapping of the redaction sentinel, not the creds contract.
 ---

@@ -16,6 +16,19 @@ services:
     type: mysql
 ```
 
+Set `creds:` when you want explicit values. Defaults stay `lando` / `lando` / the app name, plus a generated root password. `creds.user` is the database username. Container `user:` is not.
+
+```yaml
+services:
+  db:
+    type: mysql
+    creds:
+      user: lando
+      password: lando
+      database: mysql-demo
+      rootPassword: secret
+```
+
 Start it. Lando puts the database on the app network:
 
 <Guide>
@@ -41,7 +54,7 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Database | the app name (`mysql-demo`); override with `database:` under `services.db` |
 | User | `lando` |
 | Password | `lando` |
-| Root password | derived per app; read it from `lando info` |
+| Root password | derived per app; `LANDO_DB_ROOT_PASSWORD` inside the service |
 
 From inside the app network the connection URL is:
 
@@ -51,10 +64,10 @@ mysql://lando:lando@db:3306/mysql-demo
 
 ## Open the client
 
-Add a tooling alias on `db` to open the `mysql` client:
+The `mysql` type ships the client task. After start:
 
 ```sh
-lando mysql
+lando mysql --version
 ```
 
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into `mysql` with `lando exec`.

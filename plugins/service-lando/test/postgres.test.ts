@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
 import {
   POSTGRES_FEATURE_ID,
@@ -16,30 +16,50 @@ const metadata = {
   runtime: 4 as const,
 };
 
-describe("postgres ServiceType", () => {
-  test("plans a default Postgres service", async () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { db: { type: "postgres" } },
-    });
-    const service = landofile.services?.[ServiceName.make("db")];
-    if (service === undefined) throw new Error("db service missing");
+const DEFAULT_PASSWORD = "lando-c1b70247946b2297";
+const featureOverrides = new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]);
 
-    const plan = await composeServicePlan({
-      serviceType: postgresServiceType,
-      service,
+const serviceConfig = (definition: Record<string, unknown>): ServiceConfig => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "myapp",
+    services: { db: definition },
+  });
+  const service = landofile.services?.[ServiceName.make("db")];
+  if (service === undefined) throw new Error("db service missing");
+  return service;
+};
+
+const planPostgres = (definition: Record<string, unknown>) =>
+  composeServicePlan({
+    serviceType: postgresServiceType,
+    service: serviceConfig(definition),
+    appRoot: "/srv/apps/myapp",
+    appName: "myapp",
+    serviceName: "db",
+    metadata,
+    featureOverrides,
+  });
+
+const resolvePostgres = (definition: Record<string, unknown>) =>
+  Effect.runPromise(
+    postgresServiceType.resolve({
+      name: "db",
+      service: serviceConfig(definition),
       appRoot: "/srv/apps/myapp",
       appName: "myapp",
-      serviceName: "db",
       metadata,
-      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
-    });
+    }),
+  );
+
+describe("postgres ServiceType", () => {
+  test("plans a default Postgres service", async () => {
+    const plan = await planPostgres({ type: "postgres" });
 
     expect(plan.type).toBe("postgres");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
     expect(plan.environment).toMatchObject({
       POSTGRES_USER: "lando",
-      POSTGRES_PASSWORD: "lando-c1b70247946b2297",
+      POSTGRES_PASSWORD: DEFAULT_PASSWORD,
       POSTGRES_DB: "myapp",
     });
     expect(plan.storage).toHaveLength(1);
@@ -50,30 +70,12 @@ describe("postgres ServiceType", () => {
   });
 
   test("propagates Postgres user overrides", async () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: {
-        db: {
-          type: "postgres",
-          image: "postgres:17",
-          database: "appdb",
-          user: "appuser",
-          port: 15432,
-          environment: { POSTGRES_PASSWORD: "secret" },
-        },
-      },
-    });
-    const service = landofile.services?.[ServiceName.make("db")];
-    if (service === undefined) throw new Error("db service missing");
-
-    const plan = await composeServicePlan({
-      serviceType: postgresServiceType,
-      service,
-      appRoot: "/srv/apps/myapp",
-      appName: "myapp",
-      serviceName: "db",
-      metadata,
-      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
+    const plan = await planPostgres({
+      type: "postgres",
+      image: "postgres:17",
+      database: "appdb",
+      port: 15432,
+      environment: { POSTGRES_USER: "appuser", POSTGRES_PASSWORD: "secret" },
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:17" });
@@ -85,23 +87,69 @@ describe("postgres ServiceType", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
   });
 
-  test("publishes explicit ports instead of classifying them as internal", async () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { db: { type: "postgres", ports: ["127.0.0.1:15432:5432"] } },
-    });
-    const service = landofile.services?.[ServiceName.make("db")];
-    if (service === undefined) throw new Error("db service missing");
+  test("authored complete creds set POSTGRES_* and LANDO_DB_* without root password", async () => {
+    const creds = { user: "alice", password: "s3cret", database: "appdb" };
+    const plan = await planPostgres({ type: "postgres", creds });
 
-    const plan = await composeServicePlan({
-      serviceType: postgresServiceType,
-      service,
-      appRoot: "/srv/apps/myapp",
-      appName: "myapp",
-      serviceName: "db",
-      metadata,
-      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
+    expect(plan.environment).toMatchObject({
+      POSTGRES_USER: "alice",
+      POSTGRES_PASSWORD: "s3cret",
+      POSTGRES_DB: "appdb",
+      LANDO_DB_USER: "alice",
+      LANDO_DB_PASSWORD: "s3cret",
+      LANDO_DB_NAME: "appdb",
     });
+    expect(plan.environment).not.toHaveProperty("LANDO_DB_ROOT_PASSWORD");
+  });
+
+  test("treats user as the container user when POSTGRES_USER is set", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      user: "uid",
+      environment: { POSTGRES_USER: "alice" },
+    });
+
+    expect(plan.environment.POSTGRES_USER).toBe("alice");
+    expect(plan.user).toBe("uid");
+  });
+
+  test("resolves psql tooling with the service creds", async () => {
+    const resolution = await resolvePostgres({ type: "postgres" });
+
+    expect(resolution.tooling?.psql).toEqual({
+      service: "db",
+      cmd: ["psql", "-U", "lando", "-d", "myapp"],
+      env: { PGPASSWORD: DEFAULT_PASSWORD },
+    });
+    expect(resolution.normalizedConfig.creds).toEqual({
+      user: "lando",
+      password: DEFAULT_PASSWORD,
+      database: "myapp",
+    });
+    expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_USER");
+    expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_PASSWORD");
+    expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_NAME");
+    expect(resolution.normalizedConfig.environment).not.toHaveProperty("LANDO_DB_ROOT_PASSWORD");
+  });
+
+  test("plans a pg_isready healthcheck for the resolved user and database", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      creds: { user: "alice", password: "s3cret", database: "appdb" },
+    });
+
+    expect(plan.healthcheck).toEqual({
+      kind: "command",
+      command: ["pg_isready", "-U", "alice", "-d", "appdb"],
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+      startPeriodSeconds: 30,
+    });
+  });
+
+  test("publishes explicit ports instead of classifying them as internal", async () => {
+    const plan = await planPostgres({ type: "postgres", ports: ["127.0.0.1:15432:5432"] });
 
     expect(plan.endpoints).toEqual([
       {

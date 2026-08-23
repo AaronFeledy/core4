@@ -4,9 +4,17 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, type LogSource, LogSourceId, PortablePath } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type LogSource,
+  LogSourceId,
+  PortablePath,
+  type ServiceConfig,
+  type ServiceCreds,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "mysql:8.0";
@@ -38,27 +46,62 @@ const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
 const defaultRootPassword = (appId: string, serviceName: string): string =>
   `lando-${createHash("sha256").update(`${appId}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
 
-const appNameFor = (ctx: ServiceFeatureContext): string => (ctx.appName ?? basename(ctx.appRoot)) || "app";
+const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string =>
+  input.appName || basename(input.appRoot) || "app";
+
+const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceConfig): ServiceCreds => {
+  const authored = service.creds;
+  return resolveServiceCreds({
+    family: "mysql",
+    defaults: {
+      user: "lando",
+      password: "lando",
+      database: appName,
+      rootPassword: defaultRootPassword(appName, serviceName),
+    },
+    ...(authored === undefined
+      ? {}
+      : {
+          authored: {
+            user: authored.user,
+            password: authored.password,
+            database: authored.database,
+            ...(authored.rootPassword === undefined ? {} : { rootPassword: authored.rootPassword }),
+          },
+        }),
+    ...(service.environment === undefined ? {} : { environment: service.environment }),
+    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
+  });
+};
+
+const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
+  for (const [key, value] of Object.entries(env)) {
+    ctx.addEnv(key, value);
+  }
+};
 
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const environment = service.environment ?? {};
+  const creds = mysqlCredsFor(appName, ctx.serviceName, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.addEnv("MYSQL_USER", environment.MYSQL_USER ?? service.user ?? "lando");
-  ctx.addEnv("MYSQL_PASSWORD", environment.MYSQL_PASSWORD ?? "lando");
-  ctx.addEnv("MYSQL_DATABASE", environment.MYSQL_DATABASE ?? service.database ?? appName);
-  ctx.addEnv(
-    "MYSQL_ROOT_PASSWORD",
-    environment.MYSQL_ROOT_PASSWORD ?? defaultRootPassword(appName, ctx.serviceName),
-  );
+  addEnvRecord(ctx, familyEnvFor("mysql", creds));
+  addEnvRecord(ctx, landoDbEnvFor(creds));
   ctx.addStorage({
     store: `${appName}-mysql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["mysqladmin", "ping", "-h", "127.0.0.1"],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 30,
+  });
 
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
@@ -87,11 +130,25 @@ export const mysqlServiceType: ServiceType = {
   name: "mysql",
   base: "lando",
   schema: Schema.Unknown,
-  resolve: (input) =>
-    Effect.succeed({
+  resolve: (input) => {
+    const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
+    return Effect.succeed({
       base: "lando",
-      normalizedConfig: { ...input.service, type: "mysql" },
+      normalizedConfig: {
+        ...input.service,
+        type: "mysql",
+        creds,
+        environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
+      },
       logSources: MYSQL_LOG_SOURCES,
       features: [{ id: MYSQL_FEATURE_ID }],
-    }),
+      tooling: {
+        mysql: {
+          service: input.name,
+          cmd: ["mysql", "-h", "127.0.0.1", "-u", creds.user, creds.database],
+          env: { MYSQL_PWD: creds.password },
+        },
+      },
+    });
+  },
 };

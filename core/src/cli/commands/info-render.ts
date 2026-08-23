@@ -1,4 +1,4 @@
-import type { InfoAppResult, InfoLogSource, InfoServiceStatus } from "@lando/sdk/app";
+import type { InfoAppResult, InfoAppService, InfoLogSource, InfoServiceStatus } from "@lando/sdk/app";
 
 import {
   type SummaryDocument,
@@ -46,6 +46,12 @@ const logSourceText = (source: InfoLogSource): string => {
   return `${source.id} ${source.path} (${source.strategy}, ${availability})`;
 };
 
+const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
+  const parts = [`user=${creds.user}`, `database=${creds.database}`, `password=${creds.password}`];
+  if (creds.rootPassword !== undefined) parts.push(`rootPassword=${creds.rootPassword}`);
+  return parts.join(" ");
+};
+
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const hostProxy = hostProxyFor(result);
   const rows: SummaryRow[] = result.services.map((service) => ({
@@ -62,6 +68,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       ...(service.logSources === undefined
         ? []
         : [{ label: "log sources", value: service.logSources.map(logSourceText).join(", ") }]),
+      ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
     ],
   }));
   const agentEnvSection =
@@ -146,7 +153,9 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
       return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
     });
-    return [base, ...logRows];
+    const credsRows =
+      service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
+    return [base, ...logRows, ...credsRows];
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
 };

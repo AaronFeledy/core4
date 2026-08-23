@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { ServiceConfig } from "../landofile.ts";
 
 // ============================================================================
-// phpMyAdmin catalog service authoring contract
+// phpMyAdmin Landofile service configuration
 // ============================================================================
 
 export const PhpMyAdminServiceConfig = Schema.extend(
@@ -13,6 +13,7 @@ export const PhpMyAdminServiceConfig = Schema.extend(
     "user",
     "certs",
     "hosts",
+    "creds",
     "environment",
     "routes",
     "ports",
