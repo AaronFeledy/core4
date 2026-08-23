@@ -48,9 +48,8 @@ const logSourceText = (source: InfoLogSource): string => {
 
 const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
   const parts = [`user=${creds.user}`, `database=${creds.database}`, `password=${creds.password}`];
-  return creds.rootPassword === undefined
-    ? parts.join(" ")
-    : `${parts.join(" ")} rootPassword=${creds.rootPassword}`;
+  if (creds.rootPassword !== undefined) parts.push(`rootPassword=${creds.rootPassword}`);
+  return parts.join(" ");
 };
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {

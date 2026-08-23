@@ -614,15 +614,10 @@ export interface AppRemoteApi {
   };
 }
 
-/** Options for `App.config.lint`. */
 export interface AppConfigLintOptions {
   readonly cwd?: string;
 }
 
-/**
- * Configuration sub-API of an `App` handle. Canonical-schema lint today; config
- * read/write methods may be added non-breakingly in later releases.
- */
 export interface AppConfigApi {
   readonly lint: (
     options?: AppConfigLintOptions,
