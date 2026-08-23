@@ -194,3 +194,8 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret) — pass
 ---
+
+## 2026-08-22 22:34 CDT - US-585 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started a mysql+postgres+redis+phpMyAdmin app with authored creds and a second mysql+redis app with omitted creds. Authored accounts provisioned (`appuser`/`pguser`), defaults stayed `lando`/`lando`/appName, `LANDO_DB_*` and family env matched, `lando mysql --version` / `psql --version` / `redis-cli ping` compiled, phpMyAdmin reused sibling creds (`PMA_USER=appuser`) and served HTTP 200, unknown `hosts:` failed closed. Adjacent `db:import --help` still works. Teardown destroyed both apps.
+- **Out-of-scope finding:** `lando info` (plain TSV) prints `password=[redacted]]` / `rootPassword=[redacted]]` (extra `]`). JSON info is `[redacted]` and does not leak. Suspected renderer/TSV wrapping of the redaction sentinel, not the creds contract.
+---
