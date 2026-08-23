@@ -8,14 +8,33 @@ tags: [beta, docs, plugins, authoring]
 
 # Publish a plugin
 
-Validate the built artifact and list its package contents without
-performing a network publish:
+Dry-run from the plugin root. That rebuilds a stale `dist/`, runs tests, lists the artifact, and does not talk to a registry.
 
 ```sh
 lando meta:plugin:publish --dry-run
 ```
 
-Dry-run prints the dist package contents (for example
-`dist/index.d.ts`, `dist/index.js`, `dist/package.json`), the planned
-registry and tag, the validation result, then exits 0.
+Dress rehearsal first. A live registry publish is not a supported how-to in this Beta.
 
+## Flags that work
+
+```sh
+lando meta:plugin:publish --dry-run --tag latest
+lando meta:plugin:publish --dry-run --no-test
+```
+
+`--tag` defaults to `latest`. Empty or whitespace tags fail.
+
+`--no-test` skips the retest. A stale `dist/package.json` still triggers `meta:plugin:build`.
+
+## Verify
+
+```sh
+lando meta:plugin:publish --dry-run
+```
+
+The command should exit 0.
+
+## Next
+
+- [Declare SDK compatibility](./sdk-compatibility.mdx)

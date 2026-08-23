@@ -8,8 +8,62 @@ tags: [beta, docs, plugins, deprecations]
 
 # Deprecate plugin surfaces
 
-Attach a `DeprecationNotice` to the plugin manifest root to deprecate a whole
-plugin. Every deprecation field uses the canonical `DeprecationNotice`
-contract: `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`,
-`ticket`.
+Attach a `DeprecationNotice` on the plugin manifest. Same shape everywhere: `since`, optional `removeIn`, optional `severity`, optional `replacement`, required `note`, optional `docsUrl`, optional `ticket`.
 
+```yaml
+name: "@acme/lando-plugin-demo"
+version: 0.1.0
+api: 4
+requires:
+  "@lando/core": "^4.0.0"
+deprecated:
+  since: "4.1.0"
+  removeIn: "5.0.0"
+  severity: warn
+  replacement: "@acme/lando-plugin-next"
+  note: "Use the next plugin for this contribution."
+```
+
+A deprecation is a calendar, not a vibe.
+
+## Fields
+
+| Field | Rule |
+| --- | --- |
+| `since` | Semver `major.minor.patch`. Required. |
+| `note` | Required string. |
+| `removeIn` | Future major or minor (patch must be `0`). Required when `since` is older than `4.1.0`. |
+| `severity` | `info`, `warn`, or `error`. Default `warn`. `error` still records use, then fails. |
+| `replacement` | Optional string. |
+| `docsUrl` | Optional absolute `http:` or `https:` URL. |
+| `ticket` | Optional string. |
+
+## Other surfaces
+
+Contribution refs can carry the same notice:
+
+```yaml
+contributes:
+  globalServices:
+    - id: mailpit
+      deprecated:
+        since: "4.1.0"
+        removeIn: "5.0.0"
+        note: "Use the bundled mail service instead."
+  serviceTypes:
+    - id: legacy-php
+      deprecated:
+        since: "4.1.0"
+        note: "Switch callers to php."
+```
+
+`globalServices`, `proxyServices`, `setup.flags`, and string-or-object contribution lists (`serviceTypes`, `renderers`, `commands`) register through the same notice type.
+
+## Verify
+
+Keep the notice on `plugin.yaml` / `landoPlugin`. A bad `removeIn` (same release, a patch, or the past) fails schema decode.
+
+## Next
+
+- [Declare SDK compatibility](./sdk-compatibility.mdx)
+- [CLI deprecation warnings](../deprecations/cli-warnings-and-suppression.mdx)

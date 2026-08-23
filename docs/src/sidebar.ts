@@ -111,6 +111,10 @@ export const sidebar = [
           { label: "Add a plugin", slug: "guides/plugins/install-from-npm" },
           { label: "See plugin discovery scopes", slug: "guides/plugins/discovery-scopes" },
           { label: "Manage plugin trust", slug: "guides/plugins/trust-management" },
+          { label: "Scaffold a plugin", slug: "guides/plugins/authoring-new-plugin" },
+          { label: "Test and build a plugin", slug: "guides/plugins/test-and-build-plugin" },
+          { label: "Link a local plugin", slug: "guides/plugins/link-local-plugin" },
+          { label: "Publish a plugin", slug: "guides/plugins/publish-plugin" },
         ],
       },
       {
