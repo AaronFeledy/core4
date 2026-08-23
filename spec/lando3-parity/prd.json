@@ -480,7 +480,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-564 Verify (orphaned 38080 rootlessport) and US-568 Verify (ProviderUnavailableError after a failed start)."
     }
   ]

@@ -60,6 +60,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
 - JSON/MCP envelopes redact env_file secrets only when the command spec supplies `redactionTokens`. Harvest with `collectAppPlanRedactionTokens` (planned service env, including env_file) or `collectLandofileRedactionTokens` (authored Landofile env/tooling env). Extractors must accept `unknown`.
 - PHP × Composer incompatibilities are a duplicated table: plan-time `assertPhpComposerCompatible` in service-lando, recipe-prompt `composerChoicesForPhp` in core. Core cannot import the plugin. Keep the locked 8.5 / 2.7.7 sentence identical on both sides.
+- Healthy Traefik on 127.0.0.1:38080/38443 is also `rootlessport`. Leftover means listening AND HTTP-dead AND rootlessport-shaped; do not treat comm alone as leftover.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -300,4 +301,20 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - **Learnings for future iterations:**
   - Keep `resolvePhpComposer` version-agnostic. Compatibility is a second assert on the authored pin, or `"2"` would inherit the 2.7.7 ban after resolving to 2.10.2.
   - `collectPrompts` still does not evaluate `when:`. Filter composer choices in the collect loop from already-resolved `php`.
+---
+
+## 2026-08-23 13:26 CDT - Babysit
+- PR: #854 https://github.com/AaronFeledy/core4/pull/854
+- CI outcome: pass
+- Review feedback: fixed (regenerated Drupal/Drupal CMS/Symfony scaffolds after Composer pin change)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-23 13:50 CDT - US-591
+- Doctor now probes 127.0.0.1:38080 and :38443 for leftover rootlessport holders (HTTP-dead + rootlessport-shaped). Healthy Traefik stays silent. Start maps address-already-in-use on those ports to the same global:stop / reap / setup remediation instead of generic destroy.
+- Verification: typecheck, lint passed; relevant test spot checks passed (leftover-proxy-ports, plugin-descriptor, import-boundary, bring-up-nft, managed, doctor-runtime-service — 36 pass).
+- **Learnings for future iterations:**
+  - A healthy Traefik publish is also `rootlessport` on these ports. Doctor leftover means listening AND HTTP-dead AND rootlessport-shaped. Injected `kind: "healthy-proxy"` must stay silent.
+  - Plugins cannot share a remediation string. Duplicate the lock tokens (`lando global:stop`, `rootlessport`, `lando setup`) and assert them in both packages.
 ---

@@ -25,6 +25,7 @@ import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./c
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
 import { waitForExit } from "./inspect.ts";
+import { LEFTOVER_PROXY_PORT_REMEDIATION, isLeftoverProxyPortBindMessage } from "./leftover-proxy-port.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 import { volumeSelectorValue } from "./volume-prune.ts";
 
@@ -60,8 +61,12 @@ const detailBody = (details: unknown): string => {
   return typeof body === "string" ? body : "";
 };
 
-export const startFailureRemediation = (message: string, details?: unknown): string =>
-  isManagedNftMissingMessage(`${message}\n${detailBody(details)}`) ? NFT_REMEDIATION : APPLY_REMEDIATION;
+export const startFailureRemediation = (message: string, details?: unknown): string => {
+  const haystack = `${message}\n${detailBody(details)}`;
+  if (isManagedNftMissingMessage(haystack)) return NFT_REMEDIATION;
+  if (isLeftoverProxyPortBindMessage(haystack)) return LEFTOVER_PROXY_PORT_REMEDIATION;
+  return APPLY_REMEDIATION;
+};
 
 interface InspectResult {
   readonly exists: boolean;
