@@ -8,16 +8,77 @@ tags: [beta, docs, recipes, typescript, programmatic]
 
 # Write a programmatic recipe
 
-`Recipe`, `RecipeContext`, `RecipeFactory`, and the `defineRecipe` identity
-helper are published from `@lando/sdk`. A `recipe.ts` default-exports a
-static `Recipe` object, the same shape `recipe.yml` decodes to:
+Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Load it with `lando meta recipes validate ./`.
+
+A directory ships one or the other, never both. The directory basename must match `id`.
 
 ```ts
-import { type Recipe, defineRecipe } from "@lando/sdk";
+import { type Recipe, defineRecipe } from "@lando/sdk/schema";
 
-export default defineRecipe({ id, title, description, version, prompts, files, postInit });
+const recipe: Recipe = {
+  id: "programmatic-recipe",
+  title: "Programmatic Recipe",
+  description: "A recipe authored as TypeScript instead of recipe.yml.",
+  version: "1.0.0",
+  runs: ["composer", "git"],
+  fetchAllowlist: ["https://api.example.com/**"],
+  prompts: [{ name: "name", type: "text", message: "App name?" }],
+  files: [{ src: "lando.yml.hbs", dest: ".lando.yml", template: true }],
+  postInit: [{ type: "message", text: "Done!" }],
+};
+
+export default defineRecipe(recipe);
 ```
 
-`recipe.ts` loads through Bun's native TypeScript loader; no `tsc` step
-runs at recipe-load time.
+`defineRecipe` is an identity helper. It pins the export to `Recipe` or `RecipeFactory`. Import it from `@lando/sdk/schema`, not the `@lando/sdk` root.
 
+## Factory export
+
+A default-export function receives `{ cwd, env }` and may be async. `cwd` is the recipe directory. The returned object still has to pass `RecipeManifest`.
+
+```ts
+import { defineRecipe } from "@lando/sdk/schema";
+
+export default defineRecipe(async () => ({
+  id: "factory-recipe",
+  title: "Factory Recipe",
+  description: "Built by an async factory.",
+  version: "0.1.0",
+  runs: ["git"],
+  prompts: [{ name: "name", type: "text", message: "App name?" }],
+  files: [{ src: "a", dest: ".lando.yml" }],
+  postInit: [{ type: "gitInit" }],
+}));
+```
+
+Bun loads the TypeScript. There is no compile step at recipe-load time. Top-level imports are sandbox-scanned: no host shell-outs, no remote module fetches, no filesystem access outside the recipe directory.
+
+TypeScript that writes the recipe is still just a manifest. Fancy imports will not save a bad `id`.
+
+## Check the recipe
+
+```sh
+lando meta recipes validate ./ --format=json
+lando meta recipes describe ./ --format=json
+```
+
+`valid` is `true` and `id` matches the directory name.
+
+<Guide>
+  <Scenario id="validate-programmatic-recipe" render>
+    <Step name="validate">
+      <UseFixture name="programmatic-recipe" />
+      <Run command="lando meta recipes validate ./ --format=json" />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "programmatic-recipe" } }} />
+    </Step>
+    <Step name="describe">
+      <Run command="lando meta recipes describe ./ --format=json" />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "programmatic-recipe" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+See [Extend a bundled recipe](./extending-recipes.mdx) when the TypeScript recipe should sit on a parent.

@@ -1,0 +1,7 @@
+id: runs-allowlist
+title: Runs allowlist
+description: Recipe that may run git and composer.
+version: 0.1.0
+runs:
+  - git
+  - composer

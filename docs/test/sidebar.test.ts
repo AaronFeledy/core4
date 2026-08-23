@@ -106,6 +106,10 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
+    expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
+    expect(slugs).toContain("guides/recipes/programmatic-recipe");
+    expect(slugs).not.toContain("guides/recipes/remote-sources");
     expect(slugs).toContain("guides/subsystems/proxy-traefik");
     expect(slugs).toContain("guides/subsystems/doctor-walkthrough");
     expect(slugs).not.toContain("guides/recipes/canonical-public-transcript");
