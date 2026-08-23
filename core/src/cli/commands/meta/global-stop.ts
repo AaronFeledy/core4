@@ -2,6 +2,7 @@ import { DateTime, Effect, Schema } from "effect";
 
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   EventError,
   GlobalAppError,
   LandofileParseError,
@@ -44,6 +45,7 @@ export const GlobalStopResultSchema = Schema.Struct({
 });
 
 export type GlobalStopError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

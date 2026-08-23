@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, type Scope } from "effect";
@@ -93,6 +93,16 @@ describe("share command skeleton", () => {
     expect(specs, "every share command module must export a LandoCommandSpec").not.toContain(undefined);
     expect(specs.map((spec) => spec?.id)).toEqual(["app:share", "app:share:list", "app:share:stop"]);
     expect(specs[0]?.topLevelAlias).toBe(true);
+    const topLevelAliasIncludes = (value: unknown, alias: string): boolean =>
+      value === alias || (Array.isArray(value) && value.includes(alias));
+    expect(
+      topLevelAliasIncludes(specs[1]?.topLevelAlias, "share:list"),
+      'app:share:list topLevelAlias must be "share:list" or include it',
+    ).toBe(true);
+    expect(
+      topLevelAliasIncludes(specs[2]?.topLevelAlias, "share:stop"),
+      'app:share:stop topLevelAlias must be "share:stop" or include it',
+    ).toBe(true);
     for (const spec of specs) {
       expect(spec?.bootstrap).toBe("app");
       expect(spec?.resultSchema, `${spec?.id} must carry a resultSchema`).toBeDefined();
@@ -244,4 +254,97 @@ describe("share command skeleton", () => {
       expect(result.stopped).toMatchObject({ sessionId: result.session.id, status: "stopped" });
     });
   });
+
+  test("share list/stop three-form JSON command identity and bare share", async () => {
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+    const dir = await mkdtemp(join(tmpdir(), "lando-share-cli-identity-"));
+    const dataRoot = join(dir, "data");
+    const cacheRoot = join(dir, "cache");
+
+    const inheritedEnv = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    const env = {
+      ...inheritedEnv,
+      LANDO_USER_DATA_ROOT: dataRoot,
+      LANDO_USER_CACHE_ROOT: cacheRoot,
+    };
+
+    const runCli = async (argv: ReadonlyArray<string>) => {
+      const child = Bun.spawn({
+        cmd: [process.execPath, cliEntry, ...argv],
+        cwd: dir,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      return { exitCode, stdout, stderr };
+    };
+
+    const parseEnvelope = (output: string): Record<string, unknown> => {
+      const line = output
+        .split("\n")
+        .map((entry) => entry.trim())
+        .findLast((entry) => entry.startsWith("{"));
+      if (line === undefined) throw new Error(`Expected a JSON command envelope, got: ${output}`);
+      const parsed: unknown = JSON.parse(line);
+      if (parsed === null || typeof parsed !== "object") {
+        throw new Error("Expected a JSON object envelope");
+      }
+      return Object.fromEntries(Object.entries(parsed));
+    };
+
+    try {
+      const listForms: ReadonlyArray<ReadonlyArray<string>> = [
+        ["app:share:list"],
+        ["share:list"],
+        ["share", "list"],
+      ];
+      for (const form of listForms) {
+        const result = await runCli([...form, "--format", "json"]);
+        expect(result.stderr).not.toContain("InvalidCliInvocationError");
+        expect(result.stderr).not.toContain("Unexpected argument");
+        const envelope = parseEnvelope(result.stdout);
+        expect(envelope.command, `list form ${form.join(" ")} command identity`).toBe("app:share:list");
+      }
+
+      const stopForms: ReadonlyArray<ReadonlyArray<string>> = [
+        ["app:share:stop", "sess"],
+        ["share:stop", "sess"],
+        ["share", "stop", "sess"],
+        ["app:share:stop", "--session", "sess"],
+        ["share:stop", "--session", "sess"],
+        ["share", "stop", "--session", "sess"],
+      ];
+      for (const form of stopForms) {
+        const result = await runCli([...form, "--format", "json"]);
+        expect(result.stderr).not.toContain("InvalidCliInvocationError");
+        expect(result.stderr).not.toContain("Unexpected argument");
+        const envelope = parseEnvelope(result.stdout);
+        expect(envelope.command, `stop form ${form.join(" ")} command identity`).toBe("app:share:stop");
+        const error = envelope.error;
+        expect(error, `stop form ${form.join(" ")} must parse`).toBeDefined();
+        expect(
+          error === null || typeof error !== "object"
+            ? undefined
+            : (error as { readonly _tag?: unknown })._tag,
+          `stop form ${form.join(" ")} must not reject the session id as an unexpected argument`,
+        ).not.toBe("InvalidCliInvocationError");
+      }
+
+      const bareShare = await runCli(["share", "--format", "json"]);
+      expect(bareShare.stderr).not.toContain("InvalidCliInvocationError");
+      expect(bareShare.stderr).not.toContain("Unexpected argument");
+      const bareEnvelope = parseEnvelope(bareShare.stdout);
+      expect(bareEnvelope.command, "bare share must resolve to app:share").toBe("app:share");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

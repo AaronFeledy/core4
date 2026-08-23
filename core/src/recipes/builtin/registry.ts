@@ -9,6 +9,7 @@
 import type { PromptAnswers } from "../prompts/runtime";
 
 import { astroRenderer } from "./astro/render";
+import { backdropRenderer } from "./backdrop/render";
 import { djangoRenderer } from "./django/render";
 import { drupalCmsRenderer } from "./drupal-cms/render";
 import { drupalRenderer } from "./drupal/render";
@@ -17,9 +18,11 @@ import { emptyRenderer } from "./empty/render";
 import { fastapiRenderer } from "./fastapi/render";
 import { hugoRenderer } from "./hugo/render";
 import { jekyllRenderer } from "./jekyll/render";
+import { joomlaRenderer } from "./joomla/render";
 import { lampRenderer } from "./lamp/render";
 import { laravelRenderer } from "./laravel/render";
 import { lempRenderer } from "./lemp/render";
+import { meanRenderer } from "./mean/render";
 import { nextjsRenderer } from "./nextjs/render";
 import { nodeApiRenderer } from "./node-api/render";
 import { nodePostgresRenderer } from "./node-postgres/render";
@@ -54,7 +57,10 @@ const RENDERERS = [
   symfonyRenderer,
   lampRenderer,
   lempRenderer,
+  backdropRenderer,
+  joomlaRenderer,
   nodeApiRenderer,
+  meanRenderer,
   astroRenderer,
   sveltekitRenderer,
   nextjsRenderer,

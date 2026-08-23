@@ -59,10 +59,10 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "laravel",
-    answers: { name: "laravel-app", php: "8.3", database: "postgres", worker: "true" },
+    answers: { name: "laravel-app", php: "8.3", database: "postgres:16", worker: "true" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "postgres" },
+      { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
       { name: "worker", type: "php:8.3" },
     ],
@@ -70,10 +70,10 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "symfony",
-    answers: { name: "symfony-app", php: "8.3", database: "postgres" },
+    answers: { name: "symfony-app", php: "8.3", database: "postgres:16" },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
-      { name: "database", type: "postgres" },
+      { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
     ],
     expectedTooling: ["console", "composer"],
@@ -121,6 +121,33 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     expectedServices: [
       { name: "api", type: "node:lts" },
       { name: "database", type: "postgres" },
+    ],
+    expectedTooling: ["npm", "node"],
+  },
+  {
+    recipe: "backdrop",
+    answers: { name: "backdrop-app", php: "8.3", database: "mariadb:11.4" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+    ],
+    expectedTooling: ["bee", "composer", "php"],
+  },
+  {
+    recipe: "joomla",
+    answers: { name: "joomla-app", php: "8.3", database: "mariadb:11.4" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+    ],
+    expectedTooling: ["joomla", "composer", "php"],
+  },
+  {
+    recipe: "mean",
+    answers: { name: "mean-app", node: "lts", redis: "false" },
+    expectedServices: [
+      { name: "api", type: "node:lts" },
+      { name: "database", type: "mongodb" },
     ],
     expectedTooling: ["npm", "node"],
   },
@@ -235,6 +262,9 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
       "empty",
       "node-ts",
       "toolbox",
+      "backdrop",
+      "joomla",
+      "mean",
     ];
     expect([...ids].sort()).toEqual([...required].sort());
     for (const id of required) {

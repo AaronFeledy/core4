@@ -1,29 +1,50 @@
+import {
+  composerToolingLines,
+  renderDatabaseLines,
+  renderPhpAppserverLines,
+  resolvePhpStackAnswers,
+} from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { LARAVEL_RECIPE_ID } from "./manifest";
 
-const renderLandofile = (appName: string, php: string, database: string, worker: boolean): string => {
+const LARAVEL_DEFAULTS = {
+  php: "8.3",
+  database: "mariadb:11.4",
+  webroot: "/app/public",
+  composer: "2",
+} as const;
+
+const renderLandofile = (
+  appName: string,
+  answers: Parameters<RecipeRenderer["render"]>[0]["answers"],
+): string => {
+  const stack = resolvePhpStackAnswers(answers, LARAVEL_DEFAULTS);
+  const worker = answers.worker === true || answers.worker === "true";
   const lines = [
     `name: ${appName}`,
     "runtime: 4",
     `recipe: ${LARAVEL_RECIPE_ID}`,
     "services:",
-    "  appserver:",
-    `    type: php:${php}`,
-    "    framework: laravel",
-    "    port: 80",
-    "    dependsOn:",
-    "      - database",
-    "      - cache",
-    "  database:",
-    `    type: ${database}`,
+    ...renderPhpAppserverLines({
+      php: stack.php,
+      webroot: stack.webroot,
+      composer: stack.composer,
+      webserver: "apache",
+      allowOverride: true,
+      port: 80,
+      dependsOn: ["database", "cache"],
+      framework: "laravel",
+    }),
+    ...renderDatabaseLines(stack.database),
     "  cache:",
     "    type: redis",
   ];
   if (worker) {
     lines.push(
       "  worker:",
-      `    type: php:${php}`,
+      `    type: php:${stack.php}`,
       "    framework: laravel",
+      "    via: cli",
       "    command: php artisan queue:work",
       "    dependsOn:",
       "      - database",
@@ -37,11 +58,7 @@ const renderLandofile = (appName: string, php: string, database: string, worker:
     "    description: Run a Laravel Artisan command inside the appserver service.",
     "    cmds:",
     "      - php artisan",
-    "  composer:",
-    "    service: appserver",
-    "    description: Run Composer inside the appserver service.",
-    "    cmds:",
-    "      - composer",
+    ...(stack.composer === false ? [] : composerToolingLines()),
     "  npm:",
     "    service: appserver",
     "    description: Run npm inside the appserver service.",
@@ -54,10 +71,5 @@ const renderLandofile = (appName: string, php: string, database: string, worker:
 
 export const laravelRenderer: RecipeRenderer = {
   id: LARAVEL_RECIPE_ID,
-  render: ({ appName, answers }) => {
-    const php = typeof answers.php === "string" ? answers.php : "8.3";
-    const database = typeof answers.database === "string" ? answers.database : "mariadb";
-    const worker = answers.worker === true || answers.worker === "true";
-    return new Map([[".lando.yml", renderLandofile(appName, php, database, worker)]]);
-  },
+  render: ({ appName, answers }) => new Map([[".lando.yml", renderLandofile(appName, answers)]]),
 };

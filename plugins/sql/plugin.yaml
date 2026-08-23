@@ -1,0 +1,17 @@
+name: "@lando/sql"
+version: "0.0.0"
+api: 4
+description: "Bundled database import, export, snapshot, restore, and reset commands."
+enabled: true
+entry: ./src/index.ts
+
+contributes:
+  commands:
+    - db:import
+    - db:export
+    - db:snapshot
+    - db:restore
+    - db:reset
+
+requires:
+  "@lando/core": "^4.0.0"

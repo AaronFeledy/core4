@@ -1,14 +1,19 @@
 import { type ShareStopResult, ShareStopResultSchema, appShareStop } from "@lando/engine/operations/share";
 import { renderShareStopResult } from "../../../commands/share";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Args } from "../../../spec/metadata";
 import { shareFormatFromInput, shareStopFlags, shareStopOptionsFromInput } from "./common";
 
 export const shareStopSpec: LandoCommandSpec = {
   id: "app:share:stop",
   summary: "Stop a public tunnel session.",
   namespace: "app",
-  topLevelAlias: false,
+  topLevelAlias: "share:stop",
+  aliases: ["share:stop"],
   bootstrap: "app",
+  args: {
+    session: Args.string({ description: "Tunnel session id." }),
+  },
   flags: shareStopFlags,
   resultSchema: ShareStopResultSchema,
   run: (input) => appShareStop(shareStopOptionsFromInput(input)),

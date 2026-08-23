@@ -43,6 +43,9 @@ const makePodmanSocketClient = (socketPath: string) =>
         write: (data) => {
           socket.write(data);
         },
+        end: () => {
+          socket.end();
+        },
         destroy: () => {
           socket.destroy();
         },

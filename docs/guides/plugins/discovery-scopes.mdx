@@ -6,18 +6,44 @@ timeout: 60000
 tags: [beta, docs, plugins, discovery]
 ---
 
-# Plugin discovery scopes
+# See plugin discovery scopes
 
-Lando discovers plugins from three sources:
+Lando merges three plugin sources. App wins over user. User wins over the bundled set.
 
-- **System** — the bundled plugin set compiled into Lando.
-- **User** — discovered from the managed per-user plugin registry written by
-  `lando plugin:add`, at `<userDataRoot>/plugins/registry.json`.
-- **App** — discovered from the current app root's local plugin registry, at
-  `<appRoot>/.lando/plugins/registry.json`.
+```sh
+lando plugin:add @lando/plugin-php --trust
+lando plugin:trust list
+```
 
-Discovered plugin contribution module paths (`globalServices`, `downloaders`,
-`httpClients`, `interactionServices`, `remoteSources`, `datasets`,
-`snapshotStores`) are normalized from their package root before the registry
-publishes them to runtime services.
+Think of bundled plugins as the house band. User and app plugins sit in later, and they can cover the same song.
 
+## Bundled (system)
+
+The compiled CLI already contains the bundled plugin set. You do not install those with `plugin:add`. They load even with an empty user plugin root.
+
+## User
+
+`lando plugin:add` writes the per-user registry at `<userDataRoot>/plugins/registry.json` and unpacks the package under `<userDataRoot>/plugins/<name>/<version>/`.
+
+That is the scope you get after a normal install.
+
+## App
+
+From an app root (or a nested cwd inside it), Lando also reads `<appRoot>/.lando/plugins/registry.json`.
+
+App entries override the same plugin name from the user root or the bundled set. A bad user manifest does not hide a healthy bundled plugin.
+
+## Verify
+
+After `plugin:add`, confirm the name is trusted and the user package directory exists:
+
+```sh
+lando plugin:trust list
+```
+
+Then open `<userDataRoot>/plugins/registry.json`. The install path in that file should match `<userDataRoot>/plugins/<name>/<version>`.
+
+## Next
+
+- [Install a plugin from npm](./install-from-npm.mdx)
+- [Trust plugins by name](./trust-and-wildcards.mdx)

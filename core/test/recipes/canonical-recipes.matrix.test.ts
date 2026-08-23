@@ -23,9 +23,9 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   wordpress: { name: "wp-canon", extras: { php: "8.3", redis: "false" } },
   laravel: {
     name: "laravel-canon",
-    extras: { php: "8.3", database: "postgres", worker: "true" },
+    extras: { php: "8.3", database: "postgres:16", worker: "true" },
   },
-  symfony: { name: "symfony-canon", extras: { php: "8.3", database: "postgres" } },
+  symfony: { name: "symfony-canon", extras: { php: "8.3", database: "postgres:16" } },
   lamp: { name: "lamp-canon", extras: { php: "8.3" } },
   lemp: { name: "lemp-canon", extras: { php: "8.3" } },
   "node-api": {
@@ -52,6 +52,9 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   empty: { name: "empty-canon" },
   "node-ts": { name: "node-ts-canon" },
   toolbox: { name: "toolbox-canon" },
+  backdrop: { name: "backdrop-canon", extras: { php: "8.3", database: "mysql:8.0" } },
+  joomla: { name: "joomla-canon", extras: { php: "8.3", database: "mysql:8.0" } },
+  mean: { name: "mean-canon", extras: { node: "22", redis: "true" } },
 };
 
 const buildAnswers = (entry: CanonicalAnswers): Record<string, string> => ({

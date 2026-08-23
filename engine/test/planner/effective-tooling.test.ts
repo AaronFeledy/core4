@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { CommandAliasConflictError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -16,7 +17,10 @@ import {
   compileEffectiveEvents,
   effectiveEventsForPlan,
 } from "../../src/planner/effective-events.ts";
-import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import {
+  compileEffectiveTooling,
+  validateServiceTypeReservedToolingNames,
+} from "../../src/planner/effective-tooling.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("same-app"),
@@ -191,5 +195,78 @@ describe("compileEffectiveEvents", () => {
 
     // Then
     expect(exit._tag).toBe("Success");
+  });
+});
+
+describe("validateServiceTypeReservedToolingNames", () => {
+  test("returns undefined when service-type tasks are unreserved", () => {
+    // Given
+    const landofile: LandofileShape = {};
+    const services = [{ name: "web", serviceTypeId: "php", tooling: { inspect: { cmd: "php -v" } } }];
+
+    // When
+    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+
+    // Then
+    expect(conflict).toBeUndefined();
+    expect(compileEffectiveTooling({ landofile, services }).inspect).toEqual({
+      cmd: "php -v",
+      service: "web",
+    });
+  });
+
+  test("returns CommandAliasConflictError when a service type contributes run", () => {
+    // Given
+    const landofile: LandofileShape = {};
+    const services = [{ name: "web", serviceTypeId: "php", tooling: { run: { cmd: "php" } } }];
+
+    // When
+    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+
+    // Then
+    expect(conflict).toBeInstanceOf(CommandAliasConflictError);
+    expect(conflict).toMatchObject({
+      alias: "run",
+      claimedBy: "service type php task run",
+      reservedFor: "apps:scratch:run",
+    });
+  });
+
+  test("returns the first ordinal reserved name when one service contributes two", () => {
+    // Given
+    const landofile: LandofileShape = {};
+    const services = [
+      {
+        name: "web",
+        serviceTypeId: "php",
+        tooling: {
+          "scratch:gc": { cmd: "gc" },
+          scratch: { cmd: "scratch" },
+        },
+      },
+    ];
+
+    // When
+    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+
+    // Then
+    expect(conflict).toBeInstanceOf(CommandAliasConflictError);
+    expect(conflict).toMatchObject({
+      alias: "scratch",
+      claimedBy: "service type php task scratch",
+      reservedFor: "apps:scratch:start",
+    });
+  });
+
+  test("returns undefined when landofile tooling overlays a reserved service-type name", () => {
+    // Given
+    const landofile: LandofileShape = { tooling: { run: { cmd: "authored" } } };
+    const services = [{ name: "web", serviceTypeId: "php", tooling: { run: { cmd: "php" } } }];
+
+    // When
+    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+
+    // Then
+    expect(conflict).toBeUndefined();
   });
 });

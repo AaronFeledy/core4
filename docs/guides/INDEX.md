@@ -76,8 +76,8 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-05 | US-111 | GlobalAppService + reserved id `global` | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
 | PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
 | PRD-05 | US-119 | global-app integration with `lando doctor` | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
-| PRD-06 | US-122 | fork mode (`apps:scratch:start --fork=<app>`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
-| PRD-06 | US-123 | scratch mode (`apps:scratch:start --from=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
+| PRD-06 | US-122 | fork mode (`apps:scratch:start --fork`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
+| PRD-06 | US-123 | scratch mode (`apps:scratch:start --from=<recipe-ref>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
 | PRD-06 | US-126 | scratch registry garbage collection (`apps:scratch:gc`) | `docs/guides/scratch/scratch-gc.mdx` | Shipped |
 | PRD-06 | US-127 | `--mount-cwd` + `--share-global-storage` flags | `docs/guides/scratch/mount-and-share-flags.mdx` | Shipped |
 | PRD-06 | US-128 | `apps:scratch:list` + `apps:scratch:info` | `docs/guides/scratch/list-and-info.mdx` | Shipped |
@@ -170,6 +170,9 @@ outside `docs/guides/` so they are not gate-validated here.
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+| `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
+| `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
+| `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 
@@ -217,3 +220,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | mssql service type | `docs/guides/services/mssql.mdx` | Shipped |
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
+| L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
+| L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |

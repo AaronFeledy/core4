@@ -1,3 +1,12 @@
+import {
+  DRUPAL_COMPOSER_OPTIONS,
+  SYMFONY_DATABASES,
+  composerPromptYaml,
+  databasePromptYaml,
+  phpPromptYaml,
+  webrootPromptYaml,
+} from "../php-stack";
+
 export const SYMFONY_RECIPE_ID = "symfony";
 
 export const symfonyRecipeSource = `${SYMFONY_RECIPE_ID}/recipe.yml`;
@@ -18,20 +27,10 @@ prompts:
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
-  - name: php
-    type: select
-    message: PHP version
-    default: '8.3'
-    choices:
-      - value: '8.2'
-      - value: '8.3'
-  - name: database
-    type: select
-    message: Database engine
-    default: postgres
-    choices:
-      - value: postgres
-      - value: mariadb
+${phpPromptYaml}
+${databasePromptYaml(SYMFONY_DATABASES)}
+${composerPromptYaml(DRUPAL_COMPOSER_OPTIONS)}
+${webrootPromptYaml("/app/public")}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml

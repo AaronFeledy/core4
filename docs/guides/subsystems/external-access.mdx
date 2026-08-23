@@ -75,6 +75,21 @@ Proxy routing and published ports are independent. Reaching a proxied hostname f
 
 Another device on the LAN has no `*.lndo.site` DNS entry, so it cannot reach the proxy by hostname. It can reach an explicitly bound `IP:port`, or you can add an equivalent hosts entry on that device.
 
+## Custom domains and DNS rebinding
+
+`*.lndo.site` is written on this machine by `lando setup`. It never goes through your LAN router.
+
+A custom hostname you point at `127.0.0.1` often does. Many home and office routers refuse DNS answers that map a public-looking name to loopback. That protection is called DNS rebinding, and it makes the custom name fail on this host even though the app is running.
+
+Lando has no flag that turns that protection off. Pick one of these:
+
+1. Keep the default `*.lndo.site` names and run `lando setup` so this machine resolves them locally. See [Resolve lndo.site on this machine](./host-proxy.mdx).
+2. Own DNS yourself: `lando setup --host-proxy=none`, then add `/etc/hosts` or dnsmasq entries on this machine.
+3. From another device, skip hostnames. Use the LAN `IP:port` from the bind above.
+4. On the router, allowlist the custom zone or disable DNS rebinding protection for it. That is a router setting, not a Lando setting.
+
+Proxy hostname routing is covered in [Use the Traefik proxy](./proxy-traefik.mdx).
+
 ## Reach the app from a second device
 
 Find this machine's LAN IP:

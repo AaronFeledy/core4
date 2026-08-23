@@ -15,6 +15,8 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
   mcpAllowed: true,
   summary: "Print a recipe's prompts and metadata without running it.",
   namespace: "meta",
+  topLevelAlias: "recipes:describe",
+  aliases: ["recipes:describe"],
   bootstrap: "minimal",
   args: {
     ref: Args.string({ description: "Recipe ref: a bundled recipe id or a local path.", required: true }),

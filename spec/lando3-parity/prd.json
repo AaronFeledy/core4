@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 — Lando 3 Parity",
   "branchName": "feat/lando3-parity",
-  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-583): close the audited Lando 3 → 4 functionality gaps before feature freeze. Un-gate the four spec'd Landofile keys (env_file, toolingDefaults, commandAliases, events-as-tasks); complete the §6.12.1 service catalog (rabbitmq, minio, localstack, mailpit, mailhog, tomcat, varnish, dotnet, mssql, phpmyadmin); PHP depth per §6.12.5 (8.5, via:, composer:, xdebug:, db_client:) plus Compose configs: realization; recipe composition (§8.8.15) + option parity (§8.8.16) + laravel/symfony/backdrop/joomla/mean recipes; bundled @lando/sql helpers on DataMover (§10.7); residual guides and parity-audit refresh. Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load.",
+  "description": "Concurrent Beta 1 feature-completion wave (US-561..US-583) plus residual hardening (US-584..US-591): close the audited Lando 3 → 4 functionality gaps before feature freeze, then finish holes in shipped functionality (CLI verb routing, catalog connect contract, applied-plan inventory, plan-cache identity, uninstall purge, docs+JSON/MCP redaction, PHP×Composer compatibility, leftover proxy-port doctor). Out of scope: hoster connectors (4.1 RemoteSource), custom SSH-key mounts (rejected), staged §8.8.10 recipes, image save/load, 4.1 deferred commands.",
   "userStories": [
     {
       "id": "US-561",
@@ -282,7 +282,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -296,7 +296,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -313,7 +313,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -328,7 +328,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -344,8 +344,8 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Plan-time reserved-name rejection; topLevelAlias enforcement deferred to 4.1 tooling schema graduation."
     },
     {
       "id": "US-581",
@@ -359,8 +359,129 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 23,
+      "passes": true,
+      "notes": "Audit refreshed 2026-08-22; remaining deferred trio is 4.1; recipes/ and catalog families locked. Residual work continues in US-584..US-591."
+    },
+    {
+      "id": "US-584",
+      "title": "Space-separated CLI verbs",
+      "description": "As a user, lando scratch list, lando recipes describe, and lando share list dispatch to the matching canonical command instead of being swallowed by the bare topic alias.",
+      "acceptanceCriteria": [
+        "§8.4 shipped parser taxonomy gains scratch <start|stop|destroy|list|info|logs|gc|run>, recipes <list|describe|validate>, and share <list|stop> as compatibility forms alongside apps scratch run / meta recipes / global forms.",
+        "Bare scratch with no verb (or only start flags) remains apps:scratch:start. Bare recipes remains meta:recipes:list. Bare share remains app:share.",
+        "Space-separated, colon-alias, and canonical forms share JSON command identity.",
+        "lando scratch list no longer raises InvalidCliInvocationError / unexpected argument list; same class of failure is gone for recipes and share.",
+        "Dispatch tests cover every added verb in all three forms, including that the bare shortcuts still start/list/share.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": "Residual from US-579 Verify, expanded to the same swallow class on recipes and share."
+    },
+    {
+      "id": "US-585",
+      "title": "Catalog connect contract (creds, client tooling, healthchecks)",
+      "description": "As a user, authored creds: on a bundled database actually provision those accounts, sibling admin UIs can log in, and the catalog's promised client CLIs work.",
+      "acceptanceCriteria": [
+        "mysql, mariadb, postgres, mongodb, and mssql apply authored creds.user/password/database/rootPassword to the family env vars and to LANDO_DB_*. Container user: is not a database username.",
+        "When creds: is omitted, existing defaults stay (lando/lando/appName and the generated root password; sa + SA_PASSWORD for mssql). Do not switch to {{ service.name }}.",
+        "Resolved creds appear on normalizedConfig.creds and ServiceInfo.creds so phpMyAdmin, @lando/sql, and services.<name>.creds.* see them.",
+        "phpMyAdmin hosts: still resolves credentials: matching sibling names use that sibling's creds; otherwise fail closed instead of silently using lando/lando.",
+        "Each type contributes catalog-promised client tooling (mysql, mariadb, psql, mongosh, sqlcmd, redis-cli) with secret-shaped creds redacted.",
+        "mysql, mariadb, and postgres ship a real healthcheck (mongodb already has one).",
+        "lando mysql --version and family equivalents including lando redis-cli ping compile after start / app:cache:refresh. Partial authored creds fall through to env/defaults.",
+        "docs/guides/services/{mysql,mariadb,postgres,mongodb,mssql,redis,phpmyadmin}.mdx updated; guide gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 25,
       "passes": false,
-      "notes": ""
+      "notes": "Residual from US-573 Verify + US-569 Review. Expanded to mssql LANDO_DB_*, redis-cli, healthchecks, and phpMyAdmin hosts: creds."
+    },
+    {
+      "id": "US-586",
+      "title": "Applied-plan inventory and reload",
+      "description": "As a user, after I start an app, lando apps:list shows it, and a later CLI process can still exec against the applied plan.",
+      "acceptanceCriteria": [
+        "After lando start, lando apps:list and lando apps:list --format=json include that app (matching appRoot) while lando info reports it running, using the same userDataRoot.",
+        "Applied-plan persistence is written where apps:list already knows to read (readAppliedPlansFromUserData and/or socket discovery). Do not invent a second inventory.",
+        "provider-docker reloads the persisted applied plan after process restart so exec / DataMover serviceCmd work the way provider-lando already does. Do not attach AppPlan onto DataMover.",
+        "Focused tests cover list discovery after start and docker resolvePlan reload after a fresh process.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "Residual from US-562/US-564 Verify (empty apps:list) and US-579 Review (docker in-memory resolvePlan)."
+    },
+    {
+      "id": "US-587",
+      "title": "App-plan cache identity includes the planning runtime",
+      "description": "As a user, rebuilding the Lando binary or changing a bundled service-type plugin does not reuse a stale plan.bin whose Dockerfile RUN already failed.",
+      "acceptanceCriteria": [
+        "deriveAppPlanCacheKey includes a non-secret fingerprint of the planning implementation (binary version and/or bundled plugin/source identity). Landofile-only identity is insufficient.",
+        "Do not fingerprint environment, host, or template-render inputs (§7.1.1 / US-564 adjudication).",
+        "Changing the fingerprint forces a cache miss; the same fingerprint + same Landofile remains a hit.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "Residual from US-572 Verify. File-only Landofile freshness stays; this adds implementation identity only."
+    },
+    {
+      "id": "US-588",
+      "title": "Uninstall purge of managed volume trees",
+      "description": "As a user, lando uninstall --purge removes Lando-managed runtime storage, including root-owned database volume files.",
+      "acceptanceCriteria": [
+        "--purge deletes the managed runtime storage tree (including runtime/storage/volumes/*) even when files are root-owned, or fails closed with a tagged error naming the path and a remediation that can finish the delete.",
+        "Focused uninstall/purge tests cover a root-owned file under a managed volume path.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "Residual from US-566 Verify EACCES under runtime/storage/volumes/*-mariadb-data/_data."
+    },
+    {
+      "id": "US-589",
+      "title": "Residual docs + machine-output env-file redaction",
+      "description": "As a user, published docs name the real command ids, and JSON/MCP results do not leak env-file secrets.",
+      "acceptanceCriteria": [
+        "README CLI sample lists app:cache:refresh, app:includes:update, and app:includes:verify — not bare cache:refresh / includes:* aliases.",
+        "docs/guides/cli/output-streaming.mdx does not group --renderer=verbose with the task tree; verbose is a payload dump, consistent with verbosity-and-debug.mdx.",
+        "Secret-shaped values from top-level and service-level env_file are redacted in --format=json command results and MCP envelopes the same way events already redact them.",
+        "Guide gates green for touched docs; focused redaction tests cover JSON + MCP.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": "Residual from US-580 Review (docs nits) and US-562 Review (§8.11 envelope gap). Expanded to includes:* sample aliases."
+    },
+    {
+      "id": "US-590",
+      "title": "PHP × Composer compatibility",
+      "description": "As a user, I cannot init or plan a PHP + Composer pair that the pinned Composer release cannot run cleanly.",
+      "acceptanceCriteria": [
+        "Plan time fails closed when an exact Composer pin is known-incompatible with the PHP version (shipped case: php:8.5 + composer: \"2.7.7\"), with tagged remediation pointing at composer: \"2\" (2.10.2) or a newer exact pin.",
+        "Bundled recipe prompts that offer both PHP versions and Composer pins do not present the incompatible pair. Hand-written Landofiles still hit the plan-time gate.",
+        "composer: \"2\" remains the 2.10.2 channel pin and stays valid on PHP 8.1–8.5. Do not silently rewrite an authored exact pin.",
+        "php-composer-workflows and the affected recipe READMEs stay true; guide gates green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "Residual from US-576 Verify. Fail-closed / hide the combo; do not bump 2.7.7 under people who need that pin on older PHP."
+    },
+    {
+      "id": "US-591",
+      "title": "Doctor leftover proxy ports",
+      "description": "As a user, a leftover host rootlessport on the Traefik loopback ports is a diagnosed, remediable problem — not an opaque GlobalAutoStartError / ProviderUnavailableError.",
+      "acceptanceCriteria": [
+        "lando doctor probes the bundled proxy loopback ports (127.0.0.1:38080 and the matching TLS port) and, when a leftover Lando/rootlessport holder is present, reports a tagged check with remediation (global:stop, reap, or setup).",
+        "Start / global:start maps address-already-in-use on those ports to that same tagged remediation instead of a generic bind / ProviderUnavailableError.",
+        "Existing orphan-PID doctor checks stay; this is an additional port-bind check, not a replacement.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "Residual from US-564 Verify (orphaned 38080 rootlessport) and US-568 Verify (ProviderUnavailableError after a failed start)."
     }
   ]
 }

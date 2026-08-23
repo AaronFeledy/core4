@@ -10,6 +10,8 @@ A 2026-08 parity audit (`.local/LANDO3-PARITY.md` plus the plugin-parity scout) 
 
 This wave lands concurrently with Beta 1 as **feature-surface completion before freeze**: every item either implements already-normative spec text or implements the spec amendments recorded by this set.
 
+US-581 closed the original planned wave. PRD-08 is a residual tranche for holes in **shipped** functionality — Verify leftovers plus catalog/CLI/recipe/doctor gaps users can already reach.
+
 ## How to use this set of PRDs
 
 1. Spec parts are normative; these PRDs sequence implementation.
@@ -30,7 +32,8 @@ This wave lands concurrently with Beta 1 as **feature-surface completion before 
 | 04 | PHP depth + configs realization | PHP 8.5, Composer options, serving modes, Xdebug, `db_client`, Compose `configs:` | 01 |
 | 05 | Recipes | `extends:`, option parity (drupal/drupal-cms/lamp), laravel, symfony, backdrop, joomla, mean | 01, 04 (05 stories in listed order) |
 | 06 | SQL helpers | bundled `@lando/sql` plugin on `DataMover` | 01 (03 for `mssql` coverage) |
-| 07 | Docs closure | residual guides (cache-refresh, verbosity, DNS rebind), parity-audit refresh, wave closure | all |
+| 07 | Docs closure | residual guides (cache-refresh, verbosity, DNS rebind), parity-audit refresh, wave closure | all prior |
+| 08 | Residual hardening | shipped-feature holes: CLI verbs, catalog connect, inventory, cache identity, purge, docs/redaction, PHP×Composer, doctor ports | 07 |
 
 ## Dependency graph
 
@@ -41,10 +44,11 @@ US-561 (contract; spec text lands with PRD set)
     → US-570..574 (PHP depth: 8.5+composer → serving modes → xdebug → db_client → configs realization)
     → US-575..578 (recipes: extends → option parity → laravel/symfony → backdrop/joomla/mean)
     → US-579 (@lando/sql)
-    → US-580..581 (docs residue → closure)
+    → US-580..581 (docs residue → original-wave closure)
+    → US-584..591 (residual hardening)
 ```
 
-Parallelism notes: PRD-02, PRD-03, and PRD-04 are mutually independent after US-561 and MAY be worked in parallel by separate agents; the strict priority order above is the safe serial order. PRD-05 depends on PRD-04 (serving modes, Composer options feed §8.8.16 option parity) and its own US-575 (backdrop/joomla extend lamp). US-579 depends only on shipped primitives plus US-569 for the optional `mssql` coverage. US-580..581 land last.
+Parallelism notes: PRD-02, PRD-03, and PRD-04 are mutually independent after US-561 and MAY be worked in parallel by separate agents; the strict priority order above is the safe serial order. PRD-05 depends on PRD-04 (serving modes, Composer options feed §8.8.16 option parity) and its own US-575 (backdrop/joomla extend lamp). US-579 depends only on shipped primitives plus US-569 for the optional `mssql` coverage. US-580..581 closed the original wave. PRD-08 (US-584..US-591) is the residual tranche and MAY run in parallel except US-585 should land before anything that assumes `ServiceInfo.creds` is populated, and US-590 should land before recipe-README edits that mention Composer pins.
 
 ## Verification contract
 
@@ -63,13 +67,19 @@ Every story ends with tests/typecheck/lint plus the touched semantic gates:
 - Custom SSH-key mounts / `sshAgent.sidecar: false` — explicitly rejected (§10.4, mission-and-tenets decision log); this wave does not reopen it.
 - The §8.8.10 **staged** recipes (`node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `rails`, `jekyll`, `hugo`, `eleventy`, `empty`) — 4.x growth by adoption signal.
 - `image save`/`load` DataMover consumers — remains 4.1.
+- 4.1 deferred commands (`meta:events:follow`, `meta:plugin:login`, `meta:plugin:logout`).
 - v3 compatibility shims, `experimental:` toggles, or orchestrator keys — dropped by design.
 - A "Lando 101" course sequence — optional editorial work, not parity.
+- Changing omitted-`creds:` defaults from `lando`/`lando`/appName to `{{ service.name }}`.
+- Fingerprinting environment, host, or template-render inputs for cache identity.
+- Client tooling the catalog row does not promise (varnishadm, mailpit CLIs, …).
 
 ## Exit criteria
 
-All US-561..US-581 `passes: true` with green verification. The four Landofile keys parse, plan, and execute per spec with guides. Every §6.12.1 catalog row has a registered runtime service type passing the composition contract. PHP supports 8.5, `via:`, `composer:`, `xdebug:`, and `db_client:` per §6.12.5. `configs:` entries are realized by the bundled providers. `extends:` works per §8.8.15; the §8.8.10 bundled recipe table matches `recipes/` exactly; drupal/drupal-cms/lamp meet §8.8.16. `lando db:import`/`db:export` and friends work against the creds-bearing database types. `.local/LANDO3-PARITY.md` is refreshed to show no ❌ rows without a recorded decision.
+All US-561..US-591 `passes: true` with green verification. The four Landofile keys parse, plan, and execute per spec with guides. Every §6.12.1 catalog row has a registered runtime service type passing the composition contract. PHP supports 8.5, `via:`, `composer:`, `xdebug:`, and `db_client:` per §6.12.5. `configs:` entries are realized by the bundled providers. `extends:` works per §8.8.15; the §8.8.10 bundled recipe table matches `recipes/` exactly; drupal/drupal-cms/lamp meet §8.8.16. `lando db:import`/`db:export` and friends work against the creds-bearing database types. `.local/LANDO3-PARITY.md` is refreshed to show no ❌ rows without a recorded decision.
+
+Residual tranche: space-separated `scratch` / `recipes` / `share` verbs route; bundled databases honor authored `creds:`, emit `LANDO_DB_*`, ship healthchecks and client tooling (including `redis-cli` and phpMyAdmin `hosts:` creds); `apps:list` shows started apps; plan cache invalidates across binary/plugin rebuilds; `uninstall --purge` clears managed volume trees; JSON/MCP envelopes redact env-file secrets; incompatible PHP × Composer pairs fail closed; leftover proxy ports are a doctor/start remediation.
 
 ## Spec parts that remain authoritative
 
-§6.9 (env contract), §6.12 (catalog + checklist + creds + §6.12.5), §7.5–§7.6 (Landofile keys, env overrides), §8.1 (aliases), §8.5 (tooling schema), §8.8 (recipes incl. §8.8.15–§8.8.16), §8.11 (machine output), §10.7 (SQL helpers), §10.11 (DataMover), §11 (events), §18 (deprecation — mailhog), §19 (executable guides).
+§6.9 (env contract), §6.12 (catalog + checklist + creds + §6.12.5), §7.5–§7.6 (Landofile keys, env overrides), §8.1 (aliases), §8.4 (parser taxonomy), §8.5 (tooling schema), §8.8 (recipes incl. §8.8.15–§8.8.16), §8.11 (machine output), §10.7 (SQL helpers), §10.8 (uninstall / doctor), §10.11 (DataMover), §11 (events), §12 (caches), §18 (deprecation — mailhog), §19 (executable guides), §21.10 (scratch CLI).

@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import {
   type CapabilityError,
+  type CommandAliasConflictError,
   GlobalAppError,
   type GlobalDistConflictError,
   type LandofileParseError,
@@ -52,6 +53,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 });
 
 type GlobalUninstallError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | FileSystemError

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  LARAVEL_DATABASES,
+  SYMFONY_DATABASES,
   WEBROOT_PATTERN,
   renderDatabaseLines,
   renderNginxEdgeLines,
@@ -79,5 +81,12 @@ describe("php-stack helper", () => {
   test("database lines emit the versioned type", () => {
     expect(renderDatabaseLines("mariadb:11.4").join("\n")).toContain("type: mariadb:11.4");
     expect(renderDatabaseLines("postgres:16").join("\n")).toContain("type: postgres:16");
+  });
+
+  test("laravel and symfony database lists keep engine order for --yes defaults", () => {
+    expect(LARAVEL_DATABASES[0]).toBe("mariadb:11.4");
+    expect(LARAVEL_DATABASES).toContain("postgres:16");
+    expect(SYMFONY_DATABASES[0]).toBe("postgres:16");
+    expect(SYMFONY_DATABASES).toContain("mariadb:11.4");
   });
 });

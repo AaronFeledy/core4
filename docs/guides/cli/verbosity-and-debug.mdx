@@ -1,0 +1,62 @@
+---
+id: verbosity-and-debug
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, cli, renderer]
+---
+
+# See more CLI output
+
+v3 `lando --debug` is gone. In v4, pick a renderer mode.
+
+```sh
+lando info --renderer=verbose
+```
+
+## Pick a renderer
+
+| Mode | What you get |
+| --- | --- |
+| `lando` (default) | Bundled TTY task tree and summaries. |
+| `plain` | One human line per renderable event on stdout. No tree, no spinners. |
+| `json` | Structured `{_tag:"event", ...}` lines on stderr. The command result still prints on stdout as a JSON envelope. |
+| `verbose` | The human line plus the full event payload for every event. This is the debug dump, not the task tree. |
+
+Set the mode three ways. First match wins:
+
+1. `--renderer=verbose`
+2. `LANDO_RENDERER=verbose`
+3. `renderer: verbose` in global config
+
+The default is `lando`.
+
+`--format=json` changes the command result shape. It does not switch the event stream. `--renderer=json` forces the result format to JSON and also emits JSON events on stderr.
+
+```sh
+lando info --format=json
+lando info --renderer=json
+```
+
+An unknown mode fails with `RendererSelectionError`.
+
+## Debug without `--debug`
+
+There is no `--debug` flag. Use `--renderer=verbose` or `LANDO_RENDERER=verbose`.
+
+`LANDO_DEBUG=1` is not a host CLI switch. Lando only forwards it into `lando shell` as an env var.
+
+For scripts and agents, prefer `--format=json` and read `ok`, `error._tag`, and `remediation`.
+
+<Guide>
+  <Scenario id="json-renderer-envelope" render>
+    <Step name="json-envelope">
+      <Run command="lando version --renderer=json" />
+      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"apiVersion\":\\s*\"v4\"" } }} />
+      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"command\":\\s*\"meta:version\"" } }} />
+      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+Need a fresh plan after you edit a Landofile? See [Refresh a stale app cache](./cache-refresh.mdx).

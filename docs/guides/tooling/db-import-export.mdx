@@ -1,0 +1,78 @@
+---
+id: db-import-export
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, database]
+---
+
+# Import and export app databases
+
+Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database.
+
+A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
+
+```sh
+lando db:export dump.sql.gz
+lando db:import dump.sql.gz --yes
+```
+
+`.gz` files gzip and gunzip on the way through. Credentials stay in the service environment, not on argv.
+
+## Dump files
+
+`db:export` writes `<service>.sql.gz` in the app root unless you pass a path. Relative paths resolve from the app root.
+
+```sh
+lando db:export backups/app.sql.gz --service database
+lando db:import backups/app.sql.gz --service database --yes
+```
+
+MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
+
+## Snapshots
+
+Snapshots land in Lando's snapshot store, not next to your dump files.
+
+```sh
+lando db:snapshot --label before-change
+lando db:restore before-change
+```
+
+## Confirm destructive work
+
+`db:import` into a non-empty database and every `db:reset` ask first. `--yes` skips the prompt. Non-interactive runs without `--yes` fail with `SqlConfirmRequiredError` and list the steps.
+
+```sh
+lando db:reset --yes
+```
+
+<Guide>
+  <Scenario id="export-help" render>
+    <Step name="help">
+      <Run command="lando db:export --help" />
+      <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ambiguous-service" render={false} reason="Regression for multi-database --service">
+    <Step name="import-ambiguous">
+      <UseFixture name="two-db" />
+      <Run command="lando db:import dump.sql --format=json" expectExit={1} />
+      <Verify errorTag="SqlServiceAmbiguousError" expect={{ regex: "Pass --service" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reset-requires-yes" render={false} reason="Regression for reset confirmation">
+    <Step name="reset">
+      <UseFixture name="one-db" />
+      <Run command="lando db:reset --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

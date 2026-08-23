@@ -24,7 +24,7 @@ export const shareListFlags = {
 } as const;
 
 export const shareStopFlags = {
-  session: Flags.string({ description: "Tunnel session id.", required: true }),
+  session: Flags.string({ description: "Tunnel session id." }),
   provider: Flags.string({ description: "TunnelService provider id." }),
   force: Flags.boolean({ description: "Force tunnel stop when supported by the provider." }),
   format: shareFormatFlag,
@@ -74,7 +74,9 @@ export const shareListOptionsFromInput = (input: unknown): ShareListOptions => {
 
 export const shareStopOptionsFromInput = (input: unknown): ShareStopOptions => {
   const flags = recordOf(recordOf(input).flags);
-  const sessionId = stringValue(flags.session);
+  const args = recordOf(recordOf(input).args);
+  // Prefer --session when both are set; positional covers space-separated forms.
+  const sessionId = stringValue(flags.session) ?? stringValue(args.session);
   const provider = stringValue(flags.provider);
   const options: Record<string, unknown> = {
     ...(sessionId === undefined ? {} : { sessionId }),

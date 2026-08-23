@@ -67,6 +67,7 @@ import type {
   BuildPhaseFailedError,
   CacheError,
   CapabilityError,
+  CommandAliasConflictError,
   ComposeKeyRejectedError,
   ConfigError,
   DeprecatedSurfaceError,
@@ -542,7 +543,11 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       providerCapabilities: ProviderCapabilities,
     ) => Effect.Effect<
       AppPlan,
-      LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+      | LandofileValidationError
+      | CapabilityError
+      | NotImplementedError
+      | PublicationUnsupportedError
+      | CommandAliasConflictError
     >;
   }
 >() {}

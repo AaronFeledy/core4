@@ -3,6 +3,7 @@ import { Context, type Effect } from "effect";
 import type {
   BuildPhaseFailedError,
   CapabilityError,
+  CommandAliasConflictError,
   EventError,
   LandofileValidationError,
   NoProviderInstalledError,
@@ -27,7 +28,11 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       providerCapabilities: ProviderCapabilities,
     ) => Effect.Effect<
       AppPlan,
-      LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+      | LandofileValidationError
+      | CapabilityError
+      | NotImplementedError
+      | PublicationUnsupportedError
+      | CommandAliasConflictError
     >;
   }
 >() {}

@@ -183,12 +183,13 @@ describe("recipe option parity", () => {
         full: false,
         recipe: "laravel",
         nonInteractive: true,
-        answers: { name: "laravel-adjacent", php: "8.3", database: "postgres", worker: "true" },
+        answers: { name: "laravel-adjacent", php: "8.3", database: "postgres:16", worker: "true" },
         postInitIO: { out: () => {}, err: () => {} },
       });
       const laravelFile = await discoverFrom(laravel.directory);
       expect(laravelFile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
-      expect(laravelFile.services?.[ServiceName.make("database")]?.type).toBe("postgres");
+      expect(laravelFile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
+      expect(laravelFile.services?.[ServiceName.make("worker")]?.via).toBe("cli");
       expect(laravelFile.services?.[ServiceName.make("worker")]?.type).toBe("php:8.3");
     });
   });
@@ -275,6 +276,241 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe(false);
       expect(landofile.tooling?.composer).toBeUndefined();
+    });
+  });
+
+  test("laravel --yes fills php, composer, public webroot, versioned mariadb, and redis", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "laravel",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "laravel-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).not.toMatch(/^ {4}via:/m);
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("type: mariadb:11.4");
+      expect(yaml).toContain("type: redis");
+      expect(yaml).toContain("artisan:");
+      expect(yaml).toMatch(/^ {2}composer:$/m);
+      expect(yaml).not.toMatch(/^ {2}worker:$/m);
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
+      expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
+      expect(landofile.services?.[ServiceName.make("worker")]).toBeUndefined();
+      expect(landofile.tooling?.artisan).toBeDefined();
+      expect(landofile.tooling?.composer).toBeDefined();
+    });
+  });
+
+  test("symfony --yes fills php, composer, public webroot, versioned postgres, and redis", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "symfony",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "symfony-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).not.toMatch(/^ {4}via:/m);
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("type: postgres:16");
+      expect(yaml).toContain("type: redis");
+      expect(yaml).toContain("console:");
+      expect(yaml).toMatch(/^ {2}composer:$/m);
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
+      expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
+      expect(landofile.tooling?.console).toBeDefined();
+      expect(landofile.tooling?.composer).toBeDefined();
+    });
+  });
+
+  test("laravel worker uses via cli and honors non-default stack answers", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "laravel",
+        nonInteractive: true,
+        answers: {
+          name: "laravel-worker",
+          php: "8.1",
+          database: "postgres:16",
+          composer: "2.7.7",
+          webroot: "/app/public",
+          worker: "true",
+        },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.1");
+      expect(yaml).toContain("type: postgres:16");
+      expect(yaml).toContain('composer: "2.7.7"');
+      expect(yaml).toContain("webroot: /app/public");
+      expect(yaml).toContain("via: cli");
+      expect(yaml).toContain("php artisan queue:work");
+
+      const landofile = await discoverFrom(result.directory);
+      const worker = landofile.services?.[ServiceName.make("worker")];
+      expect(worker?.type).toBe("php:8.1");
+      expect(worker?.via).toBe("cli");
+      expect(worker?.allowOverride).toBeUndefined();
+      expect(worker?.port).toBeUndefined();
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2.7.7");
+    });
+  });
+
+  test("laravel rejects composer false and relative webroot", async () => {
+    await withTempCwd(async (dir) => {
+      const noComposer = initApp({
+        cwd: dir,
+        full: false,
+        recipe: "laravel",
+        nonInteractive: true,
+        answers: { name: "needs-composer", composer: "false" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      await expect(noComposer).rejects.toBeInstanceOf(PromptValidationError);
+    });
+    await withTempCwd(async (dir) => {
+      const relativeWebroot = initApp({
+        cwd: dir,
+        full: false,
+        recipe: "laravel",
+        nonInteractive: true,
+        answers: { name: "bad-webroot", webroot: "relative" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      await expect(relativeWebroot).rejects.toBeInstanceOf(PromptValidationError);
+    });
+  });
+
+  test("backdrop --yes fills php, composer, webroot, versioned mariadb, bee, and BACKDROP_SETTINGS", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "backdrop",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "backdrop-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("type: mariadb:11.4");
+      expect(yaml).toContain("framework: backdrop");
+      expect(yaml).toContain("allowOverride: true");
+      expect(yaml).toContain("bee:");
+      expect(yaml).toContain("BACKDROP_SETTINGS");
+      expect(yaml).toContain('"database":"backdrop-defaults"');
+      expect(yaml).toContain('"username":"lando"');
+      expect(yaml).toContain('"password":"lando"');
+      expect(yaml).not.toContain("via:");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
+    });
+  });
+
+  test("joomla --yes fills php, composer, webroot, versioned mariadb, and joomla cli", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "joomla",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "joomla-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: php:8.3");
+      expect(yaml).toContain('composer: "2"');
+      expect(yaml).toContain("webroot: /app");
+      expect(yaml).toContain("type: mariadb:11.4");
+      expect(yaml).toContain("framework: joomla");
+      expect(yaml).toContain("joomla:");
+      expect(yaml).toContain("- php cli/joomla.php");
+      expect(yaml).not.toContain("via:");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
+      expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
+      expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
+    });
+  });
+
+  test("mean --yes fills node lts, mongodb, npm start, and express scaffold files", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "mean",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "mean-defaults" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: node:lts");
+      expect(yaml).toContain("type: mongodb");
+      expect(yaml).not.toContain("command: npm start");
+      expect(yaml).toContain("mongodb://lando:lando@database:27017/mean-defaults?authSource=admin");
+      expect(yaml).not.toContain("type: redis");
+
+      const packageJson = await Bun.file(join(result.directory, "package.json")).text();
+      const serverJs = await Bun.file(join(result.directory, "server.js")).text();
+      expect(packageJson).toContain("express");
+      expect(serverJs).toContain("express");
+    });
+  });
+
+  test("mean redis true adds a redis cache and REDIS_URL", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "mean",
+        nonInteractive: true,
+        answers: { name: "mean-redis", node: "22", redis: "true" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain("type: redis");
+      expect(yaml).toContain("REDIS_URL");
+
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("api")]?.type).toBe("node:22");
+      expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
     });
   });
 });

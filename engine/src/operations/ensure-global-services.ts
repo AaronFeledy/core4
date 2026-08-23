@@ -2,6 +2,7 @@ import { DateTime, Effect } from "effect";
 
 import type {
   CapabilityError,
+  CommandAliasConflictError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -60,6 +61,7 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | CommandAliasConflictError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

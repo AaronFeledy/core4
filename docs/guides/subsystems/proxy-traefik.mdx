@@ -29,7 +29,7 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-The default domain is `lndo.site`. `lando setup` writes `*.lndo.site` into this machine's DNS. Other devices on the LAN do not get that entry. See [Reach an app from another device](./external-access.mdx).
+The default domain is `lndo.site`. `lando setup` writes `*.lndo.site` into this machine's DNS. Other devices on the LAN do not get that entry. See [Reach an app from another device](./external-access.mdx). Custom domains you resolve to loopback can fail when the router blocks DNS rebinding. That same guide covers the remediations.
 
 You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
 
