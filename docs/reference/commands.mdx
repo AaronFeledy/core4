@@ -391,6 +391,7 @@ Flags:
 
 List public tunnel sessions for the current app.
 
+Aliases: `lando share:list`
 
 Flags:
 
@@ -402,6 +403,13 @@ Flags:
 
 Stop a public tunnel session.
 
+Aliases: `lando share:stop`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `session` | Tunnel session id. |
 
 Flags:
 
@@ -1050,6 +1058,7 @@ Arguments:
 
 Print a recipe's prompts and metadata without running it.
 
+Aliases: `lando recipes:describe`
 
 Arguments:
 
@@ -1061,12 +1070,13 @@ Arguments:
 
 List canonical recipes shipped with the binary.
 
-Aliases: `lando recipes`
+Aliases: `lando recipes:list`, `lando recipes`
 
 ## `lando meta:recipes:validate`
 
 Validate a recipe.yml against the published schema.
 
+Aliases: `lando recipes:validate`
 
 Arguments:
 
