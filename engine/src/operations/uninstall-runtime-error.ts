@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Schema } from "effect";
 
 export const UNINSTALL_RUNTIME_DIR_LEFTOVER_MESSAGE = "Failed to remove runtime directory leftover";
@@ -18,10 +18,13 @@ export const uninstallRuntimeDirRemediation = (
   path: string,
   managedPodmanExists: boolean,
   managedPodman: string,
-): string =>
-  managedPodmanExists
-    ? `Run \`${managedPodman} unshare rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`
-    : `Run \`sudo rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`;
+): string => {
+  if (!managedPodmanExists) {
+    return `Run \`sudo rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`;
+  }
+  const configDir = join(dirname(dirname(managedPodman)), "config");
+  return `Run \`CONTAINERS_CONF=${join(configDir, "containers.conf")} ${managedPodman} --config ${configDir} unshare rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`;
+};
 
 export const formatUninstallRuntimeDirStepError = (error: UninstallRuntimeDirError): string =>
   `${error.message} (${error.path}). ${error.remediation}`;

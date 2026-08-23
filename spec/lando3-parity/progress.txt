@@ -254,3 +254,17 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - Do not `unshare rm -rf` the entire `runtimeDir` first. Storage (volumes/overlay) must go while the managed podman binary still exists.
   - Host uninstall has no Effect error channel; tagged leftovers flatten into `step.error` as `message (path). remediation`.
 ---
+
+## 2026-08-23 06:34 CDT - US-588 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed storage-first unshare plus fail-closed `UninstallRuntimeDirError`. No in-scope code fix.
+- Review notes (deferred/rejected): unquoted leftover path in remediation — Lando argv-spawns delete and does not execute the copy-run string; volume names are Lando-owned; quoting is polish. Weak `||` leftover assertion and double-await of one rejected promise — test smell, exact formatter is unit-tested. Real uid-0 `chown` fixture — host-altering; EACCES + fake unshare is the AC stand-in.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint/spot checks reused from Build (no source change). QA re-ran uninstall + leftover-error tests: 30 pass / 0 fail.
+- Guide-Coverage-Skip: US-588 is an uninstall purge fix; PRD says existing pages stay unless a sentence becomes false, and published --purge prose still holds.
+---
+
+## 2026-08-23 06:56 CDT - US-588 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started nginx+mariadb. Live: HTTP 200, `exec` SELECT 1, `ibdata1` uid 100998 (host `rm` EACCES). First `--purge` fail-closed: bare `podman unshare` could not find bundled conmon. Fixed by passing `--config` + `CONTAINERS_CONF`. Re-setup, re-started the app, `--purge` deleted `runtime/storage/volumes` including the MariaDB tree. Adjacent `logs` and `--keep-data --dry-run` held.
+- Blocker fixed: managed `podman unshare rm` now uses the runtime config so bundled conmon is found.
+- **Out-of-scope finding:** after a successful purge, a short-lived `runtime/bin/podman` process can remain with a deleted exe. Uninstall already finished; not AC-blocking.
+- **Learnings for future iterations:** Managed Podman needs `--config <runtime>/config` and `CONTAINERS_CONF=<runtime>/config/containers.conf`. `--config` alone does not load `containers.conf`.
+---

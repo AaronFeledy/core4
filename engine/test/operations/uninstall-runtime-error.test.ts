@@ -72,7 +72,7 @@ describe("uninstallRuntimeDirRemediation", () => {
   test("uses managed podman unshare when managed podman exists", () => {
     // Given / When / Then
     expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman")).toBe(
-      "Run `/rt/bin/podman unshare rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
+      "Run `CONTAINERS_CONF=/rt/config/containers.conf /rt/bin/podman --config /rt/config unshare rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
     );
   });
 
