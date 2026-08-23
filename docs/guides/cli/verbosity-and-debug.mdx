@@ -8,11 +8,13 @@ tags: [beta, docs, cli, renderer]
 
 # See more CLI output
 
-v3 `lando --debug` is gone. In v4, pick a renderer mode.
+There is no `lando --debug`. Pick a renderer mode.
 
 ```sh
 lando info --renderer=verbose
 ```
+
+`--renderer=verbose` is the firehose. `--debug` is not coming back.
 
 ## Pick a renderer
 
@@ -42,7 +44,7 @@ An unknown mode fails with `RendererSelectionError`.
 
 ## Debug without `--debug`
 
-There is no `--debug` flag. Use `--renderer=verbose` or `LANDO_RENDERER=verbose`.
+Use `--renderer=verbose` or `LANDO_RENDERER=verbose`.
 
 `LANDO_DEBUG=1` is not a host CLI switch. Lando only forwards it into `lando shell` as an env var.
 

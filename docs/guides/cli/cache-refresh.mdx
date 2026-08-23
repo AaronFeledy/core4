@@ -16,6 +16,8 @@ lando app:cache:refresh
 
 There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
+If a tooling command vanished after you edited the Landofile, refresh before you start rewriting YAML.
+
 ## When the cache goes stale
 
 Lando caches the planned app so later commands can skip a full plan. That cache is stale after you:
@@ -28,11 +30,11 @@ Lando caches the planned app so later commands can skip a full plan. That cache 
 
 A missing tooling command after one of those edits is the usual tell. The router says to run `lando app:cache:refresh`, `lando start`, or `lando rebuild`.
 
-`lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner-derived commands or a fresh plan cache.
+`lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner or command-index output, not just the YAML you wrote.
 
 ## Inspect, then refresh
 
-This walkthrough reads the authored Landofile first, then rebuilds the caches.
+Read the authored Landofile first, then rebuild the caches.
 
 ```yaml
 name: cache-refresh-demo
