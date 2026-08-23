@@ -184,3 +184,13 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Review notes (deferred/rejected): mssql default `creds.user=lando` — AC keeps existing defaults; `sa`+`SA_PASSWORD` is the root login via `rootPassword`, not a rewrite of the app user. mongosh `--uri` on argv — AC compile is `--version`; password-on-argv is worse than env-only `MONGO_URI`.
 - Verification: typecheck, lint passed; guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; spot checks postgres/mongodb passed.
 ---
+
+## 2026-08-22 22:25 CDT - US-585 Drift Audit
+- Trigger: 2 cycles, 1856 insertions / 370 deletions, 2 commits
+- Scar tissue: mysql apply trusted a complete-looking authored creds object instead of the shared resolver
+- Ceremony: unused phpMyAdmin host helper exports dropped
+- Re-examined Review deferrals: mssql default user stays lando; mongosh URI stays env-only
+- Fixed: mysql apply always resolves through the shared helper; dead host-helper exports removed
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret) — pass
+---
