@@ -5,32 +5,29 @@ timeout: 60000
 tags: [beta, docs, installer]
 ---
 
-# Installer PATH and setup
+# Put lando on PATH and run setup
 
-## PATH guidance
+> **Alpha status:** Official installers are **not live**. `get.lando.dev` and `update.lando.dev` are not serving v4. There is no installer-printed PATH ritual yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-The POSIX installer prints the exact snippet to add to your shell profile:
+After you download the Linux x64 `lando` binary from a `v4.0.0-dev.N` prerelease, you own PATH.
 
 ```sh
-eval "$(<userDataRoot>/bin/lando shellenv)"
+chmod +x lando
+lando --version
 ```
 
-The PowerShell installer prints the equivalent for PowerShell profiles:
+Move that file into a directory already on PATH, or add its directory to PATH in your shell profile. Then:
 
-```powershell
-& '<userDataRoot>/bin/lando.exe' shellenv --shell=powershell
+```sh
+lando setup
 ```
 
-Both set `LANDO_USER_DATA_ROOT` and put `lando` on `PATH` for the current
-shell.
+The default provider is `lando` (managed Podman). Default setup may fail on Alpha if host prerequisites block the managed runtime, or if the committed runtime-bundle manifest is still placeholders. If the managed runtime still cannot install and you have working system Docker:
 
-## Post-install setup
+```sh
+lando setup --provider=docker
+```
 
-By default the installer leaves `lando setup` for you to run later. You can
-change that with an environment variable:
+`--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-| Env var | Effect |
-| --- | --- |
-| `LANDO_INSTALL_RUN_SETUP=1` | Run `lando setup` immediately after the verified binary installs |
-| `LANDO_INSTALL_SKIP_SETUP=1` | Explicitly skip post-install setup |
-| `LANDO_INSTALL_NONINTERACTIVE=1` | Skip post-install setup without prompting |
+Once `lando` is on PATH, `lando shellenv` prints a profile snippet so new shells keep it. That is the PATH story today. Do not wait for a PowerShell installer snippet. Alpha has no `lando.exe`.

@@ -1,47 +1,25 @@
 ---
 id: update-channels-and-manifests
 provider: test
-platforms: [darwin, linux, win32, wsl]
+platforms: [linux]
 timeout: 60000
 tags: [beta, docs, update, supply-chain]
 ---
 
 # Update channels and manifests
 
-## Channel resolution
+> **Alpha status:** `https://update.lando.dev` is **not serving v4**. `lando update` cannot fetch a signed channel manifest. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-The stable channel resolves to `https://update.lando.dev/v4/stable.json`. The next channel resolves
-to `https://update.lando.dev/v4/next.json`. The dev channel resolves to
-`https://update.lando.dev/v4/dev.json`.
+Do not subscribe to a channel. Install a newer Linux x64 `v4.0.0-dev.N` prerelease, or build from source.
 
-## Signed manifest trust root
+The updater code will resolve three channel names, and only these three: `stable`, `next`, `dev`. Planned URLs:
 
-The updater fetches the sibling signature and certificate for the selected manifest URL:
+| Channel | Planned manifest |
+| --- | --- |
+| `stable` | `https://update.lando.dev/v4/stable.json` |
+| `next` | `https://update.lando.dev/v4/next.json` |
+| `dev` | `https://update.lando.dev/v4/dev.json` |
 
-```text
-<manifest-url>.sig + <manifest-url>.crt
-```
+`LANDO_CHANNEL` on the POSIX installer script uses the same three names. Those URLs 404 today. A version like `v4.0.0-dev.N` maps to the `dev` channel in code. That mapping does not make a host exist.
 
-The manifest signature is verified before any manifest fields or artifact URLs are trusted. A bad
-manifest signature stops the update before schema decoding or binary download.
-
-A signed manifest older than the newest signed manifest previously observed for that channel is
-refused as possible replay (`UpdateManifestReplayError`).
-
-## Schema and minimum version
-
-`UpdateManifestSchema` validates `channel`, `version`, `minimum`, artifact URLs, checksums,
-signatures, and per-platform binary entries. The manifest carries explicit entries for every release
-binary platform: `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`.
-
-A binary older than `manifest.minimum` refuses auto-update and prints official installer plus GitHub
-Releases remediation — manual update is required.
-
-<Guide>
-  <Scenario id="channel-resolution" render={false} reason="Channel URL resolution, manifest signature verification, schema validation, and minimum-version behavior are covered by focused command and schema tests without contacting update.lando.dev. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
-    </Step>
-  </Scenario>
-</Guide>
+When the host is up, a signed manifest older than the last signed version seen for that channel is refused as possible replay. Until then, there is no manifest to trust and no auto-update to run.
