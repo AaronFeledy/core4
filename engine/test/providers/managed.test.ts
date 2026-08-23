@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 
 import {
   MANAGED_PROVIDER_ID,
@@ -36,5 +36,27 @@ describe("taggedErrorRemediation", () => {
     expect(taggedErrorRemediation("plain")).toBeUndefined();
     expect(taggedErrorRemediation({ message: "no remediation" })).toBeUndefined();
     expect(taggedErrorRemediation({ remediation: "" })).toBeUndefined();
+  });
+
+  test("lifts leftover proxy-port remediation off a service start error", () => {
+    // Given
+    const remediation =
+      "A leftover rootlessport is holding the Traefik loopback ports. Run `lando global:stop`. If that does not release the ports, terminate the leftover rootlessport process manually before retrying. Run `lando setup` if the managed runtime is broken.";
+    const cause = new ServiceStartError({
+      providerId: "lando",
+      operation: "start",
+      service: "traefik",
+      message: "address already in use 38080",
+      remediation,
+    });
+
+    // When
+    const lifted = taggedErrorRemediation(cause);
+
+    // Then
+    expect(lifted).toBe(remediation);
+    expect(lifted).toContain("lando global:stop");
+    expect(lifted).toContain("rootlessport");
+    expect(lifted).toContain("lando setup");
   });
 });

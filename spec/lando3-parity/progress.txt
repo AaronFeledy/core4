@@ -60,6 +60,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
 - JSON/MCP envelopes redact env_file secrets only when the command spec supplies `redactionTokens`. Harvest with `collectAppPlanRedactionTokens` (planned service env, including env_file) or `collectLandofileRedactionTokens` (authored Landofile env/tooling env). Extractors must accept `unknown`.
 - PHP × Composer incompatibilities are a duplicated table: plan-time `assertPhpComposerCompatible` in service-lando, recipe-prompt `composerChoicesForPhp` in core. Core cannot import the plugin. Keep the locked 8.5 / 2.7.7 sentence identical on both sides.
+- Healthy Traefik on 127.0.0.1:38080/38443 is also `rootlessport`. Leftover means listening AND HTTP-dead AND rootlessport-shaped; do not treat comm alone as leftover.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -300,4 +301,45 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - **Learnings for future iterations:**
   - Keep `resolvePhpComposer` version-agnostic. Compatibility is a second assert on the authored pin, or `"2"` would inherit the 2.7.7 ban after resolving to 2.10.2.
   - `collectPrompts` still does not evaluate `when:`. Filter composer choices in the collect loop from already-resolved `php`.
+---
+
+## 2026-08-23 13:26 CDT - Babysit
+- PR: #854 https://github.com/AaronFeledy/core4/pull/854
+- CI outcome: pass
+- Review feedback: fixed (regenerated Drupal/Drupal CMS/Symfony scaffolds after Composer pin change)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-23 13:50 CDT - US-591
+- Doctor now probes 127.0.0.1:38080 and :38443 for leftover rootlessport holders (HTTP-dead + rootlessport-shaped). Healthy Traefik stays silent. Start maps address-already-in-use on those ports to the same global:stop / reap / setup remediation instead of generic destroy.
+- Verification: typecheck, lint passed; relevant test spot checks passed (leftover-proxy-ports, plugin-descriptor, import-boundary, bring-up-nft, managed, doctor-runtime-service — 36 pass).
+- **Learnings for future iterations:**
+  - A healthy Traefik publish is also `rootlessport` on these ports. Doctor leftover means listening AND HTTP-dead AND rootlessport-shaped. Injected `kind: "healthy-proxy"` must stay silent.
+  - Plugins cannot share a remediation string. Duplicate the lock tokens (`lando global:stop`, `rootlessport`, `lando setup`) and assert them in both packages.
+---
+
+## 2026-08-23 15:32 CDT - US-591 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed leftover loopback doctor + start remaps address-already-in-use on 38080/38443 to global:stop / reap / setup. No in-scope code fix.
+- Review notes (deferred/rejected): unbounded /proc walk vs 5s doctor budget — leftover walk is rare (TCP open + HTTP-dead); start-path still remediates; not an AC miss. Missing /proc parser fixtures — QA inspected endianness/field indexes; not a PRD gap. Test-local snapshot type copies and darwin test name — style. rejectUnauthorized:false — intentional localhost self-signed Traefik probe. Linux-only live comm ID — rootlessport is Podman linux/WSL; AC does not require darwin/win32 holder identification.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint reused from Build (no source change). QA re-ran leftover-proxy-ports, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service, runtime-status, import-boundary, doctor-plugin-contributions: 51 pass / 0 fail.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false, and doctor-walkthrough proxy setup prose still holds.
+---
+
+## 2026-08-23 15:50 CDT - US-591 Review
+- Re-review confirmed the leftover doctor check can miss AC1: isolate budget is ~3.3s (`probeBudgetMs`), leftover is the only path that walks process fds, and timeout becomes a generic plugin-check self-check instead of `proxy-loopback-ports`. Bound the holder scan (comm-first, 800ms deadline, parallel port probes) so leftover still reports.
+- Review notes (deferred/rejected): Darwin/win32 live comm ID — leftover `rootlessport` is Linux/WSL managed Podman; AC does not require other platforms. Sharing `TRAEFIK_*_PORT` into provider-lando — plugins cannot share that constant; hard-coded 38080/38443 match the lock-token duplication. `rejectUnauthorized: false` — localhost Traefik TLS probe, security lane PASS. `Effect.tryPromise` catch style — nit. Foreign bind on 38080 still gets leftover start copy — matches AC2 wording.
+- Verification: typecheck, lint passed; leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service — 40 pass.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false.
+- **Learnings for future iterations:**
+  - Plugin doctor isolate is `min(5000, floor(sectionBudget/3))` (~3.3s), not the 5s constant. Leftover `/proc` work must finish inside that or the check is abandoned as `plugin-check:<id>`.
+---
+
+## 2026-08-23 16:10 CDT - US-591 Drift Audit
+- Trigger: 3 cycles, 824 insertions, 5 commits
+- Review scar tissue: leftover classifier had an unused comm-fallback beside the kind the production reader always sets
+- Ceremony: dead package re-export of the check factory; unused linux helper exports; tests copied snapshot types
+- Fixed: dropped the comm-fallback and tryPromise error-as-success dance; unexported unused helpers; tests import production types
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service) — pass
 ---

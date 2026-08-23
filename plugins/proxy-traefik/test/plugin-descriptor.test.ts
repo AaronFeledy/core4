@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   PLUGIN_NAME,
   globalServices,
+  leftoverProxyPortsCheck,
   manifest,
   plugin,
   proxy,
@@ -46,13 +47,15 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(plugin.globalServices).toBe(globalServices);
   });
 
-  test("wires the proxy TLS doctor contribution", () => {
+  test("wires the proxy TLS and leftover loopback-port doctor contributions", () => {
     // Given / When the plugin descriptor is exported
     const doctorChecks = plugin.doctorChecks ?? [];
 
     // Then
-    expect(doctorChecks.map((check) => check.id)).toEqual(["proxy-tls"]);
+    expect(doctorChecks.map((check) => check.id)).toEqual(["proxy-tls", "proxy-loopback-ports"]);
     expect(doctorChecks.at(0)).toBe(proxyTlsDoctorCheck);
+    expect(doctorChecks.at(1)).toBe(leftoverProxyPortsCheck);
     expect(proxyTlsDoctorCheck.relevant).toBeUndefined();
+    expect(leftoverProxyPortsCheck.relevant).toBeUndefined();
   });
 });
