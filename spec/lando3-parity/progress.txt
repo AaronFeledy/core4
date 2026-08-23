@@ -278,3 +278,9 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - Do not put `redactionTokens` on public result schemas. Attach them off-schema on the value (tooling/exec) or harvest from `result.landofile` (config).
   - `output-streaming.mdx` lives under `docs/guides/tooling/`, not `docs/guides/cli/`.
 ---
+
+## 2026-08-23 08:59 CDT - US-589 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed README real command ids, verbose as a payload dump, and JSON/MCP env-file redaction via the existing `redactionTokens` seam. No in-scope code fix.
+- Review notes (deferred/rejected): tests inject planned `environment` maps rather than real env_file I/O — same harvest events already use after assemble merges env files; not an AC miss. Empty-array `redactionTokens` skip of landofile harvest — production view/get always attach computed tokens. Duplicate token-filter helpers — existing pattern, not a leak.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; typecheck/lint/spot checks reused from Build (no source change). QA re-ran env-file machine-output, MCP dispatch, events, info-no-secret, renderer-boundary redaction: all pass.
+---
