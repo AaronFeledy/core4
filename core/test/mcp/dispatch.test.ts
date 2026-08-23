@@ -567,8 +567,16 @@ describe("dispatchTool", () => {
   test("omits an env_file canary from the MCP exec envelope when tokens come from execSpec.redactionTokens", async () => {
     // Given
     const canary = "mcp-env-file-canary";
-    expect(execSpec.redactionTokens).toBeFunction();
-    const redactionTokens = [canary];
+    const execResult = {
+      app: "demo",
+      service: "app",
+      command: ["printenv", "API_TOKEN"],
+      exitCode: 0,
+      stdout: `token=${canary}`,
+      stderr: "",
+      redactionTokens: [canary],
+    };
+    expect(execSpec.redactionTokens?.(execResult)).toContain(canary);
     const entry: McpCommandEntry = {
       spec: {
         ...execSpec,
@@ -590,15 +598,7 @@ describe("dispatchTool", () => {
           execute: () =>
             Effect.succeed({
               _tag: "success",
-              value: {
-                app: "demo",
-                service: "app",
-                command: ["printenv", "API_TOKEN"],
-                exitCode: 0,
-                stdout: `token=${canary}`,
-                stderr: "",
-                redactionTokens,
-              },
+              value: execResult,
             }),
         },
       ),
