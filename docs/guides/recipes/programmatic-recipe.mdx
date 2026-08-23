@@ -8,7 +8,7 @@ tags: [beta, docs, recipes, typescript, programmatic]
 
 # Write a programmatic recipe
 
-Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Load it with `lando meta recipes validate ./`.
+Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Lando loads it through flatten/`loadRecipeTs` at init and extends. `lando meta recipes validate` and `lando meta recipes describe` are YAML-only. They resolve `recipe.yml` and never evaluate `recipe.ts`.
 
 A directory ships one or the other, never both. The directory basename must match `id`.
 
@@ -54,30 +54,6 @@ export default defineRecipe(async () => ({
 Bun loads the TypeScript. There is no compile step at recipe-load time. Top-level imports are sandbox-scanned: no host shell-outs, no remote module fetches, no filesystem access outside the recipe directory.
 
 TypeScript that writes the recipe is still just a manifest. Fancy imports will not save a bad `id`.
-
-## Check the recipe
-
-```sh
-lando meta recipes validate ./ --format=json
-lando meta recipes describe ./ --format=json
-```
-
-`valid` is `true` and `id` matches the directory name.
-
-<Guide>
-  <Scenario id="validate-programmatic-recipe" render>
-    <Step name="validate">
-      <UseFixture name="programmatic-recipe" />
-      <Run command="lando meta recipes validate ./ --format=json" />
-      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
-      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "programmatic-recipe" } }} />
-    </Step>
-    <Step name="describe">
-      <Run command="lando meta recipes describe ./ --format=json" />
-      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "programmatic-recipe" } }} />
-    </Step>
-  </Scenario>
-</Guide>
 
 ## Next
 
