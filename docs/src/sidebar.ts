@@ -27,6 +27,7 @@ export const sidebar = [
         items: [
           { label: "Pick a container provider", slug: "guides/setup/provider-selection" },
           { label: "Run lando setup", slug: "guides/setup/provider-auto-setup" },
+          { label: "Use system Podman on Linux", slug: "guides/setup/provider-podman-linux" },
           { label: "Check first-run readiness", slug: "guides/setup/first-run-readiness" },
           { label: "Exclude paths from file sync", slug: "guides/setup/file-sync-excludes" },
           { label: "Uninstall and purge", slug: "guides/setup/uninstall-and-purge" },
