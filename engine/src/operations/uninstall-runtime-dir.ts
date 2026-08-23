@@ -2,6 +2,8 @@ import { existsSync, realpathSync } from "node:fs";
 import { chmod, lstat, readFile, readdir, readlink, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { leftoverUninstallRuntimeDirError } from "./uninstall-runtime-error";
+
 const DELETED_EXE_SUFFIX = " (deleted)";
 const MANAGED_PODMAN_UNSHARE_TIMEOUT_MS = 30_000;
 const TERMINATE_WAIT_MS = 2_000;
@@ -124,21 +126,43 @@ export const chmodTreeUserWritable = async (root: string): Promise<void> => {
   }
 };
 
+export const managedRuntimeConfigDir = (runtimeDir: string): string => join(runtimeDir, "config");
+
 export const managedPodmanUnshareRmInvocation = (
   runtimeDir: string,
   target: string = runtimeDir,
-): { readonly command: string; readonly args: ReadonlyArray<string> } => ({
-  command: join(runtimeDir, "bin", "podman"),
-  args: ["unshare", "rm", "-rf", target],
-});
+): {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string>>;
+} => {
+  const configDir = managedRuntimeConfigDir(runtimeDir);
+  return {
+    command: join(runtimeDir, "bin", "podman"),
+    args: ["--config", configDir, "unshare", "rm", "-rf", target],
+    env: {
+      CONTAINERS_CONF: join(configDir, "containers.conf"),
+    },
+  };
+};
+
+const spawnEnv = (extra: Readonly<Record<string, string>>): Record<string, string> => {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  return { ...env, ...extra };
+};
 
 export const runManagedPodmanUnshareRm = async (
   command: string,
   args: ReadonlyArray<string>,
+  extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<void> => {
   const proc = Bun.spawn([command, ...args], {
     stdout: "pipe",
     stderr: "pipe",
+    env: spawnEnv(extraEnv),
   });
   const timeout = setTimeout(() => {
     proc.kill();
@@ -156,28 +180,58 @@ export const runManagedPodmanUnshareRm = async (
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
-export const defaultRemoveRuntimeDir = async (path: string): Promise<void> => {
-  await defaultTerminateRuntimeBinProcesses(path);
+export interface RemoveRuntimeDirDeps {
+  readonly unshareRm?: (
+    command: string,
+    args: ReadonlyArray<string>,
+    env?: Readonly<Record<string, string>>,
+  ) => Promise<void>;
+  readonly removeTree?: (path: string) => Promise<void>;
+  readonly exists?: (path: string) => boolean;
+  readonly terminate?: (runtimeDir: string) => Promise<void>;
+}
+
+export const defaultRemoveRuntimeDir = async (
+  path: string,
+  deps: RemoveRuntimeDirDeps = {},
+): Promise<void> => {
+  const exists = deps.exists ?? existsSync;
+  const unshareRm = deps.unshareRm ?? runManagedPodmanUnshareRm;
+  const removeTree = deps.removeTree ?? defaultRemove;
+  const terminate = deps.terminate ?? defaultTerminateRuntimeBinProcesses;
+
+  await terminate(path);
   await chmodTreeUserWritable(path);
+
   const managedPodman = join(path, "bin", "podman");
-  if (process.platform === "linux" && existsSync(managedPodman)) {
-    const invocation = managedPodmanUnshareRmInvocation(path);
-    try {
-      await runManagedPodmanUnshareRm(invocation.command, invocation.args);
-    } catch {
-      // chmod-plus-rm may still succeed; leftover presence fails closed below.
+  if (process.platform === "linux" && exists(managedPodman)) {
+    const storage = join(path, "storage");
+    if (exists(storage)) {
+      const storageInvocation = managedPodmanUnshareRmInvocation(path, storage);
+      try {
+        await unshareRm(storageInvocation.command, storageInvocation.args, storageInvocation.env);
+      } catch {
+        // leftover presence fails closed below
+      }
+    }
+    if (exists(path)) {
+      const invocation = managedPodmanUnshareRmInvocation(path);
+      try {
+        await unshareRm(invocation.command, invocation.args, invocation.env);
+      } catch {
+        // leftover presence fails closed below
+      }
     }
   }
-  if (existsSync(path)) {
+
+  if (exists(path)) {
     try {
-      await defaultRemove(path);
+      await removeTree(path);
     } catch (cause) {
-      if (existsSync(path)) throw cause;
+      if (exists(path)) throw leftoverUninstallRuntimeDirError(path, exists, cause);
     }
   }
-  if (existsSync(path)) {
-    throw new Error(
-      `Failed to remove runtime directory: ${path} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
-    );
+  if (exists(path)) {
+    throw leftoverUninstallRuntimeDirError(path, exists);
   }
 };
