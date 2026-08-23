@@ -1,7 +1,5 @@
 import { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
 
-export { normalizeScratchRunArgvForParsing };
-
 export const GLOBAL_COMMAND_VERBS = new Set([
   "config",
   "destroy",
