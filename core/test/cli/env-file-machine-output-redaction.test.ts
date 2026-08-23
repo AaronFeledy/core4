@@ -148,6 +148,7 @@ describe("env_file machine-output redaction", () => {
     );
 
     // Then
+    expect(JSON.stringify(result.envelope)).toContain(REDACTED);
     expect(JSON.stringify(result.envelope)).not.toContain(CONFIG_CANARY);
   });
 });

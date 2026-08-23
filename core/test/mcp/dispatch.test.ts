@@ -586,7 +586,6 @@ describe("dispatchTool", () => {
           stderr: Schema.String,
           exitCode: Schema.Number,
         }),
-        redactionTokens: execAppRedactionTokens,
       },
     };
     const { deps } = harness([entry]);
@@ -615,6 +614,7 @@ describe("dispatchTool", () => {
     );
 
     // Then
+    expect(JSON.stringify(result.envelope)).toContain(REDACTED);
     expect(JSON.stringify(result.envelope)).not.toContain(canary);
   });
 });
