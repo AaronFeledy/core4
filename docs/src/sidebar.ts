@@ -80,6 +80,8 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
+          { label: "Refresh a stale app cache", slug: "guides/cli/cache-refresh" },
+          { label: "See more CLI output", slug: "guides/cli/verbosity-and-debug" },
           { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
           { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },
@@ -139,10 +141,15 @@ export const sidebar = [
   {
     label: "Recipes",
     items: [
+      { label: "Backdrop", slug: "recipes/backdrop" },
       { label: "Drupal", slug: "recipes/drupal" },
       { label: "Drupal CMS", slug: "recipes/drupal-cms" },
+      { label: "Joomla", slug: "recipes/joomla" },
       { label: "LAMP", slug: "recipes/lamp" },
+      { label: "Laravel", slug: "recipes/laravel" },
       { label: "LEMP", slug: "recipes/lemp" },
+      { label: "MEAN", slug: "recipes/mean" },
+      { label: "Symfony", slug: "recipes/symfony" },
       { label: "WordPress", slug: "recipes/wordpress" },
     ],
   },
