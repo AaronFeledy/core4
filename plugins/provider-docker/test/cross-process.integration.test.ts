@@ -175,15 +175,12 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
   }
 };
 
-const appliedPlanState = (stateDir: string) =>
-  makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
-
 const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
   Effect.runPromise(
     makeRuntimeProvider({
       platform: "linux",
       dockerApi,
-      appliedPlanState: appliedPlanState(stateDir),
+      appliedPlanState: makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir)),
       appliedPlanStateDir: stateDir,
       sanitizeAppliedPlan: (applied) => applied,
     }),
@@ -192,7 +189,6 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
 const applyPlan = async (stateDir: string, dockerApi: DockerApiClient) => {
   const provider = await makeProvider(stateDir, dockerApi);
   await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
-  return provider;
 };
 
 const isUnavailableExec = (error: unknown): boolean => {
@@ -218,24 +214,22 @@ describe("provider-docker cross-process state", () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
-      const execCallsBefore = fake.calls.filter(
-        (call) => call.method === "POST" && call.path === `/containers/${containerName}/exec`,
-      ).length;
+      const execCalls = () =>
+        fake.calls.filter(
+          (call) => call.method === "POST" && call.path === `/containers/${containerName}/exec`,
+        );
+      const execCallsBefore = execCalls().length;
 
       const providerB = await makeProvider(stateDir, fake.api);
       const result = await Effect.runPromiseExit(
         providerB.exec({ app: plan.id, service: web.name }, { command: ["true"] }),
       );
 
-      expect(result._tag).toBe("Success");
       if (result._tag === "Failure") {
-        const failure = result.cause;
-        expect(isUnavailableExec(failure)).toBe(false);
+        expect(isUnavailableExec(result.cause)).toBe(false);
       }
-      const execCalls = fake.calls.filter(
-        (call) => call.method === "POST" && call.path === `/containers/${containerName}/exec`,
-      );
-      expect(execCalls.length).toBeGreaterThan(execCallsBefore);
+      expect(result._tag).toBe("Success");
+      expect(execCalls().length).toBeGreaterThan(execCallsBefore);
     });
   });
 
