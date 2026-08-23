@@ -8,20 +8,60 @@ tags: [beta, docs, plugins, npm]
 
 # Install a plugin from npm
 
-Resolve npm metadata, download the published tarball, validate the plugin
-manifest, and trust the plugin for the current session:
+`lando plugin:add` installs one npm registry package into your user plugin root, validates the plugin manifest, then asks you to trust it as host code.
 
 ```sh
-lando plugin:add @lando/plugin-foo --trust
+lando plugin:add @lando/plugin-php --trust
 ```
 
-Pin an exact version with an `@version` suffix:
+npm specs only. Git URLs, tarball URLs, and `file:` paths fail with `NotImplementedError` in this Beta. If it is not on the registry desk, it does not get a wristband.
+
+## Add the package
+
+Pass a registry name. Pin a version with `@version` when you care which tarball lands.
 
 ```sh
-lando plugin:add @lando/plugin-foo@1.2.3 --trust
+lando plugin:add @lando/plugin-php
+lando plugin:add @lando/plugin-php@1.2.3 --trust
 ```
 
-Installed plugin packages are published under the per-user plugin root by
-name and resolved version, at
-`<userDataRoot>/plugins/@lando/plugin-foo/1.2.3/`.
+`--trust` and `-y` skip the trust prompt and persist that name. Non-interactive installs without `--trust` fail unless the name is already trusted.
 
+Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that already exists is left in place.
+
+`lando plugin:add` is the top-level alias of `meta:plugin:add`.
+
+## Trust the name
+
+Trust is one package name. Org globs are not up.
+
+```sh
+lando plugin:trust @lando/plugin-php
+lando plugin:trust list
+```
+
+See [Trust plugins by name](./trust-and-wildcards.mdx).
+
+## What you cannot pass
+
+These specs are rejected today:
+
+```sh
+lando plugin:add git+https://github.com/acme/lando-plugin.git
+lando plugin:add https://example.com/plugin.tgz
+lando plugin:add file:./my-plugin
+```
+
+## Verify
+
+```sh
+lando plugin:trust list
+lando plugin:add @lando/plugin-php --trust
+```
+
+The second add should report the same name and version instead of fetching a new tree.
+
+## Next
+
+- [See plugin discovery scopes](./discovery-scopes.mdx)
+- [Manage plugin trust](./trust-management.mdx)

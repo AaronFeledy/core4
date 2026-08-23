@@ -6,36 +6,56 @@ timeout: 60000
 tags: [beta, docs, scratch, mount, storage]
 ---
 
-# Mount and share flags
+# Mount the working directory into a scratch
 
-## Scratch mount cwd
-
-Mounts the current working directory ($PWD) into the scratch app's primary service so the scratch serves your live files.
-
-Bare --mount-cwd rebinds the primary service's app mount to $PWD; the container path defaults to the service's app-mount destination (/app)
-
-An explicit container path mounts $PWD at that path as an additional bind mount, leaving the primary app mount in place (`--mount-cwd=/srv/site`).
-
-Works in recipe mode too: the rendered recipe runs against the scratch root while $PWD is bound into the primary service.
-
-apps:scratch:run uses the same scratch mount controls for one-off commands; --no-mount leaves $PWD out of the disposable app.
-
-## Scratch share global storage
-
-Joins the scratch app to the shared cross-app network so it can reach the global app and its storage scope.
-
---share-global-storage is never inferred from another flag; without it a scratch app stays isolated from cross-app storage by default.
-
-The active provider must support shared cross-app networking; otherwise the start fails with a ScratchAppError explaining the limitation (`sharedCrossAppNetwork`).
-
-## Scratch mount and share together
-
-The two flags are independent opt-ins that compose; this scenario documents their combined use.
-
-The flags are mutually compatible and may be combined to serve $PWD while joining the shared cross-app network.
-
---mount-cwd cannot be combined with --isolate=full; passing both fails fast with ScratchIsolationConflictError.
+`--mount-cwd` bind-mounts `$PWD` into the scratch primary service. `--share-global-storage` is a separate boolean that joins the shared cross-app network.
 
 ```sh
---mount-cwd + --isolate=full
+lando scratch:start --from lamp --yes --detach --mount-cwd
 ```
+
+`--mount-cwd` takes an optional container path. A bare flag is valid: the CLI rewrites it to `--mount-cwd=` and rebinds the primary app mount to `$PWD` (usually `/app`). The equals sign is the boring kind of magic.
+
+## Mount `$PWD`
+
+```sh
+lando scratch:start --from lamp --yes --detach --mount-cwd
+lando scratch:start --from lamp --yes --detach --mount-cwd=/srv/site
+```
+
+An explicit path adds a bind mount at that container path and leaves the primary app mount alone.
+
+The same mount controls apply to recipe scratches and forks. `lando run` defaults to mounting `$PWD`; pass `--no-mount` to skip it. See [Run a command in a disposable scratch](./disposable-tool-runner.mdx).
+
+## Share global storage
+
+```sh
+lando scratch:start --from lamp --yes --detach --share-global-storage
+```
+
+`--share-global-storage` is never inferred. Without it the scratch stays off the shared network.
+
+The provider must support shared cross-app networking. If it does not, start fails with `ScratchAppError`.
+
+You can pass both flags:
+
+```sh
+lando scratch:start --from lamp --yes --detach --mount-cwd --share-global-storage
+```
+
+## Isolation
+
+`--isolate` accepts `none`, `full`, `baked`, or `cwd`. `none` is a legacy alias for `cwd`.
+
+```sh
+lando scratch:start --fork --detach --isolate=full
+```
+
+Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `ScratchIsolationConflictError` and creates nothing.
+
+On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
+
+## Next
+
+- [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
+- [Fork the current app into a scratch](./fork-existing-app.mdx)
