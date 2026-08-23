@@ -57,6 +57,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - `LANDO_DB_*` is emitted with `ctx.addEnv` in the catalog type feature (priority 600). Never put reserved `LANDO_*` keys in `normalizedConfig.environment`; `lando.env` (700) rejects them and would otherwise overwrite resolved family env.
 - Bundled providers persist applied plans under plugin state (`applied-plans/<appId>.json` or `applied-plans.json`). `apps:list` reads those paths. `resolvePlan` must reload from `PluginStateStore` after process restart; an in-memory Map is not enough. Do not attach `AppPlan` onto DataMover.
 - App-plan cache identity includes `planningRuntime`: source-mode digest of engine planner/cache plus service-lando `src`, compiled-mode exec size+mtime. `CORE_VERSION` / plugin semver at `0.0.0` is not enough.
+- Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -237,4 +238,19 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Verification: typecheck, lint passed; relevant test spot checks passed (app-plan-revision, planning-runtime, cache).
 - **Learnings for future iterations:**
   - Default identity is content/stat, not plugin version. Workspace `CORE_VERSION` and bundled plugin semver stay `0.0.0`, so they cannot invalidate `plan.bin` after a local rebuild or service-type source edit.
+---
+
+## 2026-08-23 05:22 CDT - Babysit
+- PR: #851 https://github.com/AaronFeledy/core4/pull/851
+- CI outcome: pass
+- Review feedback: fixed (dropped import.meta.url from planning-runtime so engine closure passes)
+- Merge: merged (squash)
+---
+
+## 2026-08-23 06:20 CDT - US-588
+- `lando uninstall --purge` now unshares `runtime/storage` before the rest of the managed runtime tree, so `bin/podman` is still there when root/subuid-owned volume files need `podman unshare rm`. If leftovers remain, uninstall fail-closes with `UninstallRuntimeDirError` naming the leftover path (preferring `storage/volumes`) and a remediation (`podman unshare rm` or `sudo rm -rf`, then rerun `--purge --yes`).
+- Verification: typecheck, lint passed; relevant test spot checks passed (engine uninstall, leftover error unit, core uninstall + runtime-service). Surface: defaultRemoveRuntimeDir deleted a planted `storage/volumes/.../ibdata1` tree; `lando uninstall --help` still lists `--purge`.
+- **Learnings for future iterations:**
+  - Do not `unshare rm -rf` the entire `runtimeDir` first. Storage (volumes/overlay) must go while the managed podman binary still exists.
+  - Host uninstall has no Effect error channel; tagged leftovers flatten into `step.error` as `message (path). remediation`.
 ---
