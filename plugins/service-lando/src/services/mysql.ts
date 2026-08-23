@@ -83,11 +83,7 @@ const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, s
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const authored = service.creds;
-  const creds =
-    authored?.user !== undefined && authored.password !== undefined && authored.database !== undefined
-      ? authored
-      : mysqlCredsFor(appName, ctx.serviceName, service);
+  const creds = mysqlCredsFor(appName, ctx.serviceName, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
