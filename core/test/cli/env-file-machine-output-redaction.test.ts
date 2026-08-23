@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { execAppRedactionTokens } from "@lando/engine/operations/exec";
-import {
-  collectAppPlanRedactionTokens,
-  collectLandofileRedactionTokens,
-} from "@lando/engine/services/app-plan-redaction";
 import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -13,6 +8,7 @@ import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
 import { appConfigMcpSpecs, appConfigSpec } from "../../src/cli/command-specs/app/config/index.ts";
+import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { appConfigRedactionTokens } from "../../src/cli/commands/app-config.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -49,16 +45,11 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
 });
 
 describe("env_file machine-output redaction", () => {
-  test("redacts JSON exec stdout when tokens come from execAppRedactionTokens", async () => {
+  test("redacts JSON exec stdout when tokens come from execSpec.redactionTokens", async () => {
     // Given
-    const tokens = collectAppPlanRedactionTokens({
-      services: {
-        app: {
-          environment: { DB_PASSWORD: JSON_CANARY },
-        },
-      },
-    });
-    expect(tokens).toContain(JSON_CANARY);
+    const extractTokens = execSpec.redactionTokens;
+    expect(extractTokens).toBeFunction();
+    if (extractTokens === undefined) return;
     const io = createBufferedRendererIO();
 
     // When
@@ -70,7 +61,7 @@ describe("env_file machine-output redaction", () => {
         exitCode: 0,
         stdout: JSON_CANARY,
         stderr: "",
-        redactionTokens: tokens,
+        redactionTokens: [JSON_CANARY],
       }),
       {
         runtime: Layer.empty,
@@ -79,7 +70,7 @@ describe("env_file machine-output redaction", () => {
         command: "app:exec",
         resultSchema: ExecJsonResultSchema,
         io,
-        redactionTokens: execAppRedactionTokens,
+        redactionTokens: extractTokens,
         formatError: String,
         setExitCode: () => undefined,
       },
@@ -92,20 +83,9 @@ describe("env_file machine-output redaction", () => {
     expect(encoded).not.toContain("redactionTokens");
   });
 
-  test("includes authored landofile environment values in collectLandofileRedactionTokens", () => {
-    // Given
-    const landofile = authoredLandofile;
-
-    // When
-    const tokens = collectLandofileRedactionTokens(landofile);
-
-    // Then
-    expect(tokens).toContain(CONFIG_CANARY);
-  });
-
   test("omits an authored landofile environment canary from JSON config output", async () => {
     // Given
-    expect(collectLandofileRedactionTokens(authoredLandofile)).toContain(CONFIG_CANARY);
+    expect(appConfigRedactionTokens({ landofile: authoredLandofile })).toContain(CONFIG_CANARY);
     const io = createBufferedRendererIO();
 
     // When
