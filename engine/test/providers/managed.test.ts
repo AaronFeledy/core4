@@ -39,7 +39,7 @@ describe("taggedErrorRemediation", () => {
   });
 
   test("lifts leftover proxy-port remediation off a service start error", () => {
-    // Given: a start failure whose remediation names leftover loopback holders
+    // Given
     const remediation =
       "A leftover rootlessport is holding the Traefik loopback ports. Run `lando global:stop`. If that does not release the ports, terminate the leftover rootlessport process manually before retrying. Run `lando setup` if the managed runtime is broken.";
     const cause = new ServiceStartError({
@@ -50,10 +50,10 @@ describe("taggedErrorRemediation", () => {
       remediation,
     });
 
-    // When: user start copies cause.remediation
+    // When
     const lifted = taggedErrorRemediation(cause);
 
-    // Then: the leftover tokens survive the lift unchanged
+    // Then
     expect(lifted).toBe(remediation);
     expect(lifted).toContain("lando global:stop");
     expect(lifted).toContain("rootlessport");

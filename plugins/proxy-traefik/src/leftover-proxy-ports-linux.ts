@@ -79,8 +79,6 @@ export const parseListenInodeForLoopbackPort = (table: string, port: number): st
 const pastDeadline = (walk: ProcWalk, deadline: number): boolean => (walk.now ?? Date.now)() >= deadline;
 
 /**
- * Identify the leftover-shaped holder of a listen inode.
- *
  * Doctor leftover only needs to know whether a rootlessport-shaped process owns
  * the socket. Reading each process comm first and walking fds only for those
  * candidates stays inside the plugin probe budget; a full process-fd walk does
