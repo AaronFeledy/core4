@@ -458,6 +458,19 @@ describe("phpMyAdmin AppFeature", () => {
     expect(captures.get("pma")?.deps).toEqual([]);
   });
 
+  test("fails tagged when hosts mixes a sibling with an unmatched host and phpmyadmin has no creds", async () => {
+    const { result } = await applyWireExit([
+      viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: ["database", "remote.example.com"] }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mysql",
+        creds: { user: "alice", password: "s3cret", database: "app" },
+      }),
+    ]);
+
+    expectHostsCredsFailure(result);
+  });
+
   test("fails tagged when matched sibling creds disagree and phpmyadmin has no creds", async () => {
     const { result } = await applyWireExit([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: ["adb", "zdb"] }),

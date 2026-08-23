@@ -72,8 +72,11 @@ export const resolveAuthoredHosts = (input: {
     return { _tag: "ok", hosts: input.hosts, creds: input.pmaCreds, matched };
   }
   const first = matched[0];
-  if (first === undefined || matched.length !== input.hosts.length) {
+  if (first === undefined) {
     return { _tag: "ok", hosts: input.hosts, creds: DEFAULT_CREDS, matched };
+  }
+  if (matched.length !== input.hosts.length) {
+    return { _tag: "fail", error: hostsCredsError(input.feature) };
   }
   const agreed = siblingCreds(first);
   if (!matched.every((sibling) => credsAgree(siblingCreds(sibling), agreed))) {
