@@ -15,6 +15,8 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
   mcpAllowed: true,
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
+  topLevelAlias: "recipes:validate",
+  aliases: ["recipes:validate"],
   bootstrap: "minimal",
   args: {
     path: Args.string({

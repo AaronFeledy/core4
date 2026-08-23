@@ -69,6 +69,11 @@ describe("app command aliases", () => {
     expect(aliasesById.get("apps:scratch:logs")).toContain("scratch:logs");
     expect(aliasesById.get("apps:scratch:gc")).toContain("scratch:gc");
     expect(aliasesById.get("apps:scratch:run")).toEqual(expect.arrayContaining(["scratch:run", "run"]));
+    expect(aliasesById.get("meta:recipes:list")).toEqual(expect.arrayContaining(["recipes:list", "recipes"]));
+    expect(aliasesById.get("meta:recipes:describe")).toContain("recipes:describe");
+    expect(aliasesById.get("meta:recipes:validate")).toContain("recipes:validate");
+    expect(aliasesById.get("app:share:list")).toContain("share:list");
+    expect(aliasesById.get("app:share:stop")).toContain("share:stop");
   });
 });
 

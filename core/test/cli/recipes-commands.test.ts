@@ -277,3 +277,40 @@ describe("meta:recipes:validate", () => {
     expect((envelope.result as { id: string }).id).toBe("extends-lamp-child");
   }, 30_000);
 });
+
+describe("recipe verb forms share JSON command identity", () => {
+  test("space, colon-alias, and canonical forms resolve to the same command", async () => {
+    const cases: ReadonlyArray<{ forms: ReadonlyArray<ReadonlyArray<string>>; command: string }> = [
+      {
+        forms: [["meta:recipes:list"], ["recipes:list"], ["recipes", "list"]],
+        command: "meta:recipes:list",
+      },
+      {
+        forms: [
+          ["meta:recipes:describe", "toolbox"],
+          ["recipes:describe", "toolbox"],
+          ["recipes", "describe", "toolbox"],
+        ],
+        command: "meta:recipes:describe",
+      },
+      {
+        forms: [
+          ["meta:recipes:validate", "recipes/toolbox/recipe.yml"],
+          ["recipes:validate", "recipes/toolbox/recipe.yml"],
+          ["recipes", "validate", "recipes/toolbox/recipe.yml"],
+        ],
+        command: "meta:recipes:validate",
+      },
+    ];
+
+    for (const { forms, command } of cases) {
+      for (const form of forms) {
+        const result = await runCli([...form, "--format", "json"]);
+        expect(result.exitCode, form.join(" ")).toBe(0);
+        const envelope = lastJsonLine(result.stdout);
+        expect(envelope.ok, form.join(" ")).toBe(true);
+        expect(envelope.command, form.join(" ")).toBe(command);
+      }
+    }
+  }, 60_000);
+});

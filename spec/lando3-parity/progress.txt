@@ -53,6 +53,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - Native volume restore must stop the database container first. `RuntimeProvider.start/stop` are the per-service hooks; app CLI start/stop stay apply/destroy. Do not force `volumeSnapshot: copy` for InnoDB.
 - `app:cache:refresh` has no top-level alias; teach `lando app:cache:refresh`. `--renderer=verbose` dumps every event payload and is not the OpenTUI task tree.
 - DNS rebinding for custom loopback names is environmental. There is no Lando flag or doctor check; document remediations on the external-access guide.
+- Topic-first space verbs rewrite to canonical ids in `normalizeCompiledCommandArgv`. Alias-token rewrites lose to `run.ts` early rawHead alias resolution of the bare topic.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -137,3 +138,11 @@ PRD-08 added for holes in shipped functionality. `passes: false`, priorities 24�
 - US-591 doctor/start remediation for leftover 38080/TLS `rootlessport`
 
 Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 deferred commands, varnishadm (catalog row does not promise it), omitted-`creds:` default rewrite to `{{ service.name }}`.
+
+## 2026-08-22 19:15 CDT - US-584
+- Space-separated `scratch <verb>`, `recipes <verb>`, and `share <verb>` now rewrite to the canonical command. Bare `scratch` / `recipes` / `share` still start, list, and share. Colon aliases added for recipes describe/validate/list and share list/stop so all three forms share JSON command identity.
+- Verification: typecheck, lint passed; relevant test spot checks passed (native-argv-parser, scratch-namespace, recipes-commands, aliases, share-skeleton). CLI smoke: `scratch list` and `recipes describe toolbox` report the canonical ids; `share list` is `app:share:list` not an unexpected-argument error; bare `scratch --detach` stays start; bare `recipes` still lists.
+- **Learnings for future iterations:**
+  - Topic-first space verbs must rewrite to canonical ids in `normalizeCompiledCommandArgv`. Rewriting to an alias token (`scratch:list`) loses to `run.ts` early `rawHead` alias resolution of the bare topic (`scratch` → start).
+  - `normalizeCompiledCommandArgv` runs twice (before and after universal flag stripping) so `scratch --format json list` still becomes list.
+---
