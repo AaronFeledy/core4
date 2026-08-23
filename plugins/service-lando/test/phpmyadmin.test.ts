@@ -384,19 +384,12 @@ describe("phpMyAdmin AppFeature", () => {
   });
 
   test("hosts scalar completely overrides inferred siblings", async () => {
-    const { context, captures } = applyWire([
+    const { result } = await applyWireExit([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: "remote.example.com" }),
       viewOf({ serviceName: "database", serviceType: "mysql" }),
     ]);
 
-    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
-
-    expect(captures.get("pma")?.env).toEqual({
-      PMA_HOSTS: "remote.example.com",
-      PMA_USER: "lando",
-      PMA_PASSWORD: "lando",
-    });
-    expect(captures.get("pma")?.deps).toEqual([]);
+    expectHostsCredsFailure(result);
   });
 
   test("hosts array completely overrides inferred siblings", async () => {
@@ -443,19 +436,12 @@ describe("phpMyAdmin AppFeature", () => {
     ]);
   });
 
-  test("uses default creds when hosts is unmatched and phpmyadmin has no creds", async () => {
-    const { context, captures } = applyWire([
+  test("fails tagged when hosts is unmatched and phpmyadmin has no creds", async () => {
+    const { result } = await applyWireExit([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin", hosts: "remote.example.com" }),
     ]);
 
-    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
-
-    expect(captures.get("pma")?.env).toEqual({
-      PMA_HOSTS: "remote.example.com",
-      PMA_USER: "lando",
-      PMA_PASSWORD: "lando",
-    });
-    expect(captures.get("pma")?.deps).toEqual([]);
+    expectHostsCredsFailure(result);
   });
 
   test("fails tagged when hosts mixes a sibling with an unmatched host and phpmyadmin has no creds", async () => {
