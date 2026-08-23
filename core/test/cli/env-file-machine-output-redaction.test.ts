@@ -48,33 +48,33 @@ describe("env_file machine-output redaction", () => {
   test("redacts JSON exec stdout when tokens come from execSpec.redactionTokens", async () => {
     // Given
     const extractTokens = execSpec.redactionTokens;
-    expect(extractTokens).toBeFunction();
-    if (extractTokens === undefined) return;
+    const execResult = {
+      app: "demo",
+      service: "app",
+      command: ["printenv", "DB_PASSWORD"],
+      exitCode: 0,
+      stdout: JSON_CANARY,
+      stderr: "",
+      redactionTokens: [JSON_CANARY],
+    };
+    expect(extractTokens?.(execResult)).toContain(JSON_CANARY);
+    if (extractTokens === undefined) {
+      throw new Error("execSpec.redactionTokens must be wired");
+    }
     const io = createBufferedRendererIO();
 
     // When
-    await runWithRendererHandling(
-      Effect.succeed({
-        app: "demo",
-        service: "app",
-        command: ["printenv", "DB_PASSWORD"],
-        exitCode: 0,
-        stdout: JSON_CANARY,
-        stderr: "",
-        redactionTokens: [JSON_CANARY],
-      }),
-      {
-        runtime: Layer.empty,
-        rendererMode: "plain",
-        resultFormat: "json",
-        command: "app:exec",
-        resultSchema: ExecJsonResultSchema,
-        io,
-        redactionTokens: extractTokens,
-        formatError: String,
-        setExitCode: () => undefined,
-      },
-    );
+    await runWithRendererHandling(Effect.succeed(execResult), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "json",
+      command: "app:exec",
+      resultSchema: ExecJsonResultSchema,
+      io,
+      redactionTokens: extractTokens,
+      formatError: String,
+      setExitCode: () => undefined,
+    });
 
     // Then
     const encoded = io.stdout();
