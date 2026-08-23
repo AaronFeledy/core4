@@ -6,42 +6,31 @@ timeout: 120000
 tags: [beta, docs, provider-podman, setup, macos, podman-desktop]
 ---
 
-# Provider podman macos
+# Use Podman Desktop on macOS
 
-## Macos podman desktop discovery
+Alpha binaries are Linux x64 today. There is no macOS `lando` binary in Alpha. This page records the Podman Desktop provider path so the facts are here when that host is supported.
 
-Podman Desktop socket discovery is exercised by plugins/provider-podman/test/capabilities.test.ts; the rendered live path requires a running Podman Desktop machine.
+When a macOS binary ships, you need a running Podman Desktop machine first. Then:
 
-Podman Desktop default machine socket on macOS.
+```sh
+lando setup --provider=podman
+```
 
-Override the machine name (e.g. rootful) without editing config.
+`--yes` consents to confirmation. It does not switch providers. `LANDO_PROVIDER=podman` does not persist.
+
+The default machine socket is `$HOME/.local/share/containers/podman/machine/podman-machine-default/podman.sock`. Override the machine name, for example to target a rootful machine, without editing config:
 
 ```sh
 LANDO_PODMAN_MACHINE=podman-machine-default-root
 ```
 
-Socket precedence on macOS.
+Bind mounts are VM-mediated on macOS Podman Desktop, so `bindMountPerformance` reports `slow`.
 
-VM-mediated bind mounts are slow on macOS Podman Desktop.
-
-## Macos podman desktop machine not running
-
-Machine-not-running remediation is exercised by plugins/provider-podman/test/desktop.integration.test.ts; the rendered path requires Podman Desktop installed.
-
-Tagged subclass of ProviderUnavailableError raised when the Podman Desktop machine socket is unreachable (`PodmanMachineNotRunningError`).
-
-CLI remediation for a stopped Podman Desktop machine.
-
-GUI remediation for the same condition.
-
-## Macos live contract
-
-The live SDK contract suite for Podman Desktop is gated by LANDO_TEST_PODMAN_DESKTOP_SOCKET and skipped by default.
-
-Opt in to the live Podman Desktop contract suite.
+If the machine socket is unreachable, Lando raises `PodmanMachineNotRunningError`. Start the machine from the CLI:
 
 ```sh
-LANDO_TEST_PODMAN_DESKTOP_SOCKET=$HOME/.local/share/containers/podman/machine/podman-machine-default/podman.sock
+podman machine start podman-machine-default
 ```
 
-Test file containing the gated live scenario (`plugins/provider-podman/test/desktop.integration.test.ts`).
+Or open Podman Desktop and start `podman-machine-default`.
+See [Pick a container provider](./provider-selection.mdx) for the Linux commands that work today.
