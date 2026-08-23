@@ -8,7 +8,18 @@ const repoRoot = join(docsRoot, "..");
 const landingPagePath = join(docsRoot, "index.md");
 
 const GROUP_LABELS = ["Guides", "Recipes", "Reference", "Embedding", "Telemetry", "Contributing"] as const;
-const RECIPE_IDS = ["backdrop", "drupal", "drupal-cms", "joomla", "lamp", "laravel", "lemp", "mean", "symfony", "wordpress"] as const;
+const RECIPE_IDS = [
+  "backdrop",
+  "drupal",
+  "drupal-cms",
+  "joomla",
+  "lamp",
+  "laravel",
+  "lemp",
+  "mean",
+  "symfony",
+  "wordpress",
+] as const;
 const CONTRIBUTING_SLUGS = ["contributing/ci", "contributing/release", "contributing/decisions"] as const;
 const TELEMETRY_SLUGS = ["telemetry/events", "telemetry/retention"] as const;
 const ALPHA_INSTALL_SLUG = "alpha-install-and-bug-reports";
