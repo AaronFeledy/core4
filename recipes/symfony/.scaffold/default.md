@@ -14,7 +14,7 @@ lando info
 lando init --recipe symfony --name=my-symfony-app --yes \
   --answer=php=8.5 \
   --answer=database=mariadb:11.4 \
-  --answer=composer=2.7.7 \
+  --answer=composer=2 \
   --answer=webroot=/app/public
 ```
 
@@ -43,7 +43,7 @@ lando info
 ## 4. init
 
 ```bash
-lando init --recipe symfony --name=my-symfony-mariadb --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2.7.7 --answer=webroot=/app/public
+lando init --recipe symfony --name=my-symfony-mariadb --yes --answer=php=8.5 --answer=database=mariadb:11.4 --answer=composer=2 --answer=webroot=/app/public
 ```
 
 ## 5. inspect

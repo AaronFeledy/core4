@@ -22,7 +22,7 @@ lando init --recipe drupal --name=my-drupal-app --yes \
   --answer=php=8.5 \
   --answer=webserver=nginx \
   --answer=database=postgres:16 \
-  --answer=composer=2.7.7 \
+  --answer=composer=2 \
   --answer=drupal=10
 ```
 
@@ -63,7 +63,7 @@ lando drush --version
   <Scenario id="non-default-options" render>
     <Step name="init">
       <Variable name="appName" value="drupal-nginx" display="my-drupal-nginx" />
-      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2.7.7 --answer=drupal=10 --answer=webroot=/app/web" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=/app/web" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />

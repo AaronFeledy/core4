@@ -59,6 +59,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - App-plan cache identity includes `planningRuntime`: source-mode digest of engine planner/cache plus service-lando `src`, compiled-mode exec size+mtime. `CORE_VERSION` / plugin semver at `0.0.0` is not enough.
 - Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
 - JSON/MCP envelopes redact env_file secrets only when the command spec supplies `redactionTokens`. Harvest with `collectAppPlanRedactionTokens` (planned service env, including env_file) or `collectLandofileRedactionTokens` (authored Landofile env/tooling env). Extractors must accept `unknown`.
+- PHP × Composer incompatibilities are a duplicated table: plan-time `assertPhpComposerCompatible` in service-lando, recipe-prompt `composerChoicesForPhp` in core. Core cannot import the plugin. Keep the locked 8.5 / 2.7.7 sentence identical on both sides.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -283,4 +284,20 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Review-work (5/5 PASS) and Bugbot (no bugs) confirmed README real command ids, verbose as a payload dump, and JSON/MCP env-file redaction via the existing `redactionTokens` seam. No in-scope code fix.
 - Review notes (deferred/rejected): tests inject planned `environment` maps rather than real env_file I/O — same harvest events already use after assemble merges env files; not an AC miss. Empty-array `redactionTokens` skip of landofile harvest — production view/get always attach computed tokens. Duplicate token-filter helpers — existing pattern, not a leak.
 - Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; typecheck/lint/spot checks reused from Build (no source change). QA re-ran env-file machine-output, MCP dispatch, events, info-no-secret, renderer-boundary redaction: all pass.
+---
+
+## 2026-08-23 11:09 CDT - Babysit
+- PR: #853 https://github.com/AaronFeledy/core4/pull/853
+- CI outcome: pass
+- Review feedback: fixed (moved engine-owned redaction collector tests into engine to satisfy package-dag; restored core env-file/MCP tests to call execSpec.redactionTokens)
+- Drift check: fixes pushed (restored env-file and MCP tests to call the production extractor instead of only asserting .toBeFunction())
+- Merge: merged (squash)
+---
+
+## 2026-08-23 12:01 CDT - US-590
+- Plan time fails closed for `php:8.5` + `composer: "2.7.7"` with remediation to `composer: "2"` (2.10.2). Channel `"2"` stays 2.10.2 on PHP 8.1–8.5; authored exact pins are never rewritten. Recipe prompts hide `2.7.7` once PHP is ≥ 8.5, and `--answer` of that pair is rejected; hand-written Landofiles still hit the plan-time gate. php-composer-workflows and drupal/drupal-cms/symfony READMEs no longer present the illegal pair.
+- Verification: typecheck, lint passed; relevant test spot checks passed (php-prerequisites, php, php-composer-compat, php-stack, prompts runtime, init option-parity). Guide lint, coverage, and `dev:guides php-composer-workflows.mdx --once` passed (5 tests). Surface: `lando app:cache:refresh` on php:8.5 + 2.7.7 exits 1 with LandofileValidationError; php:8.3 + 2.7.7 still refreshes.
+- **Learnings for future iterations:**
+  - Keep `resolvePhpComposer` version-agnostic. Compatibility is a second assert on the authored pin, or `"2"` would inherit the 2.7.7 ban after resolving to 2.10.2.
+  - `collectPrompts` still does not evaluate `when:`. Filter composer choices in the collect loop from already-resolved `php`.
 ---

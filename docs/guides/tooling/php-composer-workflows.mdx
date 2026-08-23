@@ -58,10 +58,12 @@ Stock PHP services install checksum-pinned Composer `2.10.2`. Set `composer:` on
 services:
   appserver:
     type: php:8.5
-    composer: "2"          # default; the bundled Composer 2 pin
-    # composer: "2.7.7"    # exact checksum-pinned release
+    composer: "2"          # default; the 2.10.2 channel
+    # composer: "2.10.2"   # optional exact pin on that channel
     # composer: false      # skip Composer entirely
 ```
+
+Exact pin `2.7.7` is valid on PHP 8.1 through 8.4 and fails at plan time on PHP 8.5+.
 
 Unknown versions fail at plan time with remediation. Changing `composer:` rebuilds the artifact layer because the selected pin is part of the image build key.
 
@@ -122,6 +124,19 @@ Unknown versions fail at plan time with remediation. Changing `composer:` rebuil
     <Step name="reject">
       <Run command="lando app:cache:refresh" expectExit={1} />
       <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported Composer version" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-incompatible-composer" render={false} reason="Plan-time tagged failure for Composer 2.7.7 on PHP 8.5">
+    <Step name="scaffold">
+      <UseFixture name="php-composer-incompatible" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "cannot run on PHP 8\\.5" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

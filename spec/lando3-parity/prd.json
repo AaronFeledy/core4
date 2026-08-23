@@ -466,7 +466,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-576 Verify. Fail-closed / hide the combo; do not bump 2.7.7 under people who need that pin on older PHP."
     },
     {

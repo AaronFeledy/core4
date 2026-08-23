@@ -15,7 +15,7 @@ lando init --recipe drupal-cms --name=my-drupal-cms-app --yes \
   --answer=php=8.5 \
   --answer=webserver=nginx \
   --answer=database=postgres:16 \
-  --answer=composer=2.7.7
+  --answer=composer=2
 ```
 
 `lando start` prints the app URL(s). `lando info` repeats them.
@@ -57,7 +57,7 @@ lando drush --version
 ## 5. init
 
 ```bash
-lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=/app/web
+lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web
 ```
 
 ## 6. inspect
