@@ -21,7 +21,7 @@ lando setup --provider=podman
 Then verify:
 
 ```sh
-lando doctor
+lando doctor --provider=podman
 ```
 
 After `lando setup --provider=podman`, later commands go back to the default `lando` provider unless you keep `--provider=podman`, keep `LANDO_PROVIDER=podman`, or set Landofile `provider: podman`.
