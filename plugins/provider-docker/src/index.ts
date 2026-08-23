@@ -37,7 +37,7 @@ import {
   ServiceStartError,
 } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
-import { definePlugin } from "@lando/sdk/plugins";
+import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
 import {
   AppId,
   type AppPlan,
@@ -54,6 +54,7 @@ import {
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
 import {
+  AppPlanSanitizer,
   type CommandSpec,
   type ExecChunk,
   type ExecResult,
@@ -70,12 +71,21 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { PULL_REMEDIATION, buildImageInspectRequest, pullImage } from "./image-pull.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { redactDetails, redactString } from "./redact.ts";
 import { postServiceLifecycle } from "./service-lifecycle.ts";
 import { waitForExit } from "./wait-for-exit.ts";
 
+export {
+  appliedPlanPath,
+  appliedPlansDir,
+  listAppliedPlans,
+  loadAppliedPlan,
+  persistAppliedPlan,
+  removeAppliedPlan,
+} from "./applied-state.ts";
 export {
   buildImageInspectRequest,
   buildImagePullRequest,
@@ -159,6 +169,9 @@ export interface ProviderLayerOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly appliedPlanState?: PluginStateStore;
+  readonly appliedPlanStateDir?: string;
+  readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
 export interface ResolveDockerHostOptions {
@@ -1662,8 +1675,39 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     redactDetails,
   });
 
-  const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
-    target.plan ?? plans.get(target.app);
+  const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
+
+  const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): Effect.Effect<
+    AppPlan | undefined,
+    never
+  > => {
+    if (target.plan !== undefined) return Effect.succeed(target.plan);
+    const cached = plans.get(target.app);
+    if (cached !== undefined) return Effect.succeed(cached);
+    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
+    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
+      Effect.tap((loaded) =>
+        Effect.sync(() => {
+          if (loaded !== undefined) plans.set(target.app, loaded);
+        }),
+      ),
+    );
+  };
+
+  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
+    const persistedPlan = sanitizeAppliedPlan(plan);
+    plans.set(plan.id, persistedPlan);
+    return options.appliedPlanState === undefined
+      ? Effect.void
+      : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
+  };
+
+  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
+    plans.delete(appId);
+    return options.appliedPlanState === undefined
+      ? Effect.void
+      : removeAppliedPlan(options.appliedPlanState, appId);
+  };
 
   return runtimeCapabilities.pipe(
     Effect.map(
@@ -1692,113 +1736,133 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
-          bringUp(plan, dockerApi, applyOptions.signal).pipe(
-            Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
+          bringUp(plan, dockerApi, applyOptions.signal).pipe(Effect.tap(() => rememberPlan(plan))),
+        start: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("start"))
+                : postServiceLifecycle({ api: dockerApi, plan, target, action: "start" }),
+            ),
           ),
-        start: (target) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("start"))
-            : postServiceLifecycle({ api: dockerApi, plan, target, action: "start" });
-        },
-        stop: (target) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("stop"))
-            : postServiceLifecycle({ api: dockerApi, plan, target, action: "stop" });
-        },
-        restart: (target) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("restart"))
-            : postServiceLifecycle({ api: dockerApi, plan, target, action: "restart" });
-        },
-        waitForExit: (target, options) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("waitForExit"))
-            : waitForExit(plan, target, {
-                dockerApi,
-                ...(options?.signal === undefined ? {} : { signal: options.signal }),
-              });
-        },
-        destroy: (target, destroyOptions) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.void
-            : bringDown(plan, dockerApi, {
-                volumes: destroyOptions.volumes,
-                ...(destroyOptions.purgeCaches === undefined
-                  ? {}
-                  : { purgeCaches: destroyOptions.purgeCaches }),
-              }).pipe(Effect.tap(() => Effect.sync(() => plans.delete(target.app))));
-        },
-        exec: (target, command) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("exec"))
-            : exec(plan, target, command, dockerApi);
-        },
-        execStream: (target, command) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Stream.fail(makeUnavailable("execStream"))
-            : execStream(plan, target, command, dockerApi);
-        },
+        stop: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("stop"))
+                : postServiceLifecycle({ api: dockerApi, plan, target, action: "stop" }),
+            ),
+          ),
+        restart: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("restart"))
+                : postServiceLifecycle({ api: dockerApi, plan, target, action: "restart" }),
+            ),
+          ),
+        waitForExit: (target, options) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("waitForExit"))
+                : waitForExit(plan, target, {
+                    dockerApi,
+                    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+                  }),
+            ),
+          ),
+        destroy: (target, destroyOptions) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.void
+                : bringDown(plan, dockerApi, {
+                    volumes: destroyOptions.volumes,
+                    ...(destroyOptions.purgeCaches === undefined
+                      ? {}
+                      : { purgeCaches: destroyOptions.purgeCaches }),
+                  }).pipe(Effect.tap(() => forgetPlan(target.app))),
+            ),
+          ),
+        exec: (target, command) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("exec"))
+                : exec(plan, target, command, dockerApi),
+            ),
+          ),
+        execStream: (target, command) =>
+          Stream.unwrap(
+            resolvePlan(target).pipe(
+              Effect.map((plan) =>
+                plan === undefined
+                  ? Stream.fail(makeUnavailable("execStream"))
+                  : execStream(plan, target, command, dockerApi),
+              ),
+            ),
+          ),
         run: dataPlane.run,
         runStream: dataPlane.runStream,
-        logs: (target, logOptions) => {
-          const plan = resolvePlan(target);
-          if (plan !== undefined) {
-            const service = plan.services[target.service];
-            const logFileAccess =
-              options.logFileAccess ??
-              (service === undefined || logFileHelperPayload === undefined
-                ? undefined
-                : makeDockerLogFileAccess({
-                    providerId: PROVIDER_ID,
+        logs: (target, logOptions) =>
+          Stream.unwrap(
+            resolvePlan(target).pipe(
+              Effect.map((plan) => {
+                if (plan !== undefined) {
+                  const service = plan.services[target.service];
+                  const logFileAccess =
+                    options.logFileAccess ??
+                    (service === undefined || logFileHelperPayload === undefined
+                      ? undefined
+                      : makeDockerLogFileAccess({
+                          providerId: PROVIDER_ID,
+                          api: dockerApi,
+                          container: containerName(plan, service),
+                          helperPayload: logFileHelperPayload,
+                        }));
+                  return logs(plan, target, logOptions, {
                     api: dockerApi,
-                    container: containerName(plan, service),
-                    helperPayload: logFileHelperPayload,
-                  }));
-            return logs(plan, target, logOptions, {
-              api: dockerApi,
-              ...(logFileAccess === undefined ? {} : { logFileAccess }),
-            });
-          }
-
-          // Plan not available - discover container by labels
-          return Stream.fromEffect(
-            discoverContainers(dockerApi, "dev.lando.app").pipe(
-              Effect.flatMap((containers) => {
-                const container = containers.find(
-                  (c) =>
-                    c.labels["dev.lando.app"] === target.app &&
-                    c.labels["dev.lando.service"] === target.service,
-                );
-                if (container === undefined) {
-                  return Effect.fail(
-                    unavailable(
-                      "logs",
-                      `Container for app ${target.app} service ${target.service} not found.`,
-                    ),
-                  );
+                    ...(logFileAccess === undefined ? {} : { logFileAccess }),
+                  });
                 }
-                return Effect.succeed(container);
+
+                // Plan not available - discover container by labels
+                return Stream.fromEffect(
+                  discoverContainers(dockerApi, "dev.lando.app").pipe(
+                    Effect.flatMap((containers) => {
+                      const container = containers.find(
+                        (c) =>
+                          c.labels["dev.lando.app"] === target.app &&
+                          c.labels["dev.lando.service"] === target.service,
+                      );
+                      if (container === undefined) {
+                        return Effect.fail(
+                          unavailable(
+                            "logs",
+                            `Container for app ${target.app} service ${target.service} not found.`,
+                          ),
+                        );
+                      }
+                      return Effect.succeed(container);
+                    }),
+                  ),
+                ).pipe(
+                  Stream.flatMap((container) =>
+                    logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+                  ),
+                );
               }),
             ),
-          ).pipe(
-            Stream.flatMap((container) =>
-              logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+          ),
+        inspect: (target) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeUnavailable("inspect"))
+                : inspectService(plan, target, dockerApi),
             ),
-          );
-        },
-        inspect: (target) => {
-          const plan = resolvePlan(target);
-          return plan === undefined
-            ? Effect.fail(makeUnavailable("inspect"))
-            : inspectService(plan, target, dockerApi);
-        },
+          ),
         list: (filter) =>
           discoverContainers(dockerApi, "dev.lando.app").pipe(
             Effect.flatMap((containers) =>
@@ -1877,14 +1941,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         restoreVolume: dataPlane.restoreVolume,
         listVolumes: dataPlane.listVolumes,
         removeVolume: dataPlane.removeVolume,
-        copyToService: (target, spec) => {
-          const plan = resolvePlan(target);
-          return dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec);
-        },
-        copyFromService: (target, spec) => {
-          const plan = resolvePlan(target);
-          return dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec);
-        },
+        copyToService: (target, spec) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+            ),
+          ),
+        copyFromService: (target, spec) =>
+          Stream.unwrap(
+            resolvePlan(target).pipe(
+              Effect.map((plan) =>
+                dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+              ),
+            ),
+          ),
         exportArtifact: dataPlane.exportArtifact,
         importArtifact: dataPlane.importArtifact,
       }),
@@ -1918,12 +1988,19 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
-        make: () =>
+        make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;
             const assets = yield* LogFileHelperAssets;
+            const appPlanSanitizer = yield* AppPlanSanitizer;
             const logFileHelperPayloads = yield* assets.payloads;
-            return yield* makeRuntimeProvider({ platform: paths.platform, logFileHelperPayloads });
+            return yield* makeRuntimeProvider({
+              platform: paths.platform,
+              logFileHelperPayloads,
+              appliedPlanState: ctx.stateStore,
+              appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
+              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+            });
           }),
       },
     ],

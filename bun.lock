@@ -193,6 +193,9 @@
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
+      "devDependencies": {
+        "@lando/core": "workspace:*",
+      },
     },
     "plugins/provider-lando": {
       "name": "@lando/provider-lando",

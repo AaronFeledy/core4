@@ -409,7 +409,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-562/US-564 Verify (empty apps:list) and US-579 Review (docker in-memory resolvePlan)."
     },
     {

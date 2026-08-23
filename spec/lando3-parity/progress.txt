@@ -55,6 +55,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - DNS rebinding for custom loopback names is environmental. There is no Lando flag or doctor check; document remediations on the external-access guide.
 - Topic-first space verbs rewrite to canonical ids in `normalizeCompiledCommandArgv`. Alias-token rewrites lose to `run.ts` early rawHead alias resolution of the bare topic.
 - `LANDO_DB_*` is emitted with `ctx.addEnv` in the catalog type feature (priority 600). Never put reserved `LANDO_*` keys in `normalizedConfig.environment`; `lando.env` (700) rejects them and would otherwise overwrite resolved family env.
+- Bundled providers persist applied plans under plugin state (`applied-plans/<appId>.json` or `applied-plans.json`). `apps:list` reads those paths. `resolvePlan` must reload from `PluginStateStore` after process restart; an in-memory Map is not enough. Do not attach `AppPlan` onto DataMover.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -198,4 +199,20 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 ## 2026-08-22 22:34 CDT - US-585 Verify
 - Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started a mysql+postgres+redis+phpMyAdmin app with authored creds and a second mysql+redis app with omitted creds. Authored accounts provisioned (`appuser`/`pguser`), defaults stayed `lando`/`lando`/appName, `LANDO_DB_*` and family env matched, `lando mysql --version` / `psql --version` / `redis-cli ping` compiled, phpMyAdmin reused sibling creds (`PMA_USER=appuser`) and served HTTP 200, unknown `hosts:` failed closed. Adjacent `db:import --help` still works. Teardown destroyed both apps.
 - **Out-of-scope finding:** `lando info` (plain TSV) prints `password=[redacted]]` / `rootPassword=[redacted]]` (extra `]`). JSON info is `[redacted]` and does not leak. Suspected renderer/TSV wrapping of the redaction sentinel, not the creds contract.
+---
+
+## 2026-08-23 01:28 CDT - Babysit
+- PR: #844 https://github.com/AaronFeledy/core4/pull/844
+- CI outcome: pass
+- Review feedback: fixed (phpMyAdmin unmatched hosts stay fail-closed; leftover registration test now authors creds; accepted ServiceCreds $defs)
+- Drift check: fixes pushed (restored fail-closed for unmatched phpMyAdmin hosts; dropped silent default creds)
+- Merge: merged (squash)
+---
+
+## 2026-08-23 02:03 CDT - US-586
+- After start, `apps:list` finds applied apps from the existing plugin-state inventory. `provider-docker` now persists sanitized plans to `plugins/@lando/provider-docker/applied-plans/<id>.json` and reloads them in `resolvePlan` after a new process, so exec / DataMover `serviceCmd` work without attaching `AppPlan` onto DataMover. Destroy forgets the file.
+- Verification: typecheck, lint passed; relevant test spot checks passed (apps-list-discovery, docker applied-state, docker cross-process, service-lifecycle, bring-up-order, exec-stdin, plugin-descriptor).
+- **Learnings for future iterations:**
+  - `apps:list` already scans every `plugins/<id>/applied-plans/` directory. New providers must write there via `ctx.stateStore`, not invent a second inventory or the legacy `providers/*/apps` path.
+  - CLI `exec` re-plans and passes `target.plan`, which hides a missing disk reload. DataMover calls `provider.exec({ app, service })` with no plan — that is the seam that proves cross-process reload.
 ---
