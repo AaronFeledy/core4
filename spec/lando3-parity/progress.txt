@@ -216,3 +216,10 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - `apps:list` already scans every `plugins/<id>/applied-plans/` directory. New providers must write there via `ctx.stateStore`, not invent a second inventory or the legacy `providers/*/apps` path.
   - CLI `exec` re-plans and passes `target.plan`, which hides a missing disk reload. DataMover calls `provider.exec({ app, service })` with no plan — that is the seam that proves cross-process reload.
 ---
+
+## 2026-08-23 02:18 CDT - US-586 Review
+- Docker `destroy` ignored `removeState`, so engine `lando stop` deleted the applied-plan file this story added. Now matches lando/podman: forget only when `removeState !== false`.
+- Review notes (deferred/rejected): AC4 start→list e2e — focused seam tests are what the AC asked. Unused docker `appliedPlanStateDir`/`listAppliedPlans` — `apps:list` FS-scans the files; not a second inventory. Lando-style inspect-after-stop — file-exists lock is enough. Security LOW notes (identity sanitizer default, onCorrupt leaves file) match provider-lando.
+- Verification: typecheck, lint passed; spot checks apps-list-discovery, docker applied-state, docker cross-process passed.
+- Guide-Coverage-Skip: US-586 is applied-plan inventory/reload only; PRD says existing pages stay unless a sentence becomes false.
+---
