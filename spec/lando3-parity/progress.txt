@@ -146,3 +146,10 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
   - Topic-first space verbs must rewrite to canonical ids in `normalizeCompiledCommandArgv`. Rewriting to an alias token (`scratch:list`) loses to `run.ts` early `rawHead` alias resolution of the bare topic (`scratch` → start).
   - `normalizeCompiledCommandArgv` runs twice (before and after universal flag stripping) so `scratch --format json list` still becomes list.
 ---
+
+## 2026-08-22 19:35 CDT - US-584 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed space verbs rewrite to canonical ids; bare shortcuts and three-form identity hold. No in-scope code fix.
+- Review notes (deferred/rejected): interleaved `--format` unit test — QA already proved `scratch --format json list` → `apps:scratch:list`; not a bug. §8.2 alias-table refresh — AC required the §8.4 taxonomy sentence only.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint/spot checks reused from Build (no source change).
+- Guide-Coverage-Skip: US-584 is dispatcher routing only; PRD says existing pages stay unless a sentence becomes false, and colon/canonical forms remain true.
+---
