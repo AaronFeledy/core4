@@ -36,4 +36,4 @@ Custom public-looking names pointed at loopback often trip router DNS rebinding 
 lando doctor
 ```
 
-Doctor reports host-proxy as informational when you opted out. A missing `*.lndo.site` resolution on this machine usually means you still need `lando setup`, or you opted out.
+Doctor warns when host-proxy is skipped. That is not a green start path: `lando start` still tries to spawn a detached host-proxy worker and can fail with `HostProxyTransportUnavailableError`. A missing `*.lndo.site` resolution on this machine usually means you still need `lando setup`, or you opted out of the DNS write only.

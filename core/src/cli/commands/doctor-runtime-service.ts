@@ -52,11 +52,22 @@ export const containerDiedEventPayloadsFor = (
   return Effect.succeed([]);
 };
 
-const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution => ({
+export const orphanPidsFromRuntimeMessage = (message: string | undefined): ReadonlyArray<number> => {
+  if (message === undefined) return [];
+  const match = /orphan pids ([0-9,]+)/u.exec(message);
+  if (match?.[1] === undefined) return [];
+  return match[1]
+    .split(",")
+    .map((part) => Number(part))
+    .filter((pid) => Number.isInteger(pid) && pid > 0);
+};
+
+export const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution => ({
   kind: "manual",
   description: `Found orphaned runtime-service process(es) ${orphanPids.join(
     ",",
-  )} not owned by Lando. Terminate them manually before retrying.`,
+  )} not owned by Lando. If they are leftover Lando runtime processes, terminate them with the command below.`,
+  command: `kill ${orphanPids.join(" ")}`,
 });
 
 export const buildRuntimeServiceDoctorCheck = (
