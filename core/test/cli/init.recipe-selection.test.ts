@@ -10,9 +10,9 @@ import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import type { ConfirmSpec, PromptAnswers, SelectSpec } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { getRecipeCatalog } from "../../src/recipes/catalog.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
+import { getRecipeCatalog } from "../../src/recipes/catalog.ts";
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
   Readable.from(lines.map((line) => `${line}\n`));
