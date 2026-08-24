@@ -91,4 +91,9 @@ describe("traefik global service ServiceConfig", () => {
     expect(text).toContain(TRAEFIK_DYNAMIC_CONFIG_DIR);
     expect(text).toContain("exec traefik");
   });
+
+  test("maps host.lando.internal to the host gateway so cross-engine backends can be reached", async () => {
+    const config = await decodeConfig();
+    expect(config.extra_hosts).toEqual({ "host.lando.internal": "host-gateway" });
+  });
 });

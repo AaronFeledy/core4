@@ -718,5 +718,17 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "Optional ServiceInfo/phpMyAdmin creds is additive; $defs gained the ServiceCreds definition while previously accepted forms remain accepted (US-585)."
+  },
+  {
+    "surface": "schema:LandoEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Optional RoutePlan.backend.host is additive; LandoEvent anyOf members that embed RoutePlan still accept every previously accepted form."
+  },
+  {
+    "surface": "schema:RendererPanelContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.event.anyOf",
+    "justification": "Optional RoutePlan.backend.host is additive; RendererPanelContext event anyOf members that embed RoutePlan still accept every previously accepted form."
   }
 ]

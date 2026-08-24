@@ -14,10 +14,10 @@ const makeRedactor = (profile: RedactionProfile, options?: CreateRedactorOptions
  * These are the asserted truth for the contract suite.
  */
 const GOLDEN_SECRETS =
-  "DB_PASSWORD=[redacted]] https://[redacted]@host.example.com/path Authorization: Bearer [redacted] ?token=[redacted]&api_key=[redacted] /home/alice/projects/app C:\\Users\\alice\\AppData\\Local\\Temp\\x \\\\fileserver\\share\\secret ~/.config/lando/config.yml abc123def456 123e4567-e89b-12d3-a456-426614174000 sha256:aabbccddee112233445566778899aabbccddee112233445566778899aabbccdd [redacted] :54321 myapp_web_ab12cd34";
+  "DB_PASSWORD=[redacted] https://[redacted]@host.example.com/path Authorization: Bearer [redacted] ?token=[redacted]&api_key=[redacted] /home/alice/projects/app C:\\Users\\alice\\AppData\\Local\\Temp\\x \\\\fileserver\\share\\secret ~/.config/lando/config.yml abc123def456 123e4567-e89b-12d3-a456-426614174000 sha256:aabbccddee112233445566778899aabbccddee112233445566778899aabbccdd [redacted] :54321 myapp_web_ab12cd34";
 
 const GOLDEN_TELEMETRY =
-  "DB_PASSWORD=[redacted]] [url] Authorization: Bearer [redacted] ?token=[redacted]&api_key=[redacted] [path] [path] [path] [path] abc123def456 [id] sha256:[redacted] [redacted] :54321 myapp_web_ab12cd34";
+  "DB_PASSWORD=[redacted] [url] Authorization: Bearer [redacted] ?token=[redacted]&api_key=[redacted] [path] [path] [path] [path] abc123def456 [id] sha256:[redacted] [redacted] :54321 myapp_web_ab12cd34";
 
 const GOLDEN_TRANSCRIPT =
   "DB_PASSWORD=[redacted] https://[redacted]@<HOST>/path Authorization: Bearer [redacted] ?token=[redacted]&api_key=[redacted] <HOME> <TMP> \\\\fileserver\\share\\secret [redacted] <CONTAINER_ID> 123e4567-e89b-12d3-a456-<CONTAINER_ID> sha256:<DIGEST> [redacted] :<PORT> <PROVIDER_ID>";

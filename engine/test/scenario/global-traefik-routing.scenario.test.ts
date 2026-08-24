@@ -283,4 +283,25 @@ describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
     expect(canReachSharedAlias(blog, [global], "traefik.lando-global.internal")).toBe(true);
     expect(canReachSharedAlias(shop, [blog], "web.blog.internal")).toBe(true);
   });
+
+  test("publishes docker-app HTTP backends so managed Traefik can reach them on the host", async () => {
+    const capabilities = dockerCapabilitiesForPlatform("linux");
+    const dockerApp = await planApp(
+      { name: "shop", provider: "docker", services: { web: { image: "nginx:1.27", port: 80 } } },
+      capabilities,
+    );
+    const web = dockerApp.services[ServiceName.make("web")];
+    if (web === undefined) throw new Error("expected web service");
+    const published = web.endpoints.filter((endpoint) => endpoint._tag === "published");
+    expect(published).toEqual([
+      {
+        _tag: "published",
+        name: "web",
+        protocol: "http",
+        port: 80,
+        publication: { bindAddress: "0.0.0.0" },
+      },
+    ]);
+    expect(String(dockerApp.provider)).toBe("docker");
+  });
 });

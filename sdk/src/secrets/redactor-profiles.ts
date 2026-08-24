@@ -46,13 +46,6 @@ export const REDACTION_PROFILES = ["secrets", "telemetry", "transcript"] as cons
 /** A redaction profile selecting which pattern classes apply. */
 export type RedactionProfile = (typeof REDACTION_PROFILES)[number];
 
-/**
- * Environment roots for the `transcript` profile. The primitive performs
- * literal masking only for the values actually supplied; it never reads
- * `node:os`, so a caller (the core `RedactionService` / docs build) supplies
- * resolved defaults.
- */
-
 /** Options accepted by {@link createRedactor}. */
 export interface CreateRedactorOptions {
   /** Known secret values masked by the value layer before any pattern pass. */
@@ -89,7 +82,7 @@ const SECRET_KEY_PATTERN =
   /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
 
 const SECRET_ASSIGNMENT_PATTERN =
-  /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=([^\s,;"'\]}]+)/giu;
+  /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=(?!\[redacted\])([^\s,;"'\]}]+)/giu;
 
 const URL_USERINFO_PATTERN = /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
 
@@ -185,12 +178,18 @@ export const createRedactor = (profile: RedactionProfile, options: CreateRedacto
   const valueLayer = createSecretRedactor(options.values ?? []);
   const env = options.env ?? {};
 
-  const patternString =
-    profile === "telemetry"
-      ? (text: string) => redactTelemetryString(redactSecretsString(text))
-      : profile === "transcript"
-        ? (text: string) => redactTranscriptString(text, env, redactSecretsString)
-        : redactSecretsString;
+  let patternString: (text: string) => string;
+  switch (profile) {
+    case "telemetry":
+      patternString = (text) => redactTelemetryString(redactSecretsString(text));
+      break;
+    case "transcript":
+      patternString = (text) => redactTranscriptString(text, env, redactSecretsString);
+      break;
+    case "secrets":
+      patternString = redactSecretsString;
+      break;
+  }
 
   const redactString = (text: string): string => patternString(valueLayer.redact(text));
   const boundedValueLayer = valueLayer.redactBounded;

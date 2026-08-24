@@ -196,7 +196,40 @@ interface ContainerInspect {
     readonly Status?: string;
     readonly StartedAt?: string;
   };
+  readonly NetworkSettings?: {
+    readonly Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+  };
 }
+
+const publishedEndpointsFromInspect = (inspect: unknown): NonNullable<ServiceRuntimeInfo["endpoints"]> => {
+  if (typeof inspect !== "object" || inspect === null) return [];
+  const ports = (inspect as ContainerInspect).NetworkSettings?.Ports;
+  if (typeof ports !== "object" || ports === null) return [];
+
+  const endpoints: Array<NonNullable<ServiceRuntimeInfo["endpoints"]>[number]> = [];
+  for (const [containerPort, bindings] of Object.entries(ports)) {
+    if (!Array.isArray(bindings)) continue;
+    const [portNum, protocol] = containerPort.split("/");
+    const port = Number.parseInt(portNum ?? "0", 10);
+    if (port <= 0) continue;
+    for (const binding of bindings) {
+      if (typeof binding !== "object" || binding === null) continue;
+      const hostPort = Number.parseInt(typeof binding.HostPort === "string" ? binding.HostPort : "0", 10);
+      if (hostPort <= 0) continue;
+      endpoints.push({
+        _tag: "published" as const,
+        port,
+        protocol: protocol === "udp" ? ("udp" as const) : ("http" as const),
+        name: containerPort,
+        publication: {
+          bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
+          hostPort,
+        },
+      });
+    }
+  }
+  return endpoints;
+};
 
 interface ExecCreateResponse {
   readonly Id?: string;
@@ -1337,6 +1370,7 @@ const inspectService = (
     const startedAtText = decoded.State?.StartedAt;
     const startedAt =
       startedAtText === undefined || startedAtText.startsWith("0001-") ? undefined : new Date(startedAtText);
+    const materialized = publishedEndpointsFromInspect(decoded);
     return {
       app: plan.id,
       service: service.name,
@@ -1344,7 +1378,7 @@ const inspectService = (
       status,
       state: status,
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
-      endpoints: service.endpoints,
+      endpoints: materialized.length > 0 ? materialized : service.endpoints,
       ...(startedAt === undefined || Number.isNaN(startedAt.getTime()) ? {} : { lastStartedAt: startedAt }),
     };
   });
@@ -1894,35 +1928,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
                     let endpoints: ServiceRuntimeInfo["endpoints"] = [];
                     if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
-                      const inspectBody = yield* parseJson(inspectResponse, "list");
-                      if (
-                        typeof inspectBody === "object" &&
-                        inspectBody !== null &&
-                        "NetworkSettings" in inspectBody
-                      ) {
-                        const networkSettings = inspectBody.NetworkSettings as {
-                          Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
-                        };
-                        const ports = networkSettings.Ports ?? {};
-                        endpoints = Object.entries(ports)
-                          .flatMap(([containerPort, bindings]) => {
-                            if (bindings === null || bindings === undefined) return [];
-                            return bindings.map((binding) => {
-                              const [portNum, protocol] = containerPort.split("/");
-                              return {
-                                _tag: "published" as const,
-                                port: Number.parseInt(portNum ?? "0", 10),
-                                protocol: (protocol === "udp" ? "udp" : "http") as "http" | "udp",
-                                name: containerPort,
-                                publication: {
-                                  bindAddress: binding.HostIp ?? "0.0.0.0",
-                                  hostPort: Number.parseInt(binding.HostPort ?? "0", 10),
-                                },
-                              };
-                            });
-                          })
-                          .filter((endpoint) => endpoint.port > 0 && endpoint.publication.hostPort > 0);
-                      }
+                      endpoints = publishedEndpointsFromInspect(yield* parseJson(inspectResponse, "list"));
                     }
 
                     return {
