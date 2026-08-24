@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -88,13 +88,25 @@ describe("lando init — answers and prompting", () => {
     });
   });
 
-  test("--no-interactive without --answer raises RecipeMissingAnswerError", async () => {
+  test("--no-interactive without --name uses the current folder name", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive"], dir);
-      expect(result.exitCode).toBe(1);
-      const stderr = flatten(result.stderr);
-      expect(stderr).toContain('Missing required answer for prompt "name"');
-      expect(stderr).toContain("--answer name=<value>");
+      const appDir = join(dir, "my-site");
+      await mkdir(appDir);
+      const result = await runCli(["init", "--recipe=empty", "--no-interactive"], appDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Created my-site at");
+      expect(await Bun.file(join(appDir, ".lando.yml")).text()).toContain("name: my-site");
+    });
+  });
+
+  test("interactive blank name uses the current folder name", async () => {
+    await withTempCwd(async (dir) => {
+      const appDir = join(dir, "blank-default");
+      await mkdir(appDir);
+      const result = await runCli(["init", "--recipe=empty", "--interactive"], appDir, { stdin: "\n" });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Created blank-default at");
+      expect(await Bun.file(join(appDir, ".lando.yml")).text()).toContain("name: blank-default");
     });
   });
 
@@ -110,8 +122,8 @@ describe("lando init — answers and prompting", () => {
 
   test("interactive: re-prompts on validation failure, then succeeds", async () => {
     await withTempCwd(async (dir) => {
-      const scriptedStdin = "\nBad Name\ngood-name\n";
-      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
+      const scriptedStdin = "Bad Name\ngood-name\n";
+      const result = await runCli(["init", "--recipe=empty", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created good-name at");
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);

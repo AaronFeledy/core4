@@ -107,14 +107,15 @@ describe("lando init --full", () => {
     });
   });
 
-  test("fails non-interactively when --name is missing", async () => {
+  test("uses the current folder name when --name is missing", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive"], dir);
+      const appDir = join(dir, "my-site");
+      await mkdir(appDir);
+      const result = await runCli(["init", "--recipe=empty", "--no-interactive"], appDir);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Missing required answer for prompt "name"');
-      expect(result.stderr).toContain("--answer name=<value>");
-      expect(await Bun.file(join(dir, "mvp")).exists()).toBe(false);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Created my-site at");
+      expect(await Bun.file(join(appDir, ".lando.yml")).text()).toContain("name: my-site");
     });
   });
 

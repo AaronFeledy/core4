@@ -65,4 +65,24 @@ describe("initApp destination + runPostInit", () => {
       });
     });
   });
+
+  test("defaults the app name from the destination basename, not cwd", async () => {
+    await withTempDir("lando-init-parent-dir-", async (cwd) => {
+      const destination = join(cwd, "my-site");
+      const result = await initApp({
+        cwd,
+        destination,
+        full: false,
+        recipe: "empty",
+        yes: true,
+        nonInteractive: true,
+        runPostInit: false,
+      });
+
+      expect(result.appName).toBe("my-site");
+      expect(result.directory).toBe(destination);
+      const rendered = await readFile(join(destination, ".lando.yml"), "utf8");
+      expect(rendered).toContain("name: my-site");
+    });
+  });
 });

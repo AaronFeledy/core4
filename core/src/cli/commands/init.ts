@@ -45,6 +45,7 @@ import {
 import { readAnswersFile } from "../prompts/answer-flags";
 import { activeRendererMode } from "../renderer-mode-state";
 import type { BunSelfSpawner } from "./bun-self-runner";
+import { withAppNameDefault } from "./init-app-name";
 import { resolveInitDestination } from "./init-destination";
 import { parseInitSourceFlags } from "./init-source";
 
@@ -63,17 +64,21 @@ export const inferRecipeScaffoldFormat = (dest: string): FileFormat => {
   return "text";
 };
 
+const sortedRecipeCatalog = () =>
+  [...getRecipeCatalog()].sort((left, right) =>
+    left.title.localeCompare(right.title, "en", { sensitivity: "base" }),
+  );
+
 const buildRecipeSelectPrompt = (): RecipePrompt => {
-  const catalog = getRecipeCatalog();
-  const choices: ReadonlyArray<RecipePromptChoice> = catalog.map((entry) => ({
+  const choices: ReadonlyArray<RecipePromptChoice> = sortedRecipeCatalog().map((entry) => ({
     value: entry.id,
-    label: entry.description === "" ? entry.title : `${entry.title} — ${entry.description}`,
+    label: entry.title,
+    ...(entry.description.trim() !== "" ? { description: entry.description } : {}),
   }));
   return {
     name: RECIPE_SELECT_PROMPT,
     type: "select",
     message: "Pick a recipe",
-    default: NODE_POSTGRES_RECIPE_ID,
     choices,
   };
 };
@@ -91,7 +96,7 @@ const resolveRecipeSelection = async (
     mode: "interactive",
   });
   const picked = collected[RECIPE_SELECT_PROMPT];
-  return typeof picked === "string" ? picked : NODE_POSTGRES_RECIPE_ID;
+  return typeof picked === "string" ? picked : (sortedRecipeCatalog()[0]?.id ?? NODE_POSTGRES_RECIPE_ID);
 };
 
 export interface InitAppOptions {
@@ -301,7 +306,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     );
   }
 
-  const prompts = manifest.prompts ?? [];
+  const prompts = withAppNameDefault(manifest.prompts ?? [], options.destination ?? cwd);
 
   const presetAnswers = await composeAnswers(options);
 

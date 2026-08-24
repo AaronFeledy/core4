@@ -10,6 +10,7 @@ import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import type { ConfirmSpec, PromptAnswers, SelectSpec } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
+import { getRecipeCatalog } from "../../src/recipes/catalog.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 
@@ -121,6 +122,11 @@ const runCli = async (
   return { exitCode, stdout, stderr };
 };
 
+const sortedRecipeCatalog = () =>
+  [...getRecipeCatalog()].sort((left, right) =>
+    left.title.localeCompare(right.title, "en", { sensitivity: "base" }),
+  );
+
 describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: scripted stdin picks recipe by id then answers prompts", async () => {
     await withTempCwd(async (dir) => {
@@ -137,7 +143,8 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
 
   test("subprocess: scripted stdin picks recipe by index", async () => {
     await withTempCwd(async (dir) => {
-      const scriptedStdin = "17\nidx-pick-app\n";
+      const emptyIndex = sortedRecipeCatalog().findIndex((entry) => entry.id === "empty") + 1;
+      const scriptedStdin = `${emptyIndex}\nidx-pick-app\n`;
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created idx-pick-app at");
@@ -146,14 +153,16 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
     });
   });
 
-  test("subprocess: blank input picks the default recipe (node-postgres)", async () => {
+  test("subprocess: index 1 picks the first listed recipe", async () => {
     await withTempCwd(async (dir) => {
-      const scriptedStdin = "\ndefault-app\n";
+      const first = sortedRecipeCatalog()[0];
+      expect(first).toBeDefined();
+      const scriptedStdin = "1\nfirst-app\n";
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Created default-app at");
-      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(true);
+      expect(result.stdout).toContain("Created first-app at");
+      const landofile = await Bun.file(join(dir, ".lando.yml")).text();
+      expect(landofile).toContain(`recipe: ${first?.id}`);
     });
   });
 
