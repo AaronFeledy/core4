@@ -24,6 +24,10 @@ import {
 
 import type { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import {
+  publishedTargetsFromEndpoints,
+  rewriteCrossEngineProxyRoutes,
+} from "../lifecycle/cross-engine-routes.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
@@ -175,15 +179,19 @@ export const startAppForTarget = (
             );
             return yield* Effect.forEach(serviceList, (service) =>
               provider.inspect({ app: plan.id, service: service.name }).pipe(
-                Effect.map((runtime) => ({
-                  name: String(service.name),
-                  state: runtime.state ?? runtime.status,
-                  endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
-                    if (endpoint._tag === "internal") return [];
-                    const rendered = endpointText(endpoint);
-                    return rendered === undefined ? [] : [rendered];
-                  }),
-                })),
+                Effect.map((runtime) => {
+                  const sourceEndpoints = runtime.endpoints ?? service.endpoints;
+                  return {
+                    name: String(service.name),
+                    state: runtime.state ?? runtime.status,
+                    endpoints: sourceEndpoints.flatMap((endpoint) => {
+                      if (endpoint._tag === "internal") return [];
+                      const rendered = endpointText(endpoint);
+                      return rendered === undefined ? [] : [rendered];
+                    }),
+                    published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
+                  };
+                }),
               ),
             );
           });
@@ -238,8 +246,15 @@ export const startAppForTarget = (
             compensateFailure(effect, removeRoutesAndDestroyApp(proxy, provider, plan)),
           );
 
+          const routedPlan = {
+            ...builtPlan,
+            routes: rewriteCrossEngineProxyRoutes({
+              plan: builtPlan,
+              published: inspectedServices.flatMap((service) => service.published),
+            }),
+          };
           const proxyResult = yield* compensateFailure(
-            applyAppRoutes(proxy, builtPlan),
+            applyAppRoutes(proxy, routedPlan),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
           yield* Ref.set(routesApplied, true);

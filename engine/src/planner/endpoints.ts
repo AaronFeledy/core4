@@ -17,6 +17,10 @@ import {
   type StorageScope,
 } from "@lando/sdk/schema";
 
+import {
+  promoteRoutableEndpointsForHostProxy,
+  usesManagedProxyNetwork,
+} from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import {
@@ -274,6 +278,9 @@ export const finalizeServices = (input: {
       const servicePlanWithRoutes: ServicePlan = {
         ...servicePlanWithCapabilityRealization,
         routes: routeRefs,
+        endpoints: usesManagedProxyNetwork(input.provider)
+          ? servicePlanWithCapabilityRealization.endpoints
+          : promoteRoutableEndpointsForHostProxy(servicePlanWithCapabilityRealization.endpoints),
       };
 
       if (
