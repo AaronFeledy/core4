@@ -1,8 +1,8 @@
 /**
  * `@lando/sdk/fuzzy` — Effect-free subsequence ranking.
  *
- * Shared by the init recipe picker (and later did-you-mean) so filter order
- * is one deterministic score, not a per-surface heuristic.
+ * Shared by the init recipe picker so filter order is one deterministic
+ * score, not a per-surface heuristic.
  *
  * This subpath is the same contracts-only tier as `@lando/sdk/expressions`,
  * `@lando/sdk/probe`, and `@lando/sdk/secrets`: it constructs no

@@ -163,7 +163,7 @@ export const addDescribedSelect = <R extends RendererLike>(
     }
     search.content = query;
     const hits = rankFuzzy(query, catalog, (option) => option.name);
-    select.options = [...hits.map((hit) => hit.item)];
+    select.options = hits.map((hit) => hit.item);
     if (hits.length > 0) select.setSelectedIndex?.(0);
     applyLayout();
   };
