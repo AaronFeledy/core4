@@ -37,12 +37,7 @@ describe("rankFuzzy", () => {
     // When ranking with an empty query
     const hits = rankFuzzy("", CATALOG, titleOf);
     // Then every item is returned in original order with score 0
-    expect(hits.map((hit) => hit.item.id)).toEqual([
-      "wordpress",
-      "node-postgres",
-      "rails",
-      "django",
-    ]);
+    expect(hits.map((hit) => hit.item.id)).toEqual(["wordpress", "node-postgres", "rails", "django"]);
     expect(hits.every((hit) => hit.score === 0)).toBe(true);
   });
 
