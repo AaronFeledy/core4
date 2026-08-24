@@ -4,7 +4,7 @@ import type {
   UninstallStepStatus,
 } from "@lando/engine/operations/uninstall";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "@lando/renderer/summary";
-import type { RenderContext } from "../renderer-boundary";
+import { type RenderContext, summaryPaintOptions } from "../renderer-boundary";
 
 const statusLabel = (status: UninstallStepStatus): string => {
   switch (status) {
@@ -103,6 +103,6 @@ export const renderUninstallResult = (
 ): string => {
   if (result.refused || result.failed) setExitCode(1);
   return ctx?.mode === "lando" && ctx.isTTY === true
-    ? formatSummary(buildUninstallSummary(result), { columns: ctx.columns })
+    ? formatSummary(buildUninstallSummary(result), summaryPaintOptions(ctx))
     : formatUninstallResult(result);
 };

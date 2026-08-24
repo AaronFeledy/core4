@@ -8,7 +8,7 @@ import {
   worstSummaryTone,
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext } from "../renderer-boundary";
+import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
   readonly hostProxy?: {
@@ -143,7 +143,7 @@ const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
 };
 
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
-  if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), { columns: ctx?.columns });
+  if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx));
   const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {

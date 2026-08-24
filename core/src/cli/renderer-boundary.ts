@@ -15,6 +15,7 @@ import {
   writeDiagnosticLine,
   writeResultLine,
 } from "@lando/renderer/output";
+import type { FormatSummaryOptions } from "@lando/renderer/summary";
 import {
   type CliInvocationSnapshot,
   runCommandLifecycle,
@@ -43,11 +44,19 @@ export interface RenderContext {
   readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
+  /** Exact-value redactor for summary fields; apply before paint, never after. */
+  readonly redact?: (text: string) => string;
 }
 
 /** Decorated grouped summaries apply only in the default `lando` renderer on a TTY. */
 export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
+
+/** Columns + before-paint redactor for {@link formatSummary}. */
+export const summaryPaintOptions = (ctx?: RenderContext): FormatSummaryOptions => ({
+  ...(ctx?.columns === undefined ? {} : { columns: ctx.columns }),
+  ...(ctx?.redact === undefined ? {} : { redact: ctx.redact }),
+});
 
 export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>;
@@ -242,17 +251,29 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       );
       return;
     }
-    const rendered = options.render?.(commandOutcome.value.value, renderContext);
+    const value = commandOutcome.value.value;
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor =
+      redaction._tag === "Some"
+        ? yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens: options.redactionTokens?.(value) ?? [],
+          })
+        : undefined;
+    // Redact command/result fields before the formatter paints SGR. Rewriting
+    // an already-styled string can splice `[redacted]` into CSI parameters.
+    const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
+    const paintContext: RenderContext = {
+      ...renderContext,
+      ...(redactor === undefined ? {} : { redact: (text) => redactor.redactString(text) }),
+    };
+    const rendered = options.render?.(displayValue, paintContext);
     if (rendered !== undefined && rendered.length > 0) {
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      const redactor =
-        redaction._tag === "Some"
-          ? yield* redaction.value.forProfile("secrets", {
-              sourceEnv: process.env,
-              redactionTokens: options.redactionTokens?.(commandOutcome.value.value) ?? [],
-            })
-          : undefined;
-      yield* writeResultLine(redactor?.redactString(rendered) ?? rendered);
+      const output =
+        isDecoratedContext(paintContext) || redactor === undefined
+          ? rendered
+          : redactor.redactString(rendered);
+      yield* writeResultLine(output);
     }
   });
   await Effect.runPromise(program.pipe(Effect.provide(failureDiagnosticsLayer)));

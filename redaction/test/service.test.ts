@@ -164,6 +164,25 @@ describe("RedactionServiceLive", () => {
     expect(redacted).toContain("[redacted]");
   });
 
+  test("does not harvest CSI-parameter source env values", async () => {
+    const redactor = await runWithStore(
+      Effect.flatMap(RedactionService, (service) =>
+        service.forProfile("secrets", {
+          sourceEnv: { SOME_KEY: "32", OTHER_TOKEN: "95", REAL_SECRET: "real-secret-value" },
+        }),
+      ),
+      {},
+    );
+    const ESC = String.fromCharCode(27);
+    const painted = `${ESC}[32mreal-secret-value${ESC}[95m${ESC}[0m`;
+    const redacted = redactor.redactString(painted);
+    expect(redacted).toContain("[redacted]");
+    expect(redacted).not.toContain("real-secret-value");
+    expect(redacted).toContain(`${ESC}[32m`);
+    expect(redacted).toContain(`${ESC}[95m`);
+    expect(redacted.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
+  });
+
   test("forwards transcript env options", async () => {
     const redactor = await runWithStore(
       Effect.flatMap(RedactionService, (service) =>

@@ -25,7 +25,7 @@ import {
   worstSummaryTone,
 } from "@lando/renderer/summary";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
-import { type RenderContext, isDecoratedContext } from "../renderer-boundary";
+import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -364,7 +364,7 @@ export const renderScratchListResult = (
   ctx?: RenderContext,
 ): string => {
   if (isDecoratedContext(ctx))
-    return formatSummary(buildScratchListSummary(result), { columns: ctx?.columns });
+    return formatSummary(buildScratchListSummary(result), summaryPaintOptions(ctx));
   if (result.length === 0) return "No scratch apps found.";
   const rows = result.map((entry) =>
     [entry.id, scratchSourceLabel(entry.source), entry.mode, entry.created, entry.status].join("\t"),

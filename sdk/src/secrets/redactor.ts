@@ -15,6 +15,17 @@ import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts
 /** Sentinel written in place of a redacted secret value. */
 export const REDACTED = "[redacted]" as const;
 
+/**
+ * Exact-value tokens that must never enter the value layer. CSI/SGR
+ * parameters are short digits or `n;n` lists; substituting them turns
+ * a complete SGR (`ESC[32m`) into `ESC[[redacted]m` and prints a bare `]m`.
+ */
+export const isUsableExactRedactionValue = (value: string): boolean => {
+  const token = value.trim();
+  if (token.length < 2) return false;
+  return !/^[0-9;]+$/u.test(token);
+};
+
 export interface SecretRedactor {
   /** Replace every occurrence of a known secret value with {@link REDACTED}. */
   readonly redact: (text: string) => string;
@@ -27,7 +38,7 @@ export interface SecretRedactor {
  * string.
  */
 export const createSecretRedactor = (values: Iterable<string>): SecretRedactor => {
-  const unique = Array.from(new Set(values)).filter((value) => value.trim().length > 0);
+  const unique = Array.from(new Set(values)).filter(isUsableExactRedactionValue);
   // Longest-first: prevents a substring secret from partially masking a longer
   // secret and leaking its tail.
   unique.sort((a, b) => b.length - a.length);

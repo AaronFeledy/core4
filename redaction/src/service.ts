@@ -6,6 +6,7 @@ import {
   type Redactor,
   type TranscriptRedactionEnv,
   createRedactor,
+  isUsableExactRedactionValue,
 } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
 
@@ -70,7 +71,7 @@ export const collectSecretEnvValues = (
   for (const [key, value] of Object.entries(sourceEnv)) {
     const normalizedParts = key.toLowerCase().split(/[_-]+/u).filter(nonEmpty);
     const carriesSecret = normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
-    if (carriesSecret && nonEmpty(value)) {
+    if (carriesSecret && nonEmpty(value) && isUsableExactRedactionValue(value)) {
       values.push(value);
     }
   }
@@ -103,7 +104,7 @@ const collectOptionValues = (options: RedactionForProfileOptions | undefined): s
 const dedupeValues = (values: Iterable<string>): string[] => {
   const deduped = new Set<string>();
   for (const value of values) {
-    if (nonEmpty(value)) deduped.add(value);
+    if (nonEmpty(value) && isUsableExactRedactionValue(value)) deduped.add(value);
   }
   return [...deduped];
 };

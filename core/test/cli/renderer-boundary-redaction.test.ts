@@ -3,9 +3,10 @@ import { Effect, Layer, Schema } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { formatSummary } from "@lando/renderer/summary";
 import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
-import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
@@ -114,5 +115,43 @@ describe("runWithRendererHandling redaction", () => {
 
     expect(io.stdout()).toContain("[redacted]");
     expect(io.stdout()).not.toContain(secret);
+  });
+
+  test("does not splice redaction into painted SGR on a decorated TTY", async () => {
+    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
+    const previous = process.env.SOME_TTY_KEY;
+    process.env.SOME_TTY_KEY = "32";
+    try {
+      await runWithRendererHandling(
+        Effect.succeed({
+          title: "SETUP",
+          subtitle: "complete",
+          tone: "ok" as const,
+          sections: [
+            {
+              title: "runtime",
+              rows: [{ label: "provider", tone: "ok" as const, value: "lando" }],
+            },
+          ],
+        }),
+        {
+          runtime: Layer.empty,
+          rendererMode: "lando",
+          io,
+          render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
+          formatError: String,
+          setExitCode: () => undefined,
+        },
+      );
+    } finally {
+      if (previous === undefined) process.env.SOME_TTY_KEY = undefined;
+      else process.env.SOME_TTY_KEY = previous;
+    }
+
+    const out = io.stdout();
+    const ESC = String.fromCharCode(27);
+    expect(out).toContain(`${ESC}[32m`);
+    expect(out.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
+    expect(out).not.toContain("[redacted]m");
   });
 });
