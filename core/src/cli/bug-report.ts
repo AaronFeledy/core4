@@ -250,6 +250,9 @@ export const buildBugReport = (input: {
   };
 };
 
+const ESC = String.fromCharCode(27);
+const dimLine = (line: string): string => `${ESC}[2m${line}${ESC}[22m`;
+
 export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   const renderText =
     envelope.code === "ComposeKeyRejectedError" ? escapeDiagnosticText : (text: string) => text;
@@ -257,15 +260,15 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   if (envelope.remediation !== undefined) {
     lines.push(`  ↳ ${renderText(envelope.remediation)}`);
   }
-  lines.push(`code: ${envelope.code}`);
-  lines.push(`commandId: ${escapeDiagnosticText(envelope.commandId)}`);
-  if (envelope.appId !== undefined) lines.push(`appId: ${envelope.appId}`);
-  if (envelope.providerId !== undefined) lines.push(`providerId: ${envelope.providerId}`);
+  const details: Array<string> = [`code: ${envelope.code}`, `commandId: ${escapeDiagnosticText(envelope.commandId)}`];
+  if (envelope.appId !== undefined) details.push(`appId: ${envelope.appId}`);
+  if (envelope.providerId !== undefined) details.push(`providerId: ${envelope.providerId}`);
   for (const [key, value] of envelope.extra) {
-    lines.push(`${key}: ${renderText(value)}`);
+    details.push(`${key}: ${renderText(value)}`);
   }
-  lines.push(`logsDir: ${envelope.logsDir}`);
-  lines.push(`cacheDir: ${envelope.cacheDir}`);
+  details.push(`logsDir: ${envelope.logsDir}`);
+  details.push(`cacheDir: ${envelope.cacheDir}`);
+  lines.push(...details.map(dimLine));
   return lines.join("\n");
 };
 
