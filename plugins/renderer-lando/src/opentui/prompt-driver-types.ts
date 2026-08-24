@@ -49,10 +49,10 @@ export interface RenderableLike extends EventEmitterLike {
   remove?(child: unknown): unknown;
   focus?(): unknown;
   destroy?(): unknown;
-  content?: string;
+  content?: string | { readonly chunks?: ReadonlyArray<unknown> };
   width?: number | string;
   height?: number | string;
-  flexDirection?: string | null;
+  flexDirection?: string | null | undefined;
   visible?: boolean;
 }
 

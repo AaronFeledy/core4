@@ -94,7 +94,7 @@ describe("prompt chrome", () => {
       prompt: basePrompt,
       mode: "normal",
       defaultRaw: "alpha",
-      footer: [{ id: "slug", render: (raw) => `slug:${raw}` }],
+      footer: [{ id: "slug", render: (raw: string) => `slug:${raw}` }],
     });
     await waitForBuild(testSetup);
     expect(testSetup.captureCharFrame()).toContain("slug:alpha");
