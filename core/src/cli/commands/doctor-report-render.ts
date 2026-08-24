@@ -127,7 +127,11 @@ const countByStatus = (
   };
 };
 
-const doctorFooter = (counts: { readonly checks: number; readonly failed: number; readonly warned: number }): string => {
+const doctorFooter = (counts: {
+  readonly checks: number;
+  readonly failed: number;
+  readonly warned: number;
+}): string => {
   const warningLabel = counts.warned === 1 ? "warning" : "warnings";
   return counts.warned === 0
     ? `${counts.checks} checks · ${counts.failed} failed`
