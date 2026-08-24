@@ -56,6 +56,20 @@ describe("collectPrompts — interactiveDriver delegation (S1)", () => {
     expect(io.stdout()).toBe("");
   });
 
+  test("forwards named chrome help and footer onto the driver request", async () => {
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const driver = createFakeDriver({ answers: ["my-app"] });
+    const footer = [{ id: "slug", render: (raw: string) => `slug:${raw}` }];
+    await collectPrompts({
+      prompts: [prompt({ name: "name", type: "text", message: "App name" })],
+      io,
+      interactiveDriver: driver,
+      chrome: { name: { help: "HELP_TOKEN_site-id", footer } },
+    });
+    expect(driver.requests[0]?.help).toBe("HELP_TOKEN_site-id");
+    expect(driver.requests[0]?.footer).toBe(footer);
+  });
+
   test("select prompt receives a 1-based index from the driver", async () => {
     const io = createBufferedPromptIO({ inputs: [], isTTY: true });
     const driver = createFakeDriver({ answers: ["2"] });
