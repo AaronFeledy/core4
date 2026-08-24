@@ -17,13 +17,20 @@ export const REDACTED = "[redacted]" as const;
 
 /**
  * Exact-value tokens that must never enter the value layer. CSI/SGR
- * parameters are short digits or `n;n` lists; substituting them turns
- * a complete SGR (`ESC[32m`) into `ESC[[redacted]m` and prints a bare `]m`.
+ * parameters are short decimal codes (`0`, `32`, `95`) or `n;n` lists
+ * (`0;1`, `38;2;255;0;0`); substituting them turns a complete SGR
+ * (`ESC[32m`) into `ESC[[redacted]m` and prints a bare `]m`.
+ *
+ * Real secrets stay usable: long numeric tokens (`12345678`), one-character
+ * letters (`a`), and mixed tokens (`plan-secret`). Empty / whitespace-only
+ * values are ignored so the redactor never masks the entire string.
  */
 export const isUsableExactRedactionValue = (value: string): boolean => {
   const token = value.trim();
-  if (token.length < 2) return false;
-  return !/^[0-9;]+$/u.test(token);
+  if (token.length === 0) return false;
+  if (/^[0-9;]+$/u.test(token) && token.includes(";")) return false;
+  if (/^[0-9]+$/u.test(token) && token.length <= 4) return false;
+  return true;
 };
 
 export interface SecretRedactor {
