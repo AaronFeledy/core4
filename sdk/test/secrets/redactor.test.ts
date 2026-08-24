@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { REDACTED, createSecretRedactor } from "@lando/sdk/secrets";
+import { REDACTED, createSecretRedactor, isUsableExactRedactionValue } from "@lando/sdk/secrets";
 
 describe("createSecretRedactor", () => {
   test("masks a single occurrence of a secret value", () => {
@@ -51,5 +51,25 @@ describe("createSecretRedactor", () => {
   test("exposes a REDACTED sentinel constant", () => {
     expect(typeof REDACTED).toBe("string");
     expect(REDACTED.length).toBeGreaterThan(0);
+  });
+
+  test("ignores CSI-parameter tokens so SGR sequences stay intact", () => {
+    expect(isUsableExactRedactionValue("0")).toBe(false);
+    expect(isUsableExactRedactionValue("1")).toBe(false);
+    expect(isUsableExactRedactionValue("32")).toBe(false);
+    expect(isUsableExactRedactionValue("95")).toBe(false);
+    expect(isUsableExactRedactionValue("0;1")).toBe(false);
+    expect(isUsableExactRedactionValue("38;2;255;0;0")).toBe(false);
+    expect(isUsableExactRedactionValue("12345678")).toBe(true);
+    expect(isUsableExactRedactionValue("a")).toBe(true);
+    expect(isUsableExactRedactionValue("pw")).toBe(true);
+    expect(isUsableExactRedactionValue("plan-secret")).toBe(true);
+    const ESC = String.fromCharCode(27);
+    const painted = `${ESC}[32mok${ESC}[0m`;
+    const redactor = createSecretRedactor(["32", "95", "0", "1"]);
+    expect(redactor.redact(painted)).toBe(painted);
+    expect(redactor.redact(painted)).not.toContain("]m");
+    expect(createSecretRedactor(["12345678"]).redact("pin 12345678")).toBe(`pin ${REDACTED}`);
+    expect(createSecretRedactor(["a"]).redact("x a y")).toBe(`x ${REDACTED} y`);
   });
 });

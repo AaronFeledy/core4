@@ -65,6 +65,13 @@ export const tokenizeAnsi = (text: string): string =>
     return codes.map((code) => `⟨${SGR_MARKERS[code] ?? `sgr:${code}`}⟩`).join("");
   });
 
+/**
+ * True when `]m` survives after every complete CSI/SGR sequence is removed.
+ * A leaked `redacted]m` / `]m` fragment means the painter or a post-paint
+ * redactor ate the ESC/`[` opener.
+ */
+export const hasBareCsiTail = (text: string): boolean => text.replace(ansiPattern, "").includes("]m");
+
 const splitFrameLines = (frame: string): ReadonlyArray<string> => {
   const lines = frame.split("\n");
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();

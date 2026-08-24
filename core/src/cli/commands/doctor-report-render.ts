@@ -12,7 +12,7 @@ import {
   worstSummaryTone,
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext } from "../renderer-boundary";
+import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { renderConfigLintViolation } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { DoctorReportSchema } from "./doctor-report-contract";
@@ -211,7 +211,7 @@ const renderAppConfigSection = (result: ConfigLintResult): string => {
 
 export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): string => {
   if (isDecoratedContext(ctx))
-    return formatSummary(buildDoctorReportSummary(report), { columns: ctx?.columns });
+    return formatSummary(buildDoctorReportSummary(report), summaryPaintOptions(ctx));
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
   const globalApp = renderGlobalAppDoctorResult(report.globalApp);

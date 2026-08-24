@@ -5,8 +5,7 @@
  * only in the decorated path (`lando` mode on a TTY), so `plain`/`json`/non-TTY
  * keep their existing undecorated output.
  *
- * The formatter renders already-redacted values verbatim; redaction stays at
- * the command/result layer, never here.
+ * The formatter paints already-redacted values; callers may pass `options.redact` so fields are masked before SGR. Redaction never rewrites painted output.
  */
 
 import {
@@ -68,7 +67,40 @@ export interface SummaryDocument {
 
 export interface FormatSummaryOptions {
   readonly columns?: number | undefined;
+  /** Applied to every document string before paint so SGR is never redacted. */
+  readonly redact?: ((text: string) => string) | undefined;
 }
+
+/** Redact every user-facing string on a summary document, leaving tones intact. */
+export const redactSummaryDocument = (
+  doc: SummaryDocument,
+  redact: (text: string) => string,
+): SummaryDocument => ({
+  title: redact(doc.title),
+  ...(doc.tone === undefined ? {} : { tone: doc.tone }),
+  ...(doc.subtitle === undefined ? {} : { subtitle: redact(doc.subtitle) }),
+  sections: doc.sections.map((section) => ({
+    title: redact(section.title),
+    ...(section.tone === undefined ? {} : { tone: section.tone }),
+    rows: section.rows.map((row) => ({
+      label: redact(row.label),
+      ...(row.tone === undefined ? {} : { tone: row.tone }),
+      ...(row.value === undefined ? {} : { value: redact(row.value) }),
+      ...(row.detail === undefined ? {} : { detail: redact(row.detail) }),
+      ...(row.fields === undefined
+        ? {}
+        : {
+            fields: row.fields.map((field) => ({
+              label: redact(field.label),
+              value: redact(field.value),
+            })),
+          }),
+    })),
+    ...(section.notes === undefined ? {} : { notes: section.notes.map(redact) }),
+  })),
+  ...(doc.nextSteps === undefined ? {} : { nextSteps: doc.nextSteps.map(redact) }),
+  ...(doc.footer === undefined ? {} : { footer: redact(doc.footer) }),
+});
 
 const MIN_SUMMARY_WIDTH = 24;
 const DEFAULT_SUMMARY_WIDTH = 80;
@@ -92,6 +124,7 @@ const rowHead = (row: SummaryRow): string => {
 };
 
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
+  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
   const width = resolveWidth(options.columns);
   const innerWidth = width - 4;
   const lines: string[] = [];
@@ -103,9 +136,9 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     }
   };
 
-  lines.push(styleBoxTop(boxTop(headerTitle(doc), width)));
+  lines.push(styleBoxTop(boxTop(headerTitle(prepared), width)));
 
-  for (const section of doc.sections) {
+  for (const section of prepared.sections) {
     lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width)));
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
@@ -126,11 +159,11 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     }
   }
 
-  if (doc.nextSteps !== undefined && doc.nextSteps.length > 0) {
+  if (prepared.nextSteps !== undefined && prepared.nextSteps.length > 0) {
     lines.push(styleBoxSeparator(boxSeparator("next steps", width)));
-    for (const step of doc.nextSteps) pushBody(`• ${step}`, 2, undefined);
+    for (const step of prepared.nextSteps) pushBody(`• ${step}`, 2, undefined);
   }
 
-  lines.push(boxBottom(doc.footer ?? "", width, styleBoxFooter));
+  lines.push(boxBottom(prepared.footer ?? "", width, styleBoxFooter));
   return lines.join("\n");
 };

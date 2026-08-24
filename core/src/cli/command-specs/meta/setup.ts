@@ -34,7 +34,7 @@ import { formatSummary } from "@lando/renderer/summary";
 import { Either } from "effect";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { installShellProfileIntegration } from "../../commands/shellenv";
-import { isDecoratedContext } from "../../renderer-boundary";
+import { isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";
@@ -286,9 +286,10 @@ export const setupSpec: LandoCommandSpec<
     const installDir = String(result.installDir);
     const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
     if (isDecoratedContext(ctx))
-      return formatSummary(buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }), {
-        columns: ctx?.columns,
-      });
+      return formatSummary(
+        buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }),
+        summaryPaintOptions(ctx),
+      );
     const completion = `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
     return notes.length === 0 ? completion : `${completion}\n${notes.join("\n")}`;
   },

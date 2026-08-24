@@ -31,7 +31,7 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
+import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
@@ -199,7 +199,7 @@ export const renderGlobalStatusResult = (
 ): string => {
   void _format;
   if (isDecoratedContext(ctx))
-    return formatSummary(buildGlobalStatusSummary(result), { columns: ctx?.columns });
+    return formatSummary(buildGlobalStatusSummary(result), summaryPaintOptions(ctx));
   if (!result.materialized) return "Global app is not installed.\n(no services)";
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {
