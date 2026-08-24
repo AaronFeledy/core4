@@ -343,3 +343,23 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks (leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service) — pass
 ---
+
+## 2026-08-23 18:40 CDT - Verify leftovers that were not residual stories
+- Closed the US-585/US-586/US-588 verify findings that were genuine product holes, not 4.1 work.
+- US-585: `lando info` text no longer prints `password=[redacted]]`. The secrets assignment regex rematched `password=[redacted` and rewrote it, leaving the original `]`. Skip an already-redacted sentinel.
+- US-586: `lando destroy --yes` on provider-lando now forgets the applied-plan file even when bringDown/runtime fails, so `apps:list` does not keep a ghost. `removeState: false` still keeps the file. `removeAppliedPlan` no longer swallows delete failures.
+- US-586 docker 502: not mixed-provider Traefik. Global Traefik is managed Podman; docker apps join a same-named Docker network Traefik cannot see. Non-lando HTTP endpoints publish on `0.0.0.0`; start rewrites those routes to `host.lando.internal:<hostPort>`; Traefik gets `extra_hosts` host-gateway.
+- US-588: after a successful purge, reap leftover `runtime/bin` pids (including `(deleted)` exe) so a dying managed podman does not linger. No SIGKILL of host podman. Storage leftovers still fail-closed.
+- Still out (explicit 4.1 / rejected): hosters/RemoteSource, SSH `sidecar: false`, staged recipes, image save/load, `events:follow` / plugin login/logout, service-type `topLevelAlias` enforcement, dynamic Landofile cache provenance, omitted-`creds:` default rewrite, varnishadm.
+- Verification: destroy-forgets-applied-plans, info-no-secret, create-redactor, redaction contract, cross-engine-routes, uninstall, docker contract, traefik routing, endpoint-intent, provider-lando cross-process/applied-state — 162 pass / 3 skip / 0 fail.
+---
+
+## 2026-08-23 23:35 CDT - US-585/US-586/US-588 leftover Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed the leftover closures. Review fixed typecheck on branded ProviderId/ServiceName assertions, biome wrap on the destroy inventory test, and schema-compat UNKNOWN anyOf on LandoEvent / RendererPanelContext by accepting the additive RoutePlan.backend.host.
+- Review notes (deferred/rejected): 0.0.0.0 publish on non-lando HTTP internals is the host-gateway 502 tradeoff, not a blocking LAN hole. Already-running Traefik with reconcile:false will not pick up extra_hosts until recreate. docker/podman still swallow removeAppliedPlan — leftover was provider-lando only. Authored 127.0.0.1 is not forced to 0.0.0.0. SIGTERM-deaf leftover pids after purge are best-effort.
+- Verification: typecheck, lint passed; schema-compat origin/main 12 compatible / 0 breaking / 2 accepted; spot checks 155 pass / 3 skip / 0 fail.
+- Guide-Coverage-Skip: leftover US-585/586/588 are redaction display, destroy inventory, cross-engine Traefik host-gateway, and uninstall pid reap; PRD says existing pages stay unless a sentence becomes false.
+- **Learnings for future iterations:**
+  - Additive nested RoutePlan fields make LandoEvent / RendererPanelContext anyOf UNKNOWN; accept them in sdk/compatibility-exceptions.json rather than treating the union as a break.
+  - Compare branded ProviderId / index AppPlan.services with String(...) / ServiceName.make(...); bare string keys fail tsc -b.
+---
