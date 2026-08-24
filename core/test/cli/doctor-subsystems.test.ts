@@ -88,15 +88,19 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.context.loopback).toBe("127.0.0.1");
   });
 
-  test("treats an intentionally disabled host-proxy as an informational no-op", async () => {
+  test("warns when host-proxy is skipped because start still needs a worker", async () => {
     // Given / When
     const result = await runDefault();
 
     // Then
     const hostProxy = result.checks.find((check) => check.name === "host-proxy");
-    expect(hostProxy?.status).toBe("pass");
-    expect(hostProxy?.severity).toBe("info");
-    expect(hostProxy?.solutions).toEqual([]);
+    expect(hostProxy?.status).toBe("warn");
+    expect(hostProxy?.severity).toBe("warn");
+    expect(hostProxy?.context.mechanism).toBe("skipped");
+    expect(hostProxy?.solutions[0]?.kind).toBe("manual");
+    expect(hostProxy?.solutions[0]?.description).toContain("lando start");
+    expect(hostProxy?.solutions[0]?.description).toContain("HostProxyTransportUnavailableError");
+    expect(hostProxy?.solutions[0]?.command).toBe("lando setup");
   });
 
   test("runs with only the six subsystem layers", async () => {

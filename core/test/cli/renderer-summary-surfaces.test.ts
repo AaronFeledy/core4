@@ -257,6 +257,66 @@ describe("doctor summary", () => {
     expect(summary.sections.find((section) => section.title === "deprecations")?.rows[0]?.tone).toBe("error");
   });
 
+  test("counts warnings in the footer and keeps header tone aligned with rows", () => {
+    const summary = buildDoctorReportSummary({
+      version: "4.0.0-dev",
+      provider: {
+        checks: [
+          {
+            name: "runtime-service",
+            status: "warn",
+            severity: "warn",
+            providerId: "lando",
+            providerName: "Lando",
+            providerVersion: "0.0.0",
+            providerKind: "managed",
+            runtimeStatus: "running",
+            runtime: { running: true },
+            capabilities: {},
+            context: { orphanPids: "9" },
+            solutions: [{ kind: "manual", description: "kill leftover", command: "kill 9" }],
+          },
+        ],
+      },
+      subsystems: { checks: [] },
+      globalApp: { checks: [] },
+      mcp: { checks: [] },
+    } as unknown as DoctorReport);
+    expect(summary.tone).toBe("warn");
+    expect(summary.footer).toBe("1 checks · 0 failed · 1 warning");
+    expect(summary.sections[0]?.rows[0]?.tone).toBe("warn");
+    expect(summary.sections[0]?.rows[0]?.value).toBe("warn");
+  });
+
+  test("keeps an all-pass doctor report at OK with no warning footer", () => {
+    const summary = buildDoctorReportSummary({
+      version: "4.0.0-dev",
+      provider: {
+        checks: [
+          {
+            name: "selected-provider",
+            status: "pass",
+            severity: "info",
+            providerId: "lando",
+            providerName: "Lando",
+            providerVersion: "0.0.0",
+            providerKind: "managed",
+            runtimeStatus: "running",
+            runtime: { running: true },
+            capabilities: {},
+            context: {},
+            solutions: [],
+          },
+        ],
+      },
+      subsystems: { checks: [] },
+      globalApp: { checks: [] },
+      mcp: { checks: [] },
+    } as unknown as DoctorReport);
+    expect(summary.tone).toBe("ok");
+    expect(summary.footer).toBe("1 checks · 0 failed");
+  });
+
   test("counts app config lint in doctor footer when it contributes a failure", () => {
     const summary = buildDoctorReportSummary({
       provider: { checks: [] },
