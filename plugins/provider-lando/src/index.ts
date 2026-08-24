@@ -1,7 +1,7 @@
 /**
  * `@lando/provider-lando` — Lando-managed RuntimeProvider.
  */
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -528,7 +528,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
   };
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
     plans.delete(appId);
     return options.appliedPlanState === undefined
       ? Effect.void
@@ -816,15 +816,28 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       destroy: (target, destroyOptions) =>
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);
-          if (plan === undefined) return;
-          yield* ensureEffect;
-          yield* bringDown(plan, {
-            ...(podmanApi === undefined ? {} : { podmanApi }),
-            volumes: destroyOptions.volumes,
-            ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
-          });
-          if (destroyOptions.removeState !== false) {
-            yield* forgetPlan(target.app);
+          const teardown =
+            plan === undefined
+              ? Effect.void
+              : ensureEffect.pipe(
+                  Effect.zipRight(
+                    bringDown(plan, {
+                      ...(podmanApi === undefined ? {} : { podmanApi }),
+                      volumes: destroyOptions.volumes,
+                      ...(destroyOptions.purgeCaches === undefined
+                        ? {}
+                        : { purgeCaches: destroyOptions.purgeCaches }),
+                    }).pipe(Effect.asVoid),
+                  ),
+                );
+          if (destroyOptions.removeState === false) {
+            yield* teardown;
+            return;
+          }
+          const teardownExit = yield* Effect.exit(teardown);
+          yield* forgetPlan(target.app);
+          if (Exit.isFailure(teardownExit)) {
+            return yield* Effect.failCause(teardownExit.cause);
           }
         }),
       exec: (target, command) =>
