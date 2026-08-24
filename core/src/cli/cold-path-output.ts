@@ -184,10 +184,10 @@ const topicEntries = (topic: HelpTopic): readonly ManifestCommand[] => {
   }
 };
 
-const authoringRows = (): readonly HelpRow[] =>
+const authoringRows = (aliasPolicy?: HelpAliasPolicy): readonly HelpRow[] =>
   visibleEntries()
     .filter((entry) => AUTHORING_IDS.has(entry.spec.id) && !isDeferred(entry))
-    .map((entry) => toRow(entry))
+    .map((entry) => toRow(entry, aliasPolicy))
     .toSorted((left, right) => {
       const leftRank = AUTHORING_RANK.get(left.canonicalId) ?? Number.MAX_SAFE_INTEGER;
       const rightRank = AUTHORING_RANK.get(right.canonicalId) ?? Number.MAX_SAFE_INTEGER;
@@ -225,7 +225,7 @@ export const renderColdTopicHelp = (topic: string, options?: ColdHelpStyle): str
   if (!isHelpTopic(topic)) return "";
   const style = resolveStyle(options);
   const rows = topicEntries(topic)
-    .map((entry) => toRow(entry))
+    .map((entry) => toRow(entry, options?.aliasPolicy))
     .toSorted(byPrimary);
   const lines = [
     titleLine(style),
@@ -237,14 +237,14 @@ export const renderColdTopicHelp = (topic: string, options?: ColdHelpStyle): str
     ...formatSection(rows, style),
   ];
   if (topic === "plugin") {
-    lines.push("", style.bold("AUTHORING"), ...formatSection(authoringRows(), style));
+    lines.push("", style.bold("AUTHORING"), ...formatSection(authoringRows(options?.aliasPolicy), style));
   }
   return lines.join("\n");
 };
 
 export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
   const style = resolveStyle(options);
-  const rows = visibleHelpRows().toSorted(byPrimary);
+  const rows = visibleHelpRows(options?.aliasPolicy).toSorted(byPrimary);
   return [
     titleLine(style),
     "",
