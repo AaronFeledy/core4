@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { displayWidth, graphemes, takeWidth, truncateToWidth, wrapToWidth, wrapWordsToWidth } from "../src/terminal-width.ts";
+import {
+  displayWidth,
+  graphemes,
+  takeWidth,
+  truncateToWidth,
+  wrapToWidth,
+  wrapWordsToWidth,
+} from "../src/terminal-width.ts";
 
 describe("terminal-width primitive", () => {
   test("displayWidth counts CJK as two cells and ignores ANSI", () => {
