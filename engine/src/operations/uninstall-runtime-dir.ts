@@ -234,4 +234,5 @@ export const defaultRemoveRuntimeDir = async (
   if (exists(path)) {
     throw leftoverUninstallRuntimeDirError(path, exists);
   }
+  await terminate(path);
 };
