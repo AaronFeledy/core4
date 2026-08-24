@@ -95,7 +95,8 @@ describe("native registry help", () => {
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("COMMON");
-    expect(result.stdout).toContain("start");
+    expect(result.stdout).toMatch(/^\s+start\s+Start the current Lando app\./m);
+    expect(result.stdout).toMatch(/^\s+doctor\s+Run diagnostics/m);
     expect(result.stdout).toContain("USAGE");
     expect(result.stdout).toContain("Lando  ");
     expect(result.stdout).toContain(`${process.platform}-${process.arch}`);
