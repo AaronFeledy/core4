@@ -75,6 +75,7 @@ import type {
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
+  ServiceCreds,
   SyncResult,
   TunnelSession,
   TunnelTarget,
@@ -333,6 +334,7 @@ export interface InfoAppService {
   readonly status: InfoServiceStatus;
   readonly endpoints: ReadonlyArray<string>;
   readonly logSources?: ReadonlyArray<InfoLogSource>;
+  readonly creds?: ServiceCreds;
 }
 
 export interface InfoAppAgentEnv {
@@ -612,15 +614,10 @@ export interface AppRemoteApi {
   };
 }
 
-/** Options for `App.config.lint`. */
 export interface AppConfigLintOptions {
   readonly cwd?: string;
 }
 
-/**
- * Configuration sub-API of an `App` handle. Canonical-schema lint today; config
- * read/write methods may be added non-breakingly in later releases.
- */
 export interface AppConfigApi {
   readonly lint: (
     options?: AppConfigLintOptions,

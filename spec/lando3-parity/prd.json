@@ -394,7 +394,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-573 Verify + US-569 Review. Expanded to mssql LANDO_DB_*, redis-cli, healthchecks, and phpMyAdmin hosts: creds."
     },
     {
@@ -409,7 +409,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-562/US-564 Verify (empty apps:list) and US-579 Review (docker in-memory resolvePlan)."
     },
     {
@@ -423,7 +423,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-572 Verify. File-only Landofile freshness stays; this adds implementation identity only."
     },
     {
@@ -436,7 +436,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-566 Verify EACCES under runtime/storage/volumes/*-mariadb-data/_data."
     },
     {
@@ -451,7 +451,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-580 Review (docs nits) and US-562 Review (§8.11 envelope gap). Expanded to includes:* sample aliases."
     },
     {
@@ -466,7 +466,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-576 Verify. Fail-closed / hide the combo; do not bump 2.7.7 under people who need that pin on older PHP."
     },
     {
@@ -480,7 +480,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "Residual from US-564 Verify (orphaned 38080 rootlessport) and US-568 Verify (ProviderUnavailableError after a failed start)."
     }
   ]

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Effect } from "effect";
@@ -9,15 +10,25 @@ import {
   CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,
   LANDO_SHELLENV_END,
+  type RemoveRuntimeDirDeps,
+  UninstallRuntimeDirError,
   buildUninstallPlan,
   chmodTreeUserWritable,
   defaultPosixShellProfilePath,
   defaultRemoveRuntimeDir,
+  formatUninstallRuntimeDirStepError,
+  leftoverUninstallRuntimeDirError,
   managedPodmanUnshareRmInvocation,
   stripLandoShellenvBlock,
   uninstall,
+  uninstallRuntimeDirRemediation,
 } from "../../src/operations/uninstall.ts";
-import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
+import {
+  makeUninstallRoots,
+  sandboxUninstallOptions,
+  writeFakeManagedPodman,
+  writeManagedVolumeTree,
+} from "./uninstall-support.ts";
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);
@@ -69,7 +80,17 @@ describe("uninstall runtime overlay removal", () => {
     const invocation = managedPodmanUnshareRmInvocation(runtimeDir);
     expect(invocation.command).toBe(join(runtimeDir, "bin", "podman"));
     expect(invocation.command).not.toBe("podman");
-    expect(invocation.args).toEqual(["unshare", "rm", "-rf", runtimeDir]);
+    expect(invocation.args).toEqual([
+      "--config",
+      join(runtimeDir, "config"),
+      "unshare",
+      "rm",
+      "-rf",
+      runtimeDir,
+    ]);
+    expect(invocation.env).toEqual({
+      CONTAINERS_CONF: join(runtimeDir, "config", "containers.conf"),
+    });
   });
 
   test("defaultRemoveRuntimeDir invokes the managed podman unshare binary when present", async () => {
@@ -87,7 +108,13 @@ describe("uninstall runtime overlay removal", () => {
       const decoyLog = join(roots.root, "decoy-podman.log");
       writeFileSync(
         join(binDir, "podman"),
-        ["#!/bin/sh", `printf '%s\\n' "$0 $*" >> "${managedLog}"`, "exit 0", ""].join("\n"),
+        [
+          "#!/bin/sh",
+          `printf '%s\\n' "CONTAINERS_CONF=$CONTAINERS_CONF" >> "${managedLog}"`,
+          `printf '%s\\n' "$0 $*" >> "${managedLog}"`,
+          "exit 0",
+          "",
+        ].join("\n"),
         { mode: 0o755 },
       );
       writeFileSync(
@@ -102,7 +129,13 @@ describe("uninstall runtime overlay removal", () => {
       expect(existsSync(runtimeDir)).toBe(false);
       const managed = existsSync(managedLog) ? readFileSync(managedLog, "utf8") : "";
       expect(managed).toContain(join(binDir, "podman"));
-      expect(managed).toContain(`unshare rm -rf ${runtimeDir}`);
+      expect(managed).toContain(`CONTAINERS_CONF=${join(runtimeDir, "config", "containers.conf")}`);
+      expect(managed).toContain(`--config ${join(runtimeDir, "config")}`);
+      const storageUnshare = `unshare rm -rf ${join(runtimeDir, "storage")}`;
+      const runtimeUnshare = `unshare rm -rf ${runtimeDir}`;
+      expect(managed).toContain(storageUnshare);
+      const storageIdx = managed.indexOf(storageUnshare);
+      expect(managed.slice(storageIdx + storageUnshare.length)).toContain(runtimeUnshare);
       expect(existsSync(decoyLog)).toBe(false);
     } finally {
       if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
@@ -181,6 +214,153 @@ describe("uninstall runtime overlay removal", () => {
         outcome: "failed",
       });
     } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("uninstall managed volume purge", () => {
+  test("purge deletes managed volume data without a custom remove", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-volume-");
+    try {
+      mkdirSync(roots.userDataRoot, { recursive: true });
+      mkdirSync(roots.userCacheRoot, { recursive: true });
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
+      writeFakeManagedPodman(join(runtimeDir, "bin"), ["#!/bin/sh", 'rm -rf "$6"', "exit 0", ""].join("\n"));
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+          }),
+        ),
+      );
+
+      expect(existsSync(volumeFile)).toBe(false);
+      expect(existsSync(runtimeDir)).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+    } finally {
+      await chmodTreeUserWritable(roots.root);
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("defaultRemoveRuntimeDir unshares storage before the runtime tree", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-volume-order-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const storageDir = join(runtimeDir, "storage");
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
+      writeFakeManagedPodman(
+        join(runtimeDir, "bin"),
+        [
+          "#!/bin/sh",
+          `if [ "$6" = "${storageDir}" ]; then rm -rf "$6"; exit 0; fi`,
+          `rm -f "${join(runtimeDir, "bin", "podman")}"`,
+          "exit 1",
+          "",
+        ].join("\n"),
+      );
+
+      await defaultRemoveRuntimeDir(runtimeDir, {
+        removeTree: async (path) => {
+          if (existsSync(volumeFile)) {
+            throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+          }
+          await rm(path, { recursive: true, force: true });
+        },
+      });
+
+      expect(existsSync(volumeFile)).toBe(false);
+    } finally {
+      await chmodTreeUserWritable(roots.root);
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("defaultRemoveRuntimeDir leftover is UninstallRuntimeDirError for a held volume", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-volume-s2-direct-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
+      writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
+      const heldVolume: RemoveRuntimeDirDeps = {
+        unshareRm: async () => {
+          throw new Error("unshare failed");
+        },
+        removeTree: async () => {
+          throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+        },
+      };
+
+      const thrown = await defaultRemoveRuntimeDir(runtimeDir, heldVolume).then(
+        () => {
+          throw new Error("expected defaultRemoveRuntimeDir to reject");
+        },
+        (cause: unknown) => cause,
+      );
+      expect(thrown).toBeInstanceOf(UninstallRuntimeDirError);
+      expect(thrown).toMatchObject({
+        _tag: "UninstallRuntimeDirError",
+        path: volumeFile,
+        remediation: uninstallRuntimeDirRemediation(
+          volumeFile,
+          true,
+          join(runtimeDir, "bin", "podman"),
+          "linux",
+        ),
+      });
+    } finally {
+      await chmodTreeUserWritable(roots.root);
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge leftover volume fails runtime-service with UninstallRuntimeDirError", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-volume-s2-");
+    try {
+      mkdirSync(roots.userDataRoot, { recursive: true });
+      mkdirSync(roots.userCacheRoot, { recursive: true });
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const volumeFile = writeManagedVolumeTree(runtimeDir);
+      writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
+      const heldVolume: RemoveRuntimeDirDeps = {
+        unshareRm: async () => {
+          throw new Error("unshare failed");
+        },
+        removeTree: async () => {
+          throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+        },
+      };
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+            remove: (path) => defaultRemoveRuntimeDir(path, heldVolume),
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(true);
+      const step = result.steps.find((entry) => entry.id === "runtime-service");
+      expect(step).toMatchObject({ outcome: "failed" });
+      const formatted = formatUninstallRuntimeDirStepError(
+        leftoverUninstallRuntimeDirError(runtimeDir, existsSync),
+      );
+      expect(step?.error).toBe(formatted);
+      expect(step?.error).toContain(volumeFile);
+      expect(step?.error).toContain("lando uninstall --purge --yes");
+    } finally {
+      await chmodTreeUserWritable(roots.root);
       rmSync(roots.root, { recursive: true, force: true });
     }
   });

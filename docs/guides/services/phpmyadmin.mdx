@@ -69,3 +69,16 @@ services:
 
 The service listens on `80`, gets a default hostname route, and turns on
 `lando.certs`. Set `certs: false` if you do not want a leaf certificate.
+
+A `hosts:` entry that names a sibling `mysql` or `mariadb` service reuses that sibling's `creds:`. A host that is not a sibling needs explicit `creds:` on the phpMyAdmin service:
+
+```yaml
+services:
+  pma:
+    type: phpmyadmin
+    hosts:
+      - remote-db
+    creds:
+      user: lando
+      password: lando
+```

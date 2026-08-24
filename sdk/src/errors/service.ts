@@ -63,7 +63,7 @@ export class AppFeatureMutationConflictError extends Schema.TaggedError<AppFeatu
 /**
  * The activated app-features form a directed mutation cycle (feature A mutates
  * a service that triggers feature B, which mutates a service that triggers
- * feature A). The `CycleDetected` member of the {@link AppFeatureError} union.
+ * feature A).
  */
 export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleError>()("CycleDetected", {
   message: Schema.String,
@@ -72,10 +72,16 @@ export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleErro
 }) {}
 
 /**
- * The tagged union an `AppFeature.apply` may fail with:
- * `SelectorMatchedNothing` | `MutationConflict` | `CycleDetected`.
+ * phpMyAdmin hosts/creds resolution failed: hosts named a service that has no
+ * usable credentials, or authored creds were incomplete.
  */
+export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHostsCredsError>()(
+  "PhpMyAdminHostsCredsError",
+  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+) {}
+
 export type AppFeatureError =
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
-  | AppFeatureCycleError;
+  | AppFeatureCycleError
+  | PhpMyAdminHostsCredsError;

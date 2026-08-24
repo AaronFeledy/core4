@@ -8,16 +8,54 @@ tags: [beta, docs, plugins, authoring]
 
 # Link a local plugin
 
-Link defaults to the current plugin authoring directory:
+`lando meta:plugin:link` validates the checkout, then symlinks it into the user plugin root.
 
 ```sh
 lando meta:plugin:link
 ```
 
-An explicit path is resolved to an absolute source directory before
-tracking:
+That is cwd. Pass a path when the checkout is next door.
 
 ```sh
 lando meta:plugin:link ../lando-plugin-demo
 ```
 
+A symlink is cheaper than a tarball, and meaner if you later move the checkout.
+
+## What it writes
+
+The link target is `<userDataRoot>/plugins/<manifest.name>`. State also lands in:
+
+- `<userDataRoot>/plugins/.lando-linked.json`
+- `<userDataRoot>/plugins/registry.json` with `source: "linked"`
+
+An existing non-linked install of the same name is left alone. Unlink or remove it first. `file:` on `plugin:add` is `NotImplementedError` in this Beta. Link is the local path.
+
+Also trust the absolute checkout if you need postinstall or authoring-root checks:
+
+```sh
+lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
+```
+
+Relative paths are rejected.
+
+## Unlink
+
+```sh
+lando meta:plugin:unlink @acme/lando-plugin-demo
+```
+
+Only linked names unlink. A registry install is `lando plugin:remove`.
+
+## Verify
+
+```sh
+lando meta:plugin:link
+```
+
+Then confirm `<userDataRoot>/plugins/<name>` is a symlink to the checkout.
+
+## Next
+
+- [Test and build a plugin](./test-and-build-plugin.mdx)
+- [Publish a plugin](./publish-plugin.mdx)

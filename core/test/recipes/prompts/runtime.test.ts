@@ -933,3 +933,66 @@ describe("resolveEditorCommand", () => {
     expect(resolveEditorCommand({ VISUAL: "", EDITOR: "" })).toBeUndefined();
   });
 });
+
+describe("collectPrompts — PHP Composer compatibility", () => {
+  const phpComposerPrompts = [
+    prompt({
+      name: "php",
+      type: "select",
+      message: "PHP version",
+      choices: ["8.4", "8.5"],
+    }),
+    prompt({
+      name: "composer",
+      type: "select",
+      message: "Composer version",
+      choices: ["2", "2.7.7", "false"],
+    }),
+  ];
+
+  const validationText = (error: RecipePromptValidationError): string => `${error.message}\n${error.issue}`;
+
+  test("non-interactive: PHP 8.5 + Composer 2.7.7 raises RecipePromptValidationError", async () => {
+    const promise = collectPrompts({
+      prompts: phpComposerPrompts,
+      answers: { php: "8.5", composer: "2.7.7" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
+    const error = await promise.catch((cause: unknown) => cause);
+    if (!(error instanceof RecipePromptValidationError)) {
+      throw new Error("expected RecipePromptValidationError");
+    }
+    expect(validationText(error)).toMatch(/cannot run on PHP 8\.5/);
+    expect(validationText(error)).toMatch(/2\.10\.2/);
+  });
+
+  test("non-interactive: PHP 8.4 + Composer 2.7.7 succeeds", async () => {
+    const answers = await collectPrompts({
+      prompts: phpComposerPrompts,
+      answers: { php: "8.4", composer: "2.7.7" },
+      nonInteractive: true,
+    });
+    expect(answers.composer).toBe("2.7.7");
+  });
+
+  test("non-interactive: PHP 8.5 + Composer 2 succeeds", async () => {
+    const answers = await collectPrompts({
+      prompts: phpComposerPrompts,
+      answers: { php: "8.5", composer: "2" },
+      nonInteractive: true,
+    });
+    expect(answers.composer).toBe("2");
+  });
+
+  test("interactive: PHP 8.5 hides Composer 2.7.7 from choices", async () => {
+    const io = createBufferedPromptIO({ inputs: ["8.5", "2"] });
+    const answers = await collectPrompts({
+      prompts: phpComposerPrompts,
+      io,
+    });
+    expect(answers.php).toBe("8.5");
+    expect(answers.composer).toBe("2");
+    expect(io.stdout()).not.toContain("2.7.7");
+  });
+});

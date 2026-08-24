@@ -43,12 +43,24 @@ services:
 
 ## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Read the resolved password from `lando info` instead of guessing it.
+Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Read the resolved password from `lando info` instead of guessing it.
 
-## Plan on amd64
+```yaml
+services:
+  database:
+    type: mssql
+    creds:
+      user: sa
+      rootPassword: secret
+      database: LANDO_DB
+```
 
-Upstream SQL Server images are amd64-only. On a non-amd64 host the type fails at plan time unless the provider declares architecture emulation. Use an amd64 host or a provider with architecture emulation. This is a capability check, not a container start failure.
+The type ships the `sqlcmd` client task. After start:
 
 ```sh
 lando sqlcmd -Q "SELECT @@VERSION"
 ```
+
+## Plan on amd64
+
+Upstream SQL Server images are amd64-only. On a non-amd64 host the type fails at plan time unless the provider declares architecture emulation. Use an amd64 host or a provider with architecture emulation. This is a capability check, not a container start failure.

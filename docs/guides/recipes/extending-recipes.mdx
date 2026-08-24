@@ -10,7 +10,7 @@ tags: [beta, docs, recipes]
 
 Put `extends: lamp` in a child `recipe.yml`, then inspect the flattened result with `lando meta recipes describe ./`.
 
-You ship only the deltas. Lando walks the parent chain, merges prompts, files, and `postInit`, and hands every later command a single recipe. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
+You ship the deltas. Lando walks the parent chain, merges prompts, files, and `postInit`, and hands every later command a single recipe. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
 
 ## Write the child recipe.yml
 
@@ -49,6 +49,8 @@ Merge is name-keyed, not "last array wins":
 - Scalar fields (`title`, `description`, `version`, and the rest) come from the child when set.
 
 A missing parent or a cycle fails with `RecipeExtendsError` before validate can say the file is fine.
+
+These commands read `recipe.yml`. There is no `recipe.ts` describe or validate path.
 
 ## Describe the flattened recipe
 

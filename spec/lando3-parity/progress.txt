@@ -54,6 +54,13 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - `app:cache:refresh` has no top-level alias; teach `lando app:cache:refresh`. `--renderer=verbose` dumps every event payload and is not the OpenTUI task tree.
 - DNS rebinding for custom loopback names is environmental. There is no Lando flag or doctor check; document remediations on the external-access guide.
 - Topic-first space verbs rewrite to canonical ids in `normalizeCompiledCommandArgv`. Alias-token rewrites lose to `run.ts` early rawHead alias resolution of the bare topic.
+- `LANDO_DB_*` is emitted with `ctx.addEnv` in the catalog type feature (priority 600). Never put reserved `LANDO_*` keys in `normalizedConfig.environment`; `lando.env` (700) rejects them and would otherwise overwrite resolved family env.
+- Bundled providers persist applied plans under plugin state (`applied-plans/<appId>.json` or `applied-plans.json`). `apps:list` reads those paths. `resolvePlan` must reload from `PluginStateStore` after process restart; an in-memory Map is not enough. Do not attach `AppPlan` onto DataMover.
+- App-plan cache identity includes `planningRuntime`: source-mode digest of engine planner/cache plus service-lando `src`, compiled-mode exec size+mtime. `CORE_VERSION` / plugin semver at `0.0.0` is not enough.
+- Uninstall of a managed runtime must `podman unshare rm` `runtime/storage` while `runtime/bin/podman` still exists. Unsharing the whole `runtimeDir` first can delete the binary before subuid-owned volume files are gone.
+- JSON/MCP envelopes redact env_file secrets only when the command spec supplies `redactionTokens`. Harvest with `collectAppPlanRedactionTokens` (planned service env, including env_file) or `collectLandofileRedactionTokens` (authored Landofile env/tooling env). Extractors must accept `unknown`.
+- PHP × Composer incompatibilities are a duplicated table: plan-time `assertPhpComposerCompatible` in service-lando, recipe-prompt `composerChoicesForPhp` in core. Core cannot import the plugin. Keep the locked 8.5 / 2.7.7 sentence identical on both sides.
+- Healthy Traefik on 127.0.0.1:38080/38443 is also `rootlessport`. Leftover means listening AND HTTP-dead AND rootlessport-shaped; do not treat comm alone as leftover.
 
 ## 2026-08-14 .. 2026-08-21 — US-562..US-575 (condensed)
 
@@ -160,4 +167,179 @@ Still out: hosters, SSH `sidecar: false`, staged recipes, image save/load, 4.1 d
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks (native-argv-parser, aliases, recipes-commands, scratch-namespace, share-skeleton) — pass
+---
+
+## 2026-08-22 20:54 CDT - Babysit
+- PR: #841 https://github.com/AaronFeledy/core4/pull/841
+- CI outcome: pass
+- Review feedback: fixed (regenerated command reference for space-separated verb aliases)
+- Merge: merged (squash)
+---
+
+## 2026-08-22 22:15 CDT - US-585
+- Authored `creds:` now provisions mysql, mariadb, postgres, mongodb, and mssql accounts (family env + `LANDO_DB_*`). Container `user:` is no longer a database username. Omitted creds keep existing defaults (`lando`/`lando`/appName + generated root; postgres generated password; mssql `sa` + `SA_PASSWORD`). Resolved creds land on `normalizedConfig.creds` and redacted `lando info` creds. Catalog client tooling ships (`mysql`, `mariadb`, `psql`, `mongosh`, `sqlcmd`, `redis-cli`) with secrets in task env. mysql/mariadb/postgres gained real healthchecks. phpMyAdmin `hosts:` uses matching sibling creds or fails closed instead of silent `lando`/`lando`.
+- Verification: typecheck, lint passed; relevant test spot checks passed (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret, sql creds, php-db-client). Guide lint and coverage passed.
+- **Learnings for future iterations:**
+  - `LANDO_*` keys are reserved. `lando.env` (priority 700) rejects them in `normalizedConfig.environment`. Emit `LANDO_DB_*` only via `ctx.addEnv` in the type feature (priority 600). Write resolved family env (`MYSQL_*`, etc.) into `normalizedConfig.environment` so 700 cannot clobber authored `creds:` with stale env.
+  - Keep `ServiceCreds` fields required. Partial means no `creds:` block plus family env / top-level `database:`.
+  - phpMyAdmin `hosts:` that do not match a mysql/mariadb sibling need explicit `creds:` on the phpMyAdmin service (`PhpMyAdminHostsCredsError`).
+---
+
+## 2026-08-22 22:12 CDT - US-585 Review
+- Review-work and Bugbot confirmed the connect contract; fixed postgres/mongodb `resolve()` omitting `normalizedConfig.creds` (AC for expressions/phpMyAdmin/@lando/sql) and mongosh `MONGO_URI` ignoring `service.port`.
+- Review notes (deferred/rejected): mssql default `creds.user=lando` — AC keeps existing defaults; `sa`+`SA_PASSWORD` is the root login via `rootPassword`, not a rewrite of the app user. mongosh `--uri` on argv — AC compile is `--version`; password-on-argv is worse than env-only `MONGO_URI`.
+- Verification: typecheck, lint passed; guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; spot checks postgres/mongodb passed.
+---
+
+## 2026-08-22 22:25 CDT - US-585 Drift Audit
+- Trigger: 2 cycles, 1856 insertions / 370 deletions, 2 commits
+- Scar tissue: mysql apply trusted a complete-looking authored creds object instead of the shared resolver
+- Ceremony: unused phpMyAdmin host helper exports dropped
+- Re-examined Review deferrals: mssql default user stays lando; mongosh URI stays env-only
+- Fixed: mysql apply always resolves through the shared helper; dead host-helper exports removed
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (creds-helpers, mysql, mariadb, postgres, mongodb, mssql, redis, phpmyadmin, catalog-service-configs, info-creds, info-no-secret) — pass
+---
+
+## 2026-08-22 22:34 CDT - US-585 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started a mysql+postgres+redis+phpMyAdmin app with authored creds and a second mysql+redis app with omitted creds. Authored accounts provisioned (`appuser`/`pguser`), defaults stayed `lando`/`lando`/appName, `LANDO_DB_*` and family env matched, `lando mysql --version` / `psql --version` / `redis-cli ping` compiled, phpMyAdmin reused sibling creds (`PMA_USER=appuser`) and served HTTP 200, unknown `hosts:` failed closed. Adjacent `db:import --help` still works. Teardown destroyed both apps.
+- **Out-of-scope finding:** `lando info` (plain TSV) prints `password=[redacted]]` / `rootPassword=[redacted]]` (extra `]`). JSON info is `[redacted]` and does not leak. Suspected renderer/TSV wrapping of the redaction sentinel, not the creds contract.
+---
+
+## 2026-08-23 01:28 CDT - Babysit
+- PR: #844 https://github.com/AaronFeledy/core4/pull/844
+- CI outcome: pass
+- Review feedback: fixed (phpMyAdmin unmatched hosts stay fail-closed; leftover registration test now authors creds; accepted ServiceCreds $defs)
+- Drift check: fixes pushed (restored fail-closed for unmatched phpMyAdmin hosts; dropped silent default creds)
+- Merge: merged (squash)
+---
+
+## 2026-08-23 02:03 CDT - US-586
+- After start, `apps:list` finds applied apps from the existing plugin-state inventory. `provider-docker` now persists sanitized plans to `plugins/@lando/provider-docker/applied-plans/<id>.json` and reloads them in `resolvePlan` after a new process, so exec / DataMover `serviceCmd` work without attaching `AppPlan` onto DataMover. Destroy forgets the file.
+- Verification: typecheck, lint passed; relevant test spot checks passed (apps-list-discovery, docker applied-state, docker cross-process, service-lifecycle, bring-up-order, exec-stdin, plugin-descriptor).
+- **Learnings for future iterations:**
+  - `apps:list` already scans every `plugins/<id>/applied-plans/` directory. New providers must write there via `ctx.stateStore`, not invent a second inventory or the legacy `providers/*/apps` path.
+  - CLI `exec` re-plans and passes `target.plan`, which hides a missing disk reload. DataMover calls `provider.exec({ app, service })` with no plan — that is the seam that proves cross-process reload.
+---
+
+## 2026-08-23 02:18 CDT - US-586 Review
+- Docker `destroy` ignored `removeState`, so engine `lando stop` deleted the applied-plan file this story added. Now matches lando/podman: forget only when `removeState !== false`.
+- Review notes (deferred/rejected): AC4 start→list e2e — focused seam tests are what the AC asked. Unused docker `appliedPlanStateDir`/`listAppliedPlans` — `apps:list` FS-scans the files; not a second inventory. Lando-style inspect-after-stop — file-exists lock is enough. Security LOW notes (identity sanitizer default, onCorrupt leaves file) match provider-lando.
+- Verification: typecheck, lint passed; spot checks apps-list-discovery, docker applied-state, docker cross-process passed.
+- Guide-Coverage-Skip: US-586 is applied-plan inventory/reload only; PRD says existing pages stay unless a sentence becomes false.
+---
+
+## 2026-08-23 02:35 CDT - US-586 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, then started a default-provider nginx app and a `provider: docker` nginx app (Docker CE 29.7.2 staged for the system-runtime path). After start, `apps:list` / `--format=json` included both apps with matching `appRoot` while `info` reported running. Docker wrote `plugins/@lando/provider-docker/applied-plans/<id>.json`; a fresh `lando exec --service web -- hostname` succeeded (new process reload). Stop kept the docker file; destroy forgot it. Default-provider start/list/exec/stop/start also held. Adjacent `lando logs` worked. Teardown destroyed both apps; sandbox `--reset` after staging Docker.
+- **Out-of-scope finding:** `curl https://web.us586-verify-docker.lndo.site:38443/` returned HTTP 502 while `info` said running and `exec` succeeded. Default-provider sibling returned HTTP 200. Suspected: docker app routed through lando-managed Traefik while another lando-provider app was also up.
+- **Out-of-scope finding:** `lando destroy --yes` on the default `lando` provider left `plugins/@lando/provider-lando/applied-plans/us586-verify-lando.json`, so `apps:list` still listed the destroyed app after the project dir was gone. Docker destroy correctly forgot its file. Suspected: provider-lando destroy/removeState, not this story's docker persist path.
+- **Learnings for future iterations:** Staging system Docker for a provider-docker story dirties the golden sandbox; `--reset` from the host afterward. `uidmap` leftover from prior managed-runtime setup already makes `--check` fail before Docker is added.
+---
+
+## 2026-08-23 03:43 CDT - US-587
+- App-plan cache keys now include a non-secret planning-runtime fingerprint. Same Landofile + same fingerprint stays a hit; a rebuilt binary (exec size/mtime) or edited bundled planner/service-lando source misses stale `plan.bin`. Env, host, and template inputs stay out of the key.
+- Verification: typecheck, lint passed; relevant test spot checks passed (app-plan-revision, planning-runtime, cache).
+- **Learnings for future iterations:**
+  - Default identity is content/stat, not plugin version. Workspace `CORE_VERSION` and bundled plugin semver stay `0.0.0`, so they cannot invalidate `plan.bin` after a local rebuild or service-type source edit.
+---
+
+## 2026-08-23 05:22 CDT - Babysit
+- PR: #851 https://github.com/AaronFeledy/core4/pull/851
+- CI outcome: pass
+- Review feedback: fixed (dropped import.meta.url from planning-runtime so engine closure passes)
+- Merge: merged (squash)
+---
+
+## 2026-08-23 06:20 CDT - US-588
+- `lando uninstall --purge` now unshares `runtime/storage` before the rest of the managed runtime tree, so `bin/podman` is still there when root/subuid-owned volume files need `podman unshare rm`. If leftovers remain, uninstall fail-closes with `UninstallRuntimeDirError` naming the leftover path (preferring `storage/volumes`) and a remediation (`podman unshare rm` or `sudo rm -rf`, then rerun `--purge --yes`).
+- Verification: typecheck, lint passed; relevant test spot checks passed (engine uninstall, leftover error unit, core uninstall + runtime-service). Surface: defaultRemoveRuntimeDir deleted a planted `storage/volumes/.../ibdata1` tree; `lando uninstall --help` still lists `--purge`.
+- **Learnings for future iterations:**
+  - Do not `unshare rm -rf` the entire `runtimeDir` first. Storage (volumes/overlay) must go while the managed podman binary still exists.
+  - Host uninstall has no Effect error channel; tagged leftovers flatten into `step.error` as `message (path). remediation`.
+---
+
+## 2026-08-23 06:34 CDT - US-588 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed storage-first unshare plus fail-closed `UninstallRuntimeDirError`. No in-scope code fix.
+- Review notes (deferred/rejected): unquoted leftover path in remediation — Lando argv-spawns delete and does not execute the copy-run string; volume names are Lando-owned; quoting is polish. Weak `||` leftover assertion and double-await of one rejected promise — test smell, exact formatter is unit-tested. Real uid-0 `chown` fixture — host-altering; EACCES + fake unshare is the AC stand-in.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint/spot checks reused from Build (no source change). QA re-ran uninstall + leftover-error tests: 30 pass / 0 fail.
+- Guide-Coverage-Skip: US-588 is an uninstall purge fix; PRD says existing pages stay unless a sentence becomes false, and published --purge prose still holds.
+---
+
+## 2026-08-23 06:56 CDT - US-588 Verify
+- Compiled `core/dist/lando`, ran `lando setup` in lando4-dev, started nginx+mariadb. Live: HTTP 200, `exec` SELECT 1, `ibdata1` uid 100998 (host `rm` EACCES). First `--purge` fail-closed: bare `podman unshare` could not find bundled conmon. Fixed by passing `--config` + `CONTAINERS_CONF`. Re-setup, re-started the app, `--purge` deleted `runtime/storage/volumes` including the MariaDB tree. Adjacent `logs` and `--keep-data --dry-run` held.
+- Blocker fixed: managed `podman unshare rm` now uses the runtime config so bundled conmon is found.
+- **Out-of-scope finding:** after a successful purge, a short-lived `runtime/bin/podman` process can remain with a deleted exe. Uninstall already finished; not AC-blocking.
+- **Learnings for future iterations:** Managed Podman needs `--config <runtime>/config` and `CONTAINERS_CONF=<runtime>/config/containers.conf`. `--config` alone does not load `containers.conf`.
+---
+
+## 2026-08-23 08:15 CDT - US-589
+- README CLI sample now names `app:cache:refresh`, `app:includes:update`, and `app:includes:verify`. `output-streaming.mdx` treats `--renderer=verbose` as a payload dump, not the task tree. Secret-shaped values from planned service env (including env_file) and authored Landofile environment/tooling env are redacted in JSON command results and MCP envelopes via the existing `spec.redactionTokens` → `RedactionService` seam. `app:exec` attaches plan tokens; `app:config` harvests Landofile env maps.
+- Verification: typecheck, lint passed; relevant test spot checks passed (env-file machine-output, MCP dispatch, renderer-boundary redaction, info-no-secret, events). Guide lint, coverage, and `dev:guides output-streaming.mdx --once` passed (1 test). Surface: `lando app:config --format=json` printed `PASSWORD: [redacted]`.
+- **Learnings for future iterations:**
+  - `LandoCommandSpec.redactionTokens` is `(result: unknown) => string[]`. Token extractors must accept `unknown` and narrow; do not type them against the result interface.
+  - Do not put `redactionTokens` on public result schemas. Attach them off-schema on the value (tooling/exec) or harvest from `result.landofile` (config).
+  - `output-streaming.mdx` lives under `docs/guides/tooling/`, not `docs/guides/cli/`.
+---
+
+## 2026-08-23 08:59 CDT - US-589 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed README real command ids, verbose as a payload dump, and JSON/MCP env-file redaction via the existing `redactionTokens` seam. No in-scope code fix.
+- Review notes (deferred/rejected): tests inject planned `environment` maps rather than real env_file I/O — same harvest events already use after assemble merges env files; not an AC miss. Empty-array `redactionTokens` skip of landofile harvest — production view/get always attach computed tokens. Duplicate token-filter helpers — existing pattern, not a leak.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed; typecheck/lint/spot checks reused from Build (no source change). QA re-ran env-file machine-output, MCP dispatch, events, info-no-secret, renderer-boundary redaction: all pass.
+---
+
+## 2026-08-23 11:09 CDT - Babysit
+- PR: #853 https://github.com/AaronFeledy/core4/pull/853
+- CI outcome: pass
+- Review feedback: fixed (moved engine-owned redaction collector tests into engine to satisfy package-dag; restored core env-file/MCP tests to call execSpec.redactionTokens)
+- Drift check: fixes pushed (restored env-file and MCP tests to call the production extractor instead of only asserting .toBeFunction())
+- Merge: merged (squash)
+---
+
+## 2026-08-23 12:01 CDT - US-590
+- Plan time fails closed for `php:8.5` + `composer: "2.7.7"` with remediation to `composer: "2"` (2.10.2). Channel `"2"` stays 2.10.2 on PHP 8.1–8.5; authored exact pins are never rewritten. Recipe prompts hide `2.7.7` once PHP is ≥ 8.5, and `--answer` of that pair is rejected; hand-written Landofiles still hit the plan-time gate. php-composer-workflows and drupal/drupal-cms/symfony READMEs no longer present the illegal pair.
+- Verification: typecheck, lint passed; relevant test spot checks passed (php-prerequisites, php, php-composer-compat, php-stack, prompts runtime, init option-parity). Guide lint, coverage, and `dev:guides php-composer-workflows.mdx --once` passed (5 tests). Surface: `lando app:cache:refresh` on php:8.5 + 2.7.7 exits 1 with LandofileValidationError; php:8.3 + 2.7.7 still refreshes.
+- **Learnings for future iterations:**
+  - Keep `resolvePhpComposer` version-agnostic. Compatibility is a second assert on the authored pin, or `"2"` would inherit the 2.7.7 ban after resolving to 2.10.2.
+  - `collectPrompts` still does not evaluate `when:`. Filter composer choices in the collect loop from already-resolved `php`.
+---
+
+## 2026-08-23 13:26 CDT - Babysit
+- PR: #854 https://github.com/AaronFeledy/core4/pull/854
+- CI outcome: pass
+- Review feedback: fixed (regenerated Drupal/Drupal CMS/Symfony scaffolds after Composer pin change)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-23 13:50 CDT - US-591
+- Doctor now probes 127.0.0.1:38080 and :38443 for leftover rootlessport holders (HTTP-dead + rootlessport-shaped). Healthy Traefik stays silent. Start maps address-already-in-use on those ports to the same global:stop / reap / setup remediation instead of generic destroy.
+- Verification: typecheck, lint passed; relevant test spot checks passed (leftover-proxy-ports, plugin-descriptor, import-boundary, bring-up-nft, managed, doctor-runtime-service — 36 pass).
+- **Learnings for future iterations:**
+  - A healthy Traefik publish is also `rootlessport` on these ports. Doctor leftover means listening AND HTTP-dead AND rootlessport-shaped. Injected `kind: "healthy-proxy"` must stay silent.
+  - Plugins cannot share a remediation string. Duplicate the lock tokens (`lando global:stop`, `rootlessport`, `lando setup`) and assert them in both packages.
+---
+
+## 2026-08-23 15:32 CDT - US-591 Review
+- Review-work (5/5 PASS) and Bugbot (no bugs) confirmed leftover loopback doctor + start remaps address-already-in-use on 38080/38443 to global:stop / reap / setup. No in-scope code fix.
+- Review notes (deferred/rejected): unbounded /proc walk vs 5s doctor budget — leftover walk is rare (TCP open + HTTP-dead); start-path still remediates; not an AC miss. Missing /proc parser fixtures — QA inspected endianness/field indexes; not a PRD gap. Test-local snapshot type copies and darwin test name — style. rejectUnauthorized:false — intentional localhost self-signed Traefik probe. Linux-only live comm ID — rootlessport is Podman linux/WSL; AC does not require darwin/win32 holder identification.
+- Verification: guide-drift (`GUIDE_DRIFT_BASE_REF=origin/main`) passed with no guide edit; typecheck/lint reused from Build (no source change). QA re-ran leftover-proxy-ports, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service, runtime-status, import-boundary, doctor-plugin-contributions: 51 pass / 0 fail.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false, and doctor-walkthrough proxy setup prose still holds.
+---
+
+## 2026-08-23 15:50 CDT - US-591 Review
+- Re-review confirmed the leftover doctor check can miss AC1: isolate budget is ~3.3s (`probeBudgetMs`), leftover is the only path that walks process fds, and timeout becomes a generic plugin-check self-check instead of `proxy-loopback-ports`. Bound the holder scan (comm-first, 800ms deadline, parallel port probes) so leftover still reports.
+- Review notes (deferred/rejected): Darwin/win32 live comm ID — leftover `rootlessport` is Linux/WSL managed Podman; AC does not require other platforms. Sharing `TRAEFIK_*_PORT` into provider-lando — plugins cannot share that constant; hard-coded 38080/38443 match the lock-token duplication. `rejectUnauthorized: false` — localhost Traefik TLS probe, security lane PASS. `Effect.tryPromise` catch style — nit. Foreign bind on 38080 still gets leftover start copy — matches AC2 wording.
+- Verification: typecheck, lint passed; leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service — 40 pass.
+- Guide-Coverage-Skip: US-591 is a doctor/start leftover-port check; PRD says existing pages stay unless a sentence becomes false.
+- **Learnings for future iterations:**
+  - Plugin doctor isolate is `min(5000, floor(sectionBudget/3))` (~3.3s), not the 5s constant. Leftover `/proc` work must finish inside that or the check is abandoned as `plugin-check:<id>`.
+---
+
+## 2026-08-23 16:10 CDT - US-591 Drift Audit
+- Trigger: 3 cycles, 824 insertions, 5 commits
+- Review scar tissue: leftover classifier had an unused comm-fallback beside the kind the production reader always sets
+- Ceremony: dead package re-export of the check factory; unused linux helper exports; tests copied snapshot types
+- Fixed: dropped the comm-fallback and tryPromise error-as-success dance; unexported unused helpers; tests import production types
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks (leftover-proxy-ports, leftover-proxy-ports-linux, plugin-descriptor, bring-up-nft, managed, doctor-runtime-service) — pass
 ---

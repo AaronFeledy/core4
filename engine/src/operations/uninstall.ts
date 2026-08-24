@@ -16,13 +16,27 @@ import {
   teardownManagedProviderMachine,
 } from "../runtime/managed-provider-machine";
 import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
+import {
+  UninstallRuntimeDirError,
+  formatUninstallRuntimeDirStepError,
+  leftoverUninstallRuntimeDirError,
+} from "./uninstall-runtime-error";
 
 export {
   chmodTreeUserWritable,
   defaultRemoveRuntimeDir,
   defaultTerminateRuntimeBinProcesses,
   managedPodmanUnshareRmInvocation,
+  type RemoveRuntimeDirDeps,
 } from "./uninstall-runtime-dir";
+export {
+  UNINSTALL_RUNTIME_DIR_LEFTOVER_MESSAGE,
+  UninstallRuntimeDirError,
+  formatUninstallRuntimeDirStepError,
+  leftoverUninstallRuntimeDirError,
+  preferLeftoverRuntimePath,
+  uninstallRuntimeDirRemediation,
+} from "./uninstall-runtime-error";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one uninstall operation on one engine seam.
 
@@ -702,9 +716,7 @@ const executeUninstall = async (
         // Verify removal: lingering mounts or processes can survive a
         // successful-looking rm and would leave the runtime half-removed.
         if (exists(step.target)) {
-          throw new Error(
-            `Failed to remove runtime directory: ${step.target} still exists after removal attempt. Lingering processes or mounts may be holding it.`,
-          );
+          throw leftoverUninstallRuntimeDirError(step.target, exists);
         }
       } else {
         await remove(step.target);
@@ -712,7 +724,12 @@ const executeUninstall = async (
 
       executed.push({ ...step, outcome: "completed" });
     } catch (cause) {
-      const error = cause instanceof Error ? cause.message : String(cause);
+      const error =
+        cause instanceof UninstallRuntimeDirError
+          ? formatUninstallRuntimeDirStepError(cause)
+          : cause instanceof Error
+            ? cause.message
+            : String(cause);
       executed.push({ ...step, outcome: "failed", error });
     }
   }

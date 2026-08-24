@@ -6,37 +6,14 @@ timeout: 60000
 tags: [beta, docs, installer]
 ---
 
-# Windows installer
+# Install Lando on Windows
 
-## Platform detection
+> **Alpha status:** There is no Windows `lando.exe`, and the PowerShell installer is **not live**. `https://get.lando.dev/install.ps1` is not serving v4. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-The PowerShell installer maps a Windows x64 host (`AMD64`) to the
-`windows-x64` release artifact. Other architectures, like ARM64, aren't
-supported and fail before any binary downloads.
+On Windows today, install the Linux x64 `v4.0.0-dev.N` binary **inside WSL**. That is the same binary as native Linux. Follow [Install Lando on WSL](./wsl.mdx) or [Install from a GitHub release](./github-releases.mdx).
 
-## Channels
+The script at `scripts/install.ps1` exists in this repo. It still needs live channel manifests at `https://update.lando.dev` and a published Windows binary. Neither is shipping.
 
-`stable` is the default channel manifest, resolved from
-`https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or
-`LANDO_CHANNEL=dev` to install from a different channel.
+When those hosts are up, the script will map an AMD64 host to `windows-x64` and fail other architectures before any download. Do not run a get.lando.dev URL now.
 
-## Verify and install
-
-The installer downloads `lando.exe`, a `SHA256SUMS` checksum manifest, and
-its cosign signature and certificate (`SHA256SUMS.sig`, `SHA256SUMS.crt`),
-then verifies the manifest against the installer-vendored cosign trust root:
-
-```powershell
-cosign verify-blob --certificate-identity-regexp <installer-trust-root> --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```
-
-Only a verified binary gets installed. It lands at
-`${LANDO_INSTALL_DIR:-<userDataRoot>\bin}\lando.exe`, creating the directory
-if it doesn't exist.
-
-If PowerShell blocks script execution, the installer prints the exact
-remediation:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
+Do not pass `--provider=docker` to "get Windows working." The default provider is `lando` (managed Podman). `--yes` is consent, not a provider switch.

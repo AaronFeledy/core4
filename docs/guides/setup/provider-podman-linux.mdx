@@ -6,38 +6,48 @@ timeout: 120000
 tags: [beta, docs, provider-podman, setup, linux]
 ---
 
-# Provider podman linux
+# Use system Podman on Linux
 
-## Linux socket discovery
+Run `lando setup --provider=podman` when you already have rootless Podman. This is opt-in. The default provider is `lando` (managed Podman).
 
-Unit tests exercise the user-installed Podman socket discovery precedence; the rendered live socket path requires a real rootless Podman install.
+## Run setup
 
-Rootless Linux default when XDG_RUNTIME_DIR is set (`$XDG_RUNTIME_DIR/podman/podman.sock`).
-
-Discovery precedence.
-
-User-installed rootless Podman talks straight to the host; bind mounts are native on Linux.
-
-## Linux opt in
-
-provider-podman is opt-in only; the rendered flow requires a Landofile checkout and a real Podman socket.
-
-Opt in by setting provider in your .lando.yml.
-
-Or pass --provider=podman to lando setup.
+You need working system Podman.
 
 ```sh
 lando setup --provider=podman
 ```
 
-Default stays @lando/provider-lando; provider-podman never auto-loads.
+Then verify:
 
-Provider integration suites gate on @lando/core/testing live socket resolution instead of requiring LANDO_TEST_PODMAN_SOCKET when the managed lando socket is already up (`resolveLiveProviderSocket`).
+```sh
+lando doctor --provider=podman
+```
 
-## Linux provider lando conflict
+After a successful `lando setup --provider=podman`, later commands stay on Podman. You do not need to repeat the flag.
 
-provider-lando records its managed socket in this JSON file when lando setup runs (`$LANDO_DATA_DIR/providers/provider-lando/setup-state.json`).
+`LANDO_PROVIDER=podman lando setup` does not persist. If you only set the env, keep it for later commands.
 
-Tagged subclass of ProviderUnavailableError surfaced when both providers target the same socket (`ProviderLandoConflictError`).
+`--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-Conflict remediation guidance.
+Setup fails with remediation if Podman is missing. It does not install Podman for you.
+
+Rootless Podman talks to `$XDG_RUNTIME_DIR/podman/podman.sock`. Bind mounts are native on Linux, so you skip the slow-mount file-sync path.
+
+## Resolve a socket conflict
+
+If `lando doctor` reports that system Podman and the managed Lando runtime target the same socket, pick one:
+
+```sh
+lando setup --provider=lando
+```
+
+or keep system Podman:
+
+```sh
+lando setup --provider=podman
+```
+
+If you already have Docker and the managed runtime is not what you want, the supported Linux fallback is `lando setup --provider=docker`.
+
+See [Pick a container provider](./provider-selection.mdx).

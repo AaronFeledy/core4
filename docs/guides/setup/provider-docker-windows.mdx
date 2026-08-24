@@ -6,32 +6,20 @@ timeout: 120000
 tags: [beta, docs, provider-docker, setup, windows]
 ---
 
-# Provider docker windows
+# Use Docker Desktop on Windows
 
-## Windows named pipe discovery
+Alpha binaries are Linux x64 today. There is no Windows `lando.exe` in Alpha. This page records the Docker Desktop provider path so the facts are here when that host is supported.
 
-Unit tests exercise Windows Docker Desktop discovery; the live HTTP API path still requires a real Docker Desktop install.
-
-Named-pipe default when DOCKER_HOST is unset.
+When a Windows binary ships, you need working Docker Desktop first. Then:
 
 ```sh
-lando npipe://./pipe/docker_engine
+lando setup --provider=docker
 ```
 
-Discovery precedence.
+`--yes` consents to confirmation. It does not switch providers. `LANDO_PROVIDER=docker` does not persist.
 
-Windows Docker Desktop uses a VM, so bind mounts are slow.
+Windows Docker Desktop uses the named pipe `npipe://./pipe/docker_engine` when `DOCKER_HOST` is unset. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 
-## Windows live contract
+Setup fails with remediation if Docker Desktop is missing. It does not install Docker for you.
 
-Live Docker Engine HTTP API contract coverage requires Windows, Docker Desktop, and either LANDO_TEST_WINDOWS_DOCKER_SOCKET or DOCKER_HOST.
-
-Preferred env var for a specific Docker Desktop endpoint.
-
-```sh
-LANDO_TEST_WINDOWS_DOCKER_SOCKET
-```
-
-Fallback env var when no override is set (`DOCKER_HOST`).
-
-Shared SDK contract suite used by the live test (`@lando/sdk/test#runProviderContract`).
+Until a Windows binary ships, run Lando inside WSL against Linux Docker or the managed `lando` provider. See [Install Lando on WSL](../install/wsl.mdx).

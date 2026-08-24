@@ -51,7 +51,7 @@ describe("php-stack helper", () => {
 
   test("nginx appserver emits via fpm without allowOverride or port", () => {
     const lines = renderPhpAppserverLines({
-      php: "8.5",
+      php: "8.4",
       webroot: "/app/web",
       composer: "2.7.7",
       webserver: "nginx",

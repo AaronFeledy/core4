@@ -6,54 +6,18 @@ timeout: 120000
 tags: [beta, docs, provider-lando, setup, windows]
 ---
 
-# Provider lando windows
+# Use the managed Lando runtime on Windows
 
-## Windows machine lifecycle
+Alpha binaries are Linux x64 today. There is no Windows `lando.exe` in Alpha. This page records the Windows `lando` provider path so the facts are here when that host is supported.
 
-Platform-aware Windows provider setup scenarios are gated outside the default generated guide suite.
+On a future Windows binary, default `lando setup` installs a Lando-owned Podman machine. It does not need system Docker or Podman.
 
-Run setup on a Windows host.
+Lando talks to that machine over the named pipe `\\.\pipe\podman-lando`, not a Unix socket. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 
-```sh
-lando setup --yes
-```
+## What setup will do
 
-Confirm bindMountPerformance is slow.
+Lando imports the host native CA store only into machines it created. A user-owned machine stays untouched.
 
-```sh
-lando doctor
-```
+Lando never auto-elevates or runs Hyper-V prep for you. If setup names Hyper-V as a prerequisite, fix it in an Administrator terminal and rerun `lando setup`. `--yes` is consent, not a provider switch.
 
-## Windows managed machine trust
-
-Managed-machine trust decisions and Windows Hyper-V remediation are exercised by plugins/provider-lando unit tests; the rendered path requires a Windows Podman machine.
-
-Lando-owned machine creation imports the host native CA trust store.
-
-Existing machines get native CA trust sync only when setup state proves Lando created them.
-
-A running Lando-owned machine restarts after trust sync so Podman imports the host CA store at startup.
-
-User-owned machines are left untouched by setup trust remediation (`createdByLando=false`).
-
-Manual Administrator-terminal remediation; Lando never auto-elevates or runs Hyper-V prep for you.
-
-## Windows runtime bundle
-
-Runtime-bundle download paths are exercised by plugins/provider-lando unit tests and the compiled Windows provider integration job.
-
-Pinned manifest carries the URL and SHA-256 for every supported host (`plugins/provider-lando/runtime-bundle-versions.json`).
-
-Idempotent cache path under the per-user state directory.
-
-The managed Windows bundle includes both Podman machine API forwarding helpers.
-
-Tagged failure raised on a SHA-256 mismatch against the pinned checksum manifest; remediation is to retry `lando setup` and, if it fails again, report the release artifact URL and the observed checksum (`ProviderBundleChecksumError`).
-
-## Windows managed API
-
-Compiled Windows setup and named-pipe API reachability run in the provider integration acceptance job.
-
-Lando reaches the managed Podman API over its Windows named pipe, not a Unix socket (`\\.\pipe\podman-lando`).
-
-Setup verifies both basic API reachability and Podman info before reporting success.
+Until a Windows binary ships, install the Linux x64 binary inside WSL. See [Install Lando on WSL](../install/wsl.mdx).

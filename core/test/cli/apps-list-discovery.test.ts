@@ -295,6 +295,28 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
+  test("discovers applied apps from the docker plugin applied-plans directory", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-docker"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "blog.json"),
+        JSON.stringify(stateEnvelope("blog", "blog", "/srv/blog", ["nginx"], "docker")),
+      );
+      const result = await runList(userDataRoot, { discoverContainers: async () => [] });
+      expect(result.apps).toEqual([
+        {
+          appId: "blog",
+          appName: "blog",
+          providerId: "docker",
+          appRoot: "/srv/blog",
+          services: ["nginx"],
+        },
+      ]);
+    });
+  });
+
   test("discovers applied apps from the podman applied-plans record", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });

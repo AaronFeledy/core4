@@ -6,44 +6,25 @@ timeout: 60000
 tags: [beta, docs, setup, uninstall, compiled]
 ---
 
-# Setup compiled binary parity
+# Run setup from the compiled binary
 
-## Setup and shellenv dispatch
+Alpha ships a Linux x64 compiled `lando` binary on GitHub `v4.0.0-dev.N` prereleases. There is no macOS or Windows binary in Alpha. `get.lando.dev` and `update.lando.dev` are not serving v4 artifacts.
 
-Native dispatch, registry-completeness, and relocated compiled-binary smoke tests exercise setup and shellenv; this scenario documents the surface rather than rendering a transcript.
-
-The top-level setup alias resolves to the canonical meta:setup command through the native dispatcher.
-
-The canonical setup command remains available directly through the native command registry.
+`lando setup` is the user command. It is the same native command as `lando meta:setup`. Use the short name.
 
 ```sh
-lando meta:setup
+lando setup
+lando doctor
 ```
 
-Unknown setup flags fail with a non-existent-flag diagnostic.
-
-Shellenv parsing normalizes pwsh to the PowerShell snippet through the command input helper.
-
-Invalid shell values fail before runtime bootstrap.
-
-## Uninstall preview parity
-
-Dry-run renders the non-mutating safety plan.
-
-Without --yes, uninstall refuses destructive execution and renders the reviewed-plan reminder.
+The default provider is `lando` (managed Podman). If that setup fails and you have working system Docker:
 
 ```sh
-lando meta:uninstall
+lando setup --provider=docker
 ```
 
-Unknown uninstall flags fail with a non-existent-flag diagnostic.
+`--yes` consents to confirmation. It does not switch providers. `LANDO_PROVIDER` does not persist.
 
-## Renderer boundary contract
+Unknown setup flags fail before the run. That is the compiled binary behaving like source, not a second setup tool.
 
-Renderer-boundary lint is a source gate rather than a reader-visible CLI transcript.
-
-Command results route through Renderer output stdout and diagnostics route through Renderer output stderr (`core/src/cli/renderer-boundary.ts`).
-
-The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs.
-
-This suite exercises the source entry through the native dispatcher; companion registry, machine-output, and relocated-binary suites prove the shared single-path contract (`core/test/cli/native-dispatch-unification.test.ts`).
+See [Install from a GitHub release](../install/github-releases.mdx) and [Run lando setup](./provider-auto-setup.mdx).

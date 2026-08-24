@@ -8,7 +8,15 @@ import type {
   InfoAppError as SdkInfoAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape, PublishedEndpoint, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type LandofileShape,
+  type PublishedEndpoint,
+  ServiceCreds,
+  type ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import { REDACTED } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   type ConfigService,
@@ -60,6 +68,7 @@ export const AppInfoServiceSchema = Schema.Struct({
   status: InfoServiceStatusSchema,
   endpoints: Schema.Array(Schema.String),
   logSources: Schema.optional(Schema.Array(AppInfoLogSourceSchema)),
+  creds: Schema.optional(ServiceCreds),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -118,6 +127,22 @@ const endpointText = (
   return url === undefined ? [] : [url];
 };
 
+const credsFromEnvironment = (environment: ServicePlan["environment"]): InfoAppService["creds"] => {
+  const user = environment.LANDO_DB_USER;
+  const password = environment.LANDO_DB_PASSWORD;
+  const database = environment.LANDO_DB_NAME;
+  const rootPassword = environment.LANDO_DB_ROOT_PASSWORD;
+  if (user === undefined && password === undefined && database === undefined) {
+    return undefined;
+  }
+  return {
+    user: user ?? "",
+    password: password === undefined ? "" : REDACTED,
+    database: database ?? "",
+    ...(rootPassword === undefined ? {} : { rootPassword: REDACTED }),
+  };
+};
+
 const toServiceInfo = (
   plan: AppPlan,
   service: ServicePlan,
@@ -138,6 +163,7 @@ const toServiceInfo = (
         "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
     };
   });
+  const creds = credsFromEnvironment(service.environment);
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -148,6 +174,7 @@ const toServiceInfo = (
     status,
     endpoints,
     ...(logSources.length === 0 ? {} : { logSources }),
+    ...(creds === undefined ? {} : { creds }),
   };
 };
 

@@ -6,34 +6,51 @@ timeout: 60000
 tags: [beta, docs, plugins, trust]
 ---
 
-# Trust postinstall
+# Trust plugin postinstall
 
-## Trust plugin postinstall
-
-Persist a trusted npm plugin name in `<userConfRoot>`/plugin-trust.yml and invalidate the plugin command cache.
+Untrusted installs never run package `postinstall`. The tarball can land. The script does not.
 
 ```sh
 lando plugin:trust @lando/plugin-php
+lando plugin:add @lando/plugin-php --trust
 ```
 
-The command prints the exact trusted plugin name after the trust store write succeeds.
+Untrusted packages can sit on disk. Their postinstall does not get a microphone.
+
+## Trust a name
 
 ```sh
-trusted-plugin: @lando/plugin-php
+lando plugin:trust @lando/plugin-php
+lando plugin:trust list
 ```
 
-Trust a resolved absolute plugin authoring root for local development workflows.
+Names persist in `<userConfRoot>/plugin-trust.yml`. Org globs are not up.
+
+`--trust` and `-y` on `plugin:add` also persist that name. Non-interactive add without `--trust` fails with InteractionRequiredError when the package has no `scripts.postinstall` (the same prompt path as explicit `--trust`). If the package has `scripts.postinstall` and you omit `--trust`, the tarball still lands and the script is skipped (`trustSource: untrusted`).
+
+## Trust a checkout
+
+Absolute path only.
 
 ```sh
 lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
 ```
 
-Relative paths are rejected; absolute paths are resolved before persistence.
+## When postinstall runs
+
+`plugin:add` unpacks without running scripts. A trusted name with a non-empty `scripts.postinstall` then runs install in that package directory.
+
+A name that is not trusted skips that step.
+
+## Verify
 
 ```sh
-trusted-authoring-root: /absolute/path/to/plugin
+lando plugin:trust list
+lando plugin:trust @lando/plugin-php
 ```
 
-Untrusted plugin installs never execute package postinstall scripts by default, including non-interactive installs.
+Then add with `--trust` only for packages you want to run as host code.
 
-Trusted postinstall execution routes through the recursion-guarded BunSelfRunner install child and publishes pre/post bun-self-exec events.
+## Next
+
+- [List trusted plugins](./trust-management.mdx)

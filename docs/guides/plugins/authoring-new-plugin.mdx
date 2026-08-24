@@ -6,11 +6,9 @@ timeout: 60000
 tags: [beta, docs, plugins, authoring]
 ---
 
-# Author a new plugin
+# Scaffold a plugin
 
-Scaffold a new plugin from an embedded template instead of hand-building the
-package layout. Every scaffold template is embedded in core, so compiled
-binaries never read template files from the runtime filesystem:
+`lando meta:plugin:new` writes a plugin tree from a template baked into the CLI. The binary never reads template files from disk.
 
 ```sh
 lando meta:plugin:new @acme/lando-plugin-demo ./demo \
@@ -18,29 +16,52 @@ lando meta:plugin:new @acme/lando-plugin-demo ./demo \
   --description "Demo plugin" --no-interactive
 ```
 
-Available templates: `service-type`, `provider`, `tooling-engine`,
-`template-engine`, `route-filter`, `config-translator`, `recipe`, `bare`.
+No TTY? Pass every value. `--no-interactive` will not invent a name for you.
 
-The generated project includes:
+## Pick a template
 
-| File | Purpose |
+`--template` is one of: `service-type`, `provider`, `tooling-engine`, `template-engine`, `route-filter`, `config-translator`, `recipe`, `bare`.
+
+`service-type`, `provider`, and `template-engine` seed `contributes` with a `<cspace>-example` id. The rest stay bare.
+
+A non-empty destination is rejected. Overwrite is not supported in this Beta.
+
+## What lands
+
+| Path | Why it is there |
 | --- | --- |
-| `package.json` | Plugin metadata, `landoPlugin.api: 4`, and scripts for `meta:plugin:test`/`build`/`link` |
-| `src/config.ts` | An Effect Schema config entry point for plugin options |
-| `test/plugin.test.ts` | A starter test that verifies the exported manifest and core compatibility declaration |
-| `README.md`, `tsconfig.json` (strict) | Ready to author without hand-creating boilerplate |
+| `package.json` | `landoPlugin.api: 4`, `requires["@lando/core"]: "^4.0.0"`, scripts for `meta:plugin:test` / `build` / `link` |
+| `plugin.yaml` | Same manifest, YAML form |
+| `src/config.ts` | Effect Schema options (`enabled` defaults true) |
+| `src/index.ts` | Decoded `PluginManifest` export |
+| `test/plugin.test.ts` | Name, `api: 4`, and the core range |
+| `tsconfig.json`, `README.md` | Strict TypeScript and a one-page README |
+
+The default destination, if you omit it, is the package basename with a leading `lando-plugin-` stripped to `plugin-`.
 
 ## Renderer plugins
 
-Use the bundled `@lando/renderer-lando` plugin as the maintained first-party
-example for renderer authors. Renderer plugins declare their renderer ids
-through the manifest contribution surface:
+`@lando/renderer-lando` is the bundled example. It declares:
 
-```json
-{ "contributes": { "renderers": ["lando"] } }
+```yaml
+contributes:
+  renderers:
+    - lando
 ```
 
-The contribution key is `contributes.renderers`. The plugin owns and exports
-the renderer contribution, while core preserves plain, JSON, and verbose
-fallback modes.
+That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fallbacks.
 
+## Verify
+
+```sh
+lando meta:plugin:new @acme/lando-plugin-demo ./demo \
+  --template bare --cspace acme \
+  --description "Demo plugin" --no-interactive
+```
+
+Look for `package.json`, `plugin.yaml`, `src/config.ts`, and `test/plugin.test.ts` under `./demo`.
+
+## Next
+
+- [Test and build a plugin](./test-and-build-plugin.mdx)
+- [Link a local plugin](./link-local-plugin.mdx)

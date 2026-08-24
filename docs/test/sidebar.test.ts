@@ -8,7 +8,18 @@ const repoRoot = join(docsRoot, "..");
 const landingPagePath = join(docsRoot, "index.md");
 
 const GROUP_LABELS = ["Guides", "Recipes", "Reference", "Embedding", "Telemetry", "Contributing"] as const;
-const RECIPE_IDS = ["drupal", "drupal-cms", "lamp", "lemp", "wordpress"] as const;
+const RECIPE_IDS = [
+  "backdrop",
+  "drupal",
+  "drupal-cms",
+  "joomla",
+  "lamp",
+  "laravel",
+  "lemp",
+  "mean",
+  "symfony",
+  "wordpress",
+] as const;
 const CONTRIBUTING_SLUGS = ["contributing/ci", "contributing/release", "contributing/decisions"] as const;
 const TELEMETRY_SLUGS = ["telemetry/events", "telemetry/retention"] as const;
 const ALPHA_INSTALL_SLUG = "alpha-install-and-bug-reports";
@@ -98,6 +109,8 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/tutorial/from-lando-3");
     expect(slugs).toContain("guides/node-postgres");
     expect(slugs).toContain("guides/cli/everyday-commands");
+    expect(slugs).toContain("guides/cli/cache-refresh");
+    expect(slugs).toContain("guides/cli/verbosity-and-debug");
     expect(slugs).toContain("guides/scratch/scratch-from-recipe");
     expect(slugs).toContain("guides/cli/ssh");
     expect(slugs).toContain("guides/setup/provider-selection");
@@ -106,6 +119,10 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
+    expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
+    expect(slugs).toContain("guides/recipes/programmatic-recipe");
+    expect(slugs).not.toContain("guides/recipes/remote-sources");
     expect(slugs).toContain("guides/subsystems/proxy-traefik");
     expect(slugs).toContain("guides/subsystems/doctor-walkthrough");
     expect(slugs).not.toContain("guides/recipes/canonical-public-transcript");
@@ -141,7 +158,7 @@ describe("docs sidebar", () => {
     // When: its slugs are collected.
     const slugs = slugsOf(recipes);
 
-    // Then: the five real recipes are linked and none are invented.
+    // Then: the shipped recipe READMEs are linked and none are invented.
     expect(slugs).toEqual(RECIPE_IDS.map((id) => `recipes/${id}`));
     expect(slugs).not.toContain("recipes/toolbox");
     for (const id of RECIPE_IDS) {

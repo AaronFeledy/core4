@@ -8,33 +8,11 @@ tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
 
 # Scanner service
 
-`UrlScanner` is the Effect Service tag published in `@lando/sdk`; plugins implement
-`UrlScannerShape`. The `runScannerContract` runner from `@lando/sdk/test` validates a plugin's `id`,
-`scan()`, and `detectCollisions()`. `TestUrlScanner` (built with `makeTestUrlScanner`) is the
-in-memory test double — it records calls and returns empty endpoints with no collisions.
+This page is a contributor SDK dump for `UrlScanner`. It stays off the user nav.
 
-## Endpoint discovery
+The live scanner needs running containers and a provider socket. When it runs, `lando info --json` includes the discovered endpoints. Collision detection compares host ports across apps.
 
-`scan(appId: AppId): Effect<ScanResult, ScannerError>` scans all host-facing endpoints for an app and
-returns reachable URLs and status codes. `lando info --json` includes the scanner output verbatim via
-`ScanResult.endpoints`. Discovery combines provider inspect output with proxy routing rules, so live
-scanning needs running containers and a provider socket.
-
-## Port collisions
-
-`detectCollisions(appIds): Effect<PortCollision[], ScannerError | PortCollisionError>` detects host
-port conflicts across multiple apps. `PortCollisionError` is raised when two apps conflict on the same
-host port; it includes the port number and every conflicting app and service id. Detection compares
-host ports across multiple apps, so it needs running containers to observe real bindings. Unit tests
-verify the `UrlScanner` contract against `TestUrlScanner` in `sdk/test/contract/url-scanner.test.ts`.
-
-## Retry primitive
-
-The default scanner maps retry/delay/timeout onto `runProbe` from `@lando/sdk/probe` instead of a
-hand-rolled `Effect.retry` or `Schedule` loop. Probe-backed scans return green/yellow/red verdicts
-plus redacted detail for non-green results (`ScanEndpoint.outcome`/`detail`). `UrlScannerLive` (in
-`engine/src/subsystems/scanner/live.ts`) is the default runtime scanner; `UrlScannerUnavailableLive`
-remains only for explicit degraded/test wiring.
+This is not a user how-to. Print URLs with `lando info`. See [everyday commands](../cli/everyday-commands.mdx).
 
 <Guide>
   <Scenario id="scanner-config-check" render={false} reason="The contract, endpoint discovery, and port-collision behavior above are covered by sdk/test/contract/url-scanner.test.ts against TestUrlScanner and the probe-backed live implementation; live scanning needs running containers and a provider socket. This scenario keeps one real CLI check in the guide harness.">

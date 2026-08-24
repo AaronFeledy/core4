@@ -6,15 +6,13 @@ timeout: 300000
 tags: [beta, docs, recipes, transcripts]
 ---
 
-# Canonical public transcript
+# Canonical public transcript fixture
 
-This guide is the canonical fixture for the three transcript-producing
-guide shapes: a rendered scenario CLI walkthrough, a hidden library-runtime
-example, and an e2e smoke scenario against a real provider. It exercises
-`lando init` with the `node-postgres` recipe, validates the resolved
-Landofile, reads through the core `FileSystem` service via the library
-runtime API, then repeats the scaffold against a real provider and tears it
-down.
+This page is a contributor fixture, not a user how-to. It is the PRD-07 US-250 acceptance path for three transcript shapes: a rendered CLI walkthrough, a hidden library-runtime example, and an e2e smoke against a real provider.
+
+It is kept off the user sidebar on purpose. Do not treat the frames below as something you paste into an app tutorial.
+
+`--yes` on `lando init` is consent. The recipe is bundled `node-postgres`, so file rendering is implemented.
 
 <Guide>
   <Scenario id="public-transcript-docs-render" render>
@@ -32,10 +30,9 @@ down.
     </Step>
   </Scenario>
 
-## Reading through the library runtime API
+## Read a Landofile through the library runtime
 
-Embedding hosts can read app files through the core `FileSystem` service
-under a test runtime, without shelling out to the CLI:
+Embedding hosts can read app files through the core `FileSystem` service under a test runtime, without shelling out to the CLI.
 
 ```ts
 import { Effect } from "effect";
@@ -87,10 +84,9 @@ console.log(landofile);`}
     </Step>
   </Scenario>
 
-## Real-provider smoke test
+## Smoke the same scaffold on a real provider
 
-The same recipe scaffold runs against a real provider as an e2e smoke
-scenario: start it, inspect it, then destroy it.
+The same recipe scaffold starts, prints lando info, then destroys. This is an e2e smoke, not a user tutorial.
 
 <Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
     <Step name="scaffold-real-provider-app">

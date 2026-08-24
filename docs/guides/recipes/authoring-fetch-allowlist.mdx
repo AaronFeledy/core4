@@ -6,18 +6,51 @@ timeout: 60000
 tags: [beta, docs, recipes, fetch, allowlist]
 ---
 
-# Author a recipe fetch allowlist
+# Declare which URLs a recipe may fetch
 
-Declare the URL globs a recipe may contact from `ctx.fetch` with
-`fetchAllowlist`. It sits next to `requires`, `runs`, `prompts`, `files`,
-and `postInit` in the recipe manifest:
+Put `fetchAllowlist` in `recipe.yml`. `ctx.fetch` may contact only those URL globs.
 
 ```yaml
+id: fetch-allowlist
+title: Fetch allowlist
+description: Recipe that may fetch from one API host.
+version: 0.1.0
 fetchAllowlist:
   - https://api.example.com/**
+  - https://registry.lando.dev/recipes/*
 ```
 
-`*` matches within a single path segment; `**` matches across path
-segments. So `https://api.example.com/**` matches any path, while
-`https://registry.lando.dev/recipes/*` matches only one segment.
+`*` matches one path segment. `**` matches across segments. `https://api.example.com/**` matches any path on that host. `https://registry.lando.dev/recipes/*` matches one segment after `recipes/`, not a deeper path.
 
+A URL that misses every glob throws `RecipeFetchNotAllowedError` before the platform fetch runs. Redirects are checked the same way, including a relative `Location` resolved against the current URL.
+
+## Leave `fetchAllowlist` off
+
+`ctx.fetch` still runs. Lando warns once per URL that you have not declared the hosts the recipe contacts. Add the list when you want that warning gone, or when you want anything else to fail closed.
+
+If a redirect walks off your list, that is still a deny. The allowlist is not a suggestion.
+
+## Check the manifest
+
+From the recipe directory (basename must match `id`):
+
+```sh
+lando meta recipes validate ./ --format=json
+```
+
+`valid` is `true` and `id` matches the directory name. The JSON envelope does not echo `fetchAllowlist`.
+
+<Guide>
+  <Scenario id="validate-fetch-allowlist" render>
+    <Step name="validate">
+      <UseFixture name="fetch-allowlist" />
+      <Run command="lando meta recipes validate ./ --format=json" />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "fetch-allowlist" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+See [Write a programmatic recipe](./programmatic-recipe.mdx) if you would rather ship `recipe.ts`.

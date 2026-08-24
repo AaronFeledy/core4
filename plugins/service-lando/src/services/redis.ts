@@ -63,5 +63,8 @@ export const redisServiceType: ServiceType = {
       base: "lando",
       normalizedConfig: { ...input.service, type: "redis" },
       features: [{ id: REDIS_FEATURE_ID }],
+      tooling: {
+        "redis-cli": { service: input.name, cmd: ["redis-cli"] },
+      },
     }),
 };

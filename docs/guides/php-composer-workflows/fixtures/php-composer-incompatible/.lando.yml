@@ -1,0 +1,6 @@
+name: php-composer-incompatible
+services:
+  appserver:
+    type: "php:8.5"
+    primary: true
+    composer: "2.7.7"

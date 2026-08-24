@@ -6,18 +6,49 @@ timeout: 60000
 tags: [beta, docs, recipes, runs, allowlist]
 ---
 
-# Author a recipe runs allowlist
+# Declare which commands a recipe may run
 
-Declare the canonical command ids a recipe may execute from `ctx.run`,
-`postInit` command actions, or `choicesFrom` with `runs`. It sits next to
-`requires`, `prompts`, `files`, and `postInit` in the recipe manifest:
+Put `runs` in `recipe.yml`. `ctx.run`, `postInit` `command` actions, and `choicesFrom` may use only those command ids.
 
 ```yaml
+id: runs-allowlist
+title: Runs allowlist
+description: Recipe that may run git and composer.
+version: 0.1.0
 runs:
   - git
   - composer
 ```
 
-When `runs` is present, only ids in that array may execute; every other id
-fails before a child process starts.
+When `runs` is present, any other id fails with `RecipeRunNotAllowedError` before a child process starts. The allowlist is exact ids, not globs.
 
+## Leave `runs` off
+
+If you omit `runs`, Lando uses a built-in default list of common VCS and language tools. Those ids run without a warning. Any other id warns and still runs. Add an explicit `runs` list when you want that warning gone, or when you want anything outside your list to fail closed.
+
+One line of policy, then the recipe has to live with it. That is the point.
+
+## Check the manifest
+
+From the recipe directory (basename must match `id`):
+
+```sh
+lando meta recipes validate ./ --format=json
+```
+
+`valid` is `true` and `id` matches the directory name. The JSON envelope does not echo `runs`.
+
+<Guide>
+  <Scenario id="validate-runs-allowlist" render>
+    <Step name="validate">
+      <UseFixture name="runs-allowlist" />
+      <Run command="lando meta recipes validate ./ --format=json" />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "runs-allowlist" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+See [Declare which URLs a recipe may fetch](./authoring-fetch-allowlist.mdx) for `ctx.fetch`.

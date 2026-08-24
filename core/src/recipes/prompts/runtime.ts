@@ -18,6 +18,11 @@ import { resolve as resolvePath } from "node:path";
 import { RecipeChoicesError, RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
 import type { RecipeChoicesFrom, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 
+import {
+  composerChoicesForPhp,
+  phpComposerIncompatibleRemediation,
+  phpVersionAtLeast,
+} from "../php-composer-compat.ts";
 import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist";
 import {
   type ChoicesCommandRunner,
@@ -574,6 +579,25 @@ const resolveDynamicChoicesPrompt = async (
   throw choicesError(prompt, prompt.choicesFrom, outcome);
 };
 
+const applyPhpComposerCompat = (
+  prompt: RecipePrompt,
+  supplied: string | undefined,
+  phpVersion: PromptAnswer | undefined,
+): RecipePrompt => {
+  if (prompt.name !== "composer" || typeof phpVersion !== "string" || prompt.choices === undefined) {
+    return prompt;
+  }
+  const effectivePrompt: RecipePrompt = {
+    ...prompt,
+    choices: [...composerChoicesForPhp(phpVersion, prompt.choices)],
+  };
+  if (supplied === "2.7.7" && phpVersionAtLeast(phpVersion, "8.5")) {
+    const issue = phpComposerIncompatibleRemediation(phpVersion);
+    throw validationFail(effectivePrompt, issue, issue);
+  }
+  return effectivePrompt;
+};
+
 export const collectPrompts = async (options: CollectPromptsOptions): Promise<PromptAnswers> => {
   const { prompts, answers = {}, yes = false, nonInteractive = false, cwd = process.cwd(), io } = options;
   const interactive = !nonInteractive && io !== undefined;
@@ -584,9 +608,10 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
   const resolved: Record<string, PromptAnswer> = {};
   for (const prompt of prompts) {
     const supplied = answers[prompt.name];
+    const effectivePrompt = applyPhpComposerCompat(prompt, supplied, resolved.php);
 
-    if (isDynamicChoicesPrompt(prompt)) {
-      resolved[prompt.name] = await resolveDynamicChoicesPrompt(prompt, {
+    if (isDynamicChoicesPrompt(effectivePrompt)) {
+      resolved[effectivePrompt.name] = await resolveDynamicChoicesPrompt(effectivePrompt, {
         supplied,
         runner: choicesRunner,
         io,
@@ -600,21 +625,27 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
     }
 
     if (supplied !== undefined) {
-      resolved[prompt.name] = await resolveSupplied(prompt, supplied, cwd);
+      resolved[effectivePrompt.name] = await resolveSupplied(effectivePrompt, supplied, cwd);
       continue;
     }
 
-    const def = promptDefaultRaw(prompt);
+    const def = promptDefaultRaw(effectivePrompt);
 
     if (yes || !interactive) {
       if (def.hasDefault) {
-        resolved[prompt.name] = await resolveDefault(prompt, def.raw, cwd);
+        resolved[effectivePrompt.name] = await resolveDefault(effectivePrompt, def.raw, cwd);
         continue;
       }
-      throw missingAnswer(prompt);
+      throw missingAnswer(effectivePrompt);
     }
 
-    resolved[prompt.name] = await runInteractivePrompt(prompt, io as PromptIO, cwd, driver, editorRunner);
+    resolved[effectivePrompt.name] = await runInteractivePrompt(
+      effectivePrompt,
+      io as PromptIO,
+      cwd,
+      driver,
+      editorRunner,
+    );
   }
   return resolved;
 };
