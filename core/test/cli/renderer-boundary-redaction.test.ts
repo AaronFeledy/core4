@@ -119,34 +119,36 @@ describe("runWithRendererHandling redaction", () => {
 
   test("does not splice redaction into painted SGR on a decorated TTY", async () => {
     const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
-    const previous = process.env.SOME_TTY_KEY;
-    process.env.SOME_TTY_KEY = "32";
-    try {
-      await runWithRendererHandling(
+    // Probe the old post-paint path: a redactor that would turn ESC[32m into
+    // ESC[[redacted]m if decorated TTY still called redactString after paint.
+    const csiParamProbeLayer = Layer.succeed(RedactionService, {
+      forProfile: () =>
         Effect.succeed({
-          title: "SETUP",
-          subtitle: "complete",
-          tone: "ok" as const,
-          sections: [
-            {
-              title: "runtime",
-              rows: [{ label: "provider", tone: "ok" as const, value: "lando" }],
-            },
-          ],
+          redactString: (text: string) => text.split("32").join("[redacted]"),
+          redactValue: (value: unknown) => value,
         }),
-        {
-          runtime: Layer.empty,
-          rendererMode: "lando",
-          io,
-          render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
-          formatError: String,
-          setExitCode: () => undefined,
-        },
-      );
-    } finally {
-      if (previous === undefined) process.env.SOME_TTY_KEY = undefined;
-      else process.env.SOME_TTY_KEY = previous;
-    }
+    });
+    await runWithRendererHandling(
+      Effect.succeed({
+        title: "SETUP",
+        subtitle: "complete",
+        tone: "ok" as const,
+        sections: [
+          {
+            title: "runtime",
+            rows: [{ label: "provider", tone: "ok" as const, value: "lando" }],
+          },
+        ],
+      }),
+      {
+        runtime: csiParamProbeLayer,
+        rendererMode: "lando",
+        io,
+        render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
+        formatError: String,
+        setExitCode: () => undefined,
+      },
+    );
 
     const out = io.stdout();
     const ESC = String.fromCharCode(27);
