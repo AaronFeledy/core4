@@ -8,7 +8,12 @@ import { makeLandoPaths } from "@lando/paths";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
-import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";
+import {
+  HostProxyWorkerExitedBeforeReadyError,
+  type HostProxyWorkerSpawner,
+  defaultSpawnWorker,
+  hostProxyWorkerArgv,
+} from "./worker-process.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
 import {
   removeOwnedHostProxyWorkerState,
@@ -44,6 +49,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
           const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
           return spawnWorker({
             argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
+            logsDir: makeLandoPaths(options.paths).logsDir,
           });
         }),
         (worker) =>
@@ -129,7 +135,10 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
           : new HostProxyTransportUnavailableError({
               message: cause instanceof Error ? cause.message : String(cause),
               socketPath: workerStatePath(options.app, options.paths),
-              remediation: "Inspect the detached host-proxy worker startup failure.",
+              remediation:
+                cause instanceof HostProxyWorkerExitedBeforeReadyError
+                  ? `Inspect ${cause.logPath} for the worker crash.`
+                  : "Inspect the detached host-proxy worker startup failure.",
             }),
       ),
     ),
