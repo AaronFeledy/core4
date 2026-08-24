@@ -26,7 +26,7 @@ const HELP_TOPIC_SET: ReadonlySet<string> = new Set(HELP_TOPICS);
 
 export const isHelpTopic = (token: string): token is HelpTopic => HELP_TOPIC_SET.has(token);
 
-const COMMON_ORDER = [
+export const COMMON_COMMAND_IDS = [
   "app:start",
   "app:stop",
   "app:restart",
@@ -42,7 +42,7 @@ const COMMON_ORDER = [
   "meta:doctor",
 ] as const;
 
-const COMMON_RANK = new Map<string, number>(COMMON_ORDER.map((id, index) => [id, index]));
+const COMMON_ID_SET: ReadonlySet<string> = new Set(COMMON_COMMAND_IDS);
 
 const AUTHORING_ORDER = [
   "meta:plugin:new",
@@ -99,8 +99,7 @@ const resolveStyle = (options?: ColdHelpStyle): StyleFns => {
 const isHidden = (entry: ManifestCommand): boolean => entry.hidden;
 const isDeferred = (entry: ManifestCommand): boolean =>
   "deferred" in entry.spec && entry.spec.deferred !== undefined;
-const isCommon = (entry: ManifestCommand): boolean =>
-  "helpGroup" in entry.spec && entry.spec.helpGroup === "common";
+const isCommon = (entry: ManifestCommand): boolean => COMMON_ID_SET.has(entry.spec.id);
 
 const toRow = (entry: ManifestCommand, aliasPolicy?: HelpAliasPolicy): ThisAppHelpRow => {
   const name = typeableName({
@@ -147,15 +146,13 @@ const usageBlock = (usage: string, style: StyleFns): readonly string[] => [
 const byPrimary = (left: ThisAppHelpRow, right: ThisAppHelpRow): number =>
   left.primary.localeCompare(right.primary) || left.canonicalId.localeCompare(right.canonicalId);
 
-export const commonRows = (aliasPolicy?: HelpAliasPolicy): readonly ThisAppHelpRow[] =>
-  visibleEntries()
-    .filter(isCommon)
-    .toSorted((left, right) => {
-      const leftRank = COMMON_RANK.get(left.spec.id) ?? Number.MAX_SAFE_INTEGER;
-      const rightRank = COMMON_RANK.get(right.spec.id) ?? Number.MAX_SAFE_INTEGER;
-      return leftRank - rightRank;
-    })
-    .map((entry) => toRow(entry, aliasPolicy));
+export const commonRows = (aliasPolicy?: HelpAliasPolicy): readonly ThisAppHelpRow[] => {
+  const byId = new Map(visibleEntries().map((entry) => [entry.spec.id, entry] as const));
+  return COMMON_COMMAND_IDS.flatMap((id) => {
+    const entry = byId.get(id);
+    return entry === undefined ? [] : [toRow(entry, aliasPolicy)];
+  });
+};
 
 const topicEntries = (topic: HelpTopic): readonly ManifestCommand[] => {
   const entries = visibleEntries().filter((entry) => !isDeferred(entry));
