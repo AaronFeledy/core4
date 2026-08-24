@@ -98,6 +98,28 @@ describe("Traefik ProxyService", () => {
     expect(rendered).toContain("tls: {}");
   });
 
+  test("dials an explicit backend host when the route cannot use .internal DNS", () => {
+    const rendered = renderTraefikDynamicConfig(
+      [
+        {
+          hostname: "web.shop.lndo.site",
+          scheme: "https" as const,
+          service: ServiceName.make("web"),
+          backend: {
+            service: ServiceName.make("web"),
+            protocol: "http" as const,
+            port: 32768,
+            host: "host.lando.internal",
+          },
+        },
+      ],
+      AppId.make("shop"),
+    );
+
+    expect(rendered).toContain("http://host.lando.internal:32768");
+    expect(rendered).not.toContain("web.shop.internal");
+  });
+
   test("namespaces routers and services by app", () => {
     const otherApp = AppId.make("other");
     const objectNames = (content: string) =>
