@@ -49,7 +49,7 @@ import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./rendere
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveAppCommandHelpAliases, resolveToolingRoute } from "./tooling-router";
+import { resolveToolingRoute } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -109,20 +109,10 @@ const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<bool
 };
 
 const printRootHelpPage = async (): Promise<void> => {
-  const helpAliases = await Effect.runPromise(Effect.either(resolveAppCommandHelpAliases()));
-  if (helpAliases._tag === "Left") {
-    await renderAliasResolutionFailure(helpAliases.left);
-    return;
-  }
-  printRootHelp(helpAliases.right, await readAppCommandCacheOrNull());
+  printRootHelp(undefined, await readAppCommandCacheOrNull());
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
-  const helpAliases = await Effect.runPromise(Effect.either(resolveAppCommandHelpAliases()));
-  if (helpAliases._tag === "Left") {
-    await renderAliasResolutionFailure(helpAliases.left);
-    return;
-  }
   printHelpCatalogJson(await readAppCommandCacheOrNull());
 };
 

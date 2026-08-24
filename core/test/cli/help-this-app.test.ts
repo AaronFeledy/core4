@@ -56,12 +56,21 @@ const makeAppFixture = async (): Promise<{
   };
 };
 
-const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
+const writeFreshCache = async (
+  fixture: Awaited<ReturnType<typeof makeAppFixture>>,
+  commandAliases?: {
+    readonly enabled?: boolean;
+    readonly disabled?: ReadonlyArray<string>;
+    readonly custom?: Readonly<Record<string, string>>;
+  },
+): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: {
         name: "native-help",
-        commandAliases: { custom: { hi: "app:greet" } },
+        ...(commandAliases === undefined
+          ? { commandAliases: { custom: { hi: "app:greet" } } }
+          : { commandAliases }),
       },
       entries: [{ id: "app:greet", summary: "Echo hello", hidden: false }],
       cwd: fixture.root,
@@ -200,6 +209,24 @@ describe("cwd-aware THIS APP overlay", () => {
         expect(result.stdout).toContain("Echo hello");
         expect(result.stdout).toContain("USAGE");
       }
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("Given a conflicting custom alias, when help runs, then COMMON still renders", async () => {
+    // Given a readable cache whose commandAliases would fail alias-map resolution
+    const fixture = await makeAppFixture();
+    try {
+      await writeFreshCache(fixture, { custom: { "app:start": "app:greet" } });
+
+      // When
+      const result = await runCli(["help"], { cwd: fixture.root, env: fixture.env });
+
+      // Then root help still prints; alias-policy errors do not block COMMON
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("COMMON");
+      expect(result.stderr).not.toContain("CommandAliasConflictError");
     } finally {
       await fixture.cleanup();
     }
