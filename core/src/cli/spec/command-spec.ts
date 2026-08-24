@@ -11,6 +11,7 @@ import type { DeferredCommandPlan } from "../deferred-commands";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
 
 export type LandoCommandNamespace = "app" | "apps" | "meta";
+export type LandoHelpGroup = "common";
 
 /**
  * Top-level alias rules.
@@ -42,6 +43,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
+  readonly helpGroup?: LandoHelpGroup;
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;
   /** Present only for commands that stream incremental output (logs/exec/build). */
@@ -89,12 +91,20 @@ export const validateCommandSpec = (spec: {
   readonly hostProxyAllowed?: boolean;
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
+  readonly helpGroup?: string;
 }): void => {
   if (spec.resultSchema === undefined || spec.resultSchema === null) {
     throw new CommandRegistrationError({
       message: `Command ${spec.id} does not declare a resultSchema. Every command must declare the machine-readable shape of its result; use EmptyResultSchema for a command with no payload.`,
       commandId: spec.id,
       remediation: "Add a `resultSchema` to the command spec.",
+    });
+  }
+  if (spec.helpGroup !== undefined && spec.helpGroup !== "common") {
+    throw new CommandRegistrationError({
+      message: `Command ${spec.id} declares unsupported helpGroup ${JSON.stringify(spec.helpGroup)}. Only "common" is allowed.`,
+      commandId: spec.id,
+      remediation: 'Set helpGroup to "common" or omit it.',
     });
   }
   assertMcpAllowlistSafe(spec);

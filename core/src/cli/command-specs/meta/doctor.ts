@@ -61,6 +61,7 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
 export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLayerFactory> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   description: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",

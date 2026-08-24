@@ -142,8 +142,10 @@ test("Given fresh app caches, when global help heads are dispatched, then both p
     // Then
     expect(sourceResult.exitCode, `${sourceResult.stderr}\n${sourceResult.stdout}`).toBe(0);
     expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
-    expect(sourceResult.stdout).toContain("$ lando [COMMAND]");
-    expect(compiledResult.stdout).toContain("$ lando [COMMAND]");
+    expect(sourceResult.stdout).toContain("COMMON");
+    expect(compiledResult.stdout).toContain("COMMON");
+    expect(sourceResult.stdout).toContain("lando <command>");
+    expect(compiledResult.stdout).toContain("lando <command>");
     expect(`${sourceResult.stdout}\n${sourceResult.stderr}`).not.toContain("ToolingCompileError");
     expect(`${compiledResult.stdout}\n${compiledResult.stderr}`).not.toContain("ToolingCompileError");
   } finally {

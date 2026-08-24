@@ -52,7 +52,8 @@ describe("meta:x command", () => {
     // Then
     expect(exitCode).toBe(0);
     expect(stdout).toContain("USAGE");
-    expect(stdout).toContain("meta:x, x");
+    expect(stdout).toContain("ALIASES");
+    expect(stdout).toContain("meta:x");
     expect(stderr).toBe("");
   });
 

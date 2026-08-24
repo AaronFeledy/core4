@@ -104,6 +104,7 @@ export const setupSpec: LandoCommandSpec<
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
+  helpGroup: "common",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   description: "Run provider, CA, proxy, and shell-integration setup.",
   namespace: "meta",

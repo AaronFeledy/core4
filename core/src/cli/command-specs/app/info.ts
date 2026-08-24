@@ -17,6 +17,7 @@ const infoDeepFromInput = (input: unknown): boolean => {
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   resultSchema: AppInfoResultSchema,
   id: "app:info",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Print provider-neutral runtime info for the current app.",
   namespace: "app",

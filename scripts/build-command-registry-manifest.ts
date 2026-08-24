@@ -59,6 +59,7 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
       hidden: spec.hidden,
       deferred: spec.deferred,
       bootstrap: spec.bootstrap,
+      helpGroup: spec.helpGroup,
       flags: spec.flags,
       args: spec.args,
       streamingMode: spec.streamingMode,

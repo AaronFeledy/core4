@@ -201,9 +201,8 @@ describe("exhaustive level-none fast paths", () => {
       expect(result.stderr).toBe("");
       switch (output) {
         case "help":
-          expect(result.stdout).toContain("USAGE\n  $ lando [COMMAND]");
-          expect(result.stdout).toContain("TOPICS");
-          expect(result.stdout).toContain("COMMANDS");
+          expect(result.stdout).toContain("USAGE");
+          expect(result.stdout).toContain("COMMON");
           break;
         case "meta-version":
           expect(result.stdout.trim()).toBe(

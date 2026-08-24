@@ -173,6 +173,10 @@ If you are looking for…
 | Command namespaces (`app`, `apps`, `meta`) | 08 | §8.1.1 |
 | Top-level command aliases | 08 | §8.1.2 |
 | Built-in commands list and behavior | 08 | §8.2 |
+| Help organization (COMMON / THIS APP / MORE) | 08 | §8.2 |
+| `lando help` / topic pages | 08 | §8.4.2 |
+| `lando help --all` / `lando help --format json` | 08 | §8.4.2 |
+| `helpGroup` on `LandoCommandSpec` | 08 | §8.3 + §8.4.2 |
 | `lando app cache refresh` command | 08 | §8.2 |
 | `lando app includes update` / `verify` commands | 08 | §8.2 |
 | `lando app config` command | 08 | §8.2.1 |

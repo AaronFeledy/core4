@@ -95,7 +95,8 @@ test("shipping entry root help lists active app aliases", async () => {
 
     // Then
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("hi -> app:greet");
+    expect(result.stdout).toContain("THIS APP");
+    expect(result.stdout).toContain("hi");
     expect(result.stdout).not.toContain("start -> app:start");
   } finally {
     await fixture.cleanup();
@@ -263,7 +264,8 @@ test("shipping entry classifies passthrough from the app alias target", async ()
     expect(bunResult.exitCode).toBe(0);
     expect(bunResult.stdout.trim()).toBe(Bun.version);
     expect(xResult.exitCode).toBe(0);
-    expect(xResult.stdout).toContain("meta:x, x");
+    expect(xResult.stdout).toContain("ALIASES");
+    expect(xResult.stdout).toContain("meta:x");
     expect(aliasRendererResult.exitCode).toBe(canonicalRendererResult.exitCode);
     expect(aliasRendererResult.stderr).toBe(canonicalRendererResult.stderr);
   } finally {
