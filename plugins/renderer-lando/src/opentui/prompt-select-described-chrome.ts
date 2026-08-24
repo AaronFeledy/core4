@@ -1,5 +1,5 @@
 import type { KeyEventLike, RenderableLike, RendererLike } from "./prompt-driver-types.ts";
-import { type SelectPreviewLayout, SELECT_PREVIEW_LAYOUT } from "./select-preview-layout.ts";
+import { SELECT_PREVIEW_LAYOUT, type SelectPreviewLayout } from "./select-preview-layout.ts";
 
 /** OpenTUI `TextAttributes.BOLD` — avoid a static `@opentui/core` import. */
 export const TEXT_BOLD = 1;

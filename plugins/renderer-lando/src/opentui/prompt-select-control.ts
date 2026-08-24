@@ -14,9 +14,7 @@ export const hasDescribedChoices = (choices: ReadonlyArray<unknown>): boolean =>
   choices.some((choice) => (choiceDescription(choice) ?? "").trim() !== "");
 
 export const selectPanelMaxCols = (request: PromptDriverRequestLike): number =>
-  hasDescribedChoices(request.choices ?? request.prompt.choices ?? [])
-    ? SELECT_PREVIEW_LAYOUT.PANEL_MAX
-    : 72;
+  hasDescribedChoices(request.choices ?? request.prompt.choices ?? []) ? SELECT_PREVIEW_LAYOUT.PANEL_MAX : 72;
 
 const addPlainSelect = <R extends RendererLike>(
   mod: OpenTuiModuleLike<R>,
