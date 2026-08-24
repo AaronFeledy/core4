@@ -15,7 +15,13 @@ import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
-import { printCommandHelp, printHelpCatalogJson, printRootHelp } from "./compiled-help";
+import {
+  printCommandHelp,
+  printHelpCatalogJson,
+  printRootHelp,
+  printToolingHelp,
+  toolingHelpEntryForToken,
+} from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import {
   normalizeCompiledCommandArgv,
@@ -68,9 +74,24 @@ const HELP_SPECIAL_FLAGS = {
   help: { type: "boolean", char: "h" },
 } as const;
 
-const printAllHelp = (): void => emitResultLine(renderColdAllHelp());
+const helpAliasPolicyFromCache = async () => {
+  const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
+  return cache._tag === "Right" ? cache.right : null;
+};
 
-const printTopicHelp = (topic: HelpTopic): void => emitResultLine(renderColdTopicHelp(topic));
+const printAllHelp = async (): Promise<void> => {
+  const cache = await helpAliasPolicyFromCache();
+  emitResultLine(
+    renderColdAllHelp(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+  );
+};
+
+const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
+  const cache = await helpAliasPolicyFromCache();
+  emitResultLine(
+    renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+  );
+};
 
 const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<boolean> => {
   const flagError = validateCommandCliFlags({
@@ -109,12 +130,18 @@ const printHelpCatalogPage = async (): Promise<void> => {
 
 const dispatchHelpTarget = async (token: string): Promise<void> => {
   if (isHelpTopic(token)) {
-    printTopicHelp(token);
+    await printTopicHelp(token);
     return;
   }
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand !== undefined) {
     printCommandHelp(helpCommand);
+    return;
+  }
+  const cache = await helpAliasPolicyFromCache();
+  const tooling = cache === null ? undefined : toolingHelpEntryForToken(cache, token);
+  if (tooling !== undefined) {
+    printToolingHelp(tooling, cache?.aliasPolicy);
     return;
   }
   if (await tryPluginOwnedCommand(token, ["--help"])) return;
@@ -204,7 +231,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       return;
     }
     if (helpArgv.includes("--all")) {
-      printAllHelp();
+      await printAllHelp();
       return;
     }
     const target = helpArgv.find((arg) => !arg.startsWith("-"));
@@ -270,7 +297,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     if (commandArg === undefined) {
       if (dispatchArgv.includes("--all")) {
         if (await rejectUnknownHelpFlags(dispatchArgv)) return;
-        printAllHelp();
+        await printAllHelp();
         return;
       }
       await printRootHelpPage();

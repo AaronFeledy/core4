@@ -7,7 +7,6 @@ import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
-import { renderCommandHelp } from "./cli-help";
 import {
   MORE_ROWS,
   type ThisAppHelpRow,
@@ -17,8 +16,10 @@ import {
 } from "./cold-path-output";
 import { emitResultLine } from "./compiled-runtime";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
-import { typeableName } from "./help-names";
+import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { shouldStyleHelp } from "./help-style";
+
+import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 
 export { renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -48,6 +49,25 @@ export type HelpCatalogResult = typeof HelpCatalogResult.Type;
 type HelpCatalogRow = typeof HelpCatalogRow.Type;
 
 const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGISTRY_MANIFEST.commands, id);
+
+export const toolingHelpEntryForToken = (
+  cache: AppCommandIndexPayload,
+  token: string,
+): ToolingHelpEntry | undefined => {
+  const aliasPolicy = cache.aliasPolicy;
+  for (const entry of cache.entries) {
+    if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
+    if (entry.id === token) return entry;
+    const implicit = entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id;
+    const name = typeableName({
+      canonicalId: entry.id,
+      builtInAliases: implicit.length === 0 ? [] : [implicit],
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+    });
+    if (name.primary === token || name.extras.includes(token)) return entry;
+  }
+  return undefined;
+};
 
 export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonly ThisAppHelpRow[] => {
   const aliasPolicy = cache.aliasPolicy;
@@ -157,6 +177,21 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
         argv,
         rendererMode: rendererModeFrom(argv, process.env),
       }),
+    }),
+  );
+};
+
+export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): void => {
+  const argv = process.argv.slice(2);
+  emitResultLine(
+    renderToolingHelp(entry, {
+      styled: shouldStyleHelp({
+        isTTY: process.stdout.isTTY === true,
+        env: process.env,
+        argv,
+        rendererMode: rendererModeFrom(argv, process.env),
+      }),
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),
   );
 };

@@ -180,4 +180,29 @@ describe("cwd-aware THIS APP overlay", () => {
       await fixture.cleanup();
     }
   });
+
+  test("Given a fresh cache, when help targets tooling names, then tooling help renders", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    try {
+      await writeFreshCache(fixture);
+
+      // When
+      const [hi, greet, canonical] = await Promise.all([
+        runCli(["help", "hi"], { cwd: fixture.root, env: fixture.env }),
+        runCli(["help", "greet"], { cwd: fixture.root, env: fixture.env }),
+        runCli(["help", "app:greet"], { cwd: fixture.root, env: fixture.env }),
+      ]);
+
+      // Then
+      for (const result of [hi, greet, canonical]) {
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr).not.toContain("UnknownCommandError");
+        expect(result.stdout).toContain("Echo hello");
+        expect(result.stdout).toContain("USAGE");
+      }
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 });
