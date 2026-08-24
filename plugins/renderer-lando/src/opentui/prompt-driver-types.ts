@@ -19,6 +19,8 @@ export interface KeyEventLike {
   name?: string;
   sequence?: string;
   ctrl?: boolean;
+  defaultPrevented?: boolean;
+  preventDefault?(): void;
 }
 
 /**
@@ -30,14 +32,21 @@ export type EventListenerLike<A extends ReadonlyArray<unknown>> = (...args: A) =
 
 export interface EventEmitterLike {
   on<A extends ReadonlyArray<unknown>>(event: string, listener: EventListenerLike<A>): unknown;
+  prependListener?<A extends ReadonlyArray<unknown>>(event: string, listener: EventListenerLike<A>): unknown;
   off?<A extends ReadonlyArray<unknown>>(event: string, listener: EventListenerLike<A>): unknown;
   removeListener?<A extends ReadonlyArray<unknown>>(event: string, listener: EventListenerLike<A>): unknown;
 }
 
 export interface RenderableLike extends EventEmitterLike {
-  add?(child: unknown): unknown;
+  add?(child: unknown, index?: number): unknown;
+  remove?(child: unknown): unknown;
   focus?(): unknown;
   destroy?(): unknown;
+  content?: string;
+  width?: number | string;
+  height?: number | string;
+  flexDirection?: string | null;
+  visible?: boolean;
 }
 
 export interface InputRenderableLike extends RenderableLike {
@@ -68,6 +77,8 @@ export interface RendererLike {
   start?(): unknown;
   requestRender?(): unknown;
   destroy(): unknown | Promise<unknown>;
+  on?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;
+  off?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;
 }
 
 /**
@@ -88,7 +99,7 @@ export interface OpenTuiModuleLike<R extends RendererLike = RendererLike> {
   SelectRenderable: ConstructorLike<R, SelectRenderableLike>;
   TabSelectRenderable: ConstructorLike<R, SelectRenderableLike>;
   InputRenderableEvents: { ENTER: string };
-  SelectRenderableEvents: { ITEM_SELECTED: string };
+  SelectRenderableEvents: { ITEM_SELECTED: string; SELECTION_CHANGED: string };
   TabSelectRenderableEvents: { ITEM_SELECTED: string };
 }
 

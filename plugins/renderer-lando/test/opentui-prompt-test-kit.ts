@@ -96,7 +96,7 @@ const makeLifecycleModule = (
     SelectRenderable: Renderable,
     TabSelectRenderable: Renderable,
     InputRenderableEvents: { ENTER: "enter" },
-    SelectRenderableEvents: { ITEM_SELECTED: "selected" },
+    SelectRenderableEvents: { ITEM_SELECTED: "selected", SELECTION_CHANGED: "selectionChanged" },
     TabSelectRenderableEvents: { ITEM_SELECTED: "selected" },
   }) satisfies OpenTuiModuleLike;
 
