@@ -70,8 +70,6 @@ export const MORE_ROWS = [
 type ManifestCommand =
   (typeof COMMAND_REGISTRY_MANIFEST.commands)[keyof typeof COMMAND_REGISTRY_MANIFEST.commands];
 
-type HelpRow = ThisAppHelpRow;
-
 type StyleFns = {
   readonly bold: (text: string) => string;
   readonly cyan: (text: string) => string;
@@ -104,7 +102,7 @@ const isDeferred = (entry: ManifestCommand): boolean =>
 const isCommon = (entry: ManifestCommand): boolean =>
   "helpGroup" in entry.spec && entry.spec.helpGroup === "common";
 
-const toRow = (entry: ManifestCommand, aliasPolicy?: HelpAliasPolicy): HelpRow => {
+const toRow = (entry: ManifestCommand, aliasPolicy?: HelpAliasPolicy): ThisAppHelpRow => {
   const name = typeableName({
     canonicalId: entry.spec.id,
     builtInAliases: entry.aliases,
@@ -122,7 +120,7 @@ const catalogEntries = (): readonly ManifestCommand[] => Object.values(COMMAND_R
 
 const visibleEntries = (): readonly ManifestCommand[] => catalogEntries().filter((entry) => !isHidden(entry));
 
-export const visibleHelpRows = (aliasPolicy?: HelpAliasPolicy): readonly HelpRow[] =>
+export const visibleHelpRows = (aliasPolicy?: HelpAliasPolicy): readonly ThisAppHelpRow[] =>
   visibleEntries().map((entry) => toRow(entry, aliasPolicy));
 
 const padWidth = (names: readonly string[]): number => Math.max(14, ...names.map((name) => name.length));
@@ -130,10 +128,10 @@ const padWidth = (names: readonly string[]): number => Math.max(14, ...names.map
 const formatExtras = (extras: ReadonlyArray<string>, style: StyleFns): string =>
   extras.length === 0 ? "" : ` ${style.dim(`(${extras.join(", ")})`)}`;
 
-const formatRow = (row: HelpRow, width: number, style: StyleFns): string =>
+const formatRow = (row: ThisAppHelpRow, width: number, style: StyleFns): string =>
   `  ${style.cyan(row.primary.padEnd(width))} ${row.summary}${formatExtras(row.extras, style)}`;
 
-const formatSection = (rows: readonly HelpRow[], style: StyleFns): readonly string[] => {
+const formatSection = (rows: readonly ThisAppHelpRow[], style: StyleFns): readonly string[] => {
   const width = padWidth(rows.map((row) => row.primary));
   return rows.map((row) => formatRow(row, width, style));
 };
@@ -146,10 +144,10 @@ const usageBlock = (usage: string, style: StyleFns): readonly string[] => [
   `  ${style.cyan(usage)}`,
 ];
 
-const byPrimary = (left: HelpRow, right: HelpRow): number =>
+const byPrimary = (left: ThisAppHelpRow, right: ThisAppHelpRow): number =>
   left.primary.localeCompare(right.primary) || left.canonicalId.localeCompare(right.canonicalId);
 
-export const commonRows = (aliasPolicy?: HelpAliasPolicy): readonly HelpRow[] =>
+export const commonRows = (aliasPolicy?: HelpAliasPolicy): readonly ThisAppHelpRow[] =>
   visibleEntries()
     .filter(isCommon)
     .toSorted((left, right) => {
@@ -184,7 +182,7 @@ const topicEntries = (topic: HelpTopic): readonly ManifestCommand[] => {
   }
 };
 
-const authoringRows = (aliasPolicy?: HelpAliasPolicy): readonly HelpRow[] =>
+const authoringRows = (aliasPolicy?: HelpAliasPolicy): readonly ThisAppHelpRow[] =>
   visibleEntries()
     .filter((entry) => AUTHORING_IDS.has(entry.spec.id) && !isDeferred(entry))
     .map((entry) => toRow(entry, aliasPolicy))

@@ -68,26 +68,26 @@ const failUnknownCommand = (token: string) =>
     resultFormat: activeResultFormat,
   });
 
-// allow: SIZE_OK — help dispatch stays in the single native dispatcher; this todo cannot add a source file.
+// allow: SIZE_OK — help dispatch stays in the single native dispatcher so source and compiled entries share one registry.
 const HELP_SPECIAL_FLAGS = {
   all: { type: "boolean" },
   help: { type: "boolean", char: "h" },
 } as const;
 
-const helpAliasPolicyFromCache = async () => {
+const readAppCommandCacheOrNull = async () => {
   const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
   return cache._tag === "Right" ? cache.right : null;
 };
 
 const printAllHelp = async (): Promise<void> => {
-  const cache = await helpAliasPolicyFromCache();
+  const cache = await readAppCommandCacheOrNull();
   emitResultLine(
     renderColdAllHelp(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
   );
 };
 
 const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
-  const cache = await helpAliasPolicyFromCache();
+  const cache = await readAppCommandCacheOrNull();
   emitResultLine(
     renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
   );
@@ -114,8 +114,7 @@ const printRootHelpPage = async (): Promise<void> => {
     await renderAliasResolutionFailure(helpAliases.left);
     return;
   }
-  const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
-  printRootHelp(helpAliases.right, cache._tag === "Right" ? cache.right : null);
+  printRootHelp(helpAliases.right, await readAppCommandCacheOrNull());
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
@@ -124,8 +123,7 @@ const printHelpCatalogPage = async (): Promise<void> => {
     await renderAliasResolutionFailure(helpAliases.left);
     return;
   }
-  const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
-  printHelpCatalogJson(cache._tag === "Right" ? cache.right : null);
+  printHelpCatalogJson(await readAppCommandCacheOrNull());
 };
 
 const dispatchHelpTarget = async (token: string): Promise<void> => {
@@ -138,7 +136,7 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
     printCommandHelp(helpCommand);
     return;
   }
-  const cache = await helpAliasPolicyFromCache();
+  const cache = await readAppCommandCacheOrNull();
   const tooling = cache === null ? undefined : toolingHelpEntryForToken(cache, token);
   if (tooling !== undefined) {
     printToolingHelp(tooling, cache?.aliasPolicy);

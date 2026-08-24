@@ -37,9 +37,8 @@ const makeAppFixture = async (): Promise<{
   readonly env: Readonly<Record<string, string>>;
   readonly cleanup: () => Promise<void>;
 }> => {
-  const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-this-app-help-"));
-  const root = fixtureRoot;
-  const cacheRoot = join(fixtureRoot, "cache");
+  const root = await mkdtemp(join(tmpdir(), "lando-this-app-help-"));
+  const cacheRoot = join(root, "cache");
   await writeFile(join(root, ".lando.yml"), "name: native-help\n");
   const inheritedEnv = Object.fromEntries(
     Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -50,10 +49,10 @@ const makeAppFixture = async (): Promise<{
     env: {
       ...inheritedEnv,
       LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
-      LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
+      LANDO_USER_DATA_ROOT: join(root, "data"),
+      LANDO_USER_CONF_ROOT: join(root, "conf"),
     },
-    cleanup: () => rm(fixtureRoot, { recursive: true, force: true }),
+    cleanup: () => rm(root, { recursive: true, force: true }),
   };
 };
 
