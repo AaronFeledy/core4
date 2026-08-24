@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
-import { infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
+import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -14,7 +14,9 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { REDACTED } from "@lando/sdk/secrets";
+import { formatSummary } from "@lando/renderer/summary";
+import type { InfoAppResult } from "@lando/sdk/app";
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -200,5 +202,57 @@ describe("lando info never leaks secret values", () => {
     expect(json).not.toContain(SECRET_VALUE);
     expect(json).toContain("postgres");
     expect(result.services[0]?.creds?.password).toBe(REDACTED);
+  });
+});
+
+describe("lando info text does not double-wrap the redaction sentinel", () => {
+  const result: InfoAppResult = {
+    app: "my-app",
+    services: [
+      {
+        app: "my-app",
+        service: "mysql",
+        api: 4,
+        type: "mysql",
+        provider: "lando",
+        primary: true,
+        status: "running",
+        endpoints: [],
+        creds: {
+          user: "appuser",
+          password: REDACTED,
+          database: "appdb",
+          rootPassword: REDACTED,
+        },
+      },
+    ],
+  };
+
+  const assertInfoTextSentinel = (text: string): void => {
+    expect(text).toContain(`password=${REDACTED}`);
+    expect(text).toContain("rootPassword=");
+    expect(text).toContain(REDACTED);
+    expect(text).not.toContain("[redacted]]");
+    expect(text).not.toContain("[[redacted]]");
+  };
+
+  test("plain TSV keeps password and rootPassword as [redacted] after the CLI redaction pass", () => {
+    const redactor = createRedactor("secrets");
+    const text = redactor.redactString(renderInfoAppResult(result));
+    assertInfoTextSentinel(text);
+  });
+
+  test("decorated summary keeps password and rootPassword as [redacted] after the CLI redaction pass", () => {
+    const redactor = createRedactor("secrets");
+    const text = redactor.redactString(formatSummary(buildInfoSummary(result)));
+    assertInfoTextSentinel(text);
+  });
+
+  test("JSON creds stay [redacted] and do not leak", () => {
+    const json = JSON.stringify(result);
+    expect(json).toContain(`"password":"${REDACTED}"`);
+    expect(json).toContain(`"rootPassword":"${REDACTED}"`);
+    expect(json).not.toContain("[redacted]]");
+    expect(json).not.toContain(SECRET_VALUE);
   });
 });
