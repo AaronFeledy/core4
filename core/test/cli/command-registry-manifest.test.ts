@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { COMMAND_TOPICS } from "../../src/cli/command-topics.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixtureFiles = [
   "package.json",
@@ -134,7 +136,7 @@ describe("embedded command registry manifest", () => {
     const manifestIds = Object.keys(manifest.commands).sort();
     const registryIds = builtInCommandEntries.map((entry) => entry.spec.id).sort();
     expect(manifest.source).toBe("built-in-command-registry");
-    expect(Object.keys(manifest.topics)).toHaveLength(11);
+    expect(Object.keys(manifest.topics).sort()).toEqual(Object.keys(COMMAND_TOPICS).sort());
     expect(manifest.version).toBe("0.0.0");
     expect(manifestIds).toEqual(registryIds);
     for (const entry of builtInCommandEntries) {
