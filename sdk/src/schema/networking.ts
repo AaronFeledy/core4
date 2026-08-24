@@ -50,6 +50,9 @@ export const RoutePlan = Schema.Struct({
       service: ServiceName,
       protocol: Schema.Literal("http", "https"),
       port: PortNumber,
+      host: Schema.optional(Schema.String).annotations({
+        description: "Host Traefik should dial when the backend is not on the managed shared network.",
+      }),
     }),
   ).annotations({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });

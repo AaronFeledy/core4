@@ -106,3 +106,18 @@ test("route plans require a resolved HTTP backend", () => {
 
   expect(Either.isRight(result)).toBe(true);
 });
+
+test("route plans accept an optional cross-engine backend host", () => {
+  const result = Schema.decodeUnknownEither(RoutePlan, { onExcessProperty: "error" })({
+    hostname: "web.shop.lndo.site",
+    scheme: "https",
+    service: "web",
+    backend: { service: "web", protocol: "http", port: 32768, host: "host.lando.internal" },
+  });
+
+  expect(Either.isRight(result)).toBe(true);
+  if (Either.isRight(result)) {
+    expect(result.right.backend.host).toBe("host.lando.internal");
+    expect(result.right.backend.port).toBe(32768);
+  }
+});
