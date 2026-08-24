@@ -22,6 +22,7 @@ import {
   withCommandEventService,
 } from "./command-lifecycle";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
+import { dimBugReportDetails } from "./diagnostic-text";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
@@ -165,6 +166,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           const redactor = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
           message = redactor.redactString(message);
         }
+        if (isDecoratedContext(renderContext)) message = dimBugReportDetails(message);
         yield* writeDiagnosticLine(message);
         yield* setFailureExitCode(cause);
       });

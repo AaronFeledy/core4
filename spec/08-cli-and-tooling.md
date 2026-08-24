@@ -1044,13 +1044,14 @@ lando apps init [<destination>]
 
 Behavior:
 
-- `<destination>` is the output directory. Defaults to `--name` if given, otherwise to the current directory. The destination MUST be empty unless `--full` is passed (which permits writing into a directory that already contains files; conflicts are reported and the user is prompted).
+- `<destination>` is the output directory. Defaults to `--name` if given, otherwise to the current directory. The destination MAY already contain files. A Landofile dest (`.lando.yml`, `.lando.yaml`, `.lando.ts`, or another Landofile layer basename) that already exists fails closed with `InitTargetExistsError`. Any other recipe dest that already exists is a scaffold conflict: the entire scaffold set is skipped and only free Landofile dests are written. No `--force` / `--full` override is required for a free Landofile write.
 - `--recipe=<ref>` selects a recipe by reference (§8.8.4). When omitted in interactive mode, Lando prompts with the list of canonical recipes shipped in the binary.
 - `--source=<source>` (optional) provides source materials in addition to the recipe. Sources are plugin-contributed (`cwd`, `git`, `tarball`); the recipe's file manifest is layered on top of the source's files. Most users do not pass `--source`.
 - `--answer key=value` (repeatable) provides a value for a single recipe prompt. Bypasses the interactive prompt for that key.
 - `--answers <file>` reads a JSON or YAML map of answers. Combines with `--answer` (later wins).
 - `--no-interactive` disables prompting. Every prompt without a default and without an `--answer` value fails fast with `RecipeMissingAnswerError`.
 - `--yes` accepts every prompt's default without asking and is mutually exclusive with `--no-interactive` only when defaults exist; otherwise behaves like `--no-interactive` for unanswered prompts.
+- `--full` accepts the recipe's full default answer set without prompting. It does not change dest write rules.
 - The command runs at bootstrap level `minimal`; no provider is contacted.
 
 #### 8.8.2 Recipe directory layout
@@ -1219,7 +1220,7 @@ Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `tem
 
 #### 8.8.7 File manifest semantics
 
-- Files are written in the order they appear under `files:`. Conflicts (a destination path written by an earlier entry) fail closed unless `flags.full` is set, in which case the user is prompted per-file.
+- Files are written in the order they appear under `files:`. A dest is a Landofile dest when its basename matches a Landofile layer (`.lando.yml`, `.lando.ts`, `.lando.local.yml`, …); every other dest is scaffold. An existing Landofile dest fails closed with `InitTargetExistsError`. If any scaffold dest already exists, every scaffold dest is skipped as a set and only free Landofile dests are written. Intra-manifest duplicate dests still fail closed.
 - A file with `template: false` is copied byte-for-byte (no expression resolution). Files under `assets/` default to `template: false`; files under `templates/` default to `template: true`.
 - `mode:` (octal string) sets file permissions on POSIX hosts. Ignored on Windows. Useful for shell scripts and entrypoints.
 - A file with a falsy `when:` is skipped and reported in the init summary.
@@ -1270,8 +1271,9 @@ Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. T
 ```text
 1. Resolve --recipe through the source-scheme registry; cache or refetch as needed.
 2. Validate recipe.yml against the RecipeManifest schema; reject unknown action types.
-3. Resolve destination; create the directory if missing; refuse to proceed in non-empty
-   directories unless --full is set.
+3. Resolve destination; create the directory if missing. Plan writes against existing
+   dests: fail on a Landofile dest conflict; skip the entire scaffold set when any
+   scaffold dest already exists; otherwise write every dest.
 4. Run prompts in order:
      a. Skip if `when:` is falsy.
      b. Use --answer/--answers value when provided.
@@ -1279,7 +1281,7 @@ Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. T
      d. Otherwise prompt interactively via the renderer (TTY) or fail when --no-interactive.
 5. Render every file under `files:`; validate the generated Landofile against §7.8.
 6. Write files atomically (per §12.3).
-7. Run `postInit:` actions in order.
+7. Run `postInit:` actions in order. When the scaffold set was skipped, only `message` actions run; file-creating post-init (`gitInit`, `bun`, `command`) is skipped.
 8. Print a final summary including the Next-Steps message from the recipe (or a default).
 ```
 

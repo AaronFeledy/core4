@@ -94,13 +94,20 @@ const expectNonLoadingDispatches = async (
   env: NodeJS.ProcessEnv,
 ): Promise<void> => {
   for (const args of [["--version"], ["--help"], ["init"], ["init", "--renderer=json"]]) {
-    const normal = await runNonTty(command, cwd, args, env);
-    const withoutOpenTui = await runNonTty(command, cwd, args, {
-      ...env,
-      LANDO_NO_OPENTUI_PROMPTS: "1",
-    });
-    expect(normal).toEqual(withoutOpenTui);
-    expect(`${normal.stdout}${normal.stderr}`).not.toContain("╭");
+    const dest = await mkdtemp(resolve(cwd, "dispatch-"));
+    try {
+      const normal = await runNonTty(command, dest, args, env);
+      await rm(dest, { recursive: true, force: true });
+      await mkdir(dest);
+      const withoutOpenTui = await runNonTty(command, dest, args, {
+        ...env,
+        LANDO_NO_OPENTUI_PROMPTS: "1",
+      });
+      expect(normal).toEqual(withoutOpenTui);
+      expect(`${normal.stdout}${normal.stderr}`).not.toContain("╭");
+    } finally {
+      await rm(dest, { recursive: true, force: true });
+    }
   }
 };
 

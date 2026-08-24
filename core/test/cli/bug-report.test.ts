@@ -15,6 +15,7 @@ import {
   renderJsonBugReport,
   renderPlainBugReport,
 } from "../../src/cli/bug-report.ts";
+import { dimBugReportDetails } from "../../src/cli/diagnostic-text.ts";
 
 const CACHE_ROOT = "/tmp/lando-test-cache";
 
@@ -239,6 +240,16 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     expect(text).toContain(`cacheDir: ${CACHE_ROOT}`);
   });
 
+  test("output never contains ANSI control sequences", () => {
+    const text = renderPlainBugReport(
+      buildBugReport({
+        error: new Error("plain message"),
+        context: ctx(),
+      }),
+    );
+    expect(text.includes(String.fromCharCode(27))).toBe(false);
+  });
+
   test("includes appId and providerId when known", () => {
     const text = renderPlainBugReport(
       buildBugReport({
@@ -295,17 +306,6 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     expect(text).toContain("key: shm_size");
   });
 
-  test("output never contains ANSI control sequences", () => {
-    const text = renderPlainBugReport(
-      buildBugReport({
-        error: new Error("plain message"),
-        context: ctx(),
-      }),
-    );
-    const escChar = String.fromCharCode(27);
-    expect(text.includes(`${escChar}[`)).toBe(false);
-  });
-
   test("Given a control-bearing commandId, when plain and JSON reports render, then only plain output escapes it", () => {
     // Given
     const commandId = "app:unknown\u001b[31m";
@@ -321,6 +321,49 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     expect(plain).not.toContain("\u001b");
     expect(json).not.toContain("\u001b");
     expect(parsed).toMatchObject({ commandId });
+  });
+});
+
+describe("dimBugReportDetails: TTY lando styling", () => {
+  test("dims diagnostic details after the body and remediation", () => {
+    const dim = `${String.fromCharCode(27)}[2m`;
+    const dimReset = `${String.fromCharCode(27)}[22m`;
+    const text = dimBugReportDetails(
+      renderPlainBugReport(
+        buildBugReport({
+          error: { _tag: "TestError", message: "something went wrong", remediation: "try again" },
+          context: ctx({ commandId: "app:start" }),
+        }),
+      ),
+    );
+    expect(text.startsWith("something went wrong\n  ↳ try again\n")).toBe(true);
+    expect(text).toContain(`${dim}code: TestError${dimReset}`);
+    expect(text).toContain(`${dim}commandId: app:start${dimReset}`);
+    expect(text.startsWith(dim)).toBe(false);
+    expect(text).not.toContain(`${dim}  ↳ try again`);
+  });
+
+  test("body stays unstyled; only diagnostic details use dim SGR", () => {
+    const text = dimBugReportDetails(
+      renderPlainBugReport(
+        buildBugReport({
+          error: new Error("plain message"),
+          context: ctx(),
+        }),
+      ),
+    );
+    const lines = text.split("\n");
+    expect(lines[0]).toBe("plain message");
+    expect(lines[0]?.includes(String.fromCharCode(27))).toBe(false);
+    expect(
+      lines
+        .slice(1)
+        .every(
+          (line) =>
+            line.startsWith(`${String.fromCharCode(27)}[2m`) &&
+            line.endsWith(`${String.fromCharCode(27)}[22m`),
+        ),
+    ).toBe(true);
   });
 });
 
@@ -422,5 +465,6 @@ describe("formatBugReport: dispatches on renderer mode", () => {
     expect(plain).toContain("commandId: app:start");
     expect(plain.includes("\n")).toBe(true);
     expect(lando).toBe(plain);
+    expect(plain.includes(String.fromCharCode(27))).toBe(false);
   });
 });

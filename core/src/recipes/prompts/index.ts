@@ -18,9 +18,11 @@ export {
 } from "./editor-command";
 export {
   PromptCancelledError,
+  type PromptChrome,
   type PromptDriver,
   type PromptDriverMode,
   type PromptDriverRequest,
+  type PromptFooterLine,
 } from "./driver";
 export {
   createBufferedPromptIO,

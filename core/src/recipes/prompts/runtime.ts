@@ -31,7 +31,7 @@ import {
   createDefaultChoicesCommandRunner,
   parseChoicesOutput,
 } from "./choices-command";
-import { PromptCancelledError, type PromptDriver, type PromptDriverMode } from "./driver";
+import { PromptCancelledError, type PromptChrome, type PromptDriver, type PromptDriverMode } from "./driver";
 import { type EditorRunner, createDefaultEditorRunner } from "./editor-command";
 import type { PromptIO } from "./io";
 
@@ -50,6 +50,7 @@ export interface CollectPromptsOptions {
   readonly runs?: ReadonlyArray<string>;
   readonly interactiveDriver?: PromptDriver;
   readonly editorRunner?: EditorRunner;
+  readonly chrome?: Readonly<Record<string, PromptChrome>>;
 }
 
 const ACCEPTED_BOOL_TRUE = new Set(["y", "yes", "true", "1", "on"]);
@@ -294,6 +295,7 @@ const runDriverPrompt = async (
   mode: PromptDriverMode,
   coerce: (effective: string) => Promise<CoerceResult> | CoerceResult,
   choices?: ReadonlyArray<RecipePromptChoice>,
+  chrome?: PromptChrome,
 ): Promise<PromptAnswer> => {
   const def = promptDefaultRaw(prompt);
   let issue: string | undefined;
@@ -304,6 +306,8 @@ const runDriverPrompt = async (
       ...(def.hasDefault ? { defaultRaw: def.raw } : {}),
       ...(issue === undefined ? {} : { issue }),
       ...(choices === undefined ? {} : { choices }),
+      ...(chrome?.help === undefined ? {} : { help: chrome.help }),
+      ...(chrome?.footer === undefined ? {} : { footer: chrome.footer }),
     });
     const effective = raw === "" && def.hasDefault ? def.raw : raw;
     if (effective === "") {
@@ -374,6 +378,7 @@ const runInteractivePrompt = async (
   cwd: string,
   driver?: PromptDriver,
   editorRunner?: EditorRunner,
+  chrome?: PromptChrome,
 ): Promise<PromptAnswer> => {
   if (prompt.type === "editor" && editorRunner !== undefined && io.isTTY) {
     const edited = await runEditorPrompt(prompt, io, cwd, editorRunner);
@@ -387,6 +392,7 @@ const runInteractivePrompt = async (
         "normal",
         (effective) => coerceAnswer(prompt, effective, cwd),
         prompt.choices,
+        chrome,
       ),
     );
     if (outcome.ok) return outcome.value;
@@ -645,6 +651,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
       cwd,
       driver,
       editorRunner,
+      options.chrome?.[effectivePrompt.name],
     );
   }
   return resolved;

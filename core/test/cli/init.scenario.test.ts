@@ -107,14 +107,15 @@ describe("lando init --full", () => {
     });
   });
 
-  test("fails non-interactively when --name is missing", async () => {
+  test("uses the current folder name when --name is missing", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive"], dir);
+      const appDir = join(dir, "my-site");
+      await mkdir(appDir);
+      const result = await runCli(["init", "--recipe=empty", "--no-interactive"], appDir);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Missing required answer for prompt "name"');
-      expect(result.stderr).toContain("--answer name=<value>");
-      expect(await Bun.file(join(dir, "mvp")).exists()).toBe(false);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Created my-site at");
+      expect(await Bun.file(join(appDir, ".lando.yml")).text()).toContain("name: my-site");
     });
   });
 
@@ -136,23 +137,27 @@ describe("lando init --full", () => {
     });
   });
 
-  test("refuses an existing non-empty directory with remediation", async () => {
+  test("writes a Landofile into a non-empty directory when that dest is free", async () => {
     await withTempCwd(async (dir) => {
-      await writeFile(join(dir, "existing"), "placeholder");
-      await rm(join(dir, "existing"));
+      await mkdir(join(dir, "existing"));
       await Bun.write(join(dir, "existing", "keep.txt"), "do not overwrite");
 
-      const exit = await Effect.runPromiseExit(
-        Effect.tryPromise({
-          try: () => runCli(["init", "--full", "--name=existing"], dir),
-          catch: (cause) => cause,
-        }),
-      );
-      expect(Exit.isSuccess(exit)).toBe(true);
-      const result = Exit.isSuccess(exit) ? exit.value : undefined;
-      expect(result?.exitCode).toBe(1);
-      expect(result?.stderr).toContain("Init target already exists");
-      expect(result?.stderr).toContain("--force");
+      const result = await runCli(["init", "--recipe=empty", "--no-interactive", "--name=existing"], dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(dir, "existing", "keep.txt")).text()).toBe("do not overwrite");
+      expect(await Bun.file(join(dir, "existing", ".lando.yml")).exists()).toBe(true);
+    });
+  });
+
+  test("refuses when the Landofile dest already exists", async () => {
+    await withTempCwd(async (dir) => {
+      await mkdir(join(dir, "existing"));
+      await Bun.write(join(dir, "existing", ".lando.yml"), "name: already\n");
+
+      const result = await runCli(["init", "--full", "--name=existing"], dir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Init target already has a Landofile");
 
       const directExit = await Effect.runPromiseExit(
         Effect.tryPromise({
@@ -170,11 +175,28 @@ describe("lando init --full", () => {
         if (failure._tag === "Some") {
           const value = failure.value;
           expect(value).toBeInstanceOf(InitTargetExistsError);
-          if (value instanceof InitTargetExistsError) {
-            expect(value.remediation).toContain("--force");
-          }
         }
       }
+    });
+  });
+
+  test("skips the entire scaffold set when any scaffold dest exists", async () => {
+    await withTempCwd(async (dir) => {
+      await mkdir(join(dir, "existing"));
+      await Bun.write(join(dir, "existing", "package.json"), JSON.stringify({ name: "keep-me" }));
+
+      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const result = await initApp({
+        cwd: dir,
+        full: true,
+        name: "existing",
+        nonInteractive: true,
+      });
+
+      expect(result.skippedScaffold).toEqual(["package.json", "server.js"]);
+      expect(await Bun.file(join(dir, "existing", ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "existing", "package.json")).json()).toEqual({ name: "keep-me" });
+      expect(await Bun.file(join(dir, "existing", "server.js")).exists()).toBe(false);
     });
   });
 });

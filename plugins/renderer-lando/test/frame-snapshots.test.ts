@@ -102,7 +102,7 @@ describe("renderer frame snapshots — prompt chrome", () => {
     });
   }
 
-  test("titled border renders in the teal accent (#2dd4bf)", async () => {
+  test("titled border renders in the brand pink accent (#df4090)", async () => {
     const spans = await capturePromptSpans(
       { prompt: { name: "answer", type: "text", message: "Choose a flavor" }, mode: "normal" },
       60,
@@ -112,7 +112,7 @@ describe("renderer frame snapshots — prompt chrome", () => {
       .flatMap((line) => line.spans)
       .find((span) => span.text.includes("╭") && span.text.includes("Choose a flavor"));
     expect(borderSpan).toBeDefined();
-    expect(borderSpan?.fg.toInts().slice(0, 3)).toEqual([45, 212, 191]);
+    expect(borderSpan?.fg.toInts().slice(0, 3)).toEqual([223, 64, 144]);
   });
 });
 

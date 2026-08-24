@@ -65,6 +65,22 @@ export interface PromptDriverRequest {
    * selection coercion stays intact.
    */
   readonly choices?: ReadonlyArray<RecipePromptChoice>;
+  /** Static helper shown under the control. TTY chrome only. */
+  readonly help?: string;
+  /** Live footer lines derived from the current raw value. TTY chrome only. */
+  readonly footer?: ReadonlyArray<PromptFooterLine>;
+}
+
+/** One live-updating footer line owned by the caller, rendered by the driver. */
+export interface PromptFooterLine {
+  readonly id: string;
+  readonly render: (raw: string) => string;
+}
+
+/** Optional TTY chrome attached to a named prompt. */
+export interface PromptChrome {
+  readonly help?: string;
+  readonly footer?: ReadonlyArray<PromptFooterLine>;
 }
 
 /**
