@@ -12,10 +12,12 @@ import { dirname, join } from "node:path";
 
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
+import { cliUserArgv } from "../src/cli/user-argv";
+
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
 
-const argv = Bun.argv.slice(2);
+const argv = cliUserArgv(Bun.argv);
 const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
   const { writeStdioLine } = await import("@lando/renderer/io");
   writeStdioLine(destination, text);

@@ -202,3 +202,84 @@ describe("detached host-proxy worker payload delivery", () => {
     }
   });
 });
+
+const makeCrashWorker = async (root: string): Promise<string> => {
+  const path = join(root, "crash-worker.ts");
+  await writeFile(
+    path,
+    `console.error("worker boom: missing compiled entry");
+process.exit(7);
+`,
+  );
+  return path;
+};
+
+describe("detached host-proxy worker readiness diagnostics", () => {
+  test("does not ignore worker stderr for the worker lifetime", async () => {
+    const source = await Bun.file(
+      new URL("../../../../engine/src/subsystems/host-proxy/worker-process.ts", import.meta.url),
+    ).text();
+    expect(source).not.toContain('stderr: "ignore"');
+  });
+
+  test("captures stderr, creates logsDir, and reports exitCode on early exit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-crash-"));
+    const logsDir = join(root, "logs");
+    const worker = defaultSpawnWorker({
+      argv: [process.execPath, await makeCrashWorker(root), "--app-id", "demo"],
+      logsDir,
+    });
+    try {
+      let failure: Error | undefined;
+      try {
+        await worker.readReady();
+      } catch (cause) {
+        if (cause instanceof Error) failure = cause;
+        else throw cause;
+      }
+      if (failure === undefined) throw new Error("Expected worker readiness to fail.");
+      expect(failure.name).toBe("HostProxyWorkerExitedBeforeReadyError");
+      expect(failure.message).toContain("exitCode=7");
+      expect(failure.message).toContain("worker boom: missing compiled entry");
+      const logPath = join(logsDir, "host-proxy-worker-demo.log");
+      expect(await Bun.file(logPath).exists()).toBe(true);
+      expect(await Bun.file(logPath).text()).toContain("worker boom: missing compiled entry");
+    } finally {
+      await worker.terminate();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("maps an early worker exit onto a tagged error that names the log file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-crash-map-"));
+    const logsDir = join(root, "logs");
+    const scriptPath = await makeCrashWorker(root);
+    const exit = await Effect.runPromiseExit(
+      startDetachedHostProxyWorker({
+        app,
+        plan,
+        paths: { userCacheRoot: root, userDataRoot: root },
+        shimArtifactPath: join(root, "lando"),
+        spawnWorker: () =>
+          defaultSpawnWorker({
+            argv: [process.execPath, scriptPath, "--app-id", "demo"],
+            logsDir,
+          }),
+      }),
+    );
+    try {
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Success") throw new Error("Expected crashed worker to fail.");
+      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      expect(failure).toMatchObject({
+        _tag: "HostProxyTransportUnavailableError",
+        remediation: `Inspect ${join(logsDir, "host-proxy-worker-demo.log")} for the worker crash.`,
+      });
+      expect(String(failure.message)).toContain("exitCode=7");
+      expect(String(failure.message)).toContain("worker boom: missing compiled entry");
+    } finally {
+      if (exit._tag === "Success") await exit.value.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
