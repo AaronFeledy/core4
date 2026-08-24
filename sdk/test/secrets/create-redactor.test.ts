@@ -49,6 +49,14 @@ describe("secrets profile (pattern layer)", () => {
     expect(r.redactString("MY_TOKEN_VALUE=x ok")).toBe("MY_TOKEN_VALUE=[redacted] ok");
   });
 
+  test("does not rematch an already-redacted assignment sentinel", () => {
+    expect(r.redactString("password=[redacted] rootPassword=[redacted]")).toBe(
+      "password=[redacted] rootPassword=[redacted]",
+    );
+    const layered = createRedactor("secrets", { values: ["hunter2longvalue"] });
+    expect(layered.redactString("DB_PASSWORD=hunter2longvalue")).toBe("DB_PASSWORD=[redacted]");
+  });
+
   test("query-param assignments stay single-marker (owned by the signed-query class)", () => {
     expect(r.redactString("?access_token=SECRETVAL")).toBe("?access_token=[redacted]");
     expect(r.redactString("&api_key=abc")).toBe("&api_key=[redacted]");
