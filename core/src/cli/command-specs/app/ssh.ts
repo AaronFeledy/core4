@@ -14,6 +14,7 @@ const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:ssh",
+  helpGroup: "common",
   summary: "Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).",
   namespace: "app",
   topLevelAlias: true,

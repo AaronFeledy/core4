@@ -10,6 +10,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   resultSchema: RebuildAppResultSchema,
   id: "app:rebuild",
+  helpGroup: "common",
   summary: "Rebuild artifacts and restart the current app.",
   namespace: "app",
   topLevelAlias: true,

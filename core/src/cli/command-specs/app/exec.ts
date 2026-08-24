@@ -10,6 +10,7 @@ import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boun
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:exec",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Run a command in a Lando service.",
   namespace: "app",

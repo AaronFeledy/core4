@@ -8,6 +8,7 @@ import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/comman
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   resultSchema: RestartAppResultSchema,
   id: "app:restart",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Restart the current app (stop + start).",
   namespace: "app",

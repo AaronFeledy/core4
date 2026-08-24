@@ -42,6 +42,7 @@ const signalFromInput = (input: unknown): AbortSignal | undefined =>
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:logs",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Stream logs from the current app.",
   namespace: "app",
