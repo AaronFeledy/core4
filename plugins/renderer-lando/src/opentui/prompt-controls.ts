@@ -75,17 +75,39 @@ const addInputControl = <R extends RendererLike>(
   });
   input.on(mod.InputRenderableEvents.ENTER, () => done(input.value));
   panel.add?.(input);
-  if (defaultRaw !== undefined && defaultRaw.length > 0) {
+  if (request.help !== undefined && request.help.length > 0) {
     panel.add?.(
       new mod.TextRenderable(renderer, {
-        id: "lando-prompt-default-hint",
-        content: `Leave blank to use ${defaultRaw}`,
+        id: "lando-prompt-help",
+        content: request.help,
         fg: PROMPT_THEME.muted,
         width,
       }),
     );
   }
+  const footerLines = request.footer ?? [];
+  const footerRenderables = footerLines.map((line) => {
+    const node = new mod.TextRenderable(renderer, {
+      id: `lando-prompt-footer-${line.id}`,
+      content: line.render(input.value),
+      fg: PROMPT_THEME.muted,
+      width,
+    });
+    panel.add?.(node);
+    return { line, node };
+  });
+  if (footerRenderables.length > 0) {
+    input.on(mod.InputRenderableEvents.INPUT, (value: string) => {
+      for (const footer of footerRenderables) {
+        footer.node.content = footer.line.render(value);
+      }
+      renderer.requestRender?.();
+    });
+  }
   input.focus?.();
+  if (defaultRaw !== undefined && defaultRaw.length > 0) {
+    input.selectAll?.();
+  }
 };
 
 const addTextareaControl = <R extends RendererLike>(

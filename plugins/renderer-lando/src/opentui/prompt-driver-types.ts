@@ -7,12 +7,19 @@ export interface PromptSpecLike {
   validate?: unknown;
 }
 
+export interface PromptFooterLineLike {
+  readonly id: string;
+  readonly render: (raw: string) => string;
+}
+
 export interface PromptDriverRequestLike {
   prompt: PromptSpecLike;
   mode: "normal" | "manual-choice" | "confirm";
   defaultRaw?: string;
   issue?: string;
   choices?: ReadonlyArray<unknown>;
+  help?: string;
+  footer?: ReadonlyArray<PromptFooterLineLike>;
 }
 
 export interface KeyEventLike {
@@ -51,6 +58,7 @@ export interface RenderableLike extends EventEmitterLike {
 
 export interface InputRenderableLike extends RenderableLike {
   value: string;
+  selectAll?(): boolean;
 }
 
 export interface TextareaRenderableLike extends RenderableLike {
@@ -98,7 +106,7 @@ export interface OpenTuiModuleLike<R extends RendererLike = RendererLike> {
   TextareaRenderable: ConstructorLike<R, TextareaRenderableLike>;
   SelectRenderable: ConstructorLike<R, SelectRenderableLike>;
   TabSelectRenderable: ConstructorLike<R, SelectRenderableLike>;
-  InputRenderableEvents: { ENTER: string };
+  InputRenderableEvents: { ENTER: string; INPUT: string; CHANGE: string };
   SelectRenderableEvents: { ITEM_SELECTED: string; SELECTION_CHANGED: string };
   TabSelectRenderableEvents: { ITEM_SELECTED: string };
 }

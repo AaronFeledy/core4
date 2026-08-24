@@ -60,20 +60,52 @@ describe("prompt chrome", () => {
     await answer;
   });
 
-  test("text default prints a leave-blank hint below the input", async () => {
+  test("prefilled text default is selected so typing replaces it", async () => {
     const testSetup = await makeSetup();
     const driver = await makeDriver(testSetup);
     const answer = driver.readRaw({ prompt: basePrompt, mode: "normal", defaultRaw: "vanilla" });
     await waitForBuild(testSetup);
 
-    const rows = testSetup.captureCharFrame().split("\n");
-    const hintRow = rows.find((row) => row.includes("vanilla") && row.includes("Leave blank"));
-    expect(hintRow).toBeDefined();
-    expect(hintRow).not.toContain("╭");
+    await testSetup.mockInput.typeText("x");
+    await flushInput(testSetup);
+    testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
+    await expect(answer).resolves.toBe("x");
+  });
+
+  test("renders caller-supplied help under the input", async () => {
+    const testSetup = await makeSetup();
+    const driver = await makeDriver(testSetup);
+    const help = "HELP_TOKEN_site-id";
+    const answer = driver.readRaw({ prompt: basePrompt, mode: "normal", help });
+    await waitForBuild(testSetup);
+
+    expect(testSetup.captureCharFrame()).toContain(help);
 
     testSetup.mockInput.pressEnter();
     await flushInput(testSetup);
     await answer;
+  });
+
+  test("live footer updates from the current input value", async () => {
+    const testSetup = await makeSetup();
+    const driver = await makeDriver(testSetup);
+    const answer = driver.readRaw({
+      prompt: basePrompt,
+      mode: "normal",
+      defaultRaw: "alpha",
+      footer: [{ id: "slug", render: (raw) => `slug:${raw}` }],
+    });
+    await waitForBuild(testSetup);
+    expect(testSetup.captureCharFrame()).toContain("slug:alpha");
+
+    await testSetup.mockInput.typeText("beta");
+    await flushInput(testSetup);
+    expect(testSetup.captureCharFrame()).toContain("slug:beta");
+
+    testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
+    await expect(answer).resolves.toBe("beta");
   });
 
   test("select shows an explicit indicator on the highlighted row and lists every choice", async () => {
