@@ -1,5 +1,5 @@
-import { mkdir, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -45,9 +45,11 @@ import {
 import { readAnswersFile } from "../prompts/answer-flags";
 import { activeRendererMode } from "../renderer-mode-state";
 import type { BunSelfSpawner } from "./bun-self-runner";
-import { withAppNameDefault } from "./init-app-name";
+import { defaultAppNameFromCwd, withAppNameDefault } from "./init-app-name";
+import { chromeForInitNamePrompt } from "./init-app-name-chrome";
 import { resolveInitDestination } from "./init-destination";
 import { parseInitSourceFlags } from "./init-source";
+import { planInitWrites } from "./init-write-plan";
 
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";
@@ -139,6 +141,7 @@ export interface InitAppResult {
   readonly directory: string;
   readonly answers: PromptAnswers;
   readonly postInit: PostInitOutcome;
+  readonly skippedScaffold: ReadonlyArray<string>;
 }
 
 const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
@@ -270,6 +273,7 @@ const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionP
 
 type InternalPromptBatchOptions = PromptBatchOptions & {
   readonly choicesRunner?: ChoicesCommandRunner;
+  readonly chrome?: ReturnType<typeof chromeForInitNamePrompt>;
 };
 
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
@@ -309,6 +313,12 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const prompts = withAppNameDefault(manifest.prompts ?? [], options.destination ?? cwd);
 
   const presetAnswers = await composeAnswers(options);
+  const previewAppName =
+    typeof presetAnswers[APP_NAME_PROMPT] === "string" && presetAnswers[APP_NAME_PROMPT] !== ""
+      ? presetAnswers[APP_NAME_PROMPT]
+      : defaultAppNameFromCwd(options.destination ?? cwd);
+  const previewYaml =
+    renderer.render({ appName: previewAppName, answers: presetAnswers }).get(".lando.yml") ?? "";
 
   const collected = await prompter.promptAll(prompts, {
     answers: presetAnswers,
@@ -317,6 +327,12 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     interactive: options.nonInteractive !== true,
     ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
     ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
+    ...{
+      chrome: chromeForInitNamePrompt({
+        appRoot: options.destination ?? cwd,
+        landofileYaml: previewYaml,
+      }),
+    },
   } satisfies InternalPromptBatchOptions);
 
   const appNameValue = collected[APP_NAME_PROMPT];
@@ -330,8 +346,28 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     throw new Error(`Recipe "${recipeRef}" is missing a files: manifest.`);
   }
 
+  const directory = resolveInitDestination({
+    cwd,
+    ...(options.destination === undefined ? {} : { destination: options.destination }),
+    ...(options.name === undefined ? {} : { name: options.name }),
+  });
+  const existing = new Set<string>();
+  await Promise.all(
+    files.map(async (file) => {
+      if (await Bun.file(join(directory, file.dest)).exists()) existing.add(file.dest);
+    }),
+  );
+  const writePlan = planInitWrites(
+    files.map((file) => file.dest),
+    existing,
+  );
+  const writeDests = new Set(writePlan.write);
+  const filesToWrite = files.filter((file) => writeDests.has(file.dest));
+  const postInitActions = (manifest.postInit ?? []).filter(
+    (action) => writePlan.skippedScaffold.length === 0 || action.type === "message",
+  );
+
   const events = options.events;
-  const postInitActions = manifest.postInit ?? [];
   const shouldRunPostInit = options.runPostInit !== false && postInitActions.length > 0;
   const initParentId = `init:${manifest.id}`;
   const treeStartedAt = performance.now();
@@ -349,26 +385,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   await publishTaskStartAsync(events, {
     taskId: "render",
     parentId: initParentId,
-    label: `Render recipe files (${files.length})`,
-  });
-
-  const directory = resolveInitDestination({
-    cwd,
-    ...(options.destination === undefined ? {} : { destination: options.destination }),
-    ...(options.name === undefined ? {} : { name: options.name }),
+    label: `Render recipe files (${filesToWrite.length})`,
   });
 
   try {
-    const existing = await readdir(directory).catch((cause: unknown) => {
-      if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
-        return undefined;
-      throw cause;
-    });
-
-    if (existing !== undefined && existing.length > 0) {
+    if (writePlan.landofileConflict !== undefined) {
+      const conflictPath = join(directory, writePlan.landofileConflict);
       await publishTaskFailAsync(events, {
         taskId: "render",
-        summary: `Init target already exists: ${directory}`,
+        summary: `Init target already has a Landofile: ${conflictPath}`,
         durationMs: Math.round(performance.now() - renderStartedAt),
       });
       await publishTreeCompleteAsync(events, {
@@ -379,9 +404,9 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         durationMs: Math.round(performance.now() - treeStartedAt),
       });
       throw new InitTargetExistsError({
-        message: `Init target already exists and is not empty: ${directory}`,
-        path: directory,
-        remediation: "Choose an empty directory or wait for Alpha --force support.",
+        message: `Init target already has a Landofile: ${conflictPath}`,
+        path: conflictPath,
+        remediation: "Remove the existing Landofile or choose a different directory.",
       });
     }
 
@@ -389,7 +414,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
     await mkdir(directory, { recursive: true });
 
-    const managedFiles = files.map((file): ManagedFile => {
+    const managedFiles = filesToWrite.map((file): ManagedFile => {
       const content = rendered.get(file.dest);
       if (content === undefined) {
         throw new Error(
@@ -439,7 +464,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   await publishTaskCompleteAsync(events, {
     taskId: "render",
-    summary: `Rendered ${files.length} files`,
+    summary: `Rendered ${filesToWrite.length} files`,
     durationMs: Math.round(performance.now() - renderStartedAt),
   });
 
@@ -498,5 +523,5 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     durationMs: Math.round(performance.now() - treeStartedAt),
   });
 
-  return { appName, directory, answers: collected, postInit };
+  return { appName, directory, answers: collected, postInit, skippedScaffold: writePlan.skippedScaffold };
 };
