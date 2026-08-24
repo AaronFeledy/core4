@@ -1,13 +1,5 @@
 import { truncateToWidth } from "../terminal-width.ts";
-import {
-  checkboxOption,
-  checkedIndicesFromDefault,
-  choiceDescription,
-  choiceLabel,
-  isYesDefault,
-  readPromptType,
-  selectedChoiceIndex,
-} from "./prompt-choice.ts";
+import { checkboxOption, checkedIndicesFromDefault, isYesDefault, readPromptType } from "./prompt-choice.ts";
 import type {
   KeyEventLike,
   OpenTuiModuleLike,
@@ -17,8 +9,11 @@ import type {
   SelectOptionLike,
 } from "./prompt-driver-types.ts";
 import { type PromptDisposer, noopDisposer, removeListener } from "./prompt-listeners.ts";
+import { addSelectControl, selectPanelMaxCols } from "./prompt-select-control.ts";
+import { PROMPT_THEME, promptSelectColors } from "./prompt-theme.ts";
 
-const panelWidth = (renderer: RendererLike): number => Math.max(24, Math.min(72, renderer.width - 2));
+const panelWidth = (renderer: RendererLike, maxCols = 72): number =>
+  Math.max(24, Math.min(maxCols, renderer.width - 2));
 
 const fitTitle = (message: string, width: number): string => truncateToWidth(message, Math.max(4, width - 4));
 
@@ -27,26 +22,28 @@ const addPromptChrome = <R extends RendererLike>(
   renderer: R,
   request: PromptDriverRequestLike,
 ): RenderableLike => {
+  const type = readPromptType(request);
+  const width = panelWidth(renderer, type === "select" ? selectPanelMaxCols(request) : 72);
   const panel = new mod.BoxRenderable(renderer, {
     id: `lando-prompt-${request.prompt.name}`,
     border: true,
     borderStyle: "rounded",
-    borderColor: "#2dd4bf",
-    title: fitTitle(request.prompt.message, panelWidth(renderer)),
+    borderColor: PROMPT_THEME.accent,
+    title: fitTitle(request.prompt.message, width),
     titleAlignment: "left",
-    backgroundColor: "#07131a",
+    backgroundColor: PROMPT_THEME.background,
     padding: 1,
     flexDirection: "column",
     gap: 1,
-    width: panelWidth(renderer),
+    width,
   });
   if (request.issue !== undefined && request.issue.length > 0) {
     panel.add?.(
       new mod.TextRenderable(renderer, {
         id: "lando-prompt-issue",
         content: request.issue,
-        fg: "#f59e0b",
-        width: panelWidth(renderer) - 4,
+        fg: PROMPT_THEME.issue,
+        width: width - 4,
       }),
     );
   }
@@ -63,20 +60,31 @@ const addInputControl = <R extends RendererLike>(
 ): void => {
   const defaultRaw =
     request.defaultRaw ?? (request.prompt.default === undefined ? undefined : String(request.prompt.default));
+  const width = Math.max(10, panelWidth(renderer) - 4);
   const input = new mod.InputRenderable(renderer, {
     id: "lando-prompt-input",
-    width: Math.max(10, panelWidth(renderer) - 4),
+    width,
     value: defaultRaw ?? "",
     placeholder: defaultRaw === undefined ? "Type an answer…" : `Default: ${defaultRaw}`,
-    backgroundColor: "#0f172a",
-    textColor: "#e5f9ff",
-    cursorColor: "#22d3ee",
-    focusedBackgroundColor: "#102033",
-    focusedTextColor: "#ffffff",
-    placeholderColor: "#64748b",
+    backgroundColor: PROMPT_THEME.inputBackground,
+    textColor: PROMPT_THEME.text,
+    cursorColor: PROMPT_THEME.accent,
+    focusedBackgroundColor: PROMPT_THEME.inputFocusedBackground,
+    focusedTextColor: PROMPT_THEME.focusedText,
+    placeholderColor: PROMPT_THEME.placeholder,
   });
   input.on(mod.InputRenderableEvents.ENTER, () => done(input.value));
   panel.add?.(input);
+  if (defaultRaw !== undefined && defaultRaw.length > 0) {
+    panel.add?.(
+      new mod.TextRenderable(renderer, {
+        id: "lando-prompt-default-hint",
+        content: `Leave blank to use ${defaultRaw}`,
+        fg: PROMPT_THEME.muted,
+        width,
+      }),
+    );
+  }
   input.focus?.();
 };
 
@@ -95,56 +103,16 @@ const addTextareaControl = <R extends RendererLike>(
     height: Math.max(3, Math.min(8, renderer.height - 6)),
     initialValue: defaultRaw ?? "",
     placeholder: defaultRaw === undefined ? "Type an answer…" : `Default: ${defaultRaw}`,
-    backgroundColor: "#0f172a",
-    textColor: "#e5f9ff",
-    cursorColor: "#22d3ee",
-    focusedBackgroundColor: "#102033",
-    focusedTextColor: "#ffffff",
-    placeholderColor: "#64748b",
+    backgroundColor: PROMPT_THEME.inputBackground,
+    textColor: PROMPT_THEME.text,
+    cursorColor: PROMPT_THEME.accent,
+    focusedBackgroundColor: PROMPT_THEME.inputFocusedBackground,
+    focusedTextColor: PROMPT_THEME.focusedText,
+    placeholderColor: PROMPT_THEME.placeholder,
     onSubmit: () => done(textarea.plainText),
   });
   panel.add?.(textarea);
   textarea.focus?.();
-};
-
-const addSelectControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
-  renderer: R,
-  panel: RenderableLike,
-  request: PromptDriverRequestLike,
-  done: (value: string) => void,
-): void => {
-  const choices = request.choices ?? request.prompt.choices ?? [];
-  const defaultRaw =
-    request.defaultRaw ?? (request.prompt.default === undefined ? undefined : String(request.prompt.default));
-  const options = choices.map((choice, index) => ({
-    name: choiceLabel(choice),
-    description: choiceDescription(choice) ?? "",
-    value: String(index + 1),
-  }));
-  const showDescription = choices.some((choice) => choiceDescription(choice) !== undefined);
-  const rowsPerOption = showDescription ? 2 : 1;
-  const maxRows = Math.max(2, renderer.height - 6);
-  const select = new mod.SelectRenderable(renderer, {
-    id: "lando-prompt-select",
-    width: Math.max(10, panelWidth(renderer) - 4),
-    height: Math.max(2, Math.min(maxRows, options.length * rowsPerOption + 1)),
-    options,
-    showDescription,
-    selectedIndex: selectedChoiceIndex(choices, defaultRaw),
-    backgroundColor: "#07131a",
-    textColor: "#bae6fd",
-    focusedBackgroundColor: "#07131a",
-    focusedTextColor: "#e0f2fe",
-    selectedBackgroundColor: "#0f766e",
-    selectedTextColor: "#ffffff",
-    descriptionColor: "#64748b",
-    selectedDescriptionColor: "#ccfbf1",
-    showScrollIndicator: true,
-  });
-  select.on(mod.SelectRenderableEvents.ITEM_SELECTED, (index: number) => done(String(index + 1)));
-  panel.add?.(select);
-  select.focus?.();
 };
 
 const addMultiselectControl = <R extends RendererLike>(
@@ -166,13 +134,8 @@ const addMultiselectControl = <R extends RendererLike>(
     options: buildOptions(),
     showDescription: false,
     selectedIndex: 0,
-    backgroundColor: "#07131a",
-    textColor: "#bae6fd",
-    focusedBackgroundColor: "#07131a",
-    focusedTextColor: "#e0f2fe",
-    selectedBackgroundColor: "#0f766e",
-    selectedTextColor: "#ffffff",
-    showScrollIndicator: true,
+    ...promptSelectColors,
+    showScrollIndicator: false,
   });
   // Space is not a SelectRenderable binding, so toggle the focused row's checked state here without submitting.
   const toggleListener = (key: KeyEventLike): void => {
@@ -208,13 +171,7 @@ const addConfirmControl = <R extends RendererLike>(
       { name: "No", description: "n" },
     ],
     tabWidth: 10,
-    backgroundColor: "#07131a",
-    textColor: "#bae6fd",
-    focusedBackgroundColor: "#07131a",
-    focusedTextColor: "#e0f2fe",
-    selectedBackgroundColor: "#0f766e",
-    selectedTextColor: "#ffffff",
-    selectedDescriptionColor: "#ccfbf1",
+    ...promptSelectColors,
     showDescription: false,
     showUnderline: true,
     wrapSelection: true,
@@ -234,8 +191,7 @@ export const buildPrompt = <R extends RendererLike>(
   const type = readPromptType(request);
   const panel = addPromptChrome(mod, renderer, request);
   if (type === "select") {
-    addSelectControl(mod, renderer, panel, request, done);
-    return noopDisposer;
+    return addSelectControl(mod, renderer, panel, request, done);
   }
   if (type === "multiselect") {
     return addMultiselectControl(mod, renderer, panel, request, done);
