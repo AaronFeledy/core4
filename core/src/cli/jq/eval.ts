@@ -21,10 +21,11 @@ export const applyJqToRedactedJsonLine = async (
   line: string,
   expr: string,
   engine?: JqEngine,
+  timeoutMs: number = JQ_EVAL_TIMEOUT_MS,
 ): Promise<string> => {
   const input = parseJsonLine(line, expr);
   const resolved = engine ?? (await loadDefaultEngine());
-  const { text } = await evalWithTimeout(resolved, input, expr);
+  const { text } = await evalWithTimeout(resolved, input, expr, timeoutMs);
   assertOutputSize(text, expr);
   const formatted = formatEngineText(text);
   assertOutputSize(formatted, expr);
@@ -42,10 +43,17 @@ const parseJsonLine = (line: string, expr: string): unknown => {
   }
 };
 
-const evalWithTimeout = async (engine: JqEngine, input: unknown, expr: string): Promise<{ text: string }> => {
+const evalWithTimeout = async (
+  engine: JqEngine,
+  input: unknown,
+  expr: string,
+  timeoutMs: number,
+): Promise<{ text: string }> => {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      controller.abort();
       reject(
         new JqExpressionError({
           message: "jq expression timed out.",
@@ -54,10 +62,13 @@ const evalWithTimeout = async (engine: JqEngine, input: unknown, expr: string): 
           remediation: TIMEOUT_REMEDIATION,
         }),
       );
-    }, JQ_EVAL_TIMEOUT_MS);
+    }, timeoutMs);
   });
+  const work = settleEngine(engine, input, expr, controller.signal);
+  const observeLateSettlement = (): void => {};
+  void work.then(observeLateSettlement, observeLateSettlement);
   try {
-    return await Promise.race([settleEngine(engine, input, expr), timeout]);
+    return await Promise.race([work, timeout]);
   } finally {
     if (timer !== undefined) {
       clearTimeout(timer);
@@ -65,9 +76,14 @@ const evalWithTimeout = async (engine: JqEngine, input: unknown, expr: string): 
   }
 };
 
-const settleEngine = async (engine: JqEngine, input: unknown, expr: string): Promise<{ text: string }> => {
+const settleEngine = async (
+  engine: JqEngine,
+  input: unknown,
+  expr: string,
+  signal: AbortSignal,
+): Promise<{ text: string }> => {
   try {
-    return await engine.eval(input, expr);
+    return await engine.eval(input, expr, { signal });
   } catch (error) {
     if (error instanceof JqExpressionError) {
       throw error;

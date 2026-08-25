@@ -10,6 +10,27 @@ const fake = (text: string): JqEngine => ({
   eval: async () => ({ text }),
 });
 
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const withUnhandledRejectionProbe = async (run: () => Promise<void>): Promise<readonly unknown[]> => {
+  const rejections: unknown[] = [];
+  const onUnhandled = (reason: unknown) => {
+    rejections.push(reason);
+  };
+  const emitter = process as NodeJS.EventEmitter;
+  emitter.on("unhandledRejection", onUnhandled);
+  try {
+    await run();
+    await delay(100);
+    return rejections;
+  } finally {
+    emitter.off("unhandledRejection", onUnhandled);
+  }
+};
+
 describe("applyJqToRedactedJsonLine with a fake engine", () => {
   test("prints true when .ok is applied to a mini envelope", async () => {
     const engine: JqEngine = {
@@ -65,6 +86,58 @@ describe("applyJqToRedactedJsonLine with a fake engine", () => {
       });
     }
   }, 10_000);
+
+  test("does not emit unhandledRejection when the engine rejects after timeout", async () => {
+    const lateReject: JqEngine = {
+      eval: () =>
+        new Promise((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error("late engine failure"));
+          }, 50);
+        }),
+    };
+
+    const rejections = await withUnhandledRejectionProbe(async () => {
+      try {
+        await applyJqToRedactedJsonLine(envelopeLine, ".", lateReject, 20);
+        expect.unreachable("expected timeout");
+      } catch (error) {
+        expect(error).toMatchObject({
+          _tag: "JqExpressionError",
+          reason: "timeout",
+          expression: ".",
+        });
+      }
+    });
+
+    expect(rejections).toEqual([]);
+  });
+
+  test("does not emit unhandledRejection when the engine resolves after timeout", async () => {
+    const lateResolve: JqEngine = {
+      eval: () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ text: "late" });
+          }, 50);
+        }),
+    };
+
+    const rejections = await withUnhandledRejectionProbe(async () => {
+      try {
+        await applyJqToRedactedJsonLine(envelopeLine, ".", lateResolve, 20);
+        expect.unreachable("expected timeout");
+      } catch (error) {
+        expect(error).toMatchObject({
+          _tag: "JqExpressionError",
+          reason: "timeout",
+          expression: ".",
+        });
+      }
+    });
+
+    expect(rejections).toEqual([]);
+  });
 
   test("throws JqExpressionError too_large when formatted output exceeds 8 MiB", async () => {
     const oversized = "x".repeat(8 * 1024 * 1024 + 1);
