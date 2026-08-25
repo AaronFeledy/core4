@@ -4,9 +4,9 @@ import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { resolveTopLevelAliases } from "./spec/command-base";
 
-const UNIVERSAL_FLAGS = new Set(["format", "json"]);
+const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
 const GLOBAL_FLAGS_FOOTER =
-  "Global flags (--format, --json, --renderer, --verbose, --log-level, --debug) work on every command.";
+  "Global flags (--format, --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.";
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }
