@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { Either, Schema } from "effect";
@@ -57,6 +57,21 @@ const readRawInstalledPluginRegistry = async (pluginsRoot: string): Promise<RawI
   return parsed;
 };
 
+export const readRawInstalledPluginRegistryEntries = async (
+  pluginsRoot: string,
+): Promise<RawInstalledPluginRegistry> => {
+  const path = installedPluginRegistryPath(pluginsRoot);
+  if (!existsSync(path)) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return {};
+  }
+  if (!isRecord(parsed)) return {};
+  return parsed;
+};
+
 export const readInstalledPluginRegistry = async (pluginsRoot: string): Promise<InstalledPluginRegistry> => {
   const inspection = await inspectInstalledPluginRegistry(pluginsRoot);
   return inspection.registry;
@@ -104,6 +119,49 @@ const writeInstalledPluginRegistry = async (
   const tmpPath = `${path}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(registry, null, 2)}\n`);
   await rename(tmpPath, path);
+};
+
+export const readInstalledPluginRegistryFileSnapshot = async (
+  pluginsRoot: string,
+): Promise<string | undefined> => {
+  const path = installedPluginRegistryPath(pluginsRoot);
+  if (!existsSync(path)) return undefined;
+  return readFile(path, "utf8");
+};
+
+export const restoreInstalledPluginRegistryFileSnapshot = async (
+  pluginsRoot: string,
+  snapshot: string | undefined,
+): Promise<void> => {
+  const path = installedPluginRegistryPath(pluginsRoot);
+  if (snapshot === undefined) {
+    await rm(path, { force: true });
+    return;
+  }
+  await mkdir(dirname(path), { recursive: true });
+  const tmpPath = `${path}.tmp`;
+  await writeFile(tmpPath, snapshot);
+  await rename(tmpPath, path);
+};
+
+export const replaceInstalledPluginRegistry = async (
+  pluginsRoot: string,
+  entries: RawInstalledPluginRegistry,
+): Promise<void> => {
+  await writeInstalledPluginRegistry(pluginsRoot, entries);
+};
+
+export const readInstalledPluginRegistryEntry = async (
+  pluginsRoot: string,
+  name: string,
+): Promise<{ readonly source?: string; readonly path?: string } | undefined> => {
+  const registry = await readRawInstalledPluginRegistryEntries(pluginsRoot);
+  const entry = registry[name];
+  if (!isRecord(entry)) return undefined;
+  return {
+    ...(typeof entry.source === "string" ? { source: entry.source } : {}),
+    ...(typeof entry.path === "string" ? { path: entry.path } : {}),
+  };
 };
 
 export const recordInstalledPlugin = async (

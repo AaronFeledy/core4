@@ -350,6 +350,26 @@ describe("meta:plugin:link command", () => {
     expect(registry["lando-plugin-corrupt-registry"]?.linkedPath).toBe(resolve(pluginRoot));
   });
 
+  test("restores original bytes of a corrupt registry when a later link step fails", async () => {
+    const pluginRoot = await makePluginRoot(
+      "lando-plugin-corrupt-registry-rollback",
+      "corrupt-registry-rollback",
+    );
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryPath = join(pluginsRoot, "registry.json");
+    const linkedStateTmpPath = join(pluginsRoot, ".lando-linked.json.tmp");
+    const previousRegistry = "not-json\n";
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(registryPath, previousRegistry);
+    await mkdir(linkedStateTmpPath, { recursive: true });
+
+    const failed = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(failed._tag).toBe("Failure");
+    expect(await readFile(registryPath, "utf8")).toBe(previousRegistry);
+    expect(await exists(join(pluginsRoot, "lando-plugin-corrupt-registry-rollback"))).toBe(false);
+  });
+
   test("restores the previous symlink and linked state when relink metadata recording fails", async () => {
     const originalRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-original");
     const replacementRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-replacement");
