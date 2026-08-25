@@ -141,6 +141,7 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
           const done = (value: string): void => settle(() => resolve(value));
           const cancel = (): void => settle(() => reject(makePromptCancelledError()));
           cancelListener = (key: KeyEventLike): void => {
+            if (key.defaultPrevented === true) return;
             if (isCancellationKey(key)) cancel();
           };
           if (signal !== undefined) {

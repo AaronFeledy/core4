@@ -9,7 +9,7 @@ const CANARY_MODULES = [
   {
     marker: "plugins",
     filter:
-      /[\\/](?:plugins[\\/](?!renderer-lando[\\/])|node_modules[\\/]@lando[\\/](?!sdk[\\/]|renderer-lando[\\/]|core[\\/]|engine[\\/]|paths[\\/]|state-store[\\/]|container-runtime[\\/])).*\.ts$/,
+      /[\\/](?:plugins[\\/](?!renderer-lando[\\/])|node_modules[\\/]@lando[\\/](?!sdk[\\/]|renderer-lando[\\/]|renderer[\\/]|core[\\/]|engine[\\/]|paths[\\/]|state-store[\\/]|container-runtime[\\/])).*\.ts$/,
   },
 ] as const satisfies readonly { readonly marker: string; readonly filter: RegExp }[];
 

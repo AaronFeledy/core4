@@ -3,9 +3,10 @@ import { Effect, Layer, Schema } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { formatSummary } from "@lando/renderer/summary";
 import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
-import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
@@ -114,5 +115,45 @@ describe("runWithRendererHandling redaction", () => {
 
     expect(io.stdout()).toContain("[redacted]");
     expect(io.stdout()).not.toContain(secret);
+  });
+
+  test("does not splice redaction into painted SGR on a decorated TTY", async () => {
+    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
+    // Probe the old post-paint path: a redactor that would turn ESC[32m into
+    // ESC[[redacted]m if decorated TTY still called redactString after paint.
+    const csiParamProbeLayer = Layer.succeed(RedactionService, {
+      forProfile: () =>
+        Effect.succeed({
+          redactString: (text: string) => text.split("32").join("[redacted]"),
+          redactValue: (value: unknown) => value,
+        }),
+    });
+    await runWithRendererHandling(
+      Effect.succeed({
+        title: "SETUP",
+        subtitle: "complete",
+        tone: "ok" as const,
+        sections: [
+          {
+            title: "runtime",
+            rows: [{ label: "provider", tone: "ok" as const, value: "lando" }],
+          },
+        ],
+      }),
+      {
+        runtime: csiParamProbeLayer,
+        rendererMode: "lando",
+        io,
+        render: (doc, ctx) => formatSummary(doc, summaryPaintOptions(ctx)),
+        formatError: String,
+        setExitCode: () => undefined,
+      },
+    );
+
+    const out = io.stdout();
+    const ESC = String.fromCharCode(27);
+    expect(out).toContain(`${ESC}[32m`);
+    expect(out.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
+    expect(out).not.toContain("[redacted]m");
   });
 });

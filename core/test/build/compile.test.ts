@@ -94,12 +94,12 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
 
     const help = await runCommand([binaryPath, "--help"]);
     expect(help.exitCode).toBe(0);
-    // Native registry help must enumerate commands and topics. A silent exit-0
+    // Native registry help must render the curated map. A silent exit-0
     // means the compiled entry never reached the dispatcher, which also guards
     // the canonical `bin/lando.ts` compile entry.
     expect(help.stdout).toContain("USAGE");
-    expect(help.stdout).toContain("TOPICS");
-    expect(help.stdout).toContain("COMMANDS");
+    expect(help.stdout).toContain("COMMON");
+    expect(help.stdout).toContain("MORE");
     expect(help.stderr).not.toContain("could not find package.json");
 
     const relocatedRoot = await mkdtemp(resolve(tmpdir(), "lando-opentui-compiled-"));
@@ -121,8 +121,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     });
     expect(relocatedHelp.exitCode).toBe(0);
     expect(relocatedHelp.stdout).toContain("USAGE");
-    expect(relocatedHelp.stdout).toContain("TOPICS");
-    expect(relocatedHelp.stdout).toContain("COMMANDS");
+    expect(relocatedHelp.stdout).toContain("COMMON");
+    expect(relocatedHelp.stdout).toContain("MORE");
     expect(relocatedHelp.stderr).toBe("");
     const versionJson = await runCommand([relocatedBinary, "meta:version", "--format=json"], {
       cwd: appRoot,

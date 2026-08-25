@@ -226,8 +226,32 @@ describe("meta:doctor runtime-service check", () => {
     expect(check.context.orphanPids).toContain("9999");
     expect(check.solutions[0]?.kind).toBe("manual");
     expect(check.solutions[0]?.description).toContain("9999");
-    expect(check.solutions[0]?.description).toContain("Terminate them manually");
-    expect(check.solutions[0]?.command).toBeUndefined();
+    expect(check.solutions[0]?.description).not.toContain("before retrying");
+    expect(check.solutions[0]?.command).toBe("kill 9999");
+  });
+
+  test("selected-provider warns when getStatus message lists orphan pids", async () => {
+    const provider: RuntimeServiceTestProvider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getStatus: Effect.succeed({
+        running: true,
+        message: "runtime socket reachable; pid 1234 owned; orphan pids 4242",
+      }),
+      getRuntimeServiceStatus: Effect.succeed({
+        running: true,
+        socketReachable: true,
+        pid: 1234,
+        ownedServiceProcess: true,
+      }),
+    };
+
+    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const selected = result.checks.find((entry) => entry.name === "selected-provider");
+    expect(selected?.status).toBe("warn");
+    expect(selected?.context.orphanPids).toBe("4242");
+    expect(selected?.solutions[0]?.command).toBe("kill 4242");
+    expect(selected?.solutions[0]?.description).not.toContain("before retrying");
   });
 
   test("surfaces readiness runtimeService as last-recorded context", async () => {

@@ -398,6 +398,9 @@ const makeFakeApi = () => {
             body: JSON.stringify({
               Id: `${name}-id`,
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+              NetworkSettings: {
+                Ports: { "31080/tcp": [{ HostIp: "0.0.0.0", HostPort: "32768" }] },
+              },
             }),
           };
         }
@@ -751,6 +754,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
             body: JSON.stringify({
               Id: `${name}-id`,
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+              NetworkSettings: {
+                Ports: { "31080/tcp": [{ HostIp: "0.0.0.0", HostPort: "32768" }] },
+              },
             }),
           };
         }
@@ -1005,6 +1011,15 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
+    expect(inspected.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 31080,
+        protocol: "http",
+        name: "31080/tcp",
+        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
+      },
+    ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual([
       {
@@ -1400,6 +1415,15 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
+    expect(inspected.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 31080,
+        protocol: "http",
+        name: "31080/tcp",
+        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
+      },
+    ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual([
       {

@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
+import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 export const McpListToolSchema = Schema.Struct({
   id: Schema.String,
@@ -86,7 +86,7 @@ const buildMcpListSummary = (result: McpListResult): SummaryDocument => {
 };
 
 export const renderMcpListResult = (result: McpListResult, ctx?: RenderContext): string => {
-  if (isDecoratedContext(ctx)) return formatSummary(buildMcpListSummary(result), { columns: ctx?.columns });
+  if (isDecoratedContext(ctx)) return formatSummary(buildMcpListSummary(result), summaryPaintOptions(ctx));
   if (result.tools.length === 0) return "(no MCP tools)";
   const rows = result.tools.map((tool) => `${tool.id}\t${tool.source}\t${tool.summary}`);
   return ["tool\tsource\tsummary", ...rows].join("\n");

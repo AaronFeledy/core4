@@ -106,6 +106,7 @@ export interface InteractionServiceDeps {
 
 type InternalPromptBatchOptions = PromptBatchOptions & {
   readonly choicesRunner?: ChoicesCommandRunner;
+  readonly chrome?: CollectPromptsOptions["chrome"];
 };
 
 const isTtyStdin = (stdin: NodeJS.ReadableStream): boolean =>
@@ -337,8 +338,9 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       const explicit = options?.answers ?? {};
       const answersFilePath =
         options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
-      const choicesRunner =
-        (options as InternalPromptBatchOptions | undefined)?.choicesRunner ?? deps.choicesRunner;
+      const internal = options as InternalPromptBatchOptions | undefined;
+      const choicesRunner = internal?.choicesRunner ?? deps.choicesRunner;
+      const chrome = internal?.chrome;
       const fromFile =
         answersFilePath === undefined
           ? {}
@@ -367,6 +369,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         cwd,
         ...(options?.runs === undefined ? {} : { runs: options.runs }),
         ...(choicesRunner === undefined ? {} : { choicesRunner }),
+        ...(chrome === undefined ? {} : { chrome }),
         ...(driver === undefined ? {} : { interactiveDriver: driver }),
       };
       return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));

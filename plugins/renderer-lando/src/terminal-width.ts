@@ -45,3 +45,65 @@ export const truncateToWidth = (text: string, maxWidth: number, ellipsis = "…"
   const [head] = takeWidth(text, Math.max(0, maxWidth - displayWidth(ellipsis)));
   return `${head}${ellipsis}`;
 };
+
+/**
+ * Hard-wrap `text` into lines whose display width is at most `maxWidth`.
+ * Empty text or a non-positive budget yields a single empty line. A grapheme
+ * wider than the budget is emitted whole so wrapping always makes progress.
+ */
+export const wrapToWidth = (text: string, maxWidth: number): readonly string[] => {
+  if (text === "" || maxWidth <= 0) return [""];
+  const lines: string[] = [];
+  let rest = text;
+  while (rest !== "") {
+    const [head, next] = takeWidth(rest, maxWidth);
+    if (head === "") {
+      const parts = graphemes(rest);
+      const first = parts[0];
+      if (first === undefined) break;
+      lines.push(first);
+      rest = parts.slice(1).join("");
+      continue;
+    }
+    lines.push(head);
+    rest = next;
+  }
+  return lines;
+};
+
+/**
+ * Wrap `text` on whitespace so lines stay within `maxWidth` display cells.
+ * A single token wider than the budget falls back to {@link wrapToWidth}.
+ * Empty text or a non-positive budget yields a single empty line.
+ */
+export const wrapWordsToWidth = (text: string, maxWidth: number): readonly string[] => {
+  if (text === "" || maxWidth <= 0) return [""];
+  const budget = Math.max(1, maxWidth);
+  if (displayWidth(text) <= budget) return [text];
+  const tokens = text.split(/(\s+)/).filter((part) => part.length > 0);
+  const lines: string[] = [];
+  let current = "";
+  const flush = (): void => {
+    if (current.length === 0) return;
+    lines.push(current.trimEnd());
+    current = "";
+  };
+  for (const token of tokens) {
+    if (displayWidth(current) + displayWidth(token) <= budget) {
+      current += token;
+      continue;
+    }
+    if (current.trim().length > 0) flush();
+    else current = "";
+    if (/^\s+$/.test(token)) continue;
+    if (displayWidth(token) <= budget) {
+      current = token;
+      continue;
+    }
+    for (const piece of wrapToWidth(token, budget)) {
+      lines.push(piece);
+    }
+  }
+  flush();
+  return lines.length === 0 ? [""] : lines;
+};

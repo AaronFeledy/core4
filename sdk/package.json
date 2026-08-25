@@ -39,6 +39,7 @@
     "./services": "./src/services/index.ts",
     "./events": "./src/events/index.ts",
     "./expressions": "./src/expressions/index.ts",
+    "./fuzzy": "./src/fuzzy/index.ts",
     "./landofile": "./src/landofile/index.ts",
     "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",

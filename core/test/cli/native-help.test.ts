@@ -5,13 +5,17 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+
+const nonHiddenBuiltInCount = Object.values(COMMAND_REGISTRY_MANIFEST.commands).filter(
+  (entry) => !entry.hidden,
+).length;
 
 type RunOptions = {
   readonly cwd?: string;
@@ -84,27 +88,33 @@ describe("native registry help", () => {
     expect(result.stdout).not.toContain("OCLIF adapter");
   });
 
-  test("Given the root registry, when help is requested, then every visible canonical id and non-flag alias renders", async () => {
-    // Given
-    const visibleEntries = builtInCommandEntries.filter((entry) => entry.spec.hidden !== true);
-
-    // When
+  test("Given the root registry, when help is requested, then COMMON maps everyday commands without a catalog dump", async () => {
+    // Given / When
     const result = await runCli(["--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("COMMON");
+    expect(result.stdout).toMatch(/^\s+start\s+Start the current Lando app\./m);
+    expect(result.stdout).toMatch(/^\s+doctor\s+Run diagnostics/m);
     expect(result.stdout).toContain("USAGE");
-    expect(result.stdout).toContain("TOPICS");
-    expect(result.stdout).toContain("COMMANDS");
-    for (const entry of visibleEntries) {
-      expect(result.stdout, `missing canonical id ${entry.spec.id}`).toContain(entry.spec.id);
-      for (const alias of resolveTopLevelAliases(entry.spec)) {
-        if (alias.startsWith("-")) continue;
-        expect(result.stdout, `missing alias pointer ${alias} -> ${entry.spec.id}`).toContain(
-          `${alias} -> ${entry.spec.id}`,
-        );
-      }
-    }
+    expect(result.stdout).toContain("Lando  ");
+    expect(result.stdout).toContain(`${process.platform}-${process.arch}`);
+    expect(result.stdout).not.toContain("meta:plugin:login");
+    expect(result.stdout).not.toContain("node-v");
+    expect(result.stdout).not.toContain("TOPICS");
+    expect(result.stdout).not.toContain("COMMANDS");
+    expect(result.stdout).not.toContain("ALIASES");
+  });
+
+  // Completeness of every built-in id is dispatched by `help --all` (see help-dispatch.test.ts).
+  test("Given the full catalog renderer, when renderColdAllHelp runs, then deferred built-ins appear", () => {
+    // Given / When
+    const help = renderColdAllHelp({ style: false });
+
+    // Then
+    expect(help).toContain("plugin:login");
+    expect(help).toContain("meta:plugin:login");
   });
 
   test("Given a registered command, when its help is requested, then catalog metadata and spec-owned flags render", async () => {
@@ -115,7 +125,7 @@ describe("native registry help", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Authenticate with a plugin source.");
     expect(result.stdout).not.toContain("Authenticate with a private plugin registry.");
-    expect(result.stdout).toContain("meta:plugin:login, plugin:login");
+    expect(result.stdout).toContain("meta:plugin:login");
     expect(result.stdout).toContain("--registry");
   });
 
@@ -127,7 +137,7 @@ describe("native registry help", () => {
 
       // Then
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("app:pull, pull");
+      expect(result.stdout).toContain("app:pull");
     },
   );
 
@@ -148,6 +158,38 @@ describe("native registry help", () => {
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("meta:recipes:list");
+  });
+
+  test("Given the help command, when JSON format is requested, then a cli:help catalog envelope is emitted", async () => {
+    // Given / When
+    const result = await runCli(["help", "--format=json"]);
+    const envelope: unknown = JSON.parse(result.stdout);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(envelope).toMatchObject({
+      apiVersion: "v4",
+      command: "cli:help",
+      ok: true,
+    });
+    expect((envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all).toHaveLength(
+      nonHiddenBuiltInCount,
+    );
+    expect(
+      (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.every(
+        (row) => row.source === "built-in",
+      ),
+    ).toBe(true);
+  });
+
+  test("Given the fast-path --help entry, when invoked without a help command, then output stays text", async () => {
+    // Given / When
+    const result = await runCli(["--help"]);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("COMMON");
+    expect(result.stdout.trimStart().startsWith("{")).toBe(false);
   });
 });
 
@@ -177,6 +219,15 @@ describe("native unknown-command failures", () => {
     },
   );
 
+  test("Given an unknown command, when dispatched, then remediation points at lando help --all", async () => {
+    // Given / When
+    const result = await runCli(["does-not-exist"]);
+
+    // Then
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("lando help --all");
+  });
+
   test("Given an app context and an unregistered share-list permutation, when dispatched, then dynamic tooling precedence is preserved", async () => {
     // Given
     const fixture = await makeAppFixture();
@@ -204,13 +255,13 @@ describe("native unknown-command failures", () => {
         await writeFreshCache(fixture);
 
         // When
-        const result = await runCli([head, "unsupported"], { cwd: fixture.root, env: fixture.env });
+        const fixtureResult = await runCli([head, "unsupported"], { cwd: fixture.root, env: fixture.env });
 
         // Then
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain("UnknownCommandError");
-        expect(result.stderr).not.toContain("ToolingCompileError");
-        expect(result.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
+        expect(fixtureResult.exitCode).toBe(1);
+        expect(fixtureResult.stderr).toContain("UnknownCommandError");
+        expect(fixtureResult.stderr).not.toContain("ToolingCompileError");
+        expect(fixtureResult.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
       } finally {
         await fixture.cleanup();
       }

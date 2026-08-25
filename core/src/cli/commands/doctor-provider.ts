@@ -14,11 +14,13 @@ import type {
 } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";
 import type { PluginDoctorProvider } from "./doctor-plugin-checks";
+import { orphanPidsFromRuntimeMessage, orphanRemediation } from "./doctor-runtime-service";
 import { type DoctorSelfFailureReason, describeDoctorFailure, redactDoctorMessage } from "./doctor-self";
 
 export interface ProviderStatusShape {
   readonly running: boolean;
   readonly message?: string;
+  readonly orphanPids?: ReadonlyArray<number>;
 }
 
 export const DOCTOR_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
@@ -141,6 +143,12 @@ export const diagnosePrimaryProvider = (input: {
   if (input.runtimeVersion !== undefined) context.runtimeVersion = input.runtimeVersion;
   if (input.bundleVersion !== undefined) context.bundleVersion = input.bundleVersion;
   if (statusProbe !== undefined) context.statusProbe = statusProbe;
+  const orphanPids =
+    status.orphanPids !== undefined && status.orphanPids.length > 0
+      ? status.orphanPids
+      : orphanPidsFromRuntimeMessage(status.message);
+  const hasOrphans = orphanPids.length > 0;
+  if (hasOrphans) context.orphanPids = orphanPids.join(",");
 
   const statusKnown = statusProbe === undefined;
   let checkStatus: DoctorStatus;
@@ -148,13 +156,17 @@ export const diagnosePrimaryProvider = (input: {
   if (!statusKnown) {
     checkStatus = "fail";
     severity = "error";
-  } else if (status.running) {
+  } else if (status.running && !hasOrphans) {
     checkStatus = "pass";
     severity = "info";
   } else {
     checkStatus = "warn";
     severity = "warn";
   }
+
+  const solutions: DoctorSolution[] = [];
+  if (hasOrphans) solutions.push(orphanRemediation(orphanPids));
+  if (!(statusKnown && status.running)) solutions.push(setupRemediationFor(provider.id));
 
   return {
     check: {
@@ -169,7 +181,7 @@ export const diagnosePrimaryProvider = (input: {
       runtime,
       capabilities,
       context,
-      solutions: statusKnown && status.running ? [] : [setupRemediationFor(provider.id)],
+      solutions,
       selection: input.selection,
     },
     providerKind,

@@ -7,7 +7,7 @@ import { type Logger, PluginRegistry } from "@lando/sdk/services";
 import { LoggerLive } from "@lando/engine/logging/service";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
+import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 export type GlobalServiceListState = "enabled" | "disabled" | "blocked";
 
@@ -89,8 +89,7 @@ const buildGlobalListSummary = (result: GlobalListResult): SummaryDocument => {
 };
 
 export const renderGlobalListResult = (result: GlobalListResult, ctx?: RenderContext): string => {
-  if (isDecoratedContext(ctx))
-    return formatSummary(buildGlobalListSummary(result), { columns: ctx?.columns });
+  if (isDecoratedContext(ctx)) return formatSummary(buildGlobalListSummary(result), summaryPaintOptions(ctx));
   if (result.services.length === 0) return "(no global services)";
   const rows = result.services.map((service) => {
     const commands = service.commands.length === 0 ? "-" : service.commands.join(",");

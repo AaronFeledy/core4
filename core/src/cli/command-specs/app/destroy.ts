@@ -11,6 +11,7 @@ import { extractSpecFlags } from "../../spec/command-boundary";
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   resultSchema: DestroyAppResultSchema,
   id: "app:destroy",
+  helpGroup: "common",
   summary: "Destroy the current Lando app (preserves volumes unless --purge or --volumes).",
   namespace: "app",
   topLevelAlias: true,

@@ -9,6 +9,7 @@ import type { LandoCommandSpec } from "../../spec/command-base";
 export const stopSpec: LandoCommandSpec<StopAppResult> = {
   resultSchema: StopAppResultSchema,
   id: "app:stop",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "Stop the current Lando app.",
   namespace: "app",

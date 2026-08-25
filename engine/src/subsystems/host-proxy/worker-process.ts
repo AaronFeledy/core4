@@ -1,4 +1,6 @@
-import { basename, extname } from "node:path";
+import { closeSync, mkdirSync, openSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, extname, join } from "node:path";
 import { Schema } from "effect";
 
 import type { HostProxyWorkerEntry } from "../../composition.ts";
@@ -30,6 +32,27 @@ export interface HostProxyWorkerProcess {
 
 export interface HostProxyWorkerSpawnSpec {
   readonly argv: ReadonlyArray<string>;
+  readonly logsDir?: string;
+}
+
+export class HostProxyWorkerExitedBeforeReadyError extends Error {
+  readonly exitCode: number | null;
+  readonly stderrTail: string;
+  readonly logPath: string;
+
+  constructor(input: {
+    readonly exitCode: number | null;
+    readonly stderrTail: string;
+    readonly logPath: string;
+  }) {
+    const exitPart = input.exitCode === null ? "exitCode=unknown" : `exitCode=${input.exitCode}`;
+    const stderrPart = input.stderrTail.length === 0 ? "" : ` stderr: ${input.stderrTail}`;
+    super(`Detached host-proxy worker exited before readiness. ${exitPart}.${stderrPart}`);
+    this.name = "HostProxyWorkerExitedBeforeReadyError";
+    this.exitCode = input.exitCode;
+    this.stderrTail = input.stderrTail;
+    this.logPath = input.logPath;
+  }
 }
 
 interface DefaultSpawnWorkerOptions {
@@ -89,6 +112,9 @@ export const hostProxyWorkerArgv = (
   return [input.execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
 };
 
+const STDERR_TAIL_MAX_BYTES = 4 * 1024;
+const STDERR_TAIL_MAX_LINES = 8;
+
 const textFromStreamUntilLine = async (
   stream: ReadableStream<Uint8Array>,
   timeoutMs: number,
@@ -118,18 +144,49 @@ const textFromStreamUntilLine = async (
   }
 };
 
+const workerLogLabel = (argv: ReadonlyArray<string>): string => {
+  const appIdIndex = argv.indexOf("--app-id");
+  const appId = appIdIndex >= 0 ? argv[appIdIndex + 1] : undefined;
+  if (appId !== undefined && appId.length > 0) return appId;
+  return String(process.pid);
+};
+
+const resolveWorkerLogsDir = (logsDir: string | undefined): string =>
+  logsDir === undefined || logsDir.length === 0 ? join(tmpdir(), "lando-host-proxy-worker-logs") : logsDir;
+
+const stderrTailFromLog = async (logPath: string): Promise<string> => {
+  const file = Bun.file(logPath);
+  if ((await file.exists()) !== true) return "";
+  const text = await file.text();
+  if (text.length === 0) return "";
+  const clipped = text.length > STDERR_TAIL_MAX_BYTES ? text.slice(-STDERR_TAIL_MAX_BYTES) : text;
+  const lines = clipped.split("\n").filter((line) => line.length > 0);
+  return lines.slice(-STDERR_TAIL_MAX_LINES).join("\n");
+};
+
 export const defaultSpawnWorker = (
   spec: HostProxyWorkerSpawnSpec,
   options: DefaultSpawnWorkerOptions = {},
 ): HostProxyWorkerProcess => {
-  // stderr ignored: detached worker outlives parent; piped stderr SIGPIPEs after start.
-  const proc = Bun.spawn([...spec.argv], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "ignore",
-    detached: true,
-    env: hostProxyWorkerEnv(),
-  });
+  // File-backed stderr: detached workers outlive the parent, so a pipe SIGPIPEs
+  // after start. Keep writing to logsDir for the worker lifetime.
+  const logsDir = resolveWorkerLogsDir(spec.logsDir);
+  mkdirSync(logsDir, { recursive: true });
+  const logPath = join(logsDir, `host-proxy-worker-${workerLogLabel(spec.argv)}.log`);
+  const stderrFd = openSync(logPath, "a");
+  const proc = (() => {
+    try {
+      return Bun.spawn([...spec.argv], {
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: stderrFd,
+        detached: true,
+        env: hostProxyWorkerEnv(),
+      });
+    } finally {
+      closeSync(stderrFd);
+    }
+  })();
   proc.unref?.();
   return {
     pid: proc.pid,
@@ -152,7 +209,11 @@ export const defaultSpawnWorker = (
       const line = await textFromStreamUntilLine(proc.stdout, READY_TIMEOUT_MS);
       if (line.length > 0) return Schema.decodeUnknownSync(WorkerReady)(JSON.parse(line));
       await proc.exited;
-      throw new Error("Detached host-proxy worker exited before readiness.");
+      throw new HostProxyWorkerExitedBeforeReadyError({
+        exitCode: proc.exitCode,
+        stderrTail: await stderrTailFromLog(logPath),
+        logPath,
+      });
     },
     terminate: async () => {
       proc.kill("SIGTERM");

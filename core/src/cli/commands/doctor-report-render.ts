@@ -12,7 +12,7 @@ import {
   worstSummaryTone,
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext } from "../renderer-boundary";
+import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { renderConfigLintViolation } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { DoctorReportSchema } from "./doctor-report-contract";
@@ -103,7 +103,9 @@ const selfSection = (report: DoctorSelfReport): SummarySection => ({
   notes: ["These sections could not be diagnosed; the rest of this report is unaffected."],
 });
 
-const countByStatus = (report: DoctorReport): { readonly checks: number; readonly failed: number } => {
+const countByStatus = (
+  report: DoctorReport,
+): { readonly checks: number; readonly failed: number; readonly warned: number } => {
   const checks = [
     ...report.provider.checks,
     ...report.subsystems.checks,
@@ -113,13 +115,27 @@ const countByStatus = (report: DoctorReport): { readonly checks: number; readonl
   ];
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const selfChecks = report.self?.checks ?? [];
+  const deprecationWarnings =
+    report.deprecations?.entries.filter((entry) => entry.severity === "warn").length ?? 0;
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
       selfChecks.length,
+    warned: checks.filter((check) => check.status === "warn").length + deprecationWarnings,
   };
+};
+
+const doctorFooter = (counts: {
+  readonly checks: number;
+  readonly failed: number;
+  readonly warned: number;
+}): string => {
+  const warningLabel = counts.warned === 1 ? "warning" : "warnings";
+  return counts.warned === 0
+    ? `${counts.checks} checks · ${counts.failed} failed`
+    : `${counts.checks} checks · ${counts.failed} failed · ${counts.warned} ${warningLabel}`;
 };
 
 export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument => {
@@ -140,7 +156,7 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
     title: report.version === undefined || report.version === "" ? "DOCTOR" : `DOCTOR ${report.version}`,
     tone: rowTones.length === 0 ? "info" : worstSummaryTone(rowTones),
     sections,
-    footer: `${counts.checks} checks · ${counts.failed} failed`,
+    footer: doctorFooter(counts),
   };
 };
 
@@ -195,7 +211,7 @@ const renderAppConfigSection = (result: ConfigLintResult): string => {
 
 export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): string => {
   if (isDecoratedContext(ctx))
-    return formatSummary(buildDoctorReportSummary(report), { columns: ctx?.columns });
+    return formatSummary(buildDoctorReportSummary(report), summaryPaintOptions(ctx));
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
   const globalApp = renderGlobalAppDoctorResult(report.globalApp);

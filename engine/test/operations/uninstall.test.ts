@@ -284,6 +284,37 @@ describe("uninstall managed volume purge", () => {
     }
   });
 
+  test("defaultRemoveRuntimeDir reaps runtime/bin processes after the tree is gone", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-reap-after-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(join(runtimeDir, "bin"), { recursive: true });
+      writeFileSync(join(runtimeDir, "bin", "podman"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      const calls: string[] = [];
+
+      await defaultRemoveRuntimeDir(runtimeDir, {
+        terminate: async (path) => {
+          calls.push(`${existsSync(path) ? "present" : "absent"}:${path}`);
+        },
+        unshareRm: async () => {
+          calls.push("unshare");
+        },
+        removeTree: async (path) => {
+          calls.push("remove");
+          await rm(path, { recursive: true, force: true });
+        },
+      });
+
+      expect(calls[0]?.startsWith("present:")).toBe(true);
+      expect(calls).toContain("unshare");
+      expect(calls.at(-1)?.startsWith("absent:")).toBe(true);
+      expect(existsSync(runtimeDir)).toBe(false);
+    } finally {
+      await chmodTreeUserWritable(roots.root);
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("defaultRemoveRuntimeDir leftover is UninstallRuntimeDirError for a held volume", async () => {
     const roots = makeUninstallRoots("lando-uninstall-volume-s2-direct-");
     try {

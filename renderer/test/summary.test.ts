@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
-import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
+import { type SummaryDocument, formatSummary, redactSummaryDocument } from "@lando/renderer/summary";
 
 const ESC = String.fromCharCode(27);
 const BOLD = `${ESC}[1m`;
@@ -141,5 +141,26 @@ describe("formatSummary", () => {
     const width = displayWidth(lines[0] ?? "");
     expect(width).toBeGreaterThanOrEqual(40);
     for (const line of lines) expect(displayWidth(line)).toBe(width);
+  });
+
+  test("redacts document fields before painting so SGR stays complete", () => {
+    const doc: SummaryDocument = {
+      title: "SETUP",
+      tone: "ok",
+      sections: [
+        {
+          title: "runtime",
+          rows: [{ label: "token", tone: "ok", value: "hunter2-secret" }],
+        },
+      ],
+    };
+    const redact = (text: string) => text.split("hunter2-secret").join("[redacted]");
+    expect(redactSummaryDocument(doc, redact).sections[0]?.rows[0]?.value).toBe("[redacted]");
+    const painted = formatSummary(doc, { columns: 80, redact });
+    expect(painted).toContain(GREEN);
+    expect(painted).toContain("[redacted]");
+    expect(painted).not.toContain("hunter2-secret");
+    expect(painted.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
+    for (const line of linesOf(painted)) expect(displayWidth(line)).toBe(80);
   });
 });

@@ -28,10 +28,7 @@ export const buildHostProxyCheck = (
           }
         : { active: "false" }),
     };
-    if (
-      Either.isRight(status) &&
-      (status.right.active || (status.right.mode === "none" && status.right.mechanism === "skipped"))
-    ) {
+    if (Either.isRight(status) && status.right.active) {
       return passCheck(HOST_PROXY_SPEC, context);
     }
     return yield* buildDegradedCheck(

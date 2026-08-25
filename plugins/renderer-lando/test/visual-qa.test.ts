@@ -20,6 +20,7 @@ import {
   diffGolden,
   displayWidth,
   goldenName,
+  hasBareCsiTail,
   isGoldenUpdateMode,
   readOrWriteGolden,
   stripAnsi,
@@ -60,6 +61,12 @@ describe("visual-qa tokenizer", () => {
   test("labels an unknown SGR code instead of leaking it", () => {
     expect(tokenizeAnsi(`${ESC}[7mx${ESC}[0m`)).toBe("⟨sgr:7⟩x⟨reset⟩");
   });
+
+  test("fails when stdout contains ]m that is not part of a valid CSI", () => {
+    expect(hasBareCsiTail(`${ESC}[32mok${ESC}[0m`)).toBe(false);
+    expect(hasBareCsiTail("install /tmp/lando-alpha-eval[redacted]m")).toBe(true);
+    expect(hasBareCsiTail("redacted]m")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -70,6 +77,7 @@ describe("task-tree visual golden frames", () => {
     for (const columns of fixture.widths) {
       test(`${fixture.id} @ ${columns} cols matches its committed golden`, () => {
         const captured = captureTreeFrame(fixture.events, columns);
+        expect(hasBareCsiTail(captured.styled)).toBe(false);
         // The golden never contains a raw escape byte (readable in CI diffs).
         expect(captured.tokenized).not.toContain(ESC);
         // Width invariant is asserted on the stripped raw frame, not the tokens.
@@ -120,6 +128,7 @@ describe("summary visual golden frames", () => {
     for (const columns of fixture.widths) {
       test(`${fixture.id} @ ${columns} cols matches its committed golden`, () => {
         const captured = captureSummaryFrame(fixture.doc, columns);
+        expect(hasBareCsiTail(captured.styled)).toBe(false);
         expect(captured.tokenized).not.toContain(ESC);
         // Summaries pad every line to the exact width.
         for (const line of captured.lines) {

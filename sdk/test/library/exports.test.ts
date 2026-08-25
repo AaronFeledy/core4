@@ -488,6 +488,7 @@ describe("@lando/sdk package exports", () => {
     const secrets = await import("@lando/sdk/secrets");
 
     expect(secrets.createSecretRedactor).toBeDefined();
+    expect(secrets.isUsableExactRedactionValue).toBeDefined();
     expect(secrets.REDACTED).toBeDefined();
     expect(secrets.createRedactor).toBeDefined();
     expect(secrets.REDACTION_PROFILES).toBeDefined();

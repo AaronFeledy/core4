@@ -23,6 +23,7 @@ export const appsListPathFromInput = (input: unknown): string | undefined => {
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
+  helpGroup: "common",
   mcpAllowed: true,
   summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",

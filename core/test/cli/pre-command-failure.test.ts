@@ -234,4 +234,36 @@ describe("pre-command failure surface", () => {
     expect(io.stderr()).toContain("MalformedCliFlagValueError");
     expect(io.stderr()).not.toContain("argv-secret-value");
   });
+
+  test("lando TTY diagnostics dim secondary bug-report lines after redaction", async () => {
+    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
+    await renderPreCommandFailure({
+      commandId: "app:start",
+      error: new Error("boom"),
+      rendererMode: "lando",
+      resultFormat: "text",
+      io,
+      setExitCode: () => undefined,
+    });
+    const dim = `${String.fromCharCode(27)}[2m`;
+    const dimReset = `${String.fromCharCode(27)}[22m`;
+    const text = io.stderr();
+    expect(text.startsWith("boom\n")).toBe(true);
+    expect(text).toContain(`${dim}code: Error${dimReset}`);
+    expect(text).not.toContain(`${dim}boom`);
+  });
+
+  test("plain TTY diagnostics stay CSI-free", async () => {
+    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
+    await renderPreCommandFailure({
+      commandId: "app:start",
+      error: new Error("boom"),
+      rendererMode: "plain",
+      resultFormat: "text",
+      io,
+      setExitCode: () => undefined,
+    });
+    expect(io.stderr()).toContain("code: Error");
+    expect(io.stderr()).not.toContain("\u001b");
+  });
 });

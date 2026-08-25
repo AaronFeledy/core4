@@ -85,7 +85,7 @@ export const renderTraefikDynamicConfig = (
     `    route-${namespace}-${index}:`,
     "      loadBalancer:",
     "        servers:",
-    `          - url: ${route.backend.protocol}://${String(route.backend.service)}.${String(app)}.internal:${route.backend.port}`,
+    `          - url: ${route.backend.protocol}://${route.backend.host ?? `${String(route.backend.service)}.${String(app)}.internal`}:${route.backend.port}`,
   ]);
   const tls =
     tlsFiles === undefined

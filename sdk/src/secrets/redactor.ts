@@ -15,6 +15,24 @@ import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts
 /** Sentinel written in place of a redacted secret value. */
 export const REDACTED = "[redacted]" as const;
 
+/**
+ * Exact-value tokens that must never enter the value layer. CSI/SGR
+ * parameters are short decimal codes (`0`, `32`, `95`) or `n;n` lists
+ * (`0;1`, `38;2;255;0;0`); substituting them turns a complete SGR
+ * (`ESC[32m`) into `ESC[[redacted]m` and prints a bare `]m`.
+ *
+ * Real secrets stay usable: long numeric tokens (`12345678`), one-character
+ * letters (`a`), and mixed tokens (`plan-secret`). Empty / whitespace-only
+ * values are ignored so the redactor never masks the entire string.
+ */
+export const isUsableExactRedactionValue = (value: string): boolean => {
+  const token = value.trim();
+  if (token.length === 0) return false;
+  if (/^[0-9;]+$/u.test(token) && token.includes(";")) return false;
+  if (/^[0-9]+$/u.test(token) && token.length <= 4) return false;
+  return true;
+};
+
 export interface SecretRedactor {
   /** Replace every occurrence of a known secret value with {@link REDACTED}. */
   readonly redact: (text: string) => string;
@@ -27,7 +45,7 @@ export interface SecretRedactor {
  * string.
  */
 export const createSecretRedactor = (values: Iterable<string>): SecretRedactor => {
-  const unique = Array.from(new Set(values)).filter((value) => value.trim().length > 0);
+  const unique = Array.from(new Set(values)).filter(isUsableExactRedactionValue);
   // Longest-first: prevents a substring secret from partially masking a longer
   // secret and leaking its tail.
   unique.sort((a, b) => b.length - a.length);
