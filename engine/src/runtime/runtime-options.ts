@@ -26,7 +26,7 @@ import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts
 import { BootstrapLevel } from "./bootstrap.ts";
 
 // Differences from CLI defaults:
-// - logger: "silent" in library mode (CLI: "pretty"/"json")
+// - logger: "silent" in library mode (CLI: "none" unless --log-level)
 // - renderer: "json" in library mode (CLI: "lando")
 // - plugin discovery: host-provided only (CLI: bundled+system+user+app)
 // - telemetry: off (CLI: per global config)

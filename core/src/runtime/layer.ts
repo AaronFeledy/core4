@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { writeStdioLine } from "@lando/renderer/io";
 import { Effect, Either, Layer, Schema } from "effect";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -190,6 +191,7 @@ const runtimeLayerFor = (
     loggerMode,
     logLevel,
     structured,
+    writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,

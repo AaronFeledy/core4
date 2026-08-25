@@ -24,6 +24,7 @@ export interface BootstrapLayerInputs {
   readonly loggerMode: LoggerMode;
   readonly logLevel: LogLevel | undefined;
   readonly structured: boolean;
+  readonly writeDiagnosticLine?: (line: string) => void;
   readonly rendererMode: LibraryRendererMode;
   readonly telemetryEnabled: boolean;
   readonly pluginDiscovery: BootstrapLayerPluginDiscovery;
