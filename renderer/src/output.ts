@@ -86,8 +86,9 @@ export const makeRendererNotificationConsumerLiveForMode = (
         ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
       });
     case "plain":
-    case "verbose":
       return undefined;
+    case "verbose":
+      return makeVerboseRendererLive(io);
   }
 };
 

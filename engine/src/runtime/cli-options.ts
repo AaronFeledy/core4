@@ -3,9 +3,11 @@ import { join } from "node:path";
 
 import { deepMerge, envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import type { LogLevel } from "@lando/sdk/schema";
+
 import { resolveUserConfRoot } from "../config/roots.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
-import type { LandoRuntimeOptions } from "./runtime-options.ts";
+import type { LandoRuntimeOptions, LibraryRendererMode } from "./runtime-options.ts";
 
 export type CliTelemetrySource = "flag" | "env" | "config" | "default";
 
@@ -13,6 +15,18 @@ export interface CliTelemetryState {
   readonly enabled: boolean;
   readonly source: CliTelemetrySource;
 }
+
+export let activeLogLevel: LogLevel = "none";
+
+export const setActiveLogLevel = (level: LogLevel): void => {
+  activeLogLevel = level;
+};
+
+export let activeRendererMode: LibraryRendererMode = "lando";
+
+export const setActiveRendererMode = (mode: LibraryRendererMode): void => {
+  activeRendererMode = mode;
+};
 
 const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
 
@@ -117,4 +131,6 @@ export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
     options.bootstrap === "none"
       ? (options.telemetry ?? false)
       : resolveCliTelemetryState(options.telemetry).enabled,
+  logLevel: options.logLevel ?? activeLogLevel,
+  renderer: options.renderer ?? activeRendererMode,
 });

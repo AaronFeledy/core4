@@ -119,6 +119,8 @@ export type AgentEnvConfig = typeof AgentEnvConfig.Type;
  *
  * `renderer` selects the CLI output mode (`lando`/`json`/`plain`/`verbose`)
  * with precedence flag > env > config > default.
+ * `logLevel` is an optional string (`none`/`error`/`warn`/`info`/`debug`/`trace`);
+ * unknown tokens fail later at resolve, not at config load.
  */
 export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
@@ -131,6 +133,10 @@ export const GlobalConfig = Schema.Struct({
   }),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),
+  logLevel: Schema.optional(Schema.String).annotations({
+    description:
+      "Diagnostic log level (none, error, warn, info, debug, trace). Unknown values fail at resolve, not config load.",
+  }),
   allowLoadOutsideRoot: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     description: "Allow Landofile load/import paths outside the app root (default false).",
   }),

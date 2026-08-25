@@ -14,7 +14,6 @@ const fullBundledPluginNames = [
   "@lando/provider-docker",
   "@lando/provider-podman",
   "@lando/service-lando",
-  "@lando/logger-pretty",
   "@lando/renderer-lando",
   "@lando/notify-lando",
   "@lando/file-sync-mutagen",

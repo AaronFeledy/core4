@@ -63,9 +63,6 @@
       "path": "./plugins/ca-mkcert"
     },
     {
-      "path": "./plugins/logger-pretty"
-    },
-    {
       "path": "./plugins/renderer-lando"
     },
     {

@@ -61,7 +61,6 @@ Development follows this phase ladder:
 │   ├── file-sync-mutagen/    # Mutagen-accelerated bind mounts on slow-bind-mount providers
 │   ├── template-handlebars/  # Handlebars whole-file Landofile template engine
 │   ├── template-mustache/    # Mustache whole-file Landofile template engine
-│   ├── logger-pretty/        # pretty-printed Logger
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
 ├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
@@ -198,7 +197,7 @@ The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
 
 All command output flows through the `Renderer` service; pick a mode with
 `--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
-`LANDO_RENDERER` env > config > default).
+`LANDO_RENDERER` env > config > default). `--verbose` flips the default renderer to `verbose`. `--debug` also raises `--log-level=debug`. An explicit `--renderer` stays put.
 
 ## Building from source
 

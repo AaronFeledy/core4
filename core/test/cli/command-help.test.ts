@@ -84,6 +84,8 @@ describe("renderCommandHelp", () => {
     expect(rows.some((row) => row.startsWith("--trust"))).toBe(true);
     expect(rows.some((row) => row.startsWith("--format"))).toBe(false);
     expect(rows.some((row) => row.startsWith("--json"))).toBe(false);
+    expect(rows.some((row) => row.startsWith("--debug"))).toBe(false);
+    expect(rows.some((row) => row.startsWith("--log-level"))).toBe(false);
   });
 
   test("appends the global-flags footer on every command page", () => {
@@ -94,7 +96,9 @@ describe("renderCommandHelp", () => {
     const help = renderCommandHelp(entry);
 
     // Then the locked footer points at the universal flags
-    expect(help).toContain("Global flags (--format, --json, --renderer) work on every command.");
+    expect(help).toContain(
+      "Global flags (--format, --json, --renderer, --verbose, --log-level, --debug) work on every command.",
+    );
   });
 
   test("renders spec.examples when the command declares them", () => {
