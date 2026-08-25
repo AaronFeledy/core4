@@ -8,13 +8,14 @@ tags: [beta, docs, cli, renderer]
 
 # See more CLI output
 
-`lando version --debug` turns on debug logs. If you did not pick a renderer, it also flips the default `lando` renderer to `verbose`.
+`lando version --verbose` dumps every render event. `lando version --debug` does that and raises Effect diagnostic logs.
 
 ```sh
+lando version --verbose
 lando version --debug
 ```
 
-`--debug` is `--log-level=debug` plus that default-to-verbose flip. Pass `--renderer=lando` when you want the TUI. Pass `--renderer=json` when you want the JSON envelope on stdout.
+`--debug` is `--log-level=debug` plus `--verbose`. `--log-level` only changes the diagnostic floor. Pass `--renderer=lando` when you want the TUI. Pass `--renderer=json` when you want the JSON envelope on stdout.
 
 ## Pick a renderer
 
@@ -23,7 +24,7 @@ lando version --debug
 | `lando` (default) | Bundled TTY task tree and summaries. |
 | `plain` | One human line per renderable event on stdout. No tree, no spinners. |
 | `json` | Structured `{_tag:"event", ...}` lines on stderr. The command result still prints on stdout as a JSON envelope. |
-| `verbose` | The human line plus the full event payload for every event. This is the debug dump, not the task tree. |
+| `verbose` | The human line plus the full event payload for every event. This is the dump, not the task tree. |
 
 Set the mode three ways. First match wins:
 
@@ -42,17 +43,19 @@ lando info --renderer=json
 
 An unknown mode fails with `RendererSelectionError`.
 
-## Turn on `--debug`
+## Turn on more output
 
-`--debug` sets the log level to `debug`. When the renderer still came from the default, Lando flips it to `verbose`. `--renderer=lando --debug` keeps the TUI. `--renderer=json --debug` keeps the envelope on stdout.
+`--verbose` flips the default renderer to `verbose`. An explicit `--renderer`, `LANDO_RENDERER`, or `renderer:` config value stays put.
+
+`--debug` also sets the log level to `debug`. Effect logs go to stderr. They are not command output. `meta:mcp` (except `--list`) and the host-proxy worker stay silent.
 
 Set the log level three ways. First match wins:
 
 1. `--log-level=debug` or `--debug`
-2. `LANDO_LOG_LEVEL=debug` or `LANDO_DEBUG=1` (`true` and `yes` also count)
+2. `LANDO_LOG_LEVEL=debug`
 3. `logLevel: debug` in global config
 
-The default log level is `none`. The CLI stays quiet until you ask.
+The default log level is `none`. The CLI stays quiet until you ask. `LANDO_DEBUG` is not a host CLI switch. Lando only forwards `LANDO_DEBUG=1` into `lando shell`.
 
 For scripts and agents, prefer `--format=json` or `--renderer=json` and read `ok`, `error._tag`, and `remediation`.
 
@@ -61,6 +64,13 @@ For scripts and agents, prefer `--format=json` or `--renderer=json` and read `ok
     <Step name="debug-flag">
       <Run command="lando version --debug" expectExit={0} />
       <Verify command="lando version --debug" expect={{ stdout: { regex: "." } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="verbose-default-flip" render>
+    <Step name="verbose-flag">
+      <Run command="lando version --verbose" expectExit={0} />
+      <Verify command="lando version --verbose" expect={{ stdout: { regex: "." } }} />
     </Step>
   </Scenario>
 
