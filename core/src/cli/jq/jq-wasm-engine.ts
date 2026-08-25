@@ -22,10 +22,12 @@ const jsonTextForJq = (input: unknown): string => {
 };
 
 // jq-wasm exposes no abort entry point (`raw(input, query, flags?)` is the whole
-// API), so the caller's AbortSignal cannot cancel an in-flight evaluation. The
-// timeout in eval.ts still returns control at the deadline and swallows late
-// settlement; until jq-wasm grows a cancellation hook, worst case is wasted CPU
-// on an already-timed-out expression.
+// API) and its evaluation is synchronous once started, so the caller's
+// AbortSignal cannot interrupt an in-flight expression; the eval.ts deadline
+// resolves at the next await boundary and swallows late settlement. Running the
+// evaluator in a Worker was tried and rejected: bun build --compile does not
+// embed module workers referenced by URL (the compile smoke fails), so real
+// cancellation needs a sidecar process or an upstream jq-wasm cancel hook.
 export const jqWasmEngine: JqEngine = {
   async eval(input, expr) {
     const jq = await loadJqCached();
