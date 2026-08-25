@@ -37,6 +37,7 @@ import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
+import { activeJq, activeProjectResultKeys } from "../../compiled-session";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -338,10 +339,14 @@ export const dispatchMcpCommand = async (params: {
       );
       return yield* mcpListResult(registry, params.flags);
     });
+    const projectResultKeys = activeProjectResultKeys();
+    const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
+      ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
+      ...(jqExpression === undefined ? {} : { jqExpression }),
       command: "meta:mcp",
       invocation: params.invocation,
       resultSchema: McpListResultSchema,
