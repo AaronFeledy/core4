@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
+import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
@@ -72,6 +73,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
   readonly projectResultKeys?: readonly string[];
+  readonly jqExpression?: string;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
@@ -135,6 +137,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
         ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
         ...(options.projectResultKeys === undefined ? {} : { projectResultKeys: options.projectResultKeys }),
+        ...(options.jqExpression === undefined ? {} : { jqExpression: options.jqExpression }),
       });
     const setExitCode = (code: number): void => {
       (
@@ -147,6 +150,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
         const failure = Cause.failureOption(cause);
+        if (failure._tag === "Some" && failure.value instanceof JqExpressionError) {
+          setExitCode(2);
+          return;
+        }
         setExitCode(failure._tag === "Some" ? (options.failureExitCode?.(failure.value) ?? 1) : 1);
       });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
@@ -157,11 +164,17 @@ export const runWithRendererHandling = async <A, E, R, RE>(
             _tag: "failure",
             error,
           } as const;
-          if (options.streaming !== undefined) {
-            if (!liveStreaming) yield* replayBufferedEvents();
-            yield* emitStreamResult(outcome);
-          } else {
-            yield* emitJsonResult(outcome);
+          const emit = (next: typeof outcome) =>
+            options.streaming !== undefined ? emitStreamResult(next) : emitJsonResult(next);
+          if (options.streaming !== undefined && !liveStreaming) yield* replayBufferedEvents();
+          const emitted = yield* emit(outcome).pipe(Effect.either);
+          if (emitted._tag === "Left") {
+            if (!(emitted.left instanceof JqExpressionError)) {
+              return yield* Effect.fail(emitted.left);
+            }
+            yield* emit({ _tag: "failure", error: emitted.left });
+            setExitCode(2);
+            return;
           }
           yield* setFailureExitCode(cause);
           return;

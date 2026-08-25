@@ -16,11 +16,13 @@ import {
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
 } from "@lando/sdk/command-result";
+import { JqExpressionError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { writeResultLine } from "@lando/renderer/output";
 import type { CommandWarningsShape } from "./command-warnings";
+import { applyJqToRedactedJsonLine } from "./jq/eval.ts";
 
 export interface StreamOutputFrame {
   readonly _tag: "stdout" | "stderr";
@@ -38,12 +40,39 @@ export interface MachineResultEmitterDeps<A> {
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
   readonly projectResultKeys?: readonly string[];
+  readonly jqExpression?: string;
 }
+
+const isJqExpressionError = (error: unknown): error is JqExpressionError =>
+  error instanceof JqExpressionError;
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
   const { command, resultSchema, commandWarnings } = deps;
   const projection =
     deps.projectResultKeys === undefined ? {} : { projectResultKeys: deps.projectResultKeys };
+  const skipJq = (outcome: CommandResultOutcome): boolean =>
+    outcome._tag === "failure" && isJqExpressionError(outcome.error);
+  const writeEncodedLine = (line: string, outcome: CommandResultOutcome) =>
+    Effect.gen(function* () {
+      const expr = deps.jqExpression;
+      if (expr === undefined || skipJq(outcome)) {
+        yield* writeResultLine(line);
+        return;
+      }
+      const text = yield* Effect.tryPromise({
+        try: () => applyJqToRedactedJsonLine(line, expr),
+        catch: (error) => {
+          if (isJqExpressionError(error)) return error;
+          return new JqExpressionError({
+            message: "jq expression failed.",
+            expression: expr,
+            reason: "eval",
+            remediation: "Fix the jq expression.",
+          });
+        },
+      });
+      yield* writeResultLine(text);
+    });
   const jsonRedactor = (redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
       const redaction = yield* Effect.serviceOption(RedactionService);
@@ -66,21 +95,26 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         warnings,
         ...projection,
       });
-      yield* writeResultLine(line);
+      yield* writeEncodedLine(line, outcome);
     });
   const emitStreamResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
       const redactor = yield* jsonRedactor(redactionTokens);
       const warnings = yield* commandWarnings.list;
-      const line = yield* encodeStreamResultFrame({
+      const args = {
         command,
         resultSchema,
         outcome,
         redactor,
         warnings,
         ...projection,
-      });
-      yield* writeResultLine(line);
+      };
+      // --jq runs on the redacted envelope, not the StreamFrame wrapper.
+      const line =
+        deps.jqExpression === undefined
+          ? yield* encodeStreamResultFrame(args)
+          : yield* encodeCommandResult(args);
+      yield* writeEncodedLine(line, outcome);
     });
   const replayBufferedEvents = (redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
