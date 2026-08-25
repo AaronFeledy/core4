@@ -4,7 +4,7 @@ import { LogLevelSelectionError } from "@lando/sdk/errors";
 import { LOG_LEVELS } from "@lando/sdk/schema";
 
 import { extractFormatFlags } from "../../src/cli/format-flags.ts";
-import { extractLogLevelFlags, isLandoDebugEnv, resolveLogLevel } from "../../src/cli/log-level-selection.ts";
+import { extractLogLevelFlags, resolveLogLevel } from "../../src/cli/log-level-selection.ts";
 import { extractRendererFlag } from "../../src/cli/renderer-selection.ts";
 
 const expectLogLevelSelectionError = (run: () => unknown): LogLevelSelectionError => {
@@ -56,6 +56,7 @@ describe("extractLogLevelFlags", () => {
     const result = extractLogLevelFlags(["start", "--log-level=debug", "--service", "web"]);
     expect(result.level).toBe("debug");
     expect(result.debug).toBe(false);
+    expect(result.verbose).toBe(false);
     expect(result.remainingArgv).toEqual(["start", "--service", "web"]);
   });
 
@@ -63,6 +64,7 @@ describe("extractLogLevelFlags", () => {
     const result = extractLogLevelFlags(["start", "--log-level", "debug", "--service", "web"]);
     expect(result.level).toBe("debug");
     expect(result.debug).toBe(false);
+    expect(result.verbose).toBe(false);
     expect(result.remainingArgv).toEqual(["start", "--service", "web"]);
   });
 
@@ -88,6 +90,15 @@ describe("extractLogLevelFlags", () => {
   test("consumes --debug as a bare boolean only", () => {
     const result = extractLogLevelFlags(["start", "--debug", "--service", "web"]);
     expect(result.debug).toBe(true);
+    expect(result.verbose).toBe(false);
+    expect(result.level).toBeUndefined();
+    expect(result.remainingArgv).toEqual(["start", "--service", "web"]);
+  });
+
+  test("consumes --verbose as a bare boolean only", () => {
+    const result = extractLogLevelFlags(["start", "--verbose", "--service", "web"]);
+    expect(result.verbose).toBe(true);
+    expect(result.debug).toBe(false);
     expect(result.level).toBeUndefined();
     expect(result.remainingArgv).toEqual(["start", "--service", "web"]);
   });
@@ -133,45 +144,52 @@ describe("extractLogLevelFlags", () => {
   });
 });
 
-describe("isLandoDebugEnv", () => {
-  test("is true for 1, true, and YES after trim and lowercase", () => {
-    expect(isLandoDebugEnv("1")).toBe(true);
-    expect(isLandoDebugEnv("true")).toBe(true);
-    expect(isLandoDebugEnv("YES")).toBe(true);
-    expect(isLandoDebugEnv(" True ")).toBe(true);
-  });
-
-  test("is false for 0, false, empty, and other tokens", () => {
-    expect(isLandoDebugEnv("0")).toBe(false);
-    expect(isLandoDebugEnv("false")).toBe(false);
-    expect(isLandoDebugEnv("")).toBe(false);
-    expect(isLandoDebugEnv("maybe")).toBe(false);
-  });
-});
-
 describe("resolveLogLevel", () => {
   test("defaults to none", () => {
-    expect(resolveLogLevel({})).toEqual({ level: "none", source: "default", remainingArgv: [] });
+    expect(resolveLogLevel({})).toEqual({
+      level: "none",
+      verbose: false,
+      source: "default",
+      remainingArgv: [],
+    });
   });
 
   test('resolveLogLevel({ argv: ["--debug"] }) is debug from flag', () => {
     const result = resolveLogLevel({ argv: ["--debug"] });
     expect(result.level).toBe("debug");
+    expect(result.verbose).toBe(true);
     expect(result.source).toBe("flag");
   });
 
   test("--debug --log-level=info selects info (log-level beats --debug)", () => {
     const result = resolveLogLevel({ argv: ["--debug", "--log-level=info"] });
     expect(result.level).toBe("info");
+    expect(result.verbose).toBe(true);
     expect(result.source).toBe("flag");
   });
 
-  test("LANDO_DEBUG=1 plus LANDO_LOG_LEVEL=warn selects warn", () => {
+  test("LANDO_DEBUG is not a host log-level switch", () => {
     const result = resolveLogLevel({
       env: { LANDO_DEBUG: "1", LANDO_LOG_LEVEL: "warn" },
     });
     expect(result.level).toBe("warn");
+    expect(result.verbose).toBe(false);
     expect(result.source).toBe("env");
+    expect(resolveLogLevel({ env: { LANDO_DEBUG: "1" } }).level).toBe("none");
+  });
+
+  test("--verbose flips UX without raising the log floor", () => {
+    const result = resolveLogLevel({ argv: ["--verbose"] });
+    expect(result.level).toBe("none");
+    expect(result.verbose).toBe(true);
+    expect(result.source).toBe("flag");
+  });
+
+  test("--log-level=debug does not flip verbose", () => {
+    const result = resolveLogLevel({ argv: ["--log-level=debug"] });
+    expect(result.level).toBe("debug");
+    expect(result.verbose).toBe(false);
+    expect(result.source).toBe("flag");
   });
 
   test("DEBUG=* is ignored when env bag omits it", () => {
@@ -183,6 +201,7 @@ describe("resolveLogLevel", () => {
       expect(result.source).toBe("env");
       expect(resolveLogLevel({ env: {} })).toEqual({
         level: "none",
+        verbose: false,
         source: "default",
         remainingArgv: [],
       });
@@ -191,11 +210,11 @@ describe("resolveLogLevel", () => {
     }
   });
 
-  test("precedence is --log-level over --debug over LANDO_LOG_LEVEL over LANDO_DEBUG over configValue over none", () => {
+  test("precedence is --log-level over --debug over LANDO_LOG_LEVEL over configValue over none", () => {
     expect(
       resolveLogLevel({
         argv: ["--log-level=trace", "--debug"],
-        env: { LANDO_LOG_LEVEL: "info", LANDO_DEBUG: "1" },
+        env: { LANDO_LOG_LEVEL: "info" },
         configValue: "warn",
       }).level,
     ).toBe("trace");
@@ -203,36 +222,20 @@ describe("resolveLogLevel", () => {
     expect(
       resolveLogLevel({
         argv: ["--debug"],
-        env: { LANDO_LOG_LEVEL: "info", LANDO_DEBUG: "1" },
+        env: { LANDO_LOG_LEVEL: "info" },
         configValue: "warn",
       }).level,
     ).toBe("debug");
 
     expect(
       resolveLogLevel({
-        env: { LANDO_LOG_LEVEL: "info", LANDO_DEBUG: "1" },
+        env: { LANDO_LOG_LEVEL: "info" },
         configValue: "warn",
       }).level,
     ).toBe("info");
 
-    expect(
-      resolveLogLevel({
-        env: { LANDO_DEBUG: "1" },
-        configValue: "warn",
-      }).level,
-    ).toBe("debug");
-
     expect(resolveLogLevel({ configValue: "warn" }).level).toBe("warn");
     expect(resolveLogLevel({}).level).toBe("none");
-  });
-
-  test("LANDO_DEBUG 1/true/YES turn debug on; 0/false/empty stay off", () => {
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "1" } }).level).toBe("debug");
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "true" } }).level).toBe("debug");
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "YES" } }).level).toBe("debug");
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "0" } }).level).toBe("none");
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "false" } }).level).toBe("none");
-    expect(resolveLogLevel({ env: { LANDO_DEBUG: "" } }).level).toBe("none");
   });
 
   test("--debug=true is not treated as the debug flag", () => {

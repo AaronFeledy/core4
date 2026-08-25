@@ -6,7 +6,7 @@ import { resolveTopLevelAliases } from "./spec/command-base";
 
 const UNIVERSAL_FLAGS = new Set(["format", "json"]);
 const GLOBAL_FLAGS_FOOTER =
-  "Global flags (--format, --json, --renderer, --log-level, --debug) work on every command.";
+  "Global flags (--format, --json, --renderer, --verbose, --log-level, --debug) work on every command.";
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }

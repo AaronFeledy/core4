@@ -195,7 +195,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       argv = resolution.remainingArgv;
       const mode = isProtocolStdoutCommand
         ? resolution.mode
-        : applyDebugRendererFlip({ level: logLevelResolution.level, renderer: resolution });
+        : applyDebugRendererFlip({ verbose: logLevelResolution.verbose, renderer: resolution });
       setActiveRendererMode(mode);
     } catch (error) {
       if (

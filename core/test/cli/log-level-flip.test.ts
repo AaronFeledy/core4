@@ -29,91 +29,78 @@ describe("renderer flip characterization", () => {
 });
 
 describe("applyDebugRendererFlip", () => {
-  test("default + debug flips to verbose", () => {
-    expect(applyDebugRendererFlip({ level: "debug", renderer: defaultRenderer() })).toBe("verbose");
+  test("default + verbose flips to verbose", () => {
+    expect(applyDebugRendererFlip({ verbose: true, renderer: defaultRenderer() })).toBe("verbose");
   });
 
-  test("default + trace flips to verbose", () => {
-    expect(applyDebugRendererFlip({ level: "trace", renderer: defaultRenderer() })).toBe("verbose");
+  test("default + quiet stays lando", () => {
+    expect(applyDebugRendererFlip({ verbose: false, renderer: defaultRenderer() })).toBe("lando");
   });
 
-  test("default + info stays lando", () => {
-    expect(applyDebugRendererFlip({ level: "info", renderer: defaultRenderer() })).toBe("lando");
-  });
-
-  test("default + warn stays lando", () => {
-    expect(applyDebugRendererFlip({ level: "warn", renderer: defaultRenderer() })).toBe("lando");
-  });
-
-  test("default + error stays lando", () => {
-    expect(applyDebugRendererFlip({ level: "error", renderer: defaultRenderer() })).toBe("lando");
-  });
-
-  test("flag --renderer=lando + debug stays lando", () => {
+  test("flag --renderer=lando + verbose stays lando", () => {
     expect(
       applyDebugRendererFlip({
-        level: "debug",
+        verbose: true,
         renderer: resolveRendererMode({ argv: ["--renderer=lando"] }),
       }),
     ).toBe("lando");
   });
 
-  test("flag --renderer=json + debug stays json", () => {
+  test("flag --renderer=json + verbose stays json", () => {
     expect(
       applyDebugRendererFlip({
-        level: "debug",
+        verbose: true,
         renderer: resolveRendererMode({ argv: ["--renderer=json"] }),
       }),
     ).toBe("json");
   });
 
-  test("flag --renderer=plain + debug stays plain", () => {
+  test("flag --renderer=plain + verbose stays plain", () => {
     expect(
       applyDebugRendererFlip({
-        level: "debug",
+        verbose: true,
         renderer: resolveRendererMode({ argv: ["--renderer=plain"] }),
       }),
     ).toBe("plain");
   });
 
-  test("env LANDO_RENDERER=lando + debug stays lando", () => {
+  test("env LANDO_RENDERER=lando + verbose stays lando", () => {
     expect(
       applyDebugRendererFlip({
-        level: "debug",
+        verbose: true,
         renderer: resolveRendererMode({ env: { LANDO_RENDERER: "lando" } }),
       }),
     ).toBe("lando");
   });
 
-  test("config renderer lando + debug stays lando", () => {
+  test("config renderer lando + verbose stays lando", () => {
     expect(
       applyDebugRendererFlip({
-        level: "debug",
+        verbose: true,
         renderer: resolveRendererMode({ configValue: "lando" }),
       }),
     ).toBe("lando");
   });
 
-  test("--debug and --log-level=debug produce the same flip", () => {
+  test("--debug flips; --log-level=debug does not", () => {
     const renderer = defaultRenderer();
     const fromDebug = applyDebugRendererFlip({
-      level: resolveLogLevel({ argv: ["--debug"] }).level,
+      verbose: resolveLogLevel({ argv: ["--debug"] }).verbose,
       renderer,
     });
     const fromLogLevel = applyDebugRendererFlip({
-      level: resolveLogLevel({ argv: ["--log-level=debug"] }).level,
+      verbose: resolveLogLevel({ argv: ["--log-level=debug"] }).verbose,
       renderer,
     });
     expect(fromDebug).toBe("verbose");
-    expect(fromLogLevel).toBe(fromDebug);
+    expect(fromLogLevel).toBe("lando");
   });
 
-  test("source is not debug-flip after a default+debug flip", () => {
+  test("source stays default after a verbose flip", () => {
     const renderer = defaultRenderer();
-    const mode = applyDebugRendererFlip({ level: "debug", renderer });
+    const mode = applyDebugRendererFlip({ verbose: true, renderer });
     expect(mode).toBe("verbose");
     expect(renderer.source).toBe("default");
-    expect(renderer.source).not.toEqual("debug-flip");
     const allowed: ReadonlyArray<ResolveRendererModeResult["source"]> = ["flag", "env", "config", "default"];
     expect(allowed).toContain(renderer.source);
   });

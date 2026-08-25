@@ -97,7 +97,7 @@ describe("renderCommandHelp", () => {
 
     // Then the locked footer points at the universal flags
     expect(help).toContain(
-      "Global flags (--format, --json, --renderer, --log-level, --debug) work on every command.",
+      "Global flags (--format, --json, --renderer, --verbose, --log-level, --debug) work on every command.",
     );
   });
 

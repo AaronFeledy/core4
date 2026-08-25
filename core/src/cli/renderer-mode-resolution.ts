@@ -9,7 +9,6 @@
  */
 import { Effect } from "effect";
 
-import type { LogLevel } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { ConfigServiceLive } from "@lando/engine/services/config";
@@ -22,14 +21,12 @@ export type ConfigCliGlobals = {
 };
 
 export type ApplyDebugRendererFlipInput = {
-  readonly level: LogLevel;
+  readonly verbose: boolean;
   readonly renderer: ResolveRendererModeResult;
 };
 
 export const applyDebugRendererFlip = (input: ApplyDebugRendererFlipInput): RendererMode =>
-  (input.level === "debug" || input.level === "trace") && input.renderer.source === "default"
-    ? "verbose"
-    : input.renderer.mode;
+  input.verbose && input.renderer.source === "default" ? "verbose" : input.renderer.mode;
 
 export const readConfigCliGlobals = async (): Promise<ConfigCliGlobals> => {
   const config = await Effect.runPromise(

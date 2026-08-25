@@ -191,4 +191,33 @@ describe("host-safe debug machine output", () => {
     expect(hasCursorUpOrErase(result.stdout)).toBe(false);
     expect(hasCursorUpOrErase(result.stderr)).toBe(false);
   }, 60_000);
+
+  test("default --verbose uses verbose payload traces", async () => {
+    const result = await runSourceCli(["version", "--verbose"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('"_tag"');
+    expect(hasCursorUpOrErase(result.stdout)).toBe(false);
+  }, 60_000);
+
+  test("--log-level=debug does not flip the default renderer", async () => {
+    const result = await runSourceCli(["version", "--log-level=debug"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('"_tag"');
+    expect(result.stdout).not.toContain("LANDO OPS");
+  }, 60_000);
+
+  test("LANDO_LOG_LEVEL=debug skips the version cold path without flipping renderer", async () => {
+    const env = isolationEnv();
+    env.LANDO_LOG_LEVEL = "debug";
+    const proc = Bun.spawn({
+      cmd: [process.execPath, cliEntry, "version"],
+      cwd: repoRoot,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+    expect(exitCode).toBe(0);
+    expect(stdout).not.toContain('"_tag"');
+  }, 60_000);
 });
