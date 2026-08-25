@@ -21,6 +21,11 @@ const jsonTextForJq = (input: unknown): string => {
   throw new Error("jq input is not JSON-serializable");
 };
 
+// jq-wasm exposes no abort entry point (`raw(input, query, flags?)` is the whole
+// API), so the caller's AbortSignal cannot cancel an in-flight evaluation. The
+// timeout in eval.ts still returns control at the deadline and swallows late
+// settlement; until jq-wasm grows a cancellation hook, worst case is wasted CPU
+// on an already-timed-out expression.
 export const jqWasmEngine: JqEngine = {
   async eval(input, expr) {
     const jq = await loadJqCached();

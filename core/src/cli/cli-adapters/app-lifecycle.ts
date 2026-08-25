@@ -78,6 +78,8 @@ import { renderStopAppResult } from "../commands/stop";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeDeprecationWarnings,
+  activeJq,
+  activeProjectResultKeys,
   activeRendererMode,
   activeResultFormat,
   activeTableJsonFormat,
@@ -176,6 +178,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
     process.exitCode = 2;
     return;
   }
+  const projectResultKeys = activeProjectResultKeys();
+  const jqExpression = activeJq;
   await runWithRendererHandling(
     setupSpec.run({
       installDir,
@@ -187,6 +191,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       ),
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
+      ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
+      ...(jqExpression === undefined ? {} : { jqExpression }),
       command: setupSpec.id,
       invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
