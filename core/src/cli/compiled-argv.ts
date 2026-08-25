@@ -98,7 +98,17 @@ export const setParsedFlag = (
 export const hasUniversalFormatFlag = (argv: ReadonlyArray<string>): boolean => {
   for (const arg of argv) {
     if (arg === "--") return false;
-    if (arg === "--format" || arg.startsWith("--format=") || arg === "--json" || arg === "-j") return true;
+    if (
+      arg === "--format" ||
+      arg.startsWith("--format=") ||
+      arg === "--json" ||
+      arg.startsWith("--json=") ||
+      arg === "-j" ||
+      arg === "--jq" ||
+      arg.startsWith("--jq=")
+    ) {
+      return true;
+    }
   }
   return false;
 };
