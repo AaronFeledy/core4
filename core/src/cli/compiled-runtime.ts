@@ -87,7 +87,6 @@ export const runCompiledCommand = <A, E, R, RE>(
   runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
-    readonly renderEvents?: boolean;
     readonly plainTaskEvents?: "detail-only";
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
@@ -137,7 +136,6 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(jqExpression === undefined ? {} : { jqExpression }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
-    ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),

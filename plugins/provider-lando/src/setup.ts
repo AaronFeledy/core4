@@ -2,21 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 
-import { Cause, type Context, DateTime, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import {
-  MessageWarnEvent,
-  TaskCompleteEvent,
-  TaskFailEvent,
-  TaskStartEvent,
-  TaskTreeCompleteEvent,
-  TaskTreeStartEvent,
-} from "@lando/sdk/events";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import { type HostPlatform, type HostPlatformFamily, hostPlatformFamily } from "@lando/sdk/schema";
-import type { EventService, ProviderError } from "@lando/sdk/services";
+import type { ProviderError } from "@lando/sdk/services";
+import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
@@ -33,8 +27,6 @@ import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bu
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
 import { podmanVersionMeetsFloor } from "./version-floor.ts";
-
-type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
 const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -172,7 +164,7 @@ export interface SetupOptions {
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
   readonly runtimeConfigDir?: string;
-  readonly eventService?: EventPublisher;
+  readonly eventService?: ProgressEmitter;
   // Test-only seam (never set in production): overrides the bundled-tooling existence check.
   readonly _machineToolingExists?: (podmanBin: string) => boolean;
   // Test-only seam (never set in production): overrides construction of the bundled machine runner.
@@ -207,7 +199,7 @@ const hasErrorCode = (cause: unknown, code: string): boolean =>
 
 const readExistingMachineOwnership = (
   stateDir: string,
-  eventService?: EventPublisher,
+  eventService?: ProgressEmitter,
 ): Effect.Effect<RecordedMachineOwnership | undefined, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const raw = yield* Effect.tryPromise({
@@ -233,7 +225,7 @@ const readExistingMachineOwnership = (
       parsed = JSON.parse(raw);
     } catch (cause) {
       if (!(cause instanceof SyntaxError)) return yield* Effect.die(cause);
-      yield* publishEvent(
+      yield* publishWarn(
         eventService,
         MessageWarnEvent.make({
           _tag: "message.warn",
@@ -260,7 +252,7 @@ const readExistingMachineOwnership = (
 const preserveRecordedMachineOwnership = (
   stateDir: string,
   current: RecordedMachineOwnership,
-  eventService?: EventPublisher,
+  eventService?: ProgressEmitter,
 ): Effect.Effect<RecordedMachineOwnership, ProviderUnavailableError> =>
   current.createdByLando
     ? Effect.succeed(current)
@@ -740,9 +732,9 @@ export const persistSetupState = (
 
 const SETUP_PARENT_ID = "provider-setup";
 
-const publishEvent = (
-  eventService: EventPublisher | undefined,
-  event: Parameters<EventPublisher["publish"]>[0],
+const publishWarn = (
+  eventService: ProgressEmitter | undefined,
+  event: typeof MessageWarnEvent.Type,
 ): Effect.Effect<void> =>
   eventService === undefined ? Effect.void : eventService.publish(event).pipe(Effect.ignore);
 
@@ -775,11 +767,6 @@ const buildSetupSteps = (
   return steps;
 };
 
-interface StepCounter {
-  succeeded: number;
-  readonly settled: Set<string>;
-}
-
 const failureMessage = (cause: unknown): string =>
   cause instanceof ProviderUnavailableError || cause instanceof Error ? cause.message : String(cause);
 
@@ -803,53 +790,24 @@ const failureDetails = (
 };
 
 const withStep = <A, E>(
-  eventService: EventPublisher | undefined,
+  tree: TaskTreeController,
   step: SetupStep,
-  counter: StepCounter,
   body: Effect.Effect<A, E>,
 ): Effect.Effect<A, E> =>
   Effect.gen(function* () {
-    const start = performance.now();
-    yield* publishEvent(
-      eventService,
-      TaskStartEvent.make({
-        _tag: "task.start",
-        taskId: step.taskId,
-        parentId: SETUP_PARENT_ID,
-        label: step.label,
-        timestamp: nowUtc(),
-      }),
-    );
+    yield* tree.startTask(step.taskId);
     const result = yield* body.pipe(
       Effect.onExit((exit) => {
         if (Exit.isSuccess(exit)) return Effect.void;
-        counter.settled.add(step.taskId);
         const details = failureDetails(exit.cause);
-        return publishEvent(
-          eventService,
-          TaskFailEvent.make({
-            _tag: "task.fail",
-            taskId: step.taskId,
-            summary: details.summary,
-            ...(details.remediation === undefined ? {} : { remediation: details.remediation }),
-            durationMs: Math.round(performance.now() - start),
-            timestamp: nowUtc(),
-          }),
+        return tree.failTask(
+          step.taskId,
+          details.summary,
+          details.remediation === undefined ? undefined : { remediation: details.remediation },
         );
       }),
     );
-    yield* publishEvent(
-      eventService,
-      TaskCompleteEvent.make({
-        _tag: "task.complete",
-        taskId: step.taskId,
-        summary: step.label,
-        durationMs: Math.round(performance.now() - start),
-        timestamp: nowUtc(),
-      }),
-    );
-    counter.succeeded += 1;
-    counter.settled.add(step.taskId);
+    yield* tree.completeTask(step.taskId, step.label);
     return result;
   });
 
@@ -873,19 +831,14 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
       managesRuntime,
       options.smoke === true,
     );
-    const treeStart = performance.now();
+    const tree = makeTaskTree(options.eventService, {
+      parentId: SETUP_PARENT_ID,
+      label: "Setting up Lando runtime",
+      children: steps.map((step) => ({ id: step.taskId, label: step.label })),
+      mode: "list",
+    });
 
-    yield* publishEvent(
-      options.eventService,
-      TaskTreeStartEvent.make({
-        _tag: "task.tree.start",
-        parentId: SETUP_PARENT_ID,
-        label: "Setting up Lando runtime",
-        children: steps.map((step) => step.taskId),
-        mode: "list",
-        timestamp: nowUtc(),
-      }),
-    );
+    yield* tree.start;
 
     const bundleStep = steps.find((step) => step.taskId === "bundle");
     const podmanStep = steps.find((step) => step.taskId === "podman");
@@ -896,8 +849,6 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
     if (podmanStep === undefined || (probesSocket && socketStep === undefined)) {
       return yield* Effect.die("internal: missing required setup steps");
     }
-
-    const counter: StepCounter = { succeeded: 0, settled: new Set() };
 
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
@@ -911,9 +862,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
           : yield* withStep(
-              options.eventService,
+              tree,
               bundleStep,
-              counter,
               options.runtimeBundleDownloader.download.pipe(
                 Effect.flatMap(verifyRuntimeBundle),
                 Effect.tap((verified) =>
@@ -946,9 +896,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
       }
 
       const podmanVersionOutput = yield* withStep(
-        options.eventService,
+        tree,
         podmanStep,
-        counter,
         (options.podmanCommand !== undefined
           ? options.podmanCommand.version
           : resolveSetupPodmanCommandRunner(
@@ -975,9 +924,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
 
       if (family === "darwin" && machineStep !== undefined) {
         const ensured = yield* withStep(
-          options.eventService,
+          tree,
           machineStep,
-          counter,
           resolveSetupMachineRunner("darwin", options).pipe(
             Effect.flatMap((runner) =>
               ensureMacOSPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
@@ -989,9 +937,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
 
       if (family === "win32" && machineStep !== undefined) {
         const ensured = yield* withStep(
-          options.eventService,
+          tree,
           machineStep,
-          counter,
           resolveSetupMachineRunner("win32", options).pipe(
             Effect.flatMap((runner) =>
               ensureWindowsPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
@@ -1005,11 +952,10 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
         options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
       let info: unknown;
-      if (!options.skipSocketProbe && socketStep !== undefined) {
+      if (probesSocket && socketStep !== undefined) {
         info = yield* withStep(
-          options.eventService,
+          tree,
           socketStep,
-          counter,
           api === undefined
             ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
             : api.info.pipe(
@@ -1032,7 +978,7 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
             const step = steps.find((candidate) => candidate.taskId === phase);
             return step === undefined
               ? Effect.die(`internal: missing managed runtime setup step ${phase}`)
-              : withStep(options.eventService, step, counter, body);
+              : withStep(tree, step, body);
           },
         };
         yield* options.managedRuntimeSetup(progress);
@@ -1047,9 +993,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
         stateStep === undefined || options.stateDir === undefined
           ? undefined
           : yield* withStep(
-              options.eventService,
+              tree,
               stateStep,
-              counter,
               persistSetupState(options.stateDir, {
                 podmanVersion,
                 ...(bundle === undefined
@@ -1074,48 +1019,18 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
           : Effect.gen(function* () {
               const details = failureDetails(exit.cause);
               for (const step of steps) {
-                if (counter.settled.has(step.taskId)) continue;
-                counter.settled.add(step.taskId);
-                yield* publishEvent(
-                  options.eventService,
-                  TaskFailEvent.make({
-                    _tag: "task.fail",
-                    taskId: step.taskId,
-                    summary: details.summary,
-                    ...(details.remediation === undefined ? {} : { remediation: details.remediation }),
-                    durationMs: 0,
-                    timestamp: nowUtc(),
-                  }),
+                yield* tree.failTask(
+                  step.taskId,
+                  details.summary,
+                  details.remediation === undefined ? undefined : { remediation: details.remediation },
                 );
               }
-              yield* publishEvent(
-                options.eventService,
-                TaskTreeCompleteEvent.make({
-                  _tag: "task.tree.complete",
-                  parentId: SETUP_PARENT_ID,
-                  summary: "Lando runtime setup failed",
-                  succeeded: counter.succeeded,
-                  failed: steps.length - counter.succeeded,
-                  durationMs: Math.round(performance.now() - treeStart),
-                  timestamp: nowUtc(),
-                }),
-              );
+              yield* tree.close("Lando runtime setup failed");
             }),
       ),
     );
 
-    yield* publishEvent(
-      options.eventService,
-      TaskTreeCompleteEvent.make({
-        _tag: "task.tree.complete",
-        parentId: SETUP_PARENT_ID,
-        summary: "Lando runtime ready",
-        succeeded: steps.length,
-        failed: 0,
-        durationMs: Math.round(performance.now() - treeStart),
-        timestamp: nowUtc(),
-      }),
-    );
+    yield* tree.close("Lando runtime ready");
 
     return result;
   });

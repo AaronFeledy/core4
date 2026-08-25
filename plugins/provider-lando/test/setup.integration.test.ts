@@ -432,6 +432,9 @@ describe("provider-lando setup", () => {
       expect(tags[tags.length - 1]).toBe("task.tree.complete");
 
       const treeStart = captured[0];
+      expect(treeStart?.parentId).toBe("provider-setup");
+      expect(treeStart?.label).toBe("Setting up Lando runtime");
+      expect(treeStart?.mode).toBe("list");
       expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual([
         "bundle",
         "podman",
@@ -439,12 +442,32 @@ describe("provider-lando setup", () => {
         "state",
       ]);
 
-      const completedIds = captured
-        .filter((event) => event._tag === "task.complete")
-        .map((event) => event.taskId as string);
-      expect(completedIds).toEqual(["bundle", "podman", "socket", "state"]);
+      const started = captured.filter((event) => event._tag === "task.start");
+      const completed = captured.filter((event) => event._tag === "task.complete");
+      expect(started.map((event) => event.taskId)).toEqual(["bundle", "podman", "socket", "state"]);
+      expect(completed.map((event) => event.taskId)).toEqual(["bundle", "podman", "socket", "state"]);
+      expect(started.map((event) => event.parentId)).toEqual([
+        "provider-setup",
+        "provider-setup",
+        "provider-setup",
+        "provider-setup",
+      ]);
+      expect(started.map((event) => event.label)).toEqual([
+        "Verify runtime bundle",
+        "Detect Podman",
+        "Probe Podman API",
+        "Persist setup state",
+      ]);
+      expect(completed.map((event) => event.summary)).toEqual([
+        "Verify runtime bundle",
+        "Detect Podman",
+        "Probe Podman API",
+        "Persist setup state",
+      ]);
 
       const treeComplete = captured[captured.length - 1];
+      expect(treeComplete?.parentId).toBe("provider-setup");
+      expect(treeComplete?.summary).toBe("Lando runtime ready");
       expect(treeComplete?.succeeded).toBe(4);
       expect(treeComplete?.failed).toBe(0);
     } finally {
@@ -522,7 +545,30 @@ describe("provider-lando setup", () => {
       "launch",
       "readiness",
     ]);
-    expect(captured.find((event) => event._tag === "task.tree.complete")?.failed).toBe(3);
+    const startedIds = captured.filter((event) => event._tag === "task.start").map((event) => event.taskId);
+    expect(startedIds).toEqual(["podman", "prerequisites"]);
+    expect(startedIds).not.toContain("launch");
+    expect(startedIds).not.toContain("readiness");
+    const prerequisiteFail = captured.find(
+      (event) => event._tag === "task.fail" && event.taskId === "prerequisites",
+    );
+    expect(prerequisiteFail?.summary).toBe("uidmap provisioning failed");
+    expect(prerequisiteFail?.remediation).toBe("Install uidmap manually.");
+    const remainingFails = captured.filter(
+      (event) => event._tag === "task.fail" && (event.taskId === "launch" || event.taskId === "readiness"),
+    );
+    expect(remainingFails.map((event) => event.summary)).toEqual([
+      "uidmap provisioning failed",
+      "uidmap provisioning failed",
+    ]);
+    expect(remainingFails.map((event) => event.remediation)).toEqual([
+      "Install uidmap manually.",
+      "Install uidmap manually.",
+    ]);
+    const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
+    expect(treeComplete?.parentId).toBe("provider-setup");
+    expect(treeComplete?.summary).toBe("Lando runtime setup failed");
+    expect(treeComplete?.failed).toBe(3);
   });
 
   test("settles the task tree when a managed runtime child is interrupted", async () => {
@@ -549,7 +595,22 @@ describe("provider-lando setup", () => {
       "prerequisites",
       "readiness",
     ]);
+    const startedIds = captured.filter((event) => event._tag === "task.start").map((event) => event.taskId);
+    expect(startedIds).toEqual(["podman", "launch"]);
+    expect(startedIds).not.toContain("prerequisites");
+    expect(startedIds).not.toContain("readiness");
+    const launchFail = captured.find((event) => event._tag === "task.fail" && event.taskId === "launch");
+    expect(launchFail?.summary).toBe("Setup interrupted.");
+    const remainingFails = captured.filter(
+      (event) =>
+        event._tag === "task.fail" && (event.taskId === "prerequisites" || event.taskId === "readiness"),
+    );
+    expect(remainingFails.map((event) => event.summary)).toEqual([
+      "Setup interrupted.",
+      "Setup interrupted.",
+    ]);
     const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
+    expect(treeComplete?.parentId).toBe("provider-setup");
     expect(treeComplete?.summary).toBe("Lando runtime setup failed");
     expect(treeComplete?.failed).toBe(3);
   });

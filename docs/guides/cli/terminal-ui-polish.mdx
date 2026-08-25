@@ -10,25 +10,27 @@ tags: [beta, docs, cli, renderer]
 
 This page is a contributor design-token dump for the bundled `lando` renderer. It stays off the user nav.
 
-Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat status chips, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
+Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat the TTY rail, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
 The default TTY path can draw a compact task tree. plain, json, non-TTY, and CI output stay undecorated. A missing native binding never fails the command. The process falls back to line input.
 
 If you are changing renderer goldens, start from the contributing visual-QA page, not this dump.
 
-## Spaceship-console tokens
+## Quiet rail tokens
 
-The TTY `lando` frame uses a deep-space base with cyan/teal telemetry accents. Status is never color-only. Every state is glyph plus text status.
+The TTY `lando` frame uses the terminal default background and foreground. The pink left rail is Lando chrome only. Identity text is bold in the default color. Footer verdicts are dim default. Status colors are the standard terminal palette (red, green, yellow, cyan, dim). Status is never color-only. Every state uses semantic glyphs. Status is glyph plus compact optional metadata.
 
-Status chips: [RUNNING], [ONLINE], [CACHED], [SKIPPED], [BLOCKED], [WAIT].
+Glyphs: `◌` pending, spinner or `·` running, `✓` success, `–` skipped, `✗` failed.
+
+Titles are identity-only. Footers use `done`, nonzero `ok` / `failed` counts, or a running ratio. Cached and skipped stay on the row as `cached` and `skipped`.
 
 Layout tokens:
 
-- 80 columns is the minimum proven width (also 100 and 120)
-- LANDO OPS headings for cockpit phase identity
+- 40 columns is the minimum proven width (also 80, 100, and 120)
+- identity-only titles in bold default color
 - two-space row rhythm for dense scannable rows
 - dimmed detail tails behind status rows
-- progress rails stay semantic (live RUNNING only)
+- progress rails stay semantic (live running only)
 
 Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients, no dense ASCII art, no decorative motion.
 

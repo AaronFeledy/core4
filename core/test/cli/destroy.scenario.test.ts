@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
 import { FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
@@ -30,6 +30,7 @@ import {
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type {
   AppSelector,
   DestroyOptions,
@@ -38,7 +39,11 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
-import { setActiveRendererMode } from "../../src/cli/compiled-runtime.ts";
+import {
+  setActiveCommandId,
+  setActiveRendererMode,
+  setActiveResultFormat,
+} from "../../src/cli/compiled-runtime.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -289,6 +294,21 @@ const makeDestroyLayer = (
   return { layer, commandLayer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
 };
 
+const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
+
+const expectDestroyLifecycleWithTasks = (events: ReadonlyArray<string>): void => {
+  expect(events.filter((tag) => (DESTROY_LIFECYCLE_TAGS as ReadonlyArray<string>).includes(tag))).toEqual([
+    ...DESTROY_LIFECYCLE_TAGS,
+  ]);
+  const pre = events.indexOf("pre-destroy");
+  const post = events.indexOf("post-destroy");
+  expect(pre).toBeGreaterThan(-1);
+  expect(post).toBeGreaterThan(pre);
+  const between = events.slice(pre + 1, post);
+  expect(between).toContain("task.tree.start");
+  expect(between).toContain("task.tree.complete");
+};
+
 const expectMissingPath = async (path: string): Promise<void> => {
   try {
     await stat(path);
@@ -317,6 +337,68 @@ describe("lando destroy", () => {
     expect(io.stdout()).toContain(
       "Proxy service is unavailable; destroying test-destroy without route cleanup.",
     );
+  });
+
+  test("paints a real destroy task tree through runDestroy in plain mode", async () => {
+    // Given: production CLI destroy with a buffered plain renderer.
+    const harness = makeDestroyLayer();
+    const io = createBufferedRendererIO();
+    setActiveRendererMode("plain");
+
+    // When
+    try {
+      await runDestroy([], { runtime: harness.commandLayer, io });
+    } finally {
+      setActiveRendererMode("lando");
+    }
+
+    // Then: the producer tree is painted before the final destroy result.
+    expect(io.stdout()).toContain("Destroy test-destroy");
+    expect(io.stdout()).toContain("Destroy services");
+    expect(io.stdout()).toContain(
+      renderDestroyAppResult({
+        app: "test-destroy",
+        servicesDestroyed: ["database", "web"],
+        volumesRemoved: false,
+      }),
+    );
+  });
+
+  test("json destroy emits one envelope and no live task paint", async () => {
+    // Given: production CLI destroy under JSON machine output.
+    const harness = makeDestroyLayer();
+    const io = createBufferedRendererIO();
+    setActiveRendererMode("json");
+    setActiveResultFormat("json");
+    setActiveCommandId("app:destroy");
+
+    // When
+    try {
+      await runDestroy([], { runtime: harness.commandLayer, io });
+    } finally {
+      setActiveRendererMode("lando");
+      setActiveResultFormat("text");
+      setActiveCommandId("cli:unknown");
+    }
+
+    // Then: one envelope, no task paint on stderr.
+    const stdoutLines = io.stdoutLines();
+    expect(stdoutLines).toHaveLength(1);
+    expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(stdoutLines[0] ?? "{}"))).toMatchObject(
+      {
+        apiVersion: "v4",
+        command: "app:destroy",
+        ok: true,
+        result: {
+          app: "test-destroy",
+          servicesDestroyed: ["database", "web"],
+          volumesRemoved: false,
+        },
+      },
+    );
+    expect(io.stderr()).not.toContain("task.tree.start");
+    expect(io.stderr()).not.toContain("task.start");
+    expect(io.stderr()).not.toContain("▼");
   });
 
   test("destroys the provider when no proxy service can be resolved", async () => {
@@ -375,7 +457,7 @@ describe("lando destroy", () => {
     const harness = makeDestroyLayer();
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
 
-    expect(harness.events).toEqual(["pre-init", "post-init", "pre-destroy", "post-destroy"]);
+    expectDestroyLifecycleWithTasks(harness.events);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
@@ -468,7 +550,7 @@ describe("lando destroy", () => {
         destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(harness.events).toEqual(["pre-init", "post-init", "pre-destroy", "post-destroy"]);
+      expectDestroyLifecycleWithTasks(harness.events);
       expect(harness.destroyCalls).toHaveLength(1);
       expect(renderDestroyAppResult(result)).toContain("volumes removed");
     } finally {

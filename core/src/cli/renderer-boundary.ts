@@ -75,7 +75,6 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly projectResultKeys?: readonly string[];
   readonly jqExpression?: string;
   readonly io?: RendererIO;
-  readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
@@ -242,7 +241,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
     if (!(streamingJson && !liveStreaming)) {
-      if (options.renderEvents === true) {
+      if (renderContext.format !== "json") {
         eventConsumerLayer = makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
           landoRenderer,
           ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),

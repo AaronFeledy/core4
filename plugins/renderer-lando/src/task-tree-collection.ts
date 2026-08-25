@@ -1,7 +1,10 @@
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 
+import { aggregateRenderState } from "./task-tree-aggregate.ts";
 import { TaskTreeAnimationController } from "./task-tree-animation.ts";
+import { occurrenceTaskId, parseOccurrenceTaskId, rawEventTaskId } from "./task-tree-occurrence.ts";
+import { renderLogicalFrame, renderTreeFrame, styleFrame } from "./task-tree-render.ts";
 import {
   type TaskTreeInteractionModel,
   TaskTreeViewModel,
@@ -43,11 +46,32 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
   readonly #output: TaskTreeCollectionOutput;
   #selectedParentId: string | undefined;
   #footerVisible = false;
+  #sessionCommandId: string | undefined;
 
   constructor(options: TaskTreeViewModelOptions, output: TaskTreeCollectionOutput) {
     this.#viewModelOptions = options;
     this.#fallback = new TaskTreeViewModel(options);
     this.#output = output;
+  }
+
+  openSession(commandId: string): void {
+    this.#sessionCommandId = commandId;
+    this.#footerVisible = true;
+    for (const entry of this.#entries.values()) entry.animation.setVisible(true);
+  }
+
+  closeSession(): ReadonlyArray<string> {
+    const lines =
+      this.#sessionCommandId === undefined
+        ? this.#selectedModel().treeFrameLines()
+        : styleFrame(renderTreeFrame(this.#aggregateState()));
+    this.#sessionCommandId = undefined;
+    this.#footerVisible = false;
+    return lines;
+  }
+
+  hasTasks(): boolean {
+    return this.#entries.size > 0;
   }
 
   consume(event: LandoEvent): TaskTreeConsumeResult {
@@ -72,10 +96,13 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
     entry.viewModel.apply(event);
     entry.animation.consume(event);
     if (event._tag !== "task.tree.complete") {
-      if (entry === this.#selectedEntry()) this.#footerVisible = true;
+      if (entry === this.#selectedEntry() || this.#sessionCommandId !== undefined) this.#footerVisible = true;
       return { completedLines: [] };
     }
-
+    if (this.#sessionCommandId !== undefined) {
+      this.#footerVisible = true;
+      return { completedLines: [] };
+    }
     if (entry === this.#selectedEntry() && entry.viewModel.expandedTaskId === undefined) {
       this.#footerVisible = this.#entries.size > 1;
     }
@@ -83,33 +110,56 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
   }
 
   frameLines(): ReadonlyArray<string> {
-    return this.#footerVisible ? this.#selectedModel().frameLines() : [];
+    if (!this.#footerVisible) return [];
+    if (this.#sessionCommandId !== undefined) return styleFrame(renderLogicalFrame(this.#aggregateState()));
+    return this.#selectedModel().frameLines();
   }
 
   get expandedTaskId(): string | undefined {
-    return this.#selectedModel().expandedTaskId;
+    if (this.#sessionCommandId === undefined) return this.#selectedModel().expandedTaskId;
+    for (const [parentId, entry] of this.#entries) {
+      const raw = entry.viewModel.expandedTaskId;
+      if (raw !== undefined) return occurrenceTaskId(parentId, raw);
+    }
+    return undefined;
+  }
+
+  eventTaskId(internalId: string): string {
+    return rawEventTaskId(internalId);
   }
 
   focusableTaskIds(): ReadonlyArray<string> {
-    return this.#selectedModel().focusableTaskIds();
+    if (this.#sessionCommandId === undefined) return this.#selectedModel().focusableTaskIds();
+    return [...this.#entries].flatMap(([parentId, entry]) =>
+      entry.viewModel.focusableTaskIds().map((taskId) => occurrenceTaskId(parentId, taskId)),
+    );
   }
 
   transcriptPathFor(taskId: string): AbsolutePath | undefined {
-    return this.#selectedModel().transcriptPathFor(taskId);
+    const resolved = this.#resolveTask(taskId);
+    return resolved.model.transcriptPathFor(resolved.rawTaskId);
   }
 
   canExpandTask(taskId: string): boolean {
-    return this.#selectedModel().canExpandTask(taskId);
+    const resolved = this.#resolveTask(taskId);
+    return resolved.model.canExpandTask(resolved.rawTaskId);
   }
 
   expandTask(taskId: string): void {
-    const model = this.#selectedModel();
-    model.expandTask(taskId);
-    if (model.expandedTaskId === taskId) this.#footerVisible = true;
+    const resolved = this.#resolveTask(taskId);
+    for (const entry of this.#entries.values()) {
+      if (entry.viewModel !== resolved.model) entry.viewModel.collapse();
+    }
+    if (this.#fallback !== resolved.model) this.#fallback.collapse();
+    if (resolved.parentId !== undefined) this.#select(resolved.parentId);
+    const model = resolved.model;
+    model.expandTask(resolved.rawTaskId);
+    if (model.expandedTaskId === resolved.rawTaskId) this.#footerVisible = true;
   }
 
   setExpandedTranscript(taskId: string, lines: ReadonlyArray<string>): boolean {
-    return this.#selectedModel().setExpandedTranscript(taskId, lines);
+    const resolved = this.#resolveTask(taskId);
+    return resolved.model.setExpandedTranscript(resolved.rawTaskId, lines);
   }
 
   expandedLineBudget(): number {
@@ -117,8 +167,10 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
   }
 
   collapse(): void {
-    this.#selectedModel().collapse();
-    if (this.#selectedEntry() !== undefined) this.#footerVisible = true;
+    for (const entry of this.#entries.values()) entry.viewModel.collapse();
+    this.#fallback.collapse();
+    if (this.#selectedEntry() !== undefined || this.#sessionCommandId !== undefined)
+      this.#footerVisible = true;
   }
 
   cycleTree(): boolean {
@@ -137,6 +189,16 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
     for (const entry of this.#entries.values()) entry.animation.dispose();
   }
 
+  #aggregateState() {
+    return aggregateRenderState(
+      this.#sessionCommandId ?? "tasks",
+      [...this.#entries].map(([parentId, entry]) => ({
+        parentId,
+        state: entry.viewModel.renderState(),
+      })),
+    );
+  }
+
   #startTree(parentId: string): TaskTreeEntry {
     const previous = this.#entries.get(parentId);
     if (previous !== undefined) {
@@ -149,6 +211,7 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
     const animation = new TaskTreeAnimationController(viewModel, this.#output);
     const entry = { viewModel, animation } satisfies TaskTreeEntry;
     this.#entries.set(parentId, entry);
+    if (this.#sessionCommandId !== undefined) animation.setVisible(true);
     return entry;
   }
 
@@ -176,7 +239,7 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
 
   #select(parentId: string): void {
     if (parentId === this.#selectedParentId) return;
-    this.#selectedEntry()?.animation.setVisible(false);
+    if (this.#sessionCommandId === undefined) this.#selectedEntry()?.animation.setVisible(false);
     this.#selectedParentId = parentId;
     this.#selectedEntry()?.animation.setVisible(true);
   }
@@ -187,6 +250,28 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
 
   #selectedModel(): TaskTreeViewModel {
     return this.#selectedEntry()?.viewModel ?? this.#fallback;
+  }
+
+  #resolveTask(taskId: string): {
+    readonly parentId: string | undefined;
+    readonly rawTaskId: string;
+    readonly model: TaskTreeViewModel;
+  } {
+    const parsed = parseOccurrenceTaskId(taskId);
+    if (parsed !== undefined) {
+      return {
+        parentId: parsed.parentId,
+        rawTaskId: parsed.rawTaskId,
+        model: this.#entries.get(parsed.parentId)?.viewModel ?? this.#fallback,
+      };
+    }
+    const owner = this.#taskOwners.get(taskId);
+    return {
+      parentId: owner,
+      rawTaskId: taskId,
+      model:
+        owner === undefined ? this.#selectedModel() : (this.#entries.get(owner)?.viewModel ?? this.#fallback),
+    };
   }
 
   #parentIdFor(target: TaskTreeEntry): string {

@@ -1049,6 +1049,7 @@ describe("lando start", () => {
       "app",
       "proxy-setup",
       "proxy-apply",
+      "tree:test-start routes applied",
     ]);
     expect(result.servicesStarted.find((service) => service.name === "web")?.endpoints).toEqual([
       "https://web.test-start.lndo.site:4443",
@@ -1188,6 +1189,36 @@ describe("lando start", () => {
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
       );
       expect(appliedDatabase?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      const hostProxyParent = `start-host-proxy-${String(plan.id)}`;
+      const hostProxyTask = `${hostProxyParent}:session`;
+      expect(
+        harness.taskEvents.find(
+          (event) => event._tag === "task.tree.start" && event.parentId === hostProxyParent,
+        ),
+      ).toMatchObject({ children: [hostProxyTask] });
+      expect(
+        harness.taskEvents.some((event) => event._tag === "task.start" && event.taskId === hostProxyTask),
+      ).toBe(true);
+      expect(
+        harness.taskEvents.some((event) => event._tag === "task.complete" && event.taskId === hostProxyTask),
+      ).toBe(true);
+      expect(
+        harness.taskEvents.some(
+          (event) => event._tag === "task.tree.complete" && event.parentId === hostProxyParent,
+        ),
+      ).toBe(true);
+      const hostProxyStartAt = harness.taskEvents.findIndex(
+        (event) => event._tag === "task.tree.start" && event.parentId === hostProxyParent,
+      );
+      const hostProxyCompleteAt = harness.taskEvents.findIndex(
+        (event) => event._tag === "task.tree.complete" && event.parentId === hostProxyParent,
+      );
+      const applyStartAt = harness.taskEvents.findIndex(
+        (event) => event._tag === "task.tree.start" && event.parentId === `apply-${String(plan.id)}`,
+      );
+      expect(hostProxyStartAt).toBeGreaterThan(-1);
+      expect(hostProxyCompleteAt).toBeGreaterThan(hostProxyStartAt);
+      expect(applyStartAt).toBeGreaterThan(hostProxyCompleteAt);
       await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
@@ -1728,6 +1759,18 @@ describe("lando start", () => {
         expect(detailIndex).toBeGreaterThan(tags.indexOf("pre-start"));
         expect(detailIndex).toBeLessThan(tags.indexOf("pre-global-start"));
         expect(harness.events[detailIndex]).toMatchObject({ _tag: "task.detail", line: "before-global" });
+        const globalParent = `start-global-${String(userPlan.id)}`;
+        expect(
+          harness.events.find((event) => event._tag === "task.tree.start" && event.parentId === globalParent),
+        ).toMatchObject({ children: [`${globalParent}:traefik`] });
+        const globalCompleteAt = harness.events.findIndex(
+          (event) => event._tag === "task.tree.complete" && event.parentId === globalParent,
+        );
+        const userApplyStartAt = harness.events.findIndex(
+          (event) => event._tag === "task.tree.start" && event.parentId === `apply-${String(userPlan.id)}`,
+        );
+        expect(globalCompleteAt).toBeGreaterThan(-1);
+        expect(userApplyStartAt).toBeGreaterThan(globalCompleteAt);
         expect(harness.applyPlans.map((applied) => String(applied.id))).toEqual(["global", "test-start"]);
       } finally {
         await rm(moduleRoot, { recursive: true, force: true });
@@ -2192,7 +2235,7 @@ describe("lando start", () => {
 
     expect(calls).toEqual(["is-available", "setup", "is-available", "create:app-mount"]);
     expect(events.find((event) => event._tag === "task.detail")).toMatchObject({
-      taskId: "file-sync",
+      taskId: "start-file-sync-test-start:setup",
       stream: "stdout",
       line: "Completing deferred file-sync setup for accelerated mounts.",
     });
@@ -2442,9 +2485,18 @@ describe("lando start", () => {
     expect(destroyCalls).toEqual([]);
     expect(result.app).toBe("test-start");
     expect(events.find((event) => event._tag === "task.detail" && event.stream === "stderr")).toMatchObject({
-      taskId: "file-sync",
+      taskId: "start-file-sync-test-start:setup",
       stream: "stderr",
       line: "Deferred file-sync setup failed; continuing without accelerated mounts.",
+    });
+    expect(
+      events.find(
+        (event) => event._tag === "task.tree.complete" && event.parentId === "start-file-sync-test-start",
+      ),
+    ).toMatchObject({
+      summary: "test-start file-sync unavailable; continuing without accelerated mounts",
+      succeeded: 0,
+      failed: 2,
     });
   });
 

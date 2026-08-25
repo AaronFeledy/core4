@@ -7,7 +7,7 @@ import {
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
-import { type AppPlan, type AppRef, type PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -33,19 +33,17 @@ import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
+import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
 import {
-  publishTaskComplete,
-  publishTaskFail,
-  publishTaskStart,
-  publishTreeComplete,
-  publishTreeStart,
-} from "./progress.ts";
+  withApplyProgress,
+  withGlobalStartProgress,
+  withRoutesStartProgress,
+} from "./start-progress-phases.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
@@ -80,9 +78,6 @@ type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
-
-const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
-  publishedEndpointUrl(endpoint);
 
 export const startAppForTarget = (
   options: StartAppOptions | undefined,
@@ -124,7 +119,7 @@ export const startAppForTarget = (
 
     const neededGlobalServices = requiredGlobalServicesForPlan(plan);
     if (neededGlobalServices.length > 0) {
-      yield* ensureGlobalServicesRunning({
+      const ensureGlobals = ensureGlobalServicesRunning({
         services: neededGlobalServices,
         ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
       }).pipe(
@@ -141,6 +136,7 @@ export const startAppForTarget = (
             }),
         ),
       );
+      yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
     }
 
     return yield* withStartedHostProxy(plan, ref, provider.capabilities, {
@@ -150,24 +146,6 @@ export const startAppForTarget = (
         Effect.gen(function* () {
           const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
           const serviceList = Object.values(builtPlan.services);
-          const serviceIds = serviceList.map((service) => String(service.name));
-          const applyParentId = `apply-${plan.id}`;
-          const applyStart = performance.now();
-
-          yield* publishTreeStart(events, {
-            parentId: applyParentId,
-            label: `Apply ${plan.name}`,
-            children: serviceIds,
-            mode: "list",
-          });
-
-          for (const service of serviceList) {
-            yield* publishTaskStart(events, {
-              taskId: String(service.name),
-              parentId: applyParentId,
-              label: `Apply service ${String(service.name)}`,
-            });
-          }
 
           const applyAndInspect = Effect.gen(function* () {
             yield* Ref.set(applyStarted, true);
@@ -186,7 +164,7 @@ export const startAppForTarget = (
                     state: runtime.state ?? runtime.status,
                     endpoints: sourceEndpoints.flatMap((endpoint) => {
                       if (endpoint._tag === "internal") return [];
-                      const rendered = endpointText(endpoint);
+                      const rendered = publishedEndpointUrl(endpoint);
                       return rendered === undefined ? [] : [rendered];
                     }),
                     published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
@@ -196,41 +174,9 @@ export const startAppForTarget = (
             );
           });
           const inspectedServices = yield* compensateFailure(
-            applyAndInspect,
-            Effect.gen(function* () {
-              yield* teardownAppliedApp(provider, plan);
-              for (const service of serviceList) {
-                yield* publishTaskFail(events, {
-                  taskId: String(service.name),
-                  summary: `Apply service ${String(service.name)}`,
-                  durationMs: Math.round(performance.now() - applyStart),
-                });
-              }
-              yield* publishTreeComplete(events, {
-                parentId: applyParentId,
-                summary: `${plan.name} apply failed`,
-                succeeded: 0,
-                failed: serviceList.length,
-                durationMs: Math.round(performance.now() - applyStart),
-              });
-            }),
+            withApplyProgress({ events, plan, services: serviceList, work: applyAndInspect }),
+            teardownAppliedApp(provider, plan),
           );
-
-          for (const service of inspectedServices) {
-            yield* publishTaskComplete(events, {
-              taskId: service.name,
-              summary: `${service.name} (${service.state})`,
-              durationMs: Math.round(performance.now() - applyStart),
-            });
-          }
-
-          yield* publishTreeComplete(events, {
-            parentId: applyParentId,
-            summary: `${plan.name} applied`,
-            succeeded: serviceList.length,
-            failed: 0,
-            durationMs: Math.round(performance.now() - applyStart),
-          });
 
           yield* compensateFailure(
             withBuildProvider(
@@ -253,8 +199,11 @@ export const startAppForTarget = (
               published: inspectedServices.flatMap((service) => service.published),
             }),
           };
+          const applyRoutes = applyAppRoutes(proxy, routedPlan);
           const proxyResult = yield* compensateFailure(
-            applyAppRoutes(proxy, routedPlan),
+            routedPlan.routes.length === 0
+              ? applyRoutes
+              : withRoutesStartProgress({ events, plan, work: applyRoutes }),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
           yield* Ref.set(routesApplied, true);

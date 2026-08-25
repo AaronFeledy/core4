@@ -13,6 +13,10 @@ export interface LiveRegionSubstrate<TRenderer extends LiveRegionRendererLike> {
   readonly renderer: TRenderer;
 }
 
+type LiveRegionModuleLoader = () => Promise<OpenTuiLiveRegionModuleLike>;
+
+let cachedModule: Promise<OpenTuiLiveRegionModuleLike> | undefined;
+
 const isOpenTuiLiveRegionModule = (value: unknown): value is OpenTuiLiveRegionModuleLike =>
   value !== null &&
   typeof value === "object" &&
@@ -32,6 +36,24 @@ const loadOpenTuiModule = async (): Promise<OpenTuiLiveRegionModuleLike> => {
   return module;
 };
 
+const resolveLiveRegionModule = (
+  loadModule?: LiveRegionModuleLoader,
+): Promise<OpenTuiLiveRegionModuleLike> => {
+  if (cachedModule !== undefined) return cachedModule;
+  if (loadModule !== undefined) return loadModule();
+  cachedModule = loadOpenTuiModule();
+  return cachedModule;
+};
+
+export const prefetchLiveRegionModule = (loadModule: LiveRegionModuleLoader = loadOpenTuiModule): void => {
+  cachedModule ??= loadModule();
+  void cachedModule.catch(recordOpenTuiSubstrateFailure);
+};
+
+export const resetLiveRegionModuleCacheForTests = (): void => {
+  cachedModule = undefined;
+};
+
 export function acquireLiveRegionSubstrate(
   options: LiveRegionControllerOptions,
 ): Promise<LiveRegionSubstrate<LiveRegionRendererLike>>;
@@ -45,7 +67,7 @@ export async function acquireLiveRegionSubstrate(
 ): Promise<LiveRegionSubstrate<LiveRegionRendererLike>> {
   let module: OpenTuiLiveRegionModuleLike;
   try {
-    module = await (deps.loadModule?.() ?? loadOpenTuiModule());
+    module = await resolveLiveRegionModule(deps.loadModule);
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);
     throw new OpenTuiLiveRegionUnavailableError("load", cause);
@@ -56,18 +78,14 @@ export async function acquireLiveRegionSubstrate(
     renderer = await (deps.createRenderer?.(module) ??
       module.createCliRenderer({
         screenMode: "split-footer",
-        externalOutputMode: "passthrough",
+        externalOutputMode: "capture-stdout",
         exitOnCtrlC: false,
+        clearOnShutdown: false,
         stdout: options.stdout,
         width: options.width,
         height: options.height,
-        footerHeight: options.footerHeight,
+        footerHeight: 1,
       }));
-    renderer.externalOutputMode = "passthrough";
-    renderer.screenMode = "split-footer";
-    renderer.footerHeight = options.footerHeight;
-    renderer.setCursorPosition(1, Math.max(1, options.height), false);
-    renderer.externalOutputMode = "capture-stdout";
     return { module, renderer };
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);

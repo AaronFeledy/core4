@@ -19,6 +19,7 @@ import {
   MessageWarnEvent,
   TaskCompleteEvent,
   TaskDetailEvent,
+  TaskDetailExpandEvent,
   TaskStartEvent,
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
@@ -52,6 +53,8 @@ interface TranscriptTailReaderShape {
 }
 
 const ts = "2026-05-19T12:00:00.000Z";
+const ESC = String.fromCharCode(27);
+const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 
 const treeStart = (children: ReadonlyArray<string>, parentId = "build", label = "Building"): LandoEvent =>
   Schema.decodeUnknownSync(TaskTreeStartEvent)({
@@ -265,6 +268,59 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     await Bun.sleep(20);
 
     expect(controller.calls).toHaveLength(callsAfterClose);
+  });
+
+  test("external expand for task B switches away from already-expanded task A", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const pathA = AbsolutePath.make("/tmp/lando/builds/a.log");
+    const pathB = AbsolutePath.make("/tmp/lando/builds/b.log");
+    transcriptReader.set(pathA, ["alpha output"]);
+    transcriptReader.set(pathB, ["bravo output"]);
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(treeStart(["a", "b"]));
+          yield* events.publish(taskStart("a", pathA));
+          yield* events.publish(taskStart("b", pathB));
+          yield* Effect.sleep("20 millis");
+          yield* events.publish(
+            Schema.decodeUnknownSync(TaskDetailExpandEvent)({
+              _tag: "task.detail.expand",
+              taskId: "a",
+              timestamp: ts,
+            }),
+          );
+          yield* Effect.sleep("20 millis");
+          const afterA = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+          expect(afterA?.kind === "setFooter" && afterA.lines.join("\n")).toContain("alpha output");
+          yield* events.publish(
+            Schema.decodeUnknownSync(TaskDetailExpandEvent)({
+              _tag: "task.detail.expand",
+              taskId: "b",
+              timestamp: ts,
+            }),
+          );
+          yield* Effect.sleep("20 millis");
+          const afterB = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+          expect(afterB?.kind === "setFooter" && afterB.lines.join("\n")).toContain("bravo output");
+          expect(afterB?.kind === "setFooter" && afterB.lines.join("\n")).not.toContain("alpha output");
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(transcriptReader.opened).toEqual([pathA, pathB]);
   });
 
   test("does not publish expand when the alternate-screen transition fails", async () => {
@@ -727,7 +783,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       const latestFooter = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
       tailVisibleAfterCompletion =
         latestFooter?.kind === "setFooter" &&
-        latestFooter.lines.some((line) => line.includes("expanded task tail"));
+        latestFooter.lines.some((line) => line.replace(ansiPattern, "").includes("╰─ tail"));
       inject?.("\x1b");
       yield* Effect.sleep("20 millis");
     });

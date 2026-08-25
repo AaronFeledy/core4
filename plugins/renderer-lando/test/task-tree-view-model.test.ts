@@ -105,8 +105,8 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
     const styled = vm.frameLines();
     assertNoControlBytes(styled);
     const plain = styled.map(stripAnsi);
-    expect(plain[0]).toContain("LANDO OPS");
-    expect(plain[0]).toContain("Building (0/3 running)");
+    expect(plain[0]).toBe("╭─ Building");
+    expect(plain.at(-1)).toBe("╰─ 0/3 running");
     const placeholders = plain.filter((line) => line.includes("◌"));
     expect(placeholders).toHaveLength(3);
     expect(placeholders[0]).toContain("◌ web");
@@ -194,7 +194,7 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
     expect(vm.expandedTaskId).toBe("web");
     const expanded = vm.frameLines();
     assertNoControlBytes(expanded);
-    expect(expanded.map(stripAnsi).join("\n")).toContain("expanded task tail");
+    expect(expanded.map(stripAnsi).join("\n")).toContain("╰─ tail");
     expect(expanded.map(stripAnsi).join("\n")).not.toContain("boot line");
     expect(vm.transcriptPathFor("web")).toBe(transcriptPath);
     vm.collapse();
@@ -220,7 +220,7 @@ describe("TaskTreeViewModel — new tree replaces prior single-tree state", () =
     vm.apply(treeStart("apply", "Applying", ["apply-db"]));
 
     const plain = vm.frameLines().map(stripAnsi).join("\n");
-    expect(plain).toContain("Applying (0/1 running)");
+    expect(plain).toContain("╰─ 0/1 running");
     expect(plain).not.toContain("artifact web");
     expect(plain).not.toContain("artifact web built");
 
@@ -259,8 +259,8 @@ describe("TaskTreeViewModel — completion + failure summaries", () => {
     vm.apply(taskComplete("web", "web ready", 100));
     vm.apply(treeComplete("Build complete", 1, 0));
     const plain = vm.frameLines().map(stripAnsi).join("\n");
-    expect(plain).toContain("LANDO OPS");
-    expect(plain).toContain("1 ✓");
+    expect(plain).toContain("╭─ Build complete");
+    expect(plain).toContain("╰─ done");
     assertNoControlBytes(vm.frameLines());
   });
 });

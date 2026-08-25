@@ -40,12 +40,6 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
       }
       if (event._tag === "task.tree.complete") {
         for (const line of result.completedLines) controller.commitScrollback(line);
-        if (viewModel.expandedTaskId !== undefined) {
-          renderFooter();
-          return;
-        }
-        renderFooter();
-        return;
       }
       renderFooter();
       return;
@@ -58,5 +52,20 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
     terminalRows = height;
     renderFooter();
   };
-  return { viewModel, consume, resize, renderFooter, dispose: () => viewModel.dispose() };
+  const openSession = (commandId: string): void => {
+    viewModel.openSession(commandId);
+    renderFooter();
+  };
+  const closeSession = (): ReadonlyArray<string> => viewModel.closeSession();
+  const hasTasks = (): boolean => viewModel.hasTasks();
+  return {
+    viewModel,
+    consume,
+    resize,
+    renderFooter,
+    openSession,
+    closeSession,
+    hasTasks,
+    dispose: () => viewModel.dispose(),
+  };
 };

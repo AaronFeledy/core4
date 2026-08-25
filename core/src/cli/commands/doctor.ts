@@ -228,7 +228,6 @@ export const doctor = (
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({
-        ...(userDataRoot === undefined ? {} : { userDataRoot }),
         provider: {
           id: provider.id,
           displayName: provider.displayName,

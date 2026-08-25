@@ -12,6 +12,7 @@ import {
 } from "@lando/core/testing";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+import { SPINNER_FRAMES, styleFrame } from "../src/task-tree-render.ts";
 import {
   SUMMARY_FIXTURES,
   TREE_FIXTURES,
@@ -96,27 +97,35 @@ describe("task-tree visual golden frames", () => {
 
   test("every tree golden frame carries the spaceship-console language", () => {
     const captured = captureTreeFrame(TREE_FIXTURES.find((f) => f.id === "success")?.events ?? [], 100);
-    expect(captured.styled).toContain("LANDO OPS");
-    expect(captured.styled).toContain("[ONLINE]");
+    expect(stripAnsi(captured.styled)).toContain("╭─ App online");
+    expect(captured.styled).toContain("✓");
     expect(captured.tokenized).toContain("⟨green⟩");
     expect(captured.tokenized).toContain("⟨pink⟩");
   });
 
-  test("keeps task-tree titles and borders pink around semantic content", () => {
-    // Given the live setup task tree with a text-bearing telemetry footer.
+  test("keeps task-tree titles and left-rail pink around semantic content", () => {
+    // Given the live setup task tree with a compact running footer.
     const fixture = TREE_FIXTURES.find((candidate) => candidate.id === "setup-plan");
     const captured = captureTreeFrame(fixture?.events ?? [], 100);
     const lines = captured.tokenized.split("\n");
-    const online = lines.find((line) => line.includes("│") && line.includes("[ONLINE]"));
-    const footer = lines.find((line) => line.includes("telemetry"));
+    const online = lines.find((line) => line.includes("│") && line.includes("✓"));
+    const footer = lines.find((line) => line.includes("running"));
 
-    // When the frame is styled, then pink borders remain isolated from semantic content colors.
-    expect(lines[0]?.startsWith("⟨bold⟩⟨pink⟩╭─ LANDO OPS")).toBe(true);
+    // When the frame is styled, then pink left-rail chrome stays isolated from status colors.
+    expect(lines[0]?.startsWith("⟨pink⟩╭─⟨reset⟩⟨bold⟩ Setting up Lando runtime")).toBe(true);
+    expect(lines[0]?.endsWith("╮⟨reset⟩")).toBe(false);
     expect(online?.startsWith("⟨pink⟩│⟨reset⟩⟨green⟩ ")).toBe(true);
-    expect(online?.endsWith("⟨reset⟩⟨pink⟩│⟨reset⟩")).toBe(true);
-    expect(footer?.startsWith("⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ ")).toBe(true);
-    expect(footer).toContain("⟨dim-off⟩⟨reset⟩⟨pink⟩─");
-    expect(footer?.endsWith("╯⟨reset⟩")).toBe(true);
+    expect(online?.endsWith("⟨reset⟩⟨pink⟩│⟨reset⟩")).toBe(false);
+    expect(footer?.startsWith("⟨pink⟩╰─⟨reset⟩⟨dim⟩ ")).toBe(true);
+    expect(footer).not.toContain("⟨dim⟩⟨pink⟩");
+    expect(footer).not.toContain("⟨dim-off⟩⟨reset⟩⟨pink⟩─");
+    expect(footer?.endsWith("╯⟨reset⟩")).toBe(false);
+  });
+
+  test("tokenizes a spinning glyph as pink and the running label as cyan", () => {
+    const glyph = SPINNER_FRAMES[0] ?? "⠋";
+    const styled = styleFrame([`│ ${glyph} appserver`]);
+    expect(tokenizeAnsi(styled[0] ?? "")).toBe(`⟨pink⟩│⟨reset⟩⟨pink⟩ ${glyph}⟨reset⟩⟨cyan⟩ appserver⟨reset⟩`);
   });
 });
 
@@ -247,8 +256,8 @@ describe("provider-free injected-event pipeline", () => {
       ),
     );
     expect(io.stdout()).toContain(ESC); // decorated ANSI in TTY mode
-    expect(stripAnsi(io.stdout())).toContain("LANDO OPS");
-    expect(stripAnsi(io.stdout())).toContain("[BLOCKED]");
+    expect(stripAnsi(io.stdout())).toContain("╭─ Building app dependencies");
+    expect(stripAnsi(io.stdout())).toContain("✗");
   });
 });
 

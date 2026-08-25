@@ -550,6 +550,20 @@ describe("@lando/sdk package exports", () => {
     expect(probe.ProbeTimeoutError).toBeDefined();
   });
 
+  test("task-progress entry point exports the shared task-tree publisher", async () => {
+    const taskProgress = await import("@lando/sdk/task-progress");
+
+    expect(taskProgress.publishTaskStart).toBeDefined();
+    expect(taskProgress.publishTaskComplete).toBeDefined();
+    expect(taskProgress.publishTaskFail).toBeDefined();
+    expect(taskProgress.publishTaskDetail).toBeDefined();
+    expect(taskProgress.publishTreeStart).toBeDefined();
+    expect(taskProgress.publishTreeComplete).toBeDefined();
+    expect(taskProgress.makeTaskTree).toBeDefined();
+    expect(taskProgress.runWithTaskTree).toBeDefined();
+    expect(taskProgress.startChildTaskId).toBeDefined();
+  });
+
   test("app entry point resolves (type-only App handle contracts)", async () => {
     const app = await import("@lando/sdk/app");
 
