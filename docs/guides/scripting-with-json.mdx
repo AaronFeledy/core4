@@ -6,16 +6,26 @@ timeout: 120000
 tags: [beta, docs, cli, json, scripting, agent]
 ---
 
-# Scripting with JSON
+# Script Lando with JSON
 
-Every non-interactive Lando command accepts `--format json` and emits one
-`CommandResultEnvelope` on stdout. `--format=json` is equivalent, `--json`
-is a global shorthand injected by the adapter, and `-j` is the single-
-character shorthand. On success the envelope wraps the command's typed
-result under `result` with `ok: true`; on failure it carries the tagged error
-JSON under `error` with `ok: false`. A global `apiVersion: "v4"` identifies
-the wire contract, and the redaction service runs before emission so secrets
-never appear in machine output.
+`lando version --json` prints the selectable result keys as a JSON array. It
+does not run the command body. Use `--format=json` or `-j` when you want the
+full `CommandResultEnvelope`.
+
+```sh
+lando version --json
+```
+
+Every non-interactive command accepts `--format json` and emits one envelope
+on stdout. `--format=json` is equivalent. `-j` is the single-character
+shorthand for that full envelope. Bare `--json` lists keys. `--json=key`
+projects that key inside `result`. `--jq` prints a raw jq selection.
+
+On success the envelope wraps the command's typed result under `result` with
+`ok: true`. On failure it carries the tagged error JSON under `error` with
+`ok: false`. A global `apiVersion: "v4"` identifies the wire contract, and
+the redaction service runs before emission so secrets never appear in
+machine output.
 
 Streaming commands such as `app:logs` and `app:exec` emit `StreamFrame`
 frames under `--format json` and terminate with a single result frame.
@@ -23,6 +33,13 @@ Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 
 <Guide>
+  <Scenario id="list-version-json-keys" render>
+    <Step name="list-version-keys">
+      <Run command="lando version --json" />
+      <Verify command="lando version --json" expect={{ stdout: { regex: "^\\s*\\[" } }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="drive-lando-from-json" render>
     <Step name="scaffold-app">
       <Variable name="appName" value="scripting-demo" display="scripting-demo" />
@@ -31,8 +48,17 @@ native registry and dispatcher.
     <Step name="read-config-as-json">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
-      <Verify command="lando app:config --json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --json" expect={{ stdout: { regex: "^\\s*\\[" } }} />
       <Verify command="lando app:config -j" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="project-one-config-key">
+      <Run command="lando app:config --json=app" />
+      <Verify command="lando app:config --json=app" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --json=app" expect={{ stdout: { regex: "\"result\":\\s*\\{\\s*\"app\"" } }} />
+    </Step>
+    <Step name="select-ok-with-jq">
+      <Run command="lando app:config --jq .ok" />
+      <Verify command="lando app:config --jq .ok" expect={{ stdout: { regex: "^\\s*true\\s*$" } }} />
     </Step>
     <Step name="lint-config-as-json">
       <Run command="lando app:config:lint --format=json" />
@@ -42,16 +68,44 @@ native registry and dispatcher.
       <Cleanup />
     </Step>
   </Scenario>
+
+  <Scenario id="reject-json-jq-conflicts" render={false} reason="Unknown keys and --json plus --jq must fail">
+    <Step name="unknown-json-key">
+      <Run command="lando version --json=not-a-real-key" expectExit={1} />
+      <Verify errorTag="JsonProjectionError" />
+    </Step>
+    <Step name="json-jq-conflict">
+      <Run command="lando version --json --jq ." expectExit={2} />
+      <Verify errorTag="JsonJqConflictError" />
+    </Step>
+  </Scenario>
 </Guide>
+
+## List keys with --json
+
+Bare `--json` after a command id lists the keys you can project. The command
+does not run, so `lando app:config --json` never needs a successful view of
+secrets. Space-form `--json echo` does not steal `echo`. Use `--json=key`
+for a single key.
+
+## Project a key
+
+`--json=app` still emits the envelope. `ok` stays `true` and `result`
+contains only that key.
+
+## Select with --jq
+
+`--jq .ok` prints the raw scalar `true`. Do not combine bare `--json` with
+`--jq`. An unknown key exits nonzero.
 
 ## Envelope contract
 
-The universal machine-output flag aliases are `--format json`,
-`--format=json`, `--json`, and `-j`. The failure envelope has the shape
-`{ "ok": false, "error": <tagged-error> }`; a failing command preserves
-its non-zero exit code alongside the envelope so scripts can branch on both.
-The tagged error exposes a machine `_tag` plus human remediation, so an
-agent can react to the failure class without scraping prose.
+The full-envelope aliases are `--format json`, `--format=json`, and `-j`.
+The failure envelope has the shape `{ "ok": false, "error": <tagged-error> }`.
+A failing command keeps its non-zero exit code alongside the envelope so
+scripts can branch on both. The tagged error exposes a machine `_tag` plus
+human remediation, so an agent can react to the failure class without
+scraping prose.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

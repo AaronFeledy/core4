@@ -26,6 +26,8 @@ import {
   type CompiledCommandInput,
   activeCommandId,
   activeDeprecationWarnings,
+  activeJq,
+  activeProjectResultKeys,
   activeResultFormat,
   commandErrorMessage,
   getActiveCommandInvocation,
@@ -42,19 +44,26 @@ const makeCompiledRuntime: CompiledRuntimeFactory = (bootstrap) =>
 export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 export {
   type CompiledCommandInput,
+  type JsonControl,
   activeCommandId,
   activeDeprecationWarnings,
+  activeJq,
+  activeJsonControl,
+  activeProjectResultKeys,
   activeResultFormat,
   beginNestedCommandInvocation,
   clearActiveCommandInvocation,
   commandErrorMessage,
   emitDiagnosticLine,
+  emitJsonListModeIfRequested,
   emitResultLine,
   getActiveCommandInvocation,
   resetActiveCommandInvocation,
   setActiveCommandId,
   setActiveCommandInvocation,
   setActiveDeprecationWarnings,
+  setActiveJq,
+  setActiveJsonControl,
   setActiveResultFormat,
 } from "./compiled-session";
 export {
@@ -104,6 +113,8 @@ export const runCompiledCommand = <A, E, R, RE>(
       ? undefined
       : (value: A) => spec.successExitCode?.(value, getActiveCommandInvocation()));
   const invocation = getActiveCommandInvocation();
+  const projectResultKeys = activeProjectResultKeys();
+  const jqExpression = activeJq;
   const rendererOptions = {
     runtime: effectiveRuntime as Layer.Layer<
       Exclude<R, EventService | Renderer | StreamFrameSink>,
@@ -122,6 +133,8 @@ export const runCompiledCommand = <A, E, R, RE>(
       ? {}
       : { streamFrames: spec.streamFrames }),
     ...(redactionTokens === undefined ? {} : { redactionTokens }),
+    ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
+    ...(jqExpression === undefined ? {} : { jqExpression }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),

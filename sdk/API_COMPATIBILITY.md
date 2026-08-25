@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `JsonProjectionError` (`message`, optional `command`, `keys`, `available`, `reason` of `unknown_key`|`duplicate_key`|`non_object_result`|`format_conflict`, `remediation`), `JsonJqConflictError` (`message`, `remediation`), and `JqExpressionError` (`message`, `expression`, `reason` of `eval`|`timeout`|`too_large`|`missing_value`, `remediation`, optional `detail`) for JSON projection and jq output failures. They register no JSON Schema and widen no frozen schema list.
+
 - `@lando/sdk/errors` additively exports `LogLevelSelectionError` (`message`, `value`, `source` of `flag`|`env`|`config`, `remediation`; no `commandId` field). `@lando/sdk/schema` additively exports `LOG_LEVELS`. `GlobalConfig.logLevel` is an additive optional string decoded at config load; unknown tokens fail later at resolve.
 
 - `RoutePlan.backend` additively accepts optional `host` so a proxy can dial a host-reachable backend when the app does not share the managed Traefik network.

@@ -79,7 +79,15 @@ export const preCommandOutputMode = (input: {
     input.argv.indexOf("--") === -1 ? undefined : input.argv.indexOf("--"),
   );
   const machineRequested = beforeTerminator.some((arg, index) => {
-    if (arg === "--json" || arg === "-j" || arg === "--format=json" || arg === "--renderer=json") {
+    if (
+      arg === "--json" ||
+      arg.startsWith("--json=") ||
+      arg === "-j" ||
+      arg === "--jq" ||
+      arg.startsWith("--jq=") ||
+      arg === "--format=json" ||
+      arg === "--renderer=json"
+    ) {
       return true;
     }
     if (arg !== "--format" && arg !== "--renderer") return false;

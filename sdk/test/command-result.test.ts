@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import {
+  buildCommandResultEnvelope,
   encodeCommandResult,
   encodeStreamEventFrame,
   encodeStreamResultFrame,
@@ -19,9 +20,42 @@ class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("Examp
 
 const plainRedactor = createRedactor("secrets", { values: [] });
 const EmptyResultSchema = Schema.Struct({});
+const PersonResultSchema = Schema.Struct({
+  name: Schema.String,
+  age: Schema.optional(Schema.Number),
+});
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object";
+
+const findProjectionError = (
+  value: unknown,
+  seen: Set<unknown> = new Set(),
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value) || seen.has(value)) return undefined;
+  seen.add(value);
+  if (value._tag === "JsonProjectionError") return value;
+  const nestedValues = [
+    ...Object.values(value),
+    ...Object.getOwnPropertySymbols(value).map((symbol) => Reflect.get(value, symbol)),
+  ];
+  for (const nested of nestedValues) {
+    const found = findProjectionError(nested, seen);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+const captureSync = (run: () => unknown): { readonly threw: unknown } | { readonly value: unknown } => {
+  try {
+    return { value: run() };
+  } catch (error) {
+    return { threw: error };
+  }
+};
 
 describe("encodeCommandResult", () => {
   test("wraps a schema-encoded success result in a command envelope", () => {
@@ -168,6 +202,194 @@ describe("encodeCommandResult", () => {
     expect(decodeEnvelope(success).result).toEqual({ token: "[redacted]" });
     expect(decodeEnvelope(failure).error?.message).toBe("failed with [redacted]");
   });
+
+  test("projects only requested result keys inside a success envelope", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:info",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+        redactor: plainRedactor,
+        projectResultKeys: ["name"],
+      }),
+    );
+
+    const envelope = decodeEnvelope(line);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result).toEqual({ name: "ada" });
+    expect(Object.keys(envelope.result ?? {})).toEqual(["name"]);
+  });
+
+  test("preserves caller key order when projecting a success result", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:info",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+        redactor: plainRedactor,
+        projectResultKeys: ["age", "name"],
+      }),
+    );
+
+    expect(Object.keys(decodeEnvelope(line).result ?? {})).toEqual(["age", "name"]);
+  });
+
+  test("omits missing optional keys when projecting a success result", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:info",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada" } },
+        redactor: plainRedactor,
+        projectResultKeys: ["name", "age"],
+      }),
+    );
+
+    const envelope = decodeEnvelope(line);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result).toEqual({ name: "ada" });
+    expect(Object.hasOwn(envelope.result ?? {}, "age")).toBe(false);
+  });
+
+  test("does not return a success envelope when a projection key is unknown", () => {
+    const captured = captureSync(() =>
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: PersonResultSchema,
+          outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+          redactor: plainRedactor,
+          projectResultKeys: ["nope"],
+        }),
+      ),
+    );
+
+    if ("value" in captured) {
+      const envelope = decodeEnvelope(String(captured.value));
+      expect(envelope.ok).toBe(false);
+      expect(envelope.result).toBeUndefined();
+      return;
+    }
+
+    const error = findProjectionError(captured.threw);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("unknown_key");
+    expect(error?.keys).toEqual(["nope"]);
+    expect(error?.available).toEqual(["name", "age"]);
+  });
+
+  test("does not return a success envelope when projecting an empty schema", () => {
+    const captured = captureSync(() =>
+      Effect.runSync(
+        encodeCommandResult({
+          command: "meta:version",
+          resultSchema: EmptyResultSchema,
+          outcome: { _tag: "success", value: {} },
+          redactor: plainRedactor,
+          projectResultKeys: ["name"],
+        }),
+      ),
+    );
+
+    if ("value" in captured) {
+      const envelope = decodeEnvelope(String(captured.value));
+      expect(envelope.ok).toBe(false);
+      expect(envelope.result).toBeUndefined();
+      return;
+    }
+
+    const error = findProjectionError(captured.threw);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("unknown_key");
+    expect(error?.available).toEqual([]);
+  });
+
+  test("does not return a success envelope when a string result is projected", () => {
+    const captured = captureSync(() =>
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: Schema.String,
+          outcome: { _tag: "success", value: "ada" },
+          redactor: plainRedactor,
+          projectResultKeys: ["name"],
+        }),
+      ),
+    );
+
+    if ("value" in captured) {
+      const envelope = decodeEnvelope(String(captured.value));
+      expect(envelope.ok).toBe(false);
+      expect(envelope.result).toBeUndefined();
+      return;
+    }
+
+    const error = findProjectionError(captured.threw);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("non_object_result");
+  });
+
+  test("does not return a success envelope when an array result is projected", () => {
+    const captured = captureSync(() =>
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: Schema.Array(Schema.String),
+          outcome: { _tag: "success", value: ["ada"] },
+          redactor: plainRedactor,
+          projectResultKeys: ["0"],
+        }),
+      ),
+    );
+
+    if ("value" in captured) {
+      const envelope = decodeEnvelope(String(captured.value));
+      expect(envelope.ok).toBe(false);
+      expect(envelope.result).toBeUndefined();
+      return;
+    }
+
+    const error = findProjectionError(captured.threw);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("non_object_result");
+  });
+
+  test("ignores projectResultKeys on failure outcomes", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:start",
+        resultSchema: PersonResultSchema,
+        outcome: {
+          _tag: "failure",
+          error: new ExampleTaggedError({ message: "provider missing", remediation: "Run setup." }),
+        },
+        redactor: plainRedactor,
+        projectResultKeys: ["nope"],
+      }),
+    );
+
+    const envelope = decodeEnvelope(line);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?._tag).toBe("ExampleTaggedError");
+    expect(envelope.result).toBeUndefined();
+  });
+});
+
+describe("buildCommandResultEnvelope", () => {
+  test("projects requested keys before wrapping the envelope", () => {
+    const envelope = Effect.runSync(
+      buildCommandResultEnvelope({
+        command: "app:info",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+        redactor: plainRedactor,
+        projectResultKeys: ["name"],
+      }),
+    );
+
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result).toEqual({ name: "ada" });
+  });
 });
 
 describe("StreamFrame encoders", () => {
@@ -192,6 +414,24 @@ describe("StreamFrame encoders", () => {
       warnings: [],
       deprecations: [],
     });
+  });
+
+  test("projects requested keys on the terminal result envelope only", () => {
+    const line = Effect.runSync(
+      encodeStreamResultFrame({
+        command: "app:info",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+        redactor: plainRedactor,
+        projectResultKeys: ["name"],
+      }),
+    );
+
+    const frame = decodeFrame(line);
+    expect(frame._tag).toBe("result");
+    if (frame._tag !== "result") throw new Error("expected result frame");
+    expect(frame.envelope.ok).toBe(true);
+    expect(frame.envelope.result).toEqual({ name: "ada" });
   });
 
   test("encodes event frames and redacts payload values", () => {

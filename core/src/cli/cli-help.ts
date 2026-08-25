@@ -4,9 +4,9 @@ import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { resolveTopLevelAliases } from "./spec/command-base";
 
-const UNIVERSAL_FLAGS = new Set(["format", "json"]);
+const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
 const GLOBAL_FLAGS_FOOTER =
-  "Global flags (--format, --json, --renderer, --verbose, --log-level, --debug) work on every command.";
+  "Global flags (--format, --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.";
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }
@@ -87,17 +87,12 @@ export const renderCommandUsage = (
   return args.length === 0 ? name : `${name} ${args.join(" ")}`;
 };
 
-const flagEntriesForHelp = (command: { readonly flags?: CompiledCommand["flags"] }): ReadonlyArray<
-  readonly [string, OclifFlagDefinition]
-> =>
-  Object.entries({ ...universalFormatFlagDefs, ...(command.flags ?? {}) })
-    .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
-    .sort(([left], [right]) => left.localeCompare(right));
-
 export const renderCommandHelpFlags = (command: {
   readonly flags?: CompiledCommand["flags"];
 }): ReadonlyArray<string> => {
-  const entries = flagEntriesForHelp(command);
+  const entries = Object.entries({ ...universalFormatFlagDefs, ...(command.flags ?? {}) })
+    .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
+    .sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) return [];
   const lines = ["", "FLAGS"];
   for (const [name, definition] of entries) {

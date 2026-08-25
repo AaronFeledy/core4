@@ -15,7 +15,12 @@ import { makeLandoRuntime } from "../runtime/layer";
 import { builtInCommandEntries } from "./built-in-command-registry";
 import { helpArgToken, helpFlagToken } from "./cli-help";
 import { type OclifFlagDefinition, flagNameByToken, setParsedFlag } from "./compiled-argv";
-import { emitResultLine, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
+import {
+  emitJsonListModeIfRequested,
+  emitResultLine,
+  runCompiledCommand,
+  runWithProcessAbortSignal,
+} from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
 import { resolveEventCommandTarget } from "./event-command-target";
 import {
@@ -227,6 +232,12 @@ const dispatchPluginOwnedCommand = async (
     emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
+  const flagError = pluginOwnedCliFlagError(spec, argv);
+  if (flagError !== undefined) {
+    await renderPluginOwnedPreCommandFailure(flagError);
+    return "dispatched";
+  }
+  if (emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   await runPluginOwnedCommand(spec, argv);
   return "dispatched";
 };

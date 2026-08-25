@@ -88,7 +88,6 @@
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/data-mover": "workspace:*",
-    "@lando/telemetry": "workspace:*",
     "@lando/engine": "workspace:*",
     "@lando/http-client": "workspace:*",
     "@lando/landofile": "workspace:*",
@@ -99,7 +98,9 @@
     "@lando/renderer": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
+    "@lando/telemetry": "workspace:*",
     "effect": "^3.21.2",
+    "jq-wasm": "^3.0.0-jq-1.8.2",
     "semver": "^7.8.5"
   },
   "devDependencies": {

@@ -338,10 +338,17 @@ export const dispatchMcpCommand = async (params: {
       );
       return yield* mcpListResult(registry, params.flags);
     });
+    // Lazy on purpose: a static import would pull compiled-session (and its
+    // renderer plugin graph) into every consumer of this command module.
+    const { activeJq, activeProjectResultKeys } = await import("../../compiled-session");
+    const projectResultKeys = activeProjectResultKeys();
+    const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
+      ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
+      ...(jqExpression === undefined ? {} : { jqExpression }),
       command: "meta:mcp",
       invocation: params.invocation,
       resultSchema: McpListResultSchema,
