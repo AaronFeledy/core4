@@ -97,7 +97,7 @@ process.on("exit", () => {
       "plugins/proxy-traefik/.tsbuildinfo",
       "plugins/ca-mkcert/dist/.tsbuildinfo",
       "plugins/ca-mkcert/.tsbuildinfo",
-              "plugins/renderer-lando/dist/.tsbuildinfo",
+      "plugins/renderer-lando/dist/.tsbuildinfo",
       "plugins/renderer-lando/.tsbuildinfo",
     ].map((path) => resolve(repoRoot, path));
 
