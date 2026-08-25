@@ -3,8 +3,9 @@ import { resolve } from "node:path";
 import { Clock, Duration, Effect, Option } from "effect";
 
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
-import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import { sanitizeAppName } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PathsService } from "@lando/sdk/services";
 import type {
   DoctorCheck,
   DoctorProviderKind,
@@ -31,7 +32,6 @@ const DEFAULT_LIMITS: HostProxyDoctorLimits = {
 };
 
 export interface HostProxyTransportDoctorOptions {
-  readonly userDataRoot?: string;
   readonly provider: HostProxyDoctorProvider;
   readonly providerKind: DoctorProviderKind;
   readonly runtimeStatus: string;
@@ -49,12 +49,10 @@ const HOST_PROXY_STATE_REMEDIATION: DoctorSolution = {
 
 export const hostProxyTransportDoctorChecks = (
   options: HostProxyTransportDoctorOptions,
-): Effect.Effect<ReadonlyArray<DoctorCheck>, never, HostProxyDoctorFileSystem> =>
+): Effect.Effect<ReadonlyArray<DoctorCheck>, never, HostProxyDoctorFileSystem | PathsService> =>
   Effect.gen(function* () {
     const fileSystem = yield* HostProxyDoctorFileSystem;
-    const paths = makeLandoPaths(
-      options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot },
-    );
+    const paths = yield* PathsService;
     const redactionService = yield* Effect.serviceOption(RedactionService);
     const redactor = Option.isSome(redactionService)
       ? yield* redactionService.value.forProfile("secrets", { sourceEnv: options.sourceEnv })

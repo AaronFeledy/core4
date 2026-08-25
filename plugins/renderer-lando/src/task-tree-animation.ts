@@ -34,6 +34,7 @@ export class TaskTreeAnimationController {
         if (taskId !== undefined) this.schedule(taskId);
         return;
       case "task.detail":
+        return;
       case "task.complete":
       case "task.fail":
         if (taskId !== undefined) this.clear(taskId);

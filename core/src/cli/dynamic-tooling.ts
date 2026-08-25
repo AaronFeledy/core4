@@ -38,7 +38,6 @@ const ToolingResultSchema = Schema.Struct({
 });
 
 const dynamicToolingOptions = {
-  renderEvents: true,
   plainTaskEvents: "detail-only",
   resultSchema: ToolingResultSchema,
   redactionTokens: runToolingRedactionTokens,

@@ -178,12 +178,14 @@ export const renderJsonLine = (event: LandoEvent): string | null => {
 /**
  * Verbose line: the human-readable head plus a full payload trace of every
  * event — including events `plain` does not surface (e.g. `log.line`).
+ * Internal CLI lifecycle tags (`cli-*`) are suppressed (return null).
  */
-export const renderVerboseLine = (event: LandoEvent): string => {
+export const renderVerboseLine = (event: LandoEvent): string | null => {
+  const tag = (event as { readonly _tag?: string })._tag ?? "event";
+  if (tag.startsWith("cli-")) return null;
   const payload = stableStringify(event);
   const human = formatPlainEvent(event as RenderableEvent);
   if (human === null) {
-    const tag = (event as { readonly _tag?: string })._tag ?? "event";
     return `· ${tag} ${payload}`;
   }
   return `${human}\n  ⋯ ${payload}`;

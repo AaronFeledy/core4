@@ -75,6 +75,59 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("");
   });
 
+  test("human format consumes published task events without an opt-in", async () => {
+    // Given: a human non-JSON command with no renderEvents flag.
+    const io = createBufferedRendererIO();
+
+    // When: its runtime publishes a task tree.
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({
+          _tag: "task.tree.start",
+          parentId: "app:start",
+          label: "Starting",
+          children: ["app:start:web"],
+          timestamp: "2026-06-04T00:00:00.000Z",
+        });
+        yield* events.publish({
+          _tag: "task.start",
+          taskId: "app:start:web",
+          parentId: "app:start",
+          label: "web",
+          timestamp: "2026-06-04T00:00:00.001Z",
+        });
+        yield* events.publish({
+          _tag: "task.complete",
+          taskId: "app:start:web",
+          summary: "online",
+          durationMs: 10,
+          timestamp: "2026-06-04T00:00:00.002Z",
+        });
+        yield* events.publish({
+          _tag: "task.tree.complete",
+          parentId: "app:start",
+          succeeded: 1,
+          failed: 0,
+          durationMs: 11,
+          timestamp: "2026-06-04T00:00:00.003Z",
+        });
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        io,
+        render: () => "ready",
+        formatError: () => "should not happen",
+      },
+    );
+
+    // Then: the task tree is painted before the final human result.
+    expect(io.stdout()).toContain("▼ Starting");
+    expect(io.stdout()).toContain("[app:start:web] start: web");
+    expect(io.stdout().endsWith("ready\n")).toBe(true);
+  });
+
   test("plain event rendering keeps tooling output flat", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
@@ -121,7 +174,6 @@ describe("runWithRendererHandling", () => {
         runtime: Layer.empty,
         rendererMode: "plain",
         io,
-        renderEvents: true,
         plainTaskEvents: "detail-only",
         render: () => undefined,
         formatError: () => "should not happen",
@@ -131,7 +183,7 @@ describe("runWithRendererHandling", () => {
   });
 
   test("json consumes notify.desktop without enabling unrelated event rendering", async () => {
-    // Given: a default command that did not opt into task/event rendering.
+    // Given: a JSON command that did not request task/event rendering.
     const io = createBufferedRendererIO();
 
     // When: its runtime publishes a notification and an unrelated task event.
@@ -158,11 +210,56 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    // Then: the notification is a structured event and task rendering remains opt-in.
+    // Then: the notification is a structured event and task rendering stays off JSON.
     const lines = io.stderrLines().map((line) => JSON.parse(line));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ _tag: "notify.desktop", title: "Done", urgency: "success" });
     expect(io.stderr()).not.toContain("not rendered");
+  });
+
+  test("json still consumes notify.desktop without task detail or tree paint", async () => {
+    // Given: a JSON non-streaming command that publishes notifications and task events.
+    const io = createBufferedRendererIO();
+
+    // When: its runtime publishes a notification plus task detail and tree events.
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({ _tag: "notify.desktop", title: "Json gated", urgency: "success" });
+        yield* events.publish({
+          _tag: "task.detail",
+          taskId: "json-gate",
+          stream: "stdout",
+          line: "json-task-detail",
+          timestamp: "2026-07-18T00:00:00.000Z",
+        });
+        yield* events.publish({
+          _tag: "task.tree.start",
+          parentId: "json-gate-tree",
+          label: "JsonTree",
+          children: ["json-gate"],
+          timestamp: "2026-07-18T00:00:00.001Z",
+        });
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "json",
+        resultFormat: "json",
+        io,
+        command: "app:restart",
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+
+    // Then: the notification is a structured event and task/tree paint stays off JSON.
+    const lines = io.stderrLines().map((line) => JSON.parse(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ _tag: "notify.desktop", title: "Json gated", urgency: "success" });
+    expect(io.stderr()).not.toContain("json-task-detail");
+    expect(io.stderr()).not.toContain("task.detail");
+    expect(io.stderr()).not.toContain("task.tree.start");
+    expect(io.stderr()).not.toContain("JsonTree");
   });
 
   test("json streaming emits chunks, bounded events, and a terminal result frame in order", async () => {
@@ -241,7 +338,6 @@ describe("runWithRendererHandling", () => {
         command: "app:logs",
         resultSchema: Schema.Struct({}),
         streaming: StreamFrame,
-        renderEvents: false,
         render: () => undefined,
         formatError: () => "should not happen",
       },
@@ -276,7 +372,6 @@ describe("runWithRendererHandling", () => {
         command: "app:logs",
         resultSchema: Schema.Struct({}),
         streaming: StreamFrame,
-        renderEvents: false,
         render: () => undefined,
         formatError: String,
         setExitCode: (code) => {

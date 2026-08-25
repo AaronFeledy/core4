@@ -54,6 +54,7 @@ export interface KeyHandleResult {
   readonly events: ReadonlyArray<LandoEvent>;
   readonly changed: boolean;
   readonly transcriptPage?: "older" | "newer";
+  readonly preferredInternalId?: string;
 }
 
 export interface TaskTreeInputControllerOptions {
@@ -143,19 +144,27 @@ export class TaskTreeInputController {
 
   #expand(): KeyHandleResult {
     if (this.#expanded) return NO_CHANGE;
-    const taskId = this.focusedTaskId;
-    if (taskId === undefined || !this.#viewModel.canExpandTask(taskId)) return NO_CHANGE;
-    this.#viewModel.expandTask(taskId);
+    const internalId = this.focusedTaskId;
+    if (internalId === undefined || !this.#viewModel.canExpandTask(internalId)) return NO_CHANGE;
+    this.#viewModel.expandTask(internalId);
     this.#expanded = true;
-    return { events: [expandEvent(taskId, this.#now())], changed: true };
+    return {
+      events: [expandEvent(this.#viewModel.eventTaskId(internalId), this.#now())],
+      changed: true,
+      preferredInternalId: internalId,
+    };
   }
 
   #collapse(): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
-    const taskId = this.#viewModel.expandedTaskId ?? this.focusedTaskId;
+    const internalId = this.#viewModel.expandedTaskId ?? this.focusedTaskId;
     this.#viewModel.collapse();
     this.#expanded = false;
-    if (taskId === undefined) return { events: [], changed: true };
-    return { events: [collapseEvent(taskId, this.#now())], changed: true };
+    if (internalId === undefined) return { events: [], changed: true };
+    return {
+      events: [collapseEvent(this.#viewModel.eventTaskId(internalId), this.#now())],
+      changed: true,
+      preferredInternalId: internalId,
+    };
   }
 }

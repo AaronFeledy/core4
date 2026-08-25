@@ -1,5 +1,9 @@
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
+import type { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { Effect } from "effect";
+
+import type { HostProxyShimTarget } from "./subsystems/host-proxy/transport-shim.ts";
 
 export interface EngineCompositionInputs {
   readonly bundledPluginModules: ReadonlyArray<LandoPluginModule>;
@@ -7,6 +11,9 @@ export interface EngineCompositionInputs {
   readonly landofileRuntimeInputs: LandofileRuntimeInputs;
   readonly hostProxyWorkerEntry: () => HostProxyWorkerEntry;
   readonly bunDevDistRoot: () => string;
+  readonly prepareHostProxyShimArtifact: (
+    target: HostProxyShimTarget,
+  ) => Effect.Effect<string, HostProxyTransportUnavailableError>;
 }
 
 export interface HostProxyWorkerEntry {
@@ -44,3 +51,8 @@ export const landofileRuntimeInputs = (): LandofileRuntimeInputs =>
 export const hostProxyWorkerEntry = (): HostProxyWorkerEntry => requireComposition().hostProxyWorkerEntry();
 
 export const bunDevDistRoot = (): string => requireComposition().bunDevDistRoot();
+
+export const prepareHostProxyShimArtifact = (
+  target: HostProxyShimTarget,
+): Effect.Effect<string, HostProxyTransportUnavailableError> =>
+  requireComposition().prepareHostProxyShimArtifact(target);

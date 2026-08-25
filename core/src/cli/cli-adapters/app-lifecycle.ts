@@ -109,30 +109,22 @@ export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       Effect.zipRight(refreshAppCache(), startApp({ signal })),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+      appRuntimeLayer(),
       renderStartAppResult,
     ),
   );
 
 export const runStop = (): Promise<void> =>
-  runCompiledCommand(
-    stopApp(),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    renderStopAppResult,
-  );
+  runCompiledCommand(stopApp(), appRuntimeLayer(), renderStopAppResult);
 
 export const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
-  runCompiledCommand(
-    infoApp({ deep: argv.includes("--deep") }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    renderInfoAppResult,
-  );
+  runCompiledCommand(infoApp({ deep: argv.includes("--deep") }), appRuntimeLayer(), renderInfoAppResult);
 
 export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:open", argv)) return Promise.resolve();
   return runCompiledCommand(
     openApp(openOptionsFromInput(compiledCommandInputFromArgv("app:open", argv))),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    appRuntimeLayer(),
     renderOpenAppResult,
   );
 };
@@ -143,10 +135,9 @@ export const runDestroy = (argv: ReadonlyArray<string>, options: RunDestroyOptio
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     destroyApp({ volumes, purgeCaches, yes }),
-    options.runtime ??
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    options.runtime ?? appRuntimeLayer(),
     renderDestroyAppResult,
-    { renderEvents: true, ...(options.io === undefined ? {} : { io: options.io }) },
+    options.io === undefined ? {} : { io: options.io },
   );
 };
 
@@ -197,7 +188,6 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       },
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
-      renderEvents: process.stdout.isTTY === true,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
       formatError: (error) => {
         const message = commandErrorMessage(error);
@@ -211,7 +201,7 @@ export const runRestart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       Effect.zipRight(refreshAppCache(), restartApp({ signal })),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+      appRuntimeLayer(),
       renderRestartAppResult,
     ),
   );
@@ -220,7 +210,7 @@ export const runRebuild = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       Effect.zipRight(refreshAppCache(), rebuildApp({ signal })),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+      appRuntimeLayer(),
       renderRebuildAppResult,
     ),
   );
@@ -228,7 +218,7 @@ export const runRebuild = (): Promise<void> =>
 export const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:logs", argv);
   const options = logsOptionsFromInput(input);
-  const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
+  const runtime = appRuntimeLayer();
   if (logsFollowFromInput(input)) {
     return runWithProcessAbortSignal((signal) =>
       runCompiledCommand(followLogsApp({ ...options, follow: true, signal }), runtime, renderLogsAppResult, {
@@ -345,10 +335,8 @@ export const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:config", argv);
   const options = appConfigOptionsFromInput(input);
   const format = options.format ?? activeTableJsonFormat();
-  return runCompiledCommand(
-    appConfig(options),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    (value) => renderAppConfigResult(value, format),
+  return runCompiledCommand(appConfig(options), appRuntimeLayer(), (value) =>
+    renderAppConfigResult(value, format),
   );
 };
 
@@ -359,10 +347,8 @@ export const runAppConfigVerb = (
   const input = compiledCommandInputFromArgv(`app:config:${subcommand}`, argv);
   const options = { ...appConfigOptionsFromInput(input), subcommand };
   const format = options.format ?? activeTableJsonFormat();
-  return runCompiledCommand(
-    appConfig(options),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    (value) => renderAppConfigResult(value, format),
+  return runCompiledCommand(appConfig(options), appRuntimeLayer(), (value) =>
+    renderAppConfigResult(value, format),
   );
 };
 
@@ -522,11 +508,7 @@ export const runAppIncludesVerify = (_argv: ReadonlyArray<string>): Promise<void
 };
 
 export const runAppCacheRefresh = (): Promise<void> =>
-  runCompiledCommand(
-    refreshAppCache(),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    renderAppCacheRefreshResult,
-  );
+  runCompiledCommand(refreshAppCache(), appRuntimeLayer(), renderAppCacheRefreshResult);
 
 export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);

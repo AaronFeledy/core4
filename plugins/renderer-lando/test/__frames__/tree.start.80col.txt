@@ -1,4 +1,4 @@
-╭─ LANDO OPS [RUNNING] Starting app (1/2 running) ─────────────────────────────╮
-│ [RUNNING] · appserver                                                        │
-│ [WAIT] ◌ database                                                            │
-╰─ telemetry 1/2 RUNNING ──────────────────────────────────────────────────────╯
+╭─ Starting app
+│ · appserver
+│ ◌ database
+╰─ 1/2 running

@@ -169,7 +169,7 @@ const buildService = (input: {
             ref: complete.artifactRef,
             ...(digest === undefined ? {} : { digest }),
           });
-          yield* progress.completeTask(service, `${String(service.name)} cached`, 0);
+          yield* progress.completeTask(service, `${String(service.name)} cached`);
           return cachedService;
         }
       }
@@ -240,9 +240,9 @@ const buildService = (input: {
         providerId: context.providerId,
         timestamp: timestamp(),
       });
-      yield* progress.completeTask(service, `Built ${String(service.name)}`, performance.now() - started);
+      yield* progress.completeTask(service, `Built ${String(service.name)}`);
       return serviceWithArtifact(service, artifact);
-    }).pipe(Effect.tapError(() => progress.failTask(service, performance.now() - started)));
+    }).pipe(Effect.tapError(() => progress.failTask(service)));
   });
 
 const identityRedactor: Pick<Redactor, "redactString"> = { redactString: (text) => text };
@@ -262,7 +262,6 @@ export const BuildOrchestratorLive = Layer.effect(
           const servicePlans = Object.values(plan.services);
           const redactionTokens = collectAppPlanRedactionTokens(plan);
           const progress = makeBuildTaskProgress(events, plan);
-          const started = performance.now();
           yield* progress.startTree;
           const services = yield* Effect.forEach(
             servicePlans,
@@ -270,9 +269,8 @@ export const BuildOrchestratorLive = Layer.effect(
               buildService({ events, paths, progress, provider, plan, redactionTokens, service, stateStore }),
             { concurrency: 2 },
           ).pipe(
-            Effect.tapError(() => {
-              const durationMs = performance.now() - started;
-              return Effect.gen(function* () {
+            Effect.tapError(() =>
+              Effect.gen(function* () {
                 const redaction = yield* Effect.serviceOption(RedactionService);
                 const redactor =
                   redaction._tag === "Some"
@@ -290,13 +288,13 @@ export const BuildOrchestratorLive = Layer.effect(
                     step,
                     "phase-aborted",
                   );
-                  yield* progress.abortTask(service, transcriptPath, durationMs);
+                  yield* progress.abortTask(service, transcriptPath);
                 }
-                yield* progress.failTree(durationMs);
-              });
-            }),
+                yield* progress.failTree;
+              }),
+            ),
           );
-          yield* progress.completeTree(performance.now() - started);
+          yield* progress.completeTree;
           return {
             ...plan,
             services: Object.fromEntries(services.map((service) => [service.name, service])),

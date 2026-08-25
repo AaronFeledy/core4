@@ -1,8 +1,8 @@
 /**
- * Box-framing helpers for the task-tree painter. Every width, truncation, and
- * wrap decision is measured in terminal display cells and split on grapheme
- * boundaries via the shared primitive, so CJK and emoji content stays framed at
- * any width — including below 60 columns.
+ * Left-rail framing helpers for the task-tree painter. Every width, truncation,
+ * and wrap decision is measured in terminal display cells and split on grapheme
+ * boundaries via the shared primitive, so CJK and emoji content stays readable
+ * at any width — including below 60 columns.
  */
 import { displayWidth, graphemes, takeWidth, truncateToWidth } from "./terminal-width.ts";
 
@@ -35,7 +35,8 @@ const isShortCjkOrphan = (token: string): boolean =>
 /**
  * Pull the previous word onto the final line when that line is only a short CJK
  * fragment, so a semantic tail is never stranded alone — but only when the two
- * still fit the budget and the preceding line keeps at least one word. ASCII
+ * still fit the budget, the preceding line keeps at least one word, and the
+ * pulled token is itself no wider than the short-orphan threshold. ASCII
  * tails never match, so ordinary wrapping is untouched.
  */
 const rebalanceCjkOrphan = (lines: ReadonlyArray<string>, budget: number): ReadonlyArray<string> => {
@@ -44,7 +45,9 @@ const rebalanceCjkOrphan = (lines: ReadonlyArray<string>, budget: number): Reado
   if (last.includes(" ") || !isShortCjkOrphan(last)) return lines;
   const prevWords = (lines[lines.length - 2] ?? "").split(" ");
   if (prevWords.length < 2) return lines;
-  const combined = `${prevWords[prevWords.length - 1]} ${last}`;
+  const previous = prevWords[prevWords.length - 1] ?? "";
+  if (displayWidth(previous) > ORPHAN_MAX_CELLS) return lines;
+  const combined = `${previous} ${last}`;
   if (displayWidth(combined) > budget) return lines;
   return [...lines.slice(0, -2), prevWords.slice(0, -1).join(" "), combined];
 };
@@ -92,19 +95,13 @@ const splitContentToWidth = (content: string, width: number): ReadonlyArray<stri
   return rebalanceCjkOrphan(wrapped, budget);
 };
 
-const capLine = (left: string, text: string, right: string, width: number): string => {
-  const maxTextWidth = Math.max(1, width - displayWidth(left) - displayWidth(right) - 2);
+const capLine = (left: string, text: string, width: number): string => {
+  const maxTextWidth = Math.max(1, width - displayWidth(left) - 1);
   const fittedText = truncateToWidth(text, maxTextWidth);
-  const prefix = `${left} ${fittedText} `;
-  const fill = Math.max(0, width - displayWidth(prefix) - displayWidth(right));
-  return `${prefix}${"─".repeat(fill)}${right}`;
+  return `${left} ${fittedText}`;
 };
 
-const bodyLine = (text: string, width: number): string => {
-  const bodyWidth = Math.max(1, width - 4);
-  const padding = Math.max(0, bodyWidth - displayWidth(text));
-  return `│ ${text}${" ".repeat(padding)} │`;
-};
+const bodyLine = (text: string): string => `│ ${text}`;
 
 export const wrapFrameLines = (
   lines: ReadonlyArray<string>,
@@ -112,17 +109,17 @@ export const wrapFrameLines = (
 ): ReadonlyArray<string> => {
   const columns = normalizeTerminalColumns(terminalColumns);
   const framed = lines.flatMap((line) => {
-    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
-    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
+    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), columns)];
+    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), columns)];
     if (line.startsWith("│")) {
       const hangingIndent = line.startsWith("│    ") ? "  " : "";
       const content = line.slice(1).trimStart();
-      const contentWidth = Math.max(1, columns - 4 - displayWidth(hangingIndent));
+      const contentWidth = Math.max(1, columns - 2 - displayWidth(hangingIndent));
       return splitContentToWidth(content, contentWidth).map((segment) =>
-        bodyLine(`${hangingIndent}${segment}`, columns),
+        bodyLine(`${hangingIndent}${segment}`),
       );
     }
-    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
+    return splitContentToWidth(line, Math.max(1, columns - 2)).map((segment) => bodyLine(segment));
   });
   return framed.map((line) => takeWidth(line, columns)[0]);
 };
@@ -139,11 +136,32 @@ export const physicalRowsForFrame = (
   terminalColumns: number | undefined,
 ): number => frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
 
-export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
+export type BodyStyleSegment = {
+  readonly text: string;
+  readonly start: string;
+  readonly end: string;
+};
+
+const bodyChrome = (
+  line: string,
+): { readonly rail: string; readonly content: string; readonly trailingFrame: string } => {
   const hasTrailingFrame = line.length > 1 && line.endsWith("│");
-  const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
-  const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
-  return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
+  return {
+    rail: line.slice(0, 1),
+    content: line.slice(1, hasTrailingFrame ? -1 : undefined),
+    trailingFrame: hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "",
+  };
+};
+
+export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
+  const { content } = bodyChrome(line);
+  return styleBodyFrameSegments(line, [{ text: content, start: styleStart, end: styleEnd }]);
+};
+
+export const styleBodyFrameSegments = (line: string, segments: ReadonlyArray<BodyStyleSegment>): string => {
+  const { rail, trailingFrame } = bodyChrome(line);
+  const painted = segments.map((segment) => `${segment.start}${segment.text}${segment.end}`).join("");
+  return `${csi.pink}${rail}${csi.reset}${painted}${trailingFrame}`;
 };
 
 export const styleBottomFrame = (line: string): string => {
@@ -155,5 +173,5 @@ export const styleBottomFrame = (line: string): string => {
   const content = line.slice(2, trailingFrameStart);
   const trailingFrame = line.slice(trailingFrameStart);
   const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.pink}${trailingFrame}${csi.reset}`;
-  return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.pink}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
+  return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
 };

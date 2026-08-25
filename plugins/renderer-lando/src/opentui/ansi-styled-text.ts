@@ -1,6 +1,12 @@
+type NativeRgbaLike = {
+  readonly intent: "rgb" | "indexed" | "default";
+  readonly slot: number;
+};
+
 type NativeTextChunkLike = {
   readonly __isChunk: true;
   readonly text: string;
+  readonly fg?: NativeRgbaLike;
 };
 
 type NativeStyledTextLike = {
@@ -15,29 +21,26 @@ export interface NativeStyledTextModuleLike {
   readonly stringToStyledText: (content: string) => NativeStyledTextLike;
   readonly bold: NativeStyleFunction;
   readonly dim: NativeStyleFunction;
-  readonly red: NativeStyleFunction;
-  readonly green: NativeStyleFunction;
-  readonly yellow: NativeStyleFunction;
-  readonly cyan: NativeStyleFunction;
   readonly brightMagenta: NativeStyleFunction;
+  readonly RGBA: {
+    readonly fromIndex: (index: number) => NativeRgbaLike;
+  };
 }
 
-const REQUIRED_EXPORTS = [
-  "StyledText",
-  "stringToStyledText",
-  "bold",
-  "dim",
-  "red",
-  "green",
-  "yellow",
-  "cyan",
-  "brightMagenta",
-] as const;
+const REQUIRED_EXPORTS = ["StyledText", "stringToStyledText", "bold", "dim", "brightMagenta"] as const;
 
-export const hasNativeStyledText = (value: object): value is NativeStyledTextModuleLike =>
-  REQUIRED_EXPORTS.every((name) => name in value && typeof Reflect.get(value, name) === "function");
+export const hasNativeStyledText = (value: object): value is NativeStyledTextModuleLike => {
+  if (!REQUIRED_EXPORTS.every((name) => name in value && typeof Reflect.get(value, name) === "function")) {
+    return false;
+  }
+  if (!("RGBA" in value)) return false;
+  const rgba = Reflect.get(value, "RGBA");
+  if ((typeof rgba !== "object" && typeof rgba !== "function") || rgba === null) return false;
+  return typeof Reflect.get(rgba, "fromIndex") === "function";
+};
 
-type Foreground = "red" | "green" | "yellow" | "cyan" | "brightMagenta";
+type PaletteSlot = 1 | 2 | 3 | 6;
+type Foreground = PaletteSlot | "brightMagenta";
 
 type StyleState = {
   foreground: Foreground | undefined;
@@ -99,16 +102,16 @@ const applyCode = (state: StyleState, code: number): void => {
       state.dim = false;
       return;
     case 31:
-      state.foreground = "red";
+      state.foreground = 1;
       return;
     case 32:
-      state.foreground = "green";
+      state.foreground = 2;
       return;
     case 33:
-      state.foreground = "yellow";
+      state.foreground = 3;
       return;
     case 36:
-      state.foreground = "cyan";
+      state.foreground = 6;
       return;
     case 39:
       state.foreground = undefined;
@@ -131,7 +134,14 @@ const styleChunk = (
     return module.stringToStyledText(text).chunks;
   }
   if (state.foreground !== undefined) {
-    let chunk = module[state.foreground](text);
+    let chunk: NativeTextChunkLike =
+      state.foreground === "brightMagenta"
+        ? module.brightMagenta(text)
+        : {
+            __isChunk: true,
+            text,
+            fg: module.RGBA.fromIndex(state.foreground),
+          };
     if (state.bold) chunk = module.bold(chunk);
     if (state.dim) chunk = module.dim(chunk);
     return [chunk];

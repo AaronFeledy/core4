@@ -65,6 +65,17 @@ interface RunResult {
   readonly stderr: string;
 }
 
+const normalizeElapsedTiming = (text: string): string =>
+  text
+    .replace(/\(\d+(?:\.\d+)?(?:ms|s)\)/g, "(<elapsed>)")
+    .replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs":0');
+
+const normalizeRunElapsedTiming = (result: RunResult): RunResult => ({
+  ...result,
+  stdout: normalizeElapsedTiming(result.stdout),
+  stderr: normalizeElapsedTiming(result.stderr),
+});
+
 const runNonTty = async (
   command: ReadonlyArray<string>,
   cwd: string,
@@ -103,7 +114,7 @@ const expectNonLoadingDispatches = async (
         ...env,
         LANDO_NO_OPENTUI_PROMPTS: "1",
       });
-      expect(normal).toEqual(withoutOpenTui);
+      expect(normalizeRunElapsedTiming(normal)).toEqual(normalizeRunElapsedTiming(withoutOpenTui));
       expect(`${normal.stdout}${normal.stderr}`).not.toContain("╭");
     } finally {
       await rm(dest, { recursive: true, force: true });
@@ -322,7 +333,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
 });
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {
-  test("plain and json are byte-identical to the explicit line-mode baseline", async () => {
+  test("plain and json match the explicit line-mode baseline apart from elapsed timing", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);
@@ -353,7 +364,9 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
         });
         expect(scrubPtyNoise(normal)).not.toContain("╭");
         expect(scrubPtyNoise(normal)).toContain("(value or index):");
-        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
+        expect(normalizeElapsedTiming(scrubPtyNoise(normal))).toBe(
+          normalizeElapsedTiming(scrubPtyNoise(withoutOpenTui)),
+        );
         expect(await readProbe(tracePath)).toEqual([]);
       }
       const failureTrace = resolve(root, "failure.jsonl");

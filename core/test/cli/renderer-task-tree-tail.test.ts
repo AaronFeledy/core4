@@ -180,10 +180,10 @@ describe("TaskTreeViewModel — tree start metadata", () => {
   test("uses declared tree children as the running denominator before all siblings start", () => {
     const painter = new TaskTreeViewModel();
     painter.apply(treeStart("build", "Building", ["a", "b", "c", "d"]));
-    expect(painter.snapshot().frameLines[0]).toContain("(0/4 running)");
+    expect(painter.snapshot().frameLines.at(-1)).toContain("0/4 running");
 
     painter.apply(taskStart("a", "step a", "build"));
-    expect(painter.snapshot().frameLines[0]).toContain("(1/4 running)");
+    expect(painter.snapshot().frameLines.at(-1)).toContain("1/4 running");
   });
 });
 
@@ -273,10 +273,10 @@ describe("TaskTreeViewModel — concurrent sibling panels", () => {
     painter.apply(taskComplete("b", "step b", 12));
     painter.apply(treeComplete("build", "Built app dependencies", 2, 0, 12400));
     const joined = painter.snapshot().frameLines.join("\n");
-    expect(joined).toContain("2 ✓");
-    expect(joined).toContain("0 ✗");
-    expect(joined).toContain("(12.4s)");
-    expect(painter.snapshot().frameLines[0]).toContain("(12.4s)");
+    expect(joined).toContain("╰─ done  12.4s");
+    expect(joined).not.toContain("0 ✗");
+    expect(joined).not.toContain("(12.4s)");
+    expect(painter.snapshot().frameLines[0]).toBe("╭─ Built app dependencies");
     expect(painter.snapshot().activeTaskIds.length).toBe(0);
   });
 
@@ -287,10 +287,10 @@ describe("TaskTreeViewModel — concurrent sibling panels", () => {
     painter.apply(taskFail("a", "step a failed", 1));
     painter.apply(treeComplete("build", "Build failed", 0, 1, 50));
     const frame = painter.snapshot().frameLines;
-    expect(frame.join("\n")).toContain("[BLOCKED] Build failed");
-    expect(frame.join("\n")).toContain("[BLOCKED] ✗ step a failed");
-    expect(frame.join("\n")).not.toContain("[WAIT]");
-    expect(new Set(frame.map((line) => line.length)).size).toBe(1);
+    expect(frame.join("\n")).toContain("╭─ Build failed");
+    expect(frame.join("\n")).toContain("│ ✗ step a failed");
+    expect(frame.join("\n")).not.toContain("◌");
+    expect(frame.at(-1)).toBe("╰─ 1 failed  50ms");
   });
 });
 
@@ -305,40 +305,39 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
 
   test("renders a [CACHED] badge, keeps the success glyph, and strips the parenthetical marker", () => {
     const frame = completeWith("composer install (cached)");
-    expect(frame).toContain("[CACHED] ✓ composer install");
-    expect(frame).toContain("(12.4s)");
-    expect(frame).not.toContain("[ONLINE]");
+    expect(frame).toContain("│ ✓ composer install  cached  12.4s");
+    expect(frame).not.toContain("[CACHED]");
     expect(frame).not.toContain("(cached)");
   });
 
   test("renders a [CACHED] badge for the cockpit `· cached` marker form", () => {
     const frame = completeWith("deps · cached");
-    expect(frame).toContain("[CACHED] ✓ deps");
+    expect(frame).toContain("│ ✓ deps  cached");
     expect(frame).not.toContain("· cached");
   });
 
   test("renders a [SKIPPED] badge and strips the parenthetical marker", () => {
     const frame = completeWith("run migrations (skipped)");
-    expect(frame).toContain("[SKIPPED] ✓ run migrations");
-    expect(frame).not.toContain("[ONLINE]");
+    expect(frame).toContain("│ – run migrations  skipped");
+    expect(frame).not.toContain("[SKIPPED]");
     expect(frame).not.toContain("(skipped)");
   });
 
   test("renders a [SKIPPED] badge for the cockpit `· skipped` marker form", () => {
     const frame = completeWith("seed · skipped");
-    expect(frame).toContain("[SKIPPED] ✓ seed");
+    expect(frame).toContain("│ – seed  skipped");
   });
 
   test("matches the cached/skipped marker case-insensitively", () => {
-    expect(completeWith("Build (CACHED)")).toContain("[CACHED] ✓ Build");
-    expect(completeWith("Build (Skipped)")).toContain("[SKIPPED] ✓ Build");
+    expect(completeWith("Build (CACHED)")).toContain("│ ✓ Build  cached");
+    expect(completeWith("Build (Skipped)")).toContain("│ – Build  skipped");
   });
 
   test("does not treat undelimited prose as a badge (no false positives)", () => {
-    expect(completeWith("warm cache")).toContain("[ONLINE] ✓ warm cache");
-    expect(completeWith("warm cache")).not.toContain("[CACHED]");
-    expect(completeWith("skipped migrations were applied")).toContain("[ONLINE]");
-    expect(completeWith("skipped migrations were applied")).not.toContain("[SKIPPED]");
+    expect(completeWith("warm cache")).toContain("│ ✓ warm cache");
+    expect(completeWith("warm cache")).not.toContain("cached");
+    expect(completeWith("skipped migrations were applied")).toContain("│ ✓ skipped migrations were applied");
+    expect(completeWith("skipped migrations were applied")).not.toContain("  skipped");
   });
 
   test("a child whose label is literally 'cache' stays ONLINE without a marker", () => {
@@ -347,8 +346,8 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
     painter.apply(taskStart("cache", "cache", "build"));
     painter.apply(taskComplete("cache", "cache", 500));
     const frame = painter.snapshot().frameLines.join("\n");
-    expect(frame).toContain("[ONLINE] ✓ cache");
-    expect(frame).not.toContain("[CACHED]");
+    expect(frame).toContain("│ ✓ cache  500ms");
+    expect(frame).not.toContain("cached");
   });
 
   test("falls back to the task label when stripping the marker empties the summary", () => {
@@ -357,7 +356,7 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
     painter.apply(taskStart("a", "warm step", "build"));
     painter.apply(taskComplete("a", "(cached)", 100));
     const frame = painter.snapshot().frameLines.join("\n");
-    expect(frame).toContain("[CACHED] ✓ warm step");
+    expect(frame).toContain("│ ✓ warm step  cached  100ms");
   });
 
   test("cached and skipped rows are color-accented in TTY but never status-by-color-only", () => {
@@ -370,8 +369,8 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
     painter.apply(taskComplete("b", "b (skipped)", 10));
     const skippedFrame = painter.frameLines().join("\n");
     expect(cachedFrame.includes(String.fromCharCode(27))).toBe(true);
-    expect(stripCsi(skippedFrame)).toContain("[CACHED]");
-    expect(stripCsi(skippedFrame)).toContain("[SKIPPED]");
+    expect(stripCsi(skippedFrame)).toContain("cached");
+    expect(stripCsi(skippedFrame)).toContain("skipped");
   });
 });
 

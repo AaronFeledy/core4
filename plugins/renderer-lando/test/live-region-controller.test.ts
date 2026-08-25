@@ -389,31 +389,46 @@ describe("LiveRegionController", () => {
     expect(fixture.state().destroyCount).toBe(1);
   });
 
-  test("production renderer enters captured split-footer from a bottom-pinned cursor seed", async () => {
+  test("production renderer enters captured split-footer without a forced bottom pin", async () => {
     const fixture = makeFixture();
     let config: Record<string, unknown> | undefined;
     const module = {
       ...fixture.module,
       createCliRenderer: async (nextConfig: Record<string, unknown>) => {
         config = nextConfig;
-        fixture.renderer.externalOutputMode = "passthrough";
         fixture.calls.length = 0;
         return fixture.renderer;
       },
     } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
 
     const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { stdout: process.stdout, width: 80, height: 24, footerHeight: 12 },
       { loadModule: async () => module },
     );
 
     expect(config).toMatchObject({
       screenMode: "split-footer",
-      externalOutputMode: "passthrough",
+      externalOutputMode: "capture-stdout",
       exitOnCtrlC: false,
+      clearOnShutdown: false,
+      footerHeight: 1,
     });
-    expect(fixture.calls).toEqual(["cursor:1,24:false", "externalOutputMode:capture-stdout"]);
-    controller.dispose();
+    expect(fixture.calls).toEqual([]);
+    await controller.dispose();
+  });
+
+  test("dispose leaves capture and split-footer before destroy without replaying scrollback", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.commitScrollback("kept");
+    fixture.calls.length = 0;
+
+    await controller.dispose();
+    await controller.dispose();
+
+    expect(fixture.calls).toEqual(["externalOutputMode:passthrough", "screenMode:main-screen"]);
+    expect(fixture.commits).toEqual(["kept"]);
+    expect(fixture.state().destroyCount).toBe(1);
   });
 
   test("destroys its renderer exactly once", async () => {
@@ -446,23 +461,22 @@ describe("LiveRegionController", () => {
     expect(initFailure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("initialize", initCause));
   });
 
-  test("destroys the renderer when the split-footer transition fails during initialization", async () => {
+  test("does not force a post-create output-mode transition during initialization", async () => {
     const fixture = makeFixture();
-    const transitionCause = new Error("split-footer transition failed");
     Object.defineProperty(fixture.renderer, "externalOutputMode", {
       configurable: true,
       get: () => "capture-stdout" as const,
       set: () => {
-        throw transitionCause;
+        throw new Error("split-footer transition failed");
       },
     });
 
-    const failure = createLiveRegionController(
+    const controller = await createLiveRegionController(
       { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
       { loadModule: async () => fixture.module, createRenderer: async () => fixture.renderer },
     );
 
-    expect(failure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("initialize", transitionCause));
-    expect(fixture.state().destroyCount).toBe(1);
+    expect(controller).toBeDefined();
+    expect(fixture.state().destroyCount).toBe(0);
   });
 });

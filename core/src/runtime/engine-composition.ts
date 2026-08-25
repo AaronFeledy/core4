@@ -2,6 +2,7 @@ import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "@lando/engine/composition";
 
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
+import { prepareHostProxyShimArtifact } from "../cli/host-proxy/prepare-shim-artifact";
 import { defaultGitRecipeCloner, publish } from "../recipes/git-source";
 import { makeNpmRecipeSourcePort } from "../recipes/npm-source";
 import { defaultTarballRecipeExtractor, defaultTarballRecipeFetcher } from "../recipes/tarball-source";
@@ -28,6 +29,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
     bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
   }),
   bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
+  prepareHostProxyShimArtifact: (target) => prepareHostProxyShimArtifact({ target }),
 };
 
 installEngineCompositionIfAbsent(baseEngineCompositionInputs);

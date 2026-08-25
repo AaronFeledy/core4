@@ -167,11 +167,13 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     stringToStyledText: (content: string) => new FakeStyledText([fakeStyle(content)]),
     bold: fakeStyle,
     dim: fakeStyle,
-    red: fakeStyle,
-    green: fakeStyle,
-    yellow: fakeStyle,
-    cyan: fakeStyle,
     brightMagenta: fakeStyle,
+    RGBA: {
+      fromIndex: (index: number): { readonly intent: "indexed"; readonly slot: number } => ({
+        intent: "indexed",
+        slot: index,
+      }),
+    },
   } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
 
   return {

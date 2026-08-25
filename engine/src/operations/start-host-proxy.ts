@@ -2,14 +2,13 @@ import { Effect, Ref, Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
-import { type EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
+import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
+import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
-import {
-  type HostProxyShimTarget,
-  defaultHostProxyShimArtifactPath,
-} from "../subsystems/host-proxy/transport-shim.ts";
+import { prepareHostProxyShimArtifact } from "../composition.ts";
+import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
   hostProxyRunLandoFeature,
@@ -19,29 +18,26 @@ import {
   serviceHasHostProxyFeature,
   startDetachedHostProxyWorker,
 } from "../subsystems/host-proxy/worker.ts";
+import { startHostProxyTreeId } from "./start-progress.ts";
 
 const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.containerTargets";
 const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHostGateway";
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
 
-const missingContainerTargetError = () =>
-  new HostProxyTransportUnavailableError({
-    message: "Host-proxy requires a provider-declared eligible Linux container target.",
-    socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
-    remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
-  });
-
 const hostProxyShimTargetFor = (
   capabilities: ProviderCapabilities,
 ): Effect.Effect<HostProxyShimTarget, HostProxyTransportUnavailableError> => {
   const providerTargets = capabilities.hostProxy?.containerTargets ?? [];
-  if (providerTargets.length === 0) {
-    return Effect.fail(missingContainerTargetError());
-  }
   const [target, ...remainingTargets] = providerTargets;
   if (target === undefined) {
-    return Effect.fail(missingContainerTargetError());
+    return Effect.fail(
+      new HostProxyTransportUnavailableError({
+        message: "Host-proxy requires a provider-declared eligible Linux container target.",
+        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
+        remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
+      }),
+    );
   }
   const selectedTargetKey = targetKey(target);
   if (remainingTargets.some((candidate) => targetKey(candidate) !== selectedTargetKey)) {
@@ -108,14 +104,35 @@ export const startHostProxyRunLandoSession = (
     const landoPaths = makeLandoPaths(options);
     const platform = landoPaths.platform;
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
-    return yield* startDetachedHostProxyWorker({
-      app,
-      plan,
-      paths: { ...landoPaths.roots, platform },
-      shimArtifactPath: defaultHostProxyShimArtifactPath({ target: shimTarget }),
-      shimTarget,
-      ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
-    });
+    const events = yield* EventService;
+    return yield* runWithTaskTree(
+      makeTaskTree(events, {
+        parentId: startHostProxyTreeId(String(plan.id)),
+        label: `Host proxy ${plan.name}`,
+        children: [{ id: "session", label: "Start host-proxy session" }],
+        prefixChildIds: true,
+      }),
+      (tree) =>
+        Effect.gen(function* () {
+          yield* tree.startTask("session");
+          const shimArtifactPath = yield* prepareHostProxyShimArtifact(shimTarget);
+          const session = yield* startDetachedHostProxyWorker({
+            app,
+            plan,
+            paths: { ...landoPaths.roots, platform },
+            shimArtifactPath,
+            shimTarget,
+            ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
+          });
+          yield* tree.completeTask("session", "Host-proxy session ready");
+          return session;
+        }),
+      {
+        success: `${plan.name} host-proxy ready`,
+        failure: `${plan.name} host-proxy failed`,
+        interrupt: `${plan.name} host-proxy interrupted`,
+      },
+    );
   });
 
 export const withStartedHostProxy = <A, E, R>(
