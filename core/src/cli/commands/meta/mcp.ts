@@ -37,7 +37,6 @@ import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
-import { activeJq, activeProjectResultKeys } from "../../compiled-session";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -339,6 +338,9 @@ export const dispatchMcpCommand = async (params: {
       );
       return yield* mcpListResult(registry, params.flags);
     });
+    // Lazy on purpose: a static import would pull compiled-session (and its
+    // renderer plugin graph) into every consumer of this command module.
+    const { activeJq, activeProjectResultKeys } = await import("../../compiled-session");
     const projectResultKeys = activeProjectResultKeys();
     const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
