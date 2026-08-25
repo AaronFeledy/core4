@@ -54,3 +54,40 @@ export class CommandInputValidationError extends Schema.TaggedError<CommandInput
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
+
+/**
+ * `--json key1,key2` projection failed against a command result.
+ */
+export class JsonProjectionError extends Schema.TaggedError<JsonProjectionError>()(
+  "JsonProjectionError",
+  {
+    message: Schema.String,
+    /** Canonical command id when the projection is command-scoped. */
+    command: Schema.optional(Schema.String),
+    keys: Schema.Array(Schema.String),
+    available: Schema.Array(Schema.String),
+    reason: Schema.Literal("unknown_key", "duplicate_key", "non_object_result", "format_conflict"),
+    remediation: Schema.String,
+  },
+) {}
+
+/** `--jq` cannot be combined with bare `--json`. */
+export class JsonJqConflictError extends Schema.TaggedError<JsonJqConflictError>()(
+  "JsonJqConflictError",
+  {
+    message: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+/** A `--jq` expression failed to evaluate, timed out, or exceeded size limits. */
+export class JqExpressionError extends Schema.TaggedError<JqExpressionError>()(
+  "JqExpressionError",
+  {
+    message: Schema.String,
+    expression: Schema.String,
+    reason: Schema.Literal("eval", "timeout", "too_large", "missing_value"),
+    remediation: Schema.String,
+    detail: Schema.optional(Schema.String),
+  },
+) {}
