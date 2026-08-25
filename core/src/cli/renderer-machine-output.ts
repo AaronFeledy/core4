@@ -37,10 +37,13 @@ export interface MachineResultEmitterDeps<A> {
   readonly commandWarnings: CommandWarningsShape;
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
+  readonly projectResultKeys?: readonly string[];
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
   const { command, resultSchema, commandWarnings } = deps;
+  const projection =
+    deps.projectResultKeys === undefined ? {} : { projectResultKeys: deps.projectResultKeys };
   const jsonRedactor = (redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
       const redaction = yield* Effect.serviceOption(RedactionService);
@@ -55,7 +58,14 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     Effect.gen(function* () {
       const redactor = yield* jsonRedactor(redactionTokens);
       const warnings = yield* commandWarnings.list;
-      const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor, warnings });
+      const line = yield* encodeCommandResult({
+        command,
+        resultSchema,
+        outcome,
+        redactor,
+        warnings,
+        ...projection,
+      });
       yield* writeResultLine(line);
     });
   const emitStreamResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
@@ -68,6 +78,7 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         outcome,
         redactor,
         warnings,
+        ...projection,
       });
       yield* writeResultLine(line);
     });

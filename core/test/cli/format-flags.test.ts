@@ -8,6 +8,7 @@ import {
   extractFormatFlags,
   isResultFormat,
   parseJsonFieldList,
+  resolveJsonControl,
   resolveResultFormat,
   universalFormatFlagDefs,
 } from "../../src/cli/format-flags.ts";
@@ -357,5 +358,17 @@ describe("resolveResultFormat", () => {
       expect(tagged.source).toBe("flag");
       expect(tagged.value).toBe("xml");
     }
+  });
+});
+
+describe("resolveJsonControl", () => {
+  test("maps extract results onto off, list, and keys modes", () => {
+    expect(resolveJsonControl(extractFormatFlags(["info"]), "text")).toEqual({ mode: "off" });
+    expect(resolveJsonControl(extractFormatFlags(["info", "--json"]), "json")).toEqual({ mode: "list" });
+    expect(resolveJsonControl(extractFormatFlags(["info", "--json=app,services"]), "json")).toEqual({
+      mode: "keys",
+      keys: ["app", "services"],
+    });
+    expect(resolveJsonControl(extractFormatFlags(["info", "-j"]), "json")).toEqual({ mode: "off" });
   });
 });

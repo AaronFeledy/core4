@@ -8,6 +8,13 @@ export const RESULT_FORMATS = ["text", "json", "table", "yaml", "ndjson"] as con
 export type ResultFormat = (typeof RESULT_FORMATS)[number];
 export const DEFAULT_RESULT_FORMAT: ResultFormat = "text";
 
+export type JsonControl =
+  | { readonly mode: "off" }
+  | { readonly mode: "list" }
+  | { readonly mode: "keys"; readonly keys: readonly string[] };
+
+export const JSON_CONTROL_OFF: JsonControl = { mode: "off" };
+
 const ALLOWED_VALUES_DISPLAY = RESULT_FORMATS.join(", ");
 const REMEDIATION = `Use --format=<value> where <value> is one of: ${ALLOWED_VALUES_DISPLAY}. Use --json or -j as a shortcut for --format=json.`;
 
@@ -170,6 +177,19 @@ export const extractFormatFlags = (argv: ReadonlyArray<string>): ExtractFormatFl
     ...(jsonFields === undefined ? {} : { jsonFields }),
     ...(jq === undefined ? {} : { jq }),
   };
+};
+
+export const resolveJsonControl = (
+  extractResult: ExtractFormatFlagsResult,
+  _effectiveFormat: ResultFormat,
+): JsonControl => {
+  if (extractResult.jsonFields !== undefined) {
+    return { mode: "keys", keys: extractResult.jsonFields };
+  }
+  if (extractResult.jsonList) {
+    return { mode: "list" };
+  }
+  return JSON_CONTROL_OFF;
 };
 
 export interface ResolveResultFormatOptions {
