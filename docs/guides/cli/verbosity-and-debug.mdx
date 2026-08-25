@@ -8,13 +8,13 @@ tags: [beta, docs, cli, renderer]
 
 # See more CLI output
 
-There is no `lando --debug`. Pick a renderer mode.
+`lando version --debug` turns on debug logs. If you did not pick a renderer, it also flips the default `lando` renderer to `verbose`.
 
 ```sh
-lando info --renderer=verbose
+lando version --debug
 ```
 
-`--renderer=verbose` is the firehose. `--debug` is not coming back.
+`--debug` is `--log-level=debug` plus that default-to-verbose flip. Pass `--renderer=lando` when you want the TUI. Pass `--renderer=json` when you want the JSON envelope on stdout.
 
 ## Pick a renderer
 
@@ -42,21 +42,41 @@ lando info --renderer=json
 
 An unknown mode fails with `RendererSelectionError`.
 
-## Debug without `--debug`
+## Turn on `--debug`
 
-Use `--renderer=verbose` or `LANDO_RENDERER=verbose`.
+`--debug` sets the log level to `debug`. When the renderer still came from the default, Lando flips it to `verbose`. `--renderer=lando --debug` keeps the TUI. `--renderer=json --debug` keeps the envelope on stdout.
 
-`LANDO_DEBUG=1` is not a host CLI switch. Lando only forwards it into `lando shell` as an env var.
+Set the log level three ways. First match wins:
 
-For scripts and agents, prefer `--format=json` and read `ok`, `error._tag`, and `remediation`.
+1. `--log-level=debug` or `--debug`
+2. `LANDO_LOG_LEVEL=debug` or `LANDO_DEBUG=1` (`true` and `yes` also count)
+3. `logLevel: debug` in global config
+
+The default log level is `none`. The CLI stays quiet until you ask.
+
+For scripts and agents, prefer `--format=json` or `--renderer=json` and read `ok`, `error._tag`, and `remediation`.
 
 <Guide>
-  <Scenario id="json-renderer-envelope" render>
+  <Scenario id="debug-default-flip" render>
+    <Step name="debug-flag">
+      <Run command="lando version --debug" expectExit={0} />
+      <Verify command="lando version --debug" expect={{ stdout: { regex: "." } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="json-renderer-debug-envelope" render>
     <Step name="json-envelope">
-      <Run command="lando version --renderer=json" />
-      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"apiVersion\":\\s*\"v4\"" } }} />
-      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"command\":\\s*\"meta:version\"" } }} />
-      <Verify command="lando version --renderer=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Run command="lando version --renderer=json --debug" />
+      <Verify command="lando version --renderer=json --debug" expect={{ stdout: { regex: "\"apiVersion\":\\s*\"v4\"" } }} />
+      <Verify command="lando version --renderer=json --debug" expect={{ stdout: { regex: "\"command\":\\s*\"meta:version\"" } }} />
+      <Verify command="lando version --renderer=json --debug" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="lando-renderer-debug-keeps-tui" render>
+    <Step name="lando-debug">
+      <Run command="lando version --renderer=lando --debug" expectExit={0} />
+      <Verify command="lando version --renderer=lando --debug" expect={{ stdout: { regex: "." } }} />
     </Step>
   </Scenario>
 </Guide>

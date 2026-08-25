@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import { LogLevelSelectionError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
@@ -44,8 +44,11 @@ import { renderAliasResolutionFailure, routeResolvedTooling } from "./dynamic-to
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
+import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
+import { setActiveLogLevel } from "./renderer-mode-state";
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
@@ -138,6 +141,7 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
+    setActiveLogLevel("none");
     await runHostProxyWorkerProcess();
     return;
   }
@@ -167,16 +171,44 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
     argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
+    const isProtocolStdoutCommand =
+      rawHead === "mcp" ||
+      rawHead === "meta:mcp" ||
+      (passthroughAliasResolution?._tag === "Right" &&
+        passthroughAliasResolution.right._tag === "built-in" &&
+        passthroughAliasResolution.right.commandId === "meta:mcp");
     try {
-      const resolution = await resolveCliRendererMode({ argv, env: process.env });
+      const configGlobals = await readConfigCliGlobals();
+      const logLevelResolution = resolveLogLevel({
+        argv,
+        env: process.env,
+        ...(configGlobals.logLevel === undefined ? {} : { configValue: configGlobals.logLevel }),
+      });
+      argv = logLevelResolution.remainingArgv;
+      setActiveLogLevel(logLevelResolution.level);
+
+      const resolution = await resolveCliRendererMode({
+        argv,
+        env: process.env,
+        loadConfigRenderer: async () => configGlobals.renderer,
+      });
       argv = resolution.remainingArgv;
-      setActiveRendererMode(resolution.mode);
+      const mode = isProtocolStdoutCommand
+        ? resolution.mode
+        : applyDebugRendererFlip({ level: logLevelResolution.level, renderer: resolution });
+      setActiveRendererMode(mode);
     } catch (error) {
-      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        setActiveCommandId("cli:renderer-selection");
+      if (
+        error instanceof LogLevelSelectionError ||
+        error instanceof RendererSelectionError ||
+        error instanceof NotImplementedError
+      ) {
+        const commandId =
+          error instanceof LogLevelSelectionError ? "cli:log-level-selection" : "cli:renderer-selection";
+        setActiveCommandId(commandId);
         const output = preCommandOutputMode({ argv, env: process.env });
         await renderPreCommandFailure({
-          commandId: "cli:renderer-selection",
+          commandId,
           error,
           ...output,
         });
@@ -264,6 +296,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
   setActiveCommandId(canonicalCommandId);
   resetActiveCommandInvocation(canonicalCommandId, argv.slice(1));
+  if (canonicalCommandId === "meta:mcp") {
+    const flags = argv.slice(1);
+    const terminator = flags.indexOf("--");
+    const beforeTerminator = terminator === -1 ? flags : flags.slice(0, terminator);
+    if (!beforeTerminator.includes("--list")) setActiveLogLevel("none");
+  }
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";

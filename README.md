@@ -198,7 +198,8 @@ The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
 
 All command output flows through the `Renderer` service; pick a mode with
 `--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
-`LANDO_RENDERER` env > config > default).
+`LANDO_RENDERER` env > config > default). `--debug` sets `--log-level=debug`
+and flips the default renderer to `verbose`; an explicit `--renderer` stays put.
 
 ## Building from source
 

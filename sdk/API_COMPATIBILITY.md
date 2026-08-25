@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `LogLevelSelectionError` (`message`, `value`, `source` of `flag`|`env`|`config`, `remediation`; no `commandId` field). `@lando/sdk/schema` additively exports `LOG_LEVELS`. `GlobalConfig.logLevel` is an additive optional string decoded at config load; unknown tokens fail later at resolve.
+
 - `RoutePlan.backend` additively accepts optional `host` so a proxy can dial a host-reachable backend when the app does not share the managed Traefik network.
 
 - `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
@@ -241,6 +243,7 @@
 - `LogSourceInput`
 - `LogSourceStream`
 - `LogSourceStrategy`
+- `LOG_LEVELS`
 - `RESERVED_LOG_SOURCE_ID`
 - `formatDeprecationNotice`
 - `getSchemaDeprecation`
@@ -594,6 +597,7 @@
 - `ToolingTaskShape.env`
 - `GlobalConfig.agentEnv`
 - `GlobalConfig.notify`
+- `GlobalConfig.logLevel`
 - `PluginManifest.deprecated`
 - `PluginManifest.bootstrap`
 - `PluginManifest.requires`
@@ -694,6 +698,7 @@
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
 - `LandofileVersionConstraintError`
+- `LogLevelSelectionError`
 - `ManagedFileError`
 - `RemoteError`
 - `RemoteUnreachableError`

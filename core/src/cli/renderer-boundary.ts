@@ -35,8 +35,9 @@ export {
 } from "./renderer-deprecations";
 export type { StreamOutputFrame } from "./renderer-machine-output";
 export {
+  type ConfigCliGlobals,
   type ResolveCliRendererModeOptions,
-  readConfigRendererValue,
+  readConfigCliGlobals,
   resolveCliRendererMode,
 } from "./renderer-mode-resolution";
 

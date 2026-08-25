@@ -41,7 +41,7 @@ export const renderMinimal = (): string =>
     "",
     "  const minimalRuntimeLive = Layer.mergeAll(",
     "    noneRuntimeLive,",
-    "    LoggerLive({ mode: inputs.loggerMode }),",
+    "    LoggerLive({ mode: inputs.loggerMode, logLevel: inputs.logLevel, structured: inputs.structured }),",
     "    Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),",
     "    Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),",
     "    telemetryLive,",

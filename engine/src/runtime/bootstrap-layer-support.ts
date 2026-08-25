@@ -1,7 +1,7 @@
 import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
+import { type LogLevel, ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
 import type { Renderer, RootOverrides, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
@@ -22,6 +22,8 @@ export interface BootstrapLayerInputs {
   readonly runtimeLayerFactory: Context.Tag.Service<typeof RuntimeLayerFactory>;
   readonly lifecycle: BootstrapLifecycleTracker;
   readonly loggerMode: LoggerMode;
+  readonly logLevel: LogLevel | undefined;
+  readonly structured: boolean;
   readonly rendererMode: LibraryRendererMode;
   readonly telemetryEnabled: boolean;
   readonly pluginDiscovery: BootstrapLayerPluginDiscovery;

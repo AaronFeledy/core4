@@ -13,12 +13,15 @@ import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   EmbeddingPluginPolicy,
+  LOG_LEVELS,
+  type LogLevel,
   ProviderId,
   ResolvedPluginInput,
   type ResolvedPluginInput as ResolvedPluginInputType,
 } from "@lando/sdk/schema";
 import type { RootOverrides } from "@lando/sdk/services";
 
+import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -59,6 +62,7 @@ const GlobalConfigOverrides = Schema.Struct({
     }),
   ),
   renderer: Schema.optional(Schema.String),
+  logLevel: Schema.optional(Schema.String),
 });
 
 const LIBRARY_RENDERER_MODES = ["json", "plain", "verbose", "lando"] as const;
@@ -69,6 +73,40 @@ const isLibraryRendererMode = (value: string): value is LibraryRendererMode =>
 
 export const normalizeLibraryRendererMode = (value: string | undefined): LibraryRendererMode =>
   value === undefined ? "json" : isLibraryRendererMode(value) ? value : "json";
+
+const isLogLevel = (value: string): value is LogLevel =>
+  (LOG_LEVELS as ReadonlyArray<string>).includes(value);
+
+export interface RuntimeLogging {
+  readonly loggerMode: LoggerMode;
+  readonly logLevel: LogLevel | undefined;
+  readonly structured: boolean;
+}
+
+/**
+ * Resolve Effect logger mode + diagnostic level for bootstrap.
+ *
+ * `none` (or omitted) stays silent. A non-`none` level uses pretty mode so
+ * `LoggerLive` can install the stderr pretty/structured logger. `logger:
+ * "pretty"` remains an independent embedder override and does not flip the
+ * library renderer. JSON renderer + a non-`none` level forces structured
+ * stderr so machine output is not mixed with pretty prose.
+ */
+export const resolveRuntimeLogging = (
+  options: Pick<LandoRuntimeOptions, "logger" | "logLevel" | "config" | "renderer">,
+): RuntimeLogging => {
+  const raw = options.logLevel ?? options.config?.logLevel;
+  const logLevel = raw === undefined || !isLogLevel(raw) ? undefined : raw;
+  const rendererMode = normalizeLibraryRendererMode(options.renderer ?? options.config?.renderer);
+  const structured = rendererMode === "json" && logLevel !== undefined && logLevel !== "none";
+  if (options.logger === "pretty" && (logLevel === undefined || logLevel === "none")) {
+    return { loggerMode: "pretty", logLevel: undefined, structured: false };
+  }
+  if (logLevel === undefined || logLevel === "none") {
+    return { loggerMode: "silent", logLevel, structured: false };
+  }
+  return { loggerMode: "pretty", logLevel, structured };
+};
 
 /** Runtime options bag. */
 export const LandoRuntimeOptions = Schema.Struct({
@@ -83,6 +121,7 @@ export const LandoRuntimeOptions = Schema.Struct({
   /** Renderer/logger preset shortcuts. */
   logger: Schema.optional(Schema.String),
   renderer: Schema.optional(Schema.String),
+  logLevel: Schema.optional(Schema.String),
   /** Telemetry: opt-in only in library mode. */
   telemetry: Schema.optional(Schema.Boolean),
   /** Default prompt interactivity. Library mode defaults to `non-interactive`. */
