@@ -87,17 +87,12 @@ export const renderCommandUsage = (
   return args.length === 0 ? name : `${name} ${args.join(" ")}`;
 };
 
-const flagEntriesForHelp = (command: { readonly flags?: CompiledCommand["flags"] }): ReadonlyArray<
-  readonly [string, OclifFlagDefinition]
-> =>
-  Object.entries({ ...universalFormatFlagDefs, ...(command.flags ?? {}) })
-    .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
-    .sort(([left], [right]) => left.localeCompare(right));
-
 export const renderCommandHelpFlags = (command: {
   readonly flags?: CompiledCommand["flags"];
 }): ReadonlyArray<string> => {
-  const entries = flagEntriesForHelp(command);
+  const entries = Object.entries({ ...universalFormatFlagDefs, ...(command.flags ?? {}) })
+    .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
+    .sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) return [];
   const lines = ["", "FLAGS"];
   for (const [name, definition] of entries) {

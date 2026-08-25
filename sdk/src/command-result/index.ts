@@ -61,8 +61,7 @@ const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
     catch: (error) => error,
   });
 
-const isJsonProjectionError = (error: unknown): boolean =>
-  error !== null && typeof error === "object" && "_tag" in error && error._tag === "JsonProjectionError";
+const isJsonProjectionError = (error: unknown): boolean => asRecord(error)?._tag === "JsonProjectionError";
 
 const encodeCommandEnvelope = (options: EncodeCommandResultOptions): Effect.Effect<unknown, unknown> =>
   Effect.gen(function* () {
@@ -113,19 +112,14 @@ export const identityRedactor: Redactor = {
   redactValue: (value: unknown) => value,
 };
 
-const recoverEncodeFailure = (
-  command: string,
-  redactor: Redactor,
-  error: unknown,
-): Effect.Effect<string, never> =>
-  isJsonProjectionError(error)
-    ? Effect.die(error)
-    : Effect.succeed(encodeJsonLine(fallbackEnvelope(command), redactor));
-
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => encodeJsonLine(envelope, options.redactor)),
-    Effect.catchAll((error) => recoverEncodeFailure(options.command, options.redactor, error)),
+    Effect.catchAll((error) =>
+      isJsonProjectionError(error)
+        ? Effect.die(error)
+        : Effect.succeed(encodeJsonLine(fallbackEnvelope(options.command), options.redactor)),
+    ),
   );
 
 export const buildCommandResultEnvelope = (

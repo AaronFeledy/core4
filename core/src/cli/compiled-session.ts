@@ -1,13 +1,3 @@
-/**
- * Shared native dispatcher session state and renderer output helpers.
- *
- * Holds the per-process "active command" session — result format, renderer
- * mode, deprecation-warning toggle, command id, and the current invocation
- * snapshot (including nested-invocation parent linkage) — plus the small
- * renderer-boundary helpers that emit result/diagnostic lines and format bug
- * reports for the active mode. `compiled-runtime.ts` composes this state into
- * command-runtime resolution and execution.
- */
 import { Effect } from "effect";
 
 import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";

@@ -43,26 +43,21 @@ export interface MachineResultEmitterDeps<A> {
   readonly jqExpression?: string;
 }
 
-const isJqExpressionError = (error: unknown): error is JqExpressionError =>
-  error instanceof JqExpressionError;
-
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
   const { command, resultSchema, commandWarnings } = deps;
   const projection =
     deps.projectResultKeys === undefined ? {} : { projectResultKeys: deps.projectResultKeys };
-  const skipJq = (outcome: CommandResultOutcome): boolean =>
-    outcome._tag === "failure" && isJqExpressionError(outcome.error);
   const writeEncodedLine = (line: string, outcome: CommandResultOutcome) =>
     Effect.gen(function* () {
       const expr = deps.jqExpression;
-      if (expr === undefined || skipJq(outcome)) {
+      if (expr === undefined || (outcome._tag === "failure" && outcome.error instanceof JqExpressionError)) {
         yield* writeResultLine(line);
         return;
       }
       const text = yield* Effect.tryPromise({
         try: () => applyJqToRedactedJsonLine(line, expr),
         catch: (error) => {
-          if (isJqExpressionError(error)) return error;
+          if (error instanceof JqExpressionError) return error;
           return new JqExpressionError({
             message: "jq expression failed.",
             expression: expr,

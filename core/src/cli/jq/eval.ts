@@ -65,8 +65,11 @@ const evalWithTimeout = async (
     }, timeoutMs);
   });
   const work = settleEngine(engine, input, expr, controller.signal);
-  const observeLateSettlement = (): void => {};
-  void work.then(observeLateSettlement, observeLateSettlement);
+  // Swallow late settlement so a timeout win is not an unhandled rejection.
+  void work.then(
+    () => undefined,
+    () => undefined,
+  );
   try {
     return await Promise.race([work, timeout]);
   } finally {

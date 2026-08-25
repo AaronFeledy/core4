@@ -9,9 +9,7 @@ type LoadedJq = Awaited<ReturnType<typeof import("jq-wasm")["loadJq"]>>;
 let jqHandle: Promise<LoadedJq> | undefined;
 
 const loadJqCached = (): Promise<LoadedJq> => {
-  if (jqHandle === undefined) {
-    jqHandle = import("jq-wasm").then(({ loadJq }) => loadJq({ wasmURL: wasmUrl }));
-  }
+  jqHandle ??= import("jq-wasm").then(({ loadJq }) => loadJq({ wasmURL: wasmUrl }));
   return jqHandle;
 };
 
@@ -31,6 +29,6 @@ export const jqWasmEngine: JqEngine = {
       return { text: result.stdout };
     }
     const detail = result.stderr.trim();
-    throw new Error(detail === "" ? `jq exited ${String(result.exitCode)}` : detail);
+    throw new Error(detail === "" ? `jq exited ${result.exitCode}` : detail);
   },
 };

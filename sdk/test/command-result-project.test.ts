@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { encodeCommandResult, listSelectableResultKeys, projectEncodedResult } from "@lando/sdk/command-result";
+import {
+  encodeCommandResult,
+  listSelectableResultKeys,
+  projectEncodedResult,
+} from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -149,10 +153,10 @@ describe("projectEncodedResult", () => {
   });
 
   test("preserves caller order for mixed flat and dotted keys", () => {
-    const projected = projectEncodedResult(
-      { name: "ada", urls: { appserver: "x", other: "y" } },
-      ["name", "urls.appserver"],
-    );
+    const projected = projectEncodedResult({ name: "ada", urls: { appserver: "x", other: "y" } }, [
+      "name",
+      "urls.appserver",
+    ]);
 
     expect(Object.keys(projected)).toEqual(["name", "urls"]);
     expect(projected).toEqual({ name: "ada", urls: { appserver: "x" } });

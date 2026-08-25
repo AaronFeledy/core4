@@ -52,15 +52,6 @@ const requirePlainObject = (encoded: unknown, keys: readonly string[]): Record<s
 
 const splitProjectionKey = (key: string): readonly string[] => key.split(PATH_SEPARATOR);
 
-const throwUnknownKey = (keys: readonly string[], requested: string, available: readonly string[]): never =>
-  throwJsonProjectionError({
-    message: `Unknown projection key "${requested}". Available keys: ${available.join(", ")}.`,
-    keys,
-    available,
-    reason: JSON_PROJECTION_REASONS.unknown_key,
-    remediation: "Pass a key from the command result.",
-  });
-
 const throwDuplicateKey = (keys: readonly string[], available: readonly string[]): never =>
   throwJsonProjectionError({
     message: "Duplicate projection key.",
@@ -83,7 +74,13 @@ const resolvePath = (record: Record<string, unknown>, key: string, keys: readonl
       });
     }
     if (!Object.hasOwn(current, segment)) {
-      return throwUnknownKey(keys, key, Object.keys(current));
+      return throwJsonProjectionError({
+        message: `Unknown projection key "${key}". Available keys: ${Object.keys(current).join(", ")}.`,
+        keys,
+        available: Object.keys(current),
+        reason: JSON_PROJECTION_REASONS.unknown_key,
+        remediation: "Pass a key from the command result.",
+      });
     }
     current = current[segment];
   }
