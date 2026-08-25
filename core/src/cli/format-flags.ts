@@ -47,7 +47,7 @@ const missingFormatValueError = (): RendererSelectionError =>
 
 const missingJqValueError = (): RendererSelectionError =>
   new RendererSelectionError({
-    message: `--jq requires a value.`,
+    message: "--jq requires a value.",
     value: "",
     source: "flag",
     remediation: REMEDIATION,

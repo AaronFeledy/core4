@@ -10,16 +10,11 @@
  */
 import { Effect } from "effect";
 
-import { listSelectableResultKeys } from "@lando/sdk/command-result";
 import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import { listSelectableResultKeys } from "@lando/sdk/command-result";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report";
 import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle";
-import {
-  DEFAULT_RESULT_FORMAT,
-  JSON_CONTROL_OFF,
-  type JsonControl,
-  type ResultFormat,
-} from "./format-flags";
+import { DEFAULT_RESULT_FORMAT, JSON_CONTROL_OFF, type JsonControl, type ResultFormat } from "./format-flags";
 import { activeRendererMode } from "./renderer-mode-state";
 import { landoRenderer } from "./renderer/bundled-renderers";
 

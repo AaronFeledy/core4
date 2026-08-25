@@ -53,10 +53,7 @@ export const listSelectableResultKeys = (schema: unknown): readonly string[] => 
   return fields === undefined ? [] : Object.keys(fields);
 };
 
-export const projectEncodedResult = (
-  encoded: unknown,
-  keys: readonly string[],
-): Record<string, unknown> => {
+export const projectEncodedResult = (encoded: unknown, keys: readonly string[]): Record<string, unknown> => {
   const record = requirePlainObject(encoded, keys);
   const available = Object.keys(record);
   const seen = new Set<string>();

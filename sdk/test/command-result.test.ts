@@ -37,7 +37,7 @@ const findProjectionError = (
 ): Record<string, unknown> | undefined => {
   if (!isRecord(value) || seen.has(value)) return undefined;
   seen.add(value);
-  if (value["_tag"] === "JsonProjectionError") return value;
+  if (value._tag === "JsonProjectionError") return value;
   const nestedValues = [
     ...Object.values(value),
     ...Object.getOwnPropertySymbols(value).map((symbol) => Reflect.get(value, symbol)),
@@ -272,10 +272,10 @@ describe("encodeCommandResult", () => {
     }
 
     const error = findProjectionError(captured.threw);
-    expect(error?.["_tag"]).toBe("JsonProjectionError");
-    expect(error?.["reason"]).toBe("unknown_key");
-    expect(error?.["keys"]).toEqual(["nope"]);
-    expect(error?.["available"]).toEqual(["name", "age"]);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("unknown_key");
+    expect(error?.keys).toEqual(["nope"]);
+    expect(error?.available).toEqual(["name", "age"]);
   });
 
   test("does not return a success envelope when projecting an empty schema", () => {
@@ -299,9 +299,9 @@ describe("encodeCommandResult", () => {
     }
 
     const error = findProjectionError(captured.threw);
-    expect(error?.["_tag"]).toBe("JsonProjectionError");
-    expect(error?.["reason"]).toBe("unknown_key");
-    expect(error?.["available"]).toEqual([]);
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("unknown_key");
+    expect(error?.available).toEqual([]);
   });
 
   test("does not return a success envelope when a string result is projected", () => {
@@ -325,8 +325,8 @@ describe("encodeCommandResult", () => {
     }
 
     const error = findProjectionError(captured.threw);
-    expect(error?.["_tag"]).toBe("JsonProjectionError");
-    expect(error?.["reason"]).toBe("non_object_result");
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("non_object_result");
   });
 
   test("does not return a success envelope when an array result is projected", () => {
@@ -350,8 +350,8 @@ describe("encodeCommandResult", () => {
     }
 
     const error = findProjectionError(captured.threw);
-    expect(error?.["_tag"]).toBe("JsonProjectionError");
-    expect(error?.["reason"]).toBe("non_object_result");
+    expect(error?._tag).toBe("JsonProjectionError");
+    expect(error?.reason).toBe("non_object_result");
   });
 
   test("ignores projectResultKeys on failure outcomes", () => {

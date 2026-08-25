@@ -113,7 +113,11 @@ export const identityRedactor: Redactor = {
   redactValue: (value: unknown) => value,
 };
 
-const recoverEncodeFailure = (command: string, redactor: Redactor, error: unknown): Effect.Effect<string, never> =>
+const recoverEncodeFailure = (
+  command: string,
+  redactor: Redactor,
+  error: unknown,
+): Effect.Effect<string, never> =>
   isJsonProjectionError(error)
     ? Effect.die(error)
     : Effect.succeed(encodeJsonLine(fallbackEnvelope(command), redactor));
@@ -132,7 +136,9 @@ export const buildCommandResultEnvelope = (
     Effect.catchAll((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
-        : Effect.succeed(Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never)),
+        : Effect.succeed(
+            Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never),
+          ),
     ),
   );
 
@@ -162,7 +168,10 @@ export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Ef
     Effect.catchAll((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
-        : encodeStreamFrame({ _tag: "result", envelope: fallbackEnvelope(options.command) }, options.redactor),
+        : encodeStreamFrame(
+            { _tag: "result", envelope: fallbackEnvelope(options.command) },
+            options.redactor,
+          ),
     ),
   );
 

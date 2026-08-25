@@ -64,9 +64,7 @@ describe("JsonJqConflictError", () => {
 
     expect(error._tag).toBe("JsonJqConflictError");
     expect(Schema.is(JsonJqConflictError)(error)).toBe(true);
-    expect(error.remediation).toBe(
-      "cannot use --jq with bare --json; pass --json key1,key2 or omit --json",
-    );
+    expect(error.remediation).toBe("cannot use --jq with bare --json; pass --json key1,key2 or omit --json");
   });
 
   test("fails schema decode when a required field is missing", () => {

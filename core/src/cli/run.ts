@@ -276,7 +276,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       setActiveResultFormat(formatResolution.format);
       setActiveJsonControl(resolveJsonControl(extracted, formatResolution.format));
       setActiveJq(extracted.jq);
-      if (extracted.jq !== undefined && activeJsonControl.mode === "off" && formatResolution.source !== "format") {
+      if (
+        extracted.jq !== undefined &&
+        activeJsonControl.mode === "off" &&
+        formatResolution.source !== "format"
+      ) {
         setActiveResultFormat("json");
       }
     } catch (error) {
