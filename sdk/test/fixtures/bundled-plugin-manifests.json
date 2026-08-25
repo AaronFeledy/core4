@@ -49,24 +49,6 @@
     "manifest": {
       "api": 4,
       "bootstrap": "app",
-      "contributes": {
-        "loggers": ["pretty"]
-      },
-      "description": "Pretty-printed Logger plugin.",
-      "enabled": true,
-      "entry": "./src/index.ts",
-      "name": "@lando/logger-pretty",
-      "requires": {
-        "@lando/core": "^4.0.0"
-      },
-      "version": "0.0.0"
-    },
-    "name": "@lando/logger-pretty"
-  },
-  {
-    "manifest": {
-      "api": 4,
-      "bootstrap": "app",
       "description": "Bundled Lando desktop-notification policy plugin.",
       "enabled": true,
       "entry": "./src/index.ts",

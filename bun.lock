@@ -167,16 +167,6 @@
         "effect": "^3.21.2",
       },
     },
-    "plugins/logger-pretty": {
-      "name": "@lando/logger-pretty",
-      "version": "0.0.0",
-      "dependencies": {
-        "effect": "^3.21.2",
-      },
-      "peerDependencies": {
-        "@lando/sdk": "workspace:*",
-      },
-    },
     "plugins/notify-lando": {
       "name": "@lando/notify-lando",
       "version": "0.0.0",
@@ -597,8 +587,6 @@
     "@lando/http-client": ["@lando/http-client@workspace:http-client"],
 
     "@lando/landofile": ["@lando/landofile@workspace:landofile"],
-
-    "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 
     "@lando/managed-file": ["@lando/managed-file@workspace:managed-file"],
 

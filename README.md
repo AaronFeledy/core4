@@ -61,7 +61,6 @@ Development follows this phase ladder:
 │   ├── file-sync-mutagen/    # Mutagen-accelerated bind mounts on slow-bind-mount providers
 │   ├── template-handlebars/  # Handlebars whole-file Landofile template engine
 │   ├── template-mustache/    # Mustache whole-file Landofile template engine
-│   ├── logger-pretty/        # pretty-printed Logger
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
 ├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
