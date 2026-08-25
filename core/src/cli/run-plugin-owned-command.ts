@@ -232,6 +232,11 @@ const dispatchPluginOwnedCommand = async (
     emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
+  const flagError = pluginOwnedCliFlagError(spec, argv);
+  if (flagError !== undefined) {
+    await renderPluginOwnedPreCommandFailure(flagError);
+    return "dispatched";
+  }
   if (emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   await runPluginOwnedCommand(spec, argv);
   return "dispatched";
