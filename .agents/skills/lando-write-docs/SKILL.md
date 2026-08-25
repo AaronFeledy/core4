@@ -98,7 +98,7 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 ## Product truths
 
 - Default provider is `lando` (managed Podman). Do not change it to make a screenshot easier.
-- Default `lando setup` may fail while the committed runtime-bundle manifest is placeholders (404 URLs, zeroed checksums). Say that.
+- The committed runtime-bundle manifest pins real published release assets, so default `lando setup` completes end-to-end. Do not tell readers it fails against placeholder bundles; `LANDO_RUNTIME_BUNDLE_MANIFEST` exists only for testing unpublished local bundles.
 - Supported Linux fallback after default setup fails: `lando setup --provider=docker` (working system Docker) or `LANDO_PROVIDER=docker`. Not "advanced users who prefer Docker."
 - Lando starts the proxy. Do not tell users to launch Traefik.
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
