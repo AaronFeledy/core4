@@ -101,7 +101,9 @@ const writeStderrLine = (line: string): void => {
 };
 
 const runWithLogger = (effect: Effect.Effect<void, unknown, Logger>, options: LoggerLiveOptions = {}) =>
-  Effect.runPromise(effect.pipe(Effect.provide(LoggerLive({ writeLine: writeStderrLine, ...options }))));
+  Effect.runPromise(
+    effect.pipe(Effect.provide(LoggerLive({ writeLine: writeStderrLine, stderrIsTTY: true, ...options }))),
+  );
 
 const logProgram = (run: (logger: Context.Tag.Service<typeof Logger>) => Effect.Effect<void, unknown>) =>
   Effect.flatMap(Logger, run);
@@ -278,7 +280,10 @@ describe("LoggerLive logLevel and stderr", () => {
             logger.info("token=super-secret-value", { token: "super-secret-value" }),
           ).pipe(
             Effect.provide(
-              Layer.mergeAll(LoggerLive({ logLevel: "info", writeLine: writeStderrLine }), redaction),
+              Layer.mergeAll(
+                LoggerLive({ logLevel: "info", writeLine: writeStderrLine, stderrIsTTY: true }),
+                redaction,
+              ),
             ),
           ),
         ),

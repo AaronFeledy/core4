@@ -31,6 +31,7 @@ export interface LoggerLiveOptions {
   readonly mode?: LoggerMode;
   readonly logLevel?: DiagnosticLogLevel | undefined;
   readonly structured?: boolean;
+  readonly stderrIsTTY?: boolean;
   readonly writeLine?: DiagnosticLineWriter;
 }
 
@@ -131,7 +132,7 @@ export const LoggerLive = (options: LoggerLiveOptions = {}): Layer.Layer<Logger>
       EffectLogger.defaultLogger,
       makeStderrEffectLogger({
         structured: options.structured === true,
-        stderrIsTTY: process.stderr.isTTY === true,
+        stderrIsTTY: options.stderrIsTTY === true,
         writeLine: options.writeLine ?? noopWriteLine,
       }),
     ),

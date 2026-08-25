@@ -192,6 +192,7 @@ const runtimeLayerFor = (
     logLevel,
     structured,
     writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
+    stderrIsTTY: process.stderr.isTTY === true,
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
