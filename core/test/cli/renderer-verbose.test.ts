@@ -116,20 +116,22 @@ describe("renderVerboseLine — human line + full event payload", () => {
     expect(line).toContain('"line":"raw trace"');
   });
 
-  test("cli-* lifecycle events return null (suppressed from human paint)", () => {
+  test("cli-* lifecycle events get the fallback payload trace", () => {
     const cliInit = {
       _tag: "cli-start-init",
       timestamp: fixedTimestamp,
     } as unknown as Parameters<typeof renderVerboseLine>[0];
-    expect(renderVerboseLine(cliInit)).toBeNull();
+    const initLine = renderVerboseLine(cliInit);
+    expect(initLine).toContain("· cli-start-init");
+    expect(initLine).toContain('"_tag":"cli-start-init"');
 
     const cliRun = {
       _tag: "cli-doctor-run",
       timestamp: fixedTimestamp,
     } as unknown as Parameters<typeof renderVerboseLine>[0];
-    expect(renderVerboseLine(cliRun)).toBeNull();
+    expect(renderVerboseLine(cliRun)).toContain("· cli-doctor-run");
 
-    // Unknown non-cli tags still get the fallback paint path.
+    // Unknown non-cli tags also get the fallback paint path.
     const other = {
       _tag: "custom.probe",
       timestamp: fixedTimestamp,
@@ -137,7 +139,7 @@ describe("renderVerboseLine — human line + full event payload", () => {
     expect(renderVerboseLine(other)).toContain("· custom.probe");
   });
 
-  test("log.line still renders when cli-* would be suppressed", () => {
+  test("log.line renders its full payload trace", () => {
     const logLine = {
       _tag: "log.line",
       line: "still visible",
@@ -190,7 +192,7 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     expect(stdout).not.toContain("LANDO OPS");
   });
 
-  test("skips cli-* lifecycle paint while still rendering messages", async () => {
+  test("paints cli-* lifecycle traces alongside messages", async () => {
     const io = createBufferedRendererIO();
     const cliInit = Schema.decodeUnknownSync(CliCommandInitEvent)({
       _tag: "cli-start-init",
@@ -212,8 +214,8 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const stdout = io.stdout();
-    expect(stdout).not.toContain("· cli-");
-    expect(stdout).not.toContain("cli-start-init");
+    expect(stdout).toContain("· cli-start-init");
+    expect(stdout).toContain('"_tag":"cli-start-init"');
     expect(stdout).toContain("ℹ fetched 3 plugins");
     expect(stdout).toContain('"_tag":"message.info"');
   });
