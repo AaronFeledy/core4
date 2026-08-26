@@ -137,6 +137,24 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       result: { core: expect.any(String) },
     });
 
+    const jqOk = await runCommand([relocatedBinary, "version", "--jq", ".ok"], {
+      cwd: appRoot,
+      env,
+    });
+    expect(jqOk.exitCode).toBe(0);
+    expect(jqOk.stdout.trim()).toBe("true");
+
+    const jqRangeStarted = performance.now();
+    const jqRange = await runCommand([relocatedBinary, "version", "--jq", "[range(100000000)]"], {
+      cwd: appRoot,
+      env,
+    });
+    expect(jqRange.exitCode).not.toBe(0);
+    expect(performance.now() - jqRangeStarted).toBeLessThan(5000);
+
+    const compiledBinary = await stat(binaryPath);
+    console.log(compiledBinary.size);
+
     const deferredJson = await runCommand([relocatedBinary, "meta:events:follow", "--format=json"], {
       cwd: appRoot,
       env,
