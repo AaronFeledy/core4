@@ -96,4 +96,16 @@ describe("assertJqExpressionSafe", () => {
   test("allows string times dynamic multiplier", () => {
     assertAllows('"a" * .n');
   });
+
+  test("rejects huge slice start assignment", () => {
+    assertThrows(".[999999999:] = [0]");
+  });
+
+  test("rejects huge slice end assignment", () => {
+    assertThrows(".[ :999999999] = [0]");
+  });
+
+  test("allows huge slice lookup without assignment", () => {
+    assertAllows(".[999999999:]");
+  });
 });

@@ -142,6 +142,10 @@ const walk = (node: unknown, findings: Findings, inAssignmentLeft: boolean): voi
   if (inAssignmentLeft && node.kind === "IndexAccess" && isHugeFoldedNumber(node.index)) {
     findings.hasHugeIndexLiteral = true;
   }
+  if (inAssignmentLeft && node.kind === "Slice") {
+    markHugeIfIndex(node.start, findings);
+    markHugeIfIndex(node.end, findings);
+  }
 
   for (const [key, value] of Object.entries(node)) {
     const nextInLeft = node.kind === "Assignment" ? key === "left" : inAssignmentLeft;
