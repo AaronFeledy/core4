@@ -32,6 +32,17 @@ const sandboxUninstallIo = (root: string) => ({
   shellProfilePath: join(root, ".profile"),
 });
 
+const withoutHostRuntimes = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const previousPath = process.env.PATH;
+  process.env.PATH = "/no-such-lando-runtime-path";
+  try {
+    return await fn();
+  } finally {
+    if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
+    else process.env.PATH = previousPath;
+  }
+};
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
@@ -1065,6 +1076,135 @@ describe("meta:uninstall", () => {
       expect(runningAppsStep?.error).toContain("discovery failed");
 
       // Critical: data/cache/config directories must NOT be deleted
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(existsSync(userConfRoot)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge proceeds when no runtime is available and no apps are recorded", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+
+      const result = await withoutHostRuntimes(() =>
+        Effect.runPromise(
+          metaUninstallSpec.run({
+            flags: { yes: true, purge: true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _userConfRoot: userConfRoot,
+            _execPath: join(root, "lando"),
+            ...sandboxCliExtras(root),
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.status).toBe("owned");
+      expect(runningAppsStep?.outcome).toBe("completed");
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(existsSync(userConfRoot)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge proceeds when only the reserved global app is recorded and no runtime is available", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+      const plansDir = join(userDataRoot, "plugins", "@lando", "provider-lando", "applied-plans");
+      mkdirSync(plansDir, { recursive: true });
+      writeFileSync(
+        join(plansDir, "global.json"),
+        JSON.stringify({
+          version: 1,
+          data: {
+            id: "global",
+            name: "global",
+            root: join(userDataRoot, "global"),
+            provider: "lando",
+            services: { "ssh-agent": {} },
+          },
+        }),
+      );
+
+      const result = await withoutHostRuntimes(() =>
+        Effect.runPromise(
+          metaUninstallSpec.run({
+            flags: { yes: true, purge: true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _userConfRoot: userConfRoot,
+            _execPath: join(root, "lando"),
+            ...sandboxCliExtras(root),
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.status).toBe("owned");
+      expect(runningAppsStep?.outcome).toBe("completed");
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(existsSync(userConfRoot)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge fails closed when apps are recorded but no runtime is available", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(userDataRoot, { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      const userConfRoot = join(root, "conf");
+      mkdirSync(userConfRoot, { recursive: true });
+      const appsDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      mkdirSync(appsDir, { recursive: true });
+      writeFileSync(
+        join(appsDir, "recorded-app.json"),
+        JSON.stringify({
+          plan: {
+            id: "recorded-app",
+            name: "recorded-app",
+            root: "/fake/path",
+            services: { web: {} },
+          },
+        }),
+      );
+
+      const result = await withoutHostRuntimes(() =>
+        Effect.runPromise(
+          metaUninstallSpec.run({
+            flags: { yes: true, purge: true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _userConfRoot: userConfRoot,
+            _execPath: join(root, "lando"),
+            ...sandboxCliExtras(root),
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(true);
+      const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
+      expect(runningAppsStep?.status).toBe("user-owned");
+      expect(runningAppsStep?.outcome).toBe("failed");
+      expect(runningAppsStep?.error).toContain("Cannot verify");
+      expect(runningAppsStep?.error).toContain("neither docker nor podman");
       expect(existsSync(userDataRoot)).toBe(true);
       expect(existsSync(userCacheRoot)).toBe(true);
       expect(existsSync(userConfRoot)).toBe(true);
