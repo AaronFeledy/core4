@@ -11,9 +11,11 @@ import {
   type ProxyServiceShape,
 } from "@lando/sdk/services";
 
+import { persistPortAcquisition } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
+  acquisitionStateFile,
   defaultTlsFile,
   dynamicConfigDir,
   joinFor,
@@ -93,6 +95,7 @@ export const makeTraefikProxyService = (
           routingStateFile(dependencies.paths),
           endpoints.join("\n"),
         );
+        yield* persistPortAcquisition(dependencies);
       }).pipe(Effect.mapError(setupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
@@ -149,6 +152,7 @@ export const makeTraefikProxyService = (
         );
       }
       yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
       yield* removeAllCertificates(dependencies);
       routes.clear();
