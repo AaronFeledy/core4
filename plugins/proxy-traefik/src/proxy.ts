@@ -26,12 +26,7 @@ import {
   routingStateFile,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
-import {
-  DEFAULT_AUTHORITY_PORTS,
-  authoritiesFor,
-  authorityPortsFrom,
-  renderTraefikDynamicConfig,
-} from "./routing.ts";
+import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
@@ -119,18 +114,17 @@ export const makeTraefikProxyService = (
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
-        const services = yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
-        const endpoints = services.find((service) => service.name === TRAEFIK_PROXY_ID)?.endpoints ?? [];
-        authorityPorts = authorityPortsFrom(endpoints);
-        yield* dependencies.fileSystem.writeAtomic(
-          routingStateFile(dependencies.paths),
-          endpoints.join("\n"),
-        );
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
         const socketProxy = yield* resolveSocketProxy(dependencies);
-        yield* persistPortAcquisition({
+        const decision = yield* persistPortAcquisition({
           ...dependencies,
           ...(socketProxy === undefined ? {} : { socketProxy }),
         });
+        authorityPorts = { http: decision.httpPort, https: decision.httpsPort };
+        yield* dependencies.fileSystem.writeAtomic(
+          routingStateFile(dependencies.paths),
+          [`http://127.0.0.1:${decision.httpPort}`, `https://127.0.0.1:${decision.httpsPort}`].join("\n"),
+        );
       }).pipe(Effect.mapError(setupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {

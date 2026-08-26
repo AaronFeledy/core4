@@ -14,6 +14,7 @@ import {
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
+import { isSocketProxyInstalled } from "./socket-proxy-install.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
 export const AcquisitionState = Schema.Struct({
@@ -132,20 +133,27 @@ export const persistPortAcquisition = (
 ): Effect.Effect<AcquisitionDecision, unknown> =>
   Effect.gen(function* () {
     const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-    const helperInstalled = previous?.helperInstalled ?? false;
-    const socketsActive = previous?.socketsActive ?? false;
-    const decision = yield* classifyCurrent(dependencies, helperInstalled, socketsActive);
+    const unitsInstalled =
+      dependencies.socketProxy === undefined
+        ? (previous?.helperInstalled ?? false)
+        : yield* isSocketProxyInstalled(dependencies.socketProxy);
+    const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
+    const decision = yield* classifyCurrent(dependencies, helperInstalled, false);
     const resolved = yield* (() => {
       switch (decision.mode) {
         case "needs-helper":
+        case "socket-helper":
           return isLinuxFamily(dependencies.paths.platform) && dependencies.socketProxy !== undefined
             ? resolveNeedsHelper(dependencies.socketProxy)
-            : Effect.succeed({ decision: degradedDecision, helperInstalled: false, socketsActive: false });
+            : Effect.succeed({
+                decision: decision.mode === "needs-helper" ? degradedDecision : decision,
+                helperInstalled,
+                socketsActive: false,
+              });
         case "direct":
         case "occupied-hop":
-        case "socket-helper":
         case "degraded-high-ports":
-          return Effect.succeed({ decision, helperInstalled, socketsActive });
+          return Effect.succeed({ decision, helperInstalled, socketsActive: false });
         default:
           return assertNever(decision.mode);
       }

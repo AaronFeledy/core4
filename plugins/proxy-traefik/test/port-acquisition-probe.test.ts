@@ -141,6 +141,25 @@ describe("classifyAcquisition", () => {
     expect(decision.httpsPort).toBe(443);
   });
 
+  test("does not treat stale socketsActive as proof sockets are up", () => {
+    // Given: units exist and JSON still says sockets are active, but forwards fail with EACCES.
+    const input = linuxInput({
+      httpBind: bind("EACCES"),
+      httpsBind: bind("EACCES"),
+      httpForward: forward("failure"),
+      httpsForward: forward("failure"),
+      helperInstalled: true,
+      socketsActive: true,
+    });
+
+    // When: classification runs.
+    const decision = classifyAcquisition(input);
+
+    // Then: do not degrade — later phase must restart the helper.
+    expect(decision.mode === "needs-helper" || decision.mode === "socket-helper").toBe(true);
+    expect(decision.mode).not.toBe("degraded-high-ports");
+  });
+
   test("selects degraded-high-ports when non-Linux cannot acquire privileged ports", () => {
     // Given: darwin, no healthy proxy, bind refused / other-error, no NAT helper.
     const input = linuxInput({

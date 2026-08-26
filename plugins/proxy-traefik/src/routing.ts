@@ -20,13 +20,23 @@ export const DEFAULT_AUTHORITY_PORTS: AuthorityPorts = {
   https: TRAEFIK_HTTPS_PORT,
 };
 
+const portFromUrl = (parsed: URL): number | undefined => {
+  if (parsed.port !== "") {
+    const port = Number(parsed.port);
+    return Number.isSafeInteger(port) && port >= 1 && port <= 65_535 ? port : undefined;
+  }
+  if (parsed.protocol === "http:") return 80;
+  if (parsed.protocol === "https:") return 443;
+  return undefined;
+};
+
 export const authorityPortsFrom = (endpoints: ReadonlyArray<string>): AuthorityPorts => {
   const ports = { ...DEFAULT_AUTHORITY_PORTS };
   for (const endpoint of endpoints) {
     if (!URL.canParse(endpoint)) continue;
     const parsed = new URL(endpoint);
-    const port = Number(parsed.port);
-    if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) continue;
+    const port = portFromUrl(parsed);
+    if (port === undefined) continue;
     if (parsed.protocol === "http:") ports.http = port;
     if (parsed.protocol === "https:") ports.https = port;
   }

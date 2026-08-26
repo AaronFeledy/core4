@@ -104,19 +104,22 @@ export interface ExecuteSocketProxyHelperInput {
   ) => Promise<{ readonly exitCode: number; readonly stdout?: string; readonly stderr?: string }>;
 }
 
+const shQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
 export const executeSocketProxyHelperStep = async (
   input: ExecuteSocketProxyHelperInput,
 ): Promise<UninstallStepOutcome> => {
   const owned = classifyHelperPaths(input.paths, input.io).owned;
-  const stopArgs = ["systemctl", "stop", ...SOCKET_UNIT_NAMES];
   if (input.elevate !== undefined) {
-    await input.elevate(stopArgs);
+    const script = [
+      `systemctl stop ${SOCKET_UNIT_NAMES.join(" ")}`,
+      ...owned.map((path) => `rm -f -- ${shQuote(path)}`),
+      "systemctl daemon-reload",
+    ].join("\n");
+    await input.elevate(["/bin/sh", "-c", script]);
   }
   for (const path of owned) {
     await input.remove(path);
-  }
-  if (input.elevate !== undefined) {
-    await input.elevate(["systemctl", "daemon-reload"]);
   }
   return "completed";
 };

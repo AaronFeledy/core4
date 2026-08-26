@@ -123,7 +123,7 @@ const classifyScheme = (
         ...(scheme.holder === undefined ? {} : { notice: `occupied-hop holder=${scheme.holder}` }),
       };
     case "EACCES":
-      if (!isLinuxFamily(input.platform) || (input.helperInstalled && input.socketsActive)) {
+      if (!isLinuxFamily(input.platform)) {
         return { mode: "degraded-high-ports", port: ports.high };
       }
       if (input.helperInstalled) {

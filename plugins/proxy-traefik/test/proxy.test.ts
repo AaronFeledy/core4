@@ -5,6 +5,7 @@ import { FileNotFoundError } from "@lando/sdk/errors";
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikProxyService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 
 const app = AppId.make("demo");
@@ -24,12 +25,38 @@ const routes = [
   },
 ];
 
+const highPortOverride: { readonly http: SchemeProbe; readonly https: SchemeProbe } = {
+  http: { bind: { kind: "other-error", code: "ECONNREFUSED" }, forward: { kind: "failure" } },
+  https: { bind: { kind: "other-error", code: "ECONNREFUSED" }, forward: { kind: "failure" } },
+};
+
+const unusedRunner = {
+  run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+  stream: () => {
+    throw new Error("stream is unused");
+  },
+};
+
+const unusedPrivilege = {
+  elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+};
+
 const makeHarness = (
   failAtomic = false,
   endpoints: ReadonlyArray<string> = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
+  classifyOverride: { readonly http: SchemeProbe; readonly https: SchemeProbe } = highPortOverride,
 ) => {
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
+  const socketProxy = {
+    user: "test",
+    hasHostSystemd: () => false,
+    exists: () => Effect.succeed(false),
+    readText: () => Effect.fail(new Error("missing")),
+    processRunner: unusedRunner,
+    privilege: unusedPrivilege,
+    classifyOverride,
+  };
   const service = makeTraefikProxyService({
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
@@ -63,6 +90,7 @@ const makeHarness = (
           return [{ name: "traefik", state: "running", endpoints }];
         }),
     },
+    socketProxy,
   });
   const makePersistedService = () =>
     makeTraefikProxyService({
@@ -154,8 +182,8 @@ describe("Traefik ProxyService", () => {
     expect([...harness.files.values()][0]).not.toContain("api.demo.lndo.site");
   });
 
-  test("uses materialized Traefik publications for live and persisted authorities", async () => {
-    const harness = makeHarness(false, ["http://127.0.0.1:39080", "https://127.0.0.1:39443"]);
+  test("uses acquisition decision ports for live and persisted authorities", async () => {
+    const harness = makeHarness();
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
     const applied = await Effect.runPromise(harness.service.applyRoutes(routes, app));
@@ -163,9 +191,9 @@ describe("Traefik ProxyService", () => {
 
     const status = await Effect.runPromise(freshService.status);
 
-    expect(applied.authorities.map(({ port }) => port)).toEqual([39443, 39080]);
+    expect(applied.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
     expect(status.state).toBe("running");
-    expect(status.authorities.map(({ port }) => port)).toEqual([39443, 39080]);
+    expect(status.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
   });
 
   test("stop durably disables routing and clears configured apps", async () => {
