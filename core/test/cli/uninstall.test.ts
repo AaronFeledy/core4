@@ -25,11 +25,25 @@ const makeRoots = () => {
 const sandboxCliExtras = (root: string) => ({
   _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
+  _socketProxyUnitPaths: [
+    join(root, "lando-proxy-http.socket"),
+    join(root, "lando-proxy-http.service"),
+    join(root, "lando-proxy-https.socket"),
+    join(root, "lando-proxy-https.service"),
+  ],
+  _socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
 });
 
 const sandboxUninstallIo = (root: string) => ({
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
+  socketProxyUnitPaths: [
+    join(root, "lando-proxy-http.socket"),
+    join(root, "lando-proxy-http.service"),
+    join(root, "lando-proxy-https.socket"),
+    join(root, "lando-proxy-https.service"),
+  ],
+  socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
 });
 
 const withoutHostRuntimes = async <T>(fn: () => Promise<T>): Promise<T> => {
@@ -1353,6 +1367,71 @@ describe("meta:uninstall", () => {
     } finally {
       if (previousProfile === undefined) Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
       else process.env.LANDO_SHELL_PROFILE = previousProfile;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test("dry-run lists owned socket-proxy helper files and skips marker-mismatch files", async () => {
+    // Given: one owned unit, one unmarked unit, and an owned polkit rule.
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const ownedSocket = join(root, "lando-proxy-http.socket");
+    const foreignService = join(root, "lando-proxy-http.service");
+    const ownedHttpsSocket = join(root, "lando-proxy-https.socket");
+    const ownedHttpsService = join(root, "lando-proxy-https.service");
+    const polkit = join(root, "10-lando-proxy.rules");
+    writeFileSync(ownedSocket, "# lando-proxy-socket-helper\n[Socket]\n", "utf-8");
+    writeFileSync(foreignService, "[Service]\nExecStart=/usr/bin/unrelated\n", "utf-8");
+    writeFileSync(ownedHttpsSocket, "# lando-proxy-socket-helper\n[Socket]\n", "utf-8");
+    writeFileSync(ownedHttpsService, "# lando-proxy-socket-helper\n[Service]\n", "utf-8");
+    writeFileSync(polkit, "# lando-proxy-socket-helper\npolkit.addRule(function () {});\n", "utf-8");
+    try {
+      // When: uninstall plans a dry-run.
+      const result = await Effect.runPromise(
+        uninstall({
+          dryRun: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
+        }),
+      );
+      const step = result.steps.find((entry) => entry.id === "socket-proxy-helper");
+
+      // Then: owned files are listed and the unmarked file is not treated as owned.
+      expect(step?.status).toBe("owned");
+      expect(step?.target).toContain(ownedSocket);
+      expect(step?.target).toContain(ownedHttpsSocket);
+      expect(step?.target).toContain(ownedHttpsService);
+      expect(step?.target).toContain(polkit);
+      expect(step?.target).not.toContain(foreignService);
+      expect(formatUninstallResult(result)).toContain(ownedSocket);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not delete a marker-mismatch socket-proxy helper file", async () => {
+    // Given: a unit file without the Lando ownership marker.
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const foreignService = join(root, "lando-proxy-http.service");
+    writeFileSync(foreignService, "[Service]\nExecStart=/usr/bin/unrelated\n", "utf-8");
+    try {
+      // When: uninstall runs destructively.
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          ...sandboxUninstallIo(root),
+          listDiscoveredApps: async () => [],
+        }),
+      );
+      const step = result.steps.find((entry) => entry.id === "socket-proxy-helper");
+
+      // Then: the unmarked file is left in place.
+      expect(step?.status).toBe("user-owned");
+      expect(existsSync(foreignService)).toBe(true);
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

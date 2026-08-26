@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import { StreamFrame } from "@lando/sdk/schema";
-import { ProxyService } from "@lando/sdk/services";
+import { PathsService, ProxyService } from "@lando/sdk/services";
 import { makeTestProxyService } from "@lando/sdk/test";
 
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
@@ -15,6 +17,7 @@ import {
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
 
@@ -38,6 +41,20 @@ const resultEnvelope = (ndjson: string) => {
   const frame = decodeFrames(ndjson).at(-1);
   if (frame?._tag !== "result") throw new Error("expected terminal result frame");
   return frame.envelope;
+};
+
+const writeAcquisitionState = (
+  mode: string,
+): { readonly layer: Layer.Layer<PathsService>; readonly cleanup: () => void } => {
+  const root = mkdtempSync(join(tmpdir(), "lando-doctor-acquisition-"));
+  const paths = makeLandoPaths({ userDataRoot: root });
+  const stateFile = join(paths.globalAppRoot, "proxy-traefik", "dynamic", ".lando-port-acquisition.json");
+  mkdirSync(join(stateFile, ".."), { recursive: true });
+  writeFileSync(stateFile, `${JSON.stringify({ mode, httpPort: 38080, httpsPort: 38443, notices: [] })}\n`);
+  return {
+    layer: Layer.succeed(PathsService, paths),
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
 };
 
 describe("meta:doctor subsystem checks", () => {
@@ -208,6 +225,59 @@ describe("meta:doctor subsystem checks", () => {
     expect(proxy?.context.state).toBe("stopped");
     expect(proxy?.solutions[0]?.kind).toBe("automatic");
     expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
+  });
+
+  test("surfaces degraded-high-ports remediation from persisted acquisition state", async () => {
+    // Given: a running Traefik proxy whose persisted acquisition mode is degraded-high-ports.
+    const acquisition = writeAcquisitionState("degraded-high-ports");
+    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(ProxyService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+
+    try {
+      // When: doctor probes the proxy subsystem.
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "proxy");
+
+      // Then: the acquisition mode and high-port --fix remediation surface.
+      expect(proxy?.context.acquisitionMode).toBe("degraded-high-ports");
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
+      expect(proxy?.solutions[0]?.description).toContain(":38080/:38443");
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
+  test("surfaces occupied-hop remediation from persisted acquisition state", async () => {
+    // Given: a running Traefik proxy whose persisted acquisition mode is occupied-hop.
+    const acquisition = writeAcquisitionState("occupied-hop");
+    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(ProxyService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+
+    try {
+      // When: doctor probes the proxy subsystem.
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "proxy");
+
+      // Then: the occupied-hop mode and port-in-use remediation surface.
+      expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.solutions[0]?.description).toContain("port in use");
+    } finally {
+      acquisition.cleanup();
+    }
   });
 
   test("wires the real runProbe-backed healthcheck and scanner runners, not the unavailable stubs", async () => {

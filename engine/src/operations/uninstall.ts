@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
 
+import { PrivilegeService } from "@lando/sdk/services";
+
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
@@ -21,6 +23,12 @@ import {
   formatUninstallRuntimeDirStepError,
   leftoverUninstallRuntimeDirError,
 } from "./uninstall-runtime-error";
+import {
+  DEFAULT_SOCKET_PROXY_POLKIT_PATH,
+  DEFAULT_SOCKET_PROXY_UNIT_PATHS,
+  executeSocketProxyHelperStep,
+  socketProxyHelperStep,
+} from "./uninstall-socket-proxy";
 
 export {
   chmodTreeUserWritable,
@@ -101,6 +109,11 @@ export interface UninstallOptions {
   readonly reportFallbackDir?: string;
   readonly cgroupsDelegatePath?: string;
   readonly shellProfilePath?: string;
+  readonly socketProxyUnitPaths?: ReadonlyArray<string>;
+  readonly socketProxyPolkitPath?: string;
+  readonly elevate?: (
+    command: ReadonlyArray<string>,
+  ) => Promise<{ readonly exitCode: number; readonly stdout?: string; readonly stderr?: string }>;
   readonly readText?: (path: string) => string;
   readonly writeText?: (path: string, content: string) => Promise<void> | void;
   readonly terminateRuntimeBinProcesses?: (runtimeDir: string) => Promise<void>;
@@ -563,6 +576,13 @@ export const buildUninstallPlan = async (
       detail: "Remove automatically only when the binary lives in Lando's managed bin directory.",
     },
     cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
+    socketProxyHelperStep(
+      {
+        unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
+        polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
+      },
+      { exists, readText },
+    ),
     shellEntriesStep(shellProfilePath, exists, readText, mode),
     {
       id: "user-conf-root",
@@ -676,6 +696,28 @@ const executeUninstall = async (
       }
       continue;
     }
+    if (step.id === "socket-proxy-helper") {
+      if (step.status !== "owned") {
+        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+        continue;
+      }
+      try {
+        const outcome = await executeSocketProxyHelperStep({
+          paths: {
+            unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
+            polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
+          },
+          io: { exists, readText },
+          remove,
+          ...(options.elevate === undefined ? {} : { elevate: options.elevate }),
+        });
+        executed.push({ ...step, outcome });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+      }
+      continue;
+    }
     if (step.id === "shell-entries") {
       if (step.status !== "owned") {
         executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
@@ -764,13 +806,20 @@ const executeUninstall = async (
 export const uninstall = (options: UninstallOptions = {}): Effect.Effect<UninstallResult> =>
   Effect.gen(function* () {
     const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
+    const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const elevate =
+      options.elevate ??
+      (privilege._tag === "Some"
+        ? (command: ReadonlyArray<string>) => Effect.runPromise(privilege.value.elevate(command))
+        : undefined);
+    const resolvedOptions = elevate === undefined ? options : { ...options, elevate };
     const dryRun = options.dryRun === true;
     const yes = options.yes === true;
     const requestedMode: UninstallMode | undefined =
       options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
     const mode = requestedMode ?? "keep-data";
     if (!dryRun && yes)
-      return yield* Effect.promise(() => executeUninstall(options, mode, hostMaintenanceRegistry));
+      return yield* Effect.promise(() => executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry));
     const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
     return {
       dryRun,

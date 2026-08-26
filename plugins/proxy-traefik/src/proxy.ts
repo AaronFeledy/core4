@@ -14,7 +14,7 @@ import {
   type ProxyServiceShape,
 } from "@lando/sdk/services";
 
-import { persistPortAcquisition } from "./port-acquisition-state.ts";
+import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
@@ -33,6 +33,7 @@ import {
   renderTraefikDynamicConfig,
 } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
+import { stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { persistedStatus } from "./status.ts";
 import {
@@ -76,6 +77,32 @@ const proxyError = (operation: string, cause: unknown): ProxyError =>
     cause,
   });
 
+const resolveSocketProxy = (dependencies: TraefikProxyDependencies) =>
+  Effect.gen(function* () {
+    if (dependencies.socketProxy !== undefined) return dependencies.socketProxy;
+    const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const interaction = yield* Effect.serviceOption(InteractionService);
+    return liveSocketProxy({
+      privilege: privilege._tag === "Some" ? privilege.value : undefined,
+      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
+      interaction: interaction._tag === "Some" ? interaction.value : undefined,
+    });
+  });
+
+const releaseHelperSockets = (dependencies: TraefikProxyDependencies) =>
+  Effect.gen(function* () {
+    const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+    if (previous?.mode !== "socket-helper" || previous.helperInstalled !== true) return;
+    const socketProxy = yield* resolveSocketProxy(dependencies);
+    if (socketProxy === undefined) return;
+    yield* stopSockets({
+      processRunner: socketProxy.processRunner,
+      privilege: socketProxy.privilege,
+      ...(socketProxy.probeForward === undefined ? {} : { probeForward: socketProxy.probeForward }),
+    });
+  });
+
 export const makeTraefikProxyService = (
   dependencies: TraefikProxyDependencies,
 ): ProxyServiceShape & {
@@ -99,7 +126,11 @@ export const makeTraefikProxyService = (
           routingStateFile(dependencies.paths),
           endpoints.join("\n"),
         );
-        yield* persistPortAcquisition(dependencies);
+        const socketProxy = yield* resolveSocketProxy(dependencies);
+        yield* persistPortAcquisition({
+          ...dependencies,
+          ...(socketProxy === undefined ? {} : { socketProxy }),
+        });
       }).pipe(Effect.mapError(setupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
@@ -146,6 +177,7 @@ export const makeTraefikProxyService = (
       ),
     status: persistedStatus(dependencies).pipe(Effect.mapError((cause) => proxyError("status", cause))),
     stop: Effect.gen(function* () {
+      yield* releaseHelperSockets(dependencies);
       const directory = dynamicConfigDir(dependencies.paths);
       if (yield* dependencies.fileSystem.exists(directory)) {
         const files = yield* dependencies.fileSystem.readDir(directory);
