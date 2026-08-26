@@ -75,14 +75,9 @@ export const acquirePorts = (input: {
     const host = input.host ?? LOOPBACK_HOST;
     const httpForward = yield* probeForward(host, DESIRED_HTTP_PORT);
     const httpsForward = yield* probeForward(host, DESIRED_HTTPS_PORT);
-    const httpBind =
-      httpForward.kind === "success"
-        ? { kind: "success" as const }
-        : yield* probeBind(host, DESIRED_HTTP_PORT);
-    const httpsBind =
-      httpsForward.kind === "success"
-        ? { kind: "success" as const }
-        : yield* probeBind(host, DESIRED_HTTPS_PORT);
+    const occupied = { kind: "EADDRINUSE" as const, code: "EADDRINUSE" as const };
+    const httpBind = httpForward.kind === "success" ? occupied : yield* probeBind(host, DESIRED_HTTP_PORT);
+    const httpsBind = httpsForward.kind === "success" ? occupied : yield* probeBind(host, DESIRED_HTTPS_PORT);
     const httpHolder = yield* holderFor(DESIRED_HTTP_PORT, httpBind);
     const httpsHolder = yield* holderFor(DESIRED_HTTPS_PORT, httpsBind);
     return classifyAcquisition({
@@ -149,7 +144,7 @@ export const persistPortAcquisition = (
             return resolveNeedsHelper(socketProxy);
           }
           return Effect.succeed({
-            decision: decision.mode === "needs-helper" ? degradedDecision : decision,
+            decision: degradedDecision,
             helperInstalled,
             socketsActive: false,
           });

@@ -135,7 +135,7 @@ export const buildProxyCheck = (
           const defaultDomain = yield* resolveProxyDefaultDomain;
           yield* Effect.scoped(proxy.setup({ defaultDomain }));
           const after = yield* readAcquisitionMode();
-          if (after === "degraded-high-ports" || after === "needs-helper") {
+          if (after === "degraded-high-ports" || after === "needs-helper" || after === "occupied-hop") {
             return yield* Effect.fail(new Error("Proxy is still serving on high ports after setup."));
           }
         }),

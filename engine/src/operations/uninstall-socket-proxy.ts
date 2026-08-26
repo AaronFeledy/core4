@@ -109,7 +109,8 @@ export const executeSocketProxyHelperStep = async (
       ...owned.map((path) => `rm -f -- ${shQuote(path)}`),
       "systemctl daemon-reload",
     ].join("\n");
-    await input.elevate(["/bin/sh", "-c", script]);
+    const elevated = await input.elevate(["/bin/sh", "-c", script]);
+    if (elevated.exitCode !== 0) return "failed";
   }
   for (const path of owned) {
     await input.remove(path);

@@ -48,4 +48,19 @@ describe("executeSocketProxyHelperStep elevation", () => {
     expect(script).toContain(roots.socketProxyPolkitPath);
     expect(script).toContain("systemctl");
   });
+
+  test("returns failed when the elevated cleanup script exits nonzero", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-socket-fail-");
+    const unitPaths = [join(roots.socketProxyUnitDir, "lando-proxy-http.socket")];
+    const outcome = await executeSocketProxyHelperStep({
+      paths: { unitPaths, polkitPath: roots.socketProxyPolkitPath },
+      io: {
+        exists: () => true,
+        readText: () => `${SOCKET_PROXY_UNIT_MARKER}\n`,
+      },
+      remove: async () => undefined,
+      elevate: async () => ({ exitCode: 1, stderr: "denied" }),
+    });
+    expect(outcome).toBe("failed");
+  });
 });

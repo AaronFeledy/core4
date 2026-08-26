@@ -280,6 +280,26 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
+  test("does not report proxy --fix recovered while acquisition stays occupied-hop", async () => {
+    const acquisition = writeAcquisitionState("occupied-hop");
+    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(ProxyService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+    try {
+      const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "proxy");
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.context.fixOutcome).not.toBe("recovered");
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
   test("surfaces occupied-hop remediation from persisted acquisition state", async () => {
     // Given: a running Traefik proxy whose persisted acquisition mode is occupied-hop.
     const acquisition = writeAcquisitionState("occupied-hop");
