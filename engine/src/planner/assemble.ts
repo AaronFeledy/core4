@@ -10,6 +10,7 @@ import {
 import {
   CapabilityError,
   type CommandAliasConflictError,
+  type ConfigExpressionError,
   LandofileValidationError,
   type NotImplementedError,
   type PublicationUnsupportedError,
@@ -43,6 +44,7 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -133,6 +135,7 @@ export const planApp = (
   | NotImplementedError
   | PublicationUnsupportedError
   | CommandAliasConflictError
+  | ConfigExpressionError
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = `${appRoot}/.lando.yml`;
@@ -471,11 +474,15 @@ export const planApp = (
       yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
     }
 
+    const defaultDomain =
+      globalConfig === undefined ? DEFAULT_PROXY_DOMAIN : readProxyDefaultDomain(globalConfig);
     const finalized = yield* finalizeServices({
       plannedServiceDrafts,
       appId,
       appRoot,
+      appName,
       appSlug,
+      defaultDomain,
       provider,
       providerCapabilities,
       metadata,

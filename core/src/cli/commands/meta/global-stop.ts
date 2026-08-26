@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import type {
   CapabilityError,
   CommandAliasConflictError,
+  ConfigExpressionError,
   EventError,
   GlobalAppError,
   LandofileParseError,
@@ -46,6 +47,7 @@ export const GlobalStopResultSchema = Schema.Struct({
 
 export type GlobalStopError =
   | CommandAliasConflictError
+  | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

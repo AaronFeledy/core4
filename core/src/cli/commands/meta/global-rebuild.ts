@@ -4,6 +4,7 @@ import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import type {
   CapabilityError,
   CommandAliasConflictError,
+  ConfigExpressionError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -70,6 +71,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 
 export type GlobalRebuildError =
   | CommandAliasConflictError
+  | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

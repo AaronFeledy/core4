@@ -8,6 +8,7 @@ export interface ExpressionContext {
   readonly env?: Readonly<Record<string, string>> | undefined;
   readonly paths?: Readonly<Record<string, unknown>> | undefined;
   readonly app?: Readonly<Record<string, unknown>> | undefined;
+  readonly proxy?: Readonly<Record<string, unknown>> | undefined;
   readonly global?: Readonly<Record<string, unknown>> | undefined;
   readonly vars?: Readonly<Record<string, unknown>> | undefined;
   readonly service?: Readonly<Record<string, unknown>> | undefined;
@@ -26,6 +27,7 @@ export const ExpressionContext: Schema.Schema<ExpressionContext> = Schema.Struct
   env: Schema.optional(StringRecord),
   paths: Schema.optional(UnknownRecord),
   app: Schema.optional(UnknownRecord),
+  proxy: Schema.optional(UnknownRecord),
   global: Schema.optional(UnknownRecord),
   vars: Schema.optional(UnknownRecord),
   service: Schema.optional(UnknownRecord),

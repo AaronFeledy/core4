@@ -4,6 +4,7 @@ import type { ShareAppError } from "@lando/sdk/app";
 import {
   type CapabilityError,
   type CommandAliasConflictError,
+  type ConfigExpressionError,
   type NoProviderInstalledError,
   type ProviderConfigError,
   type ProviderUnavailableError,
@@ -71,6 +72,7 @@ type AppPlanResolutionError =
   | UserLandofileError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError

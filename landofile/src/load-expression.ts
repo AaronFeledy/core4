@@ -14,6 +14,7 @@ import {
   type ExpressionNode,
   type ExpressionTemplate,
   evaluateTemplateEither,
+  expressionTouchesOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 
@@ -144,6 +145,9 @@ export const resolveLandofileLoadExpressions = (
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
           if (Either.isLeft(parsed)) throw parsed.left;
+          if (expressionTouchesOnlyScopes(parsed.right, ["app", "proxy"])) {
+            return value;
+          }
           const expression = templateExpression(parsed.right);
           if (expression === undefined || !containsLoad(expression) || containsContextPath(expression)) {
             throw new NotImplementedError({

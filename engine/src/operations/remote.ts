@@ -6,6 +6,7 @@ import type { PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app
 import type {
   CapabilityError,
   CommandAliasConflictError,
+  ConfigExpressionError,
   NoProviderInstalledError,
   ProviderConfigError,
   ProviderUnavailableError,
@@ -123,6 +124,7 @@ type AppPlanResolutionError =
   | UserLandofileError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderUnavailableError

@@ -70,6 +70,7 @@ import type {
   CommandAliasConflictError,
   ComposeKeyRejectedError,
   ConfigError,
+  ConfigExpressionError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
   EventError,
@@ -548,6 +549,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | NotImplementedError
       | PublicationUnsupportedError
       | CommandAliasConflictError
+      | ConfigExpressionError
     >;
   }
 >() {}

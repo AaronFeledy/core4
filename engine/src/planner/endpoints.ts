@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import {
   type CapabilityError,
+  type ConfigExpressionError,
   LandofileValidationError,
   PublicationUnsupportedError,
 } from "@lando/sdk/errors";
@@ -32,6 +33,7 @@ import {
 import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
+import { evaluateRouteHostname } from "./route-hostname.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { expandExcludesToShadows } from "./storage.ts";
 
@@ -59,37 +61,52 @@ export const resolveRoute = (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: RouteInput,
-): Effect.Effect<RoutePlan, LandofileValidationError> => {
-  const candidates = endpoints.filter(isRoutableEndpoint);
-  const endpoint =
-    route.endpoint === undefined
-      ? candidates[0]
-      : candidates.find((candidate) => {
-          if (typeof route.endpoint === "number") return candidate.port === route.endpoint;
-          return candidate.name === route.endpoint;
-        });
-  if (endpoint === undefined) {
-    return Effect.fail(
-      new LandofileValidationError({
-        message: `Route ${route.hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
-        file: `${appRoot}/.lando.yml`,
-        issues: [`services.${serviceName}.routes`],
-      }),
-    );
-  }
-  return Effect.succeed({
-    hostname: route.hostname,
-    scheme: route.scheme ?? "https",
-    service: ServiceName.make(serviceName),
-    ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
-    ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
-    backend: {
+  expression: {
+    readonly routeIndex: number;
+    readonly appName: string;
+    readonly appSlug: string;
+    readonly defaultDomain: string;
+  },
+): Effect.Effect<RoutePlan, LandofileValidationError | ConfigExpressionError> =>
+  Effect.gen(function* () {
+    const hostname = yield* evaluateRouteHostname(route.hostname, {
+      appRoot,
+      serviceName,
+      routeIndex: expression.routeIndex,
+      appName: expression.appName,
+      appSlug: expression.appSlug,
+      defaultDomain: expression.defaultDomain,
+    });
+    const candidates = endpoints.filter(isRoutableEndpoint);
+    const endpoint =
+      route.endpoint === undefined
+        ? candidates[0]
+        : candidates.find((candidate) => {
+            if (typeof route.endpoint === "number") return candidate.port === route.endpoint;
+            return candidate.name === route.endpoint;
+          });
+    if (endpoint === undefined) {
+      return yield* Effect.fail(
+        new LandofileValidationError({
+          message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+          file: `${appRoot}/.lando.yml`,
+          issues: [`services.${serviceName}.routes`],
+        }),
+      );
+    }
+    return {
+      hostname,
+      scheme: route.scheme ?? "https",
       service: ServiceName.make(serviceName),
-      protocol: endpoint.protocol,
-      port: endpoint.port,
-    },
+      ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
+      ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
+      backend: {
+        service: ServiceName.make(serviceName),
+        protocol: endpoint.protocol,
+        port: endpoint.port,
+      },
+    };
   });
-};
 
 export interface FinalizedServices {
   readonly services: Record<string, unknown>;
@@ -108,14 +125,16 @@ export const finalizeServices = (input: {
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
+  readonly appName: string;
   readonly appSlug: string;
+  readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
   readonly fileSyncEngineId: string | undefined;
 }): Effect.Effect<
   FinalizedServices,
-  LandofileValidationError | CapabilityError | PublicationUnsupportedError
+  LandofileValidationError | CapabilityError | PublicationUnsupportedError | ConfigExpressionError
 > =>
   Effect.gen(function* () {
     const services: Record<string, unknown> = {};
@@ -250,10 +269,21 @@ export const finalizeServices = (input: {
 
       const routeRefs: Array<ServicePlan["routes"][number]> = [];
       if (authoredRoutes.length > 0) {
-        for (const route of authoredRoutes) {
+        for (const [routeIndex, route] of authoredRoutes.entries()) {
           routeRefs.push({
             index: pushRoute(
-              yield* resolveRoute(input.appRoot, name, servicePlanWithCapabilityRealization.endpoints, route),
+              yield* resolveRoute(
+                input.appRoot,
+                name,
+                servicePlanWithCapabilityRealization.endpoints,
+                route,
+                {
+                  routeIndex,
+                  appName: input.appName,
+                  appSlug: input.appSlug,
+                  defaultDomain: input.defaultDomain,
+                },
+              ),
             ),
           });
         }
