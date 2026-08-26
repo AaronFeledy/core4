@@ -29,9 +29,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isBinaryArithOp = (op: unknown): op is BinaryArithOp =>
   typeof op === "string" && Object.hasOwn(BINARY_ARITH, op);
 
-const isStringLiteral = (value: unknown): boolean =>
-  isRecord(value) && value.kind === "Literal" && typeof value.value === "string";
-
 const foldNumeric = (node: unknown): number | undefined => {
   if (!isRecord(node) || typeof node.kind !== "string") {
     return undefined;
@@ -62,32 +59,28 @@ const isHugeFoldedNumber = (value: unknown): boolean => {
   return folded !== undefined && Math.abs(folded) >= HUGE_LITERAL_THRESHOLD;
 };
 
-const collectNumericMultiplyFactors = (node: unknown): readonly number[] | undefined => {
+const collectNumericMultiplyFactors = (node: unknown): readonly number[] => {
   if (isRecord(node) && node.kind === "Binary" && node.op === "*") {
-    const left = collectNumericMultiplyFactors(node.left);
-    const right = collectNumericMultiplyFactors(node.right);
-    if (left === undefined || right === undefined) {
-      return undefined;
-    }
-    return [...left, ...right];
+    return [...collectNumericMultiplyFactors(node.left), ...collectNumericMultiplyFactors(node.right)];
   }
   const folded = foldNumeric(node);
   if (folded !== undefined) {
     return [folded];
   }
-  if (isStringLiteral(node)) {
-    return [];
-  }
-  return undefined;
+  // Identity, dynamic, and string operands contribute no numeric factor.
+  return [];
 };
 
 const isHugeMultiply = (node: Record<string, unknown>): boolean => {
   const factors = collectNumericMultiplyFactors(node);
-  if (factors === undefined || factors.length === 0) {
+  if (factors.length === 0) {
     return false;
   }
   let product = 1;
   for (const factor of factors) {
+    if (Math.abs(factor) >= HUGE_LITERAL_THRESHOLD) {
+      return true;
+    }
     product *= factor;
   }
   return Math.abs(product) >= HUGE_LITERAL_THRESHOLD;
