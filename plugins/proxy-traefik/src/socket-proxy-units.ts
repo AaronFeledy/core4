@@ -2,14 +2,14 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 
 export const UNIT_MARKER = "# lando-proxy-socket-helper" as const;
 export const POLKIT_RULE_PATH = "/etc/polkit-1/rules.d/10-lando-proxy.rules" as const;
-export const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
+const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
 
 export const PROXYD_CANDIDATES = [
   "/usr/lib/systemd/systemd-socket-proxyd",
   "/lib/systemd/systemd-socket-proxyd",
 ] as const;
 
-export const SOCKET_UNIT_NAMES = [
+const SOCKET_UNIT_NAMES = [
   "lando-proxy-http.socket",
   "lando-proxy-http.service",
   "lando-proxy-https.socket",
@@ -84,7 +84,7 @@ ProtectHome=yes
 Restart=on-failure
 `;
 
-export const renderSocketProxyUnits = (input: {
+const renderSocketProxyUnits = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;

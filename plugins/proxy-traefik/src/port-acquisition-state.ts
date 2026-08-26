@@ -7,6 +7,7 @@ import {
   type BindOutcome,
   DESIRED_HTTPS_PORT,
   DESIRED_HTTP_PORT,
+  LOOPBACK_HOST,
   classifyAcquisition,
   probeBind,
   probeForward,
@@ -60,9 +61,6 @@ const degradedDecision: AcquisitionDecision = {
   notices: [],
 };
 
-const isLinuxFamily = (platform: ProxyPaths["platform"]): boolean =>
-  platform === "linux" || platform === "wsl";
-
 const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
@@ -74,7 +72,7 @@ export const acquirePorts = (input: {
   readonly host?: string;
 }): Effect.Effect<AcquisitionDecision> =>
   Effect.gen(function* () {
-    const host = input.host ?? "127.0.0.1";
+    const host = input.host ?? LOOPBACK_HOST;
     const httpForward = yield* probeForward(host, DESIRED_HTTP_PORT);
     const httpsForward = yield* probeForward(host, DESIRED_HTTPS_PORT);
     const httpBind =
@@ -142,14 +140,20 @@ export const persistPortAcquisition = (
     const resolved = yield* (() => {
       switch (decision.mode) {
         case "needs-helper":
-        case "socket-helper":
-          return isLinuxFamily(dependencies.paths.platform) && dependencies.socketProxy !== undefined
-            ? resolveNeedsHelper(dependencies.socketProxy)
-            : Effect.succeed({
-                decision: decision.mode === "needs-helper" ? degradedDecision : decision,
-                helperInstalled,
-                socketsActive: false,
-              });
+        case "socket-helper": {
+          const socketProxy = dependencies.socketProxy;
+          if (
+            (dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl") &&
+            socketProxy !== undefined
+          ) {
+            return resolveNeedsHelper(socketProxy);
+          }
+          return Effect.succeed({
+            decision: decision.mode === "needs-helper" ? degradedDecision : decision,
+            helperInstalled,
+            socketsActive: false,
+          });
+        }
         case "direct":
         case "occupied-hop":
         case "degraded-high-ports":

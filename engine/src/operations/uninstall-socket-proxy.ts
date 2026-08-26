@@ -33,30 +33,23 @@ const tryReadText = (path: string, readText: (path: string) => string): string |
   }
 };
 
-const isOwnedHelperFile = (content: string): boolean => content.includes(SOCKET_PROXY_UNIT_MARKER);
-
 const classifyHelperPaths = (
   paths: SocketProxyHelperPaths,
   io: SocketProxyHelperIo,
 ): {
   readonly owned: ReadonlyArray<string>;
   readonly foreign: ReadonlyArray<string>;
-  readonly missing: ReadonlyArray<string>;
 } => {
   const candidates = [...paths.unitPaths, paths.polkitPath];
   const owned: string[] = [];
   const foreign: string[] = [];
-  const missing: string[] = [];
   for (const path of candidates) {
-    if (!io.exists(path)) {
-      missing.push(path);
-      continue;
-    }
+    if (!io.exists(path)) continue;
     const content = tryReadText(path, io.readText);
-    if (content !== undefined && isOwnedHelperFile(content)) owned.push(path);
+    if (content?.includes(SOCKET_PROXY_UNIT_MARKER)) owned.push(path);
     else foreign.push(path);
   }
-  return { owned, foreign, missing };
+  return { owned, foreign };
 };
 
 export const socketProxyHelperStep = (

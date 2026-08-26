@@ -247,9 +247,8 @@ export const probeForward = (host: string, port: number): Effect.Effect<ForwardO
             if (isForwardOutcome(value)) last = value;
             return last.kind === "success" ? "green" : "yellow";
           },
-          failure: (error) => {
+          failure: () => {
             last = { kind: "failure" };
-            void secretsRedactor.redactValue(error);
             return "yellow";
           },
         },
@@ -258,6 +257,6 @@ export const probeForward = (host: string, port: number): Effect.Effect<ForwardO
         try: () => forwardOnce(host, port),
         catch: (error) => error,
       }),
-    ).pipe(Effect.catchAll((error) => Effect.sync(() => void secretsRedactor.redactValue(error))));
+    ).pipe(Effect.catchAll(() => Effect.void));
     return last;
   });

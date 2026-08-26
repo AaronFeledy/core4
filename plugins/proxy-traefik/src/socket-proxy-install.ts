@@ -19,8 +19,8 @@ import {
   renderPolkitRule,
 } from "./socket-proxy-units.ts";
 
-export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, UNIT_MARKER, renderPolkitRule };
-export { ProxydBinaryNotFound, ProxyElevationRefused } from "./socket-proxy-errors.ts";
+export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, renderPolkitRule };
+export { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
 
 const failedResult = (exitCode = 1, stderr = ""): ProcessResult => ({ exitCode, stdout: "", stderr });
 
@@ -58,23 +58,6 @@ export interface StartSocketsInput {
 }
 
 const SOCKET_UNITS = ["lando-proxy-http.socket", "lando-proxy-https.socket"] as const;
-
-const runUnelevated = (
-  processRunner: Context.Tag.Service<typeof ProcessRunner>,
-  args: ReadonlyArray<string>,
-): Effect.Effect<ProcessResult> =>
-  processRunner
-    .run({ cmd: "systemctl", args })
-    .pipe(Effect.catchAll((error) => Effect.succeed(failedResult(1, error.message))));
-
-const probeBoth = (
-  probe: (host: string, port: number) => Effect.Effect<ForwardOutcome>,
-): Effect.Effect<{ readonly http: ForwardOutcome; readonly https: ForwardOutcome }> =>
-  Effect.gen(function* () {
-    const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT);
-    const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT);
-    return { http, https };
-  });
 
 export const discoverProxydBinary = (
   input: DiscoverProxydInput,
@@ -134,14 +117,18 @@ const controlSockets = (
 ): Effect.Effect<SocketProxyStartOutcome> =>
   Effect.gen(function* () {
     const args = [verb, ...SOCKET_UNITS];
-    const unelevated = yield* runUnelevated(input.processRunner, args);
+    const unelevated = yield* input.processRunner
+      .run({ cmd: "systemctl", args })
+      .pipe(Effect.catchAll((error) => Effect.succeed(failedResult(1, error.message))));
     const result =
       unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["systemctl", ...args]);
     if (result.exitCode !== 0) {
       return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
     }
-    const forwards = yield* probeBoth(input.probeForward ?? probeForward);
-    return { kind: "started", ...forwards };
+    const probe = input.probeForward ?? probeForward;
+    const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT);
+    const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT);
+    return { kind: "started", http, https };
   });
 
 export const startSockets = (input: StartSocketsInput): Effect.Effect<SocketProxyStartOutcome> =>
