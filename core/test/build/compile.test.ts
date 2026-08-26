@@ -152,9 +152,6 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(jqRange.exitCode).not.toBe(0);
     expect(performance.now() - jqRangeStarted).toBeLessThan(5000);
 
-    const compiledBinary = await stat(binaryPath);
-    console.log(compiledBinary.size);
-
     const deferredJson = await runCommand([relocatedBinary, "meta:events:follow", "--format=json"], {
       cwd: appRoot,
       env,
