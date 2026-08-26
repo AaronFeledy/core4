@@ -4,13 +4,17 @@ import type { ProxyError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, ProxyServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
 export const applyAppRoutes = (proxy: ProxyServiceShape, plan: AppPlan) =>
-  Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
-    Effect.zipRight(proxy.applyRoutes(plan.routes, plan.id)),
-  );
+  Effect.gen(function* () {
+    const defaultDomain = yield* resolveProxyDefaultDomain;
+    return yield* Effect.scoped(proxy.setup({ defaultDomain })).pipe(
+      Effect.zipRight(proxy.applyRoutes(plan.routes, plan.id)),
+    );
+  });
 
 export const teardownAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
   provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });

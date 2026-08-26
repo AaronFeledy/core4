@@ -32,6 +32,7 @@ const renderLandofile = (
       port: 80,
       dependsOn: ["database"],
       framework: "none",
+      appName,
     }),
     ...renderDatabaseLines(stack.database),
     "tooling:",

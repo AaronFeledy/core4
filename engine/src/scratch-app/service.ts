@@ -49,6 +49,7 @@ import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
+import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
@@ -573,17 +574,20 @@ const makeScratchAppService = (
       : Option.match(proxy, {
           onNone: () => Effect.void,
           onSome: (service) =>
-            Effect.scoped(service.setup({ defaultDomain: "lndo.site" }))
-              .pipe(Effect.zipRight(service.applyRoutes(plan.routes, plan.id)))
-              .pipe(
-                Effect.asVoid,
-                // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
-                Effect.catchAllCause((cause) =>
-                  Effect.logWarning(
-                    `Unable to apply proxy routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
-                  ),
+            Effect.gen(function* () {
+              const defaultDomain = yield* resolveProxyDefaultDomain;
+              yield* Effect.scoped(service.setup({ defaultDomain })).pipe(
+                Effect.zipRight(service.applyRoutes(plan.routes, plan.id)),
+              );
+            }).pipe(
+              Effect.asVoid,
+              // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
+              Effect.catchAllCause((cause) =>
+                Effect.logWarning(
+                  `Unable to apply proxy routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
                 ),
               ),
+            ),
         });
 
   const removeScratchRoutes = (appId: AppPlan["id"]): Effect.Effect<void, never> =>

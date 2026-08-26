@@ -12,6 +12,7 @@ import {
   type CommandAliasConflictError,
   type ComposeKeyRejectedError,
   type ConfigError,
+  type ConfigExpressionError,
   type DeprecatedSurfaceError,
   type LandofileFormConflictError,
   type LandofileIncludeError,
@@ -126,6 +127,7 @@ export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | ComposeKeyRejectedError
   | PublicationUnsupportedError
   | ConfigError

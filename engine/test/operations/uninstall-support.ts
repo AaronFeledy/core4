@@ -12,6 +12,8 @@ export const makeUninstallRoots = (prefix = "lando-uninstall-") => {
     userCacheRoot: join(root, "cache"),
     cgroupsDelegatePath: join(root, "delegate.conf"),
     shellProfilePath: join(root, ".profile"),
+    socketProxyUnitDir: join(root, "units"),
+    socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
     execPath: join(root, "lando"),
   };
 };
@@ -25,6 +27,13 @@ export const sandboxUninstallOptions = (
   execPath: roots.execPath,
   cgroupsDelegatePath: roots.cgroupsDelegatePath,
   shellProfilePath: roots.shellProfilePath,
+  socketProxyUnitPaths: [
+    join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
+    join(roots.socketProxyUnitDir, "lando-proxy-http.service"),
+    join(roots.socketProxyUnitDir, "lando-proxy-https.socket"),
+    join(roots.socketProxyUnitDir, "lando-proxy-https.service"),
+  ],
+  socketProxyPolkitPath: roots.socketProxyPolkitPath,
   ...extra,
 });
 

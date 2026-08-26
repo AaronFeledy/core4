@@ -3,6 +3,7 @@ import { Effect, ParseResult } from "effect";
 import {
   type CapabilityError,
   type CommandAliasConflictError,
+  type ConfigExpressionError,
   GlobalAppError,
   type LandofileParseError,
   LandofileValidationError,
@@ -44,6 +45,7 @@ export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanRes
 export type LoadGlobalPlanError =
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError

@@ -7,15 +7,33 @@ tags: [beta, docs, landofile]
 
 # Landofile expressions
 
-`${...}` and `{{ ... }}` configuration expressions are not supported in Alpha Landofiles. Lando fails closed when it sees them.
+Route hostnames may use two plan-time `{{ ... }}` scopes. Every other `${...}` or `{{ ... }}` expression in a Landofile is still Alpha-blocked. Lando fails closed when it sees those.
 
-What works today is a whole-file template, includes, and env overlays.
+What works today besides those two route scopes is a whole-file template, includes, and env overlays.
 
 ```yaml
 template: handlebars
 ```
 
-If you came here for `${VARS}` magic, Alpha says not yet.
+If you came here for `${VARS}` magic in env, volumes, or tooling, Alpha says not yet.
+
+## Route hostnames
+
+Recipes write a primary route like this:
+
+```yaml
+routes:
+  - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+    scheme: both
+```
+
+Lando evaluates that string at plan time, before it matches endpoints. `app.name` and `app.slug` come from the app. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`. Change `proxy.defaultDomain` once and every recipe URL that uses the expression follows, without editing Landofiles.
+
+A bad expression raises `ConfigExpressionError` with the YAML path and a fix.
+
+Services with no authored `routes:` still get `<service>.<app>.lndo.site`.
+
+These two scopes work only in route hostnames today. Do not drop `{{ app.name }}` into `environment:`, `volumes:`, or tooling. That still fails at load.
 
 ## What to do instead
 

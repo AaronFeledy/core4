@@ -161,6 +161,7 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "subsystemId",
   "ready",
   "state",
+  "acquisitionMode",
   "certsReason",
   "certsCandidateIds",
   "certsPlugin",

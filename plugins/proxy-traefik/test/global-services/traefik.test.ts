@@ -96,4 +96,15 @@ describe("traefik global service ServiceConfig", () => {
     const config = await decodeConfig();
     expect(config.extra_hosts).toEqual({ "host.lando.internal": "host-gateway" });
   });
+
+  test("adds NET_BIND_SERVICE so privileged loopback ports can be acquired", async () => {
+    // Given: the bundled Traefik global ServiceConfig.
+    const config = await decodeConfig();
+
+    // When: compose capabilities are read.
+    const capabilities = config.cap_add;
+
+    // Then: NET_BIND_SERVICE is present for privileged-port insurance.
+    expect(capabilities).toEqual(["NET_BIND_SERVICE"]);
+  });
 });

@@ -10,6 +10,8 @@ import { type Context, Effect } from "effect";
 
 import { CertificateAuthority, type PrivilegeService, ProxyService, SshService } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
@@ -119,7 +121,8 @@ export const runProxySetupStep = (
     }
     const proxy = yield* Effect.serviceOption(ProxyService);
     if (proxy._tag === "Some") {
-      yield* Effect.scoped(proxy.value.setup({ defaultDomain: "lndo.site" })).pipe(
+      const defaultDomain = yield* resolveProxyDefaultDomain;
+      yield* Effect.scoped(proxy.value.setup({ defaultDomain })).pipe(
         Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
       );
       yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });

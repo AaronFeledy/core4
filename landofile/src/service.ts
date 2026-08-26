@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
+import { Cause, type Context, Effect, Either, Layer, ParseResult } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -16,6 +16,7 @@ import {
   NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
+import { expressionTouchesOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
@@ -81,6 +82,13 @@ const rejectUnknownEventNames = (
 
 const CONFIG_EXPRESSION_PATTERN = /\$\{[A-Za-z_]/;
 const TEMPLATE_EXPRESSION_PATTERN = /\{\{/;
+const quotedStrings = (content: string): ReadonlyArray<string> =>
+  [...content.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g)].map((match) => match[0]);
+
+const isAppProxyOnlyTemplate = (value: string): boolean => {
+  const parsed = parseExpressionEither(value, { filePath: "<landofile>" });
+  return Either.isRight(parsed) && expressionTouchesOnlyScopes(parsed.right, ["app", "proxy"]);
+};
 
 const scanForConfigExpression = (content: string): { description: string } | undefined => {
   const withoutComments = content
@@ -90,7 +98,18 @@ const scanForConfigExpression = (content: string): { description: string } | und
   if (CONFIG_EXPRESSION_PATTERN.test(withoutComments)) {
     return { description: "Configuration expressions (${...})" };
   }
-  if (TEMPLATE_EXPRESSION_PATTERN.test(withoutComments)) {
+  if (!TEMPLATE_EXPRESSION_PATTERN.test(withoutComments)) return undefined;
+
+  const quoted = quotedStrings(withoutComments);
+  for (const token of quoted) {
+    const inner = token.slice(1, -1);
+    if (inner.includes("{{") && !isAppProxyOnlyTemplate(inner)) {
+      return { description: "Template expressions ({{ ... }})" };
+    }
+  }
+  let remainder = withoutComments;
+  for (const token of quoted) remainder = remainder.replace(token, " ");
+  if (TEMPLATE_EXPRESSION_PATTERN.test(remainder)) {
     return { description: "Template expressions ({{ ... }})" };
   }
   return undefined;

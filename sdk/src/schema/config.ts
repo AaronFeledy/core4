@@ -150,6 +150,20 @@ export const GlobalConfig = Schema.Struct({
     default: () => 4,
   }).annotations({ description: "Maximum nested Landofile load/import call depth." }),
   network: Schema.optional(NetworkConfig),
+  /**
+   * Ingress proxy settings (`proxy.defaultDomain`). Distinct from `network.proxy`
+   * (HTTP egress / HTTP_PROXY).
+   */
+  proxy: Schema.optional(
+    Schema.Struct({
+      defaultDomain: Schema.optionalWith(Schema.String, { default: () => "lndo.site" }).annotations({
+        description:
+          "Default local domain used when routes omit a custom domain (global proxy.defaultDomain).",
+      }),
+    }),
+  ).annotations({
+    description: "Global ingress proxy settings (global proxy). Distinct from network.proxy HTTP egress.",
+  }),
   mcp: Schema.optional(McpConfig).annotations({
     description: "Global MCP command exposure policy (global mcp).",
   }),

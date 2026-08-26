@@ -49,6 +49,7 @@ const renderLandofile = (
       port: 80,
       dependsOn: ["database"],
       framework: "backdrop",
+      appName,
     }),
     "    environment:",
     `      BACKDROP_SETTINGS: '${backdropSettings(appName)}'`,

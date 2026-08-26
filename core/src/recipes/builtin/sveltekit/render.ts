@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { SVELTEKIT_RECIPE_ID } from "./manifest";
 
@@ -13,6 +14,7 @@ const renderLandofile = (appName: string, node: string, adapter: string, databas
     "    environment:",
     `      SVELTEKIT_ADAPTER: ${adapter}`,
   ];
+  lines.push(...renderPrimaryRouteLines(appName));
   if (database !== "none") {
     lines.push("    dependsOn:", "      - database", "  database:", `    type: ${database}`);
   }

@@ -7,6 +7,7 @@ import {
   renderDatabaseLines,
   renderNginxEdgeLines,
   renderPhpAppserverLines,
+  renderPrimaryRouteLines,
   resolvePhpStackAnswers,
 } from "../../src/recipes/builtin/php-stack.ts";
 
@@ -40,6 +41,7 @@ describe("php-stack helper", () => {
       allowOverride: true,
       port: 80,
       dependsOn: ["database"],
+      appName: "test-app",
     });
     const yaml = lines.join("\n");
     expect(yaml).toContain("type: php:8.3");
@@ -56,12 +58,13 @@ describe("php-stack helper", () => {
       composer: "2.7.7",
       webserver: "nginx",
       dependsOn: ["database"],
+      appName: "test-app",
     });
     const yaml = lines.join("\n");
     expect(yaml).toContain("via: fpm");
     expect(yaml).not.toContain("allowOverride:");
     expect(yaml).not.toContain("port: 80");
-    const edge = renderNginxEdgeLines("/app/web").join("\n");
+    const edge = renderNginxEdgeLines("/app/web", "test-app").join("\n");
     expect(edge).toContain("backend: appserver");
     expect(edge).toContain("webroot: /app/web");
   });
@@ -73,6 +76,7 @@ describe("php-stack helper", () => {
       composer: false,
       webserver: "apache",
       dependsOn: ["database"],
+      appName: "test-app",
     });
     expect(lines.join("\n")).toMatch(/composer:\s+false\b/);
     expect(lines.join("\n")).not.toContain('composer: "false"');
@@ -88,5 +92,60 @@ describe("php-stack helper", () => {
     expect(LARAVEL_DATABASES).toContain("postgres:16");
     expect(SYMFONY_DATABASES[0]).toBe("postgres:16");
     expect(SYMFONY_DATABASES).toContain("mariadb:11.4");
+  });
+
+  test("renderPrimaryRouteLines emits the expression hostname and primary-URL comment", () => {
+    // Given / When
+    const lines = renderPrimaryRouteLines("my-app");
+
+    // Then
+    expect(lines).toEqual([
+      "    # primary URL: http(s)://my-app.lndo.site",
+      "    routes:",
+      '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
+      "        scheme: both",
+    ]);
+  });
+
+  test("apache appserver YAML contains routes, expression hostname, and primary-URL comment", () => {
+    // Given / When
+    const yaml = renderPhpAppserverLines({
+      php: "8.3",
+      webroot: "/app",
+      composer: "2",
+      webserver: "apache",
+      allowOverride: true,
+      port: 80,
+      dependsOn: ["database"],
+      appName: "apache-app",
+    }).join("\n");
+
+    // Then
+    expect(yaml).toContain("# primary URL: http(s)://apache-app.lndo.site");
+    expect(yaml).toContain("    routes:");
+    expect(yaml).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
+    expect(yaml).toContain("scheme: both");
+  });
+
+  test("nginx places routes on edge and none on the fpm appserver", () => {
+    // Given / When
+    const appserver = renderPhpAppserverLines({
+      php: "8.4",
+      webroot: "/app/web",
+      composer: "2.7.7",
+      webserver: "nginx",
+      dependsOn: ["database"],
+      appName: "nginx-app",
+    }).join("\n");
+    const edge = renderNginxEdgeLines("/app/web", "nginx-app").join("\n");
+
+    // Then
+    expect(appserver).toContain("via: fpm");
+    expect(appserver).not.toContain("routes:");
+    expect(appserver).not.toContain("{{ app.name }}");
+    expect(edge).toContain("# primary URL: http(s)://nginx-app.lndo.site");
+    expect(edge).toContain("    routes:");
+    expect(edge).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
+    expect(edge).not.toContain("via: fpm");
   });
 });
