@@ -102,6 +102,45 @@ describe("classifyAcquisition", () => {
     expect(decision.notices.some((notice) => notice.includes("nginx"))).toBe(true);
   });
 
+  test("does not treat a foreign HTTP listener as a direct Lando proxy", () => {
+    // Given: 80/443 answer HTTP but the holder is nginx, not our forwarder.
+    const input = linuxInput({
+      httpBind: bind("EADDRINUSE"),
+      httpsBind: bind("EADDRINUSE"),
+      httpForward: forward("success"),
+      httpsForward: forward("success"),
+      http: { bind: bind("EADDRINUSE"), forward: forward("success"), holder: "nginx" },
+      https: { bind: bind("EADDRINUSE"), forward: forward("success"), holder: "nginx" },
+    });
+
+    // When: classification runs.
+    const decision = classifyAcquisition(input);
+
+    // Then: stay on high ports and name the foreign holder.
+    expect(decision.mode).toBe("occupied-hop");
+    expect(decision.httpPort).toBe(TRAEFIK_HTTP_PORT);
+    expect(decision.httpsPort).toBe(TRAEFIK_HTTPS_PORT);
+    expect(decision.notices.some((notice) => notice.includes("nginx"))).toBe(true);
+  });
+
+  test("does not advertise privileged ports just because bind succeeds", () => {
+    // Given: 80/443 are free (we can bind them) but nothing is forwarding yet.
+    const input = linuxInput({
+      httpBind: bind("success"),
+      httpsBind: bind("success"),
+      httpForward: forward("failure"),
+      httpsForward: forward("failure"),
+    });
+
+    // When: classification runs.
+    const decision = classifyAcquisition(input);
+
+    // Then: do not publish :80/:443 authorities on an unused port.
+    expect(decision.mode).toBe("needs-helper");
+    expect(decision.httpPort).toBe(TRAEFIK_HTTP_PORT);
+    expect(decision.httpsPort).toBe(TRAEFIK_HTTPS_PORT);
+  });
+
   test("selects needs-helper when bind is EACCES and the helper is not installed", () => {
     // Given: Linux rootless EACCES and no socket helper on disk.
     const input = linuxInput({

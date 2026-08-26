@@ -134,8 +134,16 @@ export const buildProxyCheck = (
         Effect.gen(function* () {
           const defaultDomain = yield* resolveProxyDefaultDomain;
           yield* Effect.scoped(proxy.setup({ defaultDomain }));
+          const after = yield* readAcquisitionMode();
+          if (after === "degraded-high-ports" || after === "needs-helper") {
+            return yield* Effect.fail(new Error("Proxy is still serving on high ports after setup."));
+          }
         }),
       Either.isLeft(status) ? status.left : undefined,
-      () => liveProxyStateContext(proxy, acquisitionMode),
+      () =>
+        Effect.gen(function* () {
+          const after = yield* readAcquisitionMode();
+          return yield* liveProxyStateContext(proxy, after);
+        }),
     );
   });

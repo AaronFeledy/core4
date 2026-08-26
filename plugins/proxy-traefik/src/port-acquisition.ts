@@ -7,6 +7,7 @@ import { Duration, Effect } from "effect";
 import { runProbe } from "@lando/sdk/probe";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 
@@ -100,6 +101,17 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
+const isOurLoopbackForwarder = (holder: string): boolean => {
+  const name = holder.toLowerCase();
+  return (
+    commLooksLikeRootlessport(holder) ||
+    name.includes("docker-proxy") ||
+    name.includes("rootlesskit") ||
+    name.includes("systemd-socket-proxyd") ||
+    name === "traefik"
+  );
+};
+
 const classifyScheme = (
   input: ClassifyAcquisitionInput,
   scheme: SchemeProbe,
@@ -107,6 +119,13 @@ const classifyScheme = (
 ): SchemeDecision => {
   switch (scheme.forward.kind) {
     case "success":
+      if (scheme.holder !== undefined && !isOurLoopbackForwarder(scheme.holder)) {
+        return {
+          mode: "occupied-hop",
+          port: ports.high,
+          notice: `occupied-hop holder=${scheme.holder}`,
+        };
+      }
       return { mode: "direct", port: ports.privileged };
     case "failure":
       break;
@@ -115,7 +134,13 @@ const classifyScheme = (
   }
   switch (scheme.bind.kind) {
     case "success":
-      return { mode: "direct", port: ports.privileged };
+      if (!isLinuxFamily(input.platform)) {
+        return { mode: "degraded-high-ports", port: ports.high };
+      }
+      if (input.helperInstalled) {
+        return { mode: "socket-helper", port: ports.privileged };
+      }
+      return { mode: "needs-helper", port: ports.high };
     case "EADDRINUSE":
       return {
         mode: "occupied-hop",

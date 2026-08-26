@@ -254,6 +254,32 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
+  test("does not report proxy --fix recovered while acquisition stays degraded-high-ports", async () => {
+    // Given: a running proxy still persisted as degraded-high-ports after setup.
+    const acquisition = writeAcquisitionState("degraded-high-ports");
+    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(ProxyService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+
+    try {
+      // When: doctor --fix re-runs proxy setup.
+      const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "proxy");
+
+      // Then: the check stays warn and does not claim recovered.
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.context.fixOutcome).not.toBe("recovered");
+      expect(proxy?.context.acquisitionMode).toBe("degraded-high-ports");
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
   test("surfaces occupied-hop remediation from persisted acquisition state", async () => {
     // Given: a running Traefik proxy whose persisted acquisition mode is occupied-hop.
     const acquisition = writeAcquisitionState("occupied-hop");

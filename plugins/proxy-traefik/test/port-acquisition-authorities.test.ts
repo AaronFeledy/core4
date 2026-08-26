@@ -128,8 +128,8 @@ describe("acquisition authority ports", () => {
         processRunner: makeRunner().service,
         privilege: makePrivilege().service,
         classifyOverride: {
-          http: { bind: { kind: "success" }, forward: { kind: "failure" } },
-          https: { bind: { kind: "success" }, forward: { kind: "failure" } },
+          http: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
+          https: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
         },
       },
     });
