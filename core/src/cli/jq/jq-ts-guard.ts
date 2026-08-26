@@ -13,15 +13,84 @@ type Findings = {
   hasHugeIndexLiteral: boolean;
 };
 
+const BINARY_ARITH = {
+  "+": (left: number, right: number): number => left + right,
+  "-": (left: number, right: number): number => left - right,
+  "*": (left: number, right: number): number => left * right,
+  "/": (left: number, right: number): number => left / right,
+  "%": (left: number, right: number): number => left % right,
+} as const;
+
+type BinaryArithOp = keyof typeof BINARY_ARITH;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const isHugeNumberLiteral = (value: unknown): boolean => {
-  if (!isRecord(value) || value.kind !== "Literal") {
+const isBinaryArithOp = (op: unknown): op is BinaryArithOp =>
+  typeof op === "string" && Object.hasOwn(BINARY_ARITH, op);
+
+const isStringLiteral = (value: unknown): boolean =>
+  isRecord(value) && value.kind === "Literal" && typeof value.value === "string";
+
+const foldNumeric = (node: unknown): number | undefined => {
+  if (!isRecord(node) || typeof node.kind !== "string") {
+    return undefined;
+  }
+  if (node.kind === "Literal") {
+    return typeof node.value === "number" ? node.value : undefined;
+  }
+  if (node.kind === "Unary" && node.op === "Neg") {
+    const inner = foldNumeric(node.expr);
+    return inner === undefined ? undefined : -inner;
+  }
+  if (node.kind !== "Binary" || !isBinaryArithOp(node.op)) {
+    return undefined;
+  }
+  const left = foldNumeric(node.left);
+  const right = foldNumeric(node.right);
+  if (left === undefined || right === undefined) {
+    return undefined;
+  }
+  if ((node.op === "/" || node.op === "%") && right === 0) {
+    return undefined;
+  }
+  return BINARY_ARITH[node.op](left, right);
+};
+
+const isHugeFoldedNumber = (value: unknown): boolean => {
+  const folded = foldNumeric(value);
+  return folded !== undefined && Math.abs(folded) >= HUGE_LITERAL_THRESHOLD;
+};
+
+const collectNumericMultiplyFactors = (node: unknown): readonly number[] | undefined => {
+  if (isRecord(node) && node.kind === "Binary" && node.op === "*") {
+    const left = collectNumericMultiplyFactors(node.left);
+    const right = collectNumericMultiplyFactors(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return [...left, ...right];
+  }
+  const folded = foldNumeric(node);
+  if (folded !== undefined) {
+    return [folded];
+  }
+  if (isStringLiteral(node)) {
+    return [];
+  }
+  return undefined;
+};
+
+const isHugeMultiply = (node: Record<string, unknown>): boolean => {
+  const factors = collectNumericMultiplyFactors(node);
+  if (factors === undefined || factors.length === 0) {
     return false;
   }
-  const literal = value.value;
-  return typeof literal === "number" && Math.abs(literal) >= HUGE_LITERAL_THRESHOLD;
+  let product = 1;
+  for (const factor of factors) {
+    product *= factor;
+  }
+  return Math.abs(product) >= HUGE_LITERAL_THRESHOLD;
 };
 
 const markSetpathPathIndexes = (node: Record<string, unknown>, findings: Findings): void => {
@@ -34,7 +103,7 @@ const markSetpathPathIndexes = (node: Record<string, unknown>, findings: Finding
     return;
   }
   for (const item of pathArg.items) {
-    if (isHugeNumberLiteral(item)) {
+    if (isHugeFoldedNumber(item)) {
       findings.hasHugeIndexLiteral = true;
     }
   }
@@ -59,11 +128,11 @@ const walk = (node: unknown, findings: Findings, inAssignmentLeft: boolean): voi
     markSetpathPathIndexes(node, findings);
   }
   if (node.kind === "Binary" && node.op === "*") {
-    if (isHugeNumberLiteral(node.left) || isHugeNumberLiteral(node.right)) {
+    if (isHugeMultiply(node)) {
       findings.hasHugeMultiply = true;
     }
   }
-  if (inAssignmentLeft && node.kind === "IndexAccess" && isHugeNumberLiteral(node.index)) {
+  if (inAssignmentLeft && node.kind === "IndexAccess" && isHugeFoldedNumber(node.index)) {
     findings.hasHugeIndexLiteral = true;
   }
 

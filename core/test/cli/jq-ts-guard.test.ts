@@ -47,4 +47,28 @@ describe("assertJqExpressionSafe", () => {
   test("rejects string multiply at threshold", () => {
     assertThrows('"x" * 1000000');
   });
+
+  test("rejects computed huge index assignment", () => {
+    assertThrows(".[1000000 + 1000000] = 0");
+  });
+
+  test("rejects parenthesized huge multiply index assignment", () => {
+    assertThrows(".[(999999 * 999999)] = 0");
+  });
+
+  test("rejects chained string multiply whose numeric product is huge", () => {
+    assertThrows('"x" * 999999 * 999999');
+  });
+
+  test("rejects chained string multiply whose numeric product equals threshold", () => {
+    assertThrows('"x" * 1000 * 1000');
+  });
+
+  test("allows small computed index assignment", () => {
+    assertAllows(".[1 + 2] = 0");
+  });
+
+  test("allows dynamic index assignment", () => {
+    assertAllows(".[.n] = 0");
+  });
 });
