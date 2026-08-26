@@ -2,6 +2,7 @@ import { Effect, Either } from "effect";
 
 import type { ProxyService } from "@lando/sdk/services";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import {
   type DoctorSubsystemCheck,
   PROXY_SPEC,
@@ -36,7 +37,11 @@ export const buildProxyCheck = (
       PROXY_SPEC,
       context,
       fix,
-      () => Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })),
+      () =>
+        Effect.gen(function* () {
+          const defaultDomain = yield* resolveProxyDefaultDomain;
+          yield* Effect.scoped(proxy.setup({ defaultDomain }));
+        }),
       Either.isLeft(status) ? status.left : undefined,
       () => liveProxyStateContext(proxy),
     );
