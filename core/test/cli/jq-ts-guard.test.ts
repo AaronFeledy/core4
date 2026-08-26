@@ -89,7 +89,7 @@ describe("assertJqExpressionSafe", () => {
   });
 
   test("rejects identity times huge literal", () => {
-    const ast = parse("\"\" | . |= . * 1000000");
+    const ast = parse('"" | . |= . * 1000000');
     expect(() => assertJqExpressionSafe(ast)).toThrow(/unbounded/);
   });
 
