@@ -13,16 +13,9 @@ import type {
   RecipePromptChoice,
 } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
+import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
-import {
-  type ProgressEmitter,
-  publishTaskCompleteAsync,
-  publishTaskFailAsync,
-  publishTaskStartAsync,
-  publishTreeCompleteAsync,
-  publishTreeStartAsync,
-} from "@lando/engine/operations/progress";
 import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
@@ -367,42 +360,30 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     (action) => writePlan.skippedScaffold.length === 0 || action.type === "message",
   );
 
-  const events = options.events;
   const shouldRunPostInit = options.runPostInit !== false && postInitActions.length > 0;
   const initParentId = `init:${manifest.id}`;
-  const treeStartedAt = performance.now();
-  const childIds: string[] = ["render"];
-  if (shouldRunPostInit) childIds.push("postinit");
-
-  await publishTreeStartAsync(events, {
+  const tree = makeTaskTree(options.events, {
     parentId: initParentId,
     label: `Initialize ${appName}`,
-    children: childIds,
+    children: [
+      { id: "render", label: `Render recipe files (${filesToWrite.length})` },
+      ...(shouldRunPostInit
+        ? [{ id: "postinit", label: `Run post-init actions (${postInitActions.length})` }]
+        : []),
+    ],
     mode: "list",
   });
 
-  const renderStartedAt = performance.now();
-  await publishTaskStartAsync(events, {
-    taskId: "render",
-    parentId: initParentId,
-    label: `Render recipe files (${filesToWrite.length})`,
-  });
+  await Effect.runPromise(tree.start);
+  await Effect.runPromise(tree.startTask("render"));
 
   try {
     if (writePlan.landofileConflict !== undefined) {
       const conflictPath = join(directory, writePlan.landofileConflict);
-      await publishTaskFailAsync(events, {
-        taskId: "render",
-        summary: `Init target already has a Landofile: ${conflictPath}`,
-        durationMs: Math.round(performance.now() - renderStartedAt),
-      });
-      await publishTreeCompleteAsync(events, {
-        parentId: initParentId,
-        summary: "Initialization aborted",
-        succeeded: 0,
-        failed: 1,
-        durationMs: Math.round(performance.now() - treeStartedAt),
-      });
+      await Effect.runPromise(
+        tree.failTask("render", `Init target already has a Landofile: ${conflictPath}`),
+      );
+      await Effect.runPromise(tree.close("Initialization aborted"));
       throw new InitTargetExistsError({
         message: `Init target already has a Landofile: ${conflictPath}`,
         path: conflictPath,
@@ -447,35 +428,16 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   } catch (cause) {
     if (cause instanceof InitTargetExistsError) throw cause;
 
-    await publishTaskFailAsync(events, {
-      taskId: "render",
-      summary: "Render failed",
-      durationMs: Math.round(performance.now() - renderStartedAt),
-    });
-    await publishTreeCompleteAsync(events, {
-      parentId: initParentId,
-      summary: "Initialization failed",
-      succeeded: 0,
-      failed: 1,
-      durationMs: Math.round(performance.now() - treeStartedAt),
-    });
+    await Effect.runPromise(tree.failTask("render", "Render failed"));
+    await Effect.runPromise(tree.close("Initialization failed"));
     throw cause;
   }
 
-  await publishTaskCompleteAsync(events, {
-    taskId: "render",
-    summary: `Rendered ${filesToWrite.length} files`,
-    durationMs: Math.round(performance.now() - renderStartedAt),
-  });
+  await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
 
   let postInit: PostInitOutcome = { executed: [] };
   if (shouldRunPostInit) {
-    const postInitStartedAt = performance.now();
-    await publishTaskStartAsync(events, {
-      taskId: "postinit",
-      parentId: initParentId,
-      label: `Run post-init actions (${postInitActions.length})`,
-    });
+    await Effect.runPromise(tree.startTask("postinit"));
 
     try {
       postInit = await runPostInit({
@@ -493,35 +455,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         ...(resolved.root === undefined ? {} : { recipeRoot: resolved.root }),
       });
     } catch (cause) {
-      await publishTaskFailAsync(events, {
-        taskId: "postinit",
-        summary: "Post-init failed",
-        durationMs: Math.round(performance.now() - postInitStartedAt),
-      });
-      await publishTreeCompleteAsync(events, {
-        parentId: initParentId,
-        summary: "Initialization failed",
-        succeeded: 1,
-        failed: 1,
-        durationMs: Math.round(performance.now() - treeStartedAt),
-      });
+      await Effect.runPromise(tree.failTask("postinit", "Post-init failed"));
+      await Effect.runPromise(tree.close("Initialization failed"));
       throw cause;
     }
 
-    await publishTaskCompleteAsync(events, {
-      taskId: "postinit",
-      summary: `Ran ${postInit.executed.length} actions`,
-      durationMs: Math.round(performance.now() - postInitStartedAt),
-    });
+    await Effect.runPromise(tree.completeTask("postinit", `Ran ${postInit.executed.length} actions`));
   }
 
-  await publishTreeCompleteAsync(events, {
-    parentId: initParentId,
-    summary: `Initialized ${appName}`,
-    succeeded: childIds.length,
-    failed: 0,
-    durationMs: Math.round(performance.now() - treeStartedAt),
-  });
+  await Effect.runPromise(tree.close(`Initialized ${appName}`));
 
   return { appName, directory, answers: collected, postInit, skippedScaffold: writePlan.skippedScaffold };
 };

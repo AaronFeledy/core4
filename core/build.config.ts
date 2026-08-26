@@ -70,7 +70,6 @@ export const buildConfig: BuildConfig = {
       path: "plugins/service-lando",
       contributes: { serviceTypes: ["node:lts", "postgres"], globalServices: ["mailpit"] },
     },
-    { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
     { name: "@lando/renderer-lando", path: "plugins/renderer-lando", contributes: { renderers: ["lando"] } },
     {
       name: "@lando/notify-lando",

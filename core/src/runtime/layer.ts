@@ -1,8 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { writeStdioLine } from "@lando/renderer/io";
 import { Effect, Either, Layer, Schema } from "effect";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import type { LogLevel } from "@lando/sdk/schema";
 import type {
   AppPlanSanitizer,
   AppPlanner,
@@ -64,6 +66,7 @@ import {
   collectEmbeddingPluginLayers,
   normalizeLibraryRendererMode,
   normalizePluginPolicy,
+  resolveRuntimeLogging,
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
@@ -172,6 +175,8 @@ type RuntimeLayer =
 const runtimeLayerFor = (
   bootstrap: BootstrapLevel,
   loggerMode: LoggerMode,
+  logLevel: LogLevel | undefined,
+  structured: boolean,
   rendererMode: LibraryRendererMode,
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
@@ -184,6 +189,10 @@ const runtimeLayerFor = (
     runtimeLayerFactory: { make: makeLandoRuntime },
     lifecycle,
     loggerMode,
+    logLevel,
+    structured,
+    writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
+    stderrIsTTY: process.stderr.isTTY === true,
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
@@ -259,9 +268,12 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(hostLayersResult.left);
   }
   const bootstrap = decoded.right.bootstrap ?? "app";
+  const logging = resolveRuntimeLogging(decoded.right);
   const baseLayer = runtimeLayerFor(
     bootstrap,
-    decoded.right.logger === "pretty" ? "pretty" : "silent",
+    logging.loggerMode,
+    logging.logLevel,
+    logging.structured,
     normalizeLibraryRendererMode(decoded.right.renderer ?? decoded.right.config?.renderer),
     decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
     pluginPolicy,

@@ -18,6 +18,8 @@ import {
 } from "./notify-trigger.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import { createLiveRegionController } from "./opentui/live-region-controller.ts";
+import { prefetchLiveRegionModule } from "./opentui/live-region-substrate.ts";
+import type { OpenTuiLiveRegionModuleLike } from "./opentui/live-region-types.ts";
 import { makeLineModeConsumer, makeLandoService as makeRendererService } from "./renderer-service.ts";
 import { makeTaskTreeConsumerLive } from "./task-tree-consumer-live.ts";
 import type { LiveRegionHandle } from "./task-tree-substrate-handler.ts";
@@ -36,6 +38,7 @@ export type LandoRendererServiceOptions = {
 
 export interface LandoEventConsumerDeps extends LandoRendererServiceOptions {
   readonly createLiveRegion?: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>;
+  readonly loadModule?: () => Promise<OpenTuiLiveRegionModuleLike>;
   readonly raiseInterrupt?: () => void;
   readonly transcriptReader?: TranscriptTailReaderShape;
   readonly getCapabilities?: () => { readonly notifications: boolean };
@@ -131,15 +134,30 @@ export const makeLandoEventConsumer = (
   if (io.isTTY !== true) return Layer.merge(makeLineModeConsumer(io), notifications);
   const stdout = io.externalOutputStream;
   if (stdout === undefined) return Layer.merge(makeLineModeConsumer(io), notifications);
-  const createLiveRegion = deps.createLiveRegion ?? ((options) => createLiveRegionController(options));
+  const loadModule = deps.loadModule;
+  const createLiveRegion =
+    deps.createLiveRegion ??
+    ((options) => createLiveRegionController(options, loadModule === undefined ? {} : { loadModule }));
+  let prefetchLiveRegion: () => void;
+  if (loadModule !== undefined) {
+    prefetchLiveRegion = () => prefetchLiveRegionModule(loadModule);
+  } else if (deps.createLiveRegion === undefined) {
+    prefetchLiveRegion = prefetchLiveRegionModule;
+  } else {
+    prefetchLiveRegion = () => {};
+  }
   const raiseInterrupt = deps.raiseInterrupt ?? (() => process.kill(process.pid, "SIGINT"));
   const readerLayer =
     deps.transcriptReader === undefined
       ? TranscriptTailReaderLive
       : Layer.succeed(TranscriptTailReader, deps.transcriptReader);
-  const taskTree = makeTaskTreeConsumerLive(io, stdout, createLiveRegion, raiseInterrupt).pipe(
-    Layer.provide(readerLayer),
-  );
+  const taskTree = makeTaskTreeConsumerLive(
+    io,
+    stdout,
+    createLiveRegion,
+    raiseInterrupt,
+    prefetchLiveRegion,
+  ).pipe(Layer.provide(readerLayer));
   return Layer.merge(taskTree, notifications);
 };
 

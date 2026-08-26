@@ -61,6 +61,8 @@ const runtime = async (
       runtimeLayerFactory: { make: makeLandoRuntime },
       lifecycle: makeBootstrapLifecycleTracker(),
       loggerMode: "silent",
+      logLevel: "none",
+      structured: false,
       rendererMode: "plain",
       telemetryEnabled: false,
       pluginDiscovery: { bundled: true, system: false, ...discovery, disable },

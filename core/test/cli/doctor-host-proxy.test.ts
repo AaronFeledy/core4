@@ -82,6 +82,12 @@ const runDoctor = (
     ),
   );
 
+const hostProxyDoctorLayer = (userDataRoot: string) =>
+  Layer.mergeAll(
+    HostProxyDoctorFileSystemLive,
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
+  );
+
 const listenUnix = (server: Server, socketPath: string): Promise<void> =>
   new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -317,6 +323,91 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(result.checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
     expect(result.checks.some((check) => check.name === "host-proxy-state")).toBe(false);
+  });
+
+  test("scans injected PathsService run root when config omits userDataRoot", async () => {
+    // Given: ambient process env points at leftover workers; PathsService does not
+    const isolated = await tempRoot();
+    const ambient = await tempRoot();
+    const isolatedApp = {
+      kind: "user" as const,
+      id: "isolated-app",
+      root: AbsolutePath.make(join(isolated, "app")),
+    };
+    const ambientApp = {
+      kind: "user" as const,
+      id: "ambient-app",
+      root: AbsolutePath.make(join(ambient, "app")),
+    };
+    const workerFields = {
+      transport: "unix-socket" as const,
+      protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+      startedAt: "2026-07-15T00:00:00.000Z",
+      pid: process.pid,
+      controlToken: "isolation-token",
+    };
+    await Effect.runPromise(
+      writeWorkerRecord(
+        isolatedApp,
+        { userDataRoot: isolated },
+        {
+          appId: isolatedApp.id,
+          appRoot: isolatedApp.root,
+          socketPath: join(isolated, "isolated.sock"),
+          shimPath: join(isolated, "lando"),
+          ...workerFields,
+        },
+      ),
+    );
+    await Effect.runPromise(
+      writeWorkerRecord(
+        ambientApp,
+        { userDataRoot: ambient },
+        {
+          appId: ambientApp.id,
+          appRoot: ambientApp.root,
+          socketPath: join(ambient, "ambient.sock"),
+          shimPath: join(ambient, "lando"),
+          ...workerFields,
+        },
+      ),
+    );
+    const previousUserDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = ambient;
+
+    try {
+      // When: options omit userDataRoot so only PathsService can isolate the scan
+      const checks = await Effect.runPromise(
+        hostProxyTransportDoctorChecks({
+          provider: TestRuntimeProvider,
+          providerKind: "user-installed",
+          runtimeStatus: "ready",
+          runtime: { running: true },
+          selection: {
+            providerId: TestRuntimeProvider.id,
+            source: "default",
+            inputs: { capabilityDefault: TestRuntimeProvider.id },
+          },
+        }).pipe(
+          Effect.provide(HostProxyDoctorFileSystemLive),
+          Effect.provide(
+            Layer.succeed(
+              PathsService,
+              makeLandoPaths({ userDataRoot: isolated, platform: "linux", env: {} }),
+            ),
+          ),
+        ),
+      );
+
+      // Then: one transport check for the injected root, none for ambient leftovers
+      expect(
+        checks.filter((check) => check.name === "host-proxy-transport").map((check) => check.context.appId),
+      ).toEqual(["isolated-app"]);
+    } finally {
+      if (previousUserDataRoot === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      } else process.env.LANDO_USER_DATA_ROOT = previousUserDataRoot;
+    }
   });
 
   test("warns when the host-proxy worker root is unreadable as a directory", async () => {
@@ -943,7 +1034,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // When
     const checks = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
-        userDataRoot: root,
         provider: TestRuntimeProvider,
         providerKind: "user-installed",
         runtimeStatus: "ready",
@@ -954,7 +1044,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           inputs: { capabilityDefault: TestRuntimeProvider.id },
         },
         limits: { maxWorkers: 2, maxProbeServices: 8, budgetMs: 1_000 },
-      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+      }).pipe(Effect.provide(hostProxyDoctorLayer(root))),
     );
 
     // Then
@@ -979,7 +1069,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // When
     const checks = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
-        userDataRoot: root,
         provider: TestRuntimeProvider,
         providerKind: "user-installed",
         runtimeStatus: "ready",
@@ -990,7 +1079,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           inputs: { capabilityDefault: TestRuntimeProvider.id },
         },
         limits: { maxWorkers: 1, maxProbeServices: 8, budgetMs: 1_000 },
-      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+      }).pipe(Effect.provide(hostProxyDoctorLayer(root))),
     );
 
     // Then
@@ -1295,7 +1384,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(
           hostProxyTransportDoctorChecks({
-            userDataRoot: root,
             provider,
             providerKind: "user-installed",
             runtimeStatus: "ready",
@@ -1311,7 +1399,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         yield* Deferred.await(probeStarted);
         yield* TestClock.adjust("25 millis");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(hostProxyDoctorLayer(root)), Effect.provide(TestContext.TestContext)),
     );
 
     // Then
@@ -1339,7 +1427,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(
           hostProxyTransportDoctorChecks({
-            userDataRoot: root,
             provider: TestRuntimeProvider,
             providerKind: "user-installed",
             runtimeStatus: "ready",
@@ -1357,7 +1444,13 @@ describe("meta:doctor host-proxy transport reachability", () => {
         expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
         yield* TestClock.adjust("25 millis");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(fileSystem), Effect.provide(TestContext.TestContext)),
+      }).pipe(
+        Effect.provide(fileSystem),
+        Effect.provide(
+          Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root, platform: "linux", env: {} })),
+        ),
+        Effect.provide(TestContext.TestContext),
+      ),
     );
 
     // Then

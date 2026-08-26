@@ -4,6 +4,10 @@ import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
+import { applyProjectResultKeys } from "./project-result.ts";
+
+export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
+
 export type CommandResultOutcome =
   | { readonly _tag: "success"; readonly value: unknown }
   | { readonly _tag: "failure"; readonly error: unknown };
@@ -15,6 +19,7 @@ export interface EncodeCommandResultOptions {
   readonly redactor: Redactor;
   readonly warnings?: ReadonlyArray<CommandWarning>;
   readonly deprecations?: ReadonlyArray<DeprecationUse>;
+  readonly projectResultKeys?: readonly string[];
 }
 
 export interface EncodeStreamEventFrameOptions {
@@ -56,6 +61,8 @@ const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
     catch: (error) => error,
   });
 
+const isJsonProjectionError = (error: unknown): boolean => asRecord(error)?._tag === "JsonProjectionError";
+
 const encodeCommandEnvelope = (options: EncodeCommandResultOptions): Effect.Effect<unknown, unknown> =>
   Effect.gen(function* () {
     const base = {
@@ -69,7 +76,11 @@ const encodeCommandEnvelope = (options: EncodeCommandResultOptions): Effect.Effe
         ? {
             ...base,
             ok: true,
-            result: yield* encodeResult(options.resultSchema, options.outcome.value),
+            result: applyProjectResultKeys(
+              options.resultSchema,
+              yield* encodeResult(options.resultSchema, options.outcome.value),
+              options.projectResultKeys,
+            ),
           }
         : {
             ...base,
@@ -104,8 +115,10 @@ export const identityRedactor: Redactor = {
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => encodeJsonLine(envelope, options.redactor)),
-    Effect.catchAll(() =>
-      Effect.succeed(encodeJsonLine(fallbackEnvelope(options.command), options.redactor)),
+    Effect.catchAll((error) =>
+      isJsonProjectionError(error)
+        ? Effect.die(error)
+        : Effect.succeed(encodeJsonLine(fallbackEnvelope(options.command), options.redactor)),
     ),
   );
 
@@ -114,8 +127,12 @@ export const buildCommandResultEnvelope = (
 ): Effect.Effect<CommandResultEnvelope, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => Schema.decodeSync(CommandResultEnvelope)(envelope as never)),
-    Effect.catchAll(() =>
-      Effect.succeed(Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never)),
+    Effect.catchAll((error) =>
+      isJsonProjectionError(error)
+        ? Effect.die(error)
+        : Effect.succeed(
+            Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never),
+          ),
     ),
   );
 
@@ -142,8 +159,13 @@ const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<st
 export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.flatMap((envelope) => encodeStreamFrame({ _tag: "result", envelope }, options.redactor)),
-    Effect.catchAll(() =>
-      encodeStreamFrame({ _tag: "result", envelope: fallbackEnvelope(options.command) }, options.redactor),
+    Effect.catchAll((error) =>
+      isJsonProjectionError(error)
+        ? Effect.die(error)
+        : encodeStreamFrame(
+            { _tag: "result", envelope: fallbackEnvelope(options.command) },
+            options.redactor,
+          ),
     ),
   );
 

@@ -166,6 +166,11 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.disposed = true;
     try {
       this.renderer.off("resize", this.resizeListener);
+      if (this.renderer.screenMode === "split-footer") this.setFooter([]);
+      else if (this.renderer.screenMode !== "main-screen") {
+        this.renderer.externalOutputMode = "passthrough";
+        this.renderer.screenMode = "main-screen";
+      }
       this.renderer.destroy();
     } catch (cause) {
       recordOpenTuiSubstrateFailure(cause);

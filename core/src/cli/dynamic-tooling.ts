@@ -20,6 +20,7 @@ import { renderRunToolingResult } from "./commands/tooling";
 import {
   activeRendererMode,
   activeResultFormat,
+  emitJsonListModeIfRequested,
   resetActiveCommandInvocation,
   runCompiledCommand,
   setActiveCommandId,
@@ -38,7 +39,6 @@ const ToolingResultSchema = Schema.Struct({
 });
 
 const dynamicToolingOptions = {
-  renderEvents: true,
   plainTaskEvents: "detail-only",
   resultSchema: ToolingResultSchema,
   redactionTokens: runToolingRedactionTokens,
@@ -59,6 +59,7 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   if (name === undefined) throw new Error("Missing tooling command name");
   const commandArgv = argv.slice(1);
   prepareDynamicToolingInvocation(name, commandArgv);
+  if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
   return runCompiledCommand(
     runTooling({ name, args: commandArgv, renderProgress: true }),
     makeLandoRuntime(
@@ -78,6 +79,7 @@ const runDynamicBunShellTooling = (
   appRoot: string,
 ): Promise<void> => {
   prepareDynamicToolingInvocation(name, argv);
+  if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
   const effect = runBunShellTooling({ name, renderProgress: true }, appRoot).pipe(
     Effect.flatMap((result) =>
       result === undefined

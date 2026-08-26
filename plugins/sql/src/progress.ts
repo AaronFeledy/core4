@@ -40,8 +40,17 @@ export const confirmOrFail = (
   );
 };
 
-export const publishTree = (publish: SqlPublisher, label: string, steps: ReadonlyArray<DbCommandStep>) =>
+export type SqlProgressHandle = {
+  readonly complete: Effect.Effect<void, unknown>;
+};
+
+export const publishTree = (
+  publish: SqlPublisher,
+  label: string,
+  steps: ReadonlyArray<DbCommandStep>,
+): Effect.Effect<SqlProgressHandle, unknown> =>
   Effect.gen(function* () {
+    const startedAt = Date.now();
     const now = DateTime.unsafeNow();
     yield* publish(
       TaskTreeStartEvent.make({
@@ -56,15 +65,29 @@ export const publishTree = (publish: SqlPublisher, label: string, steps: Readonl
         TaskStartEvent.make({ taskId: step.id, parentId: "db", label: step.label, timestamp: now }),
       );
     }
+    return {
+      complete: completeTree(publish, steps, startedAt),
+    };
   });
 
-export const completeTree = (publish: SqlPublisher, steps: ReadonlyArray<DbCommandStep>) =>
+export const completeTree = (
+  publish: SqlPublisher,
+  steps: ReadonlyArray<DbCommandStep>,
+  startedAt?: number,
+) =>
   Effect.gen(function* () {
     const now = DateTime.unsafeNow();
+    const durationMs = startedAt === undefined ? 0 : Math.max(0, Date.now() - startedAt);
     for (const step of steps) {
-      yield* publish(TaskCompleteEvent.make({ taskId: step.id, timestamp: now }));
+      yield* publish(TaskCompleteEvent.make({ taskId: step.id, durationMs, timestamp: now }));
     }
     yield* publish(
-      TaskTreeCompleteEvent.make({ parentId: "db", succeeded: steps.length, failed: 0, timestamp: now }),
+      TaskTreeCompleteEvent.make({
+        parentId: "db",
+        succeeded: steps.length,
+        failed: 0,
+        durationMs,
+        timestamp: now,
+      }),
     );
   });

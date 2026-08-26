@@ -2115,7 +2115,7 @@ The **Agent-native** tenet (§1.2) requires that every command be consumable by 
 This is distinct from the `Renderer` (§8.9), and the two are not redundant:
 
 - **`--renderer <lando|json|plain|verbose>`** selects the *global output mode* — how messages, progress, and the task tree are routed and styled for the whole process.
-- **`--format <text|json|table|yaml|...>`** (with the **`--json` / `-j`** shorthand) selects the *per-command result encoding* — how this one command's typed result is serialized. **`--format json` is universal**: every non-interactive command MUST accept it and emit a valid envelope. `text` is the default; `table`/`yaml` remain per-command opt-ins. Bridge rule: `--renderer json` sets the default `--format` to `json`, but an explicit `--format` always wins.
+- **`--format <text|json|table|yaml|...>`** selects the *per-command result encoding* — how this one command's typed result is serialized. **`--format json` is universal**: every non-interactive command MUST accept it and emit a valid envelope. `text` is the default; `table`/`yaml` remain per-command opt-ins. Bridge rule: `--renderer json` sets the default `--format` to `json`, but an explicit `--format` always wins. **`-j`** is the boolean `--format=json` shortcut and never consumes a following token. **`--json`** is optional-valued (§8.11.5): after a command is resolved, bare `--json` lists selectable result keys and does not run the command; a valued field list projects those keys into `envelope.result`. `--jq` is specified in the same subsection.
 
 #### 8.11.1 The result envelope
 
@@ -2168,11 +2168,59 @@ export const StreamFrame = Schema.Union(
 
 #### 8.11.4 Required behaviors
 
-- Every non-interactive canonical command MUST accept `--format json` / `--json` / `-j` and emit a schema-valid `CommandResultEnvelope` (or `StreamFrame`s for streaming commands). The interactive carve-outs (`meta:setup`, `apps:init`, `meta:events:follow`, `app:shell`) are exempt **only** in their interactive mode; their non-interactive results still emit an envelope.
+- Every non-interactive canonical command MUST accept `--format json` and `-j` and emit a schema-valid `CommandResultEnvelope` (or `StreamFrame`s for streaming commands). `-j` remains the boolean `--format=json` shortcut. Optional-valued `--json` (list mode and field-list projection) and `--jq` are specified in §8.11.5 and are not a second serialization path. The interactive carve-outs (`meta:setup`, `apps:init`, `meta:events:follow`, `app:shell`) are exempt **only** in their interactive mode; their non-interactive results still emit an envelope.
 - JSON MUST be produced solely by `encodeCommandResult`; the §13.4 gate fails any other result `JSON.stringify`.
 - Every envelope MUST pass through `RedactionService` (§3.7) before emission.
 - The envelope and every per-command `resultSchema` MUST be in the §13.2 schema snapshot; a shape change requires an intentional, reviewable snapshot regen.
 - `--format json` MUST produce identical, schema-valid output for the source entry and the compiled binary entry of the single native dispatcher (§8.4.1); the §13.1 conformance layer covers every canonical id against `TestRuntime`; this is a smoke/conformance check of one dispatcher's two entry points, **not** an OCLIF-vs-native parity suite.
 - The §13.1 machine-output conformance gate drives **every** canonical command id with `--format json` against `TestRuntime` and asserts a decodable envelope with correct `command`/`ok` for a success and a failure case.
+
+#### 8.11.5 `--json` field lists and `--jq`
+
+`--json` is optional-valued. It is not only a boolean `--format json` shorthand.
+
+**Bare `--json` (list mode).** After a command is resolved, a bare `--json` with no field-list value lists the selectable top-level **result** keys as a JSON array. That array is not a `CommandResultEnvelope`. The command does not run.
+
+**Valued `--json` (projection).** A field list projects those keys from the encoded result and places the projected object in `envelope.result`. Unselected result keys are omitted. Envelope metadata (`apiVersion`, `command`, `ok`, `error`, `warnings`, `deprecations`) is unchanged.
+
+**Field-list grammar.**
+
+- Space form `--json TOKEN` is consumed as a field list only when `TOKEN` contains `,` or `.`. `lando exec --json echo` therefore does not steal `echo`.
+- Equals form `--json=echo` is always a one-key field list.
+- Keys are comma-separated. Dot paths select nested result fields (`urls.appserver`).
+- `-j` remains a boolean `--format=json` shortcut and never consumes a following token.
+
+**`--jq`.** `--jq <expr>` is universal on the CLI. It implies `--format json`. The expression evaluates against the **redacted** envelope, replaces stdout, and preserves the command exit code. Scalar results print raw, matching `jq -r`.
+
+**Pipeline.** JSON presentation is one ordered path:
+
+1. `Schema.encode` the command `resultSchema` (or the tagged-error schema on failure).
+2. Project selected result keys when a field list is present.
+3. Wrap the `CommandResultEnvelope`.
+4. Redact through `RedactionService`.
+5. Evaluate `--jq` when present.
+6. Write stdout.
+
+**MCP and library.** MCP tools and the library API never accept `--jq` or field lists. They always return the full redacted envelope.
+
+**Streaming.** `--jq` replaces only the terminal `result` frame. Incremental `stdout` / `stderr` / `event` frames are unchanged.
+
+**Help and no-command exemption.** `lando help --json` and `lando --json` keep today's catalog JSON. List mode applies only after a command is resolved.
+
+**`--path`.** Domain selectors such as `lando app config --path` stay domain selectors. They are not result projection. Do not treat `--path` as a field list.
+
+**Engine.** `--jq` runs an embedded jq engine. There is no system `jq` subprocess. Evaluation times out at 5 seconds, has no environment or module loading, and caps stdout at 8 MiB.
+
+**Serialize seam.** `encodeCommandResult` remains the only result serializer. jq output is presentation of that redacted envelope, not a second envelope.
+
+**Conflicts.**
+
+- Bare `--json` (list mode) combined with `--jq` is an error.
+- `--format table` (or any non-json format) combined with a field list or `--jq` is an error.
+
+**Failure.**
+
+- Failure plus a field list: do not project. Emit the `ok: false` envelope with `error` intact.
+- Failure plus `--jq`: jq still runs on the failure envelope.
 
 ---

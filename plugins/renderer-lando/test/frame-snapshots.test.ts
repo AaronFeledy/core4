@@ -9,7 +9,6 @@ import {
   NARROW_TREE_FIXTURES,
   PROMPT_FIXTURES,
   TREE_FIXTURES,
-  TREE_RESIZE_EVENTS,
 } from "./frame-fixtures.ts";
 import {
   capturePromptFrame,
@@ -37,14 +36,15 @@ const assertFixture = (name: string, captured: string, columns: number): void =>
   expect(captured).toBe(golden);
 };
 
-const assertBordered = (captured: string): void => {
+const assertLeftRail = (captured: string): void => {
   const lines = captured.split("\n");
   expect(lines[0]?.startsWith("╭─")).toBe(true);
-  expect(lines[0]?.endsWith("╮")).toBe(true);
+  expect(lines[0]?.endsWith("╮")).toBe(false);
   expect(lines.at(-1)?.startsWith("╰─")).toBe(true);
-  expect(lines.at(-1)?.endsWith("╯")).toBe(true);
+  expect(lines.at(-1)?.endsWith("╯")).toBe(false);
   for (const line of lines.slice(1, -1)) {
-    expect(line.endsWith("│"), `missing right border:\n${line}`).toBe(true);
+    expect(line.startsWith("│"), `missing left rail:\n${line}`).toBe(true);
+    expect(line.endsWith("│"), `unexpected right rail:\n${line}`).toBe(false);
   }
 };
 
@@ -60,19 +60,21 @@ describe("renderer frame snapshots — task tree", () => {
   }
 
   for (const fixture of NARROW_TREE_FIXTURES) {
-    test(`${fixture.id} stays bordered and within width at 40 columns`, async () => {
+    test(`${fixture.id} stays open-right and within width at 40 columns`, async () => {
       const columns = 40;
       const first = await captureTreeFrame(fixture.events, columns, 16);
       const second = await captureTreeFrame(fixture.events, columns, 16);
       expect(second).toBe(first);
-      assertBordered(first);
+      assertLeftRail(first);
       assertFixture(frameName(fixture.id, columns), first, columns);
     });
   }
 
-  test("mid-tree resize replays a valid narrower frame through the substrate", async () => {
-    const { before, after } = await captureTreeResizeFrame(TREE_RESIZE_EVENTS, 100, 60, 24);
-    expect(after).not.toBe(before);
+  test("mid-tree resize replays a valid narrower left-rail frame through the substrate", async () => {
+    const resizeEvents = NARROW_TREE_FIXTURES[0]?.events ?? [];
+    const { before, after } = await captureTreeResizeFrame(resizeEvents, 100, 60, 24);
+    assertLeftRail(before);
+    assertLeftRail(after);
     assertFixture(frameName("tree.resize", 60), after, 60);
   });
 });

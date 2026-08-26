@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +37,12 @@ import {
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { DeprecationServiceLive, FileSystemLive } from "../../src/testing/engine-layers.ts";
+
+const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
+
+afterAll(async () => {
+  await rm(isolatedUserDataRoot, { recursive: true, force: true });
+});
 
 const decodeFrames = (ndjson: string) =>
   ndjson
@@ -84,7 +91,10 @@ const buildLayers = (
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService()),
-    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({ userDataRoot: isolatedUserDataRoot, platform: "linux", env: {} }),
+    ),
     DeprecationServiceLive,
   );
 

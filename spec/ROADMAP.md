@@ -103,7 +103,7 @@ Prove the architecture end-to-end on the *single easiest* path. No breadth, no p
 - `@lando/provider-lando` — **primary target.** `RuntimeProvider` Live Layer for Linux (private Podman socket). Prototype scope: download + store a pinned Podman binary on first `lando setup`, start the Podman socket, emit a Compose file to a per-app temp dir (internal only), `Bun.spawn`-driven exec against the private socket, `docker logs`-equivalent via the Podman API, capability matrix population via API introspection (not `podman` on PATH). VM lifecycle skipped.
 - `@lando/provider-docker` — secondary / developer escape hatch. `RuntimeProvider` Live Layer for Linux Docker Engine. Compose emission + `docker exec` + `docker logs --follow` + Bun.spawn. Exists to let contributors who already have Docker validate the same `RuntimeProvider` contract from a different adapter.
 - `@lando/service-lando` — minimal `lando` service base + the `node` and `postgres` `ServiceType` impls.
-- `@lando/logger-pretty` — bundled but empty (Effect's default `Logger.pretty` is good enough for MVP).
+- Logger is a core Effect mode (`none` / pretty / JSON on stderr). No bundled logger plugin.
 
 **CLI commands working end-to-end:**
 - `lando start` / `app:start`

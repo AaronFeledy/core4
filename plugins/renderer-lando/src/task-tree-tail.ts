@@ -39,6 +39,7 @@ export interface TaskTreeViewModelSnapshot {
 export interface TaskTreeInteractionModel {
   readonly expandedTaskId: string | undefined;
   focusableTaskIds(): ReadonlyArray<string>;
+  eventTaskId(internalId: string): string;
   transcriptPathFor(taskId: string): AbsolutePath | undefined;
   canExpandTask(taskId: string): boolean;
   expandTask(taskId: string): void;
@@ -179,16 +180,29 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   }
 
   frameLines(): ReadonlyArray<string> {
-    return styleFrame(renderLogicalFrame(this.#renderState()));
+    return styleFrame(renderLogicalFrame(this.renderState()));
   }
 
   treeFrameLines(): ReadonlyArray<string> {
-    return styleFrame(renderTreeFrame(this.#renderState()));
+    return styleFrame(renderTreeFrame(this.renderState()));
+  }
+
+  renderState(): TaskTreeRenderState {
+    return {
+      tree: this.#tree,
+      tasks: this.#tasks,
+      order: this.#order,
+      spinningTaskIds: this.#spinningTaskIds,
+      spinnerFrame: this.#spinnerFrame,
+      expandedTaskId: this.#expandedTaskId,
+      expandedLines: this.#expandedLines,
+      terminalColumns: this.#getTerminalColumns?.() ?? this.#terminalColumns,
+    };
   }
 
   snapshot(): TaskTreeViewModelSnapshot {
     return {
-      frameLines: renderLogicalFrame(this.#renderState()),
+      frameLines: renderLogicalFrame(this.renderState()),
       activeTaskIds: this.#order.filter((id) => this.#tasks.get(id)?.status === "running"),
     };
   }
@@ -211,6 +225,10 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
 
   get expandedTaskId(): string | undefined {
     return this.#expandedTaskId;
+  }
+
+  eventTaskId(internalId: string): string {
+    return internalId;
   }
 
   focusableTaskIds(): ReadonlyArray<string> {
@@ -279,19 +297,6 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
       exitCode: undefined,
       remediation: undefined,
       ring: new TaskDetailRing(this.#detailCapacity),
-    };
-  }
-
-  #renderState(): TaskTreeRenderState {
-    return {
-      tree: this.#tree,
-      tasks: this.#tasks,
-      order: this.#order,
-      spinningTaskIds: this.#spinningTaskIds,
-      spinnerFrame: this.#spinnerFrame,
-      expandedTaskId: this.#expandedTaskId,
-      expandedLines: this.#expandedLines,
-      terminalColumns: this.#getTerminalColumns?.() ?? this.#terminalColumns,
     };
   }
 }

@@ -1,146 +1,58 @@
-import { type Context, DateTime, Effect } from "effect";
+import { Effect } from "effect";
 
-import type { EventError } from "@lando/sdk/errors";
-import {
-  TaskCompleteEvent,
-  TaskFailEvent,
-  TaskStartEvent,
-  TaskTreeCompleteEvent,
-  TaskTreeStartEvent,
-} from "@lando/sdk/events";
 import type { AbsolutePath, AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { EventService } from "@lando/sdk/services";
-
-const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 
 export interface BuildTaskProgress {
   readonly parentId: string;
-  readonly startTree: Effect.Effect<void, EventError>;
-  readonly startTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void, EventError>;
-  readonly completeTask: (
-    service: ServicePlan,
-    summary: string,
-    durationMs: number,
-  ) => Effect.Effect<void, EventError>;
-  readonly failTask: (service: ServicePlan, durationMs: number) => Effect.Effect<void, EventError>;
-  readonly abortTask: (
-    service: ServicePlan,
-    transcriptPath: AbsolutePath,
-    durationMs: number,
-  ) => Effect.Effect<void, EventError>;
+  readonly startTree: Effect.Effect<void>;
+  readonly startTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void>;
+  readonly completeTask: (service: ServicePlan, summary: string) => Effect.Effect<void>;
+  readonly failTask: (service: ServicePlan) => Effect.Effect<void>;
+  readonly abortTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void>;
   readonly unsettledServices: () => ReadonlyArray<ServicePlan>;
-  readonly completeTree: (durationMs: number) => Effect.Effect<void, EventError>;
-  readonly failTree: (durationMs: number) => Effect.Effect<void, EventError>;
+  readonly completeTree: Effect.Effect<void>;
+  readonly failTree: Effect.Effect<void>;
 }
 
-export const makeBuildTaskProgress = (
-  events: Context.Tag.Service<typeof EventService>,
-  plan: AppPlan,
-): BuildTaskProgress => {
+export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): BuildTaskProgress => {
   const services = Object.values(plan.services);
   const parentId = `build-artifact-${String(plan.id)}`;
-  let succeeded = 0;
-  const started = new Set<string>();
   const settled = new Set<string>();
+  const tree = makeTaskTree(events, {
+    parentId,
+    label: `Building ${plan.name}`,
+    children: services.map((service) => ({
+      id: String(service.name),
+      label: `Build ${String(service.name)}`,
+    })),
+    mode: "list",
+  });
+  const markSettled = (service: ServicePlan) =>
+    Effect.sync(() => {
+      settled.add(String(service.name));
+    });
   return {
     parentId,
-    startTree: events.publish(
-      TaskTreeStartEvent.make({
-        parentId,
-        label: `Building ${plan.name}`,
-        children: services.map((service) => String(service.name)),
-        mode: "list",
-        timestamp: timestamp(),
-      }),
-    ),
-    startTask: (service, transcriptPath) =>
-      events
-        .publish(
-          TaskStartEvent.make({
-            taskId: String(service.name),
-            parentId,
-            label: `Build ${String(service.name)}`,
-            transcriptPath,
-            timestamp: timestamp(),
-          }),
-        )
-        .pipe(Effect.tap(() => Effect.sync(() => started.add(String(service.name))))),
-    completeTask: (service, summary, durationMs) =>
-      events
-        .publish(
-          TaskCompleteEvent.make({
-            taskId: String(service.name),
-            summary,
-            durationMs,
-            timestamp: timestamp(),
-          }),
-        )
+    startTree: tree.start,
+    startTask: (service, transcriptPath) => tree.startTask(String(service.name), { transcriptPath }),
+    completeTask: (service, summary) =>
+      tree.completeTask(String(service.name), summary).pipe(Effect.zipRight(markSettled(service))),
+    failTask: (service) =>
+      tree
+        .failTask(String(service.name), `Build ${String(service.name)} failed`, { exitCode: 1 })
+        .pipe(Effect.zipRight(markSettled(service))),
+    abortTask: (service, transcriptPath) =>
+      tree
+        .startTask(String(service.name), { transcriptPath })
         .pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              succeeded += 1;
-              settled.add(String(service.name));
-            }),
+          Effect.zipRight(
+            tree.failTask(String(service.name), `Build ${String(service.name)} aborted`, { exitCode: 1 }),
           ),
+          Effect.zipRight(markSettled(service)),
         ),
-    failTask: (service, durationMs) =>
-      events
-        .publish(
-          TaskFailEvent.make({
-            taskId: String(service.name),
-            summary: `Build ${String(service.name)} failed`,
-            exitCode: 1,
-            durationMs,
-            timestamp: timestamp(),
-          }),
-        )
-        .pipe(Effect.tap(() => Effect.sync(() => settled.add(String(service.name))))),
-    abortTask: (service, transcriptPath, durationMs) =>
-      Effect.gen(function* () {
-        if (!started.has(String(service.name))) {
-          yield* events.publish(
-            TaskStartEvent.make({
-              taskId: String(service.name),
-              parentId,
-              label: `Build ${String(service.name)}`,
-              transcriptPath,
-              timestamp: timestamp(),
-            }),
-          );
-        }
-        yield* events.publish(
-          TaskFailEvent.make({
-            taskId: String(service.name),
-            summary: `Build ${String(service.name)} aborted`,
-            exitCode: 1,
-            durationMs,
-            timestamp: timestamp(),
-          }),
-        );
-        settled.add(String(service.name));
-      }),
     unsettledServices: () => services.filter((service) => !settled.has(String(service.name))),
-    completeTree: (durationMs) =>
-      events.publish(
-        TaskTreeCompleteEvent.make({
-          parentId,
-          summary: `${plan.name} built`,
-          succeeded: services.length,
-          failed: 0,
-          durationMs,
-          timestamp: timestamp(),
-        }),
-      ),
-    failTree: (durationMs) =>
-      events.publish(
-        TaskTreeCompleteEvent.make({
-          parentId,
-          summary: `${plan.name} build failed`,
-          succeeded,
-          failed: services.length - succeeded,
-          durationMs,
-          timestamp: timestamp(),
-        }),
-      ),
+    completeTree: tree.close(`${plan.name} built`),
+    failTree: tree.close(`${plan.name} build failed`),
   };
 };

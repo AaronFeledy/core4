@@ -29,13 +29,13 @@ const createFixture = async (width = 80, height = 24, activeTerminal = false) =>
 };
 
 describe("LiveRegionController with the OpenTUI test renderer", () => {
-  test("initializes captured split-footer at the physical bottom boundary", async () => {
+  test("initializes captured split-footer from the native cursor seed", async () => {
     const setup = await createTestRenderer({
       exitOnCtrlC: false,
-      externalOutputMode: "passthrough",
+      externalOutputMode: "capture-stdout",
       footerHeight: 4,
       height: 24,
-      screenMode: "main-screen",
+      screenMode: "split-footer",
       width: 80,
     });
     const controller = await createLiveRegionController(
@@ -45,7 +45,7 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
 
     expect(setup.renderer.screenMode).toBe("split-footer");
     expect(setup.renderer.externalOutputMode).toBe("capture-stdout");
-    expect(Reflect.get(setup.renderer, "renderOffset")).toBe(20);
+    expect(Reflect.get(setup.renderer, "renderOffset")).toBe(1);
     controller.commitScrollback("sparse output");
     await setup.renderOnce();
     controller.setFooter(["one", "two"]);

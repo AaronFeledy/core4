@@ -129,6 +129,31 @@ describe("machine-output conformance", () => {
     }
   });
 
+  test("projectResultKeys narrows envelope.result through runWithRendererHandling", async () => {
+    // Given version success output and a single projection key.
+    const spec = specFor("meta:version");
+    const io = createBufferedRendererIO();
+    const value = successValueFor(spec) as { readonly core: string };
+
+    // When the renderer boundary emits with projectResultKeys.
+    await runWithRendererHandling(Effect.succeed(value), {
+      runtime: testRuntimeLayerFor(spec),
+      rendererMode: "json",
+      resultFormat: "json",
+      command: spec.id,
+      resultSchema: spec.resultSchema,
+      projectResultKeys: ["core"],
+      io,
+      render: () => undefined,
+      formatError: (error) => `diagnostic: ${String(error)}`,
+    });
+
+    // Then the envelope result contains only that key.
+    const envelope = decodeEnvelope(io.stdoutLines()[0] ?? "{}");
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result).toEqual({ core: value.core });
+  });
+
   test("every command emits a decodable failure envelope with exit code 1", async () => {
     for (const id of canonicalIds) {
       const spec = specFor(id);

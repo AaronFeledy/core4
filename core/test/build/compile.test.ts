@@ -16,7 +16,6 @@ const expectedBundledPluginNames: ReadonlyArray<string> = [
   "@lando/provider-lando",
   "@lando/provider-docker",
   "@lando/service-lando",
-  "@lando/logger-pretty",
   "@lando/file-sync-mutagen",
   "@lando/proxy-traefik",
 ];

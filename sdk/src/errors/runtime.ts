@@ -80,3 +80,13 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
     remediation: Schema.String,
   },
 ) {}
+
+export class LogLevelSelectionError extends Schema.TaggedError<LogLevelSelectionError>()(
+  "LogLevelSelectionError",
+  {
+    message: Schema.String,
+    value: Schema.String,
+    source: Schema.Literal("flag", "env", "config"),
+    remediation: Schema.String,
+  },
+) {}

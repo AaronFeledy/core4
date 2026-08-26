@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
+import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
@@ -35,8 +36,9 @@ export {
 } from "./renderer-deprecations";
 export type { StreamOutputFrame } from "./renderer-machine-output";
 export {
+  type ConfigCliGlobals,
   type ResolveCliRendererModeOptions,
-  readConfigRendererValue,
+  readConfigCliGlobals,
   resolveCliRendererMode,
 } from "./renderer-mode-resolution";
 
@@ -70,8 +72,9 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly streamingMode?: "live";
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
+  readonly projectResultKeys?: readonly string[];
+  readonly jqExpression?: string;
   readonly io?: RendererIO;
-  readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
@@ -84,6 +87,14 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
+
+const taggedFailureFromCause = (cause: Cause.Cause<unknown>): unknown => {
+  const failure = Cause.failureOption(cause);
+  if (failure._tag === "Some") return failure.value;
+  const defect = Cause.dieOption(cause);
+  if (defect._tag === "Some") return defect.value;
+  return Cause.pretty(cause);
+};
 
 export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
@@ -124,6 +135,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         commandWarnings,
         ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
         ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
+        ...(options.projectResultKeys === undefined ? {} : { projectResultKeys: options.projectResultKeys }),
+        ...(options.jqExpression === undefined ? {} : { jqExpression: options.jqExpression }),
       });
     const setExitCode = (code: number): void => {
       (
@@ -136,31 +149,36 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
         const failure = Cause.failureOption(cause);
+        if (failure._tag === "Some" && failure.value instanceof JqExpressionError) {
+          setExitCode(2);
+          return;
+        }
         setExitCode(failure._tag === "Some" ? (options.failureExitCode?.(failure.value) ?? 1) : 1);
-      });
-    const applySuccessExitCode = (value: A) =>
-      Effect.sync(() => {
-        const code = options.successExitCode?.(value);
-        if (code !== undefined && code !== 0) setExitCode(code);
       });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
-        const failure = Cause.failureOption(cause);
+        const error = taggedFailureFromCause(cause);
         if (renderContext.format === "json") {
           const outcome = {
             _tag: "failure",
-            error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
+            error,
           } as const;
-          if (options.streaming !== undefined) {
-            if (!liveStreaming) yield* replayBufferedEvents();
-            yield* emitStreamResult(outcome);
-          } else {
-            yield* emitJsonResult(outcome);
+          const emit = (next: typeof outcome) =>
+            options.streaming !== undefined ? emitStreamResult(next) : emitJsonResult(next);
+          if (options.streaming !== undefined && !liveStreaming) yield* replayBufferedEvents();
+          const emitted = yield* emit(outcome).pipe(Effect.either);
+          if (emitted._tag === "Left") {
+            if (!(emitted.left instanceof JqExpressionError)) {
+              return yield* Effect.fail(emitted.left);
+            }
+            yield* emit({ _tag: "failure", error: emitted.left });
+            setExitCode(2);
+            return;
           }
           yield* setFailureExitCode(cause);
           return;
         }
-        let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
+        let message = options.formatError(error);
         const redaction = yield* Effect.serviceOption(RedactionService);
         if (redaction._tag === "Some") {
           const redactor = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
@@ -204,19 +222,26 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           yield* emitStreamResult(
             { _tag: "success", value: commandExit.value },
             options.redactionTokens?.(commandExit.value) ?? [],
-          );
+          ).pipe(Effect.catchAllCause((cause) => renderFailure(cause)));
         }
         return { _tag: "handled-success" } as const;
       }
       if (streamingJson) {
-        yield* emitStreamingSuccess(commandExit.value);
+        yield* emitStreamingSuccess(commandExit.value).pipe(
+          Effect.catchAllCause((cause) => renderFailure(cause)),
+        );
         return { _tag: "handled-success" } as const;
       }
       return { _tag: "success", value: commandExit.value } as const;
     });
+    const applySuccessExitCode = (value: A) =>
+      Effect.sync(() => {
+        const code = options.successExitCode?.(value);
+        if (code !== undefined && code !== 0) setExitCode(code);
+      });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
     if (!(streamingJson && !liveStreaming)) {
-      if (options.renderEvents === true) {
+      if (renderContext.format !== "json") {
         eventConsumerLayer = makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
           landoRenderer,
           ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
@@ -250,7 +275,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       yield* emitJsonResult(
         { _tag: "success", value: commandOutcome.value.value },
         options.redactionTokens?.(commandOutcome.value.value) ?? [],
-      );
+      ).pipe(Effect.catchAllCause((cause) => renderFailure(cause)));
       return;
     }
     const value = commandOutcome.value.value;

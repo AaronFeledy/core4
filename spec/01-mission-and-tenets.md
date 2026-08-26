@@ -88,7 +88,7 @@ Reference bundle (subject to change in §14):
 | Proxy | `@lando/proxy-traefik` | Optional |
 | CA / certs | `@lando/ca-mkcert` | Optional |
 | Service base | `@lando/service-lando` | Required for `type: lando` |
-| Logger | `@lando/logger-pretty` | Optional (Effect default `Logger.pretty` is built in) |
+| Logger | built-in Effect logger | Optional (pretty / JSON / silent via `--log-level`; no bundled logger plugin) |
 | Renderer | `@lando/renderer-lando` | Bundled default (plugin-contributed) |
 | Desktop notifications | `@lando/notify-lando` | Optional (bundled by default; publishes `notify.desktop` render events for long-running command completion through the constrained `LandoPluginContext.events.publishRender` seam per §8.9.7/§11.3.1; policy-only — foreground presentation via OpenTUI's `triggerNotification` is the renderer's) |
 | Template engine (Handlebars) | `@lando/template-handlebars` | Optional (bundled by default; configured with `noEscape: true` and `strict: true`; §7.3.2) |

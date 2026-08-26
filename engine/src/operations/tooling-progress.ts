@@ -1,17 +1,8 @@
 import { Effect } from "effect";
 
-import {
-  type ProgressEmitter,
-  publishTaskComplete,
-  publishTaskDetail,
-  publishTaskFail,
-  publishTaskStart,
-  publishTreeComplete,
-  publishTreeStart,
-} from "./progress.ts";
+import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 
 const outputLines = (text: string): ReadonlyArray<string> => {
-  if (text.length === 0) return [];
   const lines = text.split(/\r?\n/u);
   if (lines.at(-1) === "") lines.pop();
   return lines;
@@ -26,50 +17,29 @@ export const emitToolingOutputProgress = (input: {
   readonly exitCode: number;
   readonly durationMs: number;
 }): Effect.Effect<void> => {
-  const treeId = `tooling:${input.tool}`;
-  const taskId = `${treeId}:${input.service}`;
+  const tree = makeTaskTree(input.events, {
+    parentId: `tooling:${input.tool}`,
+    label: `Tooling: ${input.tool}`,
+    children: [{ id: input.service, label: input.service }],
+    prefixChildIds: true,
+  });
   return Effect.gen(function* () {
-    yield* publishTreeStart(input.events, {
-      parentId: treeId,
-      label: `Tooling: ${input.tool}`,
-      children: [taskId],
-    });
-    yield* publishTaskStart(input.events, {
-      taskId,
-      parentId: treeId,
-      label: input.service,
-    });
+    yield* tree.start;
+    yield* tree.startTask(input.service);
     for (const line of outputLines(input.stdout)) {
-      yield* publishTaskDetail(input.events, { taskId, stream: "stdout", line });
+      yield* tree.detail(input.service, "stdout", line);
     }
     for (const line of outputLines(input.stderr)) {
-      yield* publishTaskDetail(input.events, { taskId, stream: "stderr", line });
+      yield* tree.detail(input.service, "stderr", line);
     }
     if (input.exitCode === 0) {
-      yield* publishTaskComplete(input.events, {
-        taskId,
-        summary: "completed with exit code 0",
+      yield* tree.completeTask(input.service, "completed with exit code 0", input.durationMs);
+    } else {
+      yield* tree.failTask(input.service, `failed with exit code ${input.exitCode}`, {
         durationMs: input.durationMs,
+        exitCode: input.exitCode,
       });
-      yield* publishTreeComplete(input.events, {
-        parentId: treeId,
-        succeeded: 1,
-        failed: 0,
-        durationMs: input.durationMs,
-      });
-      return;
     }
-    yield* publishTaskFail(input.events, {
-      taskId,
-      summary: `failed with exit code ${input.exitCode}`,
-      exitCode: input.exitCode,
-      durationMs: input.durationMs,
-    });
-    yield* publishTreeComplete(input.events, {
-      parentId: treeId,
-      succeeded: 0,
-      failed: 1,
-      durationMs: input.durationMs,
-    });
+    yield* tree.close(undefined, input.durationMs);
   });
 };

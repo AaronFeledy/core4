@@ -27,7 +27,7 @@ import {
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
 import { countCommand } from "./families.ts";
 import { isGzipPath } from "./gzip.ts";
-import { type SqlPublisher, completeTree, confirmOrFail, publishTree } from "./progress.ts";
+import { type SqlPublisher, confirmOrFail, publishTree } from "./progress.ts";
 import type { DbCommandStep } from "./schemas.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { type SqlLandofile, type SqlPlan, sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
@@ -141,7 +141,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       );
     }
 
-    yield* publishTree(deps.publish, `db:${action}`, steps);
+    const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
 
     const io = { plan: deps.plan, service: target.name, family: target.family, creds, env, file, gzip };
     let snapshotId: string | undefined;
@@ -169,7 +169,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         return assertNever(action);
     }
 
-    yield* completeTree(deps.publish, steps);
+    yield* progress.complete;
     return {
       service: target.name,
       family: target.family,

@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 
+import { EventService } from "@lando/sdk/services";
+
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
@@ -18,9 +20,17 @@ export const runNativeOnlyBuiltIn = async (
     case "apps:init": {
       const input = compiledCommandInputFromArgv(entry.spec.id, argv);
       await runCompiledCommand(
-        Effect.tryPromise({
-          try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
-          catch: (error) => error,
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          return yield* Effect.tryPromise({
+            try: () =>
+              initApp({
+                ...initOptionsFromInput(input),
+                onWarn: emitDiagnosticLine,
+                events,
+              }),
+            catch: (error) => error,
+          });
         }),
         makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
         (result) => `Created ${result.appName} at ${result.directory}`,

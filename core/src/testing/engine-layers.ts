@@ -47,7 +47,11 @@ export {
   pluginCommandCachePath,
 } from "@lando/engine/cache/paths";
 export { CacheServiceLive } from "@lando/engine/cache/service";
-export { hostProxyWorkerEntry, landofileRuntimeInputs } from "@lando/engine/composition";
+export {
+  hostProxyWorkerEntry,
+  landofileRuntimeInputs,
+  prepareHostProxyShimArtifact,
+} from "@lando/engine/composition";
 export { getAtPath, setAtPath, unsetAtPath } from "@lando/engine/config-write/dot-path";
 export { parseTypedValue, type ValueType } from "@lando/engine/config-write/value-parse";
 export {
@@ -89,7 +93,7 @@ export { globalInstall } from "@lando/engine/operations/global-install";
 export type { InfoAppResult } from "@lando/engine/operations/info";
 export { logsAppForTarget } from "@lando/engine/operations/logs";
 export { PLUGIN_NEW_TEMPLATE_IDS } from "@lando/engine/operations/plugin-scaffold";
-export { publishTaskStart } from "@lando/engine/operations/progress";
+export { publishTaskStart } from "@lando/sdk/task-progress";
 export { reservedTopLevelAliasOwner } from "@lando/engine/operations/reserved-aliases";
 export { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 export {

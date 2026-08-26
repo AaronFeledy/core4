@@ -160,6 +160,7 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "parseConfigValue",
   "parseTypedValue",
   "pluginCommandCachePath",
+  "prepareHostProxyShimArtifact",
   "probeWorker",
   "providerImages",
   "publishTaskStart",

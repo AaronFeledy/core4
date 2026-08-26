@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import {
+  CliCommandInitEvent,
   type LandoEvent,
   MessageInfoEvent,
   TaskDetailEvent,
@@ -110,8 +111,45 @@ describe("renderVerboseLine — human line + full event payload", () => {
       }),
     )({ _tag: "log.line", line: "raw trace", timestamp: fixedTimestamp });
     const line = renderVerboseLine(logLine as unknown as Parameters<typeof renderVerboseLine>[0]);
+    expect(line).not.toBeNull();
     expect(line).toContain("log.line");
     expect(line).toContain('"line":"raw trace"');
+  });
+
+  test("cli-* lifecycle events get the fallback payload trace", () => {
+    const cliInit = {
+      _tag: "cli-start-init",
+      timestamp: fixedTimestamp,
+    } as unknown as Parameters<typeof renderVerboseLine>[0];
+    const initLine = renderVerboseLine(cliInit);
+    expect(initLine).toContain("· cli-start-init");
+    expect(initLine).toContain('"_tag":"cli-start-init"');
+
+    const cliRun = {
+      _tag: "cli-doctor-run",
+      timestamp: fixedTimestamp,
+    } as unknown as Parameters<typeof renderVerboseLine>[0];
+    expect(renderVerboseLine(cliRun)).toContain("· cli-doctor-run");
+
+    // Unknown non-cli tags also get the fallback paint path.
+    const other = {
+      _tag: "custom.probe",
+      timestamp: fixedTimestamp,
+    } as unknown as Parameters<typeof renderVerboseLine>[0];
+    expect(renderVerboseLine(other)).toContain("· custom.probe");
+  });
+
+  test("log.line renders its full payload trace", () => {
+    const logLine = {
+      _tag: "log.line",
+      line: "still visible",
+      timestamp: fixedTimestamp,
+    } as unknown as Parameters<typeof renderVerboseLine>[0];
+    const line = renderVerboseLine(logLine);
+    expect(line).not.toBeNull();
+    expect(line).toContain("log.line");
+    expect(line).toContain("still visible");
+    expect(line).toContain("· log.line");
   });
 });
 
@@ -152,5 +190,33 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     const esc = String.fromCharCode(27);
     expect(new RegExp(`${esc}\\[[0-9]*[AJ]`).test(stdout)).toBe(false);
     expect(stdout).not.toContain("LANDO OPS");
+  });
+
+  test("paints cli-* lifecycle traces alongside messages", async () => {
+    const io = createBufferedRendererIO();
+    const cliInit = Schema.decodeUnknownSync(CliCommandInitEvent)({
+      _tag: "cli-start-init",
+      commandId: "start",
+      argv: ["start"],
+      args: {},
+      flags: {},
+      cwd: "/tmp",
+      invocationId: "01jbtestverbosecliinit0001",
+      timestamp: fixedTimestamp,
+    });
+    const program = Effect.gen(function* () {
+      const events = yield* EventService;
+      yield* events.publish(cliInit);
+      yield* events.publish(infoEvent);
+      yield* Effect.sleep("20 millis");
+    });
+    const layer = Layer.provideMerge(makeVerboseRendererLive(io), EventServiceLive);
+    await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
+
+    const stdout = io.stdout();
+    expect(stdout).toContain("· cli-start-init");
+    expect(stdout).toContain('"_tag":"cli-start-init"');
+    expect(stdout).toContain("ℹ fetched 3 plugins");
+    expect(stdout).toContain('"_tag":"message.info"');
   });
 });

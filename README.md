@@ -61,7 +61,6 @@ Development follows this phase ladder:
 │   ├── file-sync-mutagen/    # Mutagen-accelerated bind mounts on slow-bind-mount providers
 │   ├── template-handlebars/  # Handlebars whole-file Landofile template engine
 │   ├── template-mustache/    # Mustache whole-file Landofile template engine
-│   ├── logger-pretty/        # pretty-printed Logger
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
 ├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
@@ -106,9 +105,10 @@ Development follows this phase ladder:
 - Running `lando setup` and `lando doctor` for first-time configuration
 - Where to file bug reports with the right diagnostic files
 
-> **Current limitation:** The default provider's runtime bundle manifest points at
-> placeholder URLs. To test the full setup flow, build a local runtime bundle with
-> `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
+> The default provider's runtime bundle manifest pins real published release
+> assets, so `lando setup` works end-to-end. To test an unpublished runtime
+> bundle, build it locally with `scripts/build-runtime-bundle.ts` and point
+> `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
 
 ## Toolchain
 
@@ -198,7 +198,7 @@ The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
 
 All command output flows through the `Renderer` service; pick a mode with
 `--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
-`LANDO_RENDERER` env > config > default).
+`LANDO_RENDERER` env > config > default). `--verbose` flips the default renderer to `verbose`. `--debug` also raises `--log-level=debug`. An explicit `--renderer` stays put.
 
 ## Building from source
 
@@ -233,12 +233,12 @@ live in [`AGENTS.md`](./AGENTS.md) and the per-package `AGENTS.md` files.
 
 This repository is unstable by design. A few practical caveats:
 
-- **The default provider's runtime bundle is a placeholder.** `@lando/provider-lando`
-  resolves its Podman runtime bundle from a per-platform manifest whose committed
-  entries are placeholders (404 URLs + zeroed checksums). End-to-end
-  default-provider `lando setup` cannot complete against real bundles yet; build a local bundle with
-  `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at
-  it to exercise the path.
+- **Runtime-bundle overrides are for local testing.** `@lando/provider-lando`
+  resolves its Podman runtime bundle from a per-platform manifest that pins real
+  published release assets, so default-provider `lando setup` completes out of
+  the box. To exercise an unpublished bundle, build it locally with
+  `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST`
+  at it.
 - **Installer trust roots are placeholders.** The embedded GPG public key
   and cosign identity/issuer used by the installers are verification-test
   placeholders, not production release keys.

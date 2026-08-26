@@ -11,6 +11,7 @@ import {
   UninstallResultSchema,
   uninstall,
 } from "@lando/engine/operations/uninstall";
+import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
@@ -104,8 +105,12 @@ const makeListDiscoveredApps =
         // Managed runtime not installed.
       }
     }
-    // Fail closed: with no runtime to ask, running apps cannot be ruled out.
+    // Fail closed only when a user app is recorded and cannot be checked.
+    // The reserved global app is setup state, not a running-user-app signal.
+    // Fresh roots or setup-only state cannot indicate running user apps.
     if (availableRuntimes.length === 0) {
+      const recorded = await readAppliedPlansFromUserData(userDataRoot);
+      if (recorded.every((app) => app.appId === "global")) return [];
       throw new Error("neither docker nor podman is available to verify running Lando apps");
     }
 

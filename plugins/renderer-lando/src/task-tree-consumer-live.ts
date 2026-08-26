@@ -12,6 +12,8 @@ import {
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
+import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
+import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
 import { type LiveRegionHandle, makeTaskTreeSubstrateHandler } from "./task-tree-substrate-handler.ts";
 import { makeTranscriptTailController } from "./transcript-tail-controller.ts";
 import { TranscriptTailReader } from "./transcript-tail-reader.ts";
@@ -28,6 +30,7 @@ export const makeTaskTreeConsumerLive = (
   stdout: NodeJS.WriteStream,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
+  prefetchLiveRegion: () => void,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
@@ -42,13 +45,9 @@ export const makeTaskTreeConsumerLive = (
       const scope = yield* Effect.scope;
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
+      let session: TaskTreeSession = idleSession();
       let active:
-        | {
-            readonly controller: LiveRegionHandle;
-            readonly consume: (event: LandoEvent) => Effect.Effect<void>;
-            readonly dispose: () => void;
-            readonly transcriptTail: Effect.Effect.Success<ReturnType<typeof makeTranscriptTailController>>;
-          }
+        | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
 
       const line = (event: LandoEvent): void => {
@@ -97,6 +96,9 @@ export const makeTaskTreeConsumerLive = (
           consume: consumeRenderable,
           resize,
           renderFooter,
+          openSession,
+          closeSession,
+          hasTasks,
           dispose,
         } = makeTaskTreeSubstrateHandler(io, controller);
         const transcriptTail = yield* makeTranscriptTailController({
@@ -107,15 +109,17 @@ export const makeTaskTreeConsumerLive = (
         });
         const input = new TaskTreeInputController(viewModel);
         const publishedByInput = new WeakSet<LandoEvent>();
-        const transition = (event: LandoEvent): Effect.Effect<boolean> =>
+        const transition = (event: LandoEvent, preferredInternalId?: string): Effect.Effect<boolean> =>
           Effect.gen(function* () {
             const taskId = taskIdOf(event);
             if (taskId === undefined) return false;
             if (event._tag === "task.detail.expand") {
               const previousTaskId = viewModel.expandedTaskId;
-              if (previousTaskId !== taskId) viewModel.expandTask(taskId);
-              if (viewModel.expandedTaskId !== taskId) return false;
-              const opened = yield* transcriptTail.open(taskId);
+              const targetId = preferredInternalId ?? taskId;
+              if (previousTaskId !== targetId) viewModel.expandTask(targetId);
+              const occurrenceId = viewModel.expandedTaskId;
+              if (occurrenceId === undefined) return false;
+              const opened = yield* transcriptTail.open(occurrenceId);
               if (!opened) {
                 viewModel.collapse();
                 return false;
@@ -140,7 +144,7 @@ export const makeTaskTreeConsumerLive = (
               catch: (cause) => recordOpenTuiSubstrateFailure(cause),
             }).pipe(Effect.option);
             if (Option.isNone(exited)) {
-              viewModel.expandTask(taskId);
+              viewModel.expandTask(preferredInternalId ?? viewModel.expandedTaskId ?? taskId);
               yield* transcriptTail.refresh;
               return false;
             }
@@ -185,7 +189,7 @@ export const makeTaskTreeConsumerLive = (
                   return;
                 }
                 for (const event of result.events) {
-                  if (!(yield* transition(event))) continue;
+                  if (!(yield* transition(event, result.preferredInternalId))) continue;
                   publishedByInput.add(event);
                   yield* events.publish(event);
                 }
@@ -193,24 +197,33 @@ export const makeTaskTreeConsumerLive = (
             );
           });
         }
-        active = { controller, consume, dispose, transcriptTail };
+        active = {
+          controller,
+          consume,
+          dispose,
+          viewModel,
+          openSession,
+          closeSession,
+          hasTasks,
+          transcriptTail,
+        };
         journal.attach(controller);
         return active;
       });
 
       const consume = (event: LandoEvent): Effect.Effect<void> =>
         Effect.gen(function* () {
-          if (active !== undefined) {
-            yield* active.consume(event);
-            return;
-          }
-          if (event._tag !== "task.tree.start") {
-            line(event);
-            return;
-          }
-          const substrate = yield* acquire;
-          if (substrate === undefined) line(event);
-          else yield* substrate.consume(event);
+          if (/^cli-.+-init$/.test(event._tag) && Reflect.get(event, "parentInvocationId") === undefined)
+            prefetchLiveRegion();
+          const routed = yield* routeSessionEvent(
+            event,
+            session,
+            active,
+            acquire,
+            line,
+            recordOpenTuiSubstrateFailure,
+          );
+          session = routed.session;
         });
       const fiber = yield* Effect.forkScoped(
         Effect.gen(function* () {
@@ -226,6 +239,11 @@ export const makeTaskTreeConsumerLive = (
           yield* Fiber.interrupt(fiber);
           const substrate = active;
           if (substrate !== undefined) {
+            if (shouldFlushSessionOnDispose(session, substrate.hasTasks())) {
+              session = yield* serialized(
+                commitOpenSession(session, substrate, recordOpenTuiSubstrateFailure),
+              );
+            }
             journal.detach(substrate.controller);
             yield* serialized(substrate.transcriptTail.close);
             substrate.dispose();

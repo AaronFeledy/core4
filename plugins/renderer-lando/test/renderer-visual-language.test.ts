@@ -192,11 +192,10 @@ describe("lando renderer visual language", () => {
     for (const events of [setupPlanEvents(), failureEvents(), uninstallEvents()]) {
       for (const columns of [80, 100, 120]) {
         const frame = drivePainter(events, columns).join("\n");
-        expect(frame).toContain("LANDO OPS");
         expect(frame).toContain("╭─");
         expect(frame).toContain("╰─");
         expect(frame).toContain("│");
-        expect(frame).toMatch(/\[(RUNNING|ONLINE|BLOCKED|WAIT)\]/);
+        expect(frame).toMatch(/[✓✗◌·]/);
       }
     }
   });
@@ -204,8 +203,8 @@ describe("lando renderer visual language", () => {
   test("keeps narrow 80-column frames readable and never communicates status by color alone", () => {
     const frame = drivePainter(setupPlanEvents(), 80);
     expect(maxFrameWidth(frame)).toBeLessThanOrEqual(80);
-    expect(frame.join("\n")).toContain("[ONLINE]");
-    expect(frame.join("\n")).toContain("[RUNNING]");
+    expect(frame.join("\n")).toContain("✓");
+    expect(frame.join("\n")).toContain("·");
   });
 
   test("keeps all golden fixtures within their target terminal width", () => {
@@ -252,7 +251,7 @@ describe("lando renderer visual language", () => {
     );
     const substrateOutput = [...controller.footers.flat(), ...controller.scrollback].join("\n");
     expect(substrateOutput).toContain(`${escapeChar}[`);
-    expect(stripAnsi(substrateOutput)).toContain("LANDO OPS");
+    expect(stripAnsi(substrateOutput)).toContain("╭─ Building app dependencies");
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);
@@ -264,10 +263,10 @@ describe("lando renderer visual language", () => {
     for (const columns of [80, 100, 120]) {
       const frame = drivePainter(successEvents(), columns);
       const joined = frame.join("\n");
-      expect(joined).toContain("LANDO OPS");
-      expect(joined).toContain("[ONLINE]");
-      expect(joined).toContain("(2 ✓ · 0 ✗)");
-      expect(joined).not.toContain("[BLOCKED]");
+      expect(joined).toContain("╭─ App online");
+      expect(joined).toContain("│ ✓");
+      expect(joined).toContain("╰─ done");
+      expect(joined).not.toContain("failed");
       expect(maxFrameWidth(frame)).toBeLessThanOrEqual(columns);
     }
   });
@@ -333,19 +332,21 @@ describe("renderer visual language docs", () => {
   test("terminal UI polish guide publishes the spaceship-console tokens", () => {
     const guide = readFileSync(resolve(repoRoot, "docs/guides/cli/terminal-ui-polish.mdx"), "utf8");
     for (const token of [
-      "deep-space",
-      "cyan/teal telemetry accents",
-      "[RUNNING]",
-      "[ONLINE]",
-      "[CACHED]",
-      "[SKIPPED]",
-      "[BLOCKED]",
-      "[WAIT]",
-      "80 columns",
+      "terminal default",
+      "pink left rail",
+      "bold in the default color",
+      "standard terminal palette",
+      "semantic glyphs",
+      "done",
+      "ok",
+      "failed",
+      "cached",
+      "skipped",
+      "40 columns",
       "plain, json, non-TTY, and CI output stay undecorated",
-      "LANDO OPS headings",
+      "identity-only titles",
       "two-space row rhythm",
-      "glyph plus text status",
+      "glyph plus compact optional metadata",
       "dimmed detail tails",
       "progress rails stay semantic",
       "no undifferentiated rainbow logs",

@@ -67,6 +67,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register n
 - Main-binary compilation must use `scripts/build-compiled-binary.ts`; its ESM bytecode format is required by OpenTUI's top-level await, and cross-target release builds need a frozen `bun install --os=* --cpu=*` first so every locked native optional package is present.
 - Topic/write-verb commands need **explicit canonical ids** in the registry (not greedy multi-token parsing). After registry edits, regen command-manifest + `codegen:schema-snapshot`.
 - `--format` is stripped pre-parse and reinjected as `flags.format`; the real allow-list is `RESULT_FORMATS` in `core/src/cli/format-flags.ts`.
+- `--json` is optional-valued; `-j` is not; bare `--json` lists keys and skips run.
 - MCP projections for a mixed read/write umbrella command must replace the umbrella with constrained read specs and omit separately registered write-verb ids from the MCP registry.
 - Bundled plugin `setup.flags` merge from `core/src/cli/generated/setup-plugin-flags.ts` (regen: `codegen:setup-plugin-flags`) through the native CLI merger. Never import `core/src/plugins/generated/bundled.ts` from a command module (cold-start regression). Flag-name collisions surface as `SetupFlagCollisionError` from `core/src/plugins/setup-flags.ts`.
 - Command topic descriptions live in `core/src/cli/command-topics.ts` and project into the generated command-registry manifest; cold-path root help reads only that embedded manifest.

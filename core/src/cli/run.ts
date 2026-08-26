@@ -1,6 +1,12 @@
 import { Effect, Layer } from "effect";
 
-import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import {
+  JsonJqConflictError,
+  JsonProjectionError,
+  LogLevelSelectionError,
+  NotImplementedError,
+  RendererSelectionError,
+} from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
@@ -28,24 +34,38 @@ import {
   normalizeCompiledScratchRunArgvForUniversalFlags,
 } from "./compiled-normalize";
 import {
+  activeJq,
+  activeJsonControl,
   activeRendererMode,
   activeResultFormat,
   commandErrorMessage,
   emitDiagnosticLine,
+  emitJsonListModeIfRequested,
   emitResultLine,
   resetActiveCommandInvocation,
   runCompiledCommand,
   setActiveCommandId,
   setActiveDeprecationWarnings,
+  setActiveJq,
+  setActiveJsonControl,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "./compiled-runtime";
 import { renderAliasResolutionFailure, routeResolvedTooling } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
-import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
+import {
+  DEFAULT_RESULT_FORMAT,
+  JSON_CONTROL_OFF,
+  extractFormatFlags,
+  resolveJsonControl,
+  resolveResultFormat,
+} from "./format-flags";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
+import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
+import { setActiveLogLevel } from "./renderer-mode-state";
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
@@ -67,6 +87,39 @@ const failUnknownCommand = (token: string) =>
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });
+
+const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | undefined => {
+  if (activeJsonControl.mode === "list" && activeJq !== undefined) {
+    return new JsonJqConflictError({
+      message: "Cannot combine --jq with bare --json.",
+      remediation: "cannot use --jq with bare --json; pass --json key1,key2 or omit --json",
+    });
+  }
+  if ((activeJsonControl.mode === "keys" || activeJq !== undefined) && activeResultFormat !== "json") {
+    return new JsonProjectionError({
+      message: "JSON projection requires --format=json.",
+      keys: activeJsonControl.mode === "keys" ? [...activeJsonControl.keys] : [],
+      available: [],
+      reason: "format_conflict",
+      remediation: "Use --format=json or omit --format when projecting or using --jq.",
+    });
+  }
+  return undefined;
+};
+
+const rejectJsonControlConflicts = async (): Promise<boolean> => {
+  const error = jsonControlConflict();
+  if (error === undefined) return false;
+  setActiveCommandId("cli:json-control");
+  await renderPreCommandFailure({
+    commandId: "cli:json-control",
+    error,
+    rendererMode: activeRendererMode,
+    resultFormat: "json",
+    failureExitCode: 2,
+  });
+  return true;
+};
 
 // allow: SIZE_OK — help dispatch stays in the single native dispatcher so source and compiled entries share one registry.
 const HELP_SPECIAL_FLAGS = {
@@ -138,6 +191,7 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
+    setActiveLogLevel("none");
     await runHostProxyWorkerProcess();
     return;
   }
@@ -167,16 +221,44 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
     argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
+    const isProtocolStdoutCommand =
+      rawHead === "mcp" ||
+      rawHead === "meta:mcp" ||
+      (passthroughAliasResolution?._tag === "Right" &&
+        passthroughAliasResolution.right._tag === "built-in" &&
+        passthroughAliasResolution.right.commandId === "meta:mcp");
     try {
-      const resolution = await resolveCliRendererMode({ argv, env: process.env });
+      const configGlobals = await readConfigCliGlobals();
+      const logLevelResolution = resolveLogLevel({
+        argv,
+        env: process.env,
+        ...(configGlobals.logLevel === undefined ? {} : { configValue: configGlobals.logLevel }),
+      });
+      argv = logLevelResolution.remainingArgv;
+      setActiveLogLevel(logLevelResolution.level);
+
+      const resolution = await resolveCliRendererMode({
+        argv,
+        env: process.env,
+        loadConfigRenderer: async () => configGlobals.renderer,
+      });
       argv = resolution.remainingArgv;
-      setActiveRendererMode(resolution.mode);
+      const mode = isProtocolStdoutCommand
+        ? resolution.mode
+        : applyDebugRendererFlip({ verbose: logLevelResolution.verbose, renderer: resolution });
+      setActiveRendererMode(mode);
     } catch (error) {
-      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        setActiveCommandId("cli:renderer-selection");
+      if (
+        error instanceof LogLevelSelectionError ||
+        error instanceof RendererSelectionError ||
+        error instanceof NotImplementedError
+      ) {
+        const commandId =
+          error instanceof LogLevelSelectionError ? "cli:log-level-selection" : "cli:renderer-selection";
+        setActiveCommandId(commandId);
         const output = preCommandOutputMode({ argv, env: process.env });
         await renderPreCommandFailure({
-          commandId: "cli:renderer-selection",
+          commandId,
           error,
           ...output,
         });
@@ -188,9 +270,19 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     argv = deprecationWarnings.remainingArgv;
     setActiveDeprecationWarnings(deprecationWarnings.enabled);
     try {
+      const extracted = extractFormatFlags(argv);
       const formatResolution = resolveResultFormat({ argv, rendererMode: activeRendererMode });
       argv = formatResolution.remainingArgv;
       setActiveResultFormat(formatResolution.format);
+      setActiveJsonControl(resolveJsonControl(extracted, formatResolution.format));
+      setActiveJq(extracted.jq);
+      if (
+        extracted.jq !== undefined &&
+        activeJsonControl.mode === "off" &&
+        formatResolution.source !== "format"
+      ) {
+        setActiveResultFormat("json");
+      }
     } catch (error) {
       if (error instanceof RendererSelectionError) {
         setActiveCommandId("cli:format-selection");
@@ -206,6 +298,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
   } else {
     setActiveResultFormat(DEFAULT_RESULT_FORMAT);
+    setActiveJsonControl(JSON_CONTROL_OFF);
+    setActiveJq(undefined);
   }
 
   argv = normalizeCompiledCommandArgv(argv);
@@ -230,6 +324,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     await dispatchHelpTarget(target);
     return;
   }
+
+  if (await rejectJsonControlConflicts()) return;
 
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
@@ -264,6 +360,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
   setActiveCommandId(canonicalCommandId);
   resetActiveCommandInvocation(canonicalCommandId, argv.slice(1));
+  if (canonicalCommandId === "meta:mcp") {
+    const flags = argv.slice(1);
+    const terminator = flags.indexOf("--");
+    const beforeTerminator = terminator === -1 ? flags : flags.slice(0, terminator);
+    if (!beforeTerminator.includes("--list")) setActiveLogLevel("none");
+  }
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
@@ -301,6 +403,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     !isBunOrX &&
     !scratchRunHasToolCommand
   ) {
+    const versionSchema = resolveBuiltInCommand("meta:version")?.spec.resultSchema;
+    if (emitJsonListModeIfRequested(versionSchema)) return;
     await runMetaVersion();
     return;
   }
@@ -319,6 +423,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       });
       return;
     }
+    if (emitJsonListModeIfRequested(found[1].resultSchema)) return;
   }
 
   if (builtInCommand?.status.kind === "deferred") {

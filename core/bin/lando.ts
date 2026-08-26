@@ -18,6 +18,22 @@ ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
 
 const argv = cliUserArgv(Bun.argv);
+const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.ProcessEnv): boolean => {
+  if (
+    tokens.some(
+      (token) =>
+        token === "--debug" ||
+        token === "--verbose" ||
+        token === "--log-level" ||
+        token.startsWith("--log-level="),
+    )
+  ) {
+    return true;
+  }
+  const level = env.LANDO_LOG_LEVEL;
+  return level !== undefined && level !== "" && level !== "none";
+};
+
 const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
   const { writeStdioLine } = await import("@lando/renderer/io");
   writeStdioLine(destination, text);
@@ -51,8 +67,10 @@ const main = async (): Promise<void> => {
   const appSensitiveAlias =
     argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
   const appAliasContext = appSensitiveAlias && (await hasAppContext(process.cwd()));
+  const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
 
   if (
+    coldPathAllowed &&
     argv.length === 1 &&
     (argv[0] === "--version" ||
       argv[0] === "-V" ||
@@ -65,8 +83,9 @@ const main = async (): Promise<void> => {
   }
 
   if (
-    (argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
-    (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv")
+    coldPathAllowed &&
+    ((argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
+      (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv"))
   ) {
     const { renderShellenv } = await import("../src/cli/commands/shellenv");
     await writeLine("stdout", renderShellenv("posix"));
@@ -74,9 +93,10 @@ const main = async (): Promise<void> => {
   }
 
   if (
-    (argv.length === 1 &&
+    coldPathAllowed &&
+    ((argv.length === 1 &&
       (argv[0] === "meta:version" || ((argv[0] === "--help" || argv[0] === "-h") && !appAliasContext))) ||
-    (argv.length === 2 && argv[0] === "meta" && argv[1] === "version")
+      (argv.length === 2 && argv[0] === "meta" && argv[1] === "version"))
   ) {
     if (argv[0] === "--help" || argv[0] === "-h") {
       const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
@@ -92,9 +112,11 @@ const main = async (): Promise<void> => {
   }
 
   if (
-    (argv.length === 1 && (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
-    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
-    (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list")
+    coldPathAllowed &&
+    ((argv.length === 1 &&
+      (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
+      (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
+      (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list"))
   ) {
     const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
     await writeLine("stdout", renderColdRecipesList());
