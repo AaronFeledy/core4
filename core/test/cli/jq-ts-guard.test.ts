@@ -71,4 +71,8 @@ describe("assertJqExpressionSafe", () => {
   test("allows dynamic index assignment", () => {
     assertAllows(".[.n] = 0");
   });
+
+  test("rejects delpaths with nested huge index", () => {
+    assertThrows("delpaths([[999999999]])");
+  });
 });

@@ -93,6 +93,12 @@ const isHugeMultiply = (node: Record<string, unknown>): boolean => {
   return Math.abs(product) >= HUGE_LITERAL_THRESHOLD;
 };
 
+const markHugeIfIndex = (item: unknown, findings: Findings): void => {
+  if (isHugeFoldedNumber(item)) {
+    findings.hasHugeIndexLiteral = true;
+  }
+};
+
 const markSetpathPathIndexes = (node: Record<string, unknown>, findings: Findings): void => {
   const args = node.args;
   if (!Array.isArray(args)) {
@@ -103,8 +109,13 @@ const markSetpathPathIndexes = (node: Record<string, unknown>, findings: Finding
     return;
   }
   for (const item of pathArg.items) {
-    if (isHugeFoldedNumber(item)) {
-      findings.hasHugeIndexLiteral = true;
+    // setpath path segment: [999999999]
+    markHugeIfIndex(item, findings);
+    // delpaths nested path: [[999999999]]
+    if (isRecord(item) && item.kind === "Array" && Array.isArray(item.items)) {
+      for (const nested of item.items) {
+        markHugeIfIndex(nested, findings);
+      }
     }
   }
 };
