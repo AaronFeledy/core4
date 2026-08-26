@@ -1,7 +1,7 @@
-import { parse, runAst, type Value } from "@gabrielbryk/jq-ts";
+import { type Value, parse, runAst } from "@gabrielbryk/jq-ts";
 
-import type { JqEngine } from "./types.ts";
 import { assertJqExpressionSafe } from "./jq-ts-guard.ts";
+import type { JqEngine } from "./types.ts";
 
 const LIMITS = {
   maxSteps: 1_000_000,
@@ -10,7 +10,12 @@ const LIMITS = {
 } as const;
 
 const isJqValue = (input: unknown): input is Value => {
-  if (input === null || typeof input === "boolean" || typeof input === "number" || typeof input === "string") {
+  if (
+    input === null ||
+    typeof input === "boolean" ||
+    typeof input === "number" ||
+    typeof input === "string"
+  ) {
     return true;
   }
   if (Array.isArray(input)) {
