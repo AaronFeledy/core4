@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { NODE_API_RECIPE_ID } from "./manifest";
 
@@ -13,6 +14,7 @@ const renderLandofile = (appName: string, node: string, framework: string, datab
     "    environment:",
     `      API_FRAMEWORK: ${framework}`,
   ];
+  lines.push(...renderPrimaryRouteLines(appName));
   if (database !== "none") {
     lines.push("    dependsOn:", "      - database", "  database:", `    type: ${database}`);
   }

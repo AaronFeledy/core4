@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { WORDPRESS_RECIPE_ID } from "./manifest";
 
@@ -15,6 +16,7 @@ const renderLandofile = (appName: string, php: string, redis: boolean): string =
     "      - database",
   ];
   if (redis) lines.push("      - cache");
+  lines.push(...renderPrimaryRouteLines(appName));
   lines.push("  database:", "    type: mariadb");
   if (redis) lines.push("  cache:", "    type: redis");
   lines.push("tooling:");

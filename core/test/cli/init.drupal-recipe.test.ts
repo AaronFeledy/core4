@@ -72,6 +72,8 @@ describe("lando init — Drupal recipe", () => {
       expect(landofile).toContain("vendor/bin/drush");
       expect(landofile).toContain("drupal-scaffold:");
       expect(landofile).toContain("arguments: false");
+      expect(landofile).toContain("# primary URL: http(s)://drupal-app.lndo.site");
+      expect(landofile).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
     });
   });
 });

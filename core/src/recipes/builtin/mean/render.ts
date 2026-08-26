@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { MEAN_RECIPE_ID } from "./manifest";
 
@@ -18,6 +19,7 @@ const renderLandofile = (appName: string, node: string, redis: boolean): string 
   if (redis) lines.push("      REDIS_URL: redis://cache:6379");
   lines.push("    dependsOn:", "      - database");
   if (redis) lines.push("      - cache");
+  lines.push(...renderPrimaryRouteLines(appName));
   lines.push("  database:", "    type: mongodb");
   if (redis) lines.push("  cache:", "    type: redis");
   lines.push(

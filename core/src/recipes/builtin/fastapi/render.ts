@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { FASTAPI_RECIPE_ID } from "./manifest";
 
@@ -14,6 +15,7 @@ const renderLandofile = (appName: string): string =>
     "    dependsOn:",
     "      - database",
     "      - cache",
+    ...renderPrimaryRouteLines(appName),
     "  database:",
     "    type: postgres",
     "  cache:",

@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { ELEVENTY_RECIPE_ID } from "./manifest";
 
@@ -15,6 +16,7 @@ const renderLandofile = (appName: string): string =>
     "    type: static:nginx",
     "    appMount:",
     "      target: /app",
+    ...renderPrimaryRouteLines(appName),
     "tooling:",
     "  eleventy:",
     "    service: builder",

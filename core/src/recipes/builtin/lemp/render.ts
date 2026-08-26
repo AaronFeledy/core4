@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { LEMP_RECIPE_ID } from "./manifest";
 
@@ -12,6 +13,7 @@ const renderLandofile = (appName: string, php: string): string =>
     "    port: 80",
     "    dependsOn:",
     "      - appserver",
+    ...renderPrimaryRouteLines(appName),
     "  appserver:",
     `    type: php:${php}`,
     "    framework: none",

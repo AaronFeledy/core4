@@ -33,6 +33,7 @@ const renderLandofile = (
       port: 80,
       dependsOn: ["database", "cache"],
       framework: "symfony",
+      appName,
     }),
     ...renderDatabaseLines(stack.database),
     "  cache:",
