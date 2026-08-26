@@ -2209,7 +2209,7 @@ export const StreamFrame = Schema.Union(
 
 **`--path`.** Domain selectors such as `lando app config --path` stay domain selectors. They are not result projection. Do not treat `--path` as a field list.
 
-**Engine.** `--jq` runs an embedded jq engine. There is no system `jq` subprocess. Evaluation times out at 5 seconds, has no environment or module loading, and caps stdout at 8 MiB.
+**Engine.** `--jq` runs an embedded jq-compatible evaluator (jq 1.8 subset). There is no system `jq` subprocess. Evaluation times out at 5 seconds, has no environment or module loading, caps stdout at 8 MiB, and rejects expressions that would allocate unbounded arrays or strings (literal indexes/multipliers ≥ 1e6 on assignment/`setpath`/`delpaths`/`*`).
 
 **Serialize seam.** `encodeCommandResult` remains the only result serializer. jq output is presentation of that redacted envelope, not a second envelope.
 

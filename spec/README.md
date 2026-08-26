@@ -244,7 +244,7 @@ If you are looking for…
 | `interactionServices:` plugin contribution surface | 10 | §9.5 |
 | Interaction contract suite (mandatory) | 13 | §13.1 |
 | `--json` field lists (optional-valued projection / list mode) | 08 | §8.11.5 |
-| `--jq` (embedded jq over the redacted envelope) | 08 | §8.11.5 |
+| `--jq` (embedded jq-compatible evaluator over the redacted envelope) | 08 | §8.11.5 |
 | `TestInteractionService` test fixture | 09 | §16.8 |
 | Embedding `interaction` policy (library-mode non-interactive default) | 09 | §16.3 + §8.10.3 |
 | `task.tree.start` / `task.tree.complete` render events | 08 | §8.9 |

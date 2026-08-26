@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { JqExpressionError } from "@lando/sdk/errors";
+
 import { applyJqToRedactedJsonLine } from "../../src/cli/jq/eval.ts";
 import type { JqEngine } from "../../src/cli/jq/types.ts";
 
@@ -173,7 +175,7 @@ describe("applyJqToRedactedJsonLine with a fake engine", () => {
   });
 });
 
-describe("applyJqToRedactedJsonLine with jq-wasm", () => {
+describe("applyJqToRedactedJsonLine with the default engine", () => {
   test("prints 1 when .result.n is applied to a mini envelope", async () => {
     const out = await applyJqToRedactedJsonLine(envelopeLine, ".result.n");
     expect(out).toBe("1");
@@ -191,4 +193,36 @@ describe("applyJqToRedactedJsonLine with jq-wasm", () => {
       });
     }
   });
+
+  test("settles a huge range in under 5s", async () => {
+    const started = Date.now();
+    let thrown: unknown;
+    let result: string | undefined;
+    try {
+      result = await applyJqToRedactedJsonLine('{"a":1}', "[range(100000000)]");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(Date.now() - started).toBeLessThan(5000);
+    if (thrown !== undefined) {
+      expect(thrown).toBeInstanceOf(JqExpressionError);
+    } else {
+      expect(typeof result).toBe("string");
+    }
+  }, 10_000);
+
+  test("rejects unbounded index assignment in under 2s", async () => {
+    const started = Date.now();
+    try {
+      await applyJqToRedactedJsonLine("{}", ".[999999999] = 0");
+      expect.unreachable("expected eval error");
+    } catch (error) {
+      expect(Date.now() - started).toBeLessThan(2000);
+      expect(error).toBeInstanceOf(JqExpressionError);
+      expect(error).toMatchObject({
+        reason: "eval",
+        detail: expect.stringMatching(/unbounded index or allocation/),
+      });
+    }
+  }, 5_000);
 });
