@@ -6,7 +6,10 @@ import {
   CertificateAuthority,
   FileSystem,
   GlobalAppService,
+  InteractionService,
   PathsService,
+  PrivilegeService,
+  ProcessRunner,
   ProxyService,
   type ProxyServiceShape,
 } from "@lando/sdk/services";
@@ -30,6 +33,7 @@ import {
   renderTraefikDynamicConfig,
 } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
+import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { persistedStatus } from "./status.ts";
 import {
   ensureTlsFiles,
@@ -168,6 +172,14 @@ export const proxy = Layer.effect(
     const paths = yield* PathsService;
     const globalApp = yield* GlobalAppService;
     const certificateAuthority = yield* CertificateAuthority;
+    const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const interaction = yield* Effect.serviceOption(InteractionService);
+    const socketProxy = liveSocketProxy({
+      privilege: privilege._tag === "Some" ? privilege.value : undefined,
+      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
+      interaction: interaction._tag === "Some" ? interaction.value : undefined,
+    });
     return makeTraefikProxyService({
       certificateAuthority,
       fileSystem: {
@@ -176,6 +188,7 @@ export const proxy = Layer.effect(
       },
       paths,
       globalApp,
+      ...(socketProxy === undefined ? {} : { socketProxy }),
     });
   }),
 );

@@ -14,6 +14,7 @@ import {
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
+import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
 export const AcquisitionState = Schema.Struct({
   mode: Schema.Literal(...ACQUISITION_MODES),
@@ -58,6 +59,13 @@ const degradedDecision: AcquisitionDecision = {
   notices: [],
 };
 
+const isLinuxFamily = (platform: ProxyPaths["platform"]): boolean =>
+  platform === "linux" || platform === "wsl";
+
+const assertNever = (value: never): never => {
+  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
+};
+
 export const acquirePorts = (input: {
   readonly platform: ProxyPaths["platform"];
   readonly helperInstalled: boolean;
@@ -95,6 +103,30 @@ export const acquirePorts = (input: {
     });
   });
 
+const classifyCurrent = (
+  dependencies: TraefikProxyDependencies,
+  helperInstalled: boolean,
+  socketsActive: boolean,
+): Effect.Effect<AcquisitionDecision> => {
+  const override = dependencies.socketProxy?.classifyOverride;
+  if (override !== undefined) {
+    return Effect.succeed(
+      classifyAcquisition({
+        platform: dependencies.paths.platform,
+        helperInstalled,
+        socketsActive,
+        http: override.http,
+        https: override.https,
+      }),
+    );
+  }
+  return acquirePorts({
+    platform: dependencies.paths.platform,
+    helperInstalled,
+    socketsActive,
+  }).pipe(Effect.catchAll(() => Effect.succeed(degradedDecision)));
+};
+
 export const persistPortAcquisition = (
   dependencies: TraefikProxyDependencies,
 ): Effect.Effect<AcquisitionDecision, unknown> =>
@@ -102,15 +134,26 @@ export const persistPortAcquisition = (
     const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
     const helperInstalled = previous?.helperInstalled ?? false;
     const socketsActive = previous?.socketsActive ?? false;
-    const decision = yield* acquirePorts({
-      platform: dependencies.paths.platform,
-      helperInstalled,
-      socketsActive,
-    }).pipe(Effect.catchAll(() => Effect.succeed(degradedDecision)));
+    const decision = yield* classifyCurrent(dependencies, helperInstalled, socketsActive);
+    const resolved = yield* (() => {
+      switch (decision.mode) {
+        case "needs-helper":
+          return isLinuxFamily(dependencies.paths.platform) && dependencies.socketProxy !== undefined
+            ? resolveNeedsHelper(dependencies.socketProxy)
+            : Effect.succeed({ decision: degradedDecision, helperInstalled: false, socketsActive: false });
+        case "direct":
+        case "occupied-hop":
+        case "socket-helper":
+        case "degraded-high-ports":
+          return Effect.succeed({ decision, helperInstalled, socketsActive });
+        default:
+          return assertNever(decision.mode);
+      }
+    })();
     yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-      ...decision,
-      helperInstalled,
-      socketsActive,
+      ...resolved.decision,
+      helperInstalled: resolved.helperInstalled,
+      socketsActive: resolved.socketsActive,
     });
-    return decision;
+    return resolved.decision;
   });
