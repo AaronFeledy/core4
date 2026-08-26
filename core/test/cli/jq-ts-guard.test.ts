@@ -75,4 +75,16 @@ describe("assertJqExpressionSafe", () => {
   test("rejects delpaths with nested huge index", () => {
     assertThrows("delpaths([[999999999]])");
   });
+
+  test("rejects huge star-equals on identity", () => {
+    assertThrows('"" | . *= 1000000');
+  });
+
+  test("rejects huge star-equals on index", () => {
+    assertThrows(".[0] *= 1000000");
+  });
+
+  test("allows small star-equals", () => {
+    assertAllows(". *= 2");
+  });
 });

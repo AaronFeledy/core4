@@ -133,6 +133,9 @@ const walk = (node: unknown, findings: Findings, inAssignmentLeft: boolean): voi
 
   if (node.kind === "Assignment") {
     findings.hasAssignment = true;
+    if (node.op === "*=" && (isHugeFoldedNumber(node.right) || isHugeFoldedNumber(node.left))) {
+      findings.hasHugeMultiply = true;
+    }
   }
   if (node.kind === "Call" && (node.name === "setpath" || node.name === "delpaths")) {
     findings.hasSetpathLikeCall = true;
