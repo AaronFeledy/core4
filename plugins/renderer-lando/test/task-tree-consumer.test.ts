@@ -1192,7 +1192,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     expect(debugMessages).toContain("OpenTUI live region unavailable; degrading to line rendering.");
   });
 
-  test("two consumers share one failed acquisition attempt and one degradation notice", async () => {
+  test("two consumers each try acquisition and share one degradation notice", async () => {
     const first = ttyIo();
     const second = ttyIo();
     const debugMessages: string[] = [];
@@ -1214,7 +1214,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
       );
     }
 
-    expect(attempts).toBe(1);
+    expect(attempts).toBe(2);
     expect(debugMessages).toEqual(["OpenTUI live region unavailable; degrading to line rendering."]);
     expect(first.stdout()).toContain("web");
     expect(second.stdout()).toContain("web");
