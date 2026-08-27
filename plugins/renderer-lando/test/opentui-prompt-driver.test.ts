@@ -235,21 +235,23 @@ describe("OpenTUI prompt driver", () => {
   test("a live-region failure prevents a later prompt driver from loading OpenTUI", async () => {
     const substrateFailure = new Error("no native binding");
     let promptLoadAttempts = 0;
-    await expect(
-      createLiveRegionController(
-        {
-          stdout: process.stdout,
-          width: 80,
-          height: 24,
-          footerHeight: 12,
+    const controller = await createLiveRegionController(
+      {
+        stdout: process.stdout,
+        width: 80,
+        height: 24,
+      },
+      {
+        loadModule: async () => {
+          throw substrateFailure;
         },
-        {
-          loadModule: async () => {
-            throw substrateFailure;
-          },
-        },
-      ),
-    ).rejects.toHaveProperty("name", "OpenTuiLiveRegionUnavailableError");
+      },
+    );
+    await expect(controller.enterFullTail()).rejects.toHaveProperty(
+      "name",
+      "OpenTuiLiveRegionUnavailableError",
+    );
+    await controller.dispose().catch(() => undefined);
     const driver = createOpenTuiPromptDriver({
       loadModule: async () => {
         promptLoadAttempts += 1;

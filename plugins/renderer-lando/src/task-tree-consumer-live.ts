@@ -8,7 +8,6 @@ import { TaskTreeInputController } from "./keybindings.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import {
   claimOpenTuiDegradationNotice,
-  getOpenTuiSubstrateAvailability,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
@@ -68,10 +67,6 @@ export const makeTaskTreeConsumerLive = (
 
       const acquire = Effect.gen(function* () {
         if (active !== undefined) return active;
-        if (!getOpenTuiSubstrateAvailability().available) {
-          yield* reportDegradation;
-          return undefined;
-        }
         const acquired = yield* Effect.tryPromise(() =>
           createLiveRegion({
             stdout,

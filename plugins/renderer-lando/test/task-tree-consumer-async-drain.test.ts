@@ -54,10 +54,9 @@ test("collapse drains deferred output before later output and scope close awaits
       };
     };
   })();
-  const stdout = createCapturingStdout(writes);
   const io = {
     ...createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 }),
-    externalOutputStream: stdout,
+    externalOutputStream: process.stdout,
   };
   let controller: Awaited<ReturnType<typeof createLiveRegionController>> | undefined;
 
@@ -115,11 +114,14 @@ test("collapse drains deferred output before later output and scope close awaits
           Layer.provideMerge(
             makeLandoEventConsumer(io, {
               createLiveRegion: async (options) => {
-                const created = await createLiveRegionController(options, {
-                  loadModule: async () => fixture.module,
-                  createRenderer: async () => fixture.renderer,
-                  spool: spoolFactory,
-                });
+                const created = await createLiveRegionController(
+                  { ...options, stdout: createCapturingStdout(writes) },
+                  {
+                    loadModule: async () => fixture.module,
+                    createRenderer: async () => fixture.renderer,
+                    spool: spoolFactory,
+                  },
+                );
                 controller = created;
                 return created;
               },

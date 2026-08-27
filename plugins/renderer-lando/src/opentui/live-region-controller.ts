@@ -112,6 +112,9 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
         paintFullTailFooter(this.fullTail, this.footerLines, this.width, this.height);
       }
     } catch (cause) {
+      const session = this.fullTail;
+      this.fullTail = undefined;
+      if (session !== undefined) leaveFullTail(session);
       const drained = await this.deferred.drain();
       for (const source of drained) this.inline.commitAbove(source);
       if (this.footerLines.length > 0) this.inline.paint(this.footerLines);

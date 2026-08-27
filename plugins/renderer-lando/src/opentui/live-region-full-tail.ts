@@ -7,6 +7,7 @@ import type {
   LiveRegionRendererLike,
   OpenTuiLiveRegionModuleLike,
 } from "./live-region-types.ts";
+import { recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
 export type FullTailSession<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> = {
   readonly module: OpenTuiLiveRegionModuleLike<TRenderer>;
@@ -26,14 +27,24 @@ export const acquireFullTail = async <TRenderer extends LiveRegionRendererLike>(
   onTerminalResize: (width: number, height: number) => void,
 ): Promise<FullTailSession<TRenderer>> => {
   const { module, renderer } = await acquireLiveRegionSubstrate(options, deps);
-  capFps(renderer);
   const resizeListener = (): void => {
     onTerminalResize(renderer.terminalWidth, renderer.terminalHeight);
   };
-  renderer.on("resize", resizeListener);
-  renderer.externalOutputMode = "passthrough";
-  renderer.screenMode = "alternate-screen";
-  return { footer: undefined, module, renderer, resizeListener };
+  try {
+    capFps(renderer);
+    renderer.on("resize", resizeListener);
+    renderer.externalOutputMode = "passthrough";
+    renderer.screenMode = "alternate-screen";
+    return { footer: undefined, module, renderer, resizeListener };
+  } catch (cause) {
+    try {
+      renderer.off("resize", resizeListener);
+      renderer.destroy();
+    } catch (cleanupCause) {
+      recordOpenTuiSubstrateFailure(cleanupCause);
+    }
+    throw cause;
+  }
 };
 
 export const paintFullTailFooter = <TRenderer extends LiveRegionRendererLike>(
