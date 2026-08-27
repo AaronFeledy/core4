@@ -69,13 +69,13 @@ describe("createStdioRendererIO — input state", () => {
     expect(stdin.state()).toEqual({ paused: true, raw: false });
   });
 
-  test("unsubscribe restores initially flowing stdin and its prior raw mode", () => {
+  test("unsubscribe pauses stdin so the process can exit and restores prior raw mode", () => {
     const stdin = makeStdin(false, true);
     const io = createStdioRendererIO(process.stdout, process.stderr, stdin);
 
     const unsubscribe = io.subscribeInput?.(() => {});
     unsubscribe?.();
 
-    expect(stdin.state()).toEqual({ paused: false, raw: true });
+    expect(stdin.state()).toEqual({ paused: true, raw: true });
   });
 });
