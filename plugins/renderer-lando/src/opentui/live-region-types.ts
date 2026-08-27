@@ -59,11 +59,20 @@ export interface OpenTuiLiveRegionModuleLike<
   TextRenderable: RenderableConstructorLike;
 }
 
+export interface LiveRegionStdout {
+  write(chunk: string | Uint8Array): boolean;
+  on(event: "resize", listener: () => void): unknown;
+  off(event: "resize", listener: () => void): unknown;
+  emit?(event: "resize"): boolean;
+  columns?: number;
+  rows?: number;
+}
+
 export interface LiveRegionControllerOptions {
-  readonly stdout: NodeJS.WriteStream;
+  readonly stdout: LiveRegionStdout;
   readonly width: number;
   readonly height: number;
-  readonly footerHeight: number;
+  readonly footerHeight?: number;
   readonly onResize?: (width: number, height: number) => void;
 }
 

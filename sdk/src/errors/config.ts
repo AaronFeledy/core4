@@ -60,3 +60,18 @@ export class AgentEnvPatternError extends Schema.TaggedError<AgentEnvPatternErro
   patterns: Schema.Array(Schema.String),
   remediation: Schema.optional(Schema.String),
 }) {}
+
+/**
+ * Raised when a Landofile config expression cannot be parsed or evaluated at
+ * plan time (for example an authored route hostname template).
+ */
+export class ConfigExpressionError extends Schema.TaggedError<ConfigExpressionError>()(
+  "ConfigExpressionError",
+  {
+    message: Schema.String,
+    expression: Schema.String,
+    path: Schema.String,
+    filePath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}

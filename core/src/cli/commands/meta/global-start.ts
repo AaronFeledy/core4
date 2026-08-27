@@ -6,6 +6,7 @@ import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   CapabilityError,
   CommandAliasConflictError,
+  ConfigExpressionError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -71,6 +72,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 
 export type GlobalStartError =
   | CommandAliasConflictError
+  | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
   | EventError

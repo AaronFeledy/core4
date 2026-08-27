@@ -13,6 +13,7 @@ import {
   type OpenTuiLiveRegionModuleLike,
   createLiveRegionController,
 } from "../src/opentui/live-region-controller.ts";
+import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 
 const COMPLETED = "completed-progress-line";
 const RESULT = "APP STARTED result-line";
@@ -72,7 +73,7 @@ const createProductionLiveRegion = async (stdout: NodeJS.WriteStream) => {
   }
 
   const controller = await createLiveRegionController(
-    { stdout, width: stdout.columns ?? 80, height: stdout.rows ?? 24, footerHeight: 4 },
+    { stdout, width: stdout.columns ?? 80, height: stdout.rows ?? 24 },
     { loadModule: async () => wrapped },
   );
   return { controller, createConfig };
@@ -82,14 +83,11 @@ describe("LiveRegionController production OpenTUI teardown", () => {
   test("keeps committed scrollback and a post-dispose result without a viewport wipe", async () => {
     const recording = await createRecordingStdout(80, 24);
     try {
+      resetLiveRegionModuleCacheForTests();
       const { controller, createConfig } = await createProductionLiveRegion(recording.stdout);
 
-      expect(createConfig).toMatchObject({
-        screenMode: "split-footer",
-        externalOutputMode: "capture-stdout",
-        exitOnCtrlC: false,
-        clearOnShutdown: false,
-      });
+      expect(createConfig).toBeUndefined();
+      expect(createConfig?.screenMode).not.toBe("split-footer");
 
       controller.commitScrollback(COMPLETED);
       controller.setFooter([]);

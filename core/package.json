@@ -86,6 +86,7 @@
   "files": ["./bin", "./dist", "!./dist/**/*.tsbuildinfo", "./src"],
   "keywords": ["lando", "lando-core", "effect", "bun"],
   "dependencies": {
+    "@gabrielbryk/jq-ts": "1.7.0",
     "@lando/container-runtime": "workspace:*",
     "@lando/data-mover": "workspace:*",
     "@lando/engine": "workspace:*",
@@ -100,7 +101,6 @@
     "@lando/state-store": "workspace:*",
     "@lando/telemetry": "workspace:*",
     "effect": "^3.21.2",
-    "jq-wasm": "^3.0.0-jq-1.8.2",
     "semver": "^7.8.5"
   },
   "devDependencies": {

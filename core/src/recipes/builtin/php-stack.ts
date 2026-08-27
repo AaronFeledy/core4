@@ -89,6 +89,13 @@ export const resolvePhpStackAnswers = (
   };
 };
 
+export const renderPrimaryRouteLines = (appName: string): ReadonlyArray<string> => [
+  `    # primary URL: http(s)://${appName}.lndo.site`,
+  "    routes:",
+  '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
+  "        scheme: both",
+];
+
 type PhpAppserverLinesInput = {
   readonly php: string;
   readonly webroot: string;
@@ -98,6 +105,7 @@ type PhpAppserverLinesInput = {
   readonly port?: number;
   readonly dependsOn: ReadonlyArray<string>;
   readonly framework?: string;
+  readonly appName: string;
 };
 
 export const renderPhpAppserverLines = (input: PhpAppserverLinesInput): ReadonlyArray<string> => {
@@ -110,6 +118,7 @@ export const renderPhpAppserverLines = (input: PhpAppserverLinesInput): Readonly
   if (input.webserver === "apache" && input.port !== undefined) lines.push(`    port: ${String(input.port)}`);
   lines.push("    dependsOn:");
   for (const dependency of input.dependsOn) lines.push(`      - ${dependency}`);
+  if (input.webserver === "apache") lines.push(...renderPrimaryRouteLines(input.appName));
   return lines;
 };
 
@@ -122,11 +131,12 @@ export const renderDatabaseLines = (
   return lines;
 };
 
-export const renderNginxEdgeLines = (webroot: string): ReadonlyArray<string> => [
+export const renderNginxEdgeLines = (webroot: string, appName: string): ReadonlyArray<string> => [
   "  edge:",
   "    type: nginx",
   "    backend: appserver",
   `    webroot: ${webroot}`,
+  ...renderPrimaryRouteLines(appName),
 ];
 
 export const composerToolingLines = (): ReadonlyArray<string> => [

@@ -44,7 +44,7 @@ export const commitOpenSession = <E>(
       yield* substrate.transcriptTail.close;
       substrate.viewModel.collapse();
     }
-    for (const line of substrate.closeSession()) substrate.controller.commitScrollback(line);
+    substrate.closeSession();
     substrate.controller.setFooter([]);
     return markSessionCommitted(session);
   });

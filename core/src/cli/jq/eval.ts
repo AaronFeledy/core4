@@ -13,7 +13,7 @@ const TOO_LARGE_REMEDIATION = "Narrow the jq expression so the result is smaller
 let defaultEngine: Promise<JqEngine> | undefined;
 
 const loadDefaultEngine = (): Promise<JqEngine> => {
-  defaultEngine ??= import("./jq-wasm-engine.ts").then((mod) => mod.jqWasmEngine);
+  defaultEngine ??= import("./jq-ts-engine.ts").then((mod) => mod.jqTsEngine);
   return defaultEngine;
 };
 

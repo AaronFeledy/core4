@@ -12,3 +12,4 @@ Inherit root `AGENTS.md`. Keep only package-specific facts agents would miss.
 
 - Pink (`csi.pink`, SGR 95) is rail chrome plus the active moving spinner glyph only. Running labels, static dot, wrap continuations, durations, and footers stay off pink.
 - Paint segmented bodies through `styleBodyFrameSegments` and existing `csi` tokens. Do not add color tokens or raw ANSI literals.
+- Default live region is inline at the cursor. OpenTUI is full-tail only.

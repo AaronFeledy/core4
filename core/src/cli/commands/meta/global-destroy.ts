@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import {
   type CapabilityError,
   type CommandAliasConflictError,
+  type ConfigExpressionError,
   type GlobalAppError,
   GlobalDestroyConfirmationError,
   type LandofileParseError,
@@ -46,6 +47,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
 
 type GlobalDestroyError =
   | CommandAliasConflictError
+  | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
   | FileSystemError

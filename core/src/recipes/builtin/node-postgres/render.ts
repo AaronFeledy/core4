@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { NODE_POSTGRES_RECIPE_ID } from "./manifest";
 
@@ -17,6 +18,7 @@ const landofile = (name: string): string =>
     "    command: node /app/server.js",
     "    dependsOn:",
     "      - database",
+    ...renderPrimaryRouteLines(name),
     "  database:",
     "    type: postgres",
     "",

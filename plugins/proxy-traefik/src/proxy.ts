@@ -6,14 +6,19 @@ import {
   CertificateAuthority,
   FileSystem,
   GlobalAppService,
+  InteractionService,
   PathsService,
+  PrivilegeService,
+  ProcessRunner,
   ProxyService,
   type ProxyServiceShape,
 } from "@lando/sdk/services";
 
+import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
+  acquisitionStateFile,
   defaultTlsFile,
   dynamicConfigDir,
   joinFor,
@@ -21,13 +26,10 @@ import {
   routingStateFile,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
-import {
-  DEFAULT_AUTHORITY_PORTS,
-  authoritiesFor,
-  authorityPortsFrom,
-  renderTraefikDynamicConfig,
-} from "./routing.ts";
+import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
+import { stopSockets } from "./socket-proxy-install.ts";
+import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { persistedStatus } from "./status.ts";
 import {
   ensureTlsFiles,
@@ -70,6 +72,32 @@ const proxyError = (operation: string, cause: unknown): ProxyError =>
     cause,
   });
 
+const resolveSocketProxy = (dependencies: TraefikProxyDependencies) =>
+  Effect.gen(function* () {
+    if (dependencies.socketProxy !== undefined) return dependencies.socketProxy;
+    const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const interaction = yield* Effect.serviceOption(InteractionService);
+    return liveSocketProxy({
+      privilege: privilege._tag === "Some" ? privilege.value : undefined,
+      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
+      interaction: interaction._tag === "Some" ? interaction.value : undefined,
+    });
+  });
+
+const releaseHelperSockets = (dependencies: TraefikProxyDependencies) =>
+  Effect.gen(function* () {
+    const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+    if (previous?.mode !== "socket-helper" || previous.helperInstalled !== true) return;
+    const socketProxy = yield* resolveSocketProxy(dependencies);
+    if (socketProxy === undefined) return;
+    yield* stopSockets({
+      processRunner: socketProxy.processRunner,
+      privilege: socketProxy.privilege,
+      ...(socketProxy.probeForward === undefined ? {} : { probeForward: socketProxy.probeForward }),
+    });
+  });
+
 export const makeTraefikProxyService = (
   dependencies: TraefikProxyDependencies,
 ): ProxyServiceShape & {
@@ -86,12 +114,16 @@ export const makeTraefikProxyService = (
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
-        const services = yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
-        const endpoints = services.find((service) => service.name === TRAEFIK_PROXY_ID)?.endpoints ?? [];
-        authorityPorts = authorityPortsFrom(endpoints);
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
+        const socketProxy = yield* resolveSocketProxy(dependencies);
+        const decision = yield* persistPortAcquisition({
+          ...dependencies,
+          ...(socketProxy === undefined ? {} : { socketProxy }),
+        });
+        authorityPorts = { http: decision.httpPort, https: decision.httpsPort };
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
-          endpoints.join("\n"),
+          [`http://127.0.0.1:${decision.httpPort}`, `https://127.0.0.1:${decision.httpsPort}`].join("\n"),
         );
       }).pipe(Effect.mapError(setupError)),
     applyRoutes: (nextRoutes, app) =>
@@ -139,6 +171,7 @@ export const makeTraefikProxyService = (
       ),
     status: persistedStatus(dependencies).pipe(Effect.mapError((cause) => proxyError("status", cause))),
     stop: Effect.gen(function* () {
+      yield* releaseHelperSockets(dependencies);
       const directory = dynamicConfigDir(dependencies.paths);
       if (yield* dependencies.fileSystem.exists(directory)) {
         const files = yield* dependencies.fileSystem.readDir(directory);
@@ -149,6 +182,7 @@ export const makeTraefikProxyService = (
         );
       }
       yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
       yield* removeAllCertificates(dependencies);
       routes.clear();
@@ -164,6 +198,14 @@ export const proxy = Layer.effect(
     const paths = yield* PathsService;
     const globalApp = yield* GlobalAppService;
     const certificateAuthority = yield* CertificateAuthority;
+    const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const interaction = yield* Effect.serviceOption(InteractionService);
+    const socketProxy = liveSocketProxy({
+      privilege: privilege._tag === "Some" ? privilege.value : undefined,
+      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
+      interaction: interaction._tag === "Some" ? interaction.value : undefined,
+    });
     return makeTraefikProxyService({
       certificateAuthority,
       fileSystem: {
@@ -172,6 +214,7 @@ export const proxy = Layer.effect(
       },
       paths,
       globalApp,
+      ...(socketProxy === undefined ? {} : { socketProxy }),
     });
   }),
 );

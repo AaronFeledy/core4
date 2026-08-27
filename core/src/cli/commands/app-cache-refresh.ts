@@ -8,6 +8,7 @@ import type {
   CommandAliasConflictError,
   CommandAliasTargetError,
   ComposeKeyRejectedError,
+  ConfigExpressionError,
   LandoCommandError,
   LandofileFormConflictError,
   LandofileIncludeError,
@@ -87,6 +88,7 @@ type AppCacheRefreshError =
   | CapabilityError
   | PublicationUnsupportedError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | CommandAliasTargetError
   | CacheError
   | LandoCommandError

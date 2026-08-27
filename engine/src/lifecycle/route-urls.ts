@@ -1,8 +1,24 @@
 import type { ProxyApplyResult, ProxyAuthority, RoutePlan, ServiceName } from "@lando/sdk/schema";
 
+const assertNever = (value: never): never => {
+  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
+};
+
+const defaultPortForScheme = (scheme: ProxyAuthority["scheme"]): number => {
+  switch (scheme) {
+    case "http":
+      return 80;
+    case "https":
+      return 443;
+    default:
+      return assertNever(scheme);
+  }
+};
+
 const authorityUrl = (authority: ProxyAuthority, pathPrefix?: string): string => {
   const hostname = authority.hostname.includes(":") ? `[${authority.hostname}]` : authority.hostname;
-  return `${authority.scheme}://${hostname}:${authority.port}${pathPrefix ?? ""}`;
+  const portSuffix = authority.port === defaultPortForScheme(authority.scheme) ? "" : `:${authority.port}`;
+  return `${authority.scheme}://${hostname}${portSuffix}${pathPrefix ?? ""}`;
 };
 
 const routeAcceptsAuthority = (route: RoutePlan, authority: ProxyAuthority): boolean =>

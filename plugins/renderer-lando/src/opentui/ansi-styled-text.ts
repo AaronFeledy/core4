@@ -153,6 +153,55 @@ const styleChunk = (
   return [module.dim(text)];
 };
 
+export const stripNonSgrControls = (content: string): string => {
+  let result = "";
+  let offset = 0;
+  while (offset < content.length) {
+    const code = content.charCodeAt(offset);
+    if (content[offset] === ESC) {
+      const next = content[offset + 1];
+      if (next === "[") {
+        const sequence = readCsi(content, offset + 2);
+        if (sequence.final === "m" && /^[0-9;]*$/.test(sequence.parameters)) {
+          result += content.slice(offset, sequence.nextOffset);
+        }
+        offset = sequence.nextOffset;
+        continue;
+      }
+      if (next !== undefined && ESC_CONTROL_STRING_STARTS.has(next)) {
+        offset = skipControlString(content, offset + 2);
+        continue;
+      }
+      offset = Math.min(content.length, offset + 2);
+      continue;
+    }
+    if (code === C1_CSI) {
+      const sequence = readCsi(content, offset + 1);
+      if (sequence.final === "m" && /^[0-9;]*$/.test(sequence.parameters)) {
+        result += `${ESC}[${sequence.parameters}m`;
+      }
+      offset = sequence.nextOffset;
+      continue;
+    }
+    if (CONTROL_STRING_STARTS.has(code)) {
+      offset = skipControlString(content, offset + 1);
+      continue;
+    }
+    if (code === 0x0a) {
+      result += "\n";
+      offset += 1;
+      continue;
+    }
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) {
+      offset += 1;
+      continue;
+    }
+    result += content[offset];
+    offset += 1;
+  }
+  return result;
+};
+
 export const ansiToNativeStyledText = (
   module: NativeStyledTextModuleLike,
   content: string,

@@ -5,15 +5,15 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const fixtureEntry = resolve(import.meta.dirname, "fixtures/jq-wasm-compile-entry.ts");
+const fixtureEntry = resolve(import.meta.dirname, "fixtures/jq-ts-compile-entry.ts");
 
-describe("jq-wasm compiled binary embedding", () => {
+describe("jq-ts compiled binary embedding", () => {
   test("bun build --compile evals .a on {a:1} and prints 1", async () => {
     if (process.env.LANDO_SKIP_COMPILE_SMOKE !== undefined && process.env.LANDO_SKIP_COMPILE_SMOKE !== "") {
       return;
     }
 
-    const workDir = await mkdtemp(join(tmpdir(), "lando-jq-wasm-compile-"));
+    const workDir = await mkdtemp(join(tmpdir(), "lando-jq-ts-compile-"));
     const outfile = join(workDir, "jq-smoke");
     try {
       const build = Bun.spawn({

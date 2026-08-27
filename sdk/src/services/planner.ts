@@ -4,6 +4,7 @@ import type {
   BuildPhaseFailedError,
   CapabilityError,
   CommandAliasConflictError,
+  ConfigExpressionError,
   EventError,
   LandofileValidationError,
   NoProviderInstalledError,
@@ -33,6 +34,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | NotImplementedError
       | PublicationUnsupportedError
       | CommandAliasConflictError
+      | ConfigExpressionError
     >;
   }
 >() {}

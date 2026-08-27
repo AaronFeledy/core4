@@ -77,14 +77,13 @@ export async function acquireLiveRegionSubstrate(
   try {
     renderer = await (deps.createRenderer?.(module) ??
       module.createCliRenderer({
-        screenMode: "split-footer",
-        externalOutputMode: "capture-stdout",
-        exitOnCtrlC: false,
+        screenMode: "alternate-screen",
         clearOnShutdown: false,
+        exitOnCtrlC: false,
+        externalOutputMode: "passthrough",
         stdout: options.stdout,
         width: options.width,
         height: options.height,
-        footerHeight: 1,
       }));
     return { module, renderer };
   } catch (cause) {

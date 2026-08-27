@@ -20,6 +20,7 @@ import type {
   CommandAliasConflictError,
   ComposeKeyRejectedError,
   ConfigError,
+  ConfigExpressionError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -210,6 +211,7 @@ export type StartAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | HostProxySocketStaleError
@@ -253,6 +255,7 @@ export type StopAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -366,6 +369,7 @@ export type InfoAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -416,6 +420,7 @@ export type ExecAppError =
   | ProviderError
   | ProviderUnavailableError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | ToolingExecError;
 
 /**
@@ -467,6 +472,7 @@ export type ToolingError =
   | ShellExecError
   | ShellScriptOutsideRootError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | ToolingCompileError
   | ToolingExecError;
 
@@ -494,6 +500,7 @@ export type LogsAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | ConfigExpressionError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError

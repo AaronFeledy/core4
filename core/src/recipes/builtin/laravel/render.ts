@@ -34,6 +34,7 @@ const renderLandofile = (
       port: 80,
       dependsOn: ["database", "cache"],
       framework: "laravel",
+      appName,
     }),
     ...renderDatabaseLines(stack.database),
     "  cache:",

@@ -1,3 +1,4 @@
+import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { ASTRO_RECIPE_ID } from "./manifest";
 
@@ -13,6 +14,7 @@ const renderLandofile = (appName: string, node: string, database: string): strin
     "    environment:",
     "      ASTRO_TELEMETRY_DISABLED: '1'",
   ];
+  lines.push(...renderPrimaryRouteLines(appName));
   if (database !== "none") {
     lines.push("    dependsOn:", "      - database", "  database:", `    type: ${database}`);
   }

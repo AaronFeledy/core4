@@ -14,6 +14,8 @@ const landofileTs = (appName: string): string => {
     "    web: {",
     '      image: `node:${ctx.env.LANDO_NODE_VERSION ?? "lts"}`,',
     '      environment: { NODE_ENV: ctx.env.NODE_ENV ?? "development" },',
+    `      // primary URL: http(s)://${appName}.lndo.site`,
+    '      routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],',
     "    },",
     "  },",
     "});",
