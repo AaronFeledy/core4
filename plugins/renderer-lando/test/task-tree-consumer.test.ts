@@ -736,7 +736,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     expect(commits.some((c) => c.kind === "commitScrollback" && c.text.includes("heads up"))).toBe(true);
   });
 
-  test("tree.complete commits the summary to scrollback and retires the live footer", async () => {
+  test("tree.complete paints the finished tree without re-committing it as scrollback", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
     await Effect.runPromise(
@@ -747,8 +747,9 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         treeComplete(),
       ]),
     );
-    const commits = controller.calls.filter((c) => c.kind === "commitScrollback");
-    expect(commits.some((c) => c.kind === "commitScrollback" && c.text.includes("done"))).toBe(true);
+    expect(controller.calls.some((c) => c.kind === "commitScrollback" && c.text.includes("done"))).toBe(
+      false,
+    );
     const lastFooter = [...controller.calls].reverse().find((c) => c.kind === "setFooter");
     expect(lastFooter?.kind === "setFooter" && lastFooter.lines.length).toBe(0);
   });
@@ -1192,7 +1193,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     expect(debugMessages).toContain("OpenTUI live region unavailable; degrading to line rendering.");
   });
 
-  test("two consumers share one failed acquisition attempt and one degradation notice", async () => {
+  test("two consumers each try acquisition and share one degradation notice", async () => {
     const first = ttyIo();
     const second = ttyIo();
     const debugMessages: string[] = [];
@@ -1214,7 +1215,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
       );
     }
 
-    expect(attempts).toBe(1);
+    expect(attempts).toBe(2);
     expect(debugMessages).toEqual(["OpenTUI live region unavailable; degrading to line rendering."]);
     expect(first.stdout()).toContain("web");
     expect(second.stdout()).toContain("web");

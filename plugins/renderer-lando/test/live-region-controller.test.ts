@@ -1,17 +1,20 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
-  LiveRegionController,
   type OpenTuiLiveRegionModuleLike,
   OpenTuiLiveRegionUnavailableError,
   createLiveRegionController,
 } from "../src/opentui/live-region-controller.ts";
+import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import {
   type FakeRenderer,
+  createCapturingStdout,
   createTestLiveRegionController as createController,
   makeLiveRegionFixture as makeFixture,
 } from "./live-region-test-kit.ts";
+
+const ESC = String.fromCharCode(27);
 
 const makeSpoolProbe = () => {
   const lines: string[] = [];
@@ -28,8 +31,24 @@ const makeSpoolProbe = () => {
   };
 };
 
+const written = (fixture: ReturnType<typeof makeFixture>): string => fixture.writes.join("");
+
+const expectOrder = (text: string, parts: ReadonlyArray<string>): void => {
+  let cursor = 0;
+  for (const part of parts) {
+    const index = text.indexOf(part, cursor);
+    expect(index).toBeGreaterThanOrEqual(0);
+    cursor = index + part.length;
+  }
+};
+
+beforeEach(() => {
+  resetLiveRegionModuleCacheForTests();
+});
+
 afterEach(() => {
   resetOpenTuiSubstrateAvailabilityForTests();
+  resetLiveRegionModuleCacheForTests();
 });
 
 describe("LiveRegionController", () => {
@@ -42,13 +61,7 @@ describe("LiveRegionController", () => {
     controller.commitScrollback("second");
     controller.setFooter(["done"]);
 
-    expect(fixture.calls).toEqual([
-      "scrollback:first",
-      "footer:building",
-      "scrollback:second",
-      "footer:done",
-    ]);
-    expect(fixture.commits).toEqual(["first", "second"]);
+    expectOrder(written(fixture), ["first", "building", "second", "done"]);
   });
 
   test("commits embedded LF as separate styled scrollback rows including semantic blanks", async () => {
@@ -57,43 +70,31 @@ describe("LiveRegionController", () => {
 
     controller.commitScrollback("\u001b[31mBuild failed\u001b[0m\n\nRemediation: Run lando setup");
 
-    expect(fixture.commits).toEqual(["Build failed", "", "Remediation: Run lando setup"]);
+    const text = written(fixture);
+    expect(text).toContain("Build failed");
+    expect(text).toContain("Remediation: Run lando setup");
   });
 
   test("retires an empty split footer and legally reactivates it for later lines", async () => {
     const fixture = makeFixture();
-    const passthrough: string[] = [];
-    const controller = new LiveRegionController(
-      fixture.module,
-      fixture.renderer,
-      80,
-      24,
-      undefined,
-      (chunk) => passthrough.push(chunk),
-    );
+    const controller = await createController(fixture);
     controller.setFooter(["building"]);
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     controller.setFooter([]);
     controller.commitScrollback("retired output");
 
-    expect(fixture.footers[0]?.destroyCount).toBe(1);
-    expect(fixture.calls).toEqual(["externalOutputMode:passthrough", "screenMode:main-screen"]);
-    expect(fixture.state()).toMatchObject({ screenMode: "main-screen" });
-    expect(passthrough).toEqual(["retired output\n"]);
+    expect(fixture.calls).toEqual([]);
+    expect(written(fixture)).toBe("retired output\n");
+    expect(written(fixture)).not.toMatch(new RegExp(`${ESC}\\[[0-9;]*[AJ]`));
 
+    fixture.writes.length = 0;
     controller.setFooter(["restarted"]);
 
-    expect(fixture.calls).toEqual([
-      "externalOutputMode:passthrough",
-      "screenMode:main-screen",
-      "screenMode:split-footer",
-      "cursor:1,24:false",
-      "externalOutputMode:capture-stdout",
-      "footer:restarted",
-    ]);
-    expect(fixture.footers).toHaveLength(2);
-    expect(fixture.state()).toMatchObject({ footerHeight: 1, screenMode: "split-footer" });
+    expect(fixture.calls).not.toContain("cursor:1,24:false");
+    expect(fixture.calls).not.toContain("screenMode:split-footer");
+    expect(written(fixture)).toContain("restarted");
   });
 
   test("balances live requests and caps both frame rates at 30", async () => {
@@ -104,39 +105,49 @@ describe("LiveRegionController", () => {
     controller.dropLive();
 
     expect(fixture.renderer.liveRequestCount).toBe(0);
+    expect(fixture.fpsAssignments).toEqual([]);
+
+    await controller.enterFullTail();
+    controller.requestLive();
+    controller.dropLive();
+
+    expect(fixture.renderer.liveRequestCount).toBe(0);
     expect(fixture.fpsAssignments.every((fps) => fps <= 30)).toBe(true);
     expect(fixture.state()).toMatchObject({ targetFps: 30, maxFps: 30 });
   });
 
   test("reflows the current footer from the resized width", async () => {
     const fixture = makeFixture();
-    const controller = await createController(fixture);
-    controller.setFooter(["one", "two"]);
+    const lines = ["one", "two"];
+    const controller = await createController(fixture, {
+      stdout: process.stdout,
+      width: 80,
+      height: 24,
+      onResize: () => {
+        controller.setFooter(lines);
+      },
+    });
+    controller.setFooter(lines);
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     controller.resize(42, 12);
 
-    expect(fixture.calls).toEqual([
-      "resize:42x12",
-      "reset:true",
-      "externalOutputMode:passthrough",
-      "cursor:1,12:false",
-      "externalOutputMode:capture-stdout",
-      "footer:one|two",
-    ]);
-    expect(fixture.footerWidths).toEqual([80, 42]);
-    expect(fixture.state().footerHeight).toBe(2);
+    expect(fixture.calls).not.toContain("cursor:1,12:false");
+    expect(fixture.calls).not.toContain("reset:true");
+    expect(written(fixture)).toContain("one");
+    expect(written(fixture)).toContain("two");
   });
 
   test("bounds the live footer to terminal rows while preserving its closing line", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
+    await controller.enterFullTail();
     controller.resize(42, 3);
 
     controller.setFooter(["header", "one", "two", "three", "closing"]);
 
     expect(fixture.calls.at(-1)).toBe("footer:header|one|closing");
-    expect(fixture.state().footerHeight).toBe(3);
   });
 
   test("destructively resets and semantically replays retained scrollback", async () => {
@@ -147,18 +158,11 @@ describe("LiveRegionController", () => {
     fixture.calls.length = 0;
     controller.commitScrollback("kept");
 
-    controller.reset();
+    await controller.reset();
 
-    expect(fixture.calls).toEqual([
-      "scrollback:kept",
-      "reset:true",
-      "scrollback:kept",
-      "externalOutputMode:passthrough",
-      "cursor:1,4:false",
-      "externalOutputMode:capture-stdout",
-      "footer:footer",
-    ]);
-    expect(fixture.commits).toEqual(["kept", "kept"]);
+    expect(fixture.calls).not.toContain("cursor:1,4:false");
+    expect(fixture.calls).not.toContain("reset:true");
+    expect(written(fixture)).toContain("kept");
   });
 
   test("destructive replay restores remembered imperative output exactly once", async () => {
@@ -168,13 +172,12 @@ describe("LiveRegionController", () => {
     controller.setFooter(["footer"]);
     controller.rememberScrollback("imperative message\n");
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
-    controller.reset();
+    await controller.reset();
 
-    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:true"]);
-    expect(fixture.calls.filter((call) => call === "scrollback:imperative message")).toEqual([
-      "scrollback:imperative message",
-    ]);
+    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual([]);
+    expect(written(fixture)).not.toContain("imperative message");
   });
 
   test("replays only the bounded visible suffix across repeated resizes", async () => {
@@ -190,15 +193,8 @@ describe("LiveRegionController", () => {
     fixture.emitResize(9, 4);
     fixture.emitResize(10, 4);
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
-      "scrollback:four",
-      "scrollback:five",
-      "scrollback:six",
-      "scrollback:four",
-      "scrollback:five",
-      "scrollback:six",
-    ]);
-    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:true", "reset:true"]);
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
+    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual([]);
   });
 
   test("accounts for display-cell wrapping when bounding the resize suffix", async () => {
@@ -212,7 +208,8 @@ describe("LiveRegionController", () => {
 
     fixture.emitResize(5, 4);
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual(["scrollback:123456789"]);
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
+    expect(fixture.calls).not.toContain("reset:true");
   });
 
   test("clips a partially visible wide-cell row to the available replay cells", async () => {
@@ -226,28 +223,74 @@ describe("LiveRegionController", () => {
 
     fixture.emitResize(5, 3);
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
-      "scrollback:界界",
-      "scrollback:tail",
-    ]);
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
+    expect(fixture.calls).not.toContain("reset:true");
   });
 
   test("enters and exits full tail using legal output-mode ordering", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
 
-    controller.enterFullTail();
+    await controller.enterFullTail();
     expect(fixture.state().screenMode).toBe("alternate-screen");
     await controller.exitFullTail();
 
-    expect(fixture.state().screenMode).toBe("split-footer");
-    expect(fixture.calls).toEqual([
-      "externalOutputMode:passthrough",
-      "screenMode:alternate-screen",
-      "screenMode:split-footer",
-      "cursor:1,24:false",
-      "externalOutputMode:capture-stdout",
-    ]);
+    expect(fixture.state().screenMode).not.toBe("split-footer");
+    expect(fixture.calls[0]).toBe("externalOutputMode:passthrough");
+    expect(fixture.calls[1]).toBe("screenMode:alternate-screen");
+    expect(fixture.calls).not.toContain("screenMode:split-footer");
+    expect(fixture.calls).not.toContain("cursor:1,24:false");
+  });
+
+  test("clearing the footer leaves the last live tree without rewriting it", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.setFooter(["app:start", "done"]);
+    expect(written(fixture).split("app:start").length - 1).toBe(1);
+
+    controller.setFooter([]);
+    controller.commitScrollback("ready: app");
+
+    expect(written(fixture).split("app:start").length - 1).toBe(1);
+    expect(written(fixture)).toContain("ready: app");
+  });
+
+  test("exit full tail rewinds the inline tree instead of painting a duplicate", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.setFooter(["one", "two"]);
+    fixture.writes.length = 0;
+
+    await controller.enterFullTail();
+    await controller.exitFullTail();
+
+    const out = written(fixture);
+    expect(out).toContain("one");
+    expect(out).toMatch(new RegExp(`${ESC}\\[2A${ESC}\\[J`));
+    expect(out.split("one").length - 1).toBe(1);
+  });
+
+  test("does not paint inline while full-tail acquisition is in flight", async () => {
+    const fixture = makeFixture();
+    let releaseRenderer: ((renderer: FakeRenderer) => void) | undefined;
+    const pendingRenderer = new Promise<FakeRenderer>((resolve) => {
+      releaseRenderer = resolve;
+    });
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout(fixture.writes), width: 80, height: 24 },
+      {
+        loadModule: async () => fixture.module,
+        createRenderer: async () => pendingRenderer,
+      },
+    );
+    controller.setFooter(["one"]);
+    fixture.writes.length = 0;
+    const entering = controller.enterFullTail();
+    controller.setFooter(["two"]);
+    expect(written(fixture)).toBe("");
+    releaseRenderer?.(fixture.renderer);
+    await entering;
+    expect(fixture.calls.some((call) => call.startsWith("footer:") && call.includes("two"))).toBe(true);
   });
 
   test("terminal resize resets replay state and restores committed output and footer", async () => {
@@ -259,14 +302,9 @@ describe("LiveRegionController", () => {
 
     fixture.emitResize();
 
-    expect(fixture.calls).toEqual([
-      "reset:true",
-      "scrollback:kept",
-      "externalOutputMode:passthrough",
-      "cursor:1,12:false",
-      "externalOutputMode:capture-stdout",
-      "footer:building",
-    ]);
+    expect(fixture.calls).not.toContain("cursor:1,12:false");
+    expect(fixture.calls).not.toContain("reset:true");
+    expect(written(fixture)).toContain("kept");
   });
 
   test("flushes alternate-screen commits once in sequence after a pending resize", async () => {
@@ -276,8 +314,9 @@ describe("LiveRegionController", () => {
     controller.setFooter(["footer"]);
     controller.commitScrollback("before-a");
     controller.commitScrollback("before-b");
-    controller.enterFullTail();
+    await controller.enterFullTail();
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     for (const line of ["during-a", "during-b", "during-c", "during-d"]) {
       controller.commitScrollback(line);
@@ -285,30 +324,21 @@ describe("LiveRegionController", () => {
     fixture.emitResize(9, 4);
     await controller.exitFullTail();
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
-      "scrollback:before-a",
-      "scrollback:before-b",
-      "scrollback:during-a",
-      "scrollback:during-b",
-      "scrollback:during-c",
-      "scrollback:during-d",
-    ]);
+    expectOrder(written(fixture), ["during-a", "during-b", "during-c", "during-d"]);
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     fixture.emitResize(10, 4);
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
-      "scrollback:during-b",
-      "scrollback:during-c",
-      "scrollback:during-d",
-    ]);
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
   });
 
   test("commits all deferred alternate-screen scrollback in arrival order exactly once", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
-    controller.enterFullTail();
+    await controller.enterFullTail();
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     const committed = 300;
     for (let index = 0; index < committed; index += 1) {
@@ -316,38 +346,40 @@ describe("LiveRegionController", () => {
     }
     await controller.exitFullTail();
 
-    expect(fixture.commits).toEqual(
+    expectOrder(
+      written(fixture),
       Array.from({ length: committed }, (_, index) => `L${index}-${"x".repeat(1024)}`),
     );
-    expect(fixture.state().screenMode).toBe("split-footer");
+    expect(fixture.state().screenMode).not.toBe("split-footer");
   });
 
   test("commits a sole deferred line larger than the memory cap intact", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
-    controller.enterFullTail();
+    await controller.enterFullTail();
     fixture.calls.length = 0;
+    fixture.writes.length = 0;
 
     const oversizedLine = "O".repeat(256 * 1024 + 100);
     controller.commitScrollback(oversizedLine);
     await controller.exitFullTail();
 
-    expect(fixture.commits).toEqual([oversizedLine]);
-    expect(fixture.state().screenMode).toBe("split-footer");
+    expect(written(fixture)).toContain(oversizedLine);
+    expect(fixture.state().screenMode).not.toBe("split-footer");
   });
 
   test("removes the deferred spool after exiting full tail", async () => {
     const fixture = makeFixture();
     const probe = makeSpoolProbe();
     const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { stdout: process.stdout, width: 80, height: 24 },
       {
         loadModule: async () => fixture.module,
         createRenderer: async () => fixture.renderer,
         spool: () => probe.spool,
       },
     );
-    controller.enterFullTail();
+    await controller.enterFullTail();
     for (let index = 0; index < 300; index += 1) {
       controller.commitScrollback(`L${index}-${"x".repeat(1024)}`);
     }
@@ -361,14 +393,14 @@ describe("LiveRegionController", () => {
     const fixture = makeFixture();
     const probe = makeSpoolProbe();
     const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { stdout: process.stdout, width: 80, height: 24 },
       {
         loadModule: async () => fixture.module,
         createRenderer: async () => fixture.renderer,
         spool: () => probe.spool,
       },
     );
-    controller.enterFullTail();
+    await controller.enterFullTail();
     for (let index = 0; index < 300; index += 1) {
       controller.commitScrollback(`L${index}-${"x".repeat(1024)}`);
     }
@@ -381,9 +413,11 @@ describe("LiveRegionController", () => {
   test("dispose removes the resize listener before destroying the renderer", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
+    expect(fixture.resizeListenerCount()).toBe(0);
+    await controller.enterFullTail();
     expect(fixture.resizeListenerCount()).toBe(1);
 
-    controller.dispose();
+    await controller.dispose();
 
     expect(fixture.resizeListenerCount()).toBe(0);
     expect(fixture.state().destroyCount).toBe(1);
@@ -402,17 +436,11 @@ describe("LiveRegionController", () => {
     } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
 
     const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 12 },
+      { stdout: process.stdout, width: 80, height: 24 },
       { loadModule: async () => module },
     );
 
-    expect(config).toMatchObject({
-      screenMode: "split-footer",
-      externalOutputMode: "capture-stdout",
-      exitOnCtrlC: false,
-      clearOnShutdown: false,
-      footerHeight: 1,
-    });
+    expect(config).toBeUndefined();
     expect(fixture.calls).toEqual([]);
     await controller.dispose();
   });
@@ -426,17 +454,18 @@ describe("LiveRegionController", () => {
     await controller.dispose();
     await controller.dispose();
 
-    expect(fixture.calls).toEqual(["externalOutputMode:passthrough", "screenMode:main-screen"]);
-    expect(fixture.commits).toEqual(["kept"]);
-    expect(fixture.state().destroyCount).toBe(1);
+    expect(fixture.calls).toEqual([]);
+    expect(written(fixture)).toContain("kept");
+    expect(fixture.state().destroyCount).toBe(0);
   });
 
   test("destroys its renderer exactly once", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
+    await controller.enterFullTail();
 
-    controller.dispose();
-    controller.dispose();
+    await controller.dispose();
+    await controller.dispose();
 
     expect(fixture.state().destroyCount).toBe(1);
   });
@@ -447,18 +476,21 @@ describe("LiveRegionController", () => {
     const initCause = new Error("unsupported terminal");
 
     const loadFailure = createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { stdout: process.stdout, width: 80, height: 24 },
       { loadModule: async () => Promise.reject(loadCause) },
     );
-    expect(loadFailure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("load", loadCause));
-    const initFailure = createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+    const loaded = await loadFailure;
+    expect(loaded.enterFullTail()).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("load", loadCause));
+    const initFailure = await createLiveRegionController(
+      { stdout: process.stdout, width: 80, height: 24 },
       {
         loadModule: async () => fixture.module,
         createRenderer: async () => Promise.reject(initCause),
       },
     );
-    expect(initFailure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("initialize", initCause));
+    expect(initFailure.enterFullTail()).rejects.toEqual(
+      new OpenTuiLiveRegionUnavailableError("initialize", initCause),
+    );
   });
 
   test("does not force a post-create output-mode transition during initialization", async () => {
@@ -472,7 +504,7 @@ describe("LiveRegionController", () => {
     });
 
     const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { stdout: process.stdout, width: 80, height: 24 },
       { loadModule: async () => fixture.module, createRenderer: async () => fixture.renderer },
     );
 

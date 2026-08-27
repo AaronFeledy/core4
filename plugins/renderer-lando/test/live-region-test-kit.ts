@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+
 import {
   type LiveRegionController,
   type LiveRegionControllerOptions,
@@ -5,6 +7,7 @@ import {
   type OpenTuiLiveRegionModuleLike,
   createLiveRegionController,
 } from "../src/opentui/live-region-controller.ts";
+import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 
 type RenderableOptions = { readonly content?: string | FakeStyledText; readonly width?: number };
 type FakeChunk = { readonly __isChunk: true; readonly text: string };
@@ -48,9 +51,26 @@ export interface FakeRenderer extends LiveRegionRendererLike {
   off(event: "resize", listener: () => void): FakeRenderer;
 }
 
+export class CapturingStdout extends EventEmitter {
+  columns = 80;
+  rows = 24;
+
+  constructor(private readonly writes: string[]) {
+    super();
+  }
+
+  write(chunk: string | Uint8Array): boolean {
+    this.writes.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+    return true;
+  }
+}
+
+export const createCapturingStdout = (writes: string[]): CapturingStdout => new CapturingStdout(writes);
+
 export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {}) => {
   const calls: string[] = [];
   const commits: string[] = [];
+  const writes: string[] = [];
   const fpsAssignments: number[] = [];
   const footers: FakeRenderable[] = [];
   const footerWidths: number[] = [];
@@ -63,6 +83,7 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
   let footerHeight = 1;
   let width = 80;
   let height = 24;
+  let capturedStdout: CapturingStdout | undefined;
   const resizeListeners = new Set<() => void>();
   const record = (call: string): void => {
     calls.push(call);
@@ -176,22 +197,35 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     },
   } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
 
-  return {
+  const fixture = {
     calls,
     commits,
+    writes,
     fpsAssignments,
     footers,
     footerWidths,
     module,
     renderer,
+    get stdout() {
+      return capturedStdout;
+    },
+    set stdout(value: CapturingStdout | undefined) {
+      capturedStdout = value;
+    },
     state: () => ({ destroyCount, footerHeight, liveRequestCount, maxFps, screenMode, targetFps }),
     emitResize: (nextWidth = 42, nextHeight = 12) => {
       width = nextWidth;
       height = nextHeight;
       for (const listener of [...resizeListeners]) listener();
+      if (capturedStdout !== undefined) {
+        capturedStdout.columns = nextWidth;
+        capturedStdout.rows = nextHeight;
+        capturedStdout.emit("resize");
+      }
     },
     resizeListenerCount: () => resizeListeners.size,
   };
+  return fixture;
 };
 
 export type LiveRegionFixture = ReturnType<typeof makeLiveRegionFixture>;
@@ -202,13 +236,20 @@ export const createTestLiveRegionController = async (
     stdout: process.stdout,
     width: 80,
     height: 24,
-    footerHeight: 1,
   },
 ): Promise<LiveRegionController<FakeRenderer>> => {
-  const controller = await createLiveRegionController(options, {
-    loadModule: async () => fixture.module,
-    createRenderer: async () => fixture.renderer,
-  });
+  resetLiveRegionModuleCacheForTests();
+  const stdout = createCapturingStdout(fixture.writes);
+  stdout.columns = options.width;
+  stdout.rows = options.height;
+  fixture.stdout = stdout;
+  const controller = await createLiveRegionController(
+    { ...options, stdout },
+    {
+      loadModule: async () => fixture.module,
+      createRenderer: async () => fixture.renderer,
+    },
+  );
   fixture.calls.length = 0;
   return controller;
 };

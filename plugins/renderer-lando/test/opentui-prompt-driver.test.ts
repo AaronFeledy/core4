@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CliRenderer } from "@opentui/core";
 
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
+import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { createOpenTuiPromptTestKit } from "./opentui-prompt-test-kit.ts";
@@ -13,6 +14,7 @@ describe("OpenTUI prompt driver", () => {
   afterEach(() => {
     cleanup();
     resetOpenTuiSubstrateAvailabilityForTests();
+    resetLiveRegionModuleCacheForTests();
   });
 
   test("select returns a 1-based index after keyboard navigation", async () => {
@@ -235,21 +237,23 @@ describe("OpenTUI prompt driver", () => {
   test("a live-region failure prevents a later prompt driver from loading OpenTUI", async () => {
     const substrateFailure = new Error("no native binding");
     let promptLoadAttempts = 0;
-    await expect(
-      createLiveRegionController(
-        {
-          stdout: process.stdout,
-          width: 80,
-          height: 24,
-          footerHeight: 12,
+    const controller = await createLiveRegionController(
+      {
+        stdout: process.stdout,
+        width: 80,
+        height: 24,
+      },
+      {
+        loadModule: async () => {
+          throw substrateFailure;
         },
-        {
-          loadModule: async () => {
-            throw substrateFailure;
-          },
-        },
-      ),
-    ).rejects.toHaveProperty("name", "OpenTuiLiveRegionUnavailableError");
+      },
+    );
+    await expect(controller.enterFullTail()).rejects.toHaveProperty(
+      "name",
+      "OpenTuiLiveRegionUnavailableError",
+    );
+    await controller.dispose().catch(() => undefined);
     const driver = createOpenTuiPromptDriver({
       loadModule: async () => {
         promptLoadAttempts += 1;

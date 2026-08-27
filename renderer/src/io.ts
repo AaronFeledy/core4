@@ -32,15 +32,13 @@ export const createStdioRendererIO = (
     if (stdin.isTTY !== true) return () => {};
     const listener = (chunk: Buffer | string): void => onKey(chunk.toString("utf8"));
     const previousRaw = stdin.isRaw === true;
-    const previousPaused = stdin.isPaused();
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", listener);
     return () => {
       stdin.off("data", listener);
       stdin.setRawMode(previousRaw);
-      if (previousPaused) stdin.pause();
-      else stdin.resume();
+      stdin.pause();
     };
   },
 });

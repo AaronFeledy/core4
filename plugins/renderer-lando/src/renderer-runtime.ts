@@ -12,9 +12,9 @@ import {
 } from "./capabilities.ts";
 import { sanitizeNotificationText } from "./notify-sanitize.ts";
 import {
+  bindIoDesktopNotificationTrigger,
   flushPendingNotifications,
   productionCapabilityProbe,
-  productionTriggerNotificationSync,
 } from "./notify-trigger.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import { createLiveRegionController } from "./opentui/live-region-controller.ts";
@@ -168,7 +168,7 @@ export const makeLandoNotificationConsumer = (io: RendererIO): Layer.Layer<never
   );
   return makeNotificationConsumerLive(
     () => snapshot.get(),
-    productionTriggerNotificationSync,
+    bindIoDesktopNotificationTrigger(io),
     flushPendingNotifications,
   );
 };
@@ -184,7 +184,7 @@ export const landoRendererContribution: RendererContribution = {
           io,
           io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
         ).get(),
-      triggerNotification: productionTriggerNotificationSync,
+      triggerNotification: bindIoDesktopNotificationTrigger(io),
       flushNotifications: flushPendingNotifications,
     }),
 };

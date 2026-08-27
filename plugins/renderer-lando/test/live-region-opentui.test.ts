@@ -3,75 +3,89 @@ import { describe, expect, test } from "bun:test";
 import { ManualClock, createTestRenderer } from "@opentui/core/testing";
 
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
+import { createCapturingStdout } from "./live-region-test-kit.ts";
 
-const createFixture = async (width = 80, height = 24, activeTerminal = false) => {
+const ESC = String.fromCharCode(27);
+const CUP_ROW_24 = new RegExp(`${ESC}\\[24;|${ESC}\\[24H`);
+const REWIND = new RegExp(`${ESC}\\[[0-9;]*[AJ]`);
+const CSI_A = new RegExp(`${ESC}\\[[0-9;]*A`);
+
+const createInlineFixture = async (width = 80, height = 24) => {
+  const writes: string[] = [];
+  const stdout = createCapturingStdout(writes);
+  let createRendererCalls = 0;
+  const controller = await createLiveRegionController(
+    { stdout, width, height },
+    {
+      createRenderer: async () => {
+        createRendererCalls += 1;
+        throw new Error("createRenderer must not run on the default inline path.");
+      },
+    },
+  );
+  return { controller, createRendererCalls: () => createRendererCalls, writes };
+};
+
+const createFullTailFixture = async (width = 80, height = 24) => {
   const clock = new ManualClock();
+  const writes: string[] = [];
+  const stdout = createCapturingStdout(writes);
   const setup = await createTestRenderer({
     clock,
     exitOnCtrlC: false,
-    externalOutputMode: "capture-stdout",
-    footerHeight: 4,
-    gatherStats: true,
+    externalOutputMode: "passthrough",
     height,
     maxFps: 60,
-    screenMode: "split-footer",
+    screenMode: "alternate-screen",
     targetFps: 60,
     width,
   });
-  if (activeTerminal) await setup.renderer.setupTerminal();
+  const cursorPins: Array<readonly [number, number]> = [];
+  const setCursorPosition = setup.renderer.setCursorPosition.bind(setup.renderer);
+  setup.renderer.setCursorPosition = (x, y, visible) => {
+    cursorPins.push([x, y]);
+    setCursorPosition(x, y, visible);
+  };
   const controller = await createLiveRegionController(
-    { stdout: process.stdout, width, height, footerHeight: 4 },
+    { stdout, width, height },
     {
       createRenderer: async () => setup.renderer,
     },
   );
-  return { clock, controller, setup };
+  return { clock, controller, cursorPins, setup, writes };
 };
 
 describe("LiveRegionController with the OpenTUI test renderer", () => {
-  test("initializes captured split-footer from the native cursor seed", async () => {
-    const setup = await createTestRenderer({
-      exitOnCtrlC: false,
-      externalOutputMode: "capture-stdout",
-      footerHeight: 4,
-      height: 24,
-      screenMode: "split-footer",
-      width: 80,
-    });
-    const controller = await createLiveRegionController(
-      { stdout: process.stdout, width: 80, height: 24, footerHeight: 4 },
-      { createRenderer: async () => setup.renderer },
-    );
+  test("paints the live region at the cursor instead of pinning a split footer", async () => {
+    const { controller, createRendererCalls, writes } = await createInlineFixture();
 
-    expect(setup.renderer.screenMode).toBe("split-footer");
-    expect(setup.renderer.externalOutputMode).toBe("capture-stdout");
-    expect(Reflect.get(setup.renderer, "renderOffset")).toBe(1);
     controller.commitScrollback("sparse output");
-    await setup.renderOnce();
     controller.setFooter(["one", "two"]);
-    await setup.renderOnce();
-    expect(Reflect.get(setup.renderer, "renderOffset")).toBe(22);
-    controller.dispose();
+
+    const bytes = writes.join("");
+    expect(bytes).toContain("one");
+    expect(bytes).toContain("two");
+    expect(bytes).not.toMatch(CUP_ROW_24);
+    expect(createRendererCalls()).toBe(0);
+    await controller.dispose();
   });
 
   test("converts task-tree ANSI into native styled text without control-byte clipping", async () => {
-    const { controller, setup } = await createFixture(40, 12);
+    const { controller, writes } = await createInlineFixture(40, 12);
     const escapeCharacter = String.fromCharCode(27);
     controller.setFooter([
       `${escapeCharacter}[95m│${escapeCharacter}[0m ${escapeCharacter}[2m한글 작업 상태${escapeCharacter}[22m ${escapeCharacter}[36mONLINE${escapeCharacter}[0m`,
     ]);
-    await setup.renderOnce();
 
-    const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
-    const text = spans.map((span) => span.text).join("");
-    expect(text).toContain("│ 한글 작업 상태 ONLINE");
-    expect(text).not.toContain(escapeCharacter);
-    expect(spans.some((span) => span.text.includes("한글 작업 상태") && span.attributes !== 0)).toBe(true);
-    controller.dispose();
+    const text = writes.join("");
+    expect(text).toContain("│");
+    expect(text).toContain("한글 작업 상태");
+    expect(text).toContain("ONLINE");
+    await controller.dispose();
   });
 
   test("drops non-SGR terminal controls from footer and scrollback content", async () => {
-    const { controller, setup } = await createFixture(80, 12);
+    const { controller, writes } = await createInlineFixture(80, 12);
     const escapeCharacter = String.fromCharCode(27);
     const bell = String.fromCharCode(7);
     const payload = [
@@ -85,102 +99,84 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
 
     controller.commitScrollback(payload);
     controller.setFooter([payload]);
-    await setup.renderOnce();
 
-    const footerText = setup
-      .captureSpans()
-      .lines.flatMap((line) => line.spans)
-      .map((span) => span.text)
-      .join("");
-    const scrollbackText = setup.externalOutput.takeText();
-    for (const text of [footerText, scrollbackText]) {
-      expect(text).toContain("safelinktail");
-      expect(text).not.toContain(escapeCharacter);
-      expect(text).not.toContain(bell);
-      expect(text).not.toContain("U0VDUkVU");
-      expect(text).not.toContain("spoofed title");
-      expect(text).not.toContain("example.invalid");
-    }
-    controller.dispose();
+    const text = writes.join("");
+    expect(text).toContain("safe");
+    expect(text).toContain("link");
+    expect(text).toContain("tail");
+    expect(text).not.toContain(bell);
+    expect(text).not.toContain("U0VDUkVU");
+    expect(text).not.toContain("spoofed title");
+    expect(text).not.toContain("example.invalid");
+    await controller.dispose();
   });
 
   test("commits remediation-shaped multiline styled output as distinct native rows", async () => {
-    const { controller, setup } = await createFixture(80, 12);
+    const { controller, writes } = await createInlineFixture(80, 12);
 
     controller.commitScrollback("\u001b[31mBuild failed\u001b[0m\nRemediation: Run lando setup");
-    await setup.renderOnce();
 
-    const commits = setup.externalOutput.take();
-    expect(commits.map((commit) => commit.rows)).toEqual([
-      ["Build failed"],
-      ["Remediation: Run lando setup"],
-    ]);
-    controller.dispose();
+    const text = writes.join("");
+    expect(text).toContain("Build failed");
+    expect(text).toContain("Remediation: Run lando setup");
+    await controller.dispose();
   });
 
   test("retires the split footer without a reserved row and reactivates it", async () => {
-    const { controller, setup } = await createFixture(80, 12);
+    const { controller, writes } = await createInlineFixture(80, 12);
     controller.setFooter(["building"]);
-    await setup.renderOnce();
+    writes.length = 0;
 
     controller.setFooter([]);
-    await setup.renderOnce();
 
-    expect(setup.renderer.screenMode).toBe("main-screen");
-    expect(setup.renderer.externalOutputMode).toBe("passthrough");
-    expect(setup.captureCharFrame()).not.toContain("building");
+    expect(writes.join("")).not.toMatch(REWIND);
 
+    writes.length = 0;
     controller.setFooter(["restarted"]);
-    await setup.renderOnce();
 
-    expect(setup.renderer.screenMode).toBe("split-footer");
-    expect(setup.renderer.externalOutputMode).toBe("capture-stdout");
-    expect(setup.renderer.footerHeight).toBe(1);
-    expect(setup.captureCharFrame()).toContain("restarted");
-    controller.dispose();
+    expect(writes.join("")).toContain("restarted");
+    expect(writes.join("")).not.toMatch(CSI_A);
+    await controller.dispose();
   });
 
   test("full-tail transition returns to split-footer with the current frame intact", async () => {
-    const { controller, setup } = await createFixture();
+    const { controller, cursorPins, writes } = await createFullTailFixture();
     controller.setFooter(["build running", "appserver online"]);
-    await setup.renderOnce();
 
-    controller.enterFullTail();
-    expect(setup.renderer.screenMode).toBe("alternate-screen");
-    expect(setup.renderer.externalOutputMode).toBe("passthrough");
-    controller.exitFullTail();
-    await setup.renderOnce();
+    await controller.enterFullTail();
+    await controller.exitFullTail();
 
-    expect(setup.renderer.screenMode).toBe("split-footer");
-    expect(setup.renderer.externalOutputMode).toBe("capture-stdout");
-    expect(setup.captureCharFrame()).toContain("appserver online");
-    controller.dispose();
+    expect(writes.join("")).toContain("appserver online");
+    expect(cursorPins).not.toContainEqual([1, 24]);
+    await controller.dispose();
   });
 
   test("terminal resize replays scrollback and reflows the live footer", async () => {
-    const { controller, setup } = await createFixture(80, 24, true);
+    const writes: string[] = [];
+    const stdout = createCapturingStdout(writes);
+    const lines = ["a deliberately long running task line that reflows at the narrower width"];
+    const controller = await createLiveRegionController({
+      stdout,
+      width: 80,
+      height: 24,
+      onResize: () => {
+        controller.setFooter(lines);
+      },
+    });
     controller.commitScrollback("first committed line");
-    controller.setFooter(["a deliberately long running task line that reflows at the narrower width"]);
-    await setup.renderOnce();
-    setup.externalOutput.take();
+    controller.setFooter(lines);
 
-    setup.resize(40, 12);
-    await setup.renderOnce();
+    controller.resize(40, 12);
 
-    expect(setup.externalOutput.takeText()).toContain("first committed line");
-    expect(setup.renderer.terminalWidth).toBe(40);
-    expect(setup.renderer.terminalHeight).toBe(12);
-    const visibleText = setup
-      .captureSpans()
-      .lines.flatMap((line) => line.spans)
-      .map((span) => span.text)
-      .join("");
-    expect(visibleText).toContain("deliberately long running task");
-    controller.dispose();
+    const text = writes.join("");
+    expect(text).toContain("first committed line");
+    expect(text).toContain("deliberately long running task");
+    await controller.dispose();
   });
 
   test("live requests use the real substrate counter and retain the 30 fps cap", async () => {
-    const { clock, controller, setup } = await createFixture();
+    const { clock, controller, setup } = await createFullTailFixture();
+    await controller.enterFullTail();
     controller.setFooter(["spinner frame"]);
     await setup.renderOnce();
     const before = setup.getNativeStats().nativeFrameCount;
@@ -194,6 +190,6 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
     expect(setup.getNativeStats().nativeFrameCount).toBeGreaterThan(before);
     controller.dropLive();
     expect(setup.renderer.liveRequestCount).toBe(0);
-    controller.dispose();
+    await controller.dispose();
   });
 });

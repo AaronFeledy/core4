@@ -9,18 +9,11 @@ import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { createTestLiveRegionController, makeLiveRegionFixture } from "./live-region-test-kit.ts";
 
 const timestamp = "2026-07-17T12:00:00.000Z";
+const ESC = String.fromCharCode(27);
 
 test("semantic footer reflow completes before resize replay through production consumer wiring", async () => {
   // Given
-  let signalInitialFrame: (() => void) | undefined;
-  const initialFrame = new Promise<void>((resolve) => {
-    signalInitialFrame = resolve;
-  });
-  const fixture = makeLiveRegionFixture((call) => {
-    if (!call.startsWith("scrollback:")) return;
-    signalInitialFrame?.();
-    signalInitialFrame = undefined;
-  });
+  const fixture = makeLiveRegionFixture();
   const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
   const liveIo = { ...io, externalOutputStream: process.stdout };
 
@@ -62,26 +55,38 @@ test("semantic footer reflow completes before resize replay through production c
             timestamp,
           }),
         );
-        yield* Effect.promise(() => initialFrame);
+        yield* Effect.promise(() =>
+          (async () => {
+            for (let attempt = 0; attempt < 200; attempt += 1) {
+              if (fixture.writes.join("").includes("Building")) return;
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            throw new Error("timed out waiting for inline tree paint");
+          })(),
+        );
 
-        fixture.calls.length = 0;
+        fixture.writes.length = 0;
         fixture.emitResize(40, 12);
+        yield* Effect.promise(() =>
+          (async () => {
+            for (let attempt = 0; attempt < 200; attempt += 1) {
+              if (fixture.writes.join("").includes("Building")) return;
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            throw new Error("timed out waiting for resized tree paint");
+          })(),
+        );
 
         // Then
-        const reflowIndex = fixture.calls.findIndex((call) => call.startsWith("footer:"));
-        const resetIndex = fixture.calls.indexOf("reset:true");
-        const replayIndex = fixture.calls.findIndex((call) => call.startsWith("scrollback:"));
-        expect(reflowIndex).toBeGreaterThanOrEqual(0);
-        expect(resetIndex).toBeGreaterThan(reflowIndex);
-        expect(replayIndex).toBeGreaterThan(resetIndex);
-        const replayedFooter = fixture.calls.slice(resetIndex + 1).find((call) => call.startsWith("footer:"));
-        expect(replayedFooter).toBeDefined();
-        expect(
-          replayedFooter
-            ?.slice("footer:".length)
-            .split("|")
-            .every((line) => Bun.stringWidth(line) <= 40),
-        ).toBe(true);
+        expect(fixture.calls).not.toContain("reset:true");
+        expect(fixture.calls.some((call) => call.startsWith("cursor:"))).toBe(false);
+        const painted = fixture.writes.join("");
+        expect(painted).toContain("Building");
+        const visibleLines = painted
+          .replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")
+          .split("\n")
+          .filter((line) => line.length > 0);
+        expect(visibleLines.every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
       }).pipe(
         Effect.provide(
           Layer.provideMerge(

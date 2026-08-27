@@ -8,7 +8,6 @@ import { TaskTreeInputController } from "./keybindings.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import {
   claimOpenTuiDegradationNotice,
-  getOpenTuiSubstrateAvailability,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
@@ -17,8 +16,6 @@ import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "
 import { type LiveRegionHandle, makeTaskTreeSubstrateHandler } from "./task-tree-substrate-handler.ts";
 import { makeTranscriptTailController } from "./transcript-tail-controller.ts";
 import { TranscriptTailReader } from "./transcript-tail-reader.ts";
-
-const DEFAULT_FOOTER_HEIGHT = 12 as const;
 
 const taskIdOf = (event: LandoEvent): string | undefined => {
   const value = Reflect.get(event, "taskId");
@@ -70,16 +67,11 @@ export const makeTaskTreeConsumerLive = (
 
       const acquire = Effect.gen(function* () {
         if (active !== undefined) return active;
-        if (!getOpenTuiSubstrateAvailability().available) {
-          yield* reportDegradation;
-          return undefined;
-        }
         const acquired = yield* Effect.tryPromise(() =>
           createLiveRegion({
             stdout,
             width: io.terminalColumns ?? 80,
             height: io.terminalRows ?? 24,
-            footerHeight: DEFAULT_FOOTER_HEIGHT,
             onResize: (width, height) => handleResize(width, height),
           }),
         ).pipe(
@@ -124,8 +116,8 @@ export const makeTaskTreeConsumerLive = (
                 viewModel.collapse();
                 return false;
               }
-              const entered = yield* Effect.try({
-                try: () => controller.enterFullTail(),
+              const entered = yield* Effect.tryPromise({
+                try: () => Promise.resolve(controller.enterFullTail()),
                 catch: (cause) => recordOpenTuiSubstrateFailure(cause),
               }).pipe(Effect.option);
               if (Option.isNone(entered)) {
