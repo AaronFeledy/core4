@@ -1,3 +1,5 @@
+import type { RendererIO } from "@lando/sdk/renderer";
+
 import type { CapabilityProbe } from "./capabilities.ts";
 import { loadOpenTuiModule } from "./opentui/prompt-driver.ts";
 
@@ -27,37 +29,50 @@ export const productionCapabilityProbe = (timeoutMs = 2000): CapabilityProbe => 
   },
 });
 
-export const productionTriggerNotification = async (message: string, title?: string): Promise<boolean> => {
-  try {
-    const mod: unknown = await loadOpenTuiModule();
-    if (!isOpenTuiNotifyModule(mod)) return false;
-    const renderer = await mod.createCliRenderer({
-      exitOnCtrlC: false,
-      useMouse: false,
-      useKittyKeyboard: false,
-    });
-    try {
-      return title === undefined
-        ? renderer.triggerNotification(message)
-        : renderer.triggerNotification(message, title);
-    } finally {
-      renderer.destroy();
-    }
-  } catch {
-    return false;
+const BEL = "\u0007";
+const OSC = "\u001b]";
+
+const osc99 = (part: "title" | "body", payload: string, done: 0 | 1): string =>
+  `${OSC}99;i=lando:d=${String(done)}:p=${part};${payload}${BEL}`;
+
+export const encodeDesktopNotification = (message: string, title?: string): string => {
+  if (title === undefined) return osc99("body", message, 0);
+  return `${osc99("title", title, 0)}${osc99("body", message, 1)}`;
+};
+
+export const writeDesktopNotification = (io: RendererIO, text: string): void => {
+  const stream = io.externalOutputStream;
+  if (stream !== undefined) {
+    stream.write(text);
+    return;
   }
+  io.writeStdout(text);
 };
 
 const pendingNotifications = new Set<Promise<boolean>>();
 
-export const productionTriggerNotificationSync = (message: string, title?: string): boolean => {
-  const work = productionTriggerNotification(message, title);
-  pendingNotifications.add(work);
-  void work.finally(() => {
-    pendingNotifications.delete(work);
-  });
-  return true;
+export const bindDesktopNotificationTrigger = (write: (text: string) => void) => {
+  const trigger = (message: string, title?: string): boolean => {
+    const work = Promise.resolve()
+      .then(() => {
+        write(encodeDesktopNotification(message, title));
+        return true;
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof Error) return false;
+        return false;
+      });
+    pendingNotifications.add(work);
+    void work.finally(() => {
+      pendingNotifications.delete(work);
+    });
+    return true;
+  };
+  return trigger;
 };
+
+export const bindIoDesktopNotificationTrigger = (io: RendererIO) =>
+  bindDesktopNotificationTrigger((text) => writeDesktopNotification(io, text));
 
 export const flushPendingNotifications = async (): Promise<void> => {
   while (pendingNotifications.size > 0) {
