@@ -86,6 +86,11 @@ Base unit is one terminal cell.
 Grid: one column, wrap by display width in `task-tree-frame.ts`. No right rail.
 CJK orphan rebalancing stays in the framer, not the grammar.
 
+Viewport: the live tree paints at the current cursor, immediately under the
+typed command. It grows and shrinks in place. Logs commit above the tree, then
+the tree is rewritten below. Do not pin the tree to the terminal footer.
+Full-tail expand uses the alternate screen; leaving it returns to inline paint.
+
 ## 5. Components
 
 ### Task tree
