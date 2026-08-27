@@ -38,8 +38,14 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
       if (expandedTaskId !== undefined && viewModel.expandedTaskId === undefined) {
         await controller.exitFullTail();
       }
-      if (event._tag === "task.tree.complete") {
-        for (const line of result.completedLines) controller.commitScrollback(line);
+      if (
+        event._tag === "task.tree.complete" &&
+        result.completedLines.length > 0 &&
+        viewModel.frameLines().length === 0
+      ) {
+        controller.setFooter(result.completedLines);
+        controller.setFooter([]);
+        return;
       }
       renderFooter();
       return;

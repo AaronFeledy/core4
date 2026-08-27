@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CliRenderer } from "@opentui/core";
 
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
+import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { createOpenTuiPromptTestKit } from "./opentui-prompt-test-kit.ts";
@@ -13,6 +14,7 @@ describe("OpenTUI prompt driver", () => {
   afterEach(() => {
     cleanup();
     resetOpenTuiSubstrateAvailabilityForTests();
+    resetLiveRegionModuleCacheForTests();
   });
 
   test("select returns a 1-based index after keyboard navigation", async () => {

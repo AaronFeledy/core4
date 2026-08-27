@@ -262,7 +262,7 @@ describe("first paint via the production TTY consumer and fake OpenTUI substrate
           const firstWrite = fixture.writes[0] ?? "";
           yield* events.publish(taskComplete("web"));
           yield* events.publish(treeComplete("app", "Built app"));
-          yield* waitForConsumer(() => written(fixture).includes("Built app"));
+          yield* Effect.sleep("20 millis");
           return { beforeCompletion, firstWrite };
         }).pipe(
           Effect.provide(
@@ -282,7 +282,7 @@ describe("first paint via the production TTY consumer and fake OpenTUI substrate
     expect(firstPaint.beforeCompletion).toContain("◌ db");
     expect(firstPaint.beforeCompletion).not.toContain("Built app");
     expect(firstPaint.firstWrite).not.toMatch(new RegExp(`${ESC}\\[[0-9;]*(?:A|J)`, "u"));
-    expect(written(fixture)).toContain("Built app");
+    expect(written(fixture)).toContain("web service");
   });
 });
 

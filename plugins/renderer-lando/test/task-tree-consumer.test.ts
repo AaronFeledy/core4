@@ -736,7 +736,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     expect(commits.some((c) => c.kind === "commitScrollback" && c.text.includes("heads up"))).toBe(true);
   });
 
-  test("tree.complete commits the summary to scrollback and retires the live footer", async () => {
+  test("tree.complete paints the finished tree without re-committing it as scrollback", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
     await Effect.runPromise(
@@ -747,8 +747,9 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         treeComplete(),
       ]),
     );
-    const commits = controller.calls.filter((c) => c.kind === "commitScrollback");
-    expect(commits.some((c) => c.kind === "commitScrollback" && c.text.includes("done"))).toBe(true);
+    expect(controller.calls.some((c) => c.kind === "commitScrollback" && c.text.includes("done"))).toBe(
+      false,
+    );
     const lastFooter = [...controller.calls].reverse().find((c) => c.kind === "setFooter");
     expect(lastFooter?.kind === "setFooter" && lastFooter.lines.length).toBe(0);
   });

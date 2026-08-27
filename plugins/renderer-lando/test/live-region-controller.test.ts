@@ -242,6 +242,19 @@ describe("LiveRegionController", () => {
     expect(fixture.calls).not.toContain("cursor:1,24:false");
   });
 
+  test("clearing the footer leaves the last live tree without rewriting it", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.setFooter(["app:start", "done"]);
+    expect(written(fixture).split("app:start").length - 1).toBe(1);
+
+    controller.setFooter([]);
+    controller.commitScrollback("ready: app");
+
+    expect(written(fixture).split("app:start").length - 1).toBe(1);
+    expect(written(fixture)).toContain("ready: app");
+  });
+
   test("exit full tail rewinds the inline tree instead of painting a duplicate", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);

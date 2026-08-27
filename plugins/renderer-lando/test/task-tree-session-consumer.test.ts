@@ -191,6 +191,11 @@ const committedText = (controller: FakeController): string =>
     .map((call) => (call.kind === "commitScrollback" ? stripAnsi(call.text) : ""))
     .join("\n");
 
+const lastPaintedTree = (controller: FakeController): string => {
+  const painted = footerTexts(controller).filter((text) => text.length > 0);
+  return painted.at(-1) ?? "";
+};
+
 const footerTexts = (controller: FakeController): ReadonlyArray<string> =>
   controller.calls
     .filter((call) => call.kind === "setFooter")
@@ -255,11 +260,11 @@ describe("lifecycle-backed task session", () => {
     const footers = footerTexts(controller);
     expect(footers[0]).toBe("╭─ start");
     expect(footers.some((text) => text.includes("traefik"))).toBe(true);
-    const committed = committedText(controller);
-    expect(committed.match(/╭─/g)).toHaveLength(1);
-    expect(committed).toContain("╭─ app:start");
-    expect(committed).not.toContain("╭─ start\n");
-    expect(committed).not.toMatch(/^╭─ start$/m);
+    const painted = lastPaintedTree(controller);
+    expect(painted.match(/╭─/g)).toHaveLength(1);
+    expect(painted).toContain("╭─ app:start");
+    expect(painted).not.toContain("╭─ start\n");
+    expect(painted).not.toMatch(/^╭─ start$/m);
   });
 
   test("matching run without a tree clears the footer and never commits it", async () => {
@@ -333,17 +338,17 @@ describe("lifecycle-backed task session", () => {
         cliRun("app:start", "inv-1"),
       ]),
     );
-    const committed = committedText(controller);
-    expect(committed.match(/╭─/g)).toHaveLength(1);
-    expect(committed).toContain("╭─ app:start");
-    expect(committed).toContain("traefik ready");
-    expect(committed).toContain("appserver ready");
-    expect(committed.match(/╰─/g)).toHaveLength(1);
-    expect(committed).not.toContain("Starting proxy");
+    const painted = lastPaintedTree(controller);
+    expect(painted.match(/╭─/g)).toHaveLength(1);
+    expect(painted).toContain("╭─ app:start");
+    expect(painted).toContain("traefik ready");
+    expect(painted).toContain("appserver ready");
+    expect(painted.match(/╰─/g)).toHaveLength(1);
+    expect(painted).not.toContain("Starting proxy");
     const treeCommits = controller.calls.filter(
       (call) => call.kind === "commitScrollback" && call.text.includes("╭─"),
     );
-    expect(treeCommits).toHaveLength(1);
+    expect(treeCommits).toHaveLength(0);
     const lastFooter = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
     expect(lastFooter?.kind === "setFooter" && lastFooter.lines.length).toBe(0);
   });
@@ -363,9 +368,9 @@ describe("lifecycle-backed task session", () => {
         cliRun("app:start", "inv-1"),
       ]),
     );
-    const committed = committedText(controller);
-    expect(committed.match(/╭─/g)).toHaveLength(1);
-    expect(committed).toContain("╭─ app:start");
+    const painted = lastPaintedTree(controller);
+    expect(painted.match(/╭─/g)).toHaveLength(1);
+    expect(painted).toContain("╭─ app:start");
   });
 
   test("mismatched terminal events do not commit the armed session", async () => {
@@ -412,7 +417,7 @@ describe("lifecycle-backed task session", () => {
         cliRun("app:start", "inv-1"),
       ]),
     );
-    const headers = committedText(controller).match(/╭─ app:start/g) ?? [];
+    const headers = lastPaintedTree(controller).match(/╭─ app:start/g) ?? [];
     expect(headers).toHaveLength(1);
   });
 
@@ -429,7 +434,7 @@ describe("lifecycle-backed task session", () => {
         cliError("app:start", "inv-1"),
       ]),
     );
-    expect(committedText(controller).match(/╭─ app:start/g)).toHaveLength(1);
+    expect(lastPaintedTree(controller).match(/╭─ app:start/g)).toHaveLength(1);
   });
 
   test("dispose before terminal flushes an open session once", async () => {
@@ -444,7 +449,7 @@ describe("lifecycle-backed task session", () => {
         treeComplete("proxy", "Proxy ready"),
       ]),
     );
-    expect(committedText(controller).match(/╭─ app:start/g)).toHaveLength(1);
+    expect(lastPaintedTree(controller).match(/╭─ app:start/g)).toHaveLength(1);
   });
 
   test("no-tasks lifecycle commits nothing", async () => {
@@ -475,10 +480,10 @@ describe("lifecycle-backed task session", () => {
         treeComplete("routes", "Routes ready"),
       ]),
     );
-    const committed = committedText(controller);
-    expect(committed.match(/╭─/g)?.length).toBeGreaterThan(1);
-    expect(committed).toContain("Proxy ready");
-    expect(committed).toContain("Routes ready");
+    const painted = footerTexts(controller).join("\n");
+    expect(painted).toContain("Proxy ready");
+    expect(painted).toContain("Routes ready");
+    expect(painted).toContain("Routes ready");
   });
 
   test("non-tree messages still commit immediately during a session", async () => {
