@@ -1,17 +1,21 @@
-import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
-import { LiveRegionReplay, type ReplayLine, replaySnapshot } from "./live-region-replay.ts";
+import { createInlineLiveRegionPainter } from "./inline-live-region.ts";
+import {
+  type FullTailSession,
+  acquireFullTail,
+  dropFullTailLive,
+  leaveFullTail,
+  paintFullTailFooter,
+  requestFullTailLive,
+} from "./live-region-full-tail.ts";
 import {
   DeferredScrollback,
   type LiveRegionSpoolFactory,
   createLiveRegionSpool,
 } from "./live-region-spool.ts";
-import { acquireLiveRegionSubstrate } from "./live-region-substrate.ts";
 import type {
   LiveRegionControllerDeps,
   LiveRegionControllerOptions,
-  LiveRegionRenderableLike,
   LiveRegionRendererLike,
-  OpenTuiLiveRegionModuleLike,
 } from "./live-region-types.ts";
 import { recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
@@ -20,97 +24,73 @@ export type { OpenTuiLiveRegionFailureStage } from "./live-region-error.ts";
 export type * from "./live-region-types.ts";
 
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
-  private footer: LiveRegionRenderableLike | undefined;
   private footerLines: ReadonlyArray<string> = [];
-  private readonly replay: LiveRegionReplay;
   private readonly deferred: DeferredScrollback;
+  private readonly inline: ReturnType<typeof createInlineLiveRegionPainter>;
+  private readonly onStdoutResize: () => void;
   private width: number;
   private height: number;
-  private replayPending = false;
   private disposed = false;
-  private readonly resizeListener: () => void;
+  private enteringFullTail = false;
+  private fullTail: FullTailSession<TRenderer> | undefined;
 
   constructor(
-    private readonly module: OpenTuiLiveRegionModuleLike<TRenderer>,
-    private readonly renderer: TRenderer,
-    width: number,
-    height: number,
-    private readonly onResize: ((width: number, height: number) => void) | undefined,
-    private readonly writePassthrough: (text: string) => void,
+    private readonly options: LiveRegionControllerOptions,
+    private readonly deps: LiveRegionControllerDeps<TRenderer> = {},
     spoolFactory: LiveRegionSpoolFactory = createLiveRegionSpool,
   ) {
-    this.width = width;
-    this.height = height;
-    this.deferred = new DeferredScrollback(spoolFactory);
-    this.replay = new LiveRegionReplay(module, width, Math.max(0, height - renderer.footerHeight));
-    this.renderer.targetFps = Math.min(this.renderer.targetFps, 30);
-    this.renderer.maxFps = Math.min(this.renderer.maxFps, 30);
-    this.resizeListener = () => {
-      const nextWidth = this.renderer.terminalWidth;
-      const nextHeight = this.renderer.terminalHeight;
-      this.applyResize(nextWidth, nextHeight);
+    this.width = options.width;
+    this.height = options.height;
+    this.deferred = new DeferredScrollback(deps.spool ?? spoolFactory);
+    this.inline = createInlineLiveRegionPainter((text) => {
+      options.stdout.write(text);
+    });
+    this.onStdoutResize = (): void => {
+      const columns = options.stdout.columns;
+      const rows = options.stdout.rows;
+      if (typeof columns === "number" && typeof rows === "number") this.applyResize(columns, rows);
     };
-    this.renderer.on("resize", this.resizeListener);
+    options.stdout.on("resize", this.onStdoutResize);
   }
 
   commitScrollback(text: string): void {
-    for (const source of this.rowsFor(text)) {
-      if (this.renderer.screenMode === "alternate-screen") {
-        this.deferred.push(source);
-        continue;
-      }
-      const line = this.replay.line(source);
-      this.replay.push(line);
-      if (this.renderer.screenMode === "split-footer") this.writeScrollback(line);
-      else this.writePassthrough(`${line.chunks.map((chunk) => chunk.text).join("")}\n`);
+    if (this.fullTail !== undefined || this.enteringFullTail) {
+      for (const source of rowsFor(text)) this.deferred.push(source);
+      return;
     }
+    this.inline.commitAbove(text);
+    if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
   }
 
-  rememberScrollback(text: string): void {
-    for (const source of this.rowsFor(text)) this.replay.push(this.replay.line(source));
-  }
-
-  private rowsFor(text: string): ReadonlyArray<string> {
-    return (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
-  }
-
-  private writeScrollback(line: ReplayLine): void {
-    this.renderer.writeToScrollback((context) => replaySnapshot(this.module, context, line));
-  }
+  rememberScrollback(_text: string): void {}
 
   setFooter(lines: ReadonlyArray<string>): void {
     this.footerLines = [...lines];
-    if (lines.length === 0 && this.renderer.screenMode !== "alternate-screen") {
-      this.footer?.destroy?.();
-      this.footer = undefined;
-      if (this.renderer.screenMode === "split-footer") {
-        this.renderer.externalOutputMode = "passthrough";
-        this.renderer.screenMode = "main-screen";
-      }
+    const session = this.fullTail;
+    if (session !== undefined) {
+      paintFullTailFooter(session, lines, this.width, this.height);
       return;
     }
-    const reactivating = this.renderer.screenMode === "main-screen";
-    if (reactivating) {
-      this.renderer.externalOutputMode = "passthrough";
-      this.renderer.screenMode = "split-footer";
+    if (this.enteringFullTail) return;
+    if (lines.length === 0) {
+      this.inline.release();
+      return;
     }
-    this.renderFooter(reactivating);
+    this.inline.paint(lines);
   }
 
   requestLive(): void {
-    this.renderer.targetFps = Math.min(this.renderer.targetFps, 30);
-    this.renderer.maxFps = Math.min(this.renderer.maxFps, 30);
-    this.renderer.requestLive();
+    const renderer = this.fullTail?.renderer;
+    if (renderer !== undefined) requestFullTailLive(renderer);
   }
 
   dropLive(): void {
-    this.renderer.targetFps = Math.min(this.renderer.targetFps, 30);
-    this.renderer.maxFps = Math.min(this.renderer.maxFps, 30);
-    this.renderer.dropLive();
+    const renderer = this.fullTail?.renderer;
+    if (renderer !== undefined) dropFullTailLive(renderer);
   }
 
   resize(width: number, height: number): void {
-    this.renderer.resize(width, height);
+    this.fullTail?.renderer.resize(width, height);
     this.applyResize(width, height);
   }
 
@@ -118,60 +98,54 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     if (width === this.width && height === this.height) return;
     this.width = width;
     this.height = height;
-    this.onResize?.(width, height);
-    const footerHeight = this.renderer.screenMode === "main-screen" ? 0 : this.renderer.footerHeight;
-    this.replay.resize(width, Math.max(0, height - footerHeight));
-    this.replayAfterResize();
+    this.options.onResize?.(width, height);
   }
 
-  enterFullTail(): void {
-    if (this.renderer.screenMode === "alternate-screen") return;
-    this.renderer.externalOutputMode = "passthrough";
-    this.renderer.screenMode = "alternate-screen";
+  async enterFullTail(): Promise<void> {
+    if (this.fullTail !== undefined || this.enteringFullTail) return;
+    this.enteringFullTail = true;
+    try {
+      this.fullTail = await acquireFullTail(this.options, this.deps, (width, height) => {
+        this.applyResize(width, height);
+      });
+      if (this.footerLines.length > 0) {
+        paintFullTailFooter(this.fullTail, this.footerLines, this.width, this.height);
+      }
+    } catch (cause) {
+      const drained = await this.deferred.drain();
+      for (const source of drained) this.inline.commitAbove(source);
+      if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
+      throw cause;
+    } finally {
+      this.enteringFullTail = false;
+    }
   }
 
   async exitFullTail(): Promise<void> {
-    if (this.renderer.screenMode !== "alternate-screen") return;
-    this.renderer.screenMode = "split-footer";
-    this.renderer.setCursorPosition(1, Math.max(1, this.height), false);
-    this.renderer.externalOutputMode = "capture-stdout";
-    const replayAfterResize = this.replayPending;
-    if (replayAfterResize) {
-      this.resetReplaySurface();
-    }
-    for (const source of await this.deferred.drain()) {
-      const line = this.replay.line(source);
-      this.writeScrollback(line);
-      this.replay.push(line);
-    }
-    if (replayAfterResize) this.pinSplitFooter();
-    if (this.footer !== undefined) this.renderFooter();
-    this.replayPending = false;
+    const session = this.fullTail;
+    if (session === undefined) return;
+    const drained = await this.deferred.drain();
+    leaveFullTail(session);
+    this.fullTail = undefined;
+    for (const source of drained) this.inline.commitAbove(source);
+    if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
   }
 
   async reset(): Promise<void> {
-    this.resetReplaySurface();
-    this.pinSplitFooter();
-    if (this.footer !== undefined) this.renderFooter();
     await this.deferred.clear();
-  }
-
-  private resetReplaySurface(): void {
-    this.renderer.resetSplitFooterForReplay({ clearSavedLines: true });
-    for (const line of this.replay.retainedLines()) this.writeScrollback(line);
   }
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.options.stdout.off("resize", this.onStdoutResize);
+    this.inline.release();
     try {
-      this.renderer.off("resize", this.resizeListener);
-      if (this.renderer.screenMode === "split-footer") this.setFooter([]);
-      else if (this.renderer.screenMode !== "main-screen") {
-        this.renderer.externalOutputMode = "passthrough";
-        this.renderer.screenMode = "main-screen";
+      const session = this.fullTail;
+      if (session !== undefined) {
+        leaveFullTail(session);
+        this.fullTail = undefined;
       }
-      this.renderer.destroy();
     } catch (cause) {
       recordOpenTuiSubstrateFailure(cause);
       throw cause;
@@ -179,58 +153,10 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       await this.deferred.clear();
     }
   }
-
-  private replayAfterResize(): void {
-    if (this.renderer.screenMode === "split-footer") {
-      void this.reset();
-      return;
-    }
-    this.replayPending = true;
-  }
-
-  private pinSplitFooter(footerHeight?: number): void {
-    if (this.renderer.screenMode !== "split-footer") {
-      if (footerHeight !== undefined) this.renderer.footerHeight = footerHeight;
-      return;
-    }
-    this.renderer.externalOutputMode = "passthrough";
-    if (footerHeight !== undefined) this.renderer.footerHeight = footerHeight;
-    this.renderer.setCursorPosition(1, Math.max(1, this.height), false);
-    this.renderer.externalOutputMode = "capture-stdout";
-  }
-
-  private renderFooter(forcePin = false): void {
-    this.footer?.destroy?.();
-    const closingLine = this.footerLines.at(-1);
-    const visibleLines =
-      this.footerLines.length <= this.height || closingLine === undefined
-        ? this.footerLines
-        : [...this.footerLines.slice(0, Math.max(0, this.height - 1)), closingLine];
-    const footerHeight = Math.max(1, visibleLines.length);
-    const footer = new this.module.BoxRenderable(this.renderer, {
-      height: footerHeight,
-      id: "lando-live-region-footer",
-      flexDirection: "column",
-      width: this.width,
-    });
-    for (const [index, line] of visibleLines.entries()) {
-      footer.add?.(
-        new this.module.TextRenderable(this.renderer, {
-          content: ansiToNativeStyledText(this.module, line),
-          height: 1,
-          id: `lando-live-region-line-${index}`,
-          width: this.width,
-        }),
-      );
-    }
-    if (forcePin || this.renderer.footerHeight !== footerHeight) {
-      this.pinSplitFooter(footerHeight);
-      this.replay.resize(this.width, Math.max(0, this.height - footerHeight));
-    }
-    this.renderer.root.add(footer);
-    this.footer = footer;
-  }
 }
+
+const rowsFor = (text: string): ReadonlyArray<string> =>
+  (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
 
 export async function createLiveRegionController(
   options: LiveRegionControllerOptions,
@@ -243,14 +169,5 @@ export async function createLiveRegionController(
   options: LiveRegionControllerOptions,
   deps: LiveRegionControllerDeps = {},
 ): Promise<LiveRegionController> {
-  const { module, renderer } = await acquireLiveRegionSubstrate(options, deps);
-  return new LiveRegionController(
-    module,
-    renderer,
-    options.width,
-    options.height,
-    options.onResize,
-    (text) => options.stdout.write(text),
-    deps.spool,
-  );
+  return new LiveRegionController(options, deps, deps.spool ?? createLiveRegionSpool);
 }

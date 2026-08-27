@@ -10,7 +10,7 @@ export interface LiveRegionHandle {
   rememberScrollback(text: string): void;
   requestLive(): void;
   dropLive(): void;
-  enterFullTail(): void;
+  enterFullTail(): void | Promise<void>;
   exitFullTail(): Promise<void>;
   dispose(): Promise<void>;
 }

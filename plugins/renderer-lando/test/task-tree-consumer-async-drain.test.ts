@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { MessageWarnEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import { TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
@@ -9,39 +9,23 @@ import { EventServiceLive, createBufferedRendererIO } from "@lando/core/testing"
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import type { LiveRegionSpoolFactory } from "../src/opentui/live-region-spool.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
-import { makeLiveRegionFixture } from "./live-region-test-kit.ts";
+import { createCapturingStdout, makeLiveRegionFixture } from "./live-region-test-kit.ts";
 
 const timestamp = "2026-07-17T12:00:00.000Z";
 const deferredBody = (prefix: string): string =>
   Array.from({ length: 3_000 }, (_, index) => `${prefix}-${index}-${"x".repeat(100)}`).join("\n");
 
 test("collapse drains deferred output before later output and scope close awaits spool disposal", async () => {
-  // Given
-  const runningFrame = Promise.withResolvers<void>();
-  const firstAlternateScreen = Promise.withResolvers<void>();
-  const secondAlternateScreen = Promise.withResolvers<void>();
+  // given
   const firstSpoolAppend = Promise.withResolvers<void>();
   const firstSpoolRead = Promise.withResolvers<void>();
   const allowFirstSpoolRead = Promise.withResolvers<void>();
-  const newOutputCommitted = Promise.withResolvers<void>();
   const secondSpoolAppend = Promise.withResolvers<void>();
   const secondSpoolRemove = Promise.withResolvers<void>();
   const allowSecondSpoolRemove = Promise.withResolvers<void>();
-  let footerCount = 0;
-  let alternateScreenCount = 0;
   let secondSpoolRemoved = false;
-  const fixture = makeLiveRegionFixture((call) => {
-    if (call.startsWith("footer:")) {
-      footerCount += 1;
-      if (footerCount === 2) runningFrame.resolve();
-    }
-    if (call === "screenMode:alternate-screen") {
-      alternateScreenCount += 1;
-      if (alternateScreenCount === 1) firstAlternateScreen.resolve();
-      if (alternateScreenCount === 2) secondAlternateScreen.resolve();
-    }
-    if (call.includes("new-after-collapse")) newOutputCommitted.resolve();
-  });
+  const writes: string[] = [];
+  const fixture = makeLiveRegionFixture();
   const spoolFactory: LiveRegionSpoolFactory = (() => {
     let spoolCount = 0;
     return () => {
@@ -70,27 +54,14 @@ test("collapse drains deferred output before later output and scope close awaits
       };
     };
   })();
-  const baseIo = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
-  let injectInput: ((raw: string) => void) | undefined;
+  const stdout = createCapturingStdout(writes);
   const io = {
-    ...baseIo,
-    externalOutputStream: process.stdout,
-    subscribeInput: (listener: (raw: string) => void) => {
-      injectInput = listener;
-      return () => {};
-    },
+    ...createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 }),
+    externalOutputStream: stdout,
   };
-  const transcriptReader = {
-    open: (_path: typeof AbsolutePath.Type, _onChange: Effect.Effect<void>) =>
-      Effect.acquireRelease(
-        Effect.succeed({
-          read: () => Effect.succeed({ lines: [] }),
-        }),
-        () => Effect.void,
-      ),
-  };
+  let controller: Awaited<ReturnType<typeof createLiveRegionController>> | undefined;
 
-  // When
+  // when
   const scopeClosed = Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -114,52 +85,44 @@ test("collapse drains deferred output before later output and scope close awaits
             timestamp,
           }),
         );
-        yield* Effect.promise(() => runningFrame.promise);
-        injectInput?.("\r");
-        yield* Effect.promise(() => firstAlternateScreen.promise);
-        yield* events.publish(
-          Schema.decodeUnknownSync(MessageWarnEvent)({
-            _tag: "message.warn",
-            body: deferredBody("old"),
-            timestamp,
-          }),
+        yield* Effect.promise(() =>
+          (async () => {
+            for (let attempt = 0; attempt < 400; attempt += 1) {
+              if (controller !== undefined && writes.join("").includes("web")) return;
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            throw new Error("timed out waiting for inline running frame");
+          })(),
         );
+        const live = controller;
+        if (live === undefined) throw new Error("live region controller was not created");
+        yield* Effect.promise(() => live.enterFullTail());
+        live.commitScrollback(deferredBody("old"));
         yield* Effect.promise(() => firstSpoolAppend.promise);
 
-        injectInput?.("\x1b");
+        const exiting = live.exitFullTail();
         yield* Effect.promise(() => firstSpoolRead.promise);
-        yield* events.publish(
-          Schema.decodeUnknownSync(MessageWarnEvent)({
-            _tag: "message.warn",
-            body: "new-after-collapse",
-            timestamp,
-          }),
-        );
+        live.commitScrollback("new-after-collapse");
         yield* Effect.yieldNow();
         allowFirstSpoolRead.resolve();
-        yield* Effect.promise(() => newOutputCommitted.promise);
+        yield* Effect.promise(() => exiting);
 
-        injectInput?.("\r");
-        yield* Effect.promise(() => secondAlternateScreen.promise);
-        yield* events.publish(
-          Schema.decodeUnknownSync(MessageWarnEvent)({
-            _tag: "message.warn",
-            body: deferredBody("dispose"),
-            timestamp,
-          }),
-        );
+        yield* Effect.promise(() => live.enterFullTail());
+        live.commitScrollback(deferredBody("dispose"));
         yield* Effect.promise(() => secondSpoolAppend.promise);
       }).pipe(
         Effect.provide(
           Layer.provideMerge(
             makeLandoEventConsumer(io, {
-              createLiveRegion: (options) =>
-                createLiveRegionController(options, {
+              createLiveRegion: async (options) => {
+                const created = await createLiveRegionController(options, {
                   loadModule: async () => fixture.module,
                   createRenderer: async () => fixture.renderer,
                   spool: spoolFactory,
-                }),
-              transcriptReader,
+                });
+                controller = created;
+                return created;
+              },
             }),
             EventServiceLive,
           ),
@@ -172,9 +135,10 @@ test("collapse drains deferred output before later output and scope close awaits
   allowSecondSpoolRemove.resolve();
   await scopeClosed;
 
-  // Then
-  const oldIndex = fixture.commits.findIndex((line) => line.includes("old-0-"));
-  const newIndex = fixture.commits.findIndex((line) => line.includes("new-after-collapse"));
+  // then
+  const output = writes.join("");
+  const oldIndex = output.indexOf("old-0-");
+  const newIndex = output.indexOf("new-after-collapse");
   expect(oldIndex).toBeGreaterThanOrEqual(0);
   expect(newIndex).toBeGreaterThan(oldIndex);
   expect(closedBeforeRemove).toBe(false);

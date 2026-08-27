@@ -56,7 +56,6 @@ const substrateOptions: LiveRegionControllerOptions = {
   stdout: process.stdout,
   width: 80,
   height: 24,
-  footerHeight: 1,
 };
 
 const resetLiveRegionState = (): void => {
@@ -175,7 +174,7 @@ describe("TTY consumer live-region prefetch", () => {
     );
 
     expect(loadCalls).toBe(1);
-    expect(createRendererCalls).toBe(1);
+    expect(createRendererCalls).toBe(0);
   });
 
   test("nested init does not start another import", async () => {

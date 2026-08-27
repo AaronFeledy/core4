@@ -18,8 +18,6 @@ import { type LiveRegionHandle, makeTaskTreeSubstrateHandler } from "./task-tree
 import { makeTranscriptTailController } from "./transcript-tail-controller.ts";
 import { TranscriptTailReader } from "./transcript-tail-reader.ts";
 
-const DEFAULT_FOOTER_HEIGHT = 12 as const;
-
 const taskIdOf = (event: LandoEvent): string | undefined => {
   const value = Reflect.get(event, "taskId");
   return typeof value === "string" ? value : undefined;
@@ -79,7 +77,6 @@ export const makeTaskTreeConsumerLive = (
             stdout,
             width: io.terminalColumns ?? 80,
             height: io.terminalRows ?? 24,
-            footerHeight: DEFAULT_FOOTER_HEIGHT,
             onResize: (width, height) => handleResize(width, height),
           }),
         ).pipe(
@@ -124,8 +121,8 @@ export const makeTaskTreeConsumerLive = (
                 viewModel.collapse();
                 return false;
               }
-              const entered = yield* Effect.try({
-                try: () => controller.enterFullTail(),
+              const entered = yield* Effect.tryPromise({
+                try: () => Promise.resolve(controller.enterFullTail()),
                 catch: (cause) => recordOpenTuiSubstrateFailure(cause),
               }).pipe(Effect.option);
               if (Option.isNone(entered)) {

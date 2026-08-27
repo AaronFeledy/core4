@@ -34,6 +34,7 @@ const ESC = String.fromCharCode(27);
 const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 const stripAnsi = (text: string): string => text.replace(ansiPattern, "");
 const placeholderLabel = (line: string): string => /◌\s+(\S+)/.exec(line)?.[1] ?? "";
+const written = (fixture: ReturnType<typeof makeLiveRegionFixture>): string => fixture.writes.join("");
 
 const cliInit = (commandId: string, invocationId: string, parentInvocationId?: string): LandoEvent =>
   Schema.decodeUnknownSync(CliCommandInitEvent)({
@@ -244,32 +245,25 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
 
 describe("first paint via the production TTY consumer and fake OpenTUI substrate", () => {
   test("publishes the live skeleton before completion, then commits and releases the finished tree", async () => {
-    // Given
     const fixture = makeLiveRegionFixture();
     const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
     const io = { ...base, externalOutputStream: process.stdout };
 
-    // When
-    const firstPaintCalls = await Effect.runPromise(
+    const firstPaint = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const events = yield* EventService;
           yield* events.publish(treeStart("app", "Starting app", ["web", "db"]));
           yield* events.publish(taskStart("web", "web service", "app"));
-          yield* waitForConsumer(() =>
-            fixture.calls.some(
-              (call) => call.startsWith("footer:") && call.includes("web service") && call.includes("◌ db"),
-            ),
+          yield* waitForConsumer(
+            () => written(fixture).includes("web service") && written(fixture).includes("◌ db"),
           );
-          const callsBeforeCompletion = [...fixture.calls];
+          const beforeCompletion = written(fixture);
+          const firstWrite = fixture.writes[0] ?? "";
           yield* events.publish(taskComplete("web"));
           yield* events.publish(treeComplete("app", "Built app"));
-          yield* waitForConsumer(
-            () =>
-              fixture.calls.some((call) => call.startsWith("scrollback:") && call.includes("Built app")) &&
-              fixture.calls.includes("screenMode:main-screen"),
-          );
-          return callsBeforeCompletion;
+          yield* waitForConsumer(() => written(fixture).includes("Built app"));
+          return { beforeCompletion, firstWrite };
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -283,19 +277,12 @@ describe("first paint via the production TTY consumer and fake OpenTUI substrate
       ),
     );
 
-    // Then
-    const firstFooter = firstPaintCalls.find(
-      (call) => call.startsWith("footer:") && call.includes("web service"),
-    );
-    expect(firstFooter).toContain("╰─ 1/2 running");
-    expect(firstFooter).toContain("web service");
-    expect(firstFooter).toContain("◌ db");
-    expect(firstPaintCalls.some((call) => call.startsWith("scrollback:"))).toBe(false);
-    expect(firstPaintCalls.join("\n")).not.toMatch(
-      new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*(?:A|J)`, "u"),
-    );
-    expect(fixture.commits.some((text) => text.includes("Built app"))).toBe(true);
-    expect(fixture.calls).toContain("screenMode:main-screen");
+    expect(stripAnsi(firstPaint.beforeCompletion)).toContain("╰─ 1/2 running");
+    expect(firstPaint.beforeCompletion).toContain("web service");
+    expect(firstPaint.beforeCompletion).toContain("◌ db");
+    expect(firstPaint.beforeCompletion).not.toContain("Built app");
+    expect(firstPaint.firstWrite).not.toMatch(new RegExp(`${ESC}\\[[0-9;]*(?:A|J)`, "u"));
+    expect(written(fixture)).toContain("Built app");
   });
 });
 
@@ -319,9 +306,7 @@ describe("provisional first paint via the production TTY consumer", () => {
           Effect.gen(function* () {
             const events = yield* EventService;
             yield* events.publish(cliInit(commandId, `inv-${commandId}`));
-            yield* waitForConsumer(() =>
-              fixture.calls.some((call) => call.startsWith("footer:") && stripAnsi(call).includes(title)),
-            );
+            yield* waitForConsumer(() => stripAnsi(written(fixture)).includes(title));
           }).pipe(
             Effect.provide(
               Layer.provideMerge(
@@ -338,10 +323,9 @@ describe("provisional first paint via the production TTY consumer", () => {
         ),
       );
       expect(acquisitions).toBe(1);
-      const firstFooter = fixture.calls.find((call) => call.startsWith("footer:"));
-      expect(stripAnsi(firstFooter ?? "")).toContain(title);
-      expect(stripAnsi(firstFooter ?? "")).not.toContain("╰─");
-      expect(fixture.calls.some((call) => call.startsWith("scrollback:"))).toBe(false);
+      const first = stripAnsi(written(fixture));
+      expect(first).toContain(title);
+      expect(first).not.toContain("╰─");
       expect(fixture.commits).toEqual([]);
     }
   });
@@ -353,15 +337,11 @@ describe("provisional first paint via the production TTY consumer", () => {
         Effect.gen(function* () {
           const events = yield* EventService;
           yield* events.publish(cliInit("app:start", "inv-1"));
-          yield* waitForConsumer(() =>
-            fixture.calls.some((call) => call.startsWith("footer:") && stripAnsi(call).includes("╭─ start")),
-          );
+          yield* waitForConsumer(() => stripAnsi(written(fixture)).includes("╭─ start"));
           yield* events.publish(treeStart("app", "Starting app", ["web", "db"]));
           yield* events.publish(taskStart("web", "web service", "app"));
-          yield* waitForConsumer(() =>
-            fixture.calls.some(
-              (call) => call.startsWith("footer:") && call.includes("web service") && call.includes("◌ db"),
-            ),
+          yield* waitForConsumer(
+            () => written(fixture).includes("web service") && written(fixture).includes("◌ db"),
           );
         }).pipe(
           Effect.provide(
@@ -375,12 +355,10 @@ describe("provisional first paint via the production TTY consumer", () => {
         ),
       ),
     );
-    const footers = fixture.calls.filter((call) => call.startsWith("footer:"));
-    expect(stripAnsi(footers[0] ?? "")).toContain("╭─ start");
-    expect(footers.some((call) => call.includes("web service"))).toBe(true);
-    expect(
-      fixture.calls.some((call) => call.startsWith("scrollback:") && stripAnsi(call).includes("╭─ start")),
-    ).toBe(false);
+    const text = stripAnsi(written(fixture));
+    expect(text).toContain("╭─ start");
+    expect(text).toContain("web service");
+    expect(fixture.commits).toEqual([]);
   });
 
   test("matching terminal without a tree clears the footer without scrollback", async () => {
@@ -390,11 +368,9 @@ describe("provisional first paint via the production TTY consumer", () => {
         Effect.gen(function* () {
           const events = yield* EventService;
           yield* events.publish(cliInit("app:start", "inv-1"));
-          yield* waitForConsumer(() =>
-            fixture.calls.some((call) => call.startsWith("footer:") && stripAnsi(call).includes("╭─ start")),
-          );
+          yield* waitForConsumer(() => stripAnsi(written(fixture)).includes("╭─ start"));
           yield* events.publish(cliRun("app:start", "inv-1"));
-          yield* waitForConsumer(() => fixture.calls.includes("screenMode:main-screen"));
+          yield* waitForConsumer(() => fixture.writes.length > 0);
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -407,7 +383,7 @@ describe("provisional first paint via the production TTY consumer", () => {
         ),
       ),
     );
-    expect(fixture.calls).toContain("screenMode:main-screen");
+    expect(stripAnsi(written(fixture))).toContain("╭─ start");
     expect(fixture.commits).toEqual([]);
   });
 
@@ -444,6 +420,6 @@ describe("provisional first paint via the production TTY consumer", () => {
       ),
     );
     expect(acquisitions).toBe(0);
-    expect(fixture.calls.filter((call) => call.startsWith("footer:"))).toEqual([]);
+    expect(fixture.writes).toEqual([]);
   });
 });
