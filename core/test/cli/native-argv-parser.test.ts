@@ -45,6 +45,12 @@ describe("native argv parser seam", () => {
     expect(input.parsedArgv).toEqual(["echo", "-n", "hello"]);
   });
 
+  test("strict:false exec keeps a positional service and strips the later terminator", () => {
+    const input = compiledInput("app:exec", ["app", "--", "echo", "hello", "world"]);
+
+    expect(input.parsedArgv).toEqual(["app", "echo", "hello", "world"]);
+  });
+
   test("strict:false inputs preserve an unknown leading option as passthrough argv", () => {
     const input = compiledInput("meta:bun", ["-e", "console.log('ok')"]);
 
