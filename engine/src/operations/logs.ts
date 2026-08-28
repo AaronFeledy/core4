@@ -60,12 +60,14 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
   const available = Object.values(plan.services)
     .map((service) => String(service.name))
     .sort();
+  const first = available[0];
   return new ToolingExecError({
     message:
       available.length === 0
         ? `logs: service ${requested} is not in the app plan.`
         : `logs: service ${requested} is not in the app plan (available: ${available.join(", ")}).`,
     tool: "app:logs",
+    ...(first === undefined ? {} : { remediation: `Example: lando logs --service ${first}` }),
   });
 };
 

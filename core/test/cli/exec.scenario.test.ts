@@ -115,6 +115,8 @@ interface ExecRecord {
   readonly user?: string;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly tty?: boolean;
+  readonly stdin?: "inherit" | "ignore";
 }
 
 const makeProvider = (
@@ -145,13 +147,16 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: (target, spec) => {
-      calls.push({
+      const record = {
         service: String(target.service),
         command: spec.command,
         ...(target.user === undefined ? {} : { user: target.user }),
         ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
         ...(spec.env === undefined ? {} : { env: spec.env }),
-      });
+        ...(spec.tty === undefined ? {} : { tty: spec.tty }),
+        ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
+      };
+      calls.push(record);
       const response = responses[i] ?? { exitCode: 0 };
       i += 1;
       return Effect.succeed({
@@ -160,7 +165,29 @@ const makeProvider = (
         stderr: response.stderr ?? "",
       });
     },
-    execStream: () => Stream.empty,
+    execStream: (target, spec) => {
+      const record = {
+        service: String(target.service),
+        command: spec.command,
+        ...(target.user === undefined ? {} : { user: target.user }),
+        ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+        ...(spec.env === undefined ? {} : { env: spec.env }),
+        ...(spec.tty === undefined ? {} : { tty: spec.tty }),
+        ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
+      };
+      calls.push(record);
+      const response = responses[i] ?? { exitCode: 0 };
+      i += 1;
+      const chunks = [];
+      if ((response.stdout ?? "") !== "") {
+        chunks.push({ kind: "stdout" as const, chunk: new TextEncoder().encode(response.stdout) });
+      }
+      if ((response.stderr ?? "") !== "") {
+        chunks.push({ kind: "stderr" as const, chunk: new TextEncoder().encode(response.stderr) });
+      }
+      chunks.push({ exitCode: response.exitCode });
+      return Stream.fromIterable(chunks);
+    },
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     runStream: () => Stream.empty,
     logs: () => Stream.empty,
@@ -253,6 +280,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(flat).toContain("ToolingExecError");
     expect(flat).toContain("missing");
     expect(flat).toContain("web");
+    expect(flat).toContain("Example: lando exec database -- <command>");
   });
 
   test("fails when no service is given and the app has no primary", async () => {
@@ -268,7 +296,8 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(exit._tag).toBe("Failure");
     expect(calls).toHaveLength(0);
     if (exit._tag !== "Failure") return;
-    expect(JSON.stringify(exit.cause)).toContain("exec requires --service");
+    expect(JSON.stringify(exit.cause)).toContain("exec needs a service");
+    expect(JSON.stringify(exit.cause)).toContain("Example: lando exec database -- <command>");
   });
 
   test("fails with ToolingExecError on empty command", async () => {
@@ -283,6 +312,103 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
 
     expect(exit._tag).toBe("Failure");
     expect(calls).toHaveLength(0);
+    if (exit._tag !== "Failure") return;
+    expect(JSON.stringify(exit.cause)).toContain("exec requires a command to run");
+    expect(JSON.stringify(exit.cause)).toContain("Example: lando exec web -- <command>");
+  });
+
+  test("peels a leading service name from command when --service is omitted", async () => {
+    const plan = makePlan([makeService("appserver", true), makeService("database")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "ok\n" }]);
+
+    const result = await Effect.runPromise(
+      execApp({ command: ["appserver", "ls", "/srv"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(result.service).toBe("appserver");
+    expect(result.command).toEqual(["ls", "/srv"]);
+    expect(calls[0]?.service).toBe("appserver");
+    expect(calls[0]?.command).toEqual(["ls", "/srv"]);
+  });
+
+  test("peels a leading service name and drops a leftover argv terminator", async () => {
+    const plan = makePlan([makeService("appserver", true), makeService("database")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "ok\n" }]);
+
+    const result = await Effect.runPromise(
+      execApp({ command: ["appserver", "--", "ls", "/srv"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(result.service).toBe("appserver");
+    expect(result.command).toEqual(["ls", "/srv"]);
+    expect(calls[0]?.service).toBe("appserver");
+    expect(calls[0]?.command).toEqual(["ls", "/srv"]);
+  });
+
+  test("does not peel a single positional that matches a service name", async () => {
+    const plan = makePlan([makeService("ls", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await Effect.runPromise(
+      execApp({ command: ["ls"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(calls[0]?.service).toBe("ls");
+    expect(calls[0]?.command).toEqual(["ls"]);
+  });
+
+  test("honors explicit tty without attaching host stdin", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await Effect.runPromise(
+      execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(calls[0]?.tty).toBe(true);
+    expect(calls[0]?.stdin).toBeUndefined();
+  });
+
+  test("attaches stdin only when interactive and a stdin stream are provided", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const stdinStream = {
+      [Symbol.asyncIterator]: async function* () {},
+    };
+
+    await Effect.runPromise(
+      execApp({
+        service: "appserver",
+        command: ["htop"],
+        tty: true,
+        interactive: true,
+        stdinStream,
+      }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    expect(calls[0]?.tty).toBe(true);
+    expect(calls[0]?.stdin).toBe("inherit");
+  });
+
+  test("does not allocate a TTY when tty is false", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await Effect.runPromise(
+      execApp({ service: "appserver", command: ["ls"], tty: false }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(calls[0]?.tty).toBeUndefined();
   });
 
   test("threads --user through to provider.exec", async () => {

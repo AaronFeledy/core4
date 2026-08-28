@@ -169,7 +169,9 @@ describe("embedded command registry manifest", () => {
 
     // Then
     const reference = await readFile(fixture.commandReferencePath, "utf8");
-    expect(reference).toContain("| `command` | Command to run (first positional). |");
+    expect(reference).toContain(
+      "| `command` | Command argv after `--`. An optional service name may come first. |",
+    );
     expect(reference).toContain("| `--follow, -f` | Stream new log lines until interrupted. |");
   });
 });

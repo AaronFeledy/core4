@@ -27,6 +27,7 @@ import {
 } from "@lando/core/testing";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -109,7 +110,16 @@ const makeProvider = (
         stderr: response.stderr ?? "",
       });
     },
-    execStream: () => Stream.empty,
+    execStream: (target, spec) => {
+      calls.push({
+        service: String(target.service),
+        command: spec.command,
+        ...(spec.env === undefined ? {} : { env: spec.env }),
+      });
+      const response = responses[i] ?? { exitCode: 0 };
+      i += 1;
+      return execStreamFromResponse(response);
+    },
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>

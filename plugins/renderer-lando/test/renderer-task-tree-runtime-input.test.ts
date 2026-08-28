@@ -11,6 +11,7 @@ import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 
 class FakeLiveRegion {
   setFooter(): void {}
+  clearFooter(): void {}
   commitScrollback(): void {}
   rememberScrollback(): void {}
   requestLive(): void {}

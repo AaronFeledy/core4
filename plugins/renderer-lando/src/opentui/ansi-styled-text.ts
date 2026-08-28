@@ -54,6 +54,7 @@ const C1_CSI = 0x9b;
 const C1_ST = 0x9c;
 const CONTROL_STRING_STARTS = new Set([0x90, 0x98, 0x9d, 0x9e, 0x9f]);
 const ESC_CONTROL_STRING_STARTS = new Set(["]", "P", "X", "^", "_"]);
+const CSI_PARAMETERS = /^[0-9;]*$/;
 
 type CsiSequence = {
   readonly final: string | undefined;
@@ -153,7 +154,20 @@ const styleChunk = (
   return [module.dim(text)];
 };
 
-export const stripNonSgrControls = (content: string): string => {
+export type StripNonSgrControlsOptions = {
+  readonly allowCursor?: boolean;
+};
+
+const keepCsi = (final: string | undefined, parameters: string, allowCursor: boolean): boolean => {
+  if (final === undefined || !CSI_PARAMETERS.test(parameters)) return false;
+  if (final === "m") return true;
+  return allowCursor && (final === "G" || final === "K");
+};
+
+export const isInPlaceTerminalUpdate = (text: string): boolean => text.length > 0 && !text.endsWith("\n");
+
+export const stripNonSgrControls = (content: string, options: StripNonSgrControlsOptions = {}): string => {
+  const allowCursor = options.allowCursor === true;
   let result = "";
   let offset = 0;
   while (offset < content.length) {
@@ -162,7 +176,7 @@ export const stripNonSgrControls = (content: string): string => {
       const next = content[offset + 1];
       if (next === "[") {
         const sequence = readCsi(content, offset + 2);
-        if (sequence.final === "m" && /^[0-9;]*$/.test(sequence.parameters)) {
+        if (keepCsi(sequence.final, sequence.parameters, allowCursor)) {
           result += content.slice(offset, sequence.nextOffset);
         }
         offset = sequence.nextOffset;
@@ -177,8 +191,8 @@ export const stripNonSgrControls = (content: string): string => {
     }
     if (code === C1_CSI) {
       const sequence = readCsi(content, offset + 1);
-      if (sequence.final === "m" && /^[0-9;]*$/.test(sequence.parameters)) {
-        result += `${ESC}[${sequence.parameters}m`;
+      if (keepCsi(sequence.final, sequence.parameters, allowCursor) && sequence.final !== undefined) {
+        result += `${ESC}[${sequence.parameters}${sequence.final}`;
       }
       offset = sequence.nextOffset;
       continue;
@@ -187,8 +201,8 @@ export const stripNonSgrControls = (content: string): string => {
       offset = skipControlString(content, offset + 1);
       continue;
     }
-    if (code === 0x0a) {
-      result += "\n";
+    if (code === 0x0a || code === 0x0d) {
+      result += content[offset] ?? "";
       offset += 1;
       continue;
     }

@@ -32,6 +32,9 @@ class RecordingLiveRegion {
   setFooter(lines: ReadonlyArray<string>): void {
     this.footers.push([...lines]);
   }
+  clearFooter(): void {
+    this.setFooter([]);
+  }
   commitScrollback(text: string): void {
     this.scrollback.push(text);
   }

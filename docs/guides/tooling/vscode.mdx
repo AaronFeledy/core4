@@ -73,4 +73,4 @@ PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando instal
 
 For Node, start with `node --inspect=0.0.0.0:9229 server.js`, publish the debug port on the node service, and attach with `address: localhost`, `port: 9229`, `localRoot: ${workspaceFolder}`, `remoteRoot: /app`, and `restart: true`.
 
-Use `lando shell --service appserver` for a persistent session from VS Code's integrated terminal. Use `lando exec --service appserver -- <command>` for a one-off.
+Use `lando shell --service appserver` for a persistent session from VS Code's integrated terminal. Use `lando exec appserver -- <command>` for a one-off.

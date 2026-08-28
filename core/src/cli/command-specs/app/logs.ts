@@ -48,6 +48,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  usage: "[--service SERVICE]",
   flags: {
     service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
     follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),

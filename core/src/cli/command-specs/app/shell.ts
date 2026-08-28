@@ -12,6 +12,7 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   strict: true,
+  usage: "[--service SERVICE]",
   flags: {
     service: Flags.string({
       char: "s",

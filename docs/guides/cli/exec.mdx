@@ -8,11 +8,11 @@ tags: [beta, docs, cli, exec]
 
 # Run commands inside a service
 
-`lando exec` runs a one-off command inside a running service. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
+`lando exec` runs a one-off command inside a running service. A service name before `--` selects that service; otherwise the primary service is used. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
 
 ```sh
 lando exec -- echo hello world
-lando exec --service app -- echo hello world
+lando exec appserver -- echo hello world
 lando exec --user www-data -- whoami
 lando exec --cwd /srv/app -- pwd
 ```
@@ -32,9 +32,9 @@ Open a shell with `lando ssh` or `lando shell --service <name>`.
       <Run command="lando exec -- echo hello world" />
       <Verify command="lando exec -- echo hello world" expect={{ stdout: "echo hello world\n", stderr: "" }} />
     </Step>
-    <Step name="exec-named-service">
-      <Run command="lando exec --service app -- echo hello world" />
-      <Verify command="lando exec --service app -- echo hello world" expect={{ stdout: "echo hello world\n", stderr: "" }} />
+    <Step name="exec-positional-service">
+      <Run command="lando exec app -- echo hello world" />
+      <Verify command="lando exec app -- echo hello world" expect={{ stdout: "echo hello world\n", stderr: "" }} />
     </Step>
     <Step name="exec-as-user">
       <Run command="lando exec --user www-data -- whoami" />
@@ -51,7 +51,7 @@ Open a shell with `lando ssh` or `lando shell --service <name>`.
   </Scenario>
 </Guide>
 
-The fixture's `app` service is `node:22` and marked `primary: true`, so it is the default target when `--service` is omitted.
+The fixture's `app` service is `node:22` and marked `primary: true`, so it is the default target when no service name is given.
 
 ## Exit codes
 

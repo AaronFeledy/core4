@@ -1,9 +1,9 @@
 import { Args, Flags } from "../../spec/metadata";
 
 import { type ExecAppResult, execApp, execAppRedactionTokens } from "@lando/engine/operations/exec";
-import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
+import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
@@ -17,24 +17,34 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   strict: false,
+  usage: "[SERVICE] -- [COMMAND...]",
+  examples: ["lando exec -- echo hello", "lando exec appserver -- echo hello"],
   flags: {
-    service: Flags.string({ char: "s", description: "Service to run the command in." }),
     user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),
     cwd: Flags.string({ description: "Working directory inside the service." }),
   },
   args: {
-    command: Args.string({ name: "command", description: "Command to run (first positional)." }),
+    command: Args.string({
+      name: "command",
+      description: "Command argv after `--`. An optional service name may come first.",
+    }),
   },
   streaming: StreamFrame,
+  streamingMode: "live",
   run: (input) => {
     const flags = extractSpecFlags(input);
-    return withOptionalStderrOutput(
-      execApp({
-        command: extractSpecParsedArgv(input),
-        ...(typeof flags.service === "string" ? { service: flags.service } : {}),
-        ...(typeof flags.user === "string" ? { user: flags.user } : {}),
-        ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
-      }),
+    const json = flags.format === "json" || flags.json === true;
+    const base = {
+      command: extractSpecParsedArgv(input),
+      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+      ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
+    };
+    if (json) return execApp({ ...base, tty: false, interactive: false });
+    const tty = process.stdout.isTTY === true;
+    const interactive = process.stdin.isTTY === true;
+    return withInheritedStdinRawMode(
+      tty && interactive,
+      execApp(attachExecHostIo({ ...base, tty, interactive })),
     );
   },
   streamFrames: (value) => {

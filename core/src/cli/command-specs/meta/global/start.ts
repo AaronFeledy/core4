@@ -33,6 +33,7 @@ export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
   namespace: "meta",
   topLevelAlias: "global:start",
   bootstrap: "global",
+  usage: "[--service SERVICE]",
   flags: {
     service: Flags.string({
       char: "s",

@@ -9,7 +9,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { type ExecResult, type RuntimeProviderShape, ToolingEngine } from "@lando/sdk/services";
+import {
+  type ExecChunk,
+  type ExecResult,
+  type RuntimeProviderShape,
+  ToolingEngine,
+} from "@lando/sdk/services";
 import {
   TestRuntimeProvider,
   type ToolingEngineContractHarness,
@@ -131,7 +136,20 @@ const makeRecordingProvider = (
       calls.push(command.command);
       return Effect.succeed(responseFor(index));
     },
-    execStream: () => Stream.empty,
+    execStream: (_target, command) => {
+      const index = calls.length;
+      calls.push(command.command);
+      const result = responseFor(index);
+      const chunks: ExecChunk[] = [];
+      if (result.stdout.length > 0) {
+        chunks.push({ kind: "stdout", chunk: new TextEncoder().encode(result.stdout) });
+      }
+      if (result.stderr.length > 0) {
+        chunks.push({ kind: "stderr", chunk: new TextEncoder().encode(result.stderr) });
+      }
+      chunks.push({ exitCode: result.exitCode });
+      return Stream.fromIterable(chunks);
+    },
     run: () => Effect.die("not used"),
     logs: () => Stream.empty,
     inspect: () => Effect.die("not used"),

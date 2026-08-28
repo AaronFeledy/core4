@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
@@ -21,6 +21,11 @@ test("App handle exec passes provider stderr through the captured library Render
   const provider = {
     ...TestRuntimeProvider,
     exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "library boom\n" }),
+    execStream: () =>
+      Stream.fromIterable([
+        { kind: "stderr" as const, chunk: new TextEncoder().encode("library boom\n") },
+        { exitCode: 1 },
+      ]),
   };
   const runtime = Layer.merge(
     makeLandoRuntime({

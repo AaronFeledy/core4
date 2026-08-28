@@ -59,7 +59,7 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
   test("paints the live region at the cursor instead of pinning a split footer", async () => {
     const { controller, createRendererCalls, writes } = await createInlineFixture();
 
-    controller.commitScrollback("sparse output");
+    controller.commitScrollback("sparse output\n");
     controller.setFooter(["one", "two"]);
 
     const bytes = writes.join("");
@@ -163,7 +163,7 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
         controller.setFooter(lines);
       },
     });
-    controller.commitScrollback("first committed line");
+    controller.commitScrollback("first committed line\n");
     controller.setFooter(lines);
 
     controller.resize(40, 12);

@@ -32,8 +32,9 @@ import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserve
 
 import { findAppRoot } from "@lando/landofile/discovery";
 
+import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
-import { emitToolingOutputProgress } from "./tooling-progress.ts";
+import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
@@ -278,11 +279,26 @@ export const runTooling = (
       ...new Set([...collectAppPlanRedactionTokens(plan), ...collectSecretEnvValues(invocation.env)]),
     ];
 
-    const startedAt = Date.now();
-    const result = yield* engine.run(invocation, plan, provider);
+    const sink = yield* Effect.serviceOption(StreamFrameSink);
     const progressEvents = events?._tag === "Some" ? events.value : undefined;
+    const streamedLive = sink._tag === "Some";
+    const liveTree =
+      streamedLive && progressEvents !== undefined
+        ? beginLiveToolingTree(progressEvents, options.name)
+        : undefined;
+    if (liveTree !== undefined) yield* liveTree.start;
 
-    if (progressEvents !== undefined) {
+    const startedAt = Date.now();
+    const exit = yield* Effect.either(engine.run(invocation, plan, provider));
+    const durationMs = Date.now() - startedAt;
+    if (liveTree !== undefined) {
+      const exitCode = exit._tag === "Right" ? exit.right.exitCode : 1;
+      yield* liveTree.finish(exitCode, durationMs);
+    }
+    if (exit._tag === "Left") return yield* Effect.fail(exit.left);
+    const result = exit.right;
+
+    if (progressEvents !== undefined && !streamedLive) {
       const redaction = yield* Effect.serviceOption(RedactionService);
       const redactor =
         redaction._tag === "Some"
@@ -295,7 +311,7 @@ export const runTooling = (
         exitCode: result.exitCode,
         stdout: redactor.redactString(result.stdout),
         stderr: redactor.redactString(result.stderr),
-        durationMs: Date.now() - startedAt,
+        durationMs,
       });
     }
 
@@ -306,6 +322,6 @@ export const runTooling = (
       stdout: result.stdout,
       stderr: result.stderr,
       redactionTokens,
-      ...(progressEvents === undefined ? {} : { rendered: true }),
+      ...(progressEvents === undefined && !streamedLive ? {} : { rendered: true }),
     };
   });

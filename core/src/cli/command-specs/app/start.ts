@@ -25,5 +25,5 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
     const signal = extractSpecAbortSignal(input);
     return Effect.zipRight(refreshAppCache(), startApp(signal === undefined ? {} : { signal }));
   },
-  render: (result) => renderStartAppResult(result as StartAppResult),
+  render: (result, _input, ctx) => renderStartAppResult(result as StartAppResult, ctx),
 };

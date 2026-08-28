@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   type CommandSpec,
+  type ExecChunk,
   type ExecResult,
   type ExecTarget,
   type RuntimeProviderShape,
@@ -20,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
@@ -142,7 +144,20 @@ const makeFakeProvider = (
       calls.push({ target, command });
       return Effect.succeed(responseFor(index));
     },
-    execStream: () => Stream.empty,
+    execStream: (target, command) => {
+      const index = calls.length;
+      calls.push({ target, command });
+      const result = responseFor(index);
+      const chunks: ExecChunk[] = [];
+      if (result.stdout.length > 0) {
+        chunks.push({ kind: "stdout", chunk: new TextEncoder().encode(result.stdout) });
+      }
+      if (result.stderr.length > 0) {
+        chunks.push({ kind: "stderr", chunk: new TextEncoder().encode(result.stderr) });
+      }
+      chunks.push({ exitCode: result.exitCode });
+      return Stream.fromIterable(chunks);
+    },
     run: () => Effect.die("not used"),
     runStream: () => Stream.empty,
     logs: () => Stream.empty,
@@ -419,6 +434,16 @@ describe("ProviderExecToolingEngineLive", () => {
             message: "exec failed in fake",
           }),
         ),
+      execStream: () =>
+        Stream.fail(
+          new (require("@lando/sdk/errors").ServiceExecError)({
+            providerId,
+            operation: "exec",
+            service: ServiceName.make("web"),
+            command: ["composer"],
+            message: "exec failed in fake",
+          }),
+        ),
     };
     const invocation: ToolingInvocation = {
       tool: "composer",
@@ -428,6 +453,100 @@ describe("ProviderExecToolingEngineLive", () => {
     const exit = await Effect.runPromiseExit(runEngine(invocation, plan, provider));
 
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  test("emits execStream chunks to StreamFrameSink before the command exits", async () => {
+    // Given: a provider that only streams, plus a sink that records emit order.
+    const order: string[] = [];
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const encoder = new TextEncoder();
+    const provider: RuntimeProviderShape = {
+      ...makeFakeProvider([]),
+      exec: () => Effect.die("live tooling must use execStream"),
+      execStream: () =>
+        Stream.make({ kind: "stdout" as const, chunk: encoder.encode("downloading\n") }).pipe(
+          Stream.tap(() => Effect.sync(() => order.push("chunk"))),
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.sync(() => {
+                order.push("exit");
+                return { exitCode: 0 };
+              }),
+            ),
+          ),
+        ),
+    };
+    const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
+    const sink = {
+      emit: (frame: { readonly chunk: string }) => Effect.sync(() => order.push(`sink:${frame.chunk}`)),
+    };
+
+    // When: provider-exec tooling runs with a live stream sink.
+    const result = await Effect.runPromise(
+      runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
+    );
+
+    // Then: the sink receives the chunk before the command's exit frame, and stdout is still collected.
+    expect(order).toEqual(["chunk", "sink:downloading\n", "exit"]);
+    expect(result.stdout).toBe("downloading\n");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("does not allocate a TTY on the exec spec without a stream sink", async () => {
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.tty).not.toBe(true);
+  });
+
+  test("does not request an exec TTY resize, even when a stream sink is present", async () => {
+    // Given: live streaming is enabled (this is what triggered Podman resize-before-start).
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
+    const sink = { emit: () => Effect.void };
+
+    // When: provider-exec tooling runs with a stream sink.
+    await Effect.runPromise(
+      runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
+    );
+
+    // Then: the exec spec never includes terminalSize.
+    expect(provider.calls[0]?.command.terminalSize).toBeUndefined();
+  });
+
+  test("allocates a PTY with inherited stdin when a stream sink and host TTY are present", async () => {
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      commands: [["composer", "install"]],
+      env: { CI: "true" },
+    };
+    const sink = { emit: () => Effect.void };
+    const stdoutDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+    try {
+      await withHostEnv({ CI: "true", CLAUDECODE: undefined, OPENCODE: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(
+          runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
+        ),
+      );
+    } finally {
+      if (stdoutDesc === undefined) {
+        Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+      } else {
+        Object.defineProperty(process.stdout, "isTTY", stdoutDesc);
+      }
+    }
+
+    expect(provider.calls[0]?.command.tty).toBe(true);
+    expect(provider.calls[0]?.command.stdin).toBe("inherit");
+    expect(provider.calls[0]?.command.env?.CI).toBeUndefined();
+    expect(provider.calls[0]?.command.terminalSize).toBeUndefined();
   });
 
   describe("host agent-context env forwarding", () => {

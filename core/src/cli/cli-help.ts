@@ -21,6 +21,7 @@ export type CommandHelpSpec = {
   readonly args?: CompiledCommand["args"];
   readonly flags?: CompiledCommand["flags"];
   readonly examples?: ReadonlyArray<string>;
+  readonly usage?: string;
   readonly strict?: boolean;
 };
 
@@ -79,8 +80,9 @@ export const helpArgToken = (name: string, definition: OclifArgDefinition, repea
 
 export const renderCommandUsage = (
   name: string,
-  command: { readonly args?: CompiledCommand["args"]; readonly strict?: boolean },
+  command: { readonly args?: CompiledCommand["args"]; readonly strict?: boolean; readonly usage?: string },
 ): string => {
+  if (command.usage !== undefined && command.usage.length > 0) return `${name} ${command.usage}`;
   const definitions = Object.entries(command.args ?? {});
   const repeatable = command.strict === false && definitions.length === 1;
   const args = definitions.map(([argName, definition]) => helpArgToken(argName, definition, repeatable));

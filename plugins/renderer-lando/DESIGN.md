@@ -114,6 +114,14 @@ Full-tail expand uses the alternate screen; leaving it returns to inline paint.
 - **Motion**: braille spinner on the focused running row only. No decorative motion.
 - **Layout**: open-right left rail. First paint is title, pending rows, footer.
 
+### Tooling live status
+
+- **Structure**: one footer line in the inline live region, under streaming command output.
+- **Copy**: `╰─ executing {tool}{duration}` using the quiet duration grammar (`  400ms` / `  12.4s`).
+- **Color**: pink rail chrome on `╰─`; dim footer copy, including the duration. No spinner in this footer.
+- **Lifecycle**: appears when a TTY tooling command starts; the elapsed duration ticks in place; the line is erased when the command completes. It does not remain as scrollback.
+- **Layout**: inline at the cursor, not pinned to the terminal bottom. Streaming stdout commits above, then the footer is rewritten below.
+
 ### Machine modes
 
 plain, JSON, verbose, non-TTY, and CI stay undecorated. They do not use this
