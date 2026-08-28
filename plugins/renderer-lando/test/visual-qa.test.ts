@@ -241,6 +241,7 @@ describe("provider-free injected-event pipeline", () => {
                   commitScrollback: (line) => io.writeStdout(`${line}\n`),
                   rememberScrollback: () => {},
                   setFooter: (lines) => io.writeStdout(`${lines.join("\n")}\n`),
+                  clearFooter: () => {},
                   requestLive: () => {},
                   dropLive: () => {},
                   enterFullTail: () => {},

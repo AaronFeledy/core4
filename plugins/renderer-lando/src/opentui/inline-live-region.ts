@@ -1,4 +1,4 @@
-import { stripNonSgrControls } from "./ansi-styled-text.ts";
+import { isInPlaceTerminalUpdate, stripNonSgrControls } from "./ansi-styled-text.ts";
 
 export type InlineLiveRegionPainter = {
   readonly paint: (lines: ReadonlyArray<string>) => void;
@@ -10,7 +10,7 @@ const ESC = String.fromCharCode(27);
 
 const bodyOf = (lines: ReadonlyArray<string>): string => {
   if (lines.length === 0) return "";
-  return `${lines.map(stripNonSgrControls).join("\n")}\n`;
+  return `${lines.map((line) => stripNonSgrControls(line)).join("\n")}\n`;
 };
 
 const rowsFor = (text: string): ReadonlyArray<string> =>
@@ -29,7 +29,15 @@ export const createInlineLiveRegionPainter = (write: (text: string) => void): In
         write(`${ESC}[${paintedRows}A${ESC}[J`);
         paintedRows = 0;
       }
-      const lines = rowsFor(stripNonSgrControls(text));
+      const inPlace = isInPlaceTerminalUpdate(text);
+      const stripped = stripNonSgrControls(text, inPlace ? { allowCursor: true } : {});
+      if (stripped.length === 0) return;
+      // Composer/wget overwrite with CR or CSI G/K; do not synthesize a newline.
+      if (inPlace) {
+        write(stripped);
+        return;
+      }
+      const lines = rowsFor(stripped);
       if (lines.length === 1 && lines[0] === "") return;
       write(`${lines.join("\n")}\n`);
     },

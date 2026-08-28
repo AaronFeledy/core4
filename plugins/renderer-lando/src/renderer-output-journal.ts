@@ -3,6 +3,7 @@ import type { RendererIO } from "@lando/sdk/renderer";
 interface LiveRegionOutput {
   readonly commitScrollback: (text: string) => void;
   readonly rememberScrollback: (text: string) => void;
+  readonly noteInPlaceOutput?: () => void;
 }
 
 const MAX_RETAINED_CHARACTERS = 256 * 1024;

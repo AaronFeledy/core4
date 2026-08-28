@@ -78,6 +78,46 @@ describe("createInlineLiveRegionPainter", () => {
     expect(writtenText(writes)).toBe(`${ESC}[3A${ESC}[Ja\n`);
   });
 
+  test("does not append a newline to carriage-return progress", () => {
+    // given
+    const { painter, writes } = capturePainter();
+
+    // when
+    painter.commitAbove("  53/108 [=====>----]  49%\r");
+
+    // then
+    expect(writtenText(writes)).toBe("  53/108 [=====>----]  49%\r");
+    expect(writtenText(writes).endsWith("\n")).toBe(false);
+  });
+
+  test("does not append a newline to Composer CSI cursor progress", () => {
+    // given
+    const { painter, writes } = capturePainter();
+    const bar = `${ESC}[1G${ESC}[2K  53/108 [=====>----]  49%`;
+
+    // when
+    painter.commitAbove(bar);
+
+    // then
+    expect(writtenText(writes)).toBe(bar);
+    expect(writtenText(writes).endsWith("\n")).toBe(false);
+  });
+
+  test("does not append a newline to the first unterminated Composer progress frame", () => {
+    // given
+    const { painter, writes } = capturePainter();
+    const first = "  0/108 [>---------------------------]   0%";
+    const next = `${ESC}[1G${ESC}[2K  53/108 [=============>--------------]  49%`;
+
+    // when
+    painter.commitAbove(first);
+    painter.commitAbove(next);
+
+    // then
+    expect(writtenText(writes)).toBe(`${first}${next}`);
+    expect(writtenText(writes).endsWith("\n")).toBe(false);
+  });
+
   test("commits above by clearing the region and treats the next paint as first", () => {
     // given
     const { painter, writes } = capturePainter();
@@ -88,13 +128,26 @@ describe("createInlineLiveRegionPainter", () => {
     painter.commitAbove("log");
 
     // then
-    expect(writtenText(writes)).toBe(`${ESC}[2A${ESC}[Jlog\n`);
+    expect(writtenText(writes)).toBe(`${ESC}[2A${ESC}[Jlog`);
 
     writes.length = 0;
     painter.paint(["x"]);
     const written = writtenText(writes);
     expect(written).toBe("x\n");
     expect(written).not.toMatch(CSI_AJ);
+  });
+
+  test("paints an empty frame by erasing previous rows", () => {
+    // given
+    const { painter, writes } = capturePainter();
+    painter.paint(["status"]);
+    writes.length = 0;
+
+    // when
+    painter.paint([]);
+
+    // then
+    expect(writtenText(writes)).toBe(`${ESC}[1A${ESC}[J`);
   });
 
   test("release writes nothing and treats the next paint as first", () => {

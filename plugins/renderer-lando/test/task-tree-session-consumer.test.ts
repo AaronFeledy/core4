@@ -140,6 +140,9 @@ class FakeController {
   setFooter(lines: ReadonlyArray<string>): void {
     this.calls.push({ kind: "setFooter", lines: [...lines] });
   }
+  clearFooter(): void {
+    this.setFooter([]);
+  }
   commitScrollback(text: string): void {
     this.calls.push({ kind: "commitScrollback", text });
   }

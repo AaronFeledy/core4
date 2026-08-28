@@ -1,3 +1,4 @@
+import { isInPlaceTerminalUpdate } from "./ansi-styled-text.ts";
 import { createInlineLiveRegionPainter } from "./inline-live-region.ts";
 import {
   type FullTailSession,
@@ -25,6 +26,7 @@ export type * from "./live-region-types.ts";
 
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   private footerLines: ReadonlyArray<string> = [];
+  private openLine = false;
   private readonly deferred: DeferredScrollback;
   private readonly inline: ReturnType<typeof createInlineLiveRegionPainter>;
   private readonly onStdoutResize: () => void;
@@ -59,10 +61,15 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       return;
     }
     this.inline.commitAbove(text);
-    if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
+    this.openLine = isInPlaceTerminalUpdate(text);
+    if (this.footerLines.length > 0 && !this.openLine) this.inline.paint(this.footerLines);
   }
 
   rememberScrollback(_text: string): void {}
+
+  noteInPlaceOutput(): void {
+    this.openLine = true;
+  }
 
   setFooter(lines: ReadonlyArray<string>): void {
     this.footerLines = [...lines];
@@ -72,11 +79,24 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       return;
     }
     if (this.enteringFullTail) return;
+    if (this.openLine) return;
     if (lines.length === 0) {
       this.inline.release();
       return;
     }
     this.inline.paint(lines);
+  }
+
+  clearFooter(): void {
+    this.footerLines = [];
+    const session = this.fullTail;
+    if (session !== undefined) {
+      paintFullTailFooter(session, [], this.width, this.height);
+      return;
+    }
+    if (this.enteringFullTail) return;
+    if (this.openLine) return;
+    this.inline.paint([]);
   }
 
   requestLive(): void {

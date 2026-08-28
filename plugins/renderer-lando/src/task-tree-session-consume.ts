@@ -20,6 +20,7 @@ export type SessionSubstrate = {
     commitScrollback(text: string): void;
     rememberScrollback(text: string): void;
     setFooter(lines: ReadonlyArray<string>): void;
+    clearFooter(): void;
     dispose(): Promise<void>;
   };
   readonly transcriptTail: { readonly close: Effect.Effect<void> };
