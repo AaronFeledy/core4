@@ -96,7 +96,9 @@ export const splitExecServiceCommand = (
   const [first, ...rest] = command;
   if (first === undefined || rest.length === 0) return { service: undefined, command };
   const match = Object.values(plan.services).find((service) => String(service.name) === first);
-  return match === undefined ? { service: undefined, command } : { service: first, command: rest };
+  if (match === undefined) return { service: undefined, command };
+  const peeled = rest[0] === "--" ? rest.slice(1) : rest;
+  return { service: first, command: peeled };
 };
 
 const resolveService = (

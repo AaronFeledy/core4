@@ -333,6 +333,22 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.command).toEqual(["ls", "/srv"]);
   });
 
+  test("peels a leading service name and drops a leftover argv terminator", async () => {
+    const plan = makePlan([makeService("appserver", true), makeService("database")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "ok\n" }]);
+
+    const result = await Effect.runPromise(
+      execApp({ command: ["appserver", "--", "ls", "/srv"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(result.service).toBe("appserver");
+    expect(result.command).toEqual(["ls", "/srv"]);
+    expect(calls[0]?.service).toBe("appserver");
+    expect(calls[0]?.command).toEqual(["ls", "/srv"]);
+  });
+
   test("does not peel a single positional that matches a service name", async () => {
     const plan = makePlan([makeService("ls", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
