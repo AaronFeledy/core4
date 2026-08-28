@@ -10,6 +10,7 @@ const DIM_RESET = `${ESC}[22m`;
 const GREEN = `${ESC}[32m`;
 const PINK = `${ESC}[95m`;
 const RESET = `${ESC}[0m`;
+const ST = `${ESC}\\`;
 
 const linesOf = (text: string): ReadonlyArray<string> => text.split("\n");
 
@@ -162,5 +163,108 @@ describe("formatSummary", () => {
     expect(painted).not.toContain("hunter2-secret");
     expect(painted.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "")).not.toContain("]m");
     for (const line of linesOf(painted)) expect(displayWidth(line)).toBe(80);
+  });
+});
+
+describe("formatSummary row href and muted", () => {
+  test("emits a complete OSC 8 link on each wrapped segment after wrapping", () => {
+    // Given a long https row whose label must wrap at 36 columns.
+    const href = "https://example.com/very/long/path/that/must/wrap";
+    const doc: SummaryDocument = {
+      title: "START",
+      sections: [{ title: "urls", rows: [{ label: href, href }] }],
+    };
+
+    // When the summary is framed, then every wrapped body segment is a closed OSC 8 link.
+    const out = formatSummary(doc, { columns: 36 });
+    const lines = linesOf(out);
+    for (const line of lines) expect(displayWidth(line)).toBe(36);
+    const body = lines.filter((line) =>
+      /example\.com|\/very\/|\/path\/|\/must\/|\/wrap/.test(stripAnsi(line)),
+    );
+    expect(body.length).toBeGreaterThan(1);
+    for (const line of body) {
+      expect(line).toContain(`${ESC}]8;;${href}${ST}`);
+      expect(line.includes(`${ESC}]8;;${ST}`)).toBe(true);
+    }
+  });
+
+  test("dims a muted body row", () => {
+    // Given a body row marked muted with no tone.
+    const doc: SummaryDocument = {
+      title: "START",
+      sections: [{ title: "urls", rows: [{ label: "http://example.com", muted: true }] }],
+    };
+
+    // When the summary is painted, then the row body uses dim SGR.
+    const body = linesOf(formatSummary(doc, { columns: 80 })).find((line) =>
+      stripAnsi(line).includes("http://example.com"),
+    );
+    expect(body).toContain(`${DIM}http://example.com${DIM_RESET}`);
+  });
+
+  test("omits OSC 8 when href is unsafe", () => {
+    // Given a row whose href is a non-http target.
+    const doc: SummaryDocument = {
+      title: "START",
+      sections: [{ title: "urls", rows: [{ label: "tcp://localhost:5432", href: "tcp://localhost:5432" }] }],
+    };
+
+    // When the summary is painted, then the label stays visible and unlinked.
+    const out = formatSummary(doc, { columns: 80 });
+    expect(out).not.toContain(`${ESC}]8;`);
+    expect(stripAnsi(out)).toContain("tcp://localhost:5432");
+  });
+
+  test("redacts href and preserves muted", () => {
+    // Given a linked muted row whose href carries a secret host fragment.
+    const doc: SummaryDocument = {
+      title: "START",
+      sections: [
+        {
+          title: "urls",
+          rows: [
+            {
+              label: "https://secret.example/token",
+              href: "https://secret.example/token",
+              muted: true,
+            },
+          ],
+        },
+      ],
+    };
+    const redact = (text: string) => text.split("secret").join("[redacted]");
+
+    // When the document is redacted, then href is masked and muted is kept.
+    const redacted = redactSummaryDocument(doc, redact).sections[0]?.rows[0];
+    expect(redacted?.href).toBe("https://[redacted].example/token");
+    expect(redacted?.muted).toBe(true);
+
+    // When the summary is painted with that redactor, then the secret does not leak.
+    const painted = formatSummary(doc, { columns: 80, redact });
+    expect(painted).toContain("[redacted]");
+    expect(painted).not.toContain("secret");
+    expect(painted).toContain(`${ESC}]8;;https://[redacted].example/token${ST}`);
+    expect(painted).toContain(DIM);
+  });
+
+  test("composes tone paint with a safe href", () => {
+    // Given a toned row that is also a safe https link.
+    const doc: SummaryDocument = {
+      title: "START",
+      sections: [
+        {
+          title: "urls",
+          rows: [{ label: "https://example.com", tone: "ok", href: "https://example.com" }],
+        },
+      ],
+    };
+
+    // When the row is painted, then tone SGR and OSC 8 both wrap the visible label.
+    const body = linesOf(formatSummary(doc, { columns: 80 })).find((line) =>
+      stripAnsi(line).includes("https://example.com"),
+    );
+    expect(body).toContain(GREEN);
+    expect(body).toContain(`${ESC}]8;;https://example.com${ST}`);
   });
 });

@@ -11,9 +11,10 @@
 
 const ESC = String.fromCharCode(27);
 const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
+const osc8Pattern = new RegExp(`${ESC}\\]8;.*?(?:${ESC}\\\\|\\x07)`, "g");
 
-/** Strip CSI/SGR escape sequences so width math sees only visible glyphs. */
-export const stripAnsi = (text: string): string => text.replace(ansiPattern, "");
+/** Strip CSI/SGR and OSC 8 sequences so width math sees only visible glyphs. */
+export const stripAnsi = (text: string): string => text.replace(osc8Pattern, "").replace(ansiPattern, "");
 
 const csi = {
   reset: `${ESC}[0m`,
@@ -26,6 +27,24 @@ const csi = {
   amber: `${ESC}[33m`,
   red: `${ESC}[31m`,
 } as const;
+
+const hasC0OrDel = (value: string): boolean => {
+  for (const ch of value) {
+    const cp = ch.codePointAt(0);
+    if (cp !== undefined && (cp <= 0x1f || cp === 0x7f)) return true;
+  }
+  return false;
+};
+
+const isSafeHttpHref = (href: string): boolean =>
+  href.length > 0 && (href.startsWith("https://") || href.startsWith("http://")) && !hasC0OrDel(href);
+
+/** Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe non-empty http(s) URL. */
+export const hyperlink = (text: string, href: string): string => {
+  if (!isSafeHttpHref(href)) return text;
+  const terminator = `${ESC}\\`;
+  return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
+};
 
 /** Code points that occupy two terminal columns (East Asian Wide/Fullwidth + emoji). */
 const isWideCodePoint = (cp: number): boolean =>

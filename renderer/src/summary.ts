@@ -14,7 +14,9 @@ import {
   boxBottom,
   boxSeparator,
   boxTop,
+  dimText,
   displayWidth,
+  hyperlink,
   padEndToWidth,
   paintTone,
   styleBoxBottom,
@@ -24,6 +26,8 @@ import {
   toneChip,
   wrapToWidth,
 } from "./console-layout.ts";
+
+import { formatPreparedQuietSummary } from "./summary-quiet.ts";
 
 export type { SummaryTone };
 
@@ -47,6 +51,8 @@ export interface SummaryRow {
   readonly value?: string;
   readonly detail?: string;
   readonly fields?: ReadonlyArray<SummaryField>;
+  readonly href?: string;
+  readonly muted?: boolean;
 }
 
 export interface SummarySection {
@@ -87,6 +93,8 @@ export const redactSummaryDocument = (
       ...(row.tone === undefined ? {} : { tone: row.tone }),
       ...(row.value === undefined ? {} : { value: redact(row.value) }),
       ...(row.detail === undefined ? {} : { detail: redact(row.detail) }),
+      ...(row.href === undefined ? {} : { href: redact(row.href) }),
+      ...(row.muted === undefined ? {} : { muted: row.muted }),
       ...(row.fields === undefined
         ? {}
         : {
@@ -123,6 +131,18 @@ const rowHead = (row: SummaryRow): string => {
   return `${chip}${row.label}${value}`;
 };
 
+const composeRowStyle = (row: SummaryRow): ((line: string) => string) | undefined => {
+  const tone = row.tone;
+  const muted = row.muted === true;
+  const href = row.href;
+  if (tone === undefined && !muted && href === undefined) return undefined;
+  return (line: string) => {
+    const toned = tone === undefined ? line : paintTone(tone, line);
+    const dimmed = muted ? dimText(toned) : toned;
+    return href === undefined ? dimmed : hyperlink(dimmed, href);
+  };
+};
+
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
   const width = resolveWidth(options.columns);
@@ -143,9 +163,7 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
     for (const row of section.rows) {
-      const rowTone = row.tone;
-      const rowStyle = rowTone === undefined ? undefined : (line: string) => paintTone(rowTone, line);
-      pushBody(rowHead(row), 0, rowStyle);
+      pushBody(rowHead(row), 0, composeRowStyle(row));
       if (row.fields !== undefined && row.fields.length > 0) {
         const labelWidth = Math.max(...row.fields.map((field) => displayWidth(field.label)));
         for (const field of row.fields) {
@@ -166,4 +184,9 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
 
   lines.push(boxBottom(prepared.footer ?? "", width, styleBoxFooter));
   return lines.join("\n");
+};
+
+export const formatQuietSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
+  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  return formatPreparedQuietSummary(prepared, options.columns);
 };
