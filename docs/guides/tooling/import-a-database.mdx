@@ -22,7 +22,7 @@ Use `lando db:import dump.sql.gz --yes` when you want the bundled helper. `lando
 The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
 
 ```sh
-lando exec --service db -- mysql -u lando -plando myapp < dump.sql
+lando exec db -- mysql -u lando -plando myapp < dump.sql
 ```
 
 Feed the dump on stdin from the host. Recipes do not add a second alias on top of `lando db:import`.
@@ -32,7 +32,7 @@ Feed the dump on stdin from the host. Recipes do not add a second alias on top o
 Postgres derives the password per app. Copy it from `lando info`. Do not hardcode it.
 
 ```sh
-lando exec --service db -- psql -U lando -d myapp < dump.sql
+lando exec db -- psql -U lando -d myapp < dump.sql
 ```
 
 Pipe the dump on stdin. `-f` only works when the file already exists inside the service.

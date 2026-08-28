@@ -48,8 +48,8 @@ lando drush --version
     </Step>
     <Step name="scaffold-drupal">
       <Run command="lando drupal-scaffold" />
-      <Verify command="lando exec --service appserver -- test -f /app/composer.json" />
-      <Verify command="lando exec --service appserver -- test -x /app/vendor/bin/drush" />
+      <Verify command="lando exec appserver -- test -f /app/composer.json" />
+      <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
     </Step>
     <Step name="check-drush">
       <Run command="lando drush --version" />
