@@ -41,6 +41,21 @@ export type OclifArgDefinition = {
 export const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.spec;
 
+/** Typeable invocation shape for command-structure misuse errors. */
+export const commandStructureExample = (commandId: string): string | undefined => {
+  const command = commandSpecForId(commandId);
+  if (command === undefined) return undefined;
+  const name = commandName(commandId, command);
+  if (command.usage !== undefined && command.usage.length > 0) return `lando ${name} ${command.usage}`;
+  const definitions = Object.entries(command.args ?? {});
+  const repeatable = command.strict === false && definitions.length === 1;
+  const args = definitions.map(([argName, definition]) => {
+    const label = `${argName.toUpperCase()}${repeatable ? "..." : ""}`;
+    return definition.required === true ? `<${label}>` : `[${label}]`;
+  });
+  return args.length === 0 ? `lando ${name}` : `lando ${name} ${args.join(" ")}`;
+};
+
 export const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
   commandSpecForId(commandId);
 

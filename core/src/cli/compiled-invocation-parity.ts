@@ -11,6 +11,7 @@ import { Schema } from "effect";
 import {
   argDefinitionsForCommand,
   commandSpecForId,
+  commandStructureExample,
   flagDefinitionsForCommand,
   flagNameByToken,
 } from "./compiled-argv";
@@ -93,6 +94,8 @@ export const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<s
   const diagnostic = invocationParityError(commandId, argv);
   if (diagnostic === undefined) return false;
   emitDiagnosticLine(diagnostic);
+  const example = commandStructureExample(commandId);
+  if (example !== undefined) emitDiagnosticLine(`  ↳ Example: ${example}`);
   process.exitCode = 2;
   return true;
 };

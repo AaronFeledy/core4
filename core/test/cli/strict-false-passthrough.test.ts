@@ -25,9 +25,9 @@ describe("strict:false catalog passthrough", () => {
   for (const { commandId, argv, flagName, flagValue, parsedArgv } of [
     {
       commandId: "app:exec",
-      argv: ["--service", "appserver", "printf", "-s", "inner"],
-      flagName: "service",
-      flagValue: "appserver",
+      argv: ["--user", "www-data", "printf", "-s", "inner"],
+      flagName: "user",
+      flagValue: "www-data",
       parsedArgv: ["printf", "-s", "inner"],
     },
     {

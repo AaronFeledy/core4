@@ -65,6 +65,7 @@ describe("native CLI dispatch unification", () => {
     // Then native validation, not OCLIF topic resolution, reports the failure.
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("Unexpected argument: web");
+    expect(result.stderr).toContain("Example: lando shell [--service SERVICE]");
     expect(result.stderr).not.toContain("COMMAND_NOT_FOUND");
   }, 30_000);
 

@@ -39,9 +39,9 @@ const compiledInput = (
 
 describe("native argv parser seam", () => {
   test("strict:false inputs strip the option terminator and preserve the command remainder", () => {
-    const input = compiledInput("app:exec", ["--service", "appserver", "--", "echo", "-n", "hello"]);
+    const input = compiledInput("app:exec", ["--user", "www-data", "--", "echo", "-n", "hello"]);
 
-    expect(input.flags.service).toBe("appserver");
+    expect(input.flags.user).toBe("www-data");
     expect(input.parsedArgv).toEqual(["echo", "-n", "hello"]);
   });
 

@@ -4,8 +4,9 @@ import { Args, Flags } from "../../spec/metadata";
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
-import { withOptionalStderrOutput } from "@lando/renderer/output";
+import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
+import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
@@ -20,6 +21,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   strict: false,
+  usage: "[--service SERVICE] [COMMAND...]",
   flags: {
     service: Flags.string({ char: "s", description: "Service to open a shell in." }),
     user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
@@ -36,20 +38,23 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
       description: "Optional command to run instead of the default shell.",
     }),
   },
+  streaming: StreamFrame,
+  streamingMode: "live",
   run: (input) => {
     const flags = extractSpecFlags(input);
     const parsedArgv = extractSpecParsedArgv(input);
     if (typeof flags.subsystem === "string") return Effect.fail(subsystemDeferred("subsystem"));
     if (flags.sidecar === true) return Effect.fail(subsystemDeferred("sidecar"));
-    return withOptionalStderrOutput(
-      execApp({
-        command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
-        interactive: true,
-        tty: true,
-        ...(typeof flags.service === "string" ? { service: flags.service } : {}),
-        ...(typeof flags.user === "string" ? { user: flags.user } : {}),
-      }),
-    );
+    const json = flags.format === "json" || flags.json === true;
+    const base = {
+      command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
+      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+    };
+    if (json) return execApp({ ...base, interactive: false, tty: false });
+    const tty = true;
+    const interactive = process.stdin.isTTY === true;
+    return withInheritedStdinRawMode(interactive, execApp(attachExecHostIo({ ...base, tty, interactive })));
   },
   successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),
