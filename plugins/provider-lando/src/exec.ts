@@ -215,7 +215,11 @@ export const execStream = (
       return Stream.fromEffect(
         Effect.gen(function* () {
           if (command.terminalSize !== undefined) {
-            yield* resizeExec(api, service, execId, command.terminalSize);
+            // Podman requires the exec to be started before resize; a pre-start
+            // resize must not fail the session.
+            yield* resizeExec(api, service, execId, command.terminalSize).pipe(
+              Effect.catchAll(() => Effect.void),
+            );
           }
           yield* resizeEvents.pipe(
             Stream.runForEach((size) => resizeExec(api, service, execId, size)),
