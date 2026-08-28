@@ -52,7 +52,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
       return;
     }
     const line = renderPlainLine(event);
-    if (line !== null) controller.commitScrollback(line);
+    if (line !== null) controller.commitScrollback(line.endsWith("\n") ? line : `${line}\n`);
   };
   const resize = (width: number, height: number): void => {
     terminalColumns = width;
