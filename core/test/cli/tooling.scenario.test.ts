@@ -159,6 +159,25 @@ const makeProvider = (
         stderr: response.stderr ?? "",
       });
     },
+    execStream: (target, spec) => {
+      calls.push({
+        service: String(target.service),
+        command: spec.command,
+        ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+        ...(spec.env === undefined ? {} : { env: spec.env }),
+      });
+      const response = responses[i] ?? { exitCode: 0 };
+      i += 1;
+      const stdout = response.stdout ?? "";
+      const stderr = response.stderr ?? "";
+      const chunks = [];
+      if (stdout.length > 0)
+        chunks.push({ kind: "stdout" as const, chunk: new TextEncoder().encode(stdout) });
+      if (stderr.length > 0)
+        chunks.push({ kind: "stderr" as const, chunk: new TextEncoder().encode(stderr) });
+      chunks.push({ exitCode: response.exitCode });
+      return Stream.fromIterable(chunks);
+    },
   };
   return { provider, calls };
 };

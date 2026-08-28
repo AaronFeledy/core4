@@ -43,3 +43,24 @@ export const emitToolingOutputProgress = (input: {
     yield* tree.close(undefined, input.durationMs);
   });
 };
+
+export const beginLiveToolingTree = (events: ProgressEmitter | undefined, tool: string) => {
+  const tree = makeTaskTree(events, {
+    parentId: `tooling:${tool}`,
+    label: tool,
+    children: [{ id: "exec", label: "executing" }],
+    prefixChildIds: true,
+  });
+  return {
+    start: Effect.gen(function* () {
+      yield* tree.start;
+      yield* tree.startTask("exec");
+    }),
+    finish: (exitCode: number, durationMs: number) =>
+      Effect.gen(function* () {
+        if (exitCode === 0) yield* tree.completeTask("exec", undefined, durationMs);
+        else yield* tree.failTask("exec", undefined, { durationMs, exitCode });
+        yield* tree.close(undefined, durationMs);
+      }),
+  };
+};

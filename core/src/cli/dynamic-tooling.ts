@@ -69,7 +69,10 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
       }),
     ),
     renderRunToolingResult,
-    dynamicToolingOptions,
+    {
+      ...dynamicToolingOptions,
+      ...(activeResultFormat === "json" ? {} : { streamingMode: "live" }),
+    },
   );
 };
 
