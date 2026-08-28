@@ -132,8 +132,10 @@ describe("logsForPlan", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
       expect(exit.cause.error).toBeInstanceOf(ToolingExecError);
+      if (!(exit.cause.error instanceof ToolingExecError)) return;
       expect(exit.cause.error.message).toContain("missing");
       expect(exit.cause.error.message).toContain("database");
+      expect(exit.cause.error.remediation).toBe("Example: lando logs --service database");
     }
     expect(calls).toEqual([]);
   });

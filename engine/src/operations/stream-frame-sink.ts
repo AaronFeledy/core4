@@ -5,6 +5,8 @@ export interface StreamFrameSinkFrame {
   readonly chunk: string;
   readonly service?: string;
   readonly source?: string;
+  /** When true, emit the chunk as-is (no extra newline or service prefix). */
+  readonly raw?: boolean;
 }
 
 export interface StreamFrameSinkShape {
