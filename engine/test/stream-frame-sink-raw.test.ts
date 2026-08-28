@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeStreamFrameSinkLive } from "@lando/renderer/output";
+import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 
-import { createBufferedRendererIO } from "../src/io";
-import { makeStreamFrameSinkLive } from "../src/output";
-import { makePlainRendererServiceLive } from "../src/runtime";
+import { StreamFrameSink } from "../src/operations/stream-frame-sink";
 
 const identityRedaction = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),

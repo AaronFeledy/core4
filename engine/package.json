@@ -19,7 +19,6 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./operations/stream-frame-sink": "./src/operations/stream-frame-sink.ts",
     "./*": "./src/*.ts",
     "./package.json": "./package.json"
   },
