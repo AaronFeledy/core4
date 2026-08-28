@@ -1,4 +1,7 @@
+import { Effect } from "effect";
 import { Args, Flags } from "../../../spec/metadata";
+
+import { NotImplementedError } from "@lando/sdk/errors";
 
 import {
   type RecipesDescribeResult,
@@ -28,6 +31,18 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
       default: "table",
     }),
   },
-  run: (input) => recipesDescribe(recipeRefFromInput(input), { cwd: process.cwd() }),
+  run: (input) => {
+    const ref = recipeRefFromInput(input);
+    if (ref === "") {
+      return Effect.fail(
+        new NotImplementedError({
+          message: "recipes:describe requires a recipe ref.",
+          commandId: "meta:recipes:describe",
+          remediation: "Example: lando recipes:describe lamp",
+        }),
+      );
+    }
+    return recipesDescribe(ref, { cwd: process.cwd() });
+  },
   render: (result) => renderRecipesDescribeResult(result as RecipesDescribeResult),
 };

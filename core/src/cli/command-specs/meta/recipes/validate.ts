@@ -1,4 +1,7 @@
+import { Effect } from "effect";
 import { Args, Flags } from "../../../spec/metadata";
+
+import { NotImplementedError } from "@lando/sdk/errors";
 
 import {
   type RecipesValidateResult,
@@ -31,6 +34,18 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
       default: "table",
     }),
   },
-  run: (input) => recipesValidate(recipePathFromInput(input), { cwd: process.cwd() }),
+  run: (input) => {
+    const path = recipePathFromInput(input);
+    if (path === "") {
+      return Effect.fail(
+        new NotImplementedError({
+          message: "recipes:validate requires a recipe path.",
+          commandId: "meta:recipes:validate",
+          remediation: "Example: lando recipes:validate ./",
+        }),
+      );
+    }
+    return recipesValidate(path, { cwd: process.cwd() });
+  },
   render: (result) => renderRecipesValidateResult(result as RecipesValidateResult),
 };
