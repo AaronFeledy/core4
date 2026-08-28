@@ -459,7 +459,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   execStream: (_target, command) => {
     const stdoutChunk: ExecChunk = {
       kind: "stdout",
-      chunk: new TextEncoder().encode(command.command.join(" ")),
+      chunk: new TextEncoder().encode(`${command.command.join(" ")}\n`),
     };
     const exitChunk: ExecChunk = { exitCode: 0 };
 
