@@ -243,7 +243,7 @@ const errorTagFromStderr = (stderr: string): string | undefined => {
 
 const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<Run shell=\"${command}\"> is not implemented in Alpha 2`,
+    message: `<Run shell=\"${command}\"> is not implemented`,
     commandId: "guide.run.shell",
     remediation: 'Use `<Run command="…">` for guide scenarios. Shell runners are not available yet.',
   });

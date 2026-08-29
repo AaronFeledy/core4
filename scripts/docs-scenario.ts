@@ -18,13 +18,13 @@ interface DocsScenarioOptions {
   readonly explain: boolean;
 }
 
-const betaFlags = new Set(["--variant", "--step", "--fixture", "--update-transcript"]);
+const deferredFlags = new Set(["--variant", "--step", "--fixture", "--update-transcript"]);
 
 const usage = (): string => "lando docs:scenario <guideId> [--scenario <id>]";
 
-const betaFlagError = (flag: string): NotImplementedError =>
+const deferredFlagError = (flag: string): NotImplementedError =>
   new NotImplementedError({
-    message: `${flag} is not implemented for docs:scenario in Alpha 2.`,
+    message: `${flag} is not implemented for docs:scenario.`,
     commandId: "docs:scenario",
     remediation: `${flag} is not supported yet.`,
   });
@@ -58,7 +58,7 @@ const parseArgs = (args: ReadonlyArray<string>): DocsScenarioOptions => {
     const arg = rest[index];
     if (arg === undefined) continue;
     const flag = arg.split("=", 1)[0] ?? arg;
-    if (betaFlags.has(flag)) throw betaFlagError(flag);
+    if (deferredFlags.has(flag)) throw deferredFlagError(flag);
     if (arg === "--keep") {
       options.keep = true;
       continue;
@@ -82,7 +82,7 @@ const parseArgs = (args: ReadonlyArray<string>): DocsScenarioOptions => {
       options.scenarioId = arg.slice("--scenario=".length);
       continue;
     }
-    if (arg.startsWith("--")) throw betaFlagError(flag);
+    if (arg.startsWith("--")) throw deferredFlagError(flag);
     throw new Error(`Unexpected argument: ${arg}`);
   }
 
