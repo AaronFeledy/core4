@@ -43,6 +43,7 @@ export const RUNTIME_BUNDLE_TARGETS: ReadonlyArray<RuntimeBundleTarget> = [
   { key: "linux-arm64", filename: "lando-runtime-linux-arm64.tar.gz" },
   { key: "darwin-arm64", filename: "lando-runtime-darwin-arm64.tar.gz" },
   { key: "win32-x64", filename: "lando-runtime-win32-x64.zip" },
+  { key: "win32-arm64", filename: "lando-runtime-win32-arm64.zip" },
 ];
 
 const PROVIDER_DIR = resolve(import.meta.dir, "..", "plugins", "provider-lando");
