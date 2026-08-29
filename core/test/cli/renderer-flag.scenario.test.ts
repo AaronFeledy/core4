@@ -151,7 +151,7 @@ describe("--renderer flag (source CLI)", () => {
     expect(normalized).toContain("requires a value");
   }, 30_000);
 
-  test("rejects --renderer=tui even on a Beta-deferred command (validation happens first)", async () => {
+  test("rejects --renderer=tui even on a deferred command (validation happens first)", async () => {
     const result = await runCommand(
       [process.execPath, sourceCliPath, "meta:plugin:login", "--renderer=tui"],
       isolationEnv(),
