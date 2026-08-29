@@ -299,7 +299,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {
     throw new Error(
-      `Recipe file rendering for "${recipeRef}" is not implemented yet; only bundled built-in recipes are supported in Alpha.`,
+      `Recipe file rendering for "${recipeRef}" is not supported; only bundled built-in recipes are supported.`,
     );
   }
 
