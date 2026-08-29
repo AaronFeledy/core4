@@ -41,8 +41,8 @@ import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
-import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
 import { composeToolingIncludeEntries } from "./tooling-include-entries.ts";
+import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 import {
   getVersionConstraintEntries,
@@ -238,7 +238,7 @@ const validateLandofile = (
   })(parsed, { onExcessProperty: "error" });
 };
 
-const scanContentForBetaExpressions = (
+const scanContentForUnsupportedExpressions = (
   filePath: string,
   content: string,
 ): Effect.Effect<string, NotImplementedError> => {
@@ -247,9 +247,9 @@ const scanContentForBetaExpressions = (
   if (content.includes("load(") || content.includes("import(")) return Effect.succeed(content);
   return Effect.fail(
     new NotImplementedError({
-      message: `${match.description} are not supported in Alpha Landofiles at ${filePath}.`,
+      message: `${match.description} are not supported at ${filePath}.`,
       commandId: "landofile.parse",
-      remediation: BETA_REMEDIATION,
+      remediation: UNSUPPORTED_REMEDIATION,
     }),
   );
 };
@@ -379,11 +379,11 @@ const loadYamlLandofile = (
         ...(inputs?.templates.context === undefined ? {} : { context: inputs.templates.context }),
       }),
     ),
-    Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
+    Effect.flatMap((content) => scanContentForUnsupportedExpressions(filePath, content)),
     Effect.flatMap((content) => rejectComposeTags(filePath, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
-    Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
 
@@ -401,7 +401,7 @@ const loadTsLandofile = (
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
     Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
-    Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
 
