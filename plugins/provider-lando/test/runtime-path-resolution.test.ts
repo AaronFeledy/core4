@@ -158,6 +158,7 @@ describe("provider-lando runtime path resolution", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "darwin",
+          arch: "arm64",
           podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,
           providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),
@@ -197,6 +198,7 @@ describe("provider-lando runtime path resolution", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "darwin",
+          arch: "arm64",
           podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,
           providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),

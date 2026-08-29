@@ -109,7 +109,7 @@ lando setup
 
 **Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
 
-3. If the managed runtime still cannot install and you have working system Docker, use the supported Linux fallback:
+3. On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
 
 ```bash
 lando setup --provider=docker
@@ -121,11 +121,13 @@ Or:
 LANDO_PROVIDER=docker lando setup
 ```
 
+On Linux, if the managed runtime still cannot install and you have working system Docker, use the same commands as the supported fallback.
+
 `--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
 
 `LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
 
-This is a fallback, not the default. See [Pick a container provider](./guides/setup/provider-selection.mdx).
+Docker is the live path on Intel Mac. On Linux it is a fallback, not the default. The default provider stays `lando` on every other target. See [Pick a container provider](./guides/setup/provider-selection.mdx).
 
 4. Verify:
 

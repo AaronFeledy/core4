@@ -37,6 +37,7 @@ describe("alpha install and bug report docs", () => {
     expect(docs).not.toContain("Windows and macOS binaries are deferred");
     expect(docs).not.toContain("dev-prerelease");
     expect(docs).not.toContain("build-linux-x64");
+    expect(docs).toMatch(/Intel Mac[\s\S]{0,1200}--provider=docker/);
   });
 
   test("links alpha install docs from README", async () => {

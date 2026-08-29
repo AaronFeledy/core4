@@ -29,10 +29,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - The public Alpha publish line is unsigned `4.0.0-dev.N` on dist-tag `dev`. `4.0.0-alpha.N` is not the current scheme.
 - Unix CI compiled artifacts are all named `lando`. A six-target GitHub assemble must download each `lando-<id>` artifact into a distinct directory and rename with `releaseBinaryFileName` (`lando-<id>` / `lando-<id>.exe`). Dumping them into one `dist/` overwrites.
 - The generated `release` workflow publishes unsigned six-target GitHub prereleases only. Live npm `dev` publish stays on `scripts/release.ts`; do not add `npm publish` to `.github/workflows/release.yml`.
+- Intel Mac fail-closed lives in `@lando/provider-lando` (`rejectIntelMacHost` on setup, bundle resolve, ensureRuntime, getStatus), not in provider precedence. Capability default stays `lando`. Do not set `isAvailable` false or file-sync silently skips.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595..US-600 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -68,4 +69,20 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed one-file SHA256SUMS verify: GNU `sha256sum -c` fails when the six-file manifest lists binaries the user did not download. Docs now grep the downloaded asset into `sha256sum -c`.
 - Review notes (deferred/rejected): `workflow_run` artifact-poisoning origin bind is pre-existing on the linux-x64 job, not introduced by this story and does not block the PRD; leftover `4.0.0-alpha` in version-parser/update-manifest tests is fixture not the publish line; macOS `shasum` is pre-existing Linux-centric checksum docs; do not re-add npm publish to `release.yml`
 - Verification: typecheck, lint passed; alpha-install-docs, public-alpha-contract, release-workflow, npm-dev-package spot checks passed
+---
+
+## 2026-08-29 14:45 CDT - Babysit
+- PR: #877 https://github.com/AaronFeledy/core4/pull/877
+- CI outcome: pass
+- Review feedback: fixed (aligned Starlight frontmatter title with page h1)
+- Merge: merged (squash)
+---
+
+## 2026-08-29 15:30 CDT - US-594
+- On Intel Mac, provider-lando now fail-closes with tagged `ProviderUnavailableError` whose remediation names `lando setup --provider=docker` and `LANDO_PROVIDER=docker`. The gate covers setup, runtime-bundle resolve, start/apply (`ensureRuntime`), and doctor status. Default provider stays `lando` on every other target; Docker is the explicit live path, not a silent fallback.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Put host unsuitability in the provider plugin, not in `resolveProviderSelection`. Auto-defaulting darwin-x64 to docker is a silent fallback and fails the story.
+  - Keep `isAvailable` true on this path. False looks like a skip to file-sync rather than a tagged rejection.
+  - Live Docker Desktop on macos-15-intel is not available on GitHub-hosted runners or this Linux builder; unit tests inject `platform: "darwin", arch: "x64"`.
 ---

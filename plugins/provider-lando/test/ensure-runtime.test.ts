@@ -16,7 +16,11 @@ import {
   podmanServiceLogPath,
 } from "../src/podman-service-runner.ts";
 import { RootlessPrerequisiteError, type RootlessProbes } from "../src/rootless-preflight.ts";
-import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
+import {
+  IntelMacUnsupportedError,
+  type PodmanMachineRunner,
+  type PodmanMachineStatus,
+} from "../src/setup.ts";
 
 const unavailable = () =>
   new ProviderUnavailableError({
@@ -973,6 +977,39 @@ describe("ensureRuntime", () => {
           expect(failure.value.message).toContain("did not become reachable");
         }
       }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed on Intel macOS before any Podman machine step", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: string[] = [];
+      const p = paths(dir);
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "darwin",
+          arch: "x64",
+          podmanApi: reachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("missing", calls),
+          ...p,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
+          expect(failure.value._tag).toBe("ProviderUnavailableError");
+          expect(failure.value.remediation).toContain("lando setup --provider=docker");
+          expect(failure.value.remediation).toContain("LANDO_PROVIDER=docker");
+        }
+      }
+      expect(calls).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

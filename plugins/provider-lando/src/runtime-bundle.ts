@@ -8,7 +8,7 @@ import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
-import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 
 import type { RuntimeBundle, RuntimeBundleDownloader } from "./setup.ts";
 
@@ -104,19 +104,16 @@ const platformArchKey = (platform: HostPlatform, arch: string): string =>
   `${hostPlatformFamily(platform)}-${arch}`;
 
 /**
- * Resolve the pinned manifest entry for a given host platform + arch.
- *
- * Fails closed with {@link ProviderUnavailableError} when the combination is
- * not represented in the manifest, so an unsupported host never silently
- * proceeds without a verifiable bundle.
+ * Fail closed when the host platform+arch is missing from the pinned manifest
+ * so setup never proceeds without a verifiable bundle.
  */
 export const resolveRuntimeBundleEntry = (
   platform: HostPlatform,
   arch: string,
 ): Effect.Effect<RuntimeBundleEntry, ProviderUnavailableError> =>
-  isIntelMacHost(platform, arch)
-    ? Effect.fail(new IntelMacUnsupportedError(arch))
-    : Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
+  rejectIntelMacHost(platform, arch).pipe(
+    Effect.zipRight(
+      Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
         Effect.flatMap((entry) =>
           entry === undefined
             ? Effect.fail(
@@ -130,7 +127,9 @@ export const resolveRuntimeBundleEntry = (
               )
             : Effect.succeed(entry),
         ),
-      );
+      ),
+    ),
+  );
 
 export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(entry.filename)) {
@@ -211,8 +210,6 @@ export const makeRuntimeBundleDownloader = (
   return { download: downloadEffect };
 };
 
-const currentArch = (): string => process.arch;
-
 export interface DefaultRuntimeBundleDownloaderOptions {
   readonly stateDir: string;
   readonly platform: HostPlatform;
@@ -244,7 +241,7 @@ const overrideEntryMissingError = (
 export const makeDefaultRuntimeBundleDownloader = (
   options: DefaultRuntimeBundleDownloaderOptions,
 ): RuntimeBundleDownloader => {
-  const arch = options.arch ?? currentArch();
+  const arch = options.arch ?? process.arch;
 
   const downloadEffect: Effect.Effect<RuntimeBundle, ProviderUnavailableError> = Effect.gen(function* () {
     const platform = options.platform;
