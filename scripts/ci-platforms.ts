@@ -84,3 +84,63 @@ export const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     liveProviderIntegration: false,
   },
 ];
+
+export type PlatformReadinessCell = {
+  readonly id: string;
+  readonly provider: "lando" | "docker";
+  readonly bundleKey: string;
+  readonly bundleMode: "current-commit" | "published" | "none";
+  readonly cadence: "pr+evidence" | "evidence";
+  readonly runsOn: string | readonly string[];
+};
+
+export const PLATFORM_READINESS_CELLS: ReadonlyArray<PlatformReadinessCell> = [
+  {
+    id: "linux-x64",
+    provider: "lando",
+    bundleKey: "linux-x64",
+    bundleMode: "current-commit",
+    cadence: "pr+evidence",
+    runsOn: "ubuntu-24.04",
+  },
+  {
+    id: "linux-arm64",
+    provider: "lando",
+    bundleKey: "linux-arm64",
+    bundleMode: "current-commit",
+    cadence: "pr+evidence",
+    runsOn: "ubuntu-24.04-arm",
+  },
+  {
+    id: "darwin-arm64",
+    provider: "lando",
+    bundleKey: "darwin-arm64",
+    bundleMode: "published",
+    cadence: "evidence",
+    runsOn: ["self-hosted", "lando-virt", "macOS", "ARM64"],
+  },
+  {
+    id: "darwin-x64",
+    provider: "docker",
+    bundleKey: "none",
+    bundleMode: "none",
+    cadence: "evidence",
+    runsOn: ["self-hosted", "lando-virt", "macOS", "X64"],
+  },
+  {
+    id: "windows-x64",
+    provider: "lando",
+    bundleKey: "win32-x64",
+    bundleMode: "current-commit",
+    cadence: "evidence",
+    runsOn: ["self-hosted", "lando-virt", "Windows", "X64"],
+  },
+  {
+    id: "windows-arm64",
+    provider: "lando",
+    bundleKey: "none",
+    bundleMode: "none",
+    cadence: "evidence",
+    runsOn: ["self-hosted", "lando-virt", "Windows", "ARM64"],
+  },
+] as const satisfies ReadonlyArray<PlatformReadinessCell>;
