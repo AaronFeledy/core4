@@ -42,7 +42,7 @@ services:
 ## Don't interpolate host env
 
 A Landofile can't reach into your host shell's environment with
-`${HOST_VAR}` syntax. Lando rejects configuration expressions in Alpha Landofiles:
+`${HOST_VAR}` syntax. Lando rejects configuration expressions:
 
   <Scenario id="rejected-host-env-interpolation" render>
     <Step name="scaffold">
@@ -50,7 +50,7 @@ A Landofile can't reach into your host shell's environment with
     </Step>
     <Step name="inspect-rejected-form">
       <Run command="lando app:config --format=json" expectExit={1} />
-      <Verify errorTag="NotImplementedError" expect={{ regex: "Configuration expressions \\(\\$\\{\\.\\.\\.\\}\\) are not supported in Alpha Landofiles" }} />
+      <Verify errorTag="NotImplementedError" expect={{ regex: "Configuration expressions \\(\\$\\{\\.\\.\\.\\}\\) are not supported at" }} />
     </Step>
   </Scenario>
 
