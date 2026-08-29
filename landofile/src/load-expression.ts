@@ -151,7 +151,7 @@ export const resolveLandofileLoadExpressions = (
           const expression = templateExpression(parsed.right);
           if (expression === undefined || !containsLoad(expression) || containsContextPath(expression)) {
             throw new NotImplementedError({
-              message: `Configuration expressions are not supported in Alpha Landofiles at ${options.source.sourcePath}.`,
+              message: `Configuration expressions are not supported at ${options.source.sourcePath}.`,
               commandId: "landofile.parse",
               remediation: "This configuration surface is not supported yet.",
             });

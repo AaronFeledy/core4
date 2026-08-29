@@ -52,7 +52,7 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
-  test("still Alpha-blocks env expressions", async () => {
+  test("still rejects unsupported env expressions", async () => {
     await withApp(async (appRoot) => {
       // Given
       const value = { hostname: "{{ env.HOME }}" };
@@ -61,9 +61,13 @@ describe("landofile load-time route hostname expressions", () => {
       const exit = await Effect.runPromiseExit(resolveValue(appRoot, value));
 
       // Then
-      if (Exit.isSuccess(exit)) throw new Error("expected Alpha-block");
+      if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
       const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
       expect(failure).toBeInstanceOf(NotImplementedError);
+      expect(failure).toMatchObject({ _tag: "NotImplementedError" });
+      if (failure instanceof NotImplementedError) {
+        expect(failure.message).not.toMatch(/\b(?:Alpha|Beta)\b/);
+      }
     });
   });
 });
