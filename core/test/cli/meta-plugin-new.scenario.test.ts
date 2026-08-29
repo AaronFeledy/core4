@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -238,5 +238,31 @@ describe("meta:plugin:new command", () => {
     expect(stdout.text()).toContain("Template");
     expect(stdout.text()).toContain("Contribution namespace");
     expect(stdout.text()).toContain("Description");
+  });
+
+  test("rejects a non-empty destination with NotImplementedError and no phase words", async () => {
+    const destination = join(root, "existing-plugin");
+    await mkdir(destination, { recursive: true });
+    await writeFile(join(destination, "keep.txt"), "keep");
+
+    const exit = await Effect.runPromiseExit(
+      pluginNew({
+        name: "@acme/lando-plugin-existing",
+        destination,
+        template: "bare",
+        cspace: "acme",
+        description: "Existing plugin",
+        nonInteractive: true,
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("NotImplementedError");
+      expect(cause).toContain("not supported");
+      expect(cause).not.toMatch(/\bAlpha\b/);
+      expect(cause).not.toMatch(/\bBeta\b/);
+    }
   });
 });

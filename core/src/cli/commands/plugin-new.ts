@@ -191,7 +191,7 @@ const targetMustNotExist = async (destination: string): Promise<void> => {
   if (entries.length > 0) {
     throw commandError(
       `Plugin scaffold destination already exists and is not empty: ${destination}.`,
-      "Choose an empty destination directory. Overwriting scaffolds is not supported in Beta 1.",
+      "Choose an empty destination directory. Overwriting scaffolds is not supported.",
     );
   }
 };
