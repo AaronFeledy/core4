@@ -104,11 +104,8 @@ const platformArchKey = (platform: HostPlatform, arch: string): string =>
   `${hostPlatformFamily(platform)}-${arch}`;
 
 /**
- * Resolve the pinned manifest entry for a given host platform + arch.
- *
- * Fails closed with {@link ProviderUnavailableError} when the combination is
- * not represented in the manifest, so an unsupported host never silently
- * proceeds without a verifiable bundle.
+ * Fail closed when the host platform+arch is missing from the pinned manifest
+ * so setup never proceeds without a verifiable bundle.
  */
 export const resolveRuntimeBundleEntry = (
   platform: HostPlatform,
@@ -213,8 +210,6 @@ export const makeRuntimeBundleDownloader = (
   return { download: downloadEffect };
 };
 
-const currentArch = (): string => process.arch;
-
 export interface DefaultRuntimeBundleDownloaderOptions {
   readonly stateDir: string;
   readonly platform: HostPlatform;
@@ -246,7 +241,7 @@ const overrideEntryMissingError = (
 export const makeDefaultRuntimeBundleDownloader = (
   options: DefaultRuntimeBundleDownloaderOptions,
 ): RuntimeBundleDownloader => {
-  const arch = options.arch ?? currentArch();
+  const arch = options.arch ?? process.arch;
 
   const downloadEffect: Effect.Effect<RuntimeBundle, ProviderUnavailableError> = Effect.gen(function* () {
     const platform = options.platform;

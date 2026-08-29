@@ -1,6 +1,3 @@
-/**
- * `@lando/provider-lando` — Lando-managed RuntimeProvider.
- */
 import { Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
@@ -487,7 +484,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 nftProvision: {
                   download: options.artifactDownload,
                   cacheDir: options.nftCacheDir,
-                  ...(arch === undefined ? {} : { arch }),
+                  arch,
                 },
               }
             : {}),
@@ -653,7 +650,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 }
               : {}),
             platform,
-            ...(arch === undefined ? {} : { arch }),
+            arch,
             ...(() => {
               const setupRuntimeBundleDownloader =
                 setupOptions.runtimeBundleUrl === undefined
