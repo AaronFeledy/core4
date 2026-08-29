@@ -13,7 +13,7 @@ import type { ProviderError } from "@lando/sdk/services";
 import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
-import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 import {
   buildManagedMachineInitArgs,
   buildManagedMachineTrustSyncArgs,
@@ -21,7 +21,12 @@ import {
   windowsHyperVPrepRemediation,
 } from "./machine-trust.ts";
 
-export { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+export {
+  INTEL_MAC_UNSUPPORTED_REMEDIATION,
+  IntelMacUnsupportedError,
+  isIntelMacHost,
+  rejectIntelMacHost,
+} from "./host-support.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
@@ -816,9 +821,7 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
     const platform = options.platform;
     const family = hostPlatformFamily(platform);
     const arch = options.arch;
-    if (isIntelMacHost(platform, arch)) {
-      return yield* Effect.fail(new IntelMacUnsupportedError(arch ?? "x64"));
-    }
+    yield* rejectIntelMacHost(platform, arch);
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
     const probesSocket = options.skipSocketProbe !== true;

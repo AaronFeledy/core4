@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
@@ -8,6 +10,9 @@ export const isIntelMacHost = (platform: HostPlatform | undefined, arch: string 
   hostPlatformFamily(platform) === "darwin" &&
   (arch === "x64" || arch === "x86_64");
 
+export const INTEL_MAC_UNSUPPORTED_REMEDIATION =
+  "Install Docker Desktop and run `lando setup --provider=docker`, or set `LANDO_PROVIDER=docker`. The managed Lando runtime does not support Intel macOS.";
+
 export class IntelMacUnsupportedError extends ProviderUnavailableError {
   constructor(arch: string) {
     super({
@@ -16,7 +21,13 @@ export class IntelMacUnsupportedError extends ProviderUnavailableError {
       message:
         "Intel (x86_64) macOS is not supported because Podman 6 removed upstream support for Intel Macs.",
       details: { platform: "darwin", arch },
-      remediation: "Run Lando on Apple Silicon macOS (arm64), Linux (x64/arm64), or Windows 11+ (x64).",
+      remediation: INTEL_MAC_UNSUPPORTED_REMEDIATION,
     });
   }
 }
+
+export const rejectIntelMacHost = (
+  platform: HostPlatform | undefined,
+  arch: string | undefined,
+): Effect.Effect<void, IntelMacUnsupportedError> =>
+  isIntelMacHost(platform, arch) ? Effect.fail(new IntelMacUnsupportedError(arch ?? "x64")) : Effect.void;

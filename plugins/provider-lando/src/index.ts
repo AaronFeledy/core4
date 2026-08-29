@@ -45,6 +45,7 @@ import {
 import { getContainerDiedEvents } from "./container-events.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 import { pullImage } from "./image-pull.ts";
 import { inspect, waitForExit } from "./inspect.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
@@ -453,6 +454,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     canEnsure
       ? ensureRuntime({
           platform,
+          arch,
           podmanApi,
           serviceRunner,
           ...(machineRunner === undefined ? {} : { machineRunner }),
@@ -715,15 +717,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           runtimeVersion = result.podmanVersion;
           bundleVersion = result.runtimeBundleVersion;
         }),
-      getStatus:
-        podmanApi === undefined
-          ? Effect.succeed({ running: false, message: "Lando runtime service is not configured." })
-          : runtimeServiceStatus.pipe(
-              Effect.map((status) => ({
-                running: status.running,
-                message: runtimeStatusMessage(status),
-              })),
-            ),
+      getStatus: rejectIntelMacHost(platform, arch).pipe(
+        Effect.zipRight(
+          podmanApi === undefined
+            ? Effect.succeed({ running: false, message: "Lando runtime service is not configured." })
+            : runtimeServiceStatus.pipe(
+                Effect.map((status) => ({
+                  running: status.running,
+                  message: runtimeStatusMessage(status),
+                })),
+              ),
+        ),
+      ),
       getRuntimeServiceStatus: runtimeServiceStatus,
       getContainerDiedEvents:
         podmanApi === undefined ? Effect.succeed([]) : getContainerDiedEvents(podmanApi),

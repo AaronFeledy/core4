@@ -8,7 +8,7 @@ import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
-import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 
 import type { RuntimeBundle, RuntimeBundleDownloader } from "./setup.ts";
 
@@ -114,9 +114,9 @@ export const resolveRuntimeBundleEntry = (
   platform: HostPlatform,
   arch: string,
 ): Effect.Effect<RuntimeBundleEntry, ProviderUnavailableError> =>
-  isIntelMacHost(platform, arch)
-    ? Effect.fail(new IntelMacUnsupportedError(arch))
-    : Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
+  rejectIntelMacHost(platform, arch).pipe(
+    Effect.zipRight(
+      Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
         Effect.flatMap((entry) =>
           entry === undefined
             ? Effect.fail(
@@ -130,7 +130,9 @@ export const resolveRuntimeBundleEntry = (
               )
             : Effect.succeed(entry),
         ),
-      );
+      ),
+    ),
+  );
 
 export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(entry.filename)) {
