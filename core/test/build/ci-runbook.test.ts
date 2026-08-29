@@ -167,7 +167,7 @@ describe("ci runbook", () => {
     expect(schemaSection).toContain("semantic comparison");
   });
 
-  test("keeps the Beta 1 Bun floor decision synchronized across docs and package metadata", async () => {
+  test("keeps the Bun floor decision synchronized across docs and package metadata", async () => {
     const [runbook, readme, betaDecisions, rootPackage, corePackage, bunVersion] = await Promise.all([
       readText(runbookPath),
       readText(readmePath),
@@ -194,7 +194,7 @@ describe("ci runbook", () => {
     expect(betaDecisions).toContain("windows-x64");
   });
 
-  test("keeps the superseded Beta 1 OCLIF decision historical while package metadata is uncoupled", async () => {
+  test("keeps the superseded OCLIF decision historical while package metadata is uncoupled", async () => {
     const [betaDecisions, corePackage] = await Promise.all([
       readText(betaDecisionsPath),
       readText(corePackagePath),
