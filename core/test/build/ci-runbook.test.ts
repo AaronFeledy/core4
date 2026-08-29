@@ -106,7 +106,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("LANDO_RELEASE_TARGET=<target>");
     expect(runbook).toContain("LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary>");
     expect(runbook).toContain("bun run bench:opentui-startup -- --binary <binary>");
-    expect(runbook).toContain("npm alpha package publishing");
+    expect(runbook).toContain("npm dev package publishing");
     expect(runbook).toContain("npm trusted publishing through GitHub OIDC (`id-token: write`)");
     expect(runbook).toContain("does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path");
     expect(runbook).toContain("bun run --filter='@lando/sdk' build");
