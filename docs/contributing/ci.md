@@ -261,6 +261,28 @@ bun test plugins/provider-podman/test/contract.integration.test.ts
 
 Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check for Beta.
 
+## Platform readiness
+
+Compile smoke and relocated-binary smoke do not satisfy live `lando setup` or `lando doctor`. Live host readiness is a separate gate.
+
+The generated workflow is `.github/workflows/platform-readiness.yml`, produced by `scripts/build-platform-readiness-workflow.ts`. Do not hand-edit the YAML.
+
+On pull request, `platform-readiness` runs linux-x64 on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm` with the default provider `lando`.
+
+On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+
+darwin-x64 already has Docker installed on the runner. The job must not install Docker Desktop. Use `--provider=docker` on that cell.
+
+windows-x64 requires Hyper-V and WSL2. The live path does not structured-skip when those are missing.
+
+windows-arm64 has a matrix cell. The managed runtime bundle for that target does not exist, so the cell fail-closes.
+
+The doctor gate is `scripts/platform-readiness-doctor.ts`, not jq. Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run.
+
+`provider-integration-*` jobs on darwin, linux-arm64, and windows-arm64 remain contract-only. They are not this live setup/doctor path.
+
+CI/release platform id `windows-x64` is not the runtime host key `win32-x64`. Keep both names in their existing domains.
+
 ## Alpha platform scope
 
 Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
