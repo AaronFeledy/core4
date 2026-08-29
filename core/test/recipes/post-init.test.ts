@@ -306,6 +306,7 @@ describe("runPostInit — bun.install", () => {
       expect(caught).toBeInstanceOf(NotImplementedError);
       if (caught instanceof NotImplementedError) {
         expect(caught.message).toContain("when");
+        expect(caught.message).toContain("is not implemented.");
         expect(caught.remediation).toContain("Remove `when:`");
       }
       expect(calls.length).toBe(0);
@@ -905,7 +906,7 @@ describe("runPostInit — message", () => {
   });
 });
 
-describe("runPostInit — Beta-deferred action types", () => {
+describe("runPostInit — unimplemented action types", () => {
   test("gitInit returns NotImplementedError without running it", async () => {
     await withTempDir(async (dir) => {
       let caught: unknown;
@@ -922,6 +923,7 @@ describe("runPostInit — Beta-deferred action types", () => {
       }
       expect(caught).toBeInstanceOf(NotImplementedError);
       if (caught instanceof NotImplementedError) {
+        expect(caught.message).toContain("is not implemented.");
         expect(caught.remediation).toContain("`git init`");
       }
     });
