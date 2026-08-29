@@ -1,0 +1,144 @@
+{
+  "project": "Lando v4 public Alpha 1",
+  "description": "Public Alpha 1 wave (US-592..US-600): unsigned six-target 4.0.0-dev.N on the dev channel, Intel macOS provider-lando fail-closed with live provider-docker, live lando setup and lando doctor on every compile target, Drupal proven in place, Rails contract then bundled recipe then journey, then exit lock. Out of scope: signing, installers, self-update, Beta/next, and 4.1 implementations. ROADMAP is not owned by this wave.",
+  "userStories": [
+    {
+      "id": "US-592",
+      "title": "Spec contract for public Alpha 1",
+      "description": "As a maintainer, spec/alpha/ is the executable public Alpha 1 contract: current phase, six-target unsigned 4.0.0-dev.N on dev, Intel macOS provider split, Drupal proven, Rails ordered contract-recipe-journey, and explicit non-goals, without ROADMAP ownership. The only allowed spec-part edit is US-597's targeted change to spec/08-cli-and-tooling.md section 8.8.10 (Rails staged to bundled).",
+      "acceptanceCriteria": [
+        "`spec/alpha/` is the only Alpha 1 sequencing home; `spec/alpha-1/` does not exist.",
+        "Public Alpha 1 is current. Historical internal phases are pre-alpha. Beta is later.",
+        "Public artifacts are unsigned `4.0.0-dev.N` on the `dev` channel.",
+        "The six compile targets are `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`.",
+        "On `darwin-x64`, provider-lando fail-closes with tagged remediation and provider-docker is the live path. Default provider stays `lando` on every other target.",
+        "Drupal already exists and is proven in place. Rails order is contract, then `recipes/rails`, then the all-six journey. `recipes/` is public recipe SoT; any builtin rails stub is upgraded, not duplicated.",
+        "Signing, installers, self-update, and 4.1 implementations are non-goals. This wave does not own or edit `spec/ROADMAP.md`.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-593",
+      "title": "Six-target unsigned 4.0.0-dev.N on dev",
+      "description": "As a user, I can get an unsigned 4.0.0-dev.N compiled binary for each of the six compile targets from the dev channel.",
+      "acceptanceCriteria": [
+        "Release compile produces binaries for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`.",
+        "Published version is `4.0.0-dev.N` on the `dev` channel. Beta/`next` is out of scope.",
+        "The canonical full npm workspace publish set defined by `releasePackageNames` / `releasePackageWorkspaces` in `scripts/prepare-npm-dev-packages.ts` publishes unsigned `4.0.0-dev.N` packages on npm dist-tag `dev`.",
+        "The existing Alpha preparation/release path changes from its current `4.0.0-alpha.N` behavior to unsigned `4.0.0-dev.N` on dist-tag `dev`.",
+        "A dry-run/pack or equivalent registry-safe verification proves rewritten workspace dependency ranges and package contents without production signing, installer work, or a live publish in tests.",
+        "Artifacts are unsigned. Signing, notarization, installers, and self-update must not block publish.",
+        "A missing target fails the story. Compile smoke on a subset is not enough.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-594",
+      "title": "Intel macOS: provider-lando fail-closed; provider-docker live",
+      "description": "As a user on Intel macOS (darwin-x64), provider-lando rejects with a tagged error and remediation, and provider-docker is the live path.",
+      "acceptanceCriteria": [
+        "On `darwin-x64`, selecting or defaulting to provider-lando fails closed with a `Schema.TaggedError` (machine `_tag`) and human remediation that names `lando setup --provider=docker` and/or `LANDO_PROVIDER=docker`.",
+        "provider-docker on `darwin-x64` runs live setup, doctor, and app start against working system Docker.",
+        "Other compile targets keep default provider `lando` (managed Podman). Docker is the Intel macOS live path, not the product default.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-595",
+      "title": "Live lando setup and lando doctor on every compile target",
+      "description": "As a user, lando setup and lando doctor complete live on every compile target. Compile smoke is not enough.",
+      "acceptanceCriteria": [
+        "Live `lando setup` succeeds on `linux-x64`, `linux-arm64`, `darwin-arm64`, `windows-x64`, and `windows-arm64` with default provider `lando`.",
+        "Live `lando setup` succeeds on `darwin-x64` with `--provider=docker` (US-594).",
+        "Live `lando doctor` succeeds on all six after setup, with no unresolved blocking checks.",
+        "Compile-only, relocated-binary smoke, or unit tests do not satisfy this story.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-596",
+      "title": "Drupal canonical journey on every compile target",
+      "description": "As a user, the existing Drupal recipe completes its canonical journey live on every compile target.",
+      "acceptanceCriteria": [
+        "Uses the existing `recipes/drupal` recipe. Do not invent a second Drupal recipe.",
+        "On every compile target, live: `lando init --recipe drupal`, `lando start`, `lando info`, the recipe README scaffold/Drush path, then `lando destroy -y`.",
+        "`darwin-x64` uses provider-docker. Other targets use default provider `lando` unless setup already selected the supported Docker fallback after default setup failed.",
+        "Compile-only or linux-only evidence fails the story.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-597",
+      "title": "Rails recipe contract",
+      "description": "As a recipe author, the Rails recipe contract is written before any public recipes/rails implementation.",
+      "acceptanceCriteria": [
+        "US-597 edits `spec/08-cli-and-tooling.md` section 8.8.10 as the durable Rails contract. That edit moves Rails from staged to bundled for Alpha 1 and states that `recipes/rails/` is the public recipe source of truth, while the existing builtin stub is upgraded rather than duplicated.",
+        "Contract names id `rails`, public SoT `recipes/rails/`, prompts, services (Ruby/Rails, PostgreSQL, Redis), tooling (`rails`, `bundle`), non-interactive defaults, and executable README.mdx requirements.",
+        "Implementation order stays contract, then bundled recipe (US-598), then the all-six journey (US-599). This story does not ship `recipes/rails/` or the journey.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-598",
+      "title": "Rails bundled recipe",
+      "description": "As a user, lando init --recipe rails scaffolds from recipes/rails, upgrading the builtin stub instead of adding a second source.",
+      "acceptanceCriteria": [
+        "`recipes/rails/` exists with `recipe.yml` or `recipe.ts`, executable README.mdx, and bundled-recipe codegen registration.",
+        "The existing builtin rails stub is upgraded into that tree. Do not keep two public rails recipes.",
+        "Non-interactive defaults exist for every prompt. `meta recipes list/describe/validate` include `rails` through machine output.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-599",
+      "title": "Rails canonical journey on every compile target",
+      "description": "As a user, the Rails canonical journey completes live on every compile target.",
+      "acceptanceCriteria": [
+        "Requires US-595 live setup/doctor and US-598 bundled recipe. Do not run this story against the builtin stub alone.",
+        "On every compile target, live: `lando init --recipe rails`, `lando start`, `lando info`, the recipe README verify path (`rails`/`bundle`), then `lando destroy -y`.",
+        "`darwin-x64` uses provider-docker. Other targets use default provider `lando` unless setup already selected the supported Docker fallback after default setup failed.",
+        "Compile-only evidence fails the story.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-600",
+      "title": "Alpha 1 exit lock",
+      "description": "As a maintainer, Alpha 1 exits only when US-593..US-599 are true with live all-six setup, doctor, Drupal, and Rails evidence.",
+      "acceptanceCriteria": [
+        "US-593 through US-599 are `passes: true` on one tree.",
+        "All six compile targets have live `lando setup`, live `lando doctor`, live Drupal canonical journey, and live Rails canonical journey. Compile smoke is not an exit.",
+        "The public artifact remains unsigned `4.0.0-dev.N` on the `dev` channel.",
+        "ROADMAP edits are not an exit substitute. Signing, installers, self-update, and Beta remain non-goals.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
