@@ -172,10 +172,10 @@ const parseSshArgv = (argv: ReadonlyArray<string>): ParsedSshArgv => {
 const sshDeferred = (kind: "subsystem" | "sidecar"): string =>
   commandErrorMessage(
     new NotImplementedError({
-      message: `\`lando ssh --${kind}\`: SSH ${kind} support is deferred to Beta. Alpha \`ssh\` is provider-exec TTY command behavior only.`,
+      message: `\`lando ssh --${kind}\`: SSH ${kind} is not supported. Default ssh is provider-exec TTY command behavior only.`,
       commandId: "app:ssh",
       remediation:
-        "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
+        "Drop the unsupported flag. `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec.",
     }),
   );
 
