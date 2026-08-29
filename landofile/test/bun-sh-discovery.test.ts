@@ -212,14 +212,14 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
-  test("rejects Beta-only front-matter list-form keys (sources:) with NotImplementedError", async () => {
+  test("rejects unsupported front-matter list-form keys (sources:) with NotImplementedError", async () => {
     await withAppRoot(async (root) => {
       await writeScript(
         root,
-        "beta-sources.bun.sh",
+        "unsupported-sources.bun.sh",
         [
           "# ---",
-          "# desc: sources list is Beta-deferred",
+          "# desc: sources list is unsupported",
           "# sources:",
           "#   - src/**/*",
           "#   - package.json",
@@ -234,14 +234,14 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
-  test("rejects Beta-only front-matter object-form keys (flags:) with NotImplementedError", async () => {
+  test("rejects unsupported front-matter object-form keys (flags:) with NotImplementedError", async () => {
     await withAppRoot(async (root) => {
       await writeScript(
         root,
-        "beta-flags.bun.sh",
+        "unsupported-flags.bun.sh",
         [
           "# ---",
-          "# desc: flags map is Beta-deferred",
+          "# desc: flags map is unsupported",
           "# flags:",
           "#   verbose:",
           "#     type: boolean",
@@ -256,14 +256,14 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
-  test("rejects Beta-only front-matter keys with NotImplementedError", async () => {
+  test("rejects unsupported front-matter keys with NotImplementedError", async () => {
     await withAppRoot(async (root) => {
       await writeScript(
         root,
-        "beta.bun.sh",
+        "unsupported-alias.bun.sh",
         [
           "# ---",
-          "# desc: top-level alias is Beta",
+          "# desc: top-level alias is unsupported",
           "# topLevelAlias: build",
           "# ---",
           "console.log('hi');",
