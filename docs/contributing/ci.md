@@ -136,9 +136,9 @@ bun run build
 bun run bench:tooling-hot-path -- --binary core/dist/lando
 ```
 
-## npm alpha package publishing
+## npm dev package publishing
 
-The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, `@lando/state-store`, `@lando/landofile`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The release workflow publishes `@lando/core@4.0.0-dev.N`, `@lando/paths`, `@lando/state-store`, `@lando/landofile`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
@@ -152,9 +152,9 @@ bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
 ```
 
-Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish.
+Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-dev.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact dev version before the dry-run and real publish.
 
-Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the alpha version and its `latest` dist-tag is unchanged.
+Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the dev version and its `latest` dist-tag is unchanged.
 
 ## Provider integration
 

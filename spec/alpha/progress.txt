@@ -23,6 +23,21 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Out of scope: signing, installers, self-update, 4.1 implementations, Beta/next.
 - Full-suite lock is always `bun test` (or explicit shard --run commands) with positive test counts. Never `bun run test` alone.
 
+## Codebase Patterns
+
+- Durable Alpha/phase/version claims live in README, contributing docs, and tests. Files outside the specification tree must restate those facts; they must not cite specification-tree paths (the spec-reference boundary).
+- The public Alpha publish line is unsigned `4.0.0-dev.N` on dist-tag `dev`. `4.0.0-alpha.N` is not the current scheme.
+
 ## Status
 
-All US-592..US-600 passes: false. No story has started.
+US-592 passes: true. US-593..US-600 passes: false.
+
+Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease remains Linux x64 only.
+
+## 2026-08-29 12:05 CDT - US-592
+- Locked the public Alpha 1 contract in durable copy: Public Alpha 1 is current, historical phases are pre-alpha, unsigned 4.0.0-dev.N on the dev channel, six compile targets named, darwin-x64 Docker live path with lando default elsewhere, Drupal at recipes/drupal, signing/installers/self-update later. Did not expand GitHub prerelease past Linux x64 or ship Rails/provider/setup work.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Contract stories must restate facts outside the specification tree. A test that reads prd.json or writes spec/alpha will fail spec-reference.
+  - alpha-install docs still own "Linux x64 only / macOS and Windows deferred" until the six-target publish story lands. Do not un-stub those install paths from a contract story.
+---

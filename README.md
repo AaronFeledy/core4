@@ -24,25 +24,15 @@ and template engines all ship as separate packages.
 
 ## Status & roadmap
 
-Development follows this phase ladder:
-**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1 → Beta 2 → RC → 4.0 GA**.
+Public Alpha 1 is current. Historical internal phases are pre-alpha. Beta is later.
 
-- **Done:** MVP through **Alpha 4** ("governance + the last feature surface") —
-  Alpha 4 closed the feature surface: release machinery, signing, supply chain,
-  telemetry, schema publication, the plugin authoring toolkit, and the
-  `lando setup` / `lando uninstall` lifecycle. Alphas publish `4.0.0-alpha.N`
-  on the `dev` channel.
-- **Current: Beta 1** ("contract-completion remediation") — an audit-driven
-  remediation pass (US-372..US-395) plus a bounded feature wave, runtime/Podman/
-  log-source waves, a closure wave, a residual-hardening wave, and the
-  renderer-substrate wave (US-455..US-460: the bundled renderer's specified
-  OpenTUI `^0.4.3` substrate, desktop notifications, and the contract-only
-  freeze of the 4.1 renderer surfaces).
-  The first signed `4.0.0-beta.N` ships on the `next` channel at the end of
-  Beta 1, and **feature freeze is entered**.
-- **After:** Beta 2 (bug burn-down), RC (binary-shipping acceptance — signing,
-  notarization, SBOM, provenance, and self-update all verified across every
-  release platform), GA.
+Public artifacts are unsigned `4.0.0-dev.N` on the `dev` channel. This Alpha does not ship signing, installers, or self-update; those come later.
+
+The compile set is six targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The downloadable GitHub prerelease today is Linux x64 only. macOS and Windows binaries stay deferred until those artifacts publish. See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
+
+On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
+
+Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the public recipe source of truth.
 
 ## Layout
 
