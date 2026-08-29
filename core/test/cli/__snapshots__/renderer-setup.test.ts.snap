@@ -28,7 +28,7 @@ exports[`renderer.setup fixture json renderer snapshot is stable on stderr 1`] =
 "
 `;
 
-exports[`renderer.setup fixture lando renderer snapshot matches plain renderer (alpha alias) 1`] = `
+exports[`renderer.setup fixture lando renderer snapshot matches plain renderer 1`] = `
 "▼ Setting up Lando runtime (4 services)
 [bundle] start: Verify runtime bundle
 [bundle] ✓ complete: Verify runtime bundle (42ms)
