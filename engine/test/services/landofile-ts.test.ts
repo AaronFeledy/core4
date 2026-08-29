@@ -537,7 +537,7 @@ describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)
   });
 });
 
-describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
+describe("LandofileServiceLive — TS form unsupported-field rejection parity", () => {
   test("TS export with top-level `includes:` resolves its fragments during discovery", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, "fragment.yml"), "services:\n  cache:\n    image: redis:7\n");

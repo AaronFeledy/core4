@@ -20,7 +20,7 @@ import {
   getJsonSchema,
 } from "@lando/sdk/schema";
 
-const ALPHA_TOOLING_FIELDS = ["service", "description", "summary", "cmd", "cmds", "vars"] as const;
+const SUPPORTED_TOOLING_FIELDS = ["service", "description", "summary", "cmd", "cmds", "vars"] as const;
 
 const MVP_COMPOSE_SUBSET = ["image", "ports", "environment", "volumes", "command", "dependsOn"] as const;
 
@@ -632,7 +632,7 @@ describe("ServiceConfig — ports numeric coercion (bugbot PR#28 finding 2)", ()
   });
 });
 
-describe("LandofileShape — tooling: Alpha schema", () => {
+describe("LandofileShape — tooling: supported schema", () => {
   test("strictly decodes and round-trips tooling defaults with task env and dir overrides", () => {
     // Given
     const input = {
@@ -704,7 +704,7 @@ describe("LandofileShape — tooling: Alpha schema", () => {
     expect(decoded.tooling?.test?.cmds).toEqual(["composer install", "phpunit"]);
   });
 
-  test("decodes Alpha `vars:` forms: literal, default, sh, and prompt", () => {
+  test("decodes supported `vars:` forms: literal, default, sh, and prompt", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       tooling: {
         build: {
@@ -729,7 +729,7 @@ describe("LandofileShape — tooling: Alpha schema", () => {
     expect(vars.TAG).toEqual({ prompt: "Enter the release tag" });
   });
 
-  test("strict decoding rejects Beta-only task fields (`deps`)", () => {
+  test("strict decoding rejects unsupported task fields (`deps`)", () => {
     const result = Schema.decodeUnknownEither(LandofileShape)(
       { tooling: { test: { cmds: ["pytest"], deps: ["assets"] } } },
       { onExcessProperty: "error" },
@@ -753,9 +753,9 @@ describe("LandofileShape — tooling: Alpha schema", () => {
     expect(Either.isLeft(result)).toBe(true);
   });
 
-  test("ToolingTaskShape exposes every Alpha-supported field as optional", () => {
+  test("ToolingTaskShape exposes every supported field as optional", () => {
     const fields = Object.keys(ToolingTaskShape.fields);
-    for (const key of ALPHA_TOOLING_FIELDS) {
+    for (const key of SUPPORTED_TOOLING_FIELDS) {
       expect(fields).toContain(key);
     }
   });

@@ -618,8 +618,8 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
   });
 });
 
-describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => {
-  const assertBetaRejection = (error: unknown): void => {
+describe("LandofileServiceLive — reserved section rejection (US-014)", () => {
+  const assertUnsupportedRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
@@ -672,7 +672,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value);
+        if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }
     });
   });
@@ -761,7 +761,7 @@ describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
     });
   });
 
-  test("parses tooling tasks with cmds, service, description, and Alpha vars forms", async () => {
+  test("parses tooling tasks with cmds, service, description, and supported vars forms", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -813,8 +813,8 @@ describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
   });
 });
 
-describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () => {
-  const assertBetaRejection = (error: unknown): void => {
+describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)", () => {
+  const assertUnsupportedRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
@@ -831,7 +831,7 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value);
+        if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }
     });
   };
