@@ -315,10 +315,10 @@ export const pluginAdd = (
     if (!REGISTRY_NAME_RE.test(options.spec)) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `meta:plugin:add only supports npm registry specs in Alpha (got ${options.spec}).`,
+          message: `meta:plugin:add only supports npm registry specs (got ${options.spec}).`,
           commandId: "meta:plugin:add",
           remediation:
-            "Git URL, tarball, and file: source kinds land in Beta. Pass a registry spec like `@lando/plugin-php@1.0.0`.",
+            "Git URL, tarball, and file: sources are not supported. Pass a registry spec like `@lando/plugin-php@1.0.0`.",
         }),
       );
     }
