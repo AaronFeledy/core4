@@ -8,28 +8,28 @@ tags: [beta, docs, installer, wsl]
 
 # Install Lando on WSL
 
-Download the Linux x64 `lando` binary from a GitHub `v4.0.0-dev.N` prerelease and run it inside your WSL distro.
+Download `lando-linux-x64` (or `lando-linux-arm64` on ARM WSL) from a GitHub `v4.0.0-dev.N` prerelease and run it inside your WSL distro.
 
-> **Alpha status:** Alpha is Linux x64 only. WSL is a Linux distro, so you use the same binary as native Linux. There is no Windows `lando.exe` in Alpha. The POSIX installer at `https://get.lando.dev/install.sh` is not up yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
+> **Alpha status:** WSL uses the Linux binary. Unsigned Windows `.exe` assets also exist on the same prerelease if you want a native Windows CLI. The POSIX installer at `https://get.lando.dev/install.sh` is not up yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
 
-## Download the Linux x64 binary
+## Download the Linux binary
 
 Work inside the WSL distro shell, not a Windows prompt.
 
 1. Open the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease.
-2. Download `lando` and `SHA256SUMS`.
+2. Download `lando-linux-x64` (or `lando-linux-arm64`) and `SHA256SUMS`.
 3. Verify the checksum:
 
 ```sh
-sha256sum -c SHA256SUMS
+grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
 ```
 
-The checksum command must report `lando: OK`. If it does not, delete both files and download them again from the same prerelease.
+Use `lando-linux-arm64` in that grep if that is the asset you downloaded. `SHA256SUMS` lists every platform, so checking the whole file fails when the other binaries are missing. The piped command must report `OK` for the file you have. If it does not, delete both files and download them again from the same prerelease.
 
 4. Make it executable and put it on PATH:
 
 ```sh
-chmod +x lando
+chmod +x lando-linux-x64
 ```
 
 Move that file into a directory already on PATH, or add its directory to PATH in your distro profile (`~/.bashrc` or `~/.zshrc`). Then verify:
@@ -42,7 +42,7 @@ Once `lando` is on PATH, `lando shellenv` prints a profile snippet you can appen
 
 PATH is per distro. Installing in one WSL distro does not put `lando` on PATH in another distro or in Windows.
 
-**If no dev prerelease exists yet:** download the `lando-linux-x64` artifact from a [successful main CI run](https://github.com/AaronFeledy/core4/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess). That needs a GitHub login. Extract the zip and verify the binary yourself.
+Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run. That needs a GitHub login. Extract the zip and verify the binary yourself.
 
 ## Keep the app off /mnt/c
 
@@ -70,7 +70,7 @@ lando setup
 
 The default provider is `lando` (managed Podman). It does not need system Docker or Podman.
 
-Default setup may fail on Alpha. Host prerequisites can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders. If setup names a host prerequisite, fix it and rerun `lando setup`.
+Default setup may fail on Alpha. Host prerequisites can block the managed runtime. If setup names a host prerequisite, fix it and rerun `lando setup`.
 
 If the managed runtime still cannot install and you have working system Docker:
 
@@ -108,7 +108,7 @@ certutil -addstore -f "ROOT" rootCA.pem
 
 Chrome and Edge trust the Windows store immediately. Firefox uses its own store, so import the same `rootCA.pem` in `about:preferences#privacy`.
 
-You do not need a Windows Lando install for this. Alpha has no Windows binary.
+You do not need a Windows Lando install for this CA step. Native Windows binaries are a separate install path.
 
 ## Verify
 

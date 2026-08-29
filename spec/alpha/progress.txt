@@ -27,12 +27,14 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 
 - Durable Alpha/phase/version claims live in README, contributing docs, and tests. Files outside the specification tree must restate those facts; they must not cite specification-tree paths (the spec-reference boundary).
 - The public Alpha publish line is unsigned `4.0.0-dev.N` on dist-tag `dev`. `4.0.0-alpha.N` is not the current scheme.
+- Unix CI compiled artifacts are all named `lando`. A six-target GitHub assemble must download each `lando-<id>` artifact into a distinct directory and rename with `releaseBinaryFileName` (`lando-<id>` / `lando-<id>.exe`). Dumping them into one `dist/` overwrites.
+- The generated `release` workflow publishes unsigned six-target GitHub prereleases only. Live npm `dev` publish stays on `scripts/release.ts`; do not add `npm publish` to `.github/workflows/release.yml`.
 
 ## Status
 
-US-592 passes: true. US-593..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594..US-600 passes: false.
 
-Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease remains Linux x64 only.
+Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
 ## 2026-08-29 12:05 CDT - US-592
 - Locked the public Alpha 1 contract in durable copy: Public Alpha 1 is current, historical phases are pre-alpha, unsigned 4.0.0-dev.N on the dev channel, six compile targets named, darwin-x64 Docker live path with lando default elsewhere, Drupal at recipes/drupal, signing/installers/self-update later. Did not expand GitHub prerelease past Linux x64 or ship Rails/provider/setup work.
@@ -40,4 +42,30 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - **Learnings for future iterations:**
   - Contract stories must restate facts outside the specification tree. A test that reads prd.json or writes spec/alpha will fail spec-reference.
   - alpha-install docs still own "Linux x64 only / macOS and Windows deferred" until the six-target publish story lands. Do not un-stub those install paths from a contract story.
+---
+
+## 2026-08-29 12:17 CDT - US-592 Review
+- Reviewed the public Alpha 1 contract lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): fail-close tagged remediation stays with US-594, not README restatement; Rails contract-recipe-journey stays in spec/alpha sequencing; weak Status `later` assertion is a test nit, not a PRD miss; leftover 4.0.0-alpha.N in release/codegen tests is US-593.
+- Guide-Coverage-Skip: contract copy and contributing CI version scheme; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract and ci-runbook spot checks passed
+---
+
+## 2026-08-29 12:30 CDT - US-592 Verify
+- Compiled `core/dist/lando` in sandbox: `setup` completed on default provider `lando`; `init --recipe lamp` + `start` served `us592-ok` over HTTPS; `info`/`exec`/`doctor`/`help`/`recipes describe drupal` matched the Alpha 1 contract (version `4.0.0-dev.N`, linux-x64, Drupal listed). Destroyed the scenario app.
+- **Out-of-scope finding:** `curl http://us592-verify.lndo.site` returned HTTP 200 from Caddy with `Content-Length: 0`; `curl https://us592-verify.lndo.site` returned the PHP body. Suspected proxy HTTP vs HTTPS path; not caused by this contract diff.
+---
+
+## 2026-08-29 13:15 CDT - US-593
+- GitHub `v4.0.0-dev.N` prerelease now stages all six CI binaries (`lando-<platform-id>` / `.exe`) plus `SHA256SUMS`. Missing artifacts fail the job. Unsigned: no signing, npm, installers, or self-update on that workflow. npm `4.0.0-dev.N` / tag `dev` stays on `prepare-npm-dev-packages` with a registry-safe pack test.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Unix CI artifacts share the filename `lando`. Stage per-platform dirs, then rename. Do not download six artifacts into one directory.
+  - User install copy must name the six assets. Contributor `ci.md` npm OIDC strings describe the manual orchestrator, not the generated GitHub workflow.
+---
+
+## 2026-08-29 13:42 CDT - US-593 Review
+- Fixed one-file SHA256SUMS verify: GNU `sha256sum -c` fails when the six-file manifest lists binaries the user did not download. Docs now grep the downloaded asset into `sha256sum -c`.
+- Review notes (deferred/rejected): `workflow_run` artifact-poisoning origin bind is pre-existing on the linux-x64 job, not introduced by this story and does not block the PRD; leftover `4.0.0-alpha` in version-parser/update-manifest tests is fixture not the publish line; macOS `shasum` is pre-existing Linux-centric checksum docs; do not re-add npm publish to `release.yml`
+- Verification: typecheck, lint passed; alpha-install-docs, public-alpha-contract, release-workflow, npm-dev-package spot checks passed
 ---

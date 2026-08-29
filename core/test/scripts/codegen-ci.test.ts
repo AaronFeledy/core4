@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const packageJsonPath = resolve(repoRoot, "package.json");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
@@ -563,7 +565,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates a Linux x64 dev prerelease workflow",
+    "generates an unsigned six-target dev prerelease workflow",
     async () => {
       await runCodegen();
 
@@ -575,21 +577,30 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("branches: [main]");
       expect(workflow).toContain("contents: write");
       expect(workflow).toContain("actions: read");
-      expect(workflow).toContain("dev-prerelease-linux-x64:");
+      expect(workflow).toContain("dev-prerelease:");
+      expect(workflow).not.toContain("dev-prerelease-linux-x64:");
       expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
-      expect(workflow).toContain(
-        'gh run download "${{ github.event.workflow_run.id }}" --name lando-linux-x64 --dir dist',
-      );
+      expect(workflow).toContain('gh run download "${{ github.event.workflow_run.id }}"');
+      expect(workflow).not.toContain("actions/download-artifact");
+      for (const platform of CI_PLATFORMS) {
+        expect(workflow).toContain(`--name lando-${platform.id}`);
+        expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
+      }
       expect(workflow).toContain("sudo apt-get install -y strace iproute2");
       expect(workflow).toContain("sudo env");
       expect(workflow).toContain("unshare --net bash -c");
       expect(workflow).toContain("strace -f -e trace=network");
       expect(workflow).toContain("first-launch.network.log");
       expect(workflow).toContain("awk '/connect\\(/ && $0 !~ /(127\\.|::1|AF_UNIX)/");
-      expect(workflow).toContain("sha256sum lando > SHA256SUMS");
-      expect(workflow).toContain("grep -Eq '^[0-9a-f]{64}  lando$' SHA256SUMS");
+      expect(workflow).toContain("./dist/lando-linux-x64 --version");
+      expect(workflow).not.toContain("./dist/lando --version");
+      expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
+      for (const platform of CI_PLATFORMS) {
+        expect(workflow).toContain(releaseBinaryFileName(platform));
+      }
       expect(workflow).toContain("RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain('gh release create "$RELEASE_TAG" dist/lando dist/SHA256SUMS --prerelease');
+      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("dist/SHA256SUMS");
       expect(workflow).toContain("--prerelease");
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
@@ -698,11 +709,18 @@ describe("ci workflow codegen", () => {
       await runCodegen();
       const workflow = await readFile(releaseWorkflowPath, "utf8");
 
-      expect(workflow).toContain("dev-prerelease-linux-x64:");
+      expect(workflow).toContain("dev-prerelease:");
+      expect(workflow).not.toContain("dev-prerelease-linux-x64:");
+      for (const platform of CI_PLATFORMS) {
+        expect(workflow).toContain(`--name lando-${platform.id}`);
+        expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
+        expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
+      }
       expect(workflow).toContain("gh release create");
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain("dist/lando");
       expect(workflow).toContain("dist/SHA256SUMS");
+      expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
+      expect(workflow).not.toContain("if-no-files-found");
     },
     codegenTestTimeout,
   );

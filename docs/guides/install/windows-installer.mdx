@@ -8,11 +8,11 @@ tags: [beta, docs, installer]
 
 # Install Lando on Windows
 
-> **Alpha status:** There is no Windows `lando.exe`, and the PowerShell installer is **not live**. `https://get.lando.dev/install.ps1` is not serving v4. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+> **Alpha status:** The PowerShell installer is **not live**. `https://get.lando.dev/install.ps1` is not serving v4. Unsigned `lando-windows-x64.exe` and `lando-windows-arm64.exe` **are** downloadable from the GitHub `v4.0.0-dev.N` prerelease. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-On Windows today, install the Linux x64 `v4.0.0-dev.N` binary **inside WSL**. That is the same binary as native Linux. Follow [Install Lando on WSL](./wsl.mdx) or [Install from a GitHub release](./github-releases.mdx).
+Download the unsigned Windows binary for your CPU from the GitHub prerelease. Run `.\lando-windows-x64.exe --version` (or `lando-windows-arm64.exe` on ARM64). Then `lando setup`. WSL is optional, not the only path. Follow [Install from a GitHub release](./github-releases.mdx) for asset names.
 
-The script at `scripts/install.ps1` exists in this repo. It still needs live channel manifests at `https://update.lando.dev` and a published Windows binary. Neither is shipping.
+The script at `scripts/install.ps1` exists in this repo. It still needs live channel manifests at `https://update.lando.dev`. Those hosts are not shipping.
 
 When those hosts are up, the script will map an AMD64 host to `windows-x64` and fail other architectures before any download. Do not run a get.lando.dev URL now.
 

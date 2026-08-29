@@ -28,7 +28,7 @@ Public Alpha 1 is current. Historical internal phases are pre-alpha. Beta is lat
 
 Public artifacts are unsigned `4.0.0-dev.N` on the `dev` channel. This Alpha does not ship signing, installers, or self-update; those come later.
 
-The compile set is six targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The downloadable GitHub prerelease today is Linux x64 only. macOS and Windows binaries stay deferred until those artifacts publish. See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
+The compile set is six targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The GitHub prerelease ships unsigned binaries for all six named targets (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
 
 On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
 
@@ -90,7 +90,7 @@ Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the p
 
 **Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
 
-- How to download the dev prerelease binary (Linux x64)
+- How to download the unsigned `v4.0.0-dev.N` GitHub prerelease binaries for all six compile targets
 - How to build from source
 - Running `lando setup` and `lando doctor` for first-time configuration
 - Where to file bug reports with the right diagnostic files
@@ -237,8 +237,8 @@ This repository is unstable by design. A few practical caveats:
   after the Bun 1.4 pin.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
   version `0.0.0` in the working tree; the publish pipeline
-  (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
-  versions and `workspace:*` ranges before publishing.
+  (`scripts/prepare-npm-dev-packages.ts` plus the manual `scripts/release.ts`
+  orchestrator) rewrites versions and `workspace:*` ranges before publishing.
 - **Some command surfaces are not implemented.** A subset of commands still
   throw `NotImplementedError`/`Effect.die`; deferred ids are tracked in
   `core/src/cli/deferred-commands.ts`.

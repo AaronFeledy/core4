@@ -5,7 +5,7 @@ description: Run and verify the manual signed release pipeline.
 
 # Release runbook
 
-Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) is scoped to dev prereleases only: it republishes the ci-built `linux-x64` binary as a `v4.0.0-dev.N` GitHub prerelease and publishes npm `dev`-tag packages. It never signs, notarizes, or publishes a stable release.
+Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 13-stage signed Beta pipeline.
 
 Use this runbook to drive the 13-stage orchestrator (`scripts/release.ts`) by hand when cutting `4.0.0-beta.N`.
 
@@ -33,7 +33,7 @@ Stage `5-schema-artifacts` regenerates schema artifacts (`bun run codegen:schema
 
 ### Platform scope
 
-By default the orchestrator targets every CI platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`). Scope a run to one platform with `LANDO_RELEASE_PLATFORM`, using the CI/release platform id:
+By default the orchestrator targets every CI platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, `windows-arm64`). Scope a run to one platform with `LANDO_RELEASE_PLATFORM`, using the CI/release platform id:
 
 ```bash
 LANDO_RELEASE_PLATFORM=windows-x64 bun run release -- --binary
