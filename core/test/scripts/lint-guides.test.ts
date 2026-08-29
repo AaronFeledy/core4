@@ -167,10 +167,10 @@ describe("lint:guides", () => {
   });
 
   test("reports unknown components with a source-mapped frame", async () => {
-    const diagnostics = await lintFixture("beta-component");
+    const diagnostics = await lintFixture("unsupported-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-component.mdx:7:3: guide.component.unsupported: <Bogus> is not supported yet.",
     );
   });
 
@@ -254,10 +254,10 @@ describe("lint:guides", () => {
   });
 
   test("reports unknown components anywhere in prose", async () => {
-    const diagnostics = await lintFixture("beta-inline-component");
+    const diagnostics = await lintFixture("unsupported-inline-component");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-inline-component.mdx:9:33: guide.component.unsupported: <Bogus> is not supported yet.",
     ]);
   });
 

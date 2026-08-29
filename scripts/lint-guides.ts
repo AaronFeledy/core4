@@ -11,6 +11,7 @@ import { unified } from "unified";
 
 import { parseLandofile } from "../landofile/src/parser.ts";
 import {
+  assertSupportedGuideComponent,
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
   decodeInspectPropsEither,
@@ -40,23 +41,6 @@ import {
 } from "./build-guide-scenarios.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-
-const ALPHA_2_COMPONENTS = new Set([
-  "Guide",
-  "Scenario",
-  "Step",
-  "Run",
-  "Verify",
-  "Cleanup",
-  "Variable",
-  "UseFixture",
-  "Inspect",
-  "Tabs",
-  "Tab",
-  "Hidden",
-  "Inline",
-  "Skip",
-]);
 
 type MdxNode = {
   readonly type: string;
@@ -623,10 +607,15 @@ const lintFixtures = (
 
 const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
   walkElements(root, (node) => {
-    if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
-    diagnostics.push(
-      diagnostic(sourcePath, node, "guide.component.beta", `<${node.name}> is not supported yet.`),
-    );
+    if (node.name === undefined || node.name === null) return;
+    try {
+      assertSupportedGuideComponent(node.name, sourcePath);
+    } catch (error) {
+      if (!(error instanceof NotImplementedError)) throw error;
+      diagnostics.push(
+        diagnostic(sourcePath, node, "guide.component.unsupported", `<${node.name}> is not supported yet.`),
+      );
+    }
   });
 };
 
