@@ -145,7 +145,7 @@
 - `RecipeManifest` additively accepts optional `extends` (a parent recipe id or path). Flatten-before-validate merges the parent into the child and strips `extends` and authoring-only `drop` before `RecipeManifest` decode. `@lando/sdk/schema` additively exports `RecipePromptDrop`. `@lando/sdk/errors` additively exports `RecipeExtendsError` (`kind`: `cycle` | `depth` | `parent-not-found`). `RecipeManifestService.parse` additively includes `RecipeExtendsError` and `RecipeSourceError` in its error channel.
 
 
-## Additive Alpha schema exports
+## Additive schema exports
 
 - `PluginDoctorReport`
 - `FileRef`
@@ -760,7 +760,7 @@
 - `McpTransportError`
 - `McpAllowlistConflictError`
 
-## Additive Alpha service tags
+## Additive service tags
 
 - `AppPlanSanitizer`
 - `CertificateAuthority`
