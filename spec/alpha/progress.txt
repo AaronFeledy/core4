@@ -63,3 +63,9 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Unix CI artifacts share the filename `lando`. Stage per-platform dirs, then rename. Do not download six artifacts into one directory.
   - User install copy must name the six assets. Contributor `ci.md` npm OIDC strings describe the manual orchestrator, not the generated GitHub workflow.
 ---
+
+## 2026-08-29 13:42 CDT - US-593 Review
+- Fixed one-file SHA256SUMS verify: GNU `sha256sum -c` fails when the six-file manifest lists binaries the user did not download. Docs now grep the downloaded asset into `sha256sum -c`.
+- Review notes (deferred/rejected): `workflow_run` artifact-poisoning origin bind is pre-existing on the linux-x64 job, not introduced by this story and does not block the PRD; leftover `4.0.0-alpha` in version-parser/update-manifest tests is fixture not the publish line; macOS `shasum` is pre-existing Linux-centric checksum docs; do not re-add npm publish to `release.yml`
+- Verification: typecheck, lint passed; alpha-install-docs, public-alpha-contract, release-workflow, npm-dev-package spot checks passed
+---

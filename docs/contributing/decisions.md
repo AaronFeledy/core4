@@ -61,7 +61,7 @@ Flag model: `--trust` on `lando plugin:add` is an explicit one-shot install conf
 
 ## Release-automation posture decision
 
-Beta 1 runs the full signed release **manually until RC**. The generated `release` workflow stays scoped to dev prereleases only: it republishes the ci-built `linux-x64` binary as a `v4.0.0-dev.N` GitHub prerelease and publishes npm `dev`-tag packages. Nothing in CI invokes the 13-stage signed release orchestrator (`scripts/release.ts`).
+Beta 1 runs the full signed release **manually until RC**. The generated `release` workflow stays scoped to unsigned six-target GitHub prereleases only: it republishes ci-built binaries for every CI platform as a `v4.0.0-dev.N` GitHub prerelease. It does not publish npm. Live npm `dev` packages stay on the manual `scripts/release.ts` orchestrator. Nothing in CI invokes the 13-stage signed release orchestrator (`scripts/release.ts`).
 
 Rationale: the orchestrator is fully implemented and credential-gated, but release signing credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow. Wiring the full pipeline into CI now would produce a job that warning-skips every signing stage — the appearance of an automated release without a trustworthy signed artifact. Keeping the pipeline manual means a run either produces a genuinely signed release or fails closed. Full-pipeline CI is an explicit RC gate, not a Beta 1 deliverable.
 

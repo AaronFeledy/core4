@@ -237,8 +237,8 @@ This repository is unstable by design. A few practical caveats:
   after the Bun 1.4 pin.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
   version `0.0.0` in the working tree; the publish pipeline
-  (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
-  versions and `workspace:*` ranges before publishing.
+  (`scripts/prepare-npm-dev-packages.ts` plus the manual `scripts/release.ts`
+  orchestrator) rewrites versions and `workspace:*` ranges before publishing.
 - **Some command surfaces are not implemented.** A subset of commands still
   throw `NotImplementedError`/`Effect.die`; deferred ids are tracked in
   `core/src/cli/deferred-commands.ts`.
