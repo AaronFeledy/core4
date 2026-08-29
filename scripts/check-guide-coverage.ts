@@ -9,33 +9,35 @@ const GUIDE_PATH_PATTERN = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/;
 const GUIDE_PATH_PATTERN_GLOBAL = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/g;
 const VALID_STATUSES = new Set(["Shipped", "Planned"]);
 
-const PRD_NUMBER_PATTERN = /prd-alpha-3-(\d{2})-/;
-const USER_FACING_PRD_NUMBERS = new Set(["01", "02", "03", "04", "05", "06", "07", "08", "10", "11"]);
-const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
+const PRD_PACKAGE_NUMBER_PATTERN = /prd-([a-z0-9]+(?:-[a-z0-9]+)*)-(\d{2})-/;
+const NUMBERED_PACKAGE_PATTERN = /^[a-z]+-\d+$/;
+type PackageClassificationRule = {
+  readonly userFacing: ReadonlySet<string>;
+  readonly internal: ReadonlySet<string>;
+};
 
-const SERVICE_TRUST_PRD_NUMBER_PATTERN = /prd-service-trust-(\d{2})-/;
-const SERVICE_TRUST_USER_FACING_PRD_NUMBERS = new Set(["01", "02"]);
+const NUMBERED_PACKAGE_RULE: PackageClassificationRule = {
+  userFacing: new Set(["01", "02", "03", "04", "05", "06", "07", "08", "10", "11"]),
+  internal: new Set(["09", "13"]),
+};
 
-const ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN = /prd-architecture-simplicity-(\d{2})-/;
-const ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS = new Set(["01", "02", "03", "04"]);
+const NAMED_PACKAGE_RULES: Readonly<Record<string, PackageClassificationRule>> = {
+  "service-trust": { userFacing: new Set(["01", "02"]), internal: new Set() },
+  "architecture-simplicity": { userFacing: new Set(), internal: new Set(["01", "02", "03", "04"]) },
+};
 
 export type PrdClassification = "user-facing" | "internal" | "exempt";
 
 export const classifyPrd = (name: string): PrdClassification => {
-  const serviceTrustNumber = name.match(SERVICE_TRUST_PRD_NUMBER_PATTERN)?.[1];
-  if (serviceTrustNumber !== undefined) {
-    return SERVICE_TRUST_USER_FACING_PRD_NUMBERS.has(serviceTrustNumber) ? "user-facing" : "exempt";
-  }
-  const architectureSimplicityNumber = name.match(ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN)?.[1];
-  if (architectureSimplicityNumber !== undefined) {
-    return ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS.has(architectureSimplicityNumber)
-      ? "internal"
-      : "exempt";
-  }
-  const number = name.match(PRD_NUMBER_PATTERN)?.[1];
-  if (number === undefined) return "exempt";
-  if (USER_FACING_PRD_NUMBERS.has(number)) return "user-facing";
-  if (INTERNAL_PRD_NUMBERS.has(number)) return "internal";
+  const match = name.match(PRD_PACKAGE_NUMBER_PATTERN);
+  const pkg = match?.[1];
+  const number = match?.[2];
+  if (pkg === undefined || number === undefined) return "exempt";
+  const rule =
+    NAMED_PACKAGE_RULES[pkg] ?? (NUMBERED_PACKAGE_PATTERN.test(pkg) ? NUMBERED_PACKAGE_RULE : undefined);
+  if (rule === undefined) return "exempt";
+  if (rule.userFacing.has(number)) return "user-facing";
+  if (rule.internal.has(number)) return "internal";
   return "exempt";
 };
 
