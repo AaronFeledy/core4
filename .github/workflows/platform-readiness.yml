@@ -349,6 +349,15 @@ jobs:
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external
 
+      - name: Assemble current-commit win32-arm64 runtime bundle
+        run: bun run scripts/assemble-runtime-bundle.ts --platform win32-arm64
+
+      - name: Build local runtime bundle manifest
+        run: |
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform win32-arm64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
       - name: Setup provider
         run: dist/lando-windows-arm64.exe setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync --no-interactive
 

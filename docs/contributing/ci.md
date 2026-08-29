@@ -275,7 +275,7 @@ darwin-x64 already has Docker installed on the runner. The job must not install 
 
 windows-x64 requires Hyper-V and WSL2. The live path does not structured-skip when those are missing.
 
-windows-arm64 has a matrix cell. The managed runtime bundle for that target does not exist, so the cell fail-closes.
+windows-arm64 assembles the current-commit `win32-arm64` runtime bundle. Missing `lando-virt` runners still fail the job rather than skip.
 
 The doctor gate is `scripts/platform-readiness-doctor.ts`, not jq. Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run.
 

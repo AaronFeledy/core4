@@ -141,13 +141,13 @@ describe("platform-readiness workflow", () => {
     expect(windowsX64).not.toContain("windows-managed-setup-acceptance.ts");
   });
 
-  test("runs windows-arm64 on self-hosted without assembling win32-arm64", async () => {
+  test("runs windows-arm64 on self-hosted with win32-arm64 assemble", async () => {
     // Given / When
     const windowsArm64 = jobBlock(await readWorkflow(), "windows-arm64");
 
     // Then
     expect(windowsArm64).toContain("    runs-on: [self-hosted, lando-virt, Windows, ARM64]");
-    expect(windowsArm64).not.toContain("--platform win32-arm64");
+    expect(windowsArm64).toContain("--platform win32-arm64");
   });
 
   test("isolates LANDO_USER roots and forbids continue-on-error and advisory skips", async () => {
