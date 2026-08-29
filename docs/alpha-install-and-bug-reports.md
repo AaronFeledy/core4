@@ -1,5 +1,5 @@
 ---
-title: Alpha install and bug reports
+title: Get a v4.0.0-dev.N binary and run setup
 description: Install the Lando 4 Alpha, run setup, and attach the right diagnostics to a bug report.
 ---
 
