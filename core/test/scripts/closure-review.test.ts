@@ -27,7 +27,7 @@ type FindingInput = {
   readonly resolution?:
     | { readonly kind: "fixed-and-re-reviewed"; readonly evidence: string }
     | {
-        readonly kind: "linked-beta-story";
+        readonly kind: "linked-story";
         readonly storyId: string;
         readonly rationale: string;
         readonly sources: readonly string[];
@@ -109,7 +109,7 @@ const lane = (id: LaneId, overrides: Partial<LaneInput> = {}): LaneInput => ({
     },
   ],
   disposition: "approved",
-  residualRisks: [`${id} residual risk accepted for Beta 1`],
+  residualRisks: [`${id} residual risk accepted`],
   ...overrides,
 });
 
@@ -194,13 +194,13 @@ describe("US-431 closure review reporting", () => {
     expect(report.errors).toContain("security lane requires evidence");
   });
 
-  test("rejects blockers without fixed evidence or a currently failing Beta 1 story link", () => {
+  test("rejects blockers without fixed evidence or a currently failing story link", () => {
     const blocker: FindingInput = {
       title: "runtime bundle remains remote-only",
       severity: "blocker",
       sources: ["prd/release/prd-release-13-closure.md:49"],
       resolution: {
-        kind: "linked-beta-story",
+        kind: "linked-story",
         storyId: "US-430",
         rationale: "US-430 is already green, so it cannot carry this blocker.",
         sources: ["prd/release/prd-release-13-closure.md:49"],
@@ -215,13 +215,13 @@ describe("US-431 closure review reporting", () => {
 
     expect(report.approved).toBe(false);
     expect(report.errors).toContain(
-      'goal blocker "runtime bundle remains remote-only" must link to a currently failing Beta 1 story',
+      'goal blocker "runtime bundle remains remote-only" must link to a currently failing story',
     );
   });
 
   test("rejects forged blocker links outside the authoritative failing-story set", () => {
     const forgedResolution = {
-      kind: "linked-beta-story",
+      kind: "linked-story",
       storyId: "US-430",
       currentlyFailing: true,
       rationale: "Reviewer claims US-430 is still failing.",
@@ -242,7 +242,7 @@ describe("US-431 closure review reporting", () => {
 
     expect(report.approved).toBe(false);
     expect(report.errors).toContain(
-      'goal blocker "runtime bundle remains remote-only" must link to a currently failing Beta 1 story',
+      'goal blocker "runtime bundle remains remote-only" must link to a currently failing story',
     );
   });
 
@@ -252,7 +252,7 @@ describe("US-431 closure review reporting", () => {
       severity: "blocker",
       sources: ["prd/release/prd-release-13-closure.md:85"],
       resolution: {
-        kind: "linked-beta-story",
+        kind: "linked-story",
         storyId: "US-433",
         rationale: "The production transport gap is tracked by US-433.",
         sources: ["prd/release/prd-release-13-closure.md:85"],

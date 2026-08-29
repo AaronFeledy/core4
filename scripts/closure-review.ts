@@ -84,7 +84,7 @@ const failingStoryIdsFromPrdPath = async (path: string): Promise<readonly string
 const reportFromInputPath = async (inputPath: string, prdPath: string) => {
   try {
     const failingStoryIds = await failingStoryIdsFromPrdPath(prdPath);
-    if (failingStoryIds === undefined) return failedClosureReviewReport(["Beta 1 PRD JSON shape is invalid"]);
+    if (failingStoryIds === undefined) return failedClosureReviewReport(["PRD JSON shape is invalid"]);
     return evaluateClosureReviewInput(parseJson(await readFile(inputPath, "utf8")), failingStoryIds);
   } catch (cause) {
     if (cause instanceof SyntaxError)
