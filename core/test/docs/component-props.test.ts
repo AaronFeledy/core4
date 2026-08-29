@@ -16,7 +16,7 @@ import {
   UseFixtureProps,
   VariableProps,
   VerifyProps,
-  assertAlpha2Component,
+  assertSupportedGuideComponent,
   decodeHiddenPropsEither,
   decodeInlinePropsEither,
   decodeInspectPropsEither,
@@ -360,10 +360,10 @@ describe("component prop schemas", () => {
   });
 
   test.each(["Bogus", "NotAComponent"] as const)(
-    "assertAlpha2Component rejects unknown component <%s>",
+    "assertSupportedGuideComponent rejects unknown component <%s>",
     (componentName) => {
       try {
-        assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx");
+        assertSupportedGuideComponent(componentName, "docs/guides/node-postgres.mdx");
         throw new Error(`expected ${componentName} to be rejected`);
       } catch (error) {
         expect(error).toBeInstanceOf(NotImplementedError);
@@ -389,8 +389,8 @@ describe("component prop schemas", () => {
     "Hidden",
     "Inline",
     "Skip",
-  ] as const)("assertAlpha2Component accepts supported component <%s>", (componentName) => {
-    expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
+  ] as const)("assertSupportedGuideComponent accepts supported component <%s>", (componentName) => {
+    expect(assertSupportedGuideComponent(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
   });
 
   test("accepts Inline props, applies lang default, and requires justification >= 8 chars", () => {
