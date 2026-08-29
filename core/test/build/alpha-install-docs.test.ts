@@ -20,7 +20,7 @@ describe("alpha install and bug report docs", () => {
     expect(docs).toContain("windows-arm64");
     expect(docs).toContain("dev prerelease");
     expect(docs).toContain("SHA256SUMS");
-    expect(docs).toContain("sha256sum -c SHA256SUMS");
+    expect(docs).toContain("grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c");
     expect(docs).toContain("lando-linux-x64");
     expect(docs).toContain("lando-linux-arm64");
     expect(docs).toContain("lando-darwin-x64");

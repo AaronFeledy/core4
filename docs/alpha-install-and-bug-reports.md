@@ -32,10 +32,10 @@ On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stay
 3. Verify the checksum:
 
 ```bash
-sha256sum -c SHA256SUMS
+grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
 ```
 
-The checksum command must report `OK` for the platform-qualified file you downloaded (for example `lando-linux-x64: OK`). If it does not, delete the binary and `SHA256SUMS`, then download them again from the same dev prerelease.
+Replace `lando-linux-x64` with the asset you downloaded. `SHA256SUMS` lists every platform; checking the whole file fails when the other binaries are not in this directory. The piped command must report `OK` for that file (for example `lando-linux-x64: OK`). If it does not, delete the binary and `SHA256SUMS`, then download them again from the same dev prerelease.
 
 4. On Unix, make it executable and test. On Windows, run the `.exe` instead of `chmod`.
 

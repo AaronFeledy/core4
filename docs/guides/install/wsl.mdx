@@ -21,10 +21,10 @@ Work inside the WSL distro shell, not a Windows prompt.
 3. Verify the checksum:
 
 ```sh
-sha256sum -c SHA256SUMS
+grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
 ```
 
-The checksum command must report `OK` for the platform-qualified file you downloaded. If it does not, delete both files and download them again from the same prerelease.
+Use `lando-linux-arm64` in that grep if that is the asset you downloaded. `SHA256SUMS` lists every platform, so checking the whole file fails when the other binaries are missing. The piped command must report `OK` for the file you have. If it does not, delete both files and download them again from the same prerelease.
 
 4. Make it executable and put it on PATH:
 

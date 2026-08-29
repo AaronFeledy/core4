@@ -27,5 +27,5 @@ agents get pulled in when you run `lando setup`.
 
 Alpha publishes `SHA256SUMS` beside every binary. Checksums, GPG/cosign
 signatures, SHA512, CycloneDX SBOM, and SLSA provenance stay later. Follow
-[alpha install and bug reports](../../alpha-install-and-bug-reports.md) for
-`sha256sum -c SHA256SUMS`.
+[alpha install and bug reports](../../alpha-install-and-bug-reports.md) to
+check only the asset you downloaded (`grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c`).
