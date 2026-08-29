@@ -1117,7 +1117,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
     });
   });
 
-  test("rejects a .bun.sh that declares a non-:host service with NotImplementedError (Beta-deferred)", async () => {
+  test("rejects a .bun.sh that declares a non-:host service with NotImplementedError", async () => {
     await withAppRoot(async (root) => {
       await writeBunShScript(
         root,
@@ -1142,6 +1142,9 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       if (exit._tag !== "Failure") return;
       const flat = JSON.stringify(exit.cause);
       expect(flat).toContain("NotImplementedError");
+      expect(flat).toContain("are not supported");
+      expect(flat).not.toContain("Alpha");
+      expect(flat).not.toContain("Beta");
       expect(flat).toContain("Remove the `service:` field");
       expect(calls).toHaveLength(0);
     });

@@ -9,7 +9,7 @@ const FRAGMENT_KEYS = new Set(["tooling", "toolingIncludes"]);
 const TOOLING_INCLUDE_KEYS = new Set(Object.keys(ToolingIncludeShape.fields));
 const FRAGMENT_KEY_REMEDIATION =
   "A tooling fragment may only declare tooling: and toolingIncludes:; move other keys into a Landofile include.";
-const ENTRY_FIELD_REMEDIATION = `A toolingIncludes: entry accepts only ${[...TOOLING_INCLUDE_KEYS].join(", ")}; dir: and checksum: are not part of the Beta 1 tooling-include shape.`;
+const ENTRY_FIELD_REMEDIATION = `A toolingIncludes: entry accepts only ${[...TOOLING_INCLUDE_KEYS].join(", ")}; dir: and checksum: are not part of the tooling-include shape.`;
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
