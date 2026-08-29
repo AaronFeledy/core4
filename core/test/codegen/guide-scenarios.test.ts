@@ -127,8 +127,8 @@ describe("build-guide-scenarios MDX walker", () => {
   });
 
   test("e2e default layer parses through guide frontmatter", async () => {
-    const content = await fixture("beta-only/beta.mdx");
-    const ast = parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
+    const content = await fixture("unsupported-only/unsupported.mdx");
+    const ast = parseGuideScenarioAst("docs/guides/unsupported-only/unsupported.mdx", content);
     expect(ast.frontmatter.defaultLayer).toBe("e2e");
   });
 
