@@ -105,7 +105,7 @@ export const Transcript = Schema.Struct({
 }).annotations({
   identifier: "Transcript",
   title: "Guide Scenario Transcript",
-  description: "Internal Alpha 2 guide scenario transcript.",
+  description: "Internal guide scenario transcript.",
 });
 export type Transcript = typeof Transcript.Type;
 

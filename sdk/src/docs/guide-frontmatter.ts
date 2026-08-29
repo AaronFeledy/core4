@@ -88,7 +88,7 @@ export const GuideFrontmatter = Schema.Struct({
 }).annotations({
   identifier: "GuideFrontmatter",
   title: "Guide Frontmatter",
-  description: "Alpha 2 executable guide frontmatter.",
+  description: "Executable guide frontmatter.",
 });
 export type GuideFrontmatter = typeof GuideFrontmatter.Type;
 

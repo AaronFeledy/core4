@@ -3,7 +3,7 @@
  *
  * Long-running commands publish `task.tree.start` with child ids, then
  * `task.start` / `task.complete` / `task.fail` per child, then
- * `task.tree.complete`. This subpath is the same additive-Beta utility tier as
+ * `task.tree.complete`. This subpath is the same additive utility tier as
  * `@lando/sdk/probe`: it constructs no `LandoRuntime`, pulls no service
  * `Layer`, and imports only effect plus type-only sibling events/schema/services.
  * It is **not** a `Context.Tag` service and **not** a pluggable abstraction.
