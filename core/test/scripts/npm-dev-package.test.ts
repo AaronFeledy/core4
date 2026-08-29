@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import {
-  deriveNpmAlphaVersion,
-  deriveNpmBetaVersion,
+  deriveNpmDevVersion,
+  deriveNpmNextVersion,
   preparePackageJson,
   releasePackageNames,
   releasePackageWorkspaces,
@@ -104,14 +104,14 @@ describe("npm dev package preparation", () => {
     }
   });
 
-  test("derives alpha package versions for workflow runs", () => {
-    expect(deriveNpmAlphaVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-alpha.123");
-    expect(deriveNpmAlphaVersion({ LANDO_NPM_VERSION: "4.0.0-alpha.local" })).toBe("4.0.0-alpha.local");
+  test("derives dev package versions for workflow runs", () => {
+    expect(deriveNpmDevVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-dev.123");
+    expect(deriveNpmDevVersion({ LANDO_NPM_VERSION: "4.0.0-dev.local" })).toBe("4.0.0-dev.local");
   });
 
-  test("derives beta package versions for release workflow runs", () => {
-    expect(deriveNpmBetaVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-beta.123");
-    expect(deriveNpmBetaVersion({ LANDO_NPM_VERSION: "4.0.0-beta.local" })).toBe("4.0.0-beta.local");
+  test("derives next package versions for release workflow runs", () => {
+    expect(deriveNpmNextVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-next.123");
+    expect(deriveNpmNextVersion({ LANDO_NPM_VERSION: "4.0.0-next.local" })).toBe("4.0.0-next.local");
   });
 
   test("marks packages publishable on the requested npm dist-tag", () => {
@@ -122,11 +122,11 @@ describe("npm dev package preparation", () => {
           version: "0.0.0",
           private: true,
         },
-        "4.0.0-beta.7",
+        "4.0.0-next.7",
         "next",
       ),
     ).toMatchObject({
-      version: "4.0.0-beta.7",
+      version: "4.0.0-next.7",
       private: false,
       publishConfig: { access: "public", tag: "next", provenance: true },
     });
@@ -148,27 +148,30 @@ describe("npm dev package preparation", () => {
           "@lando/core": "workspace:*",
         },
       },
-      "4.0.0-beta.7",
+      "4.0.0-next.7",
       "next",
     );
 
     expect(prepared.dependencies).toEqual({
-      "@lando/container-runtime": "4.0.0-beta.7",
-      "@lando/provider-lando": "4.0.0-beta.7",
-      "@lando/sdk": "4.0.0-beta.7",
+      "@lando/container-runtime": "4.0.0-next.7",
+      "@lando/provider-lando": "4.0.0-next.7",
+      "@lando/sdk": "4.0.0-next.7",
       effect: "^3.21.2",
     });
     expect(prepared.peerDependencies).toEqual({
-      "@lando/core": "4.0.0-beta.7",
+      "@lando/core": "4.0.0-next.7",
     });
   });
 
-  test("release orchestrator publishes alpha workspaces on the dev tag", async () => {
+  test("release orchestrator publishes dev workspaces on the dev tag", async () => {
     const source = await Bun.file(releaseScriptPath).text();
 
-    expect(source).toContain("prepareNpmAlphaPackages");
+    expect(source).toContain("prepareNpmDevPackages");
+    expect(source).not.toContain("prepareNpmAlphaPackages");
+    expect(source).not.toContain("prepareNpmBetaPackages");
     expect(source).toContain("releasePackageNames.map");
     expect(source).toContain("npm publish --workspace ${packageName} --access public --tag dev --provenance");
     expect(source).toContain("npm view @lando/core dist-tags.dev --json");
+    expect(source).toContain("4\\\\.0\\\\.0-dev\\\\.");
   });
 });
