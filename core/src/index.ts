@@ -4,7 +4,7 @@
  * Public API surface for the `LandoRuntime` factory.
  *
  * **Stability:** this library surface is unstable and published only on
- * dev/next channels until GA. New exports require a library-API
+ * dev/next channels. New exports require a library-API
  * contract test.
  *
  * **Boundary rule:** importing this entry point MUST NOT pull `@oclif/core`
