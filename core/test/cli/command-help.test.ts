@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { renderCommandHelp, renderToolingHelp } from "../../src/cli/cli-help.ts";
+import { commandStructureExample } from "../../src/cli/compiled-argv.ts";
 import { shouldStyleHelp } from "../../src/cli/help-style.ts";
 
 const requireBuiltIn = (token: string) => {
@@ -41,6 +42,12 @@ describe("renderCommandHelp", () => {
     expect(help).toContain("lando start");
     expect(help).not.toContain("$ lando");
     expect(typeof help).toBe("string");
+  });
+
+  test("commandStructureExample uses the typeable usage shape", () => {
+    expect(commandStructureExample("app:shell")).toBe("lando shell [--service SERVICE]");
+    expect(commandStructureExample("app:exec")).toBe("lando exec [SERVICE] -- [COMMAND...]");
+    expect(commandStructureExample("app:start")).toBe("lando start");
   });
 
   test("uses the typeable name in USAGE instead of the canonical id", () => {
@@ -123,6 +130,20 @@ describe("renderCommandHelp", () => {
     const examples = sectionBody(help, "EXAMPLES");
     expect(examples).toContain("lando example --watch");
     expect(examples).toContain("lando example ./src");
+  });
+
+  test("exec USAGE shows optional service then command argv", () => {
+    // Given the registered exec command
+    const entry = requireBuiltIn("exec");
+
+    // When per-command help is rendered
+    const help = renderCommandHelp(entry);
+
+    // Then USAGE and EXAMPLES document positional service plus `--`
+    expect(sectionBody(help, "USAGE")).toContain("lando exec [SERVICE] -- [COMMAND...]");
+    const examples = sectionBody(help, "EXAMPLES");
+    expect(examples).toContain("lando exec -- echo hello");
+    expect(examples).toContain("lando exec appserver -- echo hello");
   });
 
   test("keeps the deferred STATUS block", () => {

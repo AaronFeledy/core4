@@ -129,7 +129,7 @@ describe("SDK backward-compatibility surface", () => {
       .filter((tagName) => !frozenServiceTagNames.has(tagName))
       .sort();
 
-    expect(additiveSchemaNames).toEqual([...documentedNames("Additive Alpha schema exports")]);
-    expect(additiveServiceTagNames).toEqual([...documentedNames("Additive Alpha service tags")]);
+    expect(additiveSchemaNames).toEqual([...documentedNames("Additive schema exports")]);
+    expect(additiveServiceTagNames).toEqual([...documentedNames("Additive service tags")]);
   });
 });

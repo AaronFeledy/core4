@@ -14,6 +14,7 @@ import { outputJournalFor } from "./renderer-output-journal.ts";
 import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
 import { type LiveRegionHandle, makeTaskTreeSubstrateHandler } from "./task-tree-substrate-handler.ts";
+import { createToolingStatusPainter } from "./tooling-status.ts";
 import { makeTranscriptTailController } from "./transcript-tail-controller.ts";
 import { TranscriptTailReader } from "./transcript-tail-reader.ts";
 
@@ -43,6 +44,7 @@ export const makeTaskTreeConsumerLive = (
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
+      const toolingStatus = createToolingStatusPainter();
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
@@ -207,6 +209,7 @@ export const makeTaskTreeConsumerLive = (
         Effect.gen(function* () {
           if (/^cli-.+-init$/.test(event._tag) && Reflect.get(event, "parentInvocationId") === undefined)
             prefetchLiveRegion();
+          if (yield* toolingStatus.consume(event, acquire)) return;
           const routed = yield* routeSessionEvent(
             event,
             session,
@@ -226,6 +229,7 @@ export const makeTaskTreeConsumerLive = (
         Effect.gen(function* () {
           handleResize = () => {};
           unsubscribe?.();
+          toolingStatus.stop();
           const remaining = yield* Queue.takeAll(queue);
           for (const event of remaining) yield* serialized(consume(event));
           yield* Fiber.interrupt(fiber);

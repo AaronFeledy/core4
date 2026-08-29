@@ -15,6 +15,7 @@ import {
   renderJsonBugReport,
   renderPlainBugReport,
 } from "../../src/cli/bug-report.ts";
+import { commandErrorMessage } from "../../src/cli/compiled-session.ts";
 import { dimBugReportDetails } from "../../src/cli/diagnostic-text.ts";
 
 const CACHE_ROOT = "/tmp/lando-test-cache";
@@ -248,6 +249,12 @@ describe("renderPlainBugReport: stable multi-line output", () => {
       }),
     );
     expect(text.includes(String.fromCharCode(27))).toBe(false);
+  });
+
+  test("does not invent an Example line when the error has no remediation", () => {
+    const text = commandErrorMessage(new Error("boom"), "app:start");
+    expect(text).toContain("boom");
+    expect(text).not.toContain("Example:");
   });
 
   test("includes appId and providerId when known", () => {

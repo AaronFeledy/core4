@@ -5,6 +5,7 @@ import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors"
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { runMetaMcp } from "./cli-adapters/meta-plugin";
+import { commandStructureExample } from "./compiled-argv";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { InvalidCliInvocationError, invocationParityError } from "./compiled-invocation-parity";
 import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
@@ -30,7 +31,7 @@ export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArra
         new InvalidCliInvocationError({
           message: diagnostic,
           commandId: entry.spec.id,
-          remediation: `Fix the invocation or run \`lando ${entry.spec.id} --help\` for usage.`,
+          remediation: `Example: ${commandStructureExample(entry.spec.id) ?? `lando ${entry.spec.id}`}`,
         }),
       ),
       Layer.empty,

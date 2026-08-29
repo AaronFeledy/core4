@@ -8,7 +8,7 @@ export interface ClosureFindingResolutionFixed {
 }
 
 export interface ClosureFindingResolutionLinkedStory {
-  readonly kind: "linked-beta-story";
+  readonly kind: "linked-story";
   readonly storyId: string;
   readonly rationale: string;
   readonly sources: readonly string[];
@@ -117,14 +117,14 @@ const parseResolution = (
       errors.push(`${laneId} blocker "${title}" requires fixed-and-re-reviewed evidence`);
     return evidence === undefined ? undefined : { kind, evidence };
   }
-  if (kind === "linked-beta-story") {
+  if (kind === "linked-story") {
     const storyId = nonEmptyText(value.storyId);
     const rationale = nonEmptyText(value.rationale);
     const sources = stringArray(value.sources);
     const linksFailingStory = storyId !== undefined && failingStoryIds.has(storyId);
-    if (storyId === undefined) errors.push(`${laneId} blocker "${title}" requires a Beta 1 story link`);
+    if (storyId === undefined) errors.push(`${laneId} blocker "${title}" requires a story link`);
     if (storyId !== undefined && !linksFailingStory)
-      errors.push(`${laneId} blocker "${title}" must link to a currently failing Beta 1 story`);
+      errors.push(`${laneId} blocker "${title}" must link to a currently failing story`);
     if (rationale === undefined || sources === undefined || sources.length === 0)
       errors.push(`${laneId} blocker "${title}" requires source-backed rationale`);
     if (!linksFailingStory || rationale === undefined || sources === undefined) return undefined;
@@ -211,7 +211,7 @@ const unresolvedBlockerErrors = (lane: ClosureLaneReport): readonly string[] =>
   lane.findings.flatMap((finding) => {
     if (finding.severity !== "blocker") return [];
     if (finding.resolution?.kind === "fixed-and-re-reviewed") return [];
-    if (finding.resolution?.kind === "linked-beta-story")
+    if (finding.resolution?.kind === "linked-story")
       return [
         `${lane.id} blocker "${finding.title}" remains linked to failing story ${finding.resolution.storyId}`,
       ];

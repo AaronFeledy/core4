@@ -200,11 +200,11 @@ describe("update signed manifest", () => {
 
   test("derives the default update channel from the current binary version", () => {
     expect(updateChannelForVersion("4.0.0-dev.7")).toBe("dev");
-    expect(updateChannelForVersion("4.0.0-alpha.3")).toBe("dev");
+    expect(updateChannelForVersion("4.0.0-alpha.3")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-next.2")).toBe("next");
-    expect(updateChannelForVersion("4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForVersion("4.0.0-beta.2")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-rc.1")).toBe("next");
-    expect(updateChannelForVersion("v4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForVersion("v4.0.0-beta.2")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-development.1")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-alphabet.1")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-preview.alpha.1")).toBe("stable");
@@ -253,7 +253,7 @@ describe("update signed manifest", () => {
 
     await Effect.runPromise(
       runUpdate({
-        currentVersion: "4.0.0-beta.4",
+        currentVersion: "4.0.0-next.4",
         dryRun: true,
         fetchManifestBytes: fetcherFor("next", fetched),
         verifyManifestSignature: verifierFor(),

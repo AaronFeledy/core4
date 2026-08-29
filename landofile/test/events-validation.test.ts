@@ -7,7 +7,7 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape } from "@lando/sdk/schema";
 
-import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "../src/tooling-beta.ts";
+import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "../src/tooling-unsupported.ts";
 
 const cliEntry = resolve(import.meta.dirname, "../../core/bin/lando.ts");
 const validNames = [
@@ -51,7 +51,7 @@ describe("Landofile events", () => {
     ).toThrow();
   });
 
-  test("structured event fields are accepted by the Beta scanner", async () => {
+  test("structured event fields are accepted by the unsupported-feature scanner", async () => {
     // Given
     const graduatedSteps = [
       { defer: "later" },
@@ -69,7 +69,7 @@ describe("Landofile events", () => {
       // When
       const outcome = await Effect.runPromise(
         Effect.either(
-          rejectBetaToolingFeatures("/workspace/.lando.yml", {
+          rejectUnsupportedToolingFeatures("/workspace/.lando.yml", {
             events: { "pre-start": [step] },
           }),
         ),
@@ -80,7 +80,7 @@ describe("Landofile events", () => {
     }
   });
 
-  test("event platforms remain rejected by the Beta scanner", async () => {
+  test("event platforms remain rejected as unsupported", async () => {
     // Given
     const unsupportedSteps = [{ cmd: "uname", platforms: ["linux"] }] as const;
 
@@ -88,7 +88,7 @@ describe("Landofile events", () => {
       // When
       const outcome = await Effect.runPromise(
         Effect.either(
-          rejectBetaToolingFeatures("/workspace/.lando.yml", {
+          rejectUnsupportedToolingFeatures("/workspace/.lando.yml", {
             events: { "pre-start": [step] },
           }),
         ),
@@ -97,7 +97,13 @@ describe("Landofile events", () => {
       // Then
       expect(outcome._tag).toBe("Left");
       if (outcome._tag !== "Left") throw new Error("expected unsupported event step failure");
-      expect(outcome.left).toMatchObject({ _tag: "NotImplementedError", remediation: BETA_REMEDIATION });
+      expect(outcome.left).toMatchObject({
+        _tag: "NotImplementedError",
+        remediation: UNSUPPORTED_REMEDIATION,
+      });
+      expect(outcome.left.message).toContain('Event step field "platforms"');
+      expect(outcome.left.message).toContain("/workspace/.lando.yml");
+      expect(outcome.left.message).not.toMatch(/\b(?:Alpha|Beta)\b/);
     }
   });
 

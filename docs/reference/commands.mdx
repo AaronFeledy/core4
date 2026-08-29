@@ -146,14 +146,13 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `command` | Command to run (first positional). |
+| `command` | Command argv after `--`. An optional service name may come first. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
 | `--cwd` | Working directory inside the service. |
-| `--service, -s` | Service to run the command in. |
 | `--user, -u` | User to run the command as inside the service. |
 
 ## `lando app:includes:update`
@@ -451,8 +450,8 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--service, -s` | Service to open a shell in. |
-| `--sidecar` | (Beta) Open the shell in a per-app SSH sidecar; rejected in Alpha. |
-| `--subsystem` | (Beta) SSH subsystem to invoke; rejected in Alpha. |
+| `--sidecar` | Open the shell in a per-app SSH sidecar; not supported. |
+| `--subsystem` | SSH subsystem to invoke; not supported. |
 | `--user, -u` | User to run the shell as inside the service. |
 
 ## `lando app:start`
@@ -923,7 +922,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--force` | Re-install even if already present. |
-| `--trust` | Trust the plugin for this session (required for non-interactive installs; persistent trust is deferred to Beta). |
+| `--trust` | Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported). |
 | `--yes, -y` | Alias of --trust. |
 
 ## `lando meta:plugin:build`

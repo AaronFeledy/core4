@@ -14,7 +14,6 @@ import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { parseLandofile } from "./parser.ts";
-import { rejectBetaToolingFeatures } from "./tooling-beta.ts";
 import { assertToolingFragment, isPlainRecord } from "./tooling-fragment.ts";
 import {
   type NormalizedToolingInclude,
@@ -23,6 +22,7 @@ import {
   hasToolingIncludes,
   normalizeToolingIncludes,
 } from "./tooling-include-entries.ts";
+import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 
 export { hasToolingIncludes } from "./tooling-include-entries.ts";
 
@@ -122,7 +122,7 @@ const loadFragment = (
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => assertToolingFragment(parsed, entry.source, filePath)),
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
-    Effect.tap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+    Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,
       tooling: isPlainRecord(parsed.tooling) ? parsed.tooling : {},

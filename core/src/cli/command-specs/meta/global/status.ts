@@ -38,6 +38,7 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   namespace: "meta",
   topLevelAlias: "global:status",
   bootstrap: "global",
+  usage: "[--service SERVICE]",
   flags: {
     service: Flags.string({
       char: "s",

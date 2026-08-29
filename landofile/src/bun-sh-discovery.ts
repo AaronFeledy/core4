@@ -31,7 +31,7 @@ export type BunShellScriptDiscoveryError =
 
 const HOST_SERVICE = ":host";
 
-const BETA_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string }> = [
+const UNSUPPORTED_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string }> = [
   { key: "aliases" },
   { key: "topLevelAlias" },
   { key: "bootstrap" },
@@ -49,10 +49,11 @@ const BETA_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string }> = [
   { key: "engine" },
 ];
 
-const BETA_REMEDIATION = "Remove the field from the .bun.sh front-matter; this surface is not supported yet.";
+const UNSUPPORTED_FRONT_MATTER_REMEDIATION =
+  "Remove the field from the .bun.sh front-matter; this surface is not supported yet.";
 
 const FRONT_MATTER_REMEDIATION =
-  "Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only the Alpha keys: service, desc, description, summary.";
+  "Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only the supported keys: service, desc, description, summary.";
 
 const isFrontMatterFenceLine = (line: string): boolean => line.replace(/\s+$/, "") === "# ---";
 
@@ -150,20 +151,20 @@ const decodeFrontMatter = (
       }),
   )(parsed, { onExcessProperty: "error" });
 
-const detectBetaKey = (parsed: Record<string, unknown>): { key: string } | undefined => {
-  for (const entry of BETA_FRONT_MATTER_KEYS) {
+const detectUnsupportedKey = (parsed: Record<string, unknown>): { key: string } | undefined => {
+  for (const entry of UNSUPPORTED_FRONT_MATTER_KEYS) {
     if (Object.hasOwn(parsed, entry.key)) return entry;
   }
   return undefined;
 };
 
-const detectBetaKeyFromBody = (body: ReadonlyArray<string>): { key: string } | undefined => {
+const detectUnsupportedKeyFromBody = (body: ReadonlyArray<string>): { key: string } | undefined => {
   for (const raw of body) {
     if (raw === "" || /^\s/.test(raw)) continue;
     const match = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):/);
     if (match === null) continue;
     const key = match[1];
-    const entry = BETA_FRONT_MATTER_KEYS.find((candidate) => candidate.key === key);
+    const entry = UNSUPPORTED_FRONT_MATTER_KEYS.find((candidate) => candidate.key === key);
     if (entry !== undefined) return entry;
   }
   return undefined;
@@ -232,13 +233,13 @@ const parseScriptFile = (
       );
     }
 
-    const betaFromBody = detectBetaKeyFromBody(region.body);
-    if (betaFromBody !== undefined) {
+    const unsupportedFromBody = detectUnsupportedKeyFromBody(region.body);
+    if (unsupportedFromBody !== undefined) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${betaFromBody.key}:" at ${scriptPath} is not supported yet.`,
+          message: `.bun.sh front-matter field "${unsupportedFromBody.key}:" at ${scriptPath} is not supported yet.`,
           commandId: "landofile.parse",
-          remediation: BETA_REMEDIATION,
+          remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
         }),
       );
     }
@@ -255,13 +256,13 @@ const parseScriptFile = (
       );
     }
 
-    const beta = detectBetaKey(parsed);
-    if (beta !== undefined) {
+    const unsupportedKey = detectUnsupportedKey(parsed);
+    if (unsupportedKey !== undefined) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${beta.key}:" at ${scriptPath} is not supported yet.`,
+          message: `.bun.sh front-matter field "${unsupportedKey.key}:" at ${scriptPath} is not supported yet.`,
           commandId: "landofile.parse",
-          remediation: BETA_REMEDIATION,
+          remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
         }),
       );
     }

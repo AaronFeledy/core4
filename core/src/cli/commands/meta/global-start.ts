@@ -108,12 +108,16 @@ const availableServiceList = (services: AppPlan["services"]): string =>
 
 const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
+  const first = list.split(", ")[0];
   return new ToolingExecError({
     message:
       list.length === 0
         ? `meta:global:start: service ${requested} is not in the global app plan.`
         : `meta:global:start: service ${requested} is not in the global app plan (available: ${list}).`,
     tool: "meta:global:start",
+    ...(first === undefined || first.length === 0
+      ? {}
+      : { remediation: `Example: lando global:start --service ${first}` }),
   });
 };
 

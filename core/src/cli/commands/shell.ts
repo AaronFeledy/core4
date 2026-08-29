@@ -206,12 +206,16 @@ const availableServiceList = (services: AppPlan["services"]): string =>
 
 const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
+  const first = list.split(", ")[0];
   return new ToolingExecError({
     message:
       list.length === 0
         ? `shell: service ${requested} is not in the app plan.`
         : `shell: service ${requested} is not in the app plan (available: ${list}).`,
     tool: "app:shell",
+    ...(first === undefined || first.length === 0
+      ? {}
+      : { remediation: `Example: lando shell --service ${first}` }),
   });
 };
 

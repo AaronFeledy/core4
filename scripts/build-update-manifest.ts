@@ -37,8 +37,8 @@ const prereleaseChannelIdentifier = (version: string): string => {
 
 export const updateChannelForReleaseVersion = (version: string): UpdateChannel => {
   const identifier = prereleaseChannelIdentifier(version);
-  if (identifier === "dev" || identifier === "alpha") return "dev";
-  if (identifier === "next" || identifier === "beta" || identifier === "rc") return "next";
+  if (identifier === "dev") return "dev";
+  if (identifier === "next" || identifier === "rc") return "next";
   return "stable";
 };
 

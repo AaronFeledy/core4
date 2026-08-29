@@ -56,12 +56,40 @@ describe("LiveRegionController", () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
 
-    controller.commitScrollback("first");
+    controller.commitScrollback("first\n");
     controller.setFooter(["building"]);
-    controller.commitScrollback("second");
+    controller.commitScrollback("second\n");
     controller.setFooter(["done"]);
 
     expectOrder(written(fixture), ["first", "building", "second", "done"]);
+  });
+
+  test("keeps carriage-return progress on one line and does not paint footer over it", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.setFooter(["executing composer  0ms"]);
+    fixture.writes.length = 0;
+
+    controller.commitScrollback("  0/108 [>---------------------------]   0%\r");
+    controller.setFooter(["executing composer  400ms"]);
+    controller.commitScrollback("  53/108 [=============>--------------]  49%\r");
+
+    const text = written(fixture);
+    expect(text).toContain("  0/108 [>---------------------------]   0%\r");
+    expect(text).toContain("  53/108 [=============>--------------]  49%\r");
+    expect(text.split("\n").filter((line) => line.includes("/108")).length).toBe(1);
+  });
+
+  test("clearFooter erases the inline status line", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.setFooter(["executing composer  400ms"]);
+    fixture.writes.length = 0;
+
+    controller.clearFooter();
+
+    expect(written(fixture)).toContain(`${ESC}[`);
+    expect(written(fixture)).toContain("J");
   });
 
   test("commits embedded LF as separate styled scrollback rows including semantic blanks", async () => {
@@ -83,7 +111,7 @@ describe("LiveRegionController", () => {
     fixture.writes.length = 0;
 
     controller.setFooter([]);
-    controller.commitScrollback("retired output");
+    controller.commitScrollback("retired output\n");
 
     expect(fixture.calls).toEqual([]);
     expect(written(fixture)).toBe("retired output\n");

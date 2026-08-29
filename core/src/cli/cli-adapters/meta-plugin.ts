@@ -260,6 +260,7 @@ export const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
   const [spec, ...rest] = input.argv;
   if (spec === undefined) {
     emitDiagnosticLine("meta:x requires a package spec as the first positional argument.");
+    emitDiagnosticLine("  ↳ Example: lando x prettier");
     process.exitCode = 1;
     return;
   }
@@ -511,6 +512,7 @@ export const runMetaRecipesDescribe = (argv: ReadonlyArray<string>): Promise<voi
   const ref = recipeRefFromInput(input);
   if (ref === "") {
     emitDiagnosticLine("Missing required argument: ref");
+    emitDiagnosticLine("  ↳ Example: lando recipes:describe lamp");
     process.exitCode = 2;
     return Promise.resolve();
   }
@@ -525,6 +527,7 @@ export const runMetaRecipesValidate = (argv: ReadonlyArray<string>): Promise<voi
   const path = recipePathFromInput(input);
   if (path === "") {
     emitDiagnosticLine("Missing required argument: path");
+    emitDiagnosticLine("  ↳ Example: lando recipes:validate ./");
     process.exitCode = 2;
     return Promise.resolve();
   }

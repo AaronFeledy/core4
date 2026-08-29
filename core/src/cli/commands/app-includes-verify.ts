@@ -25,7 +25,7 @@ import type {
   LandofileIncludeDeps,
 } from "@lando/landofile/includes";
 import { parseLandofile } from "@lando/landofile/parser";
-import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
+import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 
 export type {
   IncludeVerifyEntry,
@@ -119,7 +119,7 @@ export const appIncludesVerify = (
     const checkedContent = yield* rejectComposeTags(filePath, content);
     const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
     const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
-    yield* rejectBetaToolingFeatures(filePath, checkedParsed);
+    yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
     const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
     if (decoded._tag === "Left") {
       return yield* Effect.fail(

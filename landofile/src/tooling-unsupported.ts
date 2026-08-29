@@ -2,9 +2,9 @@ import { Effect } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-export const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
+export const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
-const BETA_TOOLING_TASK_KEYS = [
+const UNSUPPORTED_TOOLING_TASK_KEYS = [
   "deps",
   "engine",
   "bootstrap",
@@ -36,16 +36,18 @@ const BETA_TOOLING_TASK_KEYS = [
   "usage",
 ] as const;
 
-const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
+const UNSUPPORTED_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
 
-interface ToolingBetaFinding {
+interface ToolingUnsupportedFinding {
   readonly task: string;
   readonly key: string;
   readonly description: string;
   readonly event?: string;
 }
 
-const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBetaFinding | undefined => {
+const scanEventsForUnsupported = (
+  parsed: Readonly<Record<string, unknown>>,
+): ToolingUnsupportedFinding | undefined => {
   const events = parsed.events;
   if (events === null || typeof events !== "object" || Array.isArray(events)) return undefined;
 
@@ -67,11 +69,11 @@ const scanEventsForBeta = (parsed: Readonly<Record<string, unknown>>): ToolingBe
   return undefined;
 };
 
-const scanToolingInputMetadataForBeta = (
+const scanToolingInputMetadataForUnsupported = (
   taskName: string,
   task: Readonly<Record<string, unknown>>,
   section: "flags" | "args",
-): ToolingBetaFinding | undefined => {
+): ToolingUnsupportedFinding | undefined => {
   const metadata = task[section];
   if (
     metadata === undefined ||
@@ -112,10 +114,10 @@ const scanToolingInputMetadataForBeta = (
   return undefined;
 };
 
-export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => {
+export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFinding | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;
   const parsedRecord = parsed as Record<string, unknown>;
-  const eventFinding = scanEventsForBeta(parsedRecord);
+  const eventFinding = scanEventsForUnsupported(parsedRecord);
   if (eventFinding !== undefined) return eventFinding;
   const tooling = parsedRecord.tooling;
   if (tooling === null || typeof tooling !== "object" || Array.isArray(tooling)) return undefined;
@@ -125,7 +127,7 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     if (taskValue === null || typeof taskValue !== "object" || Array.isArray(taskValue)) continue;
     const task = taskValue as Record<string, unknown>;
 
-    for (const key of BETA_TOOLING_TASK_KEYS) {
+    for (const key of UNSUPPORTED_TOOLING_TASK_KEYS) {
       if (Object.hasOwn(task, key)) {
         return {
           task: taskName,
@@ -136,8 +138,8 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
     }
 
     const unsupportedInputMetadata =
-      scanToolingInputMetadataForBeta(taskName, task, "flags") ??
-      scanToolingInputMetadataForBeta(taskName, task, "args");
+      scanToolingInputMetadataForUnsupported(taskName, task, "flags") ??
+      scanToolingInputMetadataForUnsupported(taskName, task, "args");
     if (unsupportedInputMetadata !== undefined) return unsupportedInputMetadata;
 
     const cmds = task.cmds;
@@ -146,7 +148,7 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
         if (step !== null && typeof step === "object" && !Array.isArray(step)) {
           const stepObj = step as Record<string, unknown>;
           for (const stepKey of Object.keys(stepObj)) {
-            if (BETA_STEP_OBJECT_KEYS.has(stepKey)) {
+            if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
               return {
                 task: taskName,
                 key: `cmds[].${stepKey}`,
@@ -177,20 +179,20 @@ export const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefi
   return undefined;
 };
 
-export const rejectBetaToolingFeatures = (
+export const rejectUnsupportedToolingFeatures = (
   filePath: string,
   parsed: unknown,
 ): Effect.Effect<unknown, NotImplementedError> => {
-  const finding = scanToolingForBeta(parsed);
+  const finding = scanToolingForUnsupported(parsed);
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
       message:
         finding.event === undefined
-          ? `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`
-          : `${finding.description} in event "${finding.event}" is not supported in Alpha Landofiles at ${filePath}.`,
+          ? `${finding.description} in tooling task "${finding.task}" is not supported at ${filePath}.`
+          : `${finding.description} in event "${finding.event}" is not supported at ${filePath}.`,
       commandId: "landofile.parse",
-      remediation: BETA_REMEDIATION,
+      remediation: UNSUPPORTED_REMEDIATION,
     }),
   );
 };

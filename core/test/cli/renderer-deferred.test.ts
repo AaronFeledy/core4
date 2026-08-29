@@ -108,7 +108,7 @@ describe("findDeferredRendererFlag", () => {
     expect(findDeferredRendererFlag(["app:exec", "--", "bash", "-c", "echo --no-expand"])).toBeUndefined();
   });
 
-  test("does not intercept app:logs --tail because it is a command-specific Alpha flag", () => {
+  test("does not intercept app:logs --tail because it is a command-specific flag", () => {
     expect(findDeferredRendererFlag(["logs", "--tail", "25"])).toBeUndefined();
     expect(findDeferredRendererFlag(["app:logs", "--tail=25"])).toBeUndefined();
   });

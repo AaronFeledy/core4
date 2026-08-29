@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import { Args } from "../../spec/metadata";
 
+import { NotImplementedError } from "@lando/sdk/errors";
+
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../commands/bun";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -23,6 +25,7 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
   topLevelAlias: true,
   bootstrap: "minimal",
   strict: false,
+  usage: "<PACKAGE> [-- <ARGS...>]",
   args: {
     spec: Args.string({ description: "Package spec (e.g. prettier@latest, @astrojs/cli)", required: true }),
   },
@@ -32,7 +35,11 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
       const { spec, args } = splitSpecAndArgs(argv);
       if (spec === undefined) {
         return yield* Effect.fail(
-          new Error("meta:x requires a package spec as the first positional argument."),
+          new NotImplementedError({
+            message: "meta:x requires a package spec as the first positional argument.",
+            commandId: "meta:x",
+            remediation: "Example: lando x prettier",
+          }),
         );
       }
       return yield* metaX({ spec, argv: args });

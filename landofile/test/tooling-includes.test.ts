@@ -554,7 +554,7 @@ describe("tooling includes — failure modes", () => {
     expect(error.message).toContain("docs:build");
   });
 
-  test("a tooling fragment carrying a Beta-only task field is rejected with remediation", async () => {
+  test("a tooling fragment carrying an unsupported task field is rejected with remediation", async () => {
     // Given
     await writeFile(
       join(appRoot, "tasks.yml"),

@@ -43,6 +43,8 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
+  /** Optional USAGE tail after the typeable command name, e.g. `[SERVICE] -- [COMMAND...]`. */
+  readonly usage?: string;
   readonly helpGroup?: LandoHelpGroup;
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;

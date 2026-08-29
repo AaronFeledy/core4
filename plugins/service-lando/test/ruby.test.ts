@@ -57,11 +57,11 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("ruby ServiceType — supported versions and frameworks", () => {
-  test("exposes 3.3 as the alpha supported ruby version", () => {
+  test("exposes 3.3 as the supported ruby version", () => {
     expect([...SUPPORTED_RUBY_VERSIONS]).toEqual(["3.3"]);
   });
 
-  test("exposes rails, none as the alpha supported frameworks", () => {
+  test("exposes rails, none as the supported frameworks", () => {
     expect([...SUPPORTED_RUBY_FRAMEWORKS]).toEqual(["rails", "none"]);
   });
 });

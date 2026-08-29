@@ -25,7 +25,7 @@ export type SubscriberSelector = typeof SubscriberSelector.Type;
 
 /**
  * Closed set of global-config keys a subscriber may request via configKey.
- * Beta 1 publishes only notify (projects decoded NotifyConfig).
+ * Publishes only notify (projects decoded NotifyConfig).
  */
 export const PublishedGlobalConfigKey = Schema.Literal("notify");
 export type PublishedGlobalConfigKey = typeof PublishedGlobalConfigKey.Type;

@@ -81,7 +81,11 @@ describe("lando init --recipe (non-node-postgres)", () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("not implemented yet");
+      const message = (caught as Error).message;
+      expect(message).toContain("not supported");
+      expect(message).toContain("only bundled built-in recipes");
+      expect(message).not.toMatch(/\bAlpha\b/);
+      expect(message).not.toMatch(/\bBeta\b/);
     });
   });
 });
@@ -225,7 +229,11 @@ describe("lando init --recipe (non-node-postgres)", () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("not implemented yet");
+      const message = (caught as Error).message;
+      expect(message).toContain("not supported");
+      expect(message).toContain("only bundled built-in recipes");
+      expect(message).not.toMatch(/\bAlpha\b/);
+      expect(message).not.toMatch(/\bBeta\b/);
     });
   });
 });

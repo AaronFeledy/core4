@@ -18,7 +18,7 @@ const resolutionText = (resolution: ClosureFindingResolution | undefined): strin
   switch (resolution.kind) {
     case "fixed-and-re-reviewed":
       return `fixed and re-reviewed: ${resolution.evidence}`;
-    case "linked-beta-story":
+    case "linked-story":
       return `linked to ${resolution.storyId}: ${resolution.rationale}; sources: ${resolution.sources.join("; ")}`;
   }
 };
@@ -28,7 +28,7 @@ const findingText = (finding: ClosureFindingReport): string =>
 
 export const renderClosureReviewMarkdown = (report: ClosureReviewReport): string => {
   const lines = [
-    "# Beta 1 Closure Review",
+    "# Closure Review",
     "",
     `schemaVersion: ${report.schemaVersion}`,
     `approved: ${report.approved}`,

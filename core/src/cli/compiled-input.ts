@@ -29,7 +29,12 @@ const withCommandRemainderSeparator = (
     const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
     const normalizedToken = normalizeCliFlagTokens([arg], flagDefinitions);
     const recognized = flagTokens.has(token) || normalizedToken.length !== 1 || normalizedToken[0] !== arg;
-    if (!recognized) return [...argv.slice(0, index), "--", ...argv.slice(index)];
+    if (!recognized) {
+      // An explicit `--` later already terminates flags. Inserting another one
+      // would leak the real terminator into parsedArgv (`exec app -- echo`).
+      if (argv.indexOf("--", index) !== -1) return argv;
+      return [...argv.slice(0, index), "--", ...argv.slice(index)];
+    }
 
     const last = normalizedToken.at(-1);
     if (last === undefined || last.includes("=")) continue;

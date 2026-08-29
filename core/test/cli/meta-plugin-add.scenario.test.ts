@@ -8,6 +8,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
 
+import { pluginAddSpec } from "../../src/cli/command-specs/meta/plugin/add.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
@@ -144,6 +145,32 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:add command", () => {
+  test("rejects non-registry specs with NotImplementedError and no phase words", async () => {
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "git+https://example.test/plugin.git",
+        trust: true,
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("NotImplementedError");
+      expect(cause).toContain("only supports npm registry specs");
+      expect(cause).toContain("not supported");
+      expect(cause).not.toMatch(/\bAlpha\b/);
+      expect(cause).not.toMatch(/\bBeta\b/);
+    }
+  });
+
+  test("trust flag description is phase-neutral current-state wording", () => {
+    const flags = JSON.stringify(pluginAddSpec.flags);
+    expect(flags).toContain("not supported");
+    expect(flags).not.toMatch(/\bAlpha\b/);
+    expect(flags).not.toMatch(/\bBeta\b/);
+  });
+
   test("downloads an npm tarball, validates the manifest, and installs under plugins/<name>/<version>", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),

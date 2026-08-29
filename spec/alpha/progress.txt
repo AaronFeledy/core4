@@ -1,0 +1,28 @@
+Source PRDs: spec/alpha/prd-alpha-*.md
+Spec source of truth: this PRD set. Cite existing spec parts from chapters; do not treat ROADMAP as owned.
+Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No public release has shipped.
+
+## Conventions
+
+- Story IDs US-592..US-600. prd.json priority order is execution order (strict). Ordering guarantees no story depends on a later story.
+- All stories start passes: false. Do not mark passes true from this package-creation change.
+- This wave does not own spec/ROADMAP.md. Do not edit ROADMAP to satisfy a story.
+- Dependencies live only in this file and prd-alpha-00-index.md. prd.json has no dependsOn field.
+- US-592 blocks US-593, US-594, and US-597.
+- US-593 and US-594 block US-595.
+- US-595 blocks US-596.
+- US-597 blocks US-598.
+- US-595 and US-598 block US-599.
+- US-593..US-599 block US-600.
+- After US-592, US-593, US-594, and US-597 can parallelize.
+- Rails order is contract -> recipe -> journey. recipes/ is public recipe SoT. Upgrade the existing builtin rails stub; do not duplicate it.
+- Drupal already exists and is only being proven.
+- All six compile targets (linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64, windows-arm64) need live setup, live doctor, and both journeys. Compile smoke is not enough.
+- darwin-x64 uses provider-docker. provider-lando rejects with tagged remediation.
+- Public Alpha is unsigned 4.0.0-dev.N on the dev channel (binaries plus the canonical npm workspace set). Beta is later.
+- Out of scope: signing, installers, self-update, 4.1 implementations, Beta/next.
+- Full-suite lock is always `bun test` (or explicit shard --run commands) with positive test counts. Never `bun run test` alone.
+
+## Status
+
+All US-592..US-600 passes: false. No story has started.

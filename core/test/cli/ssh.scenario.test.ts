@@ -29,7 +29,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd = repoRoot): Promise<RunR
   return { exitCode, stdout, stderr };
 };
 
-describe("lando ssh — Alpha provider-exec TTY command behavior (US-022)", () => {
+describe("lando ssh — provider-exec TTY command behavior", () => {
   test("registers `ssh` and `app:ssh` as a top-level alias and native id", () => {
     expect(resolveTopLevelAliases(resolveBuiltInCommand("app:ssh")?.spec ?? sshSpec)).toContain("ssh");
     expect(resolveTopLevelAliases(sshSpec)).toContain("ssh");
@@ -41,6 +41,9 @@ describe("lando ssh — Alpha provider-exec TTY command behavior (US-022)", () =
     expect(result.stderr).toContain("NotImplementedError");
     expect(result.stderr).toContain("commandId: app:ssh");
     expect(result.stderr).toContain("subsystem");
+    expect(result.stderr).toContain("not supported");
+    expect(result.stderr).not.toMatch(/\bAlpha\b/);
+    expect(result.stderr).not.toMatch(/\bBeta\b/);
   });
 
   test("`--sidecar` fails with a structured NotImplementedError (defer)", async () => {
@@ -49,5 +52,15 @@ describe("lando ssh — Alpha provider-exec TTY command behavior (US-022)", () =
     expect(result.stderr).toContain("NotImplementedError");
     expect(result.stderr).toContain("commandId: app:ssh");
     expect(result.stderr).toContain("sidecar");
+    expect(result.stderr).toContain("not supported");
+    expect(result.stderr).not.toMatch(/\bAlpha\b/);
+    expect(result.stderr).not.toMatch(/\bBeta\b/);
+  });
+
+  test("flag descriptions are phase-neutral current-state wording", () => {
+    const flags = JSON.stringify(sshSpec.flags);
+    expect(flags).toContain("not supported");
+    expect(flags).not.toMatch(/\bAlpha\b/);
+    expect(flags).not.toMatch(/\bBeta\b/);
   });
 });

@@ -94,8 +94,8 @@ describe("lando init git source native CLI dispatch", () => {
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
       try {
         let clonedUrl = "";
-        await expect(
-          initApp({
+        try {
+          await initApp({
             cwd: dir,
             full: false,
             source: "git",
@@ -113,10 +113,17 @@ describe("lando init git source native CLI dispatch", () => {
                 return { commitSha: "123abc" };
               },
             },
-          }),
-        ).rejects.toThrow(
-          'Recipe file rendering for "https://example.test/recipe.git" is not implemented yet',
-        );
+          });
+          throw new Error("expected initApp to reject file rendering");
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error);
+          const message = (error as Error).message;
+          expect(message).toContain(
+            'Recipe file rendering for "https://example.test/recipe.git" is not supported',
+          );
+          expect(message).not.toMatch(/\bAlpha\b/);
+          expect(message).not.toMatch(/\bBeta\b/);
+        }
         expect(clonedUrl).toBe("https://example.test/recipe.git");
       } finally {
         if (previousDataRoot === undefined) process.env.LANDO_USER_DATA_ROOT = undefined;

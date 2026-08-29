@@ -46,7 +46,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   flags: {
     trust: Flags.boolean({
       description:
-        "Trust the plugin for this session (required for non-interactive installs; persistent trust is deferred to Beta).",
+        "Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported).",
       default: false,
     }),
     yes: Flags.boolean({ char: "y", description: "Alias of --trust.", default: false }),

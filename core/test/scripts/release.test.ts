@@ -382,11 +382,11 @@ describe("release orchestrator", () => {
 
   test("builds a schema-valid update manifest for every release platform", async () => {
     expect(updateChannelForReleaseVersion("4.0.0-dev.7")).toBe("dev");
-    expect(updateChannelForReleaseVersion("4.0.0-alpha.2")).toBe("dev");
+    expect(updateChannelForReleaseVersion("4.0.0-alpha.2")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-next.2")).toBe("next");
-    expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-rc.1")).toBe("next");
-    expect(updateChannelForReleaseVersion("v4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForReleaseVersion("v4.0.0-beta.2")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-development.1")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-alphabet.1")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-preview.alpha.1")).toBe("stable");
@@ -397,7 +397,7 @@ describe("release orchestrator", () => {
 
       await withFixtureCwd(root, async () => {
         const manifest = await buildUpdateManifest({
-          version: "4.0.0-beta.2",
+          version: "4.0.0-next.2",
           released: "2026-06-17T12:00:00.000Z",
           minimum: "4.0.0-alpha.1",
           distDir: "dist",
@@ -409,7 +409,7 @@ describe("release orchestrator", () => {
         });
 
         expect(decoded.channel).toBe("next");
-        expect(decoded.latest).toBe("4.0.0-beta.2");
+        expect(decoded.latest).toBe("4.0.0-next.2");
         expect(decoded.minimum).toBe("4.0.0-alpha.1");
         expect(Object.keys(decoded.binaries).sort()).toEqual(
           CI_PLATFORMS.filter((platform) => platform.id !== "windows-arm64")
@@ -417,18 +417,18 @@ describe("release orchestrator", () => {
             .sort(),
         );
         expect(decoded.binaries["linux-x64"]).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/lando-linux-x64",
+          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/lando-linux-x64",
           sha256: sha256Text("linux-x64 artifact"),
           size: "linux-x64 artifact".length,
         });
         expect(decoded.binaries["windows-x64"].sha256).toBe("0".repeat(64));
         expect(decoded.binaries["windows-x64"].size).toBe(0);
         expect(decoded.checksums).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/SHA256SUMS",
+          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS",
           signature:
-            "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/SHA256SUMS.sig",
+            "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS.sig",
         });
-        expect(decoded.notes).toBe("https://github.com/lando-community/core4/releases/tag/v4.0.0-beta.2");
+        expect(decoded.notes).toBe("https://github.com/lando-community/core4/releases/tag/v4.0.0-next.2");
       });
     });
   });
@@ -2179,7 +2179,7 @@ describe("release orchestrator", () => {
     const shellStages: Array<{
       readonly stageId: string;
       readonly script: string;
-      readonly prepareNpmAlphaPackages?: boolean;
+      readonly prepareNpmDevPackages?: boolean;
     }> = [];
     const logs: Array<string> = [];
 
@@ -2240,11 +2240,11 @@ describe("release orchestrator", () => {
           localRehearsal: false,
           runner: {
             spawn: async () => {},
-            shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
+            shell: async ({ stageId, script, prepareNpmDevPackages }) => {
               shellStages.push({
                 stageId,
                 script,
-                ...(prepareNpmAlphaPackages === undefined ? {} : { prepareNpmAlphaPackages }),
+                ...(prepareNpmDevPackages === undefined ? {} : { prepareNpmDevPackages }),
               });
             },
           },
@@ -2262,7 +2262,7 @@ describe("release orchestrator", () => {
     expect(
       shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
     ).toBe(false);
-    expect(shellStages.some(({ prepareNpmAlphaPackages }) => prepareNpmAlphaPackages === true)).toBe(false);
+    expect(shellStages.some(({ prepareNpmDevPackages }) => prepareNpmDevPackages === true)).toBe(false);
     expect(logs).toContain("[release] skip 13-publish npm packages (binary release target)");
   });
 
@@ -2271,7 +2271,7 @@ describe("release orchestrator", () => {
     const shellStages: Array<{
       readonly stageId: string;
       readonly script: string;
-      readonly prepareNpmAlphaPackages?: boolean;
+      readonly prepareNpmDevPackages?: boolean;
     }> = [];
 
     await withReleaseFixtureRoot(async (root) => {
@@ -2350,11 +2350,11 @@ describe("release orchestrator", () => {
           localRehearsal: false,
           runner: {
             spawn: async () => {},
-            shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
+            shell: async ({ stageId, script, prepareNpmDevPackages }) => {
               shellStages.push({
                 stageId,
                 script,
-                ...(prepareNpmAlphaPackages === undefined ? {} : { prepareNpmAlphaPackages }),
+                ...(prepareNpmDevPackages === undefined ? {} : { prepareNpmDevPackages }),
               });
             },
           },
@@ -2400,8 +2400,8 @@ describe("release orchestrator", () => {
     ).toBe(true);
     expect(
       shellStages.some(
-        ({ script, prepareNpmAlphaPackages }) =>
-          script.includes("npm publish") && prepareNpmAlphaPackages === true,
+        ({ script, prepareNpmDevPackages }) =>
+          script.includes("npm publish") && prepareNpmDevPackages === true,
       ),
     ).toBe(true);
   });

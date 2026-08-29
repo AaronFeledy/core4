@@ -110,10 +110,10 @@ fetchAllowlist:
     ]);
   });
 
-  test("prompts: each Alpha prompt type decodes", async () => {
+  test("prompts: each supported prompt type decodes", async () => {
     const yaml = `id: prompts-cover
 title: Prompts
-description: One prompt of each Alpha type.
+description: One prompt of each supported type.
 version: 0.1.0
 prompts:
   - name: title
@@ -225,7 +225,7 @@ files:
   test("postInit: gitInit / message / command / bun.install all decode", async () => {
     const yaml = `id: post-init
 title: Post init
-description: One of each Alpha post-init action.
+description: One of each supported post-init action.
 version: 0.0.1
 postInit:
   - type: gitInit
@@ -259,14 +259,14 @@ postInit:
   });
 });
 
-describe("RecipeManifestService.parse — Beta-deferred rejections", () => {
-  const baseHeader = `id: beta-rejection
+describe("RecipeManifestService.parse — unsupported action rejections", () => {
+  const baseHeader = `id: unsupported-rejection
 title: rejection
 description: Trigger one surface per case.
 version: 0.0.1
 `;
 
-  test("prompt type `editor` is accepted (no longer Beta-deferred)", async () => {
+  test("prompt type `editor` is accepted", async () => {
     const yaml = `${baseHeader}prompts:
   - name: notes
     type: editor

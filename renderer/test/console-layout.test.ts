@@ -6,6 +6,7 @@ import {
   boxSeparator,
   boxTop,
   displayWidth,
+  hyperlink,
   stripAnsi,
   toneChip,
   truncateToWidth,
@@ -13,6 +14,8 @@ import {
 } from "@lando/renderer/console-layout";
 
 const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const ST = `${ESC}\\`;
 
 describe("displayWidth", () => {
   test("counts ASCII as one column each", () => {
@@ -120,5 +123,66 @@ describe("toneChip", () => {
   test("status is never color-only: the chip carries readable text", () => {
     const chip = toneChip("error");
     expect(stripAnsi(chip)).toBe("[FAIL]");
+  });
+});
+
+describe("stripAnsi OSC 8", () => {
+  test("removes OSC 8 sequences terminated by ST and preserves visible text", () => {
+    // Given a hyperlink wrapped with OSC 8 ST terminators.
+    const linked = `${ESC}]8;;https://example.com${ST}visible${ESC}]8;;${ST}`;
+
+    // When ANSI is stripped, then only the visible label remains and width matches it.
+    expect(stripAnsi(linked)).toBe("visible");
+    expect(displayWidth(linked)).toBe(displayWidth("visible"));
+  });
+
+  test("removes OSC 8 sequences terminated by BEL and preserves visible text", () => {
+    // Given a hyperlink wrapped with OSC 8 BEL terminators.
+    const linked = `${ESC}]8;;https://example.com${BEL}visible${ESC}]8;;${BEL}`;
+
+    // When ANSI is stripped, then only the visible label remains and width matches it.
+    expect(stripAnsi(linked)).toBe("visible");
+    expect(displayWidth(linked)).toBe(displayWidth("visible"));
+  });
+
+  test("still strips CSI/SGR around OSC 8", () => {
+    // Given dim SGR wrapping an OSC 8 ST hyperlink.
+    const mixed = `${ESC}[2m${ESC}]8;;https://example.com${ST}visible${ESC}]8;;${ST}${ESC}[22m`;
+
+    // When ANSI is stripped, then CSI and OSC are both gone.
+    expect(stripAnsi(mixed)).toBe("visible");
+    expect(displayWidth(mixed)).toBe(7);
+  });
+});
+
+describe("hyperlink", () => {
+  test("wraps a safe https target in OSC 8 with ST terminators", () => {
+    // Given visible text and a safe https href.
+    // When hyperlink is applied, then OSC 8 ST wraps the visible text.
+    expect(hyperlink("docs", "https://example.com/docs")).toBe(
+      `${ESC}]8;;https://example.com/docs${ST}docs${ESC}]8;;${ST}`,
+    );
+  });
+
+  test("wraps a safe http target in OSC 8 with ST terminators", () => {
+    expect(hyperlink("local", "http://localhost:3000")).toBe(
+      `${ESC}]8;;http://localhost:3000${ST}local${ESC}]8;;${ST}`,
+    );
+  });
+
+  test("returns visible text unchanged for an empty target", () => {
+    expect(hyperlink("docs", "")).toBe("docs");
+  });
+
+  test("returns visible text unchanged for a non-http target", () => {
+    expect(hyperlink("db", "tcp://localhost:5432")).toBe("db");
+    expect(hyperlink("file", "file:///tmp/x")).toBe("file");
+  });
+
+  test("returns visible text unchanged when the target contains C0, DEL, or ESC", () => {
+    expect(hyperlink("x", `https://example.com/${ESC}[31m`)).toBe("x");
+    expect(hyperlink("x", `https://example.com/${BEL}`)).toBe("x");
+    expect(hyperlink("x", "https://example.com/\u0000")).toBe("x");
+    expect(hyperlink("x", "https://example.com/\u007f")).toBe("x");
   });
 });

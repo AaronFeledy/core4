@@ -20,7 +20,7 @@ exports[`renderer.init-progress fixture json renderer snapshot is stable on stde
 "
 `;
 
-exports[`renderer.init-progress fixture lando renderer snapshot matches plain renderer (alpha alias) 1`] = `
+exports[`renderer.init-progress fixture lando renderer snapshot matches plain renderer 1`] = `
 "▼ Initialize mvp (2 services)
 [render] start: Render recipe files (4)
 [render] ✓ complete: Rendered 4 files (85ms)

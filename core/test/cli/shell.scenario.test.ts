@@ -273,6 +273,22 @@ describe("shellApp — shell modes", () => {
     expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
   });
 
+  test("service mode fails with an example when the requested service is unknown", async () => {
+    const exit = await Effect.runPromiseExit(
+      shellApp({
+        service: "missing",
+        io: { writeStdout: () => {}, writeStderr: () => {} },
+      }).pipe(Effect.provide(layer())),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    const flat = JSON.stringify(exit.cause);
+    expect(flat).toContain("ToolingExecError");
+    expect(flat).toContain("missing");
+    expect(flat).toContain("Example: lando shell --service web");
+  });
+
   test("service mode forwards present host agent markers into the service shell", async () => {
     let captured: Readonly<Record<string, string>> | undefined;
     const provider = fakeProvider({
@@ -756,6 +772,7 @@ describe("lando shell — CLI argv parsing", () => {
       const result = await runCli(["app:shell", "web"], dir);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("Unexpected argument: web");
+      expect(result.stderr).toContain("Example: lando shell [--service SERVICE]");
     });
   }, 30_000);
 
@@ -764,6 +781,7 @@ describe("lando shell — CLI argv parsing", () => {
       const result = await runCli(["shell", "web"], dir);
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("Unexpected argument: web");
+      expect(result.stderr).toContain("Example: lando shell [--service SERVICE]");
     });
   }, 30_000);
 

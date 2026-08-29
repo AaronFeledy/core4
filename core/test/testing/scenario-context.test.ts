@@ -389,6 +389,9 @@ describe("withScenarioContext", () => {
     expect(failure._tag).toBe("Some");
     const error = failure._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(NotImplementedError);
+    expect(error instanceof NotImplementedError ? error.message : undefined).toBe(
+      `<Run shell="echo hi"> is not implemented`,
+    );
     expect(error instanceof NotImplementedError ? error.commandId : undefined).toBe("guide.run.shell");
     expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain(
       "not available yet",

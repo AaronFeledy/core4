@@ -71,7 +71,7 @@ describe("renderer.setup fixture", () => {
     expect(io.stderr()).toMatchSnapshot();
   });
 
-  test("lando renderer snapshot matches plain renderer (alpha alias)", () => {
+  test("lando renderer snapshot matches plain renderer", () => {
     const plainIo = createBufferedRendererIO();
     renderPlain(plainIo, decodeFixtureEvents());
 

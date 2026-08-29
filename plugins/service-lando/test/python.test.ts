@@ -61,7 +61,7 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("python ServiceType — supported versions and frameworks", () => {
-  test("exposes 3.12 as the alpha supported python version", () => {
+  test("exposes 3.12 as the supported python version", () => {
     expect([...SUPPORTED_PYTHON_VERSIONS]).toEqual(["3.12"]);
   });
 

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import * as openTui from "@opentui/core";
 
-import { ansiToNativeStyledText, hasNativeStyledText } from "../src/opentui/ansi-styled-text.ts";
+import {
+  ansiToNativeStyledText,
+  hasNativeStyledText,
+  isInPlaceTerminalUpdate,
+  stripNonSgrControls,
+} from "../src/opentui/ansi-styled-text.ts";
 
 const ESC = String.fromCharCode(27);
 
@@ -41,5 +46,39 @@ describe("ansiToNativeStyledText palette intent", () => {
       expect(fg?.slot).toBe(slot);
     }
     expect(railForeground?.intent).toBe("rgb");
+  });
+});
+
+describe("stripNonSgrControls", () => {
+  test("preserves carriage returns used by in-place progress bars", () => {
+    expect(stripNonSgrControls("  53/108 [=====>----]  49%\r")).toBe("  53/108 [=====>----]  49%\r");
+  });
+
+  test("strips line-cursor CSI by default", () => {
+    expect(stripNonSgrControls(`${ESC}[1G${ESC}[2K  53/108`)).toBe("  53/108");
+  });
+
+  test("preserves line-cursor CSI when allowCursor is set", () => {
+    const bar = `${ESC}[1G${ESC}[2K  53/108 [=====>----]  49%`;
+    expect(stripNonSgrControls(bar, { allowCursor: true })).toBe(bar);
+  });
+
+  test("strips erase-display CSI even when allowCursor is set", () => {
+    expect(stripNonSgrControls(`${ESC}[2J${ESC}[10Akeep`, { allowCursor: true })).toBe("keep");
+  });
+});
+
+describe("isInPlaceTerminalUpdate", () => {
+  test("treats unterminated chunks as in-place, including Composer first frames", () => {
+    expect(isInPlaceTerminalUpdate("  0/108 [>---------------------------]   0%")).toBe(true);
+    expect(isInPlaceTerminalUpdate("  53/108 [=====>----]  49%\r")).toBe(true);
+    expect(isInPlaceTerminalUpdate(`${ESC}[1G${ESC}[2K  53/108 [=====>----]  49%`)).toBe(true);
+    expect(isInPlaceTerminalUpdate("log")).toBe(true);
+  });
+
+  test("does not treat newline-terminated lines as in-place", () => {
+    expect(isInPlaceTerminalUpdate("log\n")).toBe(false);
+    expect(isInPlaceTerminalUpdate(`${ESC}[1G${ESC}[2K  53/108\n`)).toBe(false);
+    expect(isInPlaceTerminalUpdate("")).toBe(false);
   });
 });

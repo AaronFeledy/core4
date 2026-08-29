@@ -154,6 +154,10 @@ export const makeStreamFrameSinkLive = (
             return;
           }
           const chunk = redactor.redactString(frame.chunk);
+          if (frame.raw === true) {
+            yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
+            return;
+          }
           const text =
             frame.service === undefined
               ? chunk

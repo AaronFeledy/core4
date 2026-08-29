@@ -49,28 +49,28 @@ export const releasePackageNames: ReadonlyArray<string> = [
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-export const deriveNpmAlphaVersion = (env: NodeJS.ProcessEnv = process.env): string => {
+export const deriveNpmDevVersion = (env: NodeJS.ProcessEnv = process.env): string => {
   const explicitVersion = env.LANDO_NPM_VERSION;
   if (explicitVersion !== undefined && explicitVersion !== "") return explicitVersion;
 
   const runNumber = env.GITHUB_RUN_NUMBER;
   if (runNumber === undefined || !/^\d+$/.test(runNumber)) {
-    throw new Error("Set GITHUB_RUN_NUMBER or LANDO_NPM_VERSION before preparing npm alpha packages.");
+    throw new Error("Set GITHUB_RUN_NUMBER or LANDO_NPM_VERSION before preparing npm dev packages.");
   }
 
-  return `4.0.0-alpha.${runNumber}`;
+  return `4.0.0-dev.${runNumber}`;
 };
 
-export const deriveNpmBetaVersion = (env: NodeJS.ProcessEnv = process.env): string => {
+export const deriveNpmNextVersion = (env: NodeJS.ProcessEnv = process.env): string => {
   const explicitVersion = env.LANDO_NPM_VERSION;
   if (explicitVersion !== undefined && explicitVersion !== "") return explicitVersion;
 
   const runNumber = env.GITHUB_RUN_NUMBER;
   if (runNumber === undefined || !/^\d+$/.test(runNumber)) {
-    throw new Error("Set GITHUB_RUN_NUMBER or LANDO_NPM_VERSION before preparing npm beta packages.");
+    throw new Error("Set GITHUB_RUN_NUMBER or LANDO_NPM_VERSION before preparing npm next packages.");
   }
 
-  return `4.0.0-beta.${runNumber}`;
+  return `4.0.0-next.${runNumber}`;
 };
 
 const rewriteWorkspaceRanges = (dependencies: unknown, version: string): JsonObject | undefined => {
@@ -121,15 +121,15 @@ const writePreparedPackage = async (
   console.log(`[prepare-npm-dev-packages] ${relativePath} -> ${version} (${tag})`);
 };
 
-// The full workspace surface publishes as `4.0.0-alpha.N` on the `dev` dist-tag.
-export const prepareNpmAlphaPackages = async (version = deriveNpmAlphaVersion()): Promise<void> => {
+// The full workspace surface publishes as `4.0.0-dev.N` on the `dev` dist-tag.
+export const prepareNpmDevPackages = async (version = deriveNpmDevVersion()): Promise<void> => {
   for (const workspace of releasePackageWorkspaces) {
     await writePreparedPackage(workspace, version, "dev");
   }
 };
 
-// The full workspace surface publishes as `4.0.0-beta.N` on the `next` dist-tag.
-export const prepareNpmBetaPackages = async (version = deriveNpmBetaVersion()): Promise<void> => {
+// The full workspace surface publishes as `4.0.0-next.N` on the `next` dist-tag.
+export const prepareNpmNextPackages = async (version = deriveNpmNextVersion()): Promise<void> => {
   for (const workspace of releasePackageWorkspaces) {
     await writePreparedPackage(workspace, version, "next");
   }
@@ -137,8 +137,8 @@ export const prepareNpmBetaPackages = async (version = deriveNpmBetaVersion()): 
 
 if (import.meta.main) {
   if (process.env.LANDO_NPM_DIST_TAG === "next") {
-    await prepareNpmBetaPackages();
+    await prepareNpmNextPackages();
   } else {
-    await prepareNpmAlphaPackages();
+    await prepareNpmDevPackages();
   }
 }

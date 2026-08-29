@@ -7,7 +7,7 @@ import { GuideId } from "../guide-frontmatter.ts";
 export const ComponentId = GuideId.annotations({ identifier: "ComponentId" });
 export type ComponentId = typeof ComponentId.Type;
 
-const betaComponentPropsError = (component: string, key: string): NotImplementedError =>
+const unsupportedComponentPropsError = (component: string, key: string): NotImplementedError =>
   new NotImplementedError({
     message: `<${component}> prop \`${key}\` is not supported yet.`,
     commandId: `guide.component.${component.toLowerCase()}`,
@@ -15,7 +15,7 @@ const betaComponentPropsError = (component: string, key: string): NotImplemented
       "Unsupported guide component prop. Remove the unsupported prop or use a supported guide component shape.",
   });
 
-const ALPHA_2_COMPONENTS = [
+const SUPPORTED_GUIDE_COMPONENTS = [
   "Guide",
   "Scenario",
   "Step",
@@ -26,20 +26,20 @@ const ALPHA_2_COMPONENTS = [
   "UseFixture",
 ] as const;
 
-// Separate from ALPHA_2_COMPONENTS so each list records when a component landed.
-const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden", "Inline", "Skip"] as const;
+// Deferred components are accepted today; the split keeps current and deferred support states explicit.
+const DEFERRED_GUIDE_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden", "Inline", "Skip"] as const;
 
-const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
+const unsupportedGuideComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
     message: `<${componentName}> is not supported at ${hostPath}.`,
     commandId: `guide.component.${componentName.toLowerCase()}`,
     remediation: `<${componentName}> is not supported yet.`,
   });
 
-export const assertAlpha2Component = (componentName: string, hostPath: string): void => {
-  if (ALPHA_2_COMPONENTS.some((name) => name === componentName)) return;
-  if (BETA_COMPONENTS.some((name) => name === componentName)) return;
-  throw betaComponentError(componentName, hostPath);
+export const assertSupportedGuideComponent = (componentName: string, hostPath: string): void => {
+  if (SUPPORTED_GUIDE_COMPONENTS.some((name) => name === componentName)) return;
+  if (DEFERRED_GUIDE_COMPONENTS.some((name) => name === componentName)) return;
+  throw unsupportedGuideComponentError(componentName, hostPath);
 };
 
 const asRecord = (input: unknown): Record<string, unknown> | undefined => {
@@ -100,14 +100,14 @@ export const MatcherSchema = Schema.Union(
 ).annotations({
   identifier: "MatcherSchema",
   title: "Matcher Schema",
-  description: "Alpha 2 declarative matcher subset for executable-guide verification.",
+  description: "Declarative matcher subset for executable-guide verification.",
 });
 export type MatcherSchema = typeof MatcherSchema.Type;
 
 export const GuideProps = Schema.Struct({}).annotations({
   identifier: "GuideProps",
   title: "Guide Props",
-  description: "Alpha 2 <Guide> component props.",
+  description: "<Guide> component props.",
 });
 export type GuideProps = typeof GuideProps.Type;
 
@@ -130,7 +130,7 @@ export const ScenarioProps = Schema.Struct({
   .annotations({
     identifier: "ScenarioProps",
     title: "Scenario Props",
-    description: "Alpha 2 <Scenario> component props.",
+    description: "<Scenario> component props.",
   });
 export type ScenarioProps = typeof ScenarioProps.Type;
 
@@ -139,7 +139,7 @@ export const StepProps = Schema.Struct({
 }).annotations({
   identifier: "StepProps",
   title: "Step Props",
-  description: "Alpha 2 <Step> component props.",
+  description: "<Step> component props.",
 });
 export type StepProps = typeof StepProps.Type;
 
@@ -162,7 +162,7 @@ export const RunProps = Schema.Union(
 ).annotations({
   identifier: "RunProps",
   title: "Run Props",
-  description: "Alpha 2 <Run> component props.",
+  description: "<Run> component props.",
 });
 export type RunProps = typeof RunProps.Type;
 
@@ -184,14 +184,14 @@ export const VerifyProps = Schema.Struct({
   .annotations({
     identifier: "VerifyProps",
     title: "Verify Props",
-    description: "Alpha 2 <Verify> component props.",
+    description: "<Verify> component props.",
   });
 export type VerifyProps = typeof VerifyProps.Type;
 
 export const CleanupProps = Schema.Struct({}).annotations({
   identifier: "CleanupProps",
   title: "Cleanup Props",
-  description: "Alpha 2 <Cleanup> component props.",
+  description: "<Cleanup> component props.",
 });
 export type CleanupProps = typeof CleanupProps.Type;
 
@@ -202,7 +202,7 @@ export const VariableProps = Schema.Struct({
 }).annotations({
   identifier: "VariableProps",
   title: "Variable Props",
-  description: "Alpha 2 <Variable> component props.",
+  description: "<Variable> component props.",
 });
 export type VariableProps = typeof VariableProps.Type;
 
@@ -211,7 +211,7 @@ export const HiddenProps = Schema.Struct({
 }).annotations({
   identifier: "HiddenProps",
   title: "Hidden Props",
-  description: "Alpha 2 <Hidden> component props.",
+  description: "<Hidden> component props.",
 });
 export type HiddenProps = typeof HiddenProps.Type;
 
@@ -220,7 +220,7 @@ export const UseFixtureProps = Schema.Struct({
 }).annotations({
   identifier: "UseFixtureProps",
   title: "Use Fixture Props",
-  description: "Alpha 2 <UseFixture> component props.",
+  description: "<UseFixture> component props.",
 });
 export type UseFixtureProps = typeof UseFixtureProps.Type;
 
@@ -245,7 +245,7 @@ export const InspectProps = Schema.Struct({
   .annotations({
     identifier: "InspectProps",
     title: "Inspect Props",
-    description: "Beta <Inspect> component props.",
+    description: "<Inspect> component props.",
   });
 export type InspectProps = typeof InspectProps.Type;
 
@@ -262,7 +262,7 @@ export const TabsProps = Schema.Struct({
 }).annotations({
   identifier: "TabsProps",
   title: "Tabs Props",
-  description: "Beta <Tabs> component props.",
+  description: "<Tabs> component props.",
 });
 export type TabsProps = typeof TabsProps.Type;
 
@@ -271,7 +271,7 @@ export const TabProps = Schema.Struct({
 }).annotations({
   identifier: "TabProps",
   title: "Tab Props",
-  description: "Beta <Tab> component props.",
+  description: "<Tab> component props.",
 });
 export type TabProps = typeof TabProps.Type;
 
@@ -282,7 +282,7 @@ export const InlineProps = Schema.Struct({
 }).annotations({
   identifier: "InlineProps",
   title: "Inline Props",
-  description: "Beta <Inline> component props.",
+  description: "<Inline> component props.",
 });
 export type InlineProps = typeof InlineProps.Type;
 
@@ -292,7 +292,7 @@ export const SkipProps = Schema.Struct({
 }).annotations({
   identifier: "SkipProps",
   title: "Skip Props",
-  description: "Beta <Skip> component props.",
+  description: "<Skip> component props.",
 });
 export type SkipProps = typeof SkipProps.Type;
 
@@ -311,15 +311,15 @@ export const decodeStepPropsEither = (input: unknown): Either.Either<StepProps, 
 export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined && Object.hasOwn(record, "tooling")) {
-    return Either.left(betaComponentPropsError("Run", "tooling"));
+    return Either.left(unsupportedComponentPropsError("Run", "tooling"));
   }
   return decodeEither(RunProps, input);
 };
 
-const findBetaMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" | undefined => {
+const findUnsupportedMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" | undefined => {
   if (Array.isArray(input)) {
     for (const item of input) {
-      const found = findBetaMatcherKey(item);
+      const found = findUnsupportedMatcherKey(item);
       if (found !== undefined) return found;
     }
     return undefined;
@@ -330,7 +330,7 @@ const findBetaMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" | undef
     if (Object.hasOwn(record, key)) return key;
   }
   for (const value of Object.values(record)) {
-    const found = findBetaMatcherKey(value);
+    const found = findUnsupportedMatcherKey(value);
     if (found !== undefined) return found;
   }
   return undefined;
@@ -339,10 +339,13 @@ const findBetaMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" | undef
 export const decodeVerifyPropsEither = (input: unknown): Either.Either<VerifyProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined) {
-    if (Object.hasOwn(record, "runtime")) return Either.left(betaComponentPropsError("Verify", "runtime"));
-    if (Object.hasOwn(record, "tooling")) return Either.left(betaComponentPropsError("Verify", "tooling"));
-    const betaMatcherKey = findBetaMatcherKey(record.expect);
-    if (betaMatcherKey !== undefined) return Either.left(betaComponentPropsError("Verify", betaMatcherKey));
+    if (Object.hasOwn(record, "runtime"))
+      return Either.left(unsupportedComponentPropsError("Verify", "runtime"));
+    if (Object.hasOwn(record, "tooling"))
+      return Either.left(unsupportedComponentPropsError("Verify", "tooling"));
+    const unsupportedMatcherKey = findUnsupportedMatcherKey(record.expect);
+    if (unsupportedMatcherKey !== undefined)
+      return Either.left(unsupportedComponentPropsError("Verify", unsupportedMatcherKey));
   }
   return decodeEither(VerifyProps, input);
 };

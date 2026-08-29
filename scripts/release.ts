@@ -17,7 +17,7 @@ import {
 } from "./check-runtime-bundle-manifest.ts";
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform, releaseBinaryFileName } from "./ci-platforms.ts";
 import { resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
-import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
+import { prepareNpmDevPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
 
 export type ArtifactTarget = "all" | "binary" | "library";
@@ -38,7 +38,7 @@ export interface ReleaseSpawnCommand extends ReleaseCommand {
 
 export interface ReleaseShellCommand extends ReleaseCommand {
   readonly script: string;
-  readonly prepareNpmAlphaPackages?: boolean;
+  readonly prepareNpmDevPackages?: boolean;
 }
 
 export interface ReleaseRunner {
@@ -260,7 +260,7 @@ const credentialGate = (
   throw new Error(`Missing ${credentialLabel}; set LOCAL_REHEARSAL=1 to rehearse without credentials.`);
 };
 
-const npmAlphaPublishScript = (): string =>
+const npmDevPublishScript = (): string =>
   [
     'before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
     ...releasePackageNames.map(
@@ -268,7 +268,7 @@ const npmAlphaPublishScript = (): string =>
     ),
     'after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
     'test "$before_latest" = "$after_latest"',
-    "npm view @lando/core dist-tags.dev --json | grep -Eq '\"?4\\.0\\.0-alpha\\.[0-9]+\"?'",
+    "npm view @lando/core dist-tags.dev --json | grep -Eq '\"?4\\.0\\.0-dev\\.[0-9]+\"?'",
   ].join("\n");
 
 const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
@@ -1200,7 +1200,7 @@ const shellStage =
       summary: stage.commandSummary,
       remediation: stage.remediation,
       script,
-      prepareNpmAlphaPackages: stage.id === "13-publish",
+      prepareNpmDevPackages: stage.id === "13-publish",
     });
   };
 
@@ -1530,9 +1530,9 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     forBinary: true,
     forLibrary: true,
     kind: "shell",
-    commandSummary: "prepare alpha packages and publish npm workspaces on the dev tag",
+    commandSummary: "prepare dev packages and publish npm workspaces on the dev tag",
     remediation: defaultRemediation,
-    command: npmAlphaPublishScript(),
+    command: npmDevPublishScript(),
   }),
 ];
 
@@ -1552,8 +1552,8 @@ const defaultRunner: ReleaseRunner = {
     const exitCode = await proc.exited;
     if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${redactReleaseCommand(cmd)}`);
   },
-  shell: async ({ prepareNpmAlphaPackages: shouldPrepareNpmAlphaPackages = false, script }) => {
-    if (shouldPrepareNpmAlphaPackages) await prepareNpmAlphaPackages();
+  shell: async ({ prepareNpmDevPackages: shouldPrepareNpmDevPackages = false, script }) => {
+    if (shouldPrepareNpmDevPackages) await prepareNpmDevPackages();
     await $`sh -euc ${script}`;
   },
 };

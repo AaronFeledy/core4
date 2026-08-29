@@ -7,7 +7,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const readText = async (path: string): Promise<string> => Bun.file(resolve(repoRoot, path)).text();
 
 describe("paths primitive package promotion decision", () => {
-  test("publishes a Beta 1 decision promoting only @lando/paths with the public shim", async () => {
+  test("publishes a decision promoting only @lando/paths with the public shim", async () => {
     const decisions = await readText("docs/contributing/decisions.md");
 
     expect(decisions).toContain("## Paths primitive package promotion decision");

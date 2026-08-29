@@ -163,12 +163,23 @@ describe("check:guide-coverage parsers", () => {
     expect(classifyPrd("prd-service-trust-02-certs-boot-doctor.md")).toBe("user-facing");
   });
 
-  test("classifyPrd still recognizes the alpha-3 PRD set", () => {
+  test("classifyPrd classifies numbered-package PRDs by story number", () => {
     expect(classifyPrd("prd-alpha-3-00-index.md")).toBe("exempt");
     expect(classifyPrd("prd-alpha-3-01-provider-matrix.md")).toBe("user-facing");
     expect(classifyPrd("prd-alpha-3-09-renderer.md")).toBe("internal");
     expect(classifyPrd("prd-alpha-3-13-build.md")).toBe("internal");
     expect(classifyPrd("prd-alpha-3-12-executable-guides.md")).toBe("exempt");
+    expect(classifyPrd("prd-wave-4-01-providers.md")).toBe("user-facing");
+    expect(classifyPrd("prd-wave-4-09-renderer.md")).toBe("internal");
+    expect(classifyPrd("prd-wave-4-12-guides.md")).toBe("exempt");
+    expect(classifyPrd("prd-lando3-parity-03-service-catalog.md")).toBe("exempt");
+  });
+
+  test("guide coverage classifier source has no roadmap-wave identifiers", async () => {
+    const source = await Bun.file(resolve(repoRoot, "scripts/check-guide-coverage.ts")).text();
+    expect(source).not.toContain("prd-alpha-3");
+    expect(source).not.toMatch(/\bAlpha\b/);
+    expect(source).not.toMatch(/\bBeta\b/);
   });
 
   test("classifyPrd recognizes every architecture-simplicity PRD filename", () => {

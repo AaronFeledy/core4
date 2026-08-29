@@ -10,7 +10,7 @@ export const nodePostgresRecipeSource = `${NODE_POSTGRES_RECIPE_ID}/recipe.yml`;
 
 export const nodePostgresRecipeYaml = `id: ${NODE_POSTGRES_RECIPE_ID}
 title: Node + Postgres
-description: Minimal Node.js + Postgres scaffold for the Alpha walking skeleton.
+description: Minimal Node.js + Postgres scaffold.
 version: 0.1.0
 authors:
   - Lando Core Team

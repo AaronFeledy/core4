@@ -22,7 +22,7 @@ import {
   type UseFixtureProps,
   type VariableProps,
   type VerifyProps,
-  assertAlpha2Component,
+  assertSupportedGuideComponent,
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
   decodeHiddenPropsEither,
@@ -786,7 +786,7 @@ const elementChildren = (node: MdxNode): ReadonlyArray<MdxNode> =>
 
 const parseStepComponent = (node: MdxNode, sourcePath: string): GuideStepComponent | undefined => {
   if (node.name === undefined || node.name === null) return undefined;
-  assertAlpha2Component(node.name, sourcePath);
+  assertSupportedGuideComponent(node.name, sourcePath);
   const props = propsOf(node);
   const line = lineOf(node);
   switch (node.name) {
@@ -838,7 +838,7 @@ const parseStepComponent = (node: MdxNode, sourcePath: string): GuideStepCompone
 };
 
 const parseStep = (node: MdxNode, sourcePath: string, hiddenReason?: string): GuideStepNode => {
-  assertAlpha2Component("Step", sourcePath);
+  assertSupportedGuideComponent("Step", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeStepPropsEither(rawProps), sourcePath, "Step", rawProps);
   const components = elementChildren(node)
@@ -854,7 +854,7 @@ const parseStep = (node: MdxNode, sourcePath: string, hiddenReason?: string): Gu
 };
 
 const parseHiddenBlock = (node: MdxNode, sourcePath: string): GuideHiddenBlock => {
-  assertAlpha2Component("Hidden", sourcePath);
+  assertSupportedGuideComponent("Hidden", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeHiddenPropsEither(rawProps), sourcePath, "Hidden", rawProps);
   return {
@@ -868,7 +868,7 @@ const parseHiddenBlock = (node: MdxNode, sourcePath: string): GuideHiddenBlock =
 };
 
 const parseSkipBlock = (node: MdxNode, sourcePath: string): GuideSkipBlock => {
-  assertAlpha2Component("Skip", sourcePath);
+  assertSupportedGuideComponent("Skip", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeSkipPropsEither(rawProps), sourcePath, "Skip", rawProps);
   return {
@@ -883,7 +883,7 @@ const parseSkipBlock = (node: MdxNode, sourcePath: string): GuideSkipBlock => {
 };
 
 const parseTab = (node: MdxNode, sourcePath: string): GuideTabNode => {
-  assertAlpha2Component("Tab", sourcePath);
+  assertSupportedGuideComponent("Tab", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeTabPropsEither(rawProps), sourcePath, "Tab", rawProps);
   return {
@@ -896,7 +896,7 @@ const parseTab = (node: MdxNode, sourcePath: string): GuideTabNode => {
 };
 
 const parseTabsBlock = (node: MdxNode, sourcePath: string): GuideTabsBlock => {
-  assertAlpha2Component("Tabs", sourcePath);
+  assertSupportedGuideComponent("Tabs", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeTabsPropsEither(rawProps), sourcePath, "Tabs", rawProps);
   return {
@@ -930,7 +930,7 @@ const unconditionalSteps = (body: ReadonlyArray<GuideScenarioBodyItem>): Readonl
   });
 
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
-  assertAlpha2Component("Scenario", sourcePath);
+  assertSupportedGuideComponent("Scenario", sourcePath);
   const props = propsOf(node);
   if (props.render === false && (typeof props.reason !== "string" || props.reason.length < 8)) {
     throw new GuideHiddenScenarioReasonError({
@@ -963,10 +963,10 @@ export const parseGuideScenarioAst = (sourcePath: string, content: string): Guid
   if (guide === undefined) {
     return { sourcePath, frontmatter, guideLine: 1, scenarios: [] };
   }
-  assertAlpha2Component("Guide", sourcePath);
+  assertSupportedGuideComponent("Guide", sourcePath);
   for (const child of elementChildren(guide)) {
     if (child.name !== "Scenario" && child.name !== undefined && child.name !== null) {
-      assertAlpha2Component(child.name, sourcePath);
+      assertSupportedGuideComponent(child.name, sourcePath);
     }
   }
   return {
