@@ -12,20 +12,31 @@ describe("alpha install and bug report docs", () => {
   test("document supported alpha install paths and bug report artifacts", async () => {
     const docs = await readText(docsPath);
 
-    expect(docs).toContain("Linux x64");
+    expect(docs).toContain("linux-x64");
+    expect(docs).toContain("linux-arm64");
+    expect(docs).toContain("darwin-x64");
+    expect(docs).toContain("darwin-arm64");
+    expect(docs).toContain("windows-x64");
+    expect(docs).toContain("windows-arm64");
     expect(docs).toContain("dev prerelease");
     expect(docs).toContain("SHA256SUMS");
     expect(docs).toContain("sha256sum -c SHA256SUMS");
+    expect(docs).toContain("lando-linux-x64");
+    expect(docs).toContain("lando-linux-arm64");
+    expect(docs).toContain("lando-darwin-x64");
+    expect(docs).toContain("lando-darwin-arm64");
+    expect(docs).toContain("lando-windows-x64.exe");
+    expect(docs).toContain("lando-windows-arm64.exe");
     expect(docs).toContain("Build from source");
-    expect(docs).toContain("Windows");
-    expect(docs).toContain("deferred");
-    expect(docs).toContain("macOS");
-    expect(docs).toContain("deferred");
     expect(docs).toContain("lando doctor");
     expect(docs).toContain("logsDir");
     expect(docs).toContain("cacheDir");
     expect(docs).not.toContain("npm install @lando/core@dev");
     expect(docs).not.toContain("npx lando");
+    expect(docs).not.toContain("Linux x64 only");
+    expect(docs).not.toContain("Windows and macOS binaries are deferred");
+    expect(docs).not.toContain("dev-prerelease");
+    expect(docs).not.toContain("build-linux-x64");
   });
 
   test("links alpha install docs from README", async () => {

@@ -72,6 +72,24 @@ describe("public alpha contract", () => {
     expect(status.includes("later") || status.includes("do not ship")).toBe(true);
   });
 
+  test("says GitHub prerelease ships unsigned binaries for all six compile targets when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("unsigned");
+    expect(status).toContain("GitHub prerelease");
+    for (const id of [
+      "linux-x64",
+      "linux-arm64",
+      "darwin-x64",
+      "darwin-arm64",
+      "windows-x64",
+      "windows-arm64",
+    ] as const) {
+      expect(status).toContain(id);
+    }
+    expect(status).not.toContain("Linux x64 only");
+    expect(status).not.toContain("stay deferred");
+  });
+
   test("names 4.0.0-dev.N when contributing CI docs are read", async () => {
     const ciDocs = await readText(resolve(repoRoot, "docs/contributing/ci.md"));
     expect(ciDocs).toContain("4.0.0-dev.N");

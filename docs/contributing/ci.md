@@ -138,7 +138,7 @@ bun run bench:tooling-hot-path -- --binary core/dist/lando
 
 ## npm dev package publishing
 
-The release workflow publishes `@lando/core@4.0.0-dev.N`, `@lando/paths`, `@lando/state-store`, `@lando/landofile`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The generated GitHub release workflow does **not** publish npm. It only publishes unsigned `v4.0.0-dev.N` GitHub prerelease binaries. `scripts/prepare-npm-dev-packages.ts` rewrites checkout versions to `4.0.0-dev.N` and the `dev` tag. Live npm dev package publishing is the manual `scripts/release.ts` orchestrator. That orchestrator uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
@@ -152,9 +152,9 @@ bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
 ```
 
-Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-dev.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact dev version before the dry-run and real publish.
+Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-dev.N` version. The manual orchestrator rewrites temporary checkout `workspace:*` dependency ranges to that exact dev version before the dry-run and real publish.
 
-Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the dev version and its `latest` dist-tag is unchanged.
+Before publishing, the orchestrator runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, it asserts `@lando/core`'s `dev` dist-tag points at the dev version and its `latest` dist-tag is unchanged.
 
 ## Provider integration
 

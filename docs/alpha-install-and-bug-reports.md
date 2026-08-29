@@ -3,41 +3,56 @@ title: Alpha install and bug reports
 description: Install the Lando 4 Alpha, run setup, and attach the right diagnostics to a bug report.
 ---
 
-# Alpha install and bug reports
+# Get a v4.0.0-dev.N binary and run setup
 
-Lando v4 is an **experimental Alpha**. Get a Linux x64 binary, run `lando setup`, then `lando doctor`.
+Get a `v4.0.0-dev.N` binary for your platform, then run `lando setup` and `lando doctor`. Lando v4 is an experimental Alpha.
 
 ## Current install options
 
-### Option 1: GitHub dev prerelease (Linux x64 only)
+### Option 1: GitHub dev prerelease (all six platforms)
 
-The CI pipeline publishes a `v4.0.0-dev.N` GitHub prerelease after each successful `main` build. This prerelease includes:
+The GitHub prerelease ships unsigned `v4.0.0-dev.N` binaries for every compile target. Pick the asset for your host:
 
-- `lando`: the Linux x64 compiled binary
-- `SHA256SUMS`: checksum manifest
+- `lando-linux-x64`
+- `lando-linux-arm64`
+- `lando-darwin-x64`
+- `lando-darwin-arm64`
+- `lando-windows-x64.exe`
+- `lando-windows-arm64.exe`
+- `SHA256SUMS`
 
-**Platform support:** Linux x64 only. Windows and macOS binaries are deferred.
+Targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`.
+
+On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
 
 **To install:**
 
-1. Go to the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease
-2. Download both `lando` and `SHA256SUMS`
+1. Go to the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease. Pick the asset for your platform.
+2. Download that binary and `SHA256SUMS`.
 3. Verify the checksum:
 
 ```bash
 sha256sum -c SHA256SUMS
 ```
 
-The checksum command must report `lando: OK`. If it does not, delete the binary and `SHA256SUMS`, then download them again from the same dev prerelease.
+The checksum command must report `OK` for the platform-qualified file you downloaded (for example `lando-linux-x64: OK`). If it does not, delete the binary and `SHA256SUMS`, then download them again from the same dev prerelease.
 
-4. Make it executable and test:
+4. On Unix, make it executable and test. On Windows, run the `.exe` instead of `chmod`.
 
 ```bash
-chmod +x lando
-./lando --version
+chmod +x lando-linux-x64
+./lando-linux-x64 --version
 ```
 
-**If no dev prerelease exists yet:** CI artifacts are available from [recent workflow runs](https://github.com/AaronFeledy/core4/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess). Download the `lando-linux-x64` artifact (requires GitHub login). The artifact is a zip containing the `lando` binary plus helper executables. Extract and verify manually.
+Replace `lando-linux-x64` with your asset name. Windows:
+
+```powershell
+.\lando-windows-x64.exe --version
+```
+
+Use `lando-windows-arm64.exe` on ARM64 Windows.
+
+Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run (GitHub login required). Extract the zip and verify the binary yourself.
 
 ### Option 2: Build from source
 
@@ -142,7 +157,7 @@ Include these artifacts when available:
 - The command you ran, its full stdout/stderr, and its exit code.
 - `lando doctor` output.
 - Any diagnostic `logsDir` and `cacheDir` paths printed in the failure report.
-- The install path you used: Linux x64 dev prerelease binary or built from source.
+- The install path you used: six-target unsigned binary or built from source.
 - Host details: operating system, architecture, Bun version, and provider runtime details when the bug involves setup/start/stop/destroy.
 
 Do not paste secrets or credentials. Lando redacts known secret-shaped values in its own diagnostics, but shell transcripts and copied logs can still contain project-specific sensitive data.
