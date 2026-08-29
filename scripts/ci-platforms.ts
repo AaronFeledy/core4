@@ -138,8 +138,8 @@ export const PLATFORM_READINESS_CELLS: ReadonlyArray<PlatformReadinessCell> = [
   {
     id: "windows-arm64",
     provider: "lando",
-    bundleKey: "none",
-    bundleMode: "none",
+    bundleKey: "win32-arm64",
+    bundleMode: "current-commit",
     cadence: "evidence",
     runsOn: ["self-hosted", "lando-virt", "Windows", "ARM64"],
   },
