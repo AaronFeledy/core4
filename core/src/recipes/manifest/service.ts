@@ -27,7 +27,7 @@ import { parseRecipeYaml } from "./parser";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 
-const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
+const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
 // Forward-compat verb gate: every shipped `bun:` verb is supported, so this
 // set is empty. A future deferred verb is added here to fail loudly before
@@ -39,11 +39,11 @@ const REJECTED_BUN_VERBS = new Set<string>();
 // prompt type is added here to fail loudly before strict decode.
 const REJECTED_PROMPT_TYPES = new Set<string>();
 
-interface BetaFinding {
+interface UnsupportedFinding {
   readonly message: string;
 }
 
-const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
+const scanPromptUnsupported = (parsed: unknown, source: string): UnsupportedFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
   const prompts = obj.prompts;
@@ -63,7 +63,7 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
   return undefined;
 };
 
-const scanPostInitBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
+const scanPostInitUnsupported = (parsed: unknown, source: string): UnsupportedFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
   const actions = obj.postInit;
@@ -84,14 +84,17 @@ const scanPostInitBeta = (parsed: unknown, source: string): BetaFinding | undefi
   return undefined;
 };
 
-const rejectBetaSections = (source: string, parsed: unknown): Effect.Effect<unknown, NotImplementedError> => {
-  const finding = scanPromptBeta(parsed, source) ?? scanPostInitBeta(parsed, source);
+const rejectUnsupportedSections = (
+  source: string,
+  parsed: unknown,
+): Effect.Effect<unknown, NotImplementedError> => {
+  const finding = scanPromptUnsupported(parsed, source) ?? scanPostInitUnsupported(parsed, source);
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
       message: finding.message,
       commandId: "recipe.parse",
-      remediation: BETA_REMEDIATION,
+      remediation: UNSUPPORTED_REMEDIATION,
     }),
   );
 };
@@ -220,7 +223,7 @@ const validateRecipeManifestObject = (
   source: string,
   parsed: unknown,
 ): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError | NotImplementedError> =>
-  rejectBetaSections(source, parsed).pipe(
+  rejectUnsupportedSections(source, parsed).pipe(
     Effect.flatMap((value) => validateManifest(source, value)),
     Effect.flatMap((manifest) => validateSemantics(source, manifest)),
   );
