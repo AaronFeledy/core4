@@ -25,7 +25,7 @@ import {
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
 import { parseLandofile } from "@lando/landofile/parser";
-import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
+import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 
 export type AppConfigTranslateFormat = "yaml" | "table" | "json";
 
@@ -343,7 +343,7 @@ export const appConfigTranslate = (
         }),
     });
     const parsed = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
-    yield* rejectBetaToolingFeatures(inputPath, parsed);
+    yield* rejectUnsupportedToolingFeatures(inputPath, parsed);
     const currentDecoded = decodeLandofile(parsed, { onExcessProperty: "error" });
     if (currentDecoded._tag === "Left") {
       return yield* Effect.fail(
@@ -365,7 +365,7 @@ export const appConfigTranslate = (
     });
 
     const merged = mergeLandofiles([parsed as Record<string, unknown>, fragment as Record<string, unknown>]);
-    yield* rejectBetaToolingFeatures(inputPath, merged);
+    yield* rejectUnsupportedToolingFeatures(inputPath, merged);
     const mergedDecoded = decodeLandofile(merged, { onExcessProperty: "error" });
     if (mergedDecoded._tag === "Left") {
       return yield* Effect.fail(
