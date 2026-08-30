@@ -125,3 +125,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Current-commit linux assemble is a Podman/helper source build. Reuse runtime-bundle Go 1.25.6, rust-toolchain, and RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT before assemble.
   - Windows jobs that emit POSIX `run: |` blocks need `defaults.run.shell: bash` like ci.yml.
 ---
+
+## 2026-08-29 19:15 CDT - US-595 Drift Audit
+- Trigger: 3 cycles, 1568 changed lines, 14 commits
+- Weakened proofs: classifier only asserted provider fail and implied warnings; YAML tests did not lock setup-before-doctor
+- Review scar: local Windows-id helper duplicated isWindowsCiPlatform; linux-x64 doctor overlap with provider-integration kept as the story-owned hard-fail
+- Contract drift: PRD wants per-target live exit-0; wave conventions treat the fail-closed generated workflow as evidence. Did not flip passes — missing virt runners already fail-close, and flipping would send Build to churn it cannot close
+- Fixed: deleted the duplicate Windows helper; restored section-fail and warning proofs; locked setup-before-doctor order
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
