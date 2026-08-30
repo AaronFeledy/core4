@@ -38,10 +38,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
+- Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -241,4 +242,20 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 03:29 CDT - Babysit
+- PR: #884 https://github.com/AaronFeledy/core4/pull/884
+- CI outcome: pass
+- Review feedback: fixed (exclude generated guide tests from aggregate typecheck so darwin-arm64 tsc no longer OOMs)
+- Merge: merged (squash)
+---
+
+## 2026-08-30 11:25 CDT - US-600
+- Locked Alpha 1 exit in README Status and the CI runbook: every compile target must have live setup, doctor, Drupal journey, and Rails journey; compile smoke is not an exit; a long-term roadmap rewrite is not an exit. Public artifacts stay unsigned 4.0.0-dev.N; signing, installers, self-update, and Beta stay later. Contract tests freeze those phrases plus the six-cell jobs in platform-readiness, Drupal journey, and Rails journey, and the Intel Mac fail-close remediation. Did not add workflows or edit the long-term roadmap.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Exit locks compose over existing six-cell workflows and Status copy. Do not invent a fourth workflow.
+  - If runbook copy says `not Linux x64 only`, never `not.toContain("Linux x64 only")`; pin the full historical sentence instead.
+  - Status already contains `unsigned`. Never `not.toContain("signed")`; use `signed 4.0.0` and a word-boundary GA check.
 ---
