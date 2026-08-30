@@ -7,6 +7,7 @@ import {
   type CiPlatform,
   PLATFORM_READINESS_CELLS,
   type PlatformReadinessCell,
+  isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
@@ -42,7 +43,6 @@ const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
   }
 };
 
-const isWindowsCell = (id: string): boolean => id.startsWith("windows-");
 const isLinuxLando = (cell: PlatformReadinessCell): boolean =>
   cell.id.startsWith("linux-") && cell.provider === "lando";
 const isLinuxCurrentCommit = (cell: PlatformReadinessCell): boolean =>
@@ -50,7 +50,7 @@ const isLinuxCurrentCommit = (cell: PlatformReadinessCell): boolean =>
 
 const setupFlags = (cell: PlatformReadinessCell): string => {
   const flags = `--yes --provider=${cell.provider} --skip-install-ca --skip-shell-integration --skip-file-sync`;
-  return isWindowsCell(cell.id) ? `${flags} --no-interactive` : flags;
+  return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
 };
 
 const isolateEnv = `    env:
