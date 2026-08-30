@@ -240,5 +240,6 @@ describe("ci runbook", () => {
     expect(runbook).toContain("ubuntu-24.04-arm");
     expect(runbook).toContain("--provider=docker");
     expect(runbook).toContain("Hyper-V");
+    expect(runbook).toContain("source-build prerequisites");
   });
 });

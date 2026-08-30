@@ -269,6 +269,8 @@ The generated workflow is `.github/workflows/platform-readiness.yml`, produced b
 
 On pull request, `platform-readiness` runs linux-x64 on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm` with the default provider `lando`.
 
+Linux current-commit assemble uses the same Go, Rust, and Ubuntu snapshot source-build prerequisites as `runtime-bundle`.
+
 On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
 
 darwin-x64 already has Docker installed on the runner. The job must not install Docker Desktop. Use `--provider=docker` on that cell.
