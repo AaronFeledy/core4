@@ -1,17 +1,32 @@
 import { Effect } from "effect";
 
-import type { ProxyError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import type {
+  ProxyApplyError,
+  ProxyError,
+  ProxySetupError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
+} from "@lando/sdk/errors";
+import type { AppPlan, ProxyApplyResult, RouterConfig } from "@lando/sdk/schema";
 import type { ProviderError, ProxyServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
+import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
-export const applyAppRoutes = (proxy: ProxyServiceShape, plan: AppPlan) =>
+export const applyAppRoutes = (
+  proxy: ProxyServiceShape,
+  plan: AppPlan,
+  landofileRouter?: RouterConfig,
+): Effect.Effect<
+  ProxyApplyResult,
+  ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | ProxyApplyError
+> =>
   Effect.gen(function* () {
     const defaultDomain = yield* resolveProxyDefaultDomain;
-    return yield* Effect.scoped(proxy.setup({ defaultDomain })).pipe(
+    const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
+    return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
       Effect.zipRight(proxy.applyRoutes(plan.routes, plan.id)),
     );
   });

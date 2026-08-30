@@ -5,6 +5,7 @@ import { Effect, Either } from "effect";
 import { FileSystem, PathsService, type ProxyService } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import type { DoctorSolution } from "./doctor-contract";
 import {
   type DoctorSubsystemCheck,
@@ -15,13 +16,7 @@ import {
   passCheck,
 } from "./doctor-subsystem-checks";
 
-const ACQUISITION_MODES = [
-  "direct",
-  "occupied-hop",
-  "needs-helper",
-  "socket-helper",
-  "degraded-high-ports",
-] as const;
+const ACQUISITION_MODES = ["direct", "occupied-hop", "needs-helper", "socket-helper"] as const;
 type AcquisitionMode = (typeof ACQUISITION_MODES)[number];
 
 const OCCUPIED_HOP_REMEDIATION =
@@ -70,7 +65,6 @@ const liveProxyStateContext = (
 
 const specForMode = (mode: AcquisitionMode | undefined): SubsystemSpec => {
   switch (mode) {
-    case "degraded-high-ports":
     case "needs-helper":
       return { ...PROXY_SPEC, automaticRemediation: DEGRADED_HIGH_PORTS_REMEDIATION };
     case "occupied-hop":
@@ -124,7 +118,7 @@ export const buildProxyCheck = (
       ...(acquisitionMode === undefined ? {} : { acquisitionMode }),
     };
     if (running && acquisitionMode === "occupied-hop") return occupiedHopCheck(context);
-    const needsHelper = acquisitionMode === "degraded-high-ports" || acquisitionMode === "needs-helper";
+    const needsHelper = acquisitionMode === "needs-helper";
     if (running && !needsHelper) return passCheck(PROXY_SPEC, context);
     return yield* buildDegradedCheck(
       specForMode(acquisitionMode),
@@ -133,9 +127,10 @@ export const buildProxyCheck = (
       () =>
         Effect.gen(function* () {
           const defaultDomain = yield* resolveProxyDefaultDomain;
-          yield* Effect.scoped(proxy.setup({ defaultDomain }));
+          const { router, routerPin } = yield* resolveRouterConfigForApp();
+          yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin }));
           const after = yield* readAcquisitionMode();
-          if (after === "degraded-high-ports" || after === "needs-helper" || after === "occupied-hop") {
+          if (after === "needs-helper" || after === "occupied-hop") {
             return yield* Effect.fail(new Error("Proxy is still serving on high ports after setup."));
           }
         }),
