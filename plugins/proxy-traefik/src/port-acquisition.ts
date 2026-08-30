@@ -155,12 +155,14 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
   const http = walkProtocol(httpTryList, preferredHttp, input.httpBinds, input.http);
   const https = walkProtocol(httpsTryList, preferredHttps, input.httpsBinds, input.https);
   if (http.kind === "exhausted" || https.kind === "exhausted") {
-    const exhausted =
-      http.kind === "exhausted" && https.kind === "exhausted"
-        ? "both"
-        : http.kind === "exhausted"
-          ? "http"
-          : "https";
+    let exhausted: "http" | "https" | "both";
+    if (http.kind === "exhausted" && https.kind === "exhausted") {
+      exhausted = "both";
+    } else if (http.kind === "exhausted") {
+      exhausted = "http";
+    } else {
+      exhausted = "https";
+    }
     throw portsExhausted({
       bindAddress,
       httpTried: httpTryList,

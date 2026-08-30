@@ -11,21 +11,18 @@ import type { AuthorityPorts } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
 
-const setupError = (cause: unknown): ProxySetupError =>
-  new ProxySetupError({
-    message: "Traefik ingress setup failed.",
-    proxyId: TRAEFIK_PROXY_ID,
-    remediation: "Run `lando meta:global:start traefik` and resolve the reported global-app failure.",
-    cause,
-  });
-
 export const mapSetupError = (
   cause: unknown,
 ): ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch => {
   if (cause instanceof RouterPortsExhausted || cause instanceof RouterPortPinMismatch) {
     return cause;
   }
-  return setupError(cause);
+  return new ProxySetupError({
+    message: "Traefik ingress setup failed.",
+    proxyId: TRAEFIK_PROXY_ID,
+    remediation: "Run `lando meta:global:start traefik` and resolve the reported global-app failure.",
+    cause,
+  });
 };
 
 export const advertisedPorts = (decision: AcquisitionDecision): AuthorityPorts =>

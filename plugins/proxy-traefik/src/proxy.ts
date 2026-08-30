@@ -66,18 +66,19 @@ const proxyError = (operation: string, cause: unknown): ProxyError =>
     cause,
   });
 
-const resolveSocketProxy = (dependencies: TraefikProxyDependencies) =>
-  Effect.gen(function* () {
-    if (dependencies.socketProxy !== undefined) return dependencies.socketProxy;
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const processRunner = yield* Effect.serviceOption(ProcessRunner);
-    const interaction = yield* Effect.serviceOption(InteractionService);
-    return liveSocketProxy({
-      privilege: privilege._tag === "Some" ? privilege.value : undefined,
-      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
-      interaction: interaction._tag === "Some" ? interaction.value : undefined,
-    });
+const resolveLiveSocketProxy = Effect.gen(function* () {
+  const privilege = yield* Effect.serviceOption(PrivilegeService);
+  const processRunner = yield* Effect.serviceOption(ProcessRunner);
+  const interaction = yield* Effect.serviceOption(InteractionService);
+  return liveSocketProxy({
+    privilege: privilege._tag === "Some" ? privilege.value : undefined,
+    processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
+    interaction: interaction._tag === "Some" ? interaction.value : undefined,
   });
+});
+
+const resolveSocketProxy = (dependencies: TraefikProxyDependencies) =>
+  dependencies.socketProxy !== undefined ? Effect.succeed(dependencies.socketProxy) : resolveLiveSocketProxy;
 
 const releaseHelperSockets = (dependencies: TraefikProxyDependencies) =>
   Effect.gen(function* () {
@@ -211,15 +212,8 @@ export const proxy = Layer.effect(
     const paths = yield* PathsService;
     const globalApp = yield* GlobalAppService;
     const certificateAuthority = yield* CertificateAuthority;
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const processRunner = yield* Effect.serviceOption(ProcessRunner);
-    const interaction = yield* Effect.serviceOption(InteractionService);
     const events = yield* Effect.serviceOption(EventService);
-    const socketProxy = liveSocketProxy({
-      privilege: privilege._tag === "Some" ? privilege.value : undefined,
-      processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
-      interaction: interaction._tag === "Some" ? interaction.value : undefined,
-    });
+    const socketProxy = yield* resolveLiveSocketProxy;
     return makeTraefikProxyService({
       certificateAuthority,
       fileSystem: {

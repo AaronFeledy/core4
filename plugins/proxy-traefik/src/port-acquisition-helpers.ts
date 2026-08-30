@@ -98,25 +98,6 @@ const probeTryList = (
     return binds;
   });
 
-export const classifyInputFrom = (
-  dependencies: TraefikProxyDependencies,
-  lists: ResolvedTryLists,
-  helperInstalled: boolean,
-  socketsActive: boolean,
-  probed: ProbedAcquisition,
-): ClassifyAcquisitionInput => ({
-  platform: dependencies.paths.platform,
-  helperInstalled,
-  socketsActive,
-  http: probed.http,
-  https: probed.https,
-  httpBinds: probed.httpBinds,
-  httpsBinds: probed.httpsBinds,
-  httpTryList: lists.httpTryList,
-  httpsTryList: lists.httpsTryList,
-  bindAddress: lists.bindAddress,
-});
-
 const completeOverrideBinds = (input: {
   readonly tryList: readonly number[];
   readonly preferred: number;

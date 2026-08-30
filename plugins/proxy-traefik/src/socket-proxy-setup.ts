@@ -12,16 +12,8 @@ import {
 import type { SocketProxyDependencies } from "./proxy-types.ts";
 import { installSocketProxy, isSocketProxyInstalled, startSockets } from "./socket-proxy-install.ts";
 
-const helperUnavailable = (): AcquisitionDecision => ({
-  mode: "needs-helper",
-  httpPort: DESIRED_HTTP_PORT,
-  httpsPort: DESIRED_HTTPS_PORT,
-  notices: [],
-  fingerprint: defaultAcquisitionFingerprint(),
-});
-
-const socketHelper = (): AcquisitionDecision => ({
-  mode: "socket-helper",
+const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDecision => ({
+  mode,
   httpPort: DESIRED_HTTP_PORT,
   httpsPort: DESIRED_HTTPS_PORT,
   notices: [],
@@ -61,11 +53,15 @@ export const resolveNeedsHelper = (
 }> =>
   Effect.gen(function* () {
     if (!socketProxy.hasHostSystemd()) {
-      return { decision: helperUnavailable(), helperInstalled: false, socketsActive: false };
+      return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
     }
     const alreadyInstalled = yield* isSocketProxyInstalled(socketProxy);
     if (!(yield* consentToInstall(socketProxy, alreadyInstalled))) {
-      return { decision: helperUnavailable(), helperInstalled: alreadyInstalled, socketsActive: false };
+      return {
+        decision: helperDecision("needs-helper"),
+        helperInstalled: alreadyInstalled,
+        socketsActive: false,
+      };
     }
     const installed = yield* installSocketProxy(socketProxy);
     switch (installed.kind) {
@@ -74,7 +70,7 @@ export const resolveNeedsHelper = (
         break;
       case "elevation-refused":
       case "proxyd-missing":
-        return { decision: helperUnavailable(), helperInstalled: false, socketsActive: false };
+        return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
       default:
         return assertNever(installed);
     }
@@ -84,12 +80,16 @@ export const resolveNeedsHelper = (
       ...(socketProxy.probeForward === undefined ? {} : { probeForward: socketProxy.probeForward }),
     });
     if (started.kind === "started" && started.http.kind === "success" && started.https.kind === "success") {
-      return { decision: socketHelper(), helperInstalled: true, socketsActive: true };
+      return { decision: helperDecision("socket-helper"), helperInstalled: true, socketsActive: true };
     }
-    return { decision: helperUnavailable(), helperInstalled: true, socketsActive: false };
+    return { decision: helperDecision("needs-helper"), helperInstalled: true, socketsActive: false };
   }).pipe(
     Effect.catchAll(() =>
-      Effect.succeed({ decision: helperUnavailable(), helperInstalled: false, socketsActive: false }),
+      Effect.succeed({
+        decision: helperDecision("needs-helper"),
+        helperInstalled: false,
+        socketsActive: false,
+      }),
     ),
   );
 

@@ -3,7 +3,6 @@ import { Effect, Schema } from "effect";
 import { PortNumber } from "@lando/sdk/schema";
 
 import {
-  classifyInputFrom,
   classifyOrFail,
   fingerprintsEqual,
   pinDiffers,
@@ -114,9 +113,18 @@ export const persistPortAcquisition = (
         return decision;
       }
     }
-    const decision = yield* classifyOrFail(
-      classifyInputFrom(dependencies, lists, helperInstalled, false, probed),
-    );
+    const decision = yield* classifyOrFail({
+      platform: dependencies.paths.platform,
+      helperInstalled,
+      socketsActive: false,
+      http: probed.http,
+      https: probed.https,
+      httpBinds: probed.httpBinds,
+      httpsBinds: probed.httpsBinds,
+      httpTryList: lists.httpTryList,
+      httpsTryList: lists.httpsTryList,
+      bindAddress: lists.bindAddress,
+    });
     yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
       ...decision,
       helperInstalled,
