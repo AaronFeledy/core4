@@ -134,7 +134,7 @@ routing:
 
 `httpPort`/`httpsPort` replace the preferred (first) candidate for that protocol. `httpFallbacks`/`httpsFallbacks` replace the rest of that protocol's list. Omitted keys inherit. An empty fallback array means preferred-only (no scan past the preferred port). Default `bindAddress` remains `127.0.0.1`.
 
-Merge order for an app start: compiled defaults → global `routing:` → env → this app's Landofile `routing:`.
+Merge order for an app start: compiled defaults → global `routing:` → env → this app's Landofile `routing:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT be a parallel host-port surface.
 
 **Host-global listen.** Traefik binds **one** HTTP/HTTPS pair for the whole host. App-level `routing:` is a request against that pair, not a second proxy.
 

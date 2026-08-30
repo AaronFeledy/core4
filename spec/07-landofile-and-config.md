@@ -824,12 +824,9 @@ mcp:
   tooling: false                       # also expose the resolved app's tooling tasks as MCP tools
   maxConcurrent: 4                     # positive cap on concurrent MCP tool calls
 
-pluginConfig:
-  "@lando/proxy-traefik":
-    httpPort: 80
-    httpsPort: 443
-    httpFallbacks: [8000, 8080, 8888, 8008]
-    httpsFallbacks: [444, 4433, 4444, 4443]
+pluginConfig: {}
+# Traefik host ports, fallbacks, and bind address are routing: (§7.5, §10.2.3),
+# not pluginConfig."@lando/proxy-traefik".
 
 keys: true
 maxKeyWarning: 10
