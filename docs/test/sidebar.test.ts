@@ -17,6 +17,7 @@ const RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "rails",
   "symfony",
   "wordpress",
 ] as const;

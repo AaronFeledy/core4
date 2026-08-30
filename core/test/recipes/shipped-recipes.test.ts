@@ -14,6 +14,7 @@ const SHIPPED_RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "rails",
   "symfony",
   "toolbox",
   "wordpress",
