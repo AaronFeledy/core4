@@ -227,4 +227,19 @@ describe("ci runbook", () => {
       expect(await readText(template)).toContain("docs/contributing/ci.md");
     }
   });
+
+  test("documents platform readiness", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: platform-readiness pins are located.
+    // Then: the runbook names the cells, virt labels, doctor, arm runner, docker fallback, and Hyper-V.
+    expect(runbook).toContain("platform-readiness");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("scripts/platform-readiness-doctor.ts");
+    expect(runbook).toContain("ubuntu-24.04-arm");
+    expect(runbook).toContain("--provider=docker");
+    expect(runbook).toContain("Hyper-V");
+    expect(runbook).toContain("source-build prerequisites");
+  });
 });

@@ -175,6 +175,12 @@ export const CODEGEN_CATALOG = [
     script: "build-compose-vendor-bump-workflow.ts",
     workspace: "repo",
   },
+  {
+    id: "platform-readiness-workflow",
+    ownership: "committed-workflow",
+    script: "build-platform-readiness-workflow.ts",
+    workspace: "repo",
+  },
 ] as const satisfies readonly CodegenCatalogEntry[];
 
 const SCRIPT_DIRECTORY = import.meta.dirname;

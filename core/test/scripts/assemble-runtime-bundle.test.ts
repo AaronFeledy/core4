@@ -294,9 +294,13 @@ describe("committed runtime-bundle-sources.json", () => {
     expect(sources.schemaVersion).toBe(1);
   });
 
-  test("pins exactly the four runtime host keys and never darwin-x64", async () => {
+  test("pins every published host key plus win32-arm64 and never darwin-x64", async () => {
     const sources = await readCommitted();
-    expect(Object.keys(sources.bundles).sort()).toEqual([...RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS].sort());
+    const keys = Object.keys(sources.bundles).sort();
+    expect(keys).toEqual(["darwin-arm64", "linux-arm64", "linux-x64", "win32-arm64", "win32-x64"]);
+    for (const key of RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS) {
+      expect(keys).toContain(key);
+    }
     expect(sources.bundles).not.toHaveProperty("darwin-x64");
   });
 

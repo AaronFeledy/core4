@@ -276,6 +276,38 @@
           "mode": 493
         }
       ]
+    },
+    "win32-arm64": {
+      "components": [
+        {
+          "name": "podman",
+          "version": "6.0.0",
+          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-release-windows_arm64.zip",
+          "sha256": "68e222311e9e9a55afb76726aadb609797b840ac4d6a64b1b46bea98a6b11e89",
+          "archive": "zip",
+          "member": "podman-6.0.0/usr/bin/podman.exe",
+          "installName": "bin/podman.exe",
+          "mode": 493
+        },
+        {
+          "name": "gvproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-windows-arm64.exe",
+          "sha256": "a00867aaf0a6694877d3261d0c8e6df5dcfe8eec2fb4b81a084d2bf7a65d7ae8",
+          "archive": "none",
+          "installName": "bin/gvproxy.exe",
+          "mode": 493
+        },
+        {
+          "name": "win-sshproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/win-sshproxy-arm64.exe",
+          "sha256": "a7e9c46ee9898a800dc8f6a0db5e5d74116a42236d96d0bb9b379b6a63512dce",
+          "archive": "none",
+          "installName": "bin/win-sshproxy.exe",
+          "mode": 493
+        }
+      ]
     }
   }
 }
