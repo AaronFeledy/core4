@@ -58,6 +58,7 @@ const committedWorkflowPolicies = [
   { id: "php-base-workflow", path: ".github/workflows/php-base-images.yml" },
   { id: "compose-vendor-bump-workflow", path: ".github/workflows/compose-vendor-bump.yml" },
   { id: "platform-readiness-workflow", path: ".github/workflows/platform-readiness.yml" },
+  { id: "drupal-journey-workflow", path: ".github/workflows/drupal-journey.yml" },
 ] as const;
 
 const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule =>

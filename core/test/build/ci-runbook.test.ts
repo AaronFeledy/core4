@@ -242,4 +242,20 @@ describe("ci runbook", () => {
     expect(runbook).toContain("Hyper-V");
     expect(runbook).toContain("source-build prerequisites");
   });
+
+  test("documents Drupal journey", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: Drupal journey pins are located.
+    // Then: the runbook names the workflow, generators, journey script, and key steps.
+    expect(runbook).toContain("drupal-journey.yml");
+    expect(runbook).toContain("scripts/build-drupal-journey-workflow.ts");
+    expect(runbook).toContain("scripts/drupal-journey.ts");
+    expect(runbook).toContain("lando info");
+    expect(runbook).toContain("drupal-scaffold");
+    expect(runbook).toContain("destroy -y");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("--provider=docker");
+  });
 });

@@ -33,9 +33,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Live setup/doctor evidence is the generated `platform-readiness` workflow plus `scripts/platform-readiness-doctor.ts` (decode doctor JSON; `self` and `status: fail` and non-running setup-readiness are blocking; warnings are not). GitHub-hosted macOS arm64 and Windows arm64 cannot nested-virt; those cells are fail-closed self-hosted `lando-virt` labels, not advisory skips.
 - A runtime-bundle host key can be assembled current-commit from `runtime-bundle-sources.json` and `RUNTIME_BUNDLE_TARGETS` before it appears in the committed published manifest. `REQUIRED_RUNTIME_HOST_KEYS` stays the published set.
 
+- `lando init --name` without `--destination` writes `<cwd>/<name>/` (`resolveInitDestination`). Scripts that init then start must chdir into that directory.
+
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597..US-600 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -140,4 +142,21 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev (default provider `lando`). `lando doctor --format json` exit 0; `scripts/platform-readiness-doctor.ts` classified `passed` (setup-readiness pass + running runtime; warnings not blocking). Lamp init/start served `us595-ok` over HTTPS; exec/info/help/apps:list smoked. Destroyed the app and `uninstall --yes --purge`.
 - **Out-of-scope finding:** `lando doctor` warned `runtime-service`/`selected-provider` for orphan pid that was the owned `podman system service` child of the Lando-owned pid. Warnings are not blocking. Suspected doctor process-ownership.
 - **Out-of-scope finding:** `lando doctor` `host-proxy` warn (`mode: none`, DNS not active). App start still succeeded. Suspected host-proxy subsystem, not this workflow story.
+---
+
+## 2026-08-29 21:05 CDT - US-596
+- Added a generated six-cell Drupal journey workflow: live `lando init --recipe drupal`, start, info, README `drupal-scaffold`/Drush, then destroy on every compile target. Reuses the platform-readiness cell table (darwin-x64 `--provider=docker`, linux PR+evidence, darwin/windows fail-closed `lando-virt`). Gate is `scripts/drupal-journey.ts`. Did not add a second Drupal recipe.
+- Proved linux-x64 live in lando4-dev: init/start/info URL, Drupal 11 scaffold, `drush` 13.7.6, destroy. darwin/windows cells remain fail-closed self-hosted lando-virt.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - `lando init --name=foo` without `--destination` creates `<cwd>/foo`. Journey scripts must run start/info/scaffold/destroy there.
+  - WSL mirrored networking shares `127.0.0.1`. A host Traefik on 38080/38443 blocks sandbox provider-lando setup. Free those ports before live proof.
+  - Clone platform-readiness as a sibling `committed-workflow`; do not fold Composer-heavy journeys into setup/doctor jobs.
+---
+
+## 2026-08-29 21:06 CDT - US-596 Review
+- Fixed always() teardown destroy resolving `dist/lando` after `cd` into the app dir, and stopped the journey runner after the first failed step so a missing app root cannot throw before the JSON report.
+- Review notes (deferred/rejected): fail-closed darwin/windows `lando-virt` cells stay the all-six evidence shape (same as US-595); `--name` path traversal is CI-hardcoded; unpinned action tags match platform-readiness; job-level `COMPOSER_PROCESS_TIMEOUT` is not in-container agent-env (linux-x64 live scaffold already passed; allowlist is out of this story)
+- Guide-Coverage-Skip: CI workflow and contributor runbook only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; drupal-journey script and workflow spot checks passed
 ---
