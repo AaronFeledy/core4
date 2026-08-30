@@ -107,6 +107,33 @@ Tagged errors:
 - `TunnelDetachedStateError` — detached registry or PID/socket state is corrupt, locked, stale, or cannot be reconciled.
 - `TunnelStopError` — control-plane or connector teardown failed; best-effort local cleanup already ran where safe.
 
+### 10.2.3 Host-port acquisition
+
+The default Traefik proxy publishes HTTP and HTTPS on `127.0.0.1`. User-facing URLs MUST omit the port when the chosen host port is `80` or `443`.
+
+Host ports are chosen from **fixed ordered lists**. First free candidate wins **per protocol**. "Free" means a TCP bind on the bind address succeeds — not an HTTP GET. Lando 3 scanned with HTTP reachability; v4 MUST NOT.
+
+**Default try order:**
+
+- HTTP: `80`, `8080`, `8000`, `8888`, `8008`, `38080`
+- HTTPS: `443`, `8443`, `4443`, `4433`, `4444`, `444`, `38443`
+
+`80`/`443` are the happy path (no port in the URL). `8080`/`8443` are the familiar first fallback (DDEV's documented alternate pair, plus Lando 3's remaining common ports). `38080`/`38443` are last-resort Lando-reserved ports, not the degraded default.
+
+Bind address is `127.0.0.1` unless `proxyBindAddress` / `bindAddress` is overridden.
+
+**The chosen pair IS Traefik's host publish.** Container entrypoints stay `:80` / `:443`. Traefik MUST NOT always bind `38080`/`38443` in addition to the chosen pair. A second Lando on shared localhost (another WSL distro, another install) then takes the next free candidate instead of failing on a hardcoded high port.
+
+**Persist** the chosen `{ http, https }` pair. Reuse it on later starts when preferred config still matches the cache and the proxy still owns those binds. Rescan a protocol when preferred config changed, the proxy container is gone, or the cached bind is not ours.
+
+**Privileged ports.** `EACCES` on `80`/`443` MAY use the existing socket-helper path. The helper hops to the first successful high port from the same lists. Occupied-hop remains for a foreign listener that can be forwarded; it MUST NOT treat another Lando instance's healthy Traefik as leftover `rootlessport`.
+
+**Fail closed.** If a protocol finds no free port in its list, proxy start MUST fail with a tagged error naming the tried ports. Do not disable the proxy silently (Lando 3 did).
+
+Doctor leftover checks and start-path `EADDRINUSE` remap MUST use the persisted chosen ports, not hardcoded `38080`/`38443` only.
+
+Global config MAY expose Lando 3-shaped knobs (`proxyHttpPort`, `proxyHttpsPort`, `proxyHttpFallbacks`, `proxyHttpsFallbacks`, `proxyBindAddress`) that replace the preferred port and/or the fallback arrays. Env overrides follow §7.6.
+
 ### 10.3 Certificates and CA
 
 Core owns certificate intent. `CertificateAuthority` plugins own issuance and host trust.
