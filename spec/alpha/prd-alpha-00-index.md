@@ -13,7 +13,7 @@ This set sequences the first public Alpha: unsigned `4.0.0-dev.N` binaries and t
 3. US-592 is the contract for this set. Keep it `passes: false` until the contract checks in PRD-01 are done.
 4. Live all-six evidence is required for setup, doctor, Drupal, and Rails. Compile smoke does not close those stories.
 5. Full-suite lock is always `bun test` (or explicit shard `--run` commands) with positive test counts.
-6. PRD-08 (US-601..US-605) runs after US-600. US-601 may edit `spec/11-subsystems.md` §10.2.3. Do not edit US-592..US-600.
+6. PRD-08 (US-601..US-605) runs after US-600. Item 1 applies to US-592..US-600. US-601 may additionally edit `spec/11-subsystems.md` §10.2.3 and the `routing:` keys in `spec/07-landofile-and-config.md` §7.4/§7.5. Do not edit US-592..US-600.
 
 ## PRD table
 
