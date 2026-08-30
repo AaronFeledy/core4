@@ -149,6 +149,23 @@ Merge order for an app start: compiled defaults → global `routing:` → env �
 
 **Fail closed.** If a protocol finds no free port in its list, proxy start MUST fail with a tagged error naming the tried ports. Do not disable the proxy silently (Lando 3 did).
 
+**Fallback notice.** `80`/`443` are highly desirable. When acquisition cannot bind a preferred port (`httpPort`/`httpsPort`, default `80`/`443`) and selects a fallback, Lando MUST notify the user at that moment (setup, `global:start`, and the app start that acquires Traefik). The notice MUST name the occupied preferred port(s), the chosen fallback port(s), the holder when identified, and that stopping the holder then `lando global:restart` (or re-running setup) lets Lando take `80`/`443`. Silent fallback is forbidden.
+
+**Doctor occupancy.** `lando doctor` MUST warn when preferred `80` and/or `443` are in use by a **non-Lando** holder, even if Traefik is healthy on fallbacks. Lando-owned binds (this instance's Traefik, socket-helper, or leftover rootlessport already covered by leftover-proxy checks) are not this warning. Status is `warn`, not `fail`.
+
+The check MUST identify common holders from process comm/command line when possible and attach holder-specific remediation:
+
+| Holder (match) | Remediation |
+|---|---|
+| DDEV (`ddev-router`, `ddev`, Traefik started by DDEV) | `ddev poweroff`, or `ddev config global --router-http-port=8080 --router-https-port=8443` then `ddev restart` if the user wants DDEV to keep running on high ports |
+| Lando 3 (`landoproxyhyperion`, `lando` v3 proxy) | `lando poweroff` in the v3 install |
+| Docksal (`docksal-vhost-proxy`, `fin`) | Stop Docksal proxy (`fin stop` / stop `docksal-vhost-proxy`) |
+| Apache (`apache2`, `httpd`) | Stop the system Apache service |
+| nginx (`nginx`) | Stop the system nginx service |
+| Caddy (`caddy`) | Stop Caddy |
+| IIS / `http.sys` (win32) | Stop the IIS site or HTTP.sys binding on 80/443 |
+| Unknown | Name the comm/pid when known; stop that process or change `routing.httpPort`/`httpsPort` |
+
 Doctor leftover checks and start-path `EADDRINUSE` remap MUST use the persisted chosen ports, not hardcoded `38080`/`38443` only.
 
 ### 10.3 Certificates and CA
