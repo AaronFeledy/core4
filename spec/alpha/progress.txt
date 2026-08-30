@@ -45,10 +45,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
+- Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false. US-601..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -250,6 +251,29 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Verification: typecheck, lint, spot checks — pass
 ---
 
+## 2026-08-30 03:29 CDT - Babysit
+- PR: #884 https://github.com/AaronFeledy/core4/pull/884
+- CI outcome: pass
+- Review feedback: fixed (exclude generated guide tests from aggregate typecheck so darwin-arm64 tsc no longer OOMs)
+- Merge: merged (squash)
+---
+
+## 2026-08-30 11:25 CDT - US-600
+- Locked Alpha 1 exit in README Status and the CI runbook: every compile target must have live setup, doctor, Drupal journey, and Rails journey; compile smoke is not an exit; a long-term roadmap rewrite is not an exit. Public artifacts stay unsigned 4.0.0-dev.N; signing, installers, self-update, and Beta stay later. Contract tests freeze those phrases plus the six-cell jobs in platform-readiness, Drupal journey, and Rails journey, and the Intel Mac fail-close remediation. Did not add workflows or edit the long-term roadmap.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Exit locks compose over existing six-cell workflows and Status copy. Do not invent a fourth workflow.
+  - If runbook copy says `not Linux x64 only`, never `not.toContain("Linux x64 only")`; pin the full historical sentence instead.
+  - Status already contains `unsigned`. Never `not.toContain("signed")`; use `signed 4.0.0` and a word-boundary GA check.
+---
+
+## 2026-08-30 11:33 CDT - US-600 Review
+- Reviewed the Alpha 1 exit lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): duplicate Current: Beta 1 assertion is a nit, not a miss; YAML substring job-key freeze matches existing phrase-freeze style; GitHub #866 host-proxy shim on prerelease is US-593/start payload, not this lock; live virt-runner execution stays the US-595 fail-closed six-cell shape, not a re-demand.
+- Guide-Coverage-Skip: Alpha 1 exit lock restates Status and CI runbook over existing six-cell workflows; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract (23) and ci-runbook (9) spot checks passed; guide-drift vs origin/main passed; Bugbot found no bugs
+---
+
 ## 2026-08-30 19:30 CDT - US-601
 - Appended PRD-08 after Alpha 1 exit. Durable contract is spec/11-subsystems.md §10.2.3: HTTP 80,8080,8000,8888,8008,38080; HTTPS 443,8443,4443,4433,4444,444,38443; TCP bind; persist; Traefik publishes the chosen pair; 38080/38443 last-resort. Did not edit US-592..US-600. Did not implement acquisition or Traefik publish.
 - Verification: spec-only change; typecheck/lint not required for this package-creation append
@@ -266,4 +290,5 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 
 ## 2026-08-30 20:30 CDT - US-601
 - Ingress ubiquitous language is router/routes. User knobs are `router:` (not `routing:`). Appended US-606 to rename ProxyService / proxyServices: / @lando/proxy-traefik. HostProxy and network.proxy unchanged. Did not edit US-592..US-600.
+
 ---
