@@ -80,6 +80,14 @@ describe("platform-readiness workflow", () => {
     expect(triggers).toContain("workflow_dispatch");
   });
 
+  test("runs every job with bash so Windows cells can execute POSIX compile steps", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    expect(workflow).toContain("defaults:\n  run:\n    shell: bash");
+  });
+
   test("runs linux-x64 on ubuntu-24.04 with lando setup, assemble, and a hard doctor gate", async () => {
     // Given / When
     const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
