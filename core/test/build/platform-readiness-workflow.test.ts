@@ -18,10 +18,15 @@ const PLATFORM_IDS = [
 ] as const;
 
 const SCHEDULED_IDS = ["darwin-arm64", "darwin-x64", "windows-x64", "windows-arm64"] as const;
+const LINUX_IDS = ["linux-x64", "linux-arm64"] as const;
 
 const SETUP_FLAGS = "--yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync";
 const DOCTOR = "bun run scripts/platform-readiness-doctor.ts";
 const SCHEDULE_IF = "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const LINUX_SOURCE_BUILD_MARKERS =
+  "uses: actions/setup-go@|go-version: 1.25.6|dtolnay/rust-toolchain@|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
+    "|",
+  );
 
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 
@@ -97,6 +102,35 @@ describe("platform-readiness workflow", () => {
     expect(linuxArm64).toContain("--platform linux-arm64");
     expect(linuxArm64).toContain(DOCTOR);
     expect(linuxArm64).not.toContain(`${DOCTOR} || true`);
+  });
+
+  test("installs Linux source-build prerequisites before linux current-commit assemble", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    for (const id of LINUX_IDS) {
+      const job = jobBlock(workflow, id);
+      const installPrereqs = job.indexOf("Install Linux Podman source-build prerequisites");
+      const assemble = job.indexOf(`Assemble current-commit ${id} runtime bundle`);
+      expect(installPrereqs).toBeGreaterThan(-1);
+      expect(assemble).toBeGreaterThan(installPrereqs);
+      for (const prerequisite of LINUX_SOURCE_BUILD_MARKERS) {
+        expect(job).toContain(prerequisite);
+      }
+    }
+  });
+
+  test("does not install Linux source-build toolchains on non-linux cells", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    for (const id of SCHEDULED_IDS) {
+      const job = jobBlock(workflow, id);
+      expect(job).not.toContain("actions/setup-go@");
+      expect(job).not.toContain("dtolnay/rust-toolchain@");
+    }
   });
 
   test("gates darwin and windows cells to schedule or workflow_dispatch", async () => {

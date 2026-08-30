@@ -8,6 +8,7 @@ import {
   PLATFORM_READINESS_CELLS,
   type PlatformReadinessCell,
 } from "./ci-platforms.ts";
+import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/platform-readiness.yml");
@@ -44,6 +45,8 @@ const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
 const isWindowsCell = (id: string): boolean => id.startsWith("windows-");
 const isLinuxLando = (cell: PlatformReadinessCell): boolean =>
   cell.id.startsWith("linux-") && cell.provider === "lando";
+const isLinuxCurrentCommit = (cell: PlatformReadinessCell): boolean =>
+  cell.bundleMode === "current-commit" && cell.bundleKey.startsWith("linux-");
 
 const setupFlags = (cell: PlatformReadinessCell): string => {
   const flags = `--yes --provider=${cell.provider} --skip-install-ca --skip-shell-integration --skip-file-sync`;
@@ -69,10 +72,24 @@ const renderCompileStep = (platform: CiPlatform): string => `      - name: Build
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external`;
 
+const renderLinuxSourceBuildPrereqs = (): string => `
+      - name: Setup Go for Linux Podman source build
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v5.5.0
+        with:
+          go-version: 1.25.6
+
+      - name: Setup Rust for Linux helper source builds
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain} # 1.88.0
+
+      - name: Install Linux Podman source-build prerequisites
+        run: |
+          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
+`;
+
 const renderBundleSteps = (cell: PlatformReadinessCell): string => {
   switch (cell.bundleMode) {
     case "current-commit":
-      return `
+      return `${isLinuxCurrentCommit(cell) ? renderLinuxSourceBuildPrereqs() : ""}
       - name: Assemble current-commit ${cell.bundleKey} runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform ${cell.bundleKey}
 
