@@ -168,3 +168,12 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Contract stories restate facts in README Status and lock them in public-alpha-contract tests. Those tests must not cite spec/ or section signs.
   - Do not assert recipes/rails exists until the bundled-recipe story. Keep the builtin stub as the only rails tree until then.
 ---
+
+## 2026-08-29 22:35 CDT - US-597 Review
+- Reviewed the Rails recipe contract lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): 8.8.10 table intro still says v4.0 ships under recipes/<id>/ — that is the required staged-to-bundled move, not a missing recipes/rails tree; stub `name` prompt has no default (US-598); Layout recipes list omits rails until the public tree exists; lando3-parity leftover staged-rails copy is a different spec set; do not delete the builtin stub later without updating public-alpha-contract tests
+- Guide-Coverage-Skip: contract copy and public-alpha-contract tests only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract spot check passed (14 tests); guide-drift with origin/main passed; Bugbot found no bugs
+- **Learnings for future iterations:**
+  - US-598 must keep `core/src/recipes/builtin/rails` (or update the contract test). Laravel/Symfony kept the builtin embed after adding `recipes/<id>/`.
+---
