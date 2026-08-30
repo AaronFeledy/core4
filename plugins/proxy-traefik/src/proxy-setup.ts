@@ -4,12 +4,7 @@ import { ProxySetupError, RouterPortPinMismatch, RouterPortsExhausted } from "@l
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  type AcquisitionDecision,
-  DESIRED_HTTPS_PORT,
-  DESIRED_HTTP_PORT,
-  FALLBACK_RESTORE,
-} from "./port-acquisition.ts";
+import { type AcquisitionDecision, DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import type { AuthorityPorts } from "./routing.ts";
@@ -45,8 +40,7 @@ export const publishFallbackWarn = (
   decision: AcquisitionDecision,
 ): Effect.Effect<void, unknown> =>
   Effect.gen(function* () {
-    const joined = decision.notices.join(" ");
-    const body = joined.includes("lando global:restart") ? joined : `${joined} ${FALLBACK_RESTORE}`;
+    const body = decision.notices.join(" ");
     const fromContext = yield* Effect.serviceOption(EventService);
     const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
     if (events === undefined) return;
