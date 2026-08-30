@@ -12,6 +12,9 @@ const readText = async (path: string): Promise<string> => Bun.file(path).text();
 const statusSection = (readme: string): string =>
   readme.match(/^## Status & roadmap\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
 
+const alphaPlatformScope = (ci: string): string =>
+  ci.match(/^## Alpha platform scope\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
+
 describe("public alpha contract", () => {
   test("names Public Alpha 1 current when Status is read", async () => {
     const status = statusSection(await readText(readmePath));
@@ -119,5 +122,66 @@ describe("public alpha contract", () => {
     const ciDocs = await readText(resolve(repoRoot, "docs/contributing/ci.md"));
     expect(ciDocs).toContain("4.0.0-dev.N");
     expect(ciDocs).not.toContain("4.0.0-alpha.N");
+  });
+
+  test("requires live setup doctor Drupal and Rails on every compile target when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("live `lando setup`");
+    expect(status).toContain("live `lando doctor`");
+    expect(status).toContain("live Drupal canonical journey");
+    expect(status).toContain("live Rails canonical journey");
+    expect(status).toContain("every compile target");
+  });
+
+  test("says compile smoke is not an exit when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("Compile smoke is not an exit");
+  });
+
+  test("says a long-term roadmap rewrite is not an Alpha 1 exit when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("A long-term roadmap rewrite is not an Alpha 1 exit");
+  });
+
+  test("omits signed GA public artifact claims when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("unsigned");
+    expect(status).not.toContain("signed 4.0.0");
+    expect(status).not.toMatch(/\bGA\b/);
+    expect(status).not.toContain("Current: Beta 1");
+  });
+
+  test("drops Historical Alpha CI was Linux x64 only when contributing CI docs are read", async () => {
+    const ciDocs = await readText(resolve(repoRoot, "docs/contributing/ci.md"));
+    expect(ciDocs).not.toContain("Historical Alpha CI was Linux x64 only");
+  });
+
+  test("names six-target live gates when contributing CI Alpha platform scope is read", async () => {
+    const scope = alphaPlatformScope(await readText(resolve(repoRoot, "docs/contributing/ci.md")));
+    expect(scope).toContain("six compile targets");
+    expect(scope).toContain("Compile smoke is not an Alpha exit");
+    expect(scope).toContain("platform-readiness");
+    expect(scope).toContain("drupal-journey");
+    expect(scope).toContain("rails-journey");
+    expect(scope).toContain("lando-virt");
+    expect(scope).toContain("a missing runner is an error, not a skip");
+  });
+
+  test("keeps six-cell jobs in platform-readiness Drupal journey and Rails journey workflows", async () => {
+    const readiness = await readText(resolve(repoRoot, ".github/workflows/platform-readiness.yml"));
+    const drupal = await readText(resolve(repoRoot, ".github/workflows/drupal-journey.yml"));
+    const rails = await readText(resolve(repoRoot, ".github/workflows/rails-journey.yml"));
+    for (const platform of CI_PLATFORMS) {
+      expect(readiness).toContain(`platform-readiness-${platform.id}:`);
+      expect(drupal).toContain(`drupal-journey-${platform.id}:`);
+      expect(rails).toContain(`rails-journey-${platform.id}:`);
+    }
+  });
+
+  test("keeps Intel Mac fail-close docker remediation when provider-lando host-support is read", async () => {
+    const hostSupport = await readText(resolve(repoRoot, "plugins/provider-lando/src/host-support.ts"));
+    expect(hostSupport).toContain("rejectIntelMacHost");
+    expect(hostSupport).toContain("lando setup --provider=docker");
+    expect(hostSupport).toContain("LANDO_PROVIDER=docker");
   });
 });
