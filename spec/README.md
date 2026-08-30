@@ -278,6 +278,7 @@ If you are looking for…
 | Networking intent (no shared bridge in core) | 11 | §10.1 |
 | Proxy/routing service | 11 | §10.2 |
 | Host-port acquisition (try lists, persist, Traefik publish) | 11 | §10.2.3 |
+| `routing.httpPort` / `httpsPort` / fallbacks (global + Landofile) | 07 + 11 | §7.4 + §7.5 + §10.2.3 |
 | Public tunnels and app sharing (`TunnelService`) | 11 | §10.2.2 |
 | `tunnelServices:` plugin contribution surface | 04 + 10 | §4.2 + §9.5 |
 | `app:share` / `app:share:list` / `app:share:stop` commands | 08 | §8.2 |

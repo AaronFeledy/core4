@@ -120,7 +120,26 @@ Host ports are chosen from **fixed ordered lists**. First free candidate wins **
 
 `80`/`443` are the happy path (no port in the URL). `8080`/`8443` are the familiar first fallback (DDEV's documented alternate pair, plus Lando 3's remaining common ports). `38080`/`38443` are last-resort Lando-reserved ports, not the degraded default.
 
-Bind address is `127.0.0.1` unless `proxyBindAddress` / `bindAddress` is overridden.
+**Config.** Users MUST be able to override preferred ports, fallback arrays, and bind address — globally and per app. Keys live under `routing:` in global config (§7.5) and the same `routing:` shape on the Landofile (§7.4). Env overrides follow §7.6 (`LANDO_ROUTING_HTTP_PORT`, `LANDO_ROUTING_HTTPS_PORT`, `LANDO_ROUTING_BIND_ADDRESS`, JSON-document setters for fallback arrays).
+
+```yaml
+routing:
+  enabled: true
+  bindAddress: 127.0.0.1
+  httpPort: 80
+  httpsPort: 443
+  httpFallbacks: [8080, 8000, 8888, 8008, 38080]
+  httpsFallbacks: [8443, 4443, 4433, 4444, 444, 38443]
+```
+
+`httpPort`/`httpsPort` replace the preferred (first) candidate for that protocol. `httpFallbacks`/`httpsFallbacks` replace the rest of that protocol's list. Omitted keys inherit. An empty fallback array means preferred-only (no scan past the preferred port). Default `bindAddress` remains `127.0.0.1`.
+
+Merge order for an app start: compiled defaults → global `routing:` → env → this app's Landofile `routing:`.
+
+**Host-global listen.** Traefik binds **one** HTTP/HTTPS pair for the whole host. App-level `routing:` is a request against that pair, not a second proxy.
+
+- If Traefik is not running, acquisition uses the merged lists.
+- If Traefik is already running, this app MUST use the persisted pair. If the app set `httpPort` and/or `httpsPort` and they do not match the running pair, fail with a tagged error naming the running ports and remediation: set Landofile `routing:` to match, or change global `routing:` and `lando global:restart`.
 
 **The chosen pair IS Traefik's host publish.** Container entrypoints stay `:80` / `:443`. Traefik MUST NOT always bind `38080`/`38443` in addition to the chosen pair. A second Lando on shared localhost (another WSL distro, another install) then takes the next free candidate instead of failing on a hardcoded high port.
 
@@ -131,8 +150,6 @@ Bind address is `127.0.0.1` unless `proxyBindAddress` / `bindAddress` is overrid
 **Fail closed.** If a protocol finds no free port in its list, proxy start MUST fail with a tagged error naming the tried ports. Do not disable the proxy silently (Lando 3 did).
 
 Doctor leftover checks and start-path `EADDRINUSE` remap MUST use the persisted chosen ports, not hardcoded `38080`/`38443` only.
-
-Global config MAY expose Lando 3-shaped knobs (`proxyHttpPort`, `proxyHttpsPort`, `proxyHttpFallbacks`, `proxyHttpsFallbacks`, `proxyBindAddress`) that replace the preferred port and/or the fallback arrays. Env overrides follow §7.6.
 
 ### 10.3 Certificates and CA
 
