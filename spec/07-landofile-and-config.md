@@ -551,6 +551,13 @@ events:
 proxy:
   <service>: <RouteConfig[]>
 
+routing:                               # optional; same keys as global routing: (§7.5, §10.2.3)
+  bindAddress: <ip>                    # omit to inherit global
+  httpPort: <port>                     # preferred HTTP; omit to inherit
+  httpsPort: <port>
+  httpFallbacks: [<port>, ...]         # replace fallbacks for this app's acquisition request
+  httpsFallbacks: [<port>, ...]
+
 remotes:                               # named RemoteSource configs for `lando pull`/`push` (§10.12); feature is 4.1
   <name>:
     source: <remoteSource-id>          # e.g. pantheon | rsync | s3 | local; validated by that source's configSchema
@@ -774,6 +781,10 @@ bindAddress: 127.0.0.1
 routing:
   enabled: true
   bindAddress: 127.0.0.1
+  httpPort: 80                         # preferred Traefik HTTP host port (§10.2.3)
+  httpsPort: 443                       # preferred Traefik HTTPS host port
+  httpFallbacks: [8080, 8000, 8888, 8008, 38080]
+  httpsFallbacks: [8443, 4443, 4433, 4444, 444, 38443]
 
 network:
   proxy:
