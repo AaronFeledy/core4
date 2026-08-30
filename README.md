@@ -34,6 +34,8 @@ On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stay
 
 Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the public recipe source of truth.
 
+Rails is bundled for Alpha 1 (id `rails`). Public source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling is `rails` and `bundle`. Every prompt has a non-interactive default. The public tree requires an executable README.mdx.
+
 ## Layout
 
 ```text

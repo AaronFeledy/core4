@@ -59,6 +59,26 @@ describe("public alpha contract", () => {
     expect(exists).toBe(true);
   });
 
+  test("names rails as a bundled Alpha 1 recipe when Status is read", async () => {
+    const status = statusSection(await readText(readmePath));
+    expect(status).toContain("bundled for Alpha 1");
+    expect(status).toContain("id `rails`");
+    expect(status).toContain("`recipes/rails/`");
+    expect(status).toContain("upgraded rather than duplicated");
+    expect(status).toContain("Ruby/Rails");
+    expect(status).toContain("PostgreSQL");
+    expect(status).toContain("Redis");
+    expect(status).toContain("Tooling is `rails` and `bundle`");
+    expect(status).toContain("non-interactive default");
+    expect(status).toContain("README.mdx");
+    expect(status).not.toContain("already ships as a public recipe at `recipes/rails`");
+  });
+
+  test("finds the rails builtin stub when the stub manifest is checked", async () => {
+    const exists = await Bun.file(resolve(repoRoot, "core/src/recipes/builtin/rails/manifest.ts")).exists();
+    expect(exists).toBe(true);
+  });
+
   test("mentions recipes/ when README is read", async () => {
     const readme = await readText(readmePath);
     expect(readme).toContain("recipes/");
