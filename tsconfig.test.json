@@ -10,5 +10,5 @@
     "rootDir": "."
   },
   "include": ["./test/**/*.ts", "./*/test/**/*.ts", "./plugins/*/test/**/*.ts", "./scripts/**/*.test.ts"],
-  "exclude": ["./docs/**", "./**/dist/**", "./**/node_modules/**"]
+  "exclude": ["./docs/**", "./**/dist/**", "./**/node_modules/**", "./test/scenarios/generated/**"]
 }
