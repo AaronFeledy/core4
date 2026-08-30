@@ -315,7 +315,7 @@ Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_RO
 
 ## Alpha platform scope
 
-Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
+Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Beta PR CI still owns the broad multi-platform matrix documented above; nightly cron still owns full provider-lando e2e on Linux x64; the weekly provider matrix still owns cross-engine acceptance coverage.
 
 ## Docs build
 

@@ -36,6 +36,8 @@ Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the p
 
 Rails is bundled for Alpha 1 (id `rails`). Public source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling is `rails` and `bundle`. Every prompt has a non-interactive default. The public tree requires an executable README.mdx.
 
+Alpha 1 exits when every compile target has live `lando setup`, live `lando doctor`, a live Drupal canonical journey, and a live Rails canonical journey. Compile smoke is not an exit. A long-term roadmap rewrite is not an Alpha 1 exit.
+
 ## Layout
 
 ```text
