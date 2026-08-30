@@ -70,9 +70,8 @@ describe("provider-lando setup Intel Mac host gate", () => {
     expect(error.details).toEqual({ platform: "darwin", arch: "x64" });
     expect(error.message).toContain("Intel");
     expect(error.message).toContain("Podman 6");
-    expect(error.remediation).toContain("Apple Silicon");
-    expect(error.remediation).toContain("Linux");
-    expect(error.remediation).toContain("Windows 11");
+    expect(error.remediation).toContain("lando setup --provider=docker");
+    expect(error.remediation).toContain("LANDO_PROVIDER=docker");
     // The gate fails before any Podman machine step is attempted.
     expect(calls).toEqual([]);
   });
@@ -123,5 +122,39 @@ describe("provider-lando setup Intel Mac host gate", () => {
     expect(failure._tag).toBe("Some");
     if (failure._tag === "None") return;
     expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
+  });
+
+  test("provider getStatus rejects Intel (x86_64) macOS before probing", async () => {
+    const calls: string[] = [];
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        platform: "darwin",
+        arch: "x64",
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        podmanMachine: machineRunner("missing", calls),
+        socketPath: "/tmp/lando-test.sock",
+      }),
+    );
+
+    const exit = await Effect.runPromiseExit(provider.getStatus);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+    if (Exit.isSuccess(exit)) return;
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag === "None") return;
+    const error = failure.value;
+    expect(error).toBeInstanceOf(IntelMacUnsupportedError);
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    if (!(error instanceof ProviderUnavailableError)) return;
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.remediation).toContain("lando setup --provider=docker");
+    expect(error.remediation).toContain("LANDO_PROVIDER=docker");
   });
 });

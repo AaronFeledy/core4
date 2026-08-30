@@ -11,6 +11,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 ## Recipe Sources
 
+- `lando init --name=foo` without `--destination` writes `<cwd>/foo` (`resolveInitDestination` in `init-destination.ts`). A follow-up `lando start` must run in that directory, not the parent.
 - `lando init --source=git` is acquisition-only: `core/src/recipes/git-source.ts` shallow-clones, publishes by commit SHA under `<userDataRoot>/recipe-cache/git/`, then falls through to the existing recipe render path. Do not assume non-bundled directory recipes scaffold end-to-end yet.
 - `lando init --source=tarball` downloads through the resolver seam, SHA-256-verifies before extraction, uses the pure-JS tar(.gz) reader, and publishes under `<userDataRoot>/recipe-cache/tarball/<sha256>/`. `--checksum` hard-fails on mismatch; without it, verification/prompt handling belongs in `loadTarballRecipe` in `init.ts`, not the resolver.
 - Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; the single native dispatcher must preserve identical `--source`/`--url`/`--path`/`--checksum` acceptance and exact missing-url wording (`<git-url>` vs `<tarball-url>`) for source and compiled entries. The default git cloner must stay non-interactive.

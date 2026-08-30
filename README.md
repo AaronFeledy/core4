@@ -24,25 +24,17 @@ and template engines all ship as separate packages.
 
 ## Status & roadmap
 
-Development follows this phase ladder:
-**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1 → Beta 2 → RC → 4.0 GA**.
+Public Alpha 1 is current. Historical internal phases are pre-alpha. Beta is later.
 
-- **Done:** MVP through **Alpha 4** ("governance + the last feature surface") —
-  Alpha 4 closed the feature surface: release machinery, signing, supply chain,
-  telemetry, schema publication, the plugin authoring toolkit, and the
-  `lando setup` / `lando uninstall` lifecycle. Alphas publish `4.0.0-alpha.N`
-  on the `dev` channel.
-- **Current: Beta 1** ("contract-completion remediation") — an audit-driven
-  remediation pass (US-372..US-395) plus a bounded feature wave, runtime/Podman/
-  log-source waves, a closure wave, a residual-hardening wave, and the
-  renderer-substrate wave (US-455..US-460: the bundled renderer's specified
-  OpenTUI `^0.4.3` substrate, desktop notifications, and the contract-only
-  freeze of the 4.1 renderer surfaces).
-  The first signed `4.0.0-beta.N` ships on the `next` channel at the end of
-  Beta 1, and **feature freeze is entered**.
-- **After:** Beta 2 (bug burn-down), RC (binary-shipping acceptance — signing,
-  notarization, SBOM, provenance, and self-update all verified across every
-  release platform), GA.
+Public artifacts are unsigned `4.0.0-dev.N` on the `dev` channel. This Alpha does not ship signing, installers, or self-update; those come later.
+
+The compile set is six targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The GitHub prerelease ships unsigned binaries for all six named targets (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
+
+On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
+
+Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the public recipe source of truth.
+
+Rails is bundled for Alpha 1 (id `rails`). Public source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling is `rails` and `bundle`. Every prompt has a non-interactive default. The public tree requires an executable README.mdx.
 
 ## Layout
 
@@ -100,7 +92,7 @@ Development follows this phase ladder:
 
 **Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
 
-- How to download the dev prerelease binary (Linux x64)
+- How to download the unsigned `v4.0.0-dev.N` GitHub prerelease binaries for all six compile targets
 - How to build from source
 - Running `lando setup` and `lando doctor` for first-time configuration
 - Where to file bug reports with the right diagnostic files
@@ -247,8 +239,8 @@ This repository is unstable by design. A few practical caveats:
   after the Bun 1.4 pin.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
   version `0.0.0` in the working tree; the publish pipeline
-  (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
-  versions and `workspace:*` ranges before publishing.
+  (`scripts/prepare-npm-dev-packages.ts` plus the manual `scripts/release.ts`
+  orchestrator) rewrites versions and `workspace:*` ranges before publishing.
 - **Some command surfaces are not implemented.** A subset of commands still
   throw `NotImplementedError`/`Effect.die`; deferred ids are tracked in
   `core/src/cli/deferred-commands.ts`.

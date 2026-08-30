@@ -163,7 +163,8 @@ describe("resolveRuntimeBundleEntry", () => {
     const failure = expectFailure(exit);
     expect(failure).toBeInstanceOf(IntelMacUnsupportedError);
     expect((failure as IntelMacUnsupportedError).message).toContain("Podman 6");
-    expect((failure as IntelMacUnsupportedError).remediation).toContain("Apple Silicon");
+    expect((failure as IntelMacUnsupportedError).remediation).toContain("lando setup --provider=docker");
+    expect((failure as IntelMacUnsupportedError).remediation).toContain("LANDO_PROVIDER=docker");
   });
 });
 

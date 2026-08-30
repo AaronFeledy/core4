@@ -23,6 +23,222 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Out of scope: signing, installers, self-update, 4.1 implementations, Beta/next.
 - Full-suite lock is always `bun test` (or explicit shard --run commands) with positive test counts. Never `bun run test` alone.
 
+## Codebase Patterns
+
+- Durable Alpha/phase/version claims live in README, contributing docs, and tests. Files outside the specification tree must restate those facts; they must not cite specification-tree paths (the spec-reference boundary).
+- The public Alpha publish line is unsigned `4.0.0-dev.N` on dist-tag `dev`. `4.0.0-alpha.N` is not the current scheme.
+- Unix CI compiled artifacts are all named `lando`. A six-target GitHub assemble must download each `lando-<id>` artifact into a distinct directory and rename with `releaseBinaryFileName` (`lando-<id>` / `lando-<id>.exe`). Dumping them into one `dist/` overwrites.
+- The generated `release` workflow publishes unsigned six-target GitHub prereleases only. Live npm `dev` publish stays on `scripts/release.ts`; do not add `npm publish` to `.github/workflows/release.yml`.
+- Intel Mac fail-closed lives in `@lando/provider-lando` (`rejectIntelMacHost` on setup, bundle resolve, ensureRuntime, getStatus), not in provider precedence. Capability default stays `lando`. Do not set `isAvailable` false or file-sync silently skips.
+- Live setup/doctor evidence is the generated `platform-readiness` workflow plus `scripts/platform-readiness-doctor.ts` (decode doctor JSON; `self` and `status: fail` and non-running setup-readiness are blocking; warnings are not). GitHub-hosted macOS arm64 and Windows arm64 cannot nested-virt; those cells are fail-closed self-hosted `lando-virt` labels, not advisory skips.
+- A runtime-bundle host key can be assembled current-commit from `runtime-bundle-sources.json` and `RUNTIME_BUNDLE_TARGETS` before it appears in the committed published manifest. `REQUIRED_RUNTIME_HOST_KEYS` stays the published set.
+
+- `lando init --name` without `--destination` writes `<cwd>/<name>/` (`resolveInitDestination`). Scripts that init then start must chdir into that directory.
+- Public recipes that must answer `recipes validate <path>` ship `recipes/<id>/recipe.yml` byte-identical to the builtin embed YAML (toolbox and rails). README.mdx-only public trees cannot be validated as a directory.
+- Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
+- Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
+- `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
+
 ## Status
 
-All US-592..US-600 passes: false. No story has started.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false.
+
+Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
+
+## 2026-08-29 12:05 CDT - US-592
+- Locked the public Alpha 1 contract in durable copy: Public Alpha 1 is current, historical phases are pre-alpha, unsigned 4.0.0-dev.N on the dev channel, six compile targets named, darwin-x64 Docker live path with lando default elsewhere, Drupal at recipes/drupal, signing/installers/self-update later. Did not expand GitHub prerelease past Linux x64 or ship Rails/provider/setup work.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Contract stories must restate facts outside the specification tree. A test that reads prd.json or writes spec/alpha will fail spec-reference.
+  - alpha-install docs still own "Linux x64 only / macOS and Windows deferred" until the six-target publish story lands. Do not un-stub those install paths from a contract story.
+---
+
+## 2026-08-29 12:17 CDT - US-592 Review
+- Reviewed the public Alpha 1 contract lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): fail-close tagged remediation stays with US-594, not README restatement; Rails contract-recipe-journey stays in spec/alpha sequencing; weak Status `later` assertion is a test nit, not a PRD miss; leftover 4.0.0-alpha.N in release/codegen tests is US-593.
+- Guide-Coverage-Skip: contract copy and contributing CI version scheme; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract and ci-runbook spot checks passed
+---
+
+## 2026-08-29 12:30 CDT - US-592 Verify
+- Compiled `core/dist/lando` in sandbox: `setup` completed on default provider `lando`; `init --recipe lamp` + `start` served `us592-ok` over HTTPS; `info`/`exec`/`doctor`/`help`/`recipes describe drupal` matched the Alpha 1 contract (version `4.0.0-dev.N`, linux-x64, Drupal listed). Destroyed the scenario app.
+- **Out-of-scope finding:** `curl http://us592-verify.lndo.site` returned HTTP 200 from Caddy with `Content-Length: 0`; `curl https://us592-verify.lndo.site` returned the PHP body. Suspected proxy HTTP vs HTTPS path; not caused by this contract diff.
+---
+
+## 2026-08-29 13:15 CDT - US-593
+- GitHub `v4.0.0-dev.N` prerelease now stages all six CI binaries (`lando-<platform-id>` / `.exe`) plus `SHA256SUMS`. Missing artifacts fail the job. Unsigned: no signing, npm, installers, or self-update on that workflow. npm `4.0.0-dev.N` / tag `dev` stays on `prepare-npm-dev-packages` with a registry-safe pack test.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Unix CI artifacts share the filename `lando`. Stage per-platform dirs, then rename. Do not download six artifacts into one directory.
+  - User install copy must name the six assets. Contributor `ci.md` npm OIDC strings describe the manual orchestrator, not the generated GitHub workflow.
+---
+
+## 2026-08-29 13:42 CDT - US-593 Review
+- Fixed one-file SHA256SUMS verify: GNU `sha256sum -c` fails when the six-file manifest lists binaries the user did not download. Docs now grep the downloaded asset into `sha256sum -c`.
+- Review notes (deferred/rejected): `workflow_run` artifact-poisoning origin bind is pre-existing on the linux-x64 job, not introduced by this story and does not block the PRD; leftover `4.0.0-alpha` in version-parser/update-manifest tests is fixture not the publish line; macOS `shasum` is pre-existing Linux-centric checksum docs; do not re-add npm publish to `release.yml`
+- Verification: typecheck, lint passed; alpha-install-docs, public-alpha-contract, release-workflow, npm-dev-package spot checks passed
+---
+
+## 2026-08-29 14:45 CDT - Babysit
+- PR: #877 https://github.com/AaronFeledy/core4/pull/877
+- CI outcome: pass
+- Review feedback: fixed (aligned Starlight frontmatter title with page h1)
+- Merge: merged (squash)
+---
+
+## 2026-08-29 15:30 CDT - US-594
+- On Intel Mac, provider-lando now fail-closes with tagged `ProviderUnavailableError` whose remediation names `lando setup --provider=docker` and `LANDO_PROVIDER=docker`. The gate covers setup, runtime-bundle resolve, start/apply (`ensureRuntime`), and doctor status. Default provider stays `lando` on every other target; Docker is the explicit live path, not a silent fallback.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Put host unsuitability in the provider plugin, not in `resolveProviderSelection`. Auto-defaulting darwin-x64 to docker is a silent fallback and fails the story.
+  - Keep `isAvailable` true on this path. False looks like a skip to file-sync rather than a tagged rejection.
+  - Live Docker Desktop on macos-15-intel is not available on GitHub-hosted runners or this Linux builder; unit tests inject `platform: "darwin", arch: "x64"`.
+---
+
+## 2026-08-29 16:53 CDT - Babysit
+- PR: #878 https://github.com/AaronFeledy/core4/pull/878
+- CI outcome: pass
+- Review feedback: fixed (pin darwin runtime-path tests to arm64; expect darwin/x64 fail-close in the provider contract matrix)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-29 17:47 CDT - US-595
+- Added a generated six-cell platform-readiness workflow: live `lando setup` then a typed doctor gate on every compile target. PR runs linux-x64 and linux-arm64 on GitHub-hosted Ubuntu; darwin/windows cells are fail-closed self-hosted `lando-virt` (schedule + dispatch). linux-x64 provider-integration now hard-fails if the doctor gate fails. darwin-x64 uses `--provider=docker` without installing Docker Desktop. windows-arm64 is present and fail-closed (no win32-arm64 bundle).
+- Proved linux-x64 live setup + doctor classifier pass in lando4-dev. Did not mark the story complete: darwin/windows evidence needs virt runners; windows-arm64 still needs a managed bundle.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Do not put nested-virt live setup on GitHub-hosted `macos-15` or `windows-11-arm`. Missing `lando-virt` runners must error, not skip.
+  - Doctor process exit 0 is not a gate; `successExitCode` only trips on `self`. Use `scripts/platform-readiness-doctor.ts`.
+  - Keep GH-hosted `windows-managed-setup-acceptance.ts` Hyper-V skip on `provider-integration-windows-x64`; the live readiness path must not reuse that skip.
+---
+
+## 2026-08-29 18:46 CDT - US-595
+- Wired a current-commit win32-arm64 managed Podman runtime bundle (Podman 6.0.0 remote + gvproxy/win-sshproxy 0.8.9) and flipped the windows-arm64 platform-readiness cell to assemble it. Published manifest still pins the four existing hosts; user-facing setup without an override stays fail-closed until a runtime-v* release. linux-x64 live setup+doctor already proved in lando4-dev. darwin/windows cells remain fail-closed self-hosted lando-virt.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Upstream already ships `podman-remote-release-windows_arm64.zip`, `gvproxy-windows-arm64.exe`, and `win-sshproxy-arm64.exe`. Do not treat missing Lando pins as missing upstream artifacts.
+  - Keep `REQUIRED_RUNTIME_HOST_KEYS` and the committed published manifest at four keys until a runtime-v* release includes win32-arm64. Platform-readiness current-commit assemble does not need that publish.
+  - Do not run biome --write on runtime-bundle-sources.json after a JSON.parse round-trip; it reformats unrelated compact arrays.
+---
+
+## 2026-08-29 19:10 CDT - US-595 Review
+- Installed Go/Rust/Ubuntu snapshot source-build prereqs before linux current-commit assemble so PR linux setup/doctor can run; set workflow defaults.run.shell to bash so Windows evidence cells execute POSIX compile/manifest steps.
+- Review notes (deferred/rejected): codegen-ci.test.ts ENOENT during parallel codegen is an environmental race, not this story; floating checkout/setup-bun/upload-artifact tags match existing platform-readiness style, not a security blocker; generator-vs-YAML equality is covered by codegen:check; 45-minute timeout is speculative.
+- Guide-Coverage-Skip: CI workflow and contributor runbook only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Current-commit linux assemble is a Podman/helper source build. Reuse runtime-bundle Go 1.25.6, rust-toolchain, and RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT before assemble.
+  - Windows jobs that emit POSIX `run: |` blocks need `defaults.run.shell: bash` like ci.yml.
+---
+
+## 2026-08-29 19:15 CDT - US-595 Drift Audit
+- Trigger: 3 cycles, 1568 changed lines, 14 commits
+- Weakened proofs: classifier only asserted provider fail and implied warnings; YAML tests did not lock setup-before-doctor
+- Review scar: local Windows-id helper duplicated isWindowsCiPlatform; linux-x64 doctor overlap with provider-integration kept as the story-owned hard-fail
+- Contract drift: PRD wants per-target live exit-0; wave conventions treat the fail-closed generated workflow as evidence. Did not flip passes — missing virt runners already fail-close, and flipping would send Build to churn it cannot close
+- Fixed: deleted the duplicate Windows helper; restored section-fail and warning proofs; locked setup-before-doctor order
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-29 19:31 CDT - US-595 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev (default provider `lando`). `lando doctor --format json` exit 0; `scripts/platform-readiness-doctor.ts` classified `passed` (setup-readiness pass + running runtime; warnings not blocking). Lamp init/start served `us595-ok` over HTTPS; exec/info/help/apps:list smoked. Destroyed the app and `uninstall --yes --purge`.
+- **Out-of-scope finding:** `lando doctor` warned `runtime-service`/`selected-provider` for orphan pid that was the owned `podman system service` child of the Lando-owned pid. Warnings are not blocking. Suspected doctor process-ownership.
+- **Out-of-scope finding:** `lando doctor` `host-proxy` warn (`mode: none`, DNS not active). App start still succeeded. Suspected host-proxy subsystem, not this workflow story.
+---
+
+## 2026-08-29 21:05 CDT - US-596
+- Added a generated six-cell Drupal journey workflow: live `lando init --recipe drupal`, start, info, README `drupal-scaffold`/Drush, then destroy on every compile target. Reuses the platform-readiness cell table (darwin-x64 `--provider=docker`, linux PR+evidence, darwin/windows fail-closed `lando-virt`). Gate is `scripts/drupal-journey.ts`. Did not add a second Drupal recipe.
+- Proved linux-x64 live in lando4-dev: init/start/info URL, Drupal 11 scaffold, `drush` 13.7.6, destroy. darwin/windows cells remain fail-closed self-hosted lando-virt.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - `lando init --name=foo` without `--destination` creates `<cwd>/foo`. Journey scripts must run start/info/scaffold/destroy there.
+  - WSL mirrored networking shares `127.0.0.1`. A host Traefik on 38080/38443 blocks sandbox provider-lando setup. Free those ports before live proof.
+  - Clone platform-readiness as a sibling `committed-workflow`; do not fold Composer-heavy journeys into setup/doctor jobs.
+---
+
+## 2026-08-29 21:06 CDT - US-596 Review
+- Fixed always() teardown destroy resolving `dist/lando` after `cd` into the app dir, and stopped the journey runner after the first failed step so a missing app root cannot throw before the JSON report.
+- Review notes (deferred/rejected): fail-closed darwin/windows `lando-virt` cells stay the all-six evidence shape (same as US-595); `--name` path traversal is CI-hardcoded; unpinned action tags match platform-readiness; job-level `COMPOSER_PROCESS_TIMEOUT` is not in-container agent-env (linux-x64 live scaffold already passed; allowlist is out of this story)
+- Guide-Coverage-Skip: CI workflow and contributor runbook only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; drupal-journey script and workflow spot checks passed
+---
+
+## 2026-08-29 22:20 CDT - US-597
+- Locked Rails as a bundled Alpha 1 recipe: id rails, public SoT recipes/rails/, builtin stub upgraded not duplicated, Ruby/Rails + PostgreSQL + Redis, tooling rails/bundle, non-interactive prompt defaults, executable README.mdx. Did not ship recipes/rails/ or the journey.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Contract stories restate facts in README Status and lock them in public-alpha-contract tests. Those tests must not cite spec/ or section signs.
+  - Do not assert recipes/rails exists until the bundled-recipe story. Keep the builtin stub as the only rails tree until then.
+---
+
+## 2026-08-29 22:35 CDT - US-597 Review
+- Reviewed the Rails recipe contract lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): 8.8.10 table intro still says v4.0 ships under recipes/<id>/ — that is the required staged-to-bundled move, not a missing recipes/rails tree; stub `name` prompt has no default (US-598); Layout recipes list omits rails until the public tree exists; lando3-parity leftover staged-rails copy is a different spec set; do not delete the builtin stub later without updating public-alpha-contract tests
+- Guide-Coverage-Skip: contract copy and public-alpha-contract tests only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract spot check passed (14 tests); guide-drift with origin/main passed; Bugbot found no bugs
+- **Learnings for future iterations:**
+  - US-598 must keep `core/src/recipes/builtin/rails` (or update the contract test). Laravel/Symfony kept the builtin embed after adding `recipes/<id>/`.
+---
+
+## 2026-08-29 23:04 CDT - Babysit
+- PR: missing (no PR for us-597-rails-recipe-contract; push should have created it)
+- CI outcome: fail (no checks; branch never pushed)
+- Review feedback: none
+- Merge: deferred (PR missing)
+---
+
+## 2026-08-29 23:08 CDT - US-597
+- Story verified complete on branch (no new code). Rails contract remains locked: bundled for Alpha 1, public SoT recipes/rails/, builtin stub not duplicated, services/tooling/prompts/README.mdx named; recipes/rails/ not shipped.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-29 23:16 CDT - US-597 Drift Audit
+- Trigger: 3 cycles, 45 changed lines, 2 commits
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 00:20 CDT - US-598
+- Shipped the public Rails recipe at recipes/rails/: recipe.yml byte-synced with the builtin embed, executable README.mdx, name prompt default for non-interactive init. Kept the builtin rails renderer (Ruby 3.3, PostgreSQL, Redis, rails/bundle tooling). meta recipes list/describe/validate now cover rails through machine output.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Keep core/src/recipes/builtin/rails. Laravel/Symfony/Rails public trees do not replace the embed. Add recipe.yml only when validate-by-path is required (toolbox pattern).
+  - `apps:init` has no `--destination` flag. `lando init --name=foo --yes` writes `<cwd>/foo`. Isolated init smoke must chdir or use cwd, not invent flags.
+  - `codegen:check` treats untracked catalog outputs such as `recipes/<id>/.scaffold/default.md` as drift until that file is committed.
+---
+
+## 2026-08-30 01:27 CDT - US-599
+- Added a generated six-cell Rails journey workflow (sibling of Drupal): live init --recipe rails, start, info, README tooling (lando rails / lando bundle), destroy on every compile target. Reuses PLATFORM_READINESS_CELLS (darwin-x64 --provider=docker; linux PR+evidence; darwin/windows fail-closed lando-virt). Gate is scripts/rails-journey.ts. Did not mark the story complete.
+- Linux-x64 live in lando4-dev: init, start, and info succeeded (https://rails-journey.lndo.site). `lando rails` exited 127 (`rails: not found` in ruby:3.3-slim). Did not add a Gemfile, rails new, extra argv, or recipe files. Destroyed the app.
+- Verification: typecheck, lint passed; relevant test spot checks passed; live README tooling did not pass
+- **Learnings for future iterations:**
+  - `framework: rails` on ruby:3.3 only sets env/port/keep-alive. It does not install the rails or bundler gems. ruby:3.3-slim has neither on PATH.
+  - Bare `lando bundle` is Bundler `install` and needs a Gemfile. The public rails recipe writes only `.lando.yml`.
+  - Leftover sandbox podman on 38080/38443 blocks isolated setup Traefik. Poweroff the default-root runtime before a new isolated setup.
+---
+
+## 2026-08-30 02:00 CDT - US-599
+- Rails recipe now installs build-essential then the rails gem at artifact build and writes a source-only Gemfile, so live README tooling (`lando rails` / `lando bundle`) exits 0 after start. Journey argv and workflow cells unchanged.
+- Verification: typecheck, lint passed; rails recipe and journey/init-canonical spot checks passed; linux-x64 live init/start/info/rails/bundle/destroy passed in lando4-dev
+- **Learnings for future iterations:**
+  - Bundled init writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipe.yml` byte-identical to the embed YAML.
+  - On-disk Gemfile may carry a `# lando-generated:` marker; Bundler accepts it. Assert renderer Map bytes, not post-init disk bytes.
+  - `ruby:3.3-slim` lacks `make`. `gem install rails` needs a prior `build.artifact` apt-get of `build-essential`. Live proof must use a freshly compiled `dist/lando` after renderer changes.
+---
+
+## 2026-08-30 02:13 CDT - US-599 Review
+- Reviewed US-599 Rails canonical journey (sibling six-cell workflow + dest+Map Gemfile so README tooling exits 0). No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): unpinned `gem install rails` is not an AC and matches the live-proofed recipe path; missing `assets/Gemfile` is dest+Map (validate does not stat src); README `<Guide>` omitting rails/bundle is not the live gate (`scripts/rails-journey.ts` runs them); stale builtin README “Landofile only” is contributor copy, not PRD.
+- Guide-Coverage-Skip: generated CI workflow and recipe dest+Map so README tooling exits 0; recipes/rails/README.mdx already documents lando rails / lando bundle
+- Verification: typecheck, lint trusted from build (clean tree); QA spot checks passed (rails-journey, rails-journey-workflow, rails recipe, codegen-ci, ci-runbook); Bugbot found no bugs; guide-drift vs origin/main passed
+---
+
+## 2026-08-30 02:19 CDT - US-599 Drift Audit
+- Trigger: 3 cycles, 1427 changed lines, 4 commits
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---

@@ -106,7 +106,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("LANDO_RELEASE_TARGET=<target>");
     expect(runbook).toContain("LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary>");
     expect(runbook).toContain("bun run bench:opentui-startup -- --binary <binary>");
-    expect(runbook).toContain("npm alpha package publishing");
+    expect(runbook).toContain("npm dev package publishing");
     expect(runbook).toContain("npm trusted publishing through GitHub OIDC (`id-token: write`)");
     expect(runbook).toContain("does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path");
     expect(runbook).toContain("bun run --filter='@lando/sdk' build");
@@ -226,5 +226,53 @@ describe("ci runbook", () => {
     for (const template of templates) {
       expect(await readText(template)).toContain("docs/contributing/ci.md");
     }
+  });
+
+  test("documents platform readiness", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: platform-readiness pins are located.
+    // Then: the runbook names the cells, virt labels, doctor, arm runner, docker fallback, and Hyper-V.
+    expect(runbook).toContain("platform-readiness");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("scripts/platform-readiness-doctor.ts");
+    expect(runbook).toContain("ubuntu-24.04-arm");
+    expect(runbook).toContain("--provider=docker");
+    expect(runbook).toContain("Hyper-V");
+    expect(runbook).toContain("source-build prerequisites");
+  });
+
+  test("documents Drupal journey", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: Drupal journey pins are located.
+    // Then: the runbook names the workflow, generators, journey script, and key steps.
+    expect(runbook).toContain("drupal-journey.yml");
+    expect(runbook).toContain("scripts/build-drupal-journey-workflow.ts");
+    expect(runbook).toContain("scripts/drupal-journey.ts");
+    expect(runbook).toContain("lando info");
+    expect(runbook).toContain("drupal-scaffold");
+    expect(runbook).toContain("destroy -y");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("--provider=docker");
+  });
+
+  test("documents Rails journey", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: Rails journey pins are located.
+    // Then: the runbook names the workflow, generators, journey script, and key steps.
+    expect(runbook).toContain("rails-journey.yml");
+    expect(runbook).toContain("scripts/build-rails-journey-workflow.ts");
+    expect(runbook).toContain("scripts/rails-journey.ts");
+    expect(runbook).toContain("lando info");
+    expect(runbook).toContain("lando rails");
+    expect(runbook).toContain("lando bundle");
+    expect(runbook).toContain("destroy -y");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("--provider=docker");
   });
 });

@@ -136,9 +136,9 @@ bun run build
 bun run bench:tooling-hot-path -- --binary core/dist/lando
 ```
 
-## npm alpha package publishing
+## npm dev package publishing
 
-The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, `@lando/state-store`, `@lando/landofile`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The generated GitHub release workflow does **not** publish npm. It only publishes unsigned `v4.0.0-dev.N` GitHub prerelease binaries. `scripts/prepare-npm-dev-packages.ts` rewrites checkout versions to `4.0.0-dev.N` and the `dev` tag. Live npm dev package publishing is the manual `scripts/release.ts` orchestrator. That orchestrator uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
@@ -152,9 +152,9 @@ bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
 ```
 
-Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish.
+Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/landofile`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-dev.N` version. The manual orchestrator rewrites temporary checkout `workspace:*` dependency ranges to that exact dev version before the dry-run and real publish.
 
-Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the alpha version and its `latest` dist-tag is unchanged.
+Before publishing, the orchestrator runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, it asserts `@lando/core`'s `dev` dist-tag points at the dev version and its `latest` dist-tag is unchanged.
 
 ## Provider integration
 
@@ -260,6 +260,58 @@ bun test plugins/provider-podman/test/contract.integration.test.ts
 ```
 
 Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check for Beta.
+
+## Platform readiness
+
+Compile smoke and relocated-binary smoke do not satisfy live `lando setup` or `lando doctor`. Live host readiness is a separate gate.
+
+The generated workflow is `.github/workflows/platform-readiness.yml`, produced by `scripts/build-platform-readiness-workflow.ts`. Do not hand-edit the YAML.
+
+On pull request, `platform-readiness` runs linux-x64 on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm` with the default provider `lando`.
+
+Linux current-commit assemble uses the same Go, Rust, and Ubuntu snapshot source-build prerequisites as `runtime-bundle`.
+
+On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+
+darwin-x64 already has Docker installed on the runner. The job must not install Docker Desktop. Use `--provider=docker` on that cell.
+
+windows-x64 requires Hyper-V and WSL2. The live path does not structured-skip when those are missing.
+
+windows-arm64 assembles the current-commit `win32-arm64` runtime bundle. Missing `lando-virt` runners still fail the job rather than skip.
+
+The doctor gate is `scripts/platform-readiness-doctor.ts`, not jq. Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run.
+
+`provider-integration-*` jobs on darwin, linux-arm64, and windows-arm64 remain contract-only. They are not this live setup/doctor path.
+
+CI/release platform id `windows-x64` is not the runtime host key `win32-x64`. Keep both names in their existing domains.
+
+## Drupal journey
+
+The live Drupal recipe path is a separate gate from compile smoke and from linux-x64 guide e2e `@smoke`.
+
+The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `scripts/build-drupal-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/drupal-journey.ts`.
+
+The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
+
+On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+
+darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
+
+Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is Composer-heavy.
+
+## Rails journey
+
+The live Rails recipe path is a separate gate from compile smoke and from linux-x64 guide e2e `@smoke`.
+
+The generated workflow is `.github/workflows/rails-journey.yml`, produced by `scripts/build-rails-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/rails-journey.ts`.
+
+The live path is `lando init --recipe rails`, `lando start`, `lando info`, README tooling (`lando rails` / `lando bundle`), then `lando destroy -y`. It runs on all six compile targets.
+
+On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+
+darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
+
+Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is not Composer-heavy.
 
 ## Alpha platform scope
 

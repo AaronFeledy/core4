@@ -432,6 +432,9 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           test -S ${landoRuntimeSocketPath}
           echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+
       - name: Configure Docker socket
         run: |
           test -S /var/run/docker.sock

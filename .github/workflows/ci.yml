@@ -734,6 +734,9 @@ jobs:
           test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
           echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+
       - name: Configure Docker socket
         run: |
           test -S /var/run/docker.sock
@@ -1724,6 +1727,9 @@ jobs:
           done
           test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
           echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
+
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
 
       - name: Configure Docker socket
         run: |

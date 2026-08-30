@@ -123,6 +123,9 @@ const expectedCatalogRows = [
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
   ["php-base-workflow", "committed-workflow", "build-php-base-workflow.ts", "repo"],
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
+  ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
+  ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
+  ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
 ] as const;
 
 describe("codegen catalog", () => {
@@ -206,6 +209,9 @@ describe("codegen catalog", () => {
       "runtime-bundle-workflow",
       "php-base-workflow",
       "compose-vendor-bump-workflow",
+      "platform-readiness-workflow",
+      "drupal-journey-workflow",
+      "rails-journey-workflow",
     ];
 
     // When
@@ -217,12 +223,12 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(24);
+    expect(catalog).toHaveLength(27);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(7);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(10);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(16);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),

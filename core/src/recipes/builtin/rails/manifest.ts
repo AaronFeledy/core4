@@ -15,6 +15,7 @@ prompts:
   - name: name
     type: text
     message: App name
+    default: rails
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
@@ -22,6 +23,9 @@ files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
     template: true
+  - src: assets/Gemfile
+    dest: Gemfile
+    template: false
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Rails up.

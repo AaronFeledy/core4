@@ -8,6 +8,7 @@ import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
+import { rejectIntelMacHost } from "./host-support.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
@@ -35,6 +36,7 @@ import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodman
 
 export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
   readonly platform: HostPlatform;
+  readonly arch?: string;
   readonly nftProvision?: {
     readonly download: ArtifactDownload;
     readonly cacheDir: string;
@@ -283,19 +285,21 @@ const ensureMachineRuntime = (
   );
 };
 
-export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {
-  const family = hostPlatformFamily(deps.platform);
-  if (family === "darwin") {
-    return deps.machineRunner === undefined
-      ? Effect.fail(missingMachineRunnerError("darwin"))
-      : ensureMachineRuntime(deps, ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
-  }
+export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    yield* rejectIntelMacHost(deps.platform, deps.arch);
+    const family = hostPlatformFamily(deps.platform);
+    if (family === "darwin") {
+      return yield* deps.machineRunner === undefined
+        ? Effect.fail(missingMachineRunnerError("darwin"))
+        : ensureMachineRuntime(deps, ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
+    }
 
-  if (family === "win32") {
-    return deps.machineRunner === undefined
-      ? Effect.fail(missingMachineRunnerError("win32"))
-      : ensureMachineRuntime(deps, ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
-  }
+    if (family === "win32") {
+      return yield* deps.machineRunner === undefined
+        ? Effect.fail(missingMachineRunnerError("win32"))
+        : ensureMachineRuntime(deps, ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
+    }
 
-  return ensureLinuxRuntime(deps);
-};
+    return yield* ensureLinuxRuntime(deps);
+  });

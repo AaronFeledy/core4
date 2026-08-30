@@ -10,11 +10,13 @@ tags: [beta, docs, providers, setup, selection]
 
 Run `lando setup`, then `lando doctor`. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
 
-If that setup fails, switch to system Docker. That is the supported Linux fallback, not an advanced preference.
+On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Run setup with Docker Desktop. That is the live path on that host, not a Linux-only fallback.
 
-## Fall back to Docker
+On Linux, if default setup fails, switch to system Docker. That is the supported fallback, not an advanced preference.
 
-You need working system Docker.
+## Run setup with Docker
+
+You need working Docker Desktop on Intel Mac, or working system Docker on Linux.
 
 1. Run setup with Docker:
 

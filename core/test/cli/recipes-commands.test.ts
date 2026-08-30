@@ -66,6 +66,7 @@ describe("meta:recipes:list", () => {
     expect(envelope.command).toBe("meta:recipes:list");
     const recipes = (envelope.result as { recipes: ReadonlyArray<{ id: string }> }).recipes;
     expect(recipes.map((entry) => entry.id)).toContain("toolbox");
+    expect(recipes.map((entry) => entry.id)).toContain("rails");
   }, 30_000);
 });
 
@@ -81,6 +82,23 @@ describe("meta:recipes:describe", () => {
       prompts: ReadonlyArray<{ name: string; default?: string }>;
     };
     expect(described.id).toBe("toolbox");
+    expect(described.prompts.length).toBeGreaterThan(0);
+    for (const prompt of described.prompts) {
+      expect(prompt.default, `prompt "${prompt.name}" must have a default`).toBeDefined();
+    }
+  }, 30_000);
+
+  test("describes the bundled rails recipe with its prompt defaults", async () => {
+    const result = await runCli(["meta", "recipes", "describe", "rails", "--format", "json"]);
+    expect(result.exitCode).toBe(0);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.command).toBe("meta:recipes:describe");
+    const described = envelope.result as {
+      id: string;
+      prompts: ReadonlyArray<{ name: string; default?: string }>;
+    };
+    expect(described.id).toBe("rails");
     expect(described.prompts.length).toBeGreaterThan(0);
     for (const prompt of described.prompts) {
       expect(prompt.default, `prompt "${prompt.name}" must have a default`).toBeDefined();
@@ -205,6 +223,23 @@ describe("meta:recipes:validate", () => {
     expect(envelope.command).toBe("meta:recipes:validate");
     expect((envelope.result as { valid: boolean; id: string }).valid).toBe(true);
     expect((envelope.result as { id: string }).id).toBe("toolbox");
+  }, 30_000);
+
+  test("validates the canonical rails recipe.yml from a repo-relative path", async () => {
+    const result = await runCli([
+      "meta",
+      "recipes",
+      "validate",
+      "recipes/rails/recipe.yml",
+      "--format",
+      "json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.command).toBe("meta:recipes:validate");
+    expect((envelope.result as { valid: boolean; id: string }).valid).toBe(true);
+    expect((envelope.result as { id: string }).id).toBe("rails");
   }, 30_000);
 
   test("rejects an invalid manifest with a tagged error envelope", async () => {

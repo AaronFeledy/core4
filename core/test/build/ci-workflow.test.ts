@@ -74,9 +74,12 @@ describe("ci workflow", () => {
     expect(activeWorkflowFiles).toEqual([
       "ci.yml",
       "compose-vendor-bump.yml",
+      "drupal-journey.yml",
       "nightly.yml",
       "php-base-images.yml",
+      "platform-readiness.yml",
       "provider-matrix.yml",
+      "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
     ]);
@@ -1098,6 +1101,26 @@ describe("ci workflow", () => {
     expect(providerIntegration.indexOf("Upload provider integration diagnostics")).toBeGreaterThan(
       providerIntegration.indexOf("Collect provider diagnostics"),
     );
+  });
+
+  test("gates linux-x64 provider integration with a success-path platform-readiness doctor", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+    const doctorNeedle = "bun run scripts/platform-readiness-doctor.ts";
+    const doctorAt = providerIntegration.indexOf(doctorNeedle);
+
+    // Then
+    expect(doctorAt).toBeGreaterThanOrEqual(0);
+    const stepStart = providerIntegration.lastIndexOf("\n      - ", doctorAt);
+    const stepEnd = providerIntegration.indexOf("\n      - ", doctorAt);
+    const doctorStep = providerIntegration.slice(
+      stepStart < 0 ? 0 : stepStart,
+      stepEnd < 0 ? undefined : stepEnd,
+    );
+    expect(doctorStep).not.toContain("if: failure()");
+    expect(doctorStep).not.toContain("|| true");
   });
 
   test("keeps Linux arm64 provider integration contract-only", async () => {

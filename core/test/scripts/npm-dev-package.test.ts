@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
@@ -173,5 +175,128 @@ describe("npm dev package preparation", () => {
     expect(source).toContain("npm publish --workspace ${packageName} --access public --tag dev --provenance");
     expect(source).toContain("npm view @lando/core dist-tags.dev --json");
     expect(source).toContain("4\\\\.0\\\\.0-dev\\\\.");
+  });
+
+  test("marks packages publishable on dist-tag dev at 4.0.0-dev.N", () => {
+    expect(
+      preparePackageJson(
+        {
+          name: "@lando/engine",
+          version: "0.0.0",
+          private: true,
+        },
+        "4.0.0-dev.42",
+        "dev",
+      ),
+    ).toMatchObject({
+      version: "4.0.0-dev.42",
+      private: false,
+      publishConfig: { tag: "dev", access: "public" },
+    });
+  });
+
+  test("packs a prepared workspace package as unsigned 4.0.0-dev.N on tag dev", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-npm-dev-pack-"));
+    try {
+      await mkdir(join(root, "src"));
+      await writeFile(join(root, "src", "index.js"), "export {};\n");
+
+      const prepared = preparePackageJson(
+        {
+          name: "@lando/engine",
+          version: "0.0.0",
+          private: true,
+          files: ["src"],
+          dependencies: {
+            "@lando/sdk": "workspace:*",
+            "@lando/paths": "workspace:*",
+            effect: "^3.21.2",
+          },
+        },
+        "4.0.0-dev.42",
+        "dev",
+      );
+      await writeFile(join(root, "package.json"), `${JSON.stringify(prepared, null, 2)}\n`);
+
+      const packDestination = join(root, "packed");
+      await mkdir(packDestination);
+
+      const packEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => key !== "NPM_TOKEN" && key !== "NODE_AUTH_TOKEN"),
+      );
+      const npmExecutable = Bun.which("npm");
+      const packArgs =
+        npmExecutable === null
+          ? ["bun", "pm", "pack"]
+          : [npmExecutable, "pack", "--ignore-scripts", "--pack-destination", packDestination];
+      const packProc = Bun.spawn(packArgs, {
+        cwd: root,
+        env: packEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const packCode = await packProc.exited;
+      if (packCode !== 0) {
+        throw new Error(`pack failed (${packCode}): ${await new Response(packProc.stderr).text()}`);
+      }
+
+      const tarballDirs = npmExecutable === null ? [root, packDestination] : [packDestination, root];
+      let tarballPath: string | undefined;
+      for (const dir of tarballDirs) {
+        const names = await readdir(dir);
+        const tgz = names.find((name) => name.endsWith(".tgz"));
+        if (tgz !== undefined) {
+          tarballPath = join(dir, tgz);
+          break;
+        }
+      }
+      if (tarballPath === undefined) {
+        throw new Error("pack produced no .tgz tarball");
+      }
+
+      const listProc = Bun.spawn(["tar", "-tzf", tarballPath], { stdout: "pipe", stderr: "pipe" });
+      const listCode = await listProc.exited;
+      if (listCode !== 0) {
+        throw new Error(`tar list failed (${listCode}): ${await new Response(listProc.stderr).text()}`);
+      }
+      const listing = await new Response(listProc.stdout).text();
+      expect(listing).not.toContain(".sig");
+      expect(listing).not.toContain(".crt");
+      expect(listing).not.toContain("SHA256SUMS.asc");
+      expect(listing).not.toContain("installer");
+      expect(listing).not.toContain("update-manifest");
+
+      const extractDir = join(root, "extract");
+      await mkdir(extractDir);
+      const extractProc = Bun.spawn(["tar", "-xzf", tarballPath, "-C", extractDir, "package/package.json"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const extractCode = await extractProc.exited;
+      if (extractCode !== 0) {
+        throw new Error(
+          `tar extract failed (${extractCode}): ${await new Response(extractProc.stderr).text()}`,
+        );
+      }
+
+      const packedJson: unknown = JSON.parse(
+        await readFile(join(extractDir, "package", "package.json"), "utf8"),
+      );
+      expect(packedJson).toMatchObject({
+        version: "4.0.0-dev.42",
+        private: false,
+        dependencies: {
+          "@lando/sdk": "4.0.0-dev.42",
+          "@lando/paths": "4.0.0-dev.42",
+          effect: "^3.21.2",
+        },
+        publishConfig: {
+          tag: "dev",
+          access: "public",
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

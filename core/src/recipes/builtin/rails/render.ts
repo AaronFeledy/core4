@@ -2,6 +2,8 @@ import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { RAILS_RECIPE_ID } from "./manifest";
 
+const GEMFILE = 'source "https://rubygems.org"\n';
+
 const renderLandofile = (appName: string): string =>
   [
     `name: ${appName}`,
@@ -12,6 +14,10 @@ const renderLandofile = (appName: string): string =>
     "    type: ruby:3.3",
     "    framework: rails",
     "    port: 3000",
+    "    build:",
+    "      artifact:",
+    '        - "apt-get update && apt-get install -y --no-install-recommends build-essential"',
+    '        - "gem install rails --no-document"',
     "    dependsOn:",
     "      - database",
     "      - cache",
@@ -36,5 +42,9 @@ const renderLandofile = (appName: string): string =>
 
 export const railsRenderer: RecipeRenderer = {
   id: RAILS_RECIPE_ID,
-  render: ({ appName }) => new Map([[".lando.yml", renderLandofile(appName)]]),
+  render: ({ appName }) =>
+    new Map([
+      [".lando.yml", renderLandofile(appName)],
+      ["Gemfile", GEMFILE],
+    ]),
 };

@@ -23,11 +23,13 @@ Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid range
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
 
-If the managed runtime still cannot install and you have working system Docker:
+On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
 
 ```sh
 lando setup --provider=docker
 ```
+
+On Linux, if the managed runtime still cannot install and you have working system Docker, use the same command as the supported fallback.
 
 After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. `LANDO_PROVIDER` does not persist.
 

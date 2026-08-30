@@ -8,9 +8,7 @@ tags: [beta, docs, provider-docker, setup, windows]
 
 # Use Docker Desktop on Windows
 
-Alpha binaries are Linux x64 today. There is no Windows `lando.exe` in Alpha. This page records the Docker Desktop provider path so the facts are here when that host is supported.
-
-When a Windows binary ships, you need working Docker Desktop first. Then:
+Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. Docker Desktop is the fallback provider, not the default. You need working Docker Desktop first. Then:
 
 ```sh
 lando setup --provider=docker
@@ -22,4 +20,4 @@ Windows Docker Desktop uses the named pipe `npipe://./pipe/docker_engine` when `
 
 Setup fails with remediation if Docker Desktop is missing. It does not install Docker for you.
 
-Until a Windows binary ships, run Lando inside WSL against Linux Docker or the managed `lando` provider. See [Install Lando on WSL](../install/wsl.mdx).
+The default provider stays `lando`. Use Docker only after default setup fails or when you already run Docker Desktop. WSL is optional. See [Install Lando on WSL](../install/wsl.mdx) if you want the Linux binary instead.

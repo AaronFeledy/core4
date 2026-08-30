@@ -9,20 +9,20 @@ tags: [beta, docs, installer]
 
 > **Alpha status:** Official installers are **not live**. `get.lando.dev` and `update.lando.dev` are not serving v4. There is no installer-printed PATH ritual yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-After you download the Linux x64 `lando` binary from a `v4.0.0-dev.N` prerelease, you own PATH.
+After you download the platform-qualified binary from a `v4.0.0-dev.N` prerelease, you own PATH. Use the asset name you downloaded (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`, and so on).
 
 ```sh
-chmod +x lando
-lando --version
+chmod +x lando-linux-x64
+./lando-linux-x64 --version
 ```
 
-Move that file into a directory already on PATH, or add its directory to PATH in your shell profile. Then:
+On Windows, skip `chmod` and run the `.exe`. Move that file into a directory already on PATH, or add its directory to PATH in your shell profile. Then:
 
 ```sh
 lando setup
 ```
 
-The default provider is `lando` (managed Podman). Default setup may fail on Alpha if host prerequisites block the managed runtime, or if the committed runtime-bundle manifest is still placeholders. If the managed runtime still cannot install and you have working system Docker:
+The default provider is `lando` (managed Podman). Default setup may fail on Alpha if host prerequisites block the managed runtime. If the managed runtime still cannot install and you have working system Docker:
 
 ```sh
 lando setup --provider=docker
@@ -30,4 +30,4 @@ lando setup --provider=docker
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-Once `lando` is on PATH, `lando shellenv` prints a profile snippet so new shells keep it. That is the PATH story today. Do not wait for a PowerShell installer snippet. Alpha has no `lando.exe`.
+Once `lando` is on PATH, `lando shellenv` prints a profile snippet so new shells keep it. That is the PATH story today. Do not wait for a PowerShell installer snippet.

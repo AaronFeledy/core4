@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { stripHostProxyRunLando } from "@lando/core/testing";
-import { Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
-import { ServiceCopyError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import {
@@ -14,6 +14,7 @@ import {
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
+import { IntelMacUnsupportedError } from "../src/host-support.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -520,13 +521,14 @@ describe("provider-lando RuntimeProvider contract", () => {
   );
 
   test("matrix: covers every host identity via fake Podman API", async () => {
-    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl") =>
+    const buildProvider = (platform: "linux" | "darwin" | "win32" | "wsl", arch?: string) =>
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
             sanitizeAppliedPlan: stripHostProxyRunLando,
             podmanApi: makeFakeApi().api,
             platform,
+            ...(arch === undefined ? {} : { arch }),
           }),
         ),
       );
@@ -536,7 +538,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         providerName: "@lando/provider-lando",
         cells: [
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
-          { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
+          { platform: "darwin", supported: true, factory: () => buildProvider("darwin", "arm64") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
           { platform: "wsl", supported: true, factory: () => buildProvider("wsl") },
         ],
@@ -550,5 +552,47 @@ describe("provider-lando RuntimeProvider contract", () => {
       "win32:passed",
       "wsl:passed",
     ]);
+  });
+
+  test("matrix: darwin/x64 fail-closes getStatus and setup while remaining available", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            podmanApi: makeFakeApi().api,
+            platform: "darwin",
+            arch: "x64",
+          }),
+        ),
+      ),
+    );
+
+    expect(await Effect.runPromise(provider.isAvailable)).toBe(true);
+
+    const statusExit = await Effect.runPromiseExit(provider.getStatus);
+    expect(Exit.isFailure(statusExit)).toBe(true);
+    if (Exit.isFailure(statusExit)) {
+      const failure = Cause.failureOption(statusExit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        if (failure.value instanceof ProviderUnavailableError) {
+          expect(failure.value.remediation).toContain("lando setup --provider=docker");
+        }
+      }
+    }
+
+    const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+    const setupExit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
+    expect(Exit.isFailure(setupExit)).toBe(true);
+    if (Exit.isFailure(setupExit)) {
+      const failure = Cause.failureOption(setupExit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
+      }
+    }
   });
 });
