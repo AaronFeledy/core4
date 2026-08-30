@@ -258,4 +258,21 @@ describe("ci runbook", () => {
     expect(runbook).toContain("lando-virt");
     expect(runbook).toContain("--provider=docker");
   });
+
+  test("documents Rails journey", async () => {
+    // Given: the contributor-facing CI runbook.
+    const runbook = await readText(runbookPath);
+
+    // When: Rails journey pins are located.
+    // Then: the runbook names the workflow, generators, journey script, and key steps.
+    expect(runbook).toContain("rails-journey.yml");
+    expect(runbook).toContain("scripts/build-rails-journey-workflow.ts");
+    expect(runbook).toContain("scripts/rails-journey.ts");
+    expect(runbook).toContain("lando info");
+    expect(runbook).toContain("lando rails");
+    expect(runbook).toContain("lando bundle");
+    expect(runbook).toContain("destroy -y");
+    expect(runbook).toContain("lando-virt");
+    expect(runbook).toContain("--provider=docker");
+  });
 });

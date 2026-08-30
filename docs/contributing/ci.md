@@ -299,6 +299,20 @@ darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Ot
 
 Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is Composer-heavy.
 
+## Rails journey
+
+The live Rails recipe path is a separate gate from compile smoke and from linux-x64 guide e2e `@smoke`.
+
+The generated workflow is `.github/workflows/rails-journey.yml`, produced by `scripts/build-rails-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/rails-journey.ts`.
+
+The live path is `lando init --recipe rails`, `lando start`, `lando info`, README tooling (`lando rails` / `lando bundle`), then `lando destroy -y`. It runs on all six compile targets.
+
+On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+
+darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
+
+Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is not Composer-heavy.
+
 ## Alpha platform scope
 
 Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.

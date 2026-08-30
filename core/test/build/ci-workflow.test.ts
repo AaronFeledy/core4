@@ -79,6 +79,7 @@ describe("ci workflow", () => {
       "php-base-images.yml",
       "platform-readiness.yml",
       "provider-matrix.yml",
+      "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
     ]);
