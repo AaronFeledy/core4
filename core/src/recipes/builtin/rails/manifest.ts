@@ -23,6 +23,9 @@ files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
     template: true
+  - src: assets/Gemfile
+    dest: Gemfile
+    template: false
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Rails up.

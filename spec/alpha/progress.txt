@@ -36,10 +36,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - `lando init --name` without `--destination` writes `<cwd>/<name>/` (`resolveInitDestination`). Scripts that init then start must chdir into that directory.
 - Public recipes that must answer `recipes validate <path>` ship `recipes/<id>/recipe.yml` byte-identical to the builtin embed YAML (toolbox and rails). README.mdx-only public trees cannot be validated as a directory.
 - Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
+- Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
+- `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -216,4 +218,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - `framework: rails` on ruby:3.3 only sets env/port/keep-alive. It does not install the rails or bundler gems. ruby:3.3-slim has neither on PATH.
   - Bare `lando bundle` is Bundler `install` and needs a Gemfile. The public rails recipe writes only `.lando.yml`.
   - Leftover sandbox podman on 38080/38443 blocks isolated setup Traefik. Poweroff the default-root runtime before a new isolated setup.
+---
+
+## 2026-08-30 02:00 CDT - US-599
+- Rails recipe now installs build-essential then the rails gem at artifact build and writes a source-only Gemfile, so live README tooling (`lando rails` / `lando bundle`) exits 0 after start. Journey argv and workflow cells unchanged.
+- Verification: typecheck, lint passed; rails recipe and journey/init-canonical spot checks passed; linux-x64 live init/start/info/rails/bundle/destroy passed in lando4-dev
+- **Learnings for future iterations:**
+  - Bundled init writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipe.yml` byte-identical to the embed YAML.
+  - On-disk Gemfile may carry a `# lando-generated:` marker; Bundler accepts it. Assert renderer Map bytes, not post-init disk bytes.
+  - `ruby:3.3-slim` lacks `make`. `gem install rails` needs a prior `build.artifact` apt-get of `build-essential`. Live proof must use a freshly compiled `dist/lando` after renderer changes.
 ---
