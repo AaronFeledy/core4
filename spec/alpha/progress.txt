@@ -325,3 +325,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `number | undefined` into `prop?: number`.
   - Leave advertised routing-state on 38080/38443 when the chosen pair is not 80/443. Publishing the chosen pair is the next story.
 ---
+
+## 2026-08-30 15:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports. Fixed false fallback warns on intentional custom preferred ports, httpPort ignored when fallbacks are omitted, and routing-state written before a failed Traefik start.
+- Review notes (deferred/rejected): stillOwnPersisted via rootlessport-only leftover scanner is pre-existing doctor budget code and Traefik still binds 38080/38443 until US-603; BindAddress schema tightening is not a US-602 AC; advertised 38080/38443 freeze is US-603; leftover doctor probes are US-604; walkProtocol skip of undefined binds is test-only
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; port-acquisition setup/reuse/probe and socket-proxy plus router-config spot checks passed
+---
