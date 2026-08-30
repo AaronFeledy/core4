@@ -551,7 +551,7 @@ events:
 proxy:
   <service>: <RouteConfig[]>
 
-routing:                               # optional; same keys as global routing: (§7.5, §10.2.3)
+router:                                # optional; same keys as global router: (§7.5, §10.2.3)
   bindAddress: <ip>                    # omit to inherit global
   httpPort: <port>                     # preferred HTTP; omit to inherit
   httpsPort: <port>
@@ -778,11 +778,11 @@ disablePlugins: []
 
 bindAddress: 127.0.0.1
 
-routing:
+router:
   enabled: true
   bindAddress: 127.0.0.1
-  httpPort: 80                         # preferred Traefik HTTP host port (§10.2.3)
-  httpsPort: 443                       # preferred Traefik HTTPS host port
+  httpPort: 80                         # preferred router HTTP host port (§10.2.3)
+  httpsPort: 443                       # preferred router HTTPS host port
   httpFallbacks: [8080, 8000, 8888, 8008, 38080]
   httpsFallbacks: [8443, 4443, 4433, 4444, 444, 38443]
 
@@ -825,7 +825,7 @@ mcp:
   maxConcurrent: 4                     # positive cap on concurrent MCP tool calls
 
 pluginConfig: {}
-# Traefik host ports, fallbacks, and bind address are routing: (§7.5, §10.2.3),
+# Router host ports, fallbacks, and bind address are router: (§7.5, §10.2.3),
 # not pluginConfig."@lando/proxy-traefik".
 
 keys: true
@@ -910,7 +910,7 @@ LANDO_DOMAIN=example.test
 LANDO_DEFAULT_PROVIDER=podman
 LANDO_RENDERER=json
 LANDO_PROVIDERS='{"podman":{"machine":"lando"}}'
-LANDO_ROUTING_HTTP_PORT=8080
+LANDO_ROUTER_HTTP_PORT=8080
 HTTPS_PROXY=http://proxy.corp.example:8080
 NO_PROXY=localhost,127.0.0.1,.lndo.site
 LANDO_NETWORK_CA_CERTS='["/etc/ssl/certs/CorpRootCA.pem"]'
