@@ -11,9 +11,10 @@ This PRD sequences the change. Durable contract is §10.2.3. Do not edit US-592.
 Execute in priority order after US-600.
 
 1. **Contract (US-601).** §10.2.3 lists, persist, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, and `routing:` overrides at global and Landofile scope.
-2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the merged lists (defaults → global `routing:` → env → Landofile `routing:`). Fail with a tagged error if a list is exhausted or an app pins ports that do not match a running Traefik.
+2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the merged lists (defaults → global `routing:` → env → Landofile `routing:`). Fail with a tagged error if a list is exhausted or an app pins ports that do not match a running Traefik. Notify when falling back from preferred `80`/`443`.
 3. **Publish (US-603).** Global Traefik `PortBindings` are the chosen host ports → container `80`/`443`. Do not always bind `38080`/`38443`. Socket-helper hops to the chosen high port when `80`/`443` need a helper.
 4. **Surfaces (US-604).** `lando info` omits `:80`/`:443`. Doctor leftover probes and start-path `EADDRINUSE` remap use persisted ports. Occupied-hop must not treat another Lando's healthy Traefik as leftover `rootlessport`.
+5. **Privileged-port doctor (US-605).** `lando doctor` warns when `80`/`443` are held by non-Lando tools (DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS) with holder-specific remediation.
 
 ## Source References
 
@@ -31,7 +32,7 @@ Execute in priority order after US-600.
 
 **Acceptance Criteria:**
 
-- [ ] US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, and doctor/start use persisted ports.
+- [ ] US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, notify on fallback from `80`/`443`, and doctor occupancy of `80`/`443` by non-Lando holders including DDEV.
 - [ ] Users can override preferred ports, fallback arrays, and bind address globally (`routing:` in §7.5) and per app (Landofile `routing:` in §7.4). App-level pins are a request against the one host Traefik, not a second proxy.
 - [ ] `38080`/`38443` are last-resort, not the degraded default.
 - [ ] Topic lookup in `spec/README.md` names §10.2.3.
@@ -40,7 +41,7 @@ Execute in priority order after US-600.
 
 **Failure path:** Implementing acquisition or Traefik publish before this contract. Leaving `38080`/`38443` as the only high-port fallback in the spec.
 
-**Verification:** §10.2.3 exists with the lists and behaviors above. `prd.json` IDs US-601..US-604, unique priorities 10..13, `passes: false`, no `dependsOn` field.
+**Verification:** §10.2.3 exists with the lists and behaviors above. `prd.json` IDs US-601..US-605, unique priorities 10..14, `passes: false`, no `dependsOn` field.
 
 ### US-602: Acquire and persist Traefik host ports
 
@@ -56,6 +57,7 @@ Execute in priority order after US-600.
 - [ ] Acquisition state is not limited to `80|38080` and `443|38443`.
 - [ ] If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.
 - [ ] Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.
+- [ ] When a preferred port (`80`/`443` by default) is occupied and a fallback is chosen, notify at acquisition time: occupied port, chosen fallback, holder if known, and that stopping the holder then restarting the global proxy restores `80`/`443`. Silent fallback is forbidden.
 - [ ] Tests pass; typecheck passes; lint passes
 
 **Failure path:** HTTP GET "open port" scans. Always binding `38080`. Silent proxy-off when the list is full.
@@ -94,3 +96,19 @@ Execute in priority order after US-600.
 **Failure path:** Doctor silent on a foreign healthy Traefik that still blocks start. Error copy that always says `38080`/`38443`.
 
 **Verification:** Doctor and start remediation tests with a non-default chosen pair. Info URL tests for `80` (no port) vs `8080` (port shown).
+
+### US-605: Doctor warns when 80/443 are held by non-Lando tools
+
+**Description:** As a user who wants portless `*.lndo.site` URLs, `lando doctor` tells me what is using 80/443 and how to free them.
+
+**Acceptance Criteria:**
+
+- [ ] Requires US-604.
+- [ ] `lando doctor` warns (not fail) when preferred `80` and/or `443` are in use by a non-Lando holder, even if Traefik is healthy on fallbacks.
+- [ ] Lando-owned binds (this instance's Traefik, socket-helper, leftover-rootlessport already reported) do not emit this warning.
+- [ ] Common holders are identified when possible, with holder-specific remediation: DDEV (`ddev poweroff` or move DDEV to 8080/8443), Lando 3 (`lando poweroff`), Docksal, Apache/httpd, nginx, Caddy, IIS/http.sys on win32. Unknown holders name comm/pid when known.
+- [ ] Tests pass; typecheck passes; lint passes
+
+**Failure path:** Treating DDEV's Traefik as leftover rootlessport. Failing doctor because 80 is busy. No remediation for DDEV.
+
+**Verification:** Doctor tests for DDEV-shaped, Apache-shaped, unknown, and Lando-owned holders. Positive test count; typecheck; lint.

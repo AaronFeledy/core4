@@ -13,7 +13,7 @@ This set sequences the first public Alpha: unsigned `4.0.0-dev.N` binaries and t
 3. US-592 is the contract for this set. Keep it `passes: false` until the contract checks in PRD-01 are done.
 4. Live all-six evidence is required for setup, doctor, Drupal, and Rails. Compile smoke does not close those stories.
 5. Full-suite lock is always `bun test` (or explicit shard `--run` commands) with positive test counts.
-6. PRD-08 (US-601..US-604) runs after US-600. US-601 may edit `spec/11-subsystems.md` §10.2.3. Do not edit US-592..US-600.
+6. PRD-08 (US-601..US-605) runs after US-600. US-601 may edit `spec/11-subsystems.md` §10.2.3. Do not edit US-592..US-600.
 
 ## PRD table
 
@@ -45,11 +45,12 @@ US-600 -> US-601 (proxy host-port contract)
 US-601 -> US-602 (acquire and persist)
 US-602 -> US-603 (Traefik publishes chosen ports)
 US-603 -> US-604 (info/doctor/start surfaces)
+US-604 -> US-605 (doctor 80/443 occupancy)
 ```
 
 ## Parallelism
 
-US-593, US-594, and US-597 can parallelize after US-592. US-595 waits for both distribution and the Intel macOS split. US-596 waits for live setup/doctor. US-598 waits for the Rails contract. US-599 waits for live setup/doctor and the bundled Rails recipe. US-600 waits for US-593 through US-599. US-601..US-604 wait for US-600 and run strictly in priority order.
+US-593, US-594, and US-597 can parallelize after US-592. US-595 waits for both distribution and the Intel macOS split. US-596 waits for live setup/doctor. US-598 waits for the Rails contract. US-599 waits for live setup/doctor and the bundled Rails recipe. US-600 waits for US-593 through US-599. US-601..US-605 wait for US-600 and run strictly in priority order.
 
 ## Verification contract
 
