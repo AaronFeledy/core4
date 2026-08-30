@@ -348,3 +348,38 @@ describe("setup exhausted lists", () => {
     }
   });
 });
+
+describe("setup try-list probe walk", () => {
+  test("Given probeBind records ports, When setup runs, Then default HTTP then HTTPS lists are probed in order", async () => {
+    // Given: no classifyOverride, so setup walks probeBind over the production lists.
+    const store = memoryFiles();
+    const probed: number[] = [];
+    const service = makeTraefikProxyService({
+      certificateAuthority: makeTestCertificateAuthority(),
+      fileSystem: store.fileSystem,
+      paths,
+      globalApp: {
+        ensureRunning: () =>
+          Effect.succeed([
+            {
+              name: "traefik",
+              state: "running",
+              endpoints: ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
+            },
+          ]),
+      },
+      probeBind: (_host, port) => {
+        probed.push(port);
+        return Effect.succeed(bind("success"));
+      },
+    });
+
+    // When: setup acquires ports through persistPortAcquisition → probeTryList.
+    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+
+    // Then: every default candidate is probed in order; first success wins.
+    expect(probed).toEqual([...HTTP_TRY_LIST, ...HTTPS_TRY_LIST]);
+    expect(readJson(store.files).httpPort).toBe(80);
+    expect(readJson(store.files).httpsPort).toBe(443);
+  });
+});
