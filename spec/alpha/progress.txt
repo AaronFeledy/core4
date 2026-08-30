@@ -301,3 +301,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - This contract lives in the specification tree. Do not restate host-port lists in README Status or public-alpha-contract tests.
   - Code still publishes 38080/38443 until later stories. The contract forbids treating those as the degraded default; do not implement try-list acquisition in this story.
 ---
+
+## 2026-08-30 12:37 CDT - US-601 Review
+- Reviewed the §10.2.3 familiar proxy host-port fallback contract. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): runtime 38080/38443 hardcode is US-602+; GitHub #764 HTTPS-only 404 is US-603/604; re-editing §10.2.3 after #883 would be cargo-cult; historical progress `routing:` line is superseded
+- Guide-Coverage-Skip: specification-tree contract lock only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; guide-drift vs origin/main passed; Bugbot found no bugs; review-work 5/5 PASS
+---
