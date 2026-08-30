@@ -239,6 +239,27 @@ describe("persistPortAcquisition reuse", () => {
     expect(readJson(store.files).fingerprint).toEqual(defaultFingerprint);
   });
 
+  test("Given persisted notices and owned binds, When reusing, Then decision notices are empty", async () => {
+    // Given: prior acquisition stored an occupancy notice; pair is still owned.
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      notices: [
+        "Port 80 is occupied by nginx; using 8080. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
+      ],
+    });
+    const deps = makeDeps(store, own8080Override());
+
+    // When: persist reuses the pair.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    // Then: reuse does not re-surface acquisition-time notices for setup to warn on.
+    expect(decision.httpPort).toBe(8080);
+    expect(decision.httpsPort).toBe(8443);
+    expect(decision.notices).toEqual([]);
+  });
+
   test("Given a changed fingerprint, When persisting, Then acquisition rescans the new try list", async () => {
     // Given: persisted 8080/8443 under the default fingerprint; lists now start at 8888/4443.
     const store = memoryFiles();

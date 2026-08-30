@@ -89,11 +89,12 @@ export const persistPortAcquisition = (
       fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
       (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
     ) {
+      // Reuse is silent: occupancy fallback warn only on a fresh walk.
       return {
         mode: previous.mode,
         httpPort: previous.httpPort,
         httpsPort: previous.httpsPort,
-        notices: previous.notices,
+        notices: [],
         fingerprint: previous.fingerprint,
       };
     }
