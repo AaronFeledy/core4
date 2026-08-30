@@ -48,21 +48,30 @@ const holderFor = (port: number, bind: BindOutcome): Effect.Effect<string | unde
 export const fingerprintsEqual = (left: AcquisitionFingerprint, right: AcquisitionFingerprint): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+const overlayTryList = (
+  preferred: number | undefined,
+  fallbacks: readonly number[] | undefined,
+  defaults: readonly number[],
+): readonly number[] => {
+  const nextPreferred = preferred ?? defaults[0];
+  if (nextPreferred === undefined) return defaults;
+  const rest = fallbacks !== undefined ? fallbacks : defaults.slice(1);
+  return [nextPreferred, ...rest];
+};
+
 export const resolveTryLists = (dependencies: TraefikProxyDependencies): ResolvedTryLists => {
   const bindAddress =
     dependencies.fingerprint?.bindAddress ?? dependencies.router?.bindAddress ?? LOOPBACK_HOST;
-  const preferredHttp = dependencies.router?.httpPort ?? DESIRED_HTTP_PORT;
-  const preferredHttps = dependencies.router?.httpsPort ?? DESIRED_HTTPS_PORT;
   const httpTryList =
     dependencies.fingerprint?.http ??
-    (dependencies.router?.httpFallbacks !== undefined
-      ? [preferredHttp, ...dependencies.router.httpFallbacks]
-      : DEFAULT_HTTP_TRY_LIST);
+    overlayTryList(dependencies.router?.httpPort, dependencies.router?.httpFallbacks, DEFAULT_HTTP_TRY_LIST);
   const httpsTryList =
     dependencies.fingerprint?.https ??
-    (dependencies.router?.httpsFallbacks !== undefined
-      ? [preferredHttps, ...dependencies.router.httpsFallbacks]
-      : DEFAULT_HTTPS_TRY_LIST);
+    overlayTryList(
+      dependencies.router?.httpsPort,
+      dependencies.router?.httpsFallbacks,
+      DEFAULT_HTTPS_TRY_LIST,
+    );
   const fingerprint = dependencies.fingerprint ?? {
     http: [...httpTryList],
     https: [...httpsTryList],

@@ -225,6 +225,60 @@ describe("setup router lists", () => {
     // Then: chosen ports come from config.router, not compiled defaults.
     expect(readJson(store.files).httpPort).toBe(9090);
     expect(readJson(store.files).httpsPort).toBe(9443);
+    expect(readJson(store.files).notices).toEqual([]);
+  });
+
+  test("Given httpPort without fallbacks, When setup runs, Then acquisition prefers that port not 80", async () => {
+    // Given: 80/443 and 9080/9443 all bind; router names 9080/9443 with no fallback arrays.
+    const store = memoryFiles();
+    const classifyOverride: ClassifyOverride = {
+      http: { bind: bind("success"), forward: forward("failure") },
+      https: { bind: bind("success"), forward: forward("failure") },
+      httpBinds: { ...portBinds(HTTP_TRY_LIST, 80), 9080: bind("success") },
+      httpsBinds: { ...portBinds(HTTPS_TRY_LIST, 443), 9443: bind("success") },
+    };
+    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+
+    // When: setup receives preferred ports only.
+    await Effect.runPromise(
+      Effect.scoped(
+        service.setup({
+          defaultDomain: "lndo.site",
+          router: { httpPort: 9080, httpsPort: 9443 },
+        }),
+      ),
+    );
+
+    // Then: httpPort replaced the preferred candidate; 80 was not chosen.
+    expect(readJson(store.files).httpPort).toBe(9080);
+    expect(readJson(store.files).httpsPort).toBe(9443);
+    expect(readJson(store.files).notices).toEqual([]);
+  });
+});
+
+describe("setup routing-state", () => {
+  test("Given ensureRunning fails, When setup runs, Then routing-state is not written", async () => {
+    // Given: acquisition can choose ports, but Traefik start fails.
+    const store = memoryFiles();
+    const deps = makeDeps(store, {
+      http: { bind: bind("success"), forward: forward("failure") },
+      https: { bind: bind("success"), forward: forward("failure") },
+      httpBinds: portBinds(HTTP_TRY_LIST, 80),
+      httpsBinds: portBinds(HTTPS_TRY_LIST, 443),
+    });
+    const service = makeTraefikProxyService({
+      ...deps,
+      globalApp: {
+        ensureRunning: () => Effect.fail(new Error("traefik start failed")),
+      },
+    });
+
+    // When: setup fails during ensureRunning.
+    const exit = await Effect.runPromiseExit(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+
+    // Then: pin-mismatch must not see a routing-state file from a failed start.
+    expect(exit._tag).toBe("Failure");
+    expect(store.files.has(routingStateFile(paths))).toBe(false);
   });
 });
 

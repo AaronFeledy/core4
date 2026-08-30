@@ -16,7 +16,6 @@ import {
 } from "@lando/sdk/services";
 
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
-import { DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
@@ -131,14 +130,14 @@ export const makeTraefikProxyService = (
         });
         const advertised = advertisedPorts(decision);
         authorityPorts = advertised;
-        if (decision.httpPort !== DESIRED_HTTP_PORT || decision.httpsPort !== DESIRED_HTTPS_PORT) {
+        if (decision.notices.length > 0) {
           yield* publishFallbackWarn(dependencies, decision);
         }
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
           [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
         );
-        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
       }).pipe(Effect.mapError(mapSetupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
