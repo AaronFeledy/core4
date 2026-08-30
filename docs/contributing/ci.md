@@ -287,19 +287,17 @@ CI/release platform id `windows-x64` is not the runtime host key `win32-x64`. Ke
 
 ## Drupal journey
 
-Live Drupal recipe evidence is a separate gate from compile smoke and from linux-x64 guide e2e `@smoke`.
+The live Drupal recipe path is a separate gate from compile smoke and from linux-x64 guide e2e `@smoke`.
 
 The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `scripts/build-drupal-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/drupal-journey.ts`.
 
 The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
 
-On pull request and evidence, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
 
 darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
 
 Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is Composer-heavy.
-
-linux-x64 guide e2e `@smoke` is not this evidence.
 
 ## Alpha platform scope
 
