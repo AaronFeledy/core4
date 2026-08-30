@@ -10,14 +10,15 @@ This PRD sequences the change. Durable contract is §10.2.3. Do not edit US-592.
 
 Execute in priority order after US-600.
 
-1. **Contract (US-601).** §10.2.3 lists, persist, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports.
-2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the lists. Fail with a tagged error if a list is exhausted.
+1. **Contract (US-601).** §10.2.3 lists, persist, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, and `routing:` overrides at global and Landofile scope.
+2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the merged lists (defaults → global `routing:` → env → Landofile `routing:`). Fail with a tagged error if a list is exhausted or an app pins ports that do not match a running Traefik.
 3. **Publish (US-603).** Global Traefik `PortBindings` are the chosen host ports → container `80`/`443`. Do not always bind `38080`/`38443`. Socket-helper hops to the chosen high port when `80`/`443` need a helper.
 4. **Surfaces (US-604).** `lando info` omits `:80`/`:443`. Doctor leftover probes and start-path `EADDRINUSE` remap use persisted ports. Occupied-hop must not treat another Lando's healthy Traefik as leftover `rootlessport`.
 
 ## Source References
 
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.2.3
+- [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.4 Landofile `routing:`, §7.5 global `routing:`
 - Lando 3 defaults: `proxyHttpPort` `80`, `proxyHttpsPort` `443`, fallbacks `8000,8080,8888,8008` / `444,4433,4444,4443`, persist `proxyCache`, HTTP-scan (v4 replaces with TCP bind)
 - DDEV documented alternate pair: `8080` / `8443`
 - Current v4: `plugins/proxy-traefik/src/ports.ts`, `port-acquisition.ts`, `port-acquisition-state.ts`, `global-services/traefik.ts`
@@ -31,6 +32,7 @@ Execute in priority order after US-600.
 **Acceptance Criteria:**
 
 - [ ] US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, and doctor/start use persisted ports.
+- [ ] Users can override preferred ports, fallback arrays, and bind address globally (`routing:` in §7.5) and per app (Landofile `routing:` in §7.4). App-level pins are a request against the one host Traefik, not a second proxy.
 - [ ] `38080`/`38443` are last-resort, not the degraded default.
 - [ ] Topic lookup in `spec/README.md` names §10.2.3.
 - [ ] This story does not change acquisition, Traefik publish, doctor, or start code.
@@ -47,8 +49,10 @@ Execute in priority order after US-600.
 **Acceptance Criteria:**
 
 - [ ] Requires US-601. Do not start this story before §10.2.3 exists.
-- [ ] HTTP try order is `80, 8080, 8000, 8888, 8008, 38080`. HTTPS try order is `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.
+- [ ] HTTP try order defaults to `80, 8080, 8000, 8888, 8008, 38080`. HTTPS defaults to `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.
+- [ ] Merged lists are compiled defaults → global `routing:` → env → Landofile `routing:`. `httpPort`/`httpsPort` replace the preferred candidate; fallback arrays replace the rest of that protocol's list.
 - [ ] Chosen `{ http, https }` is persisted and reused when preferred config still matches and the proxy still owns those binds.
+- [ ] If Traefik is already running and this app set `httpPort`/`httpsPort` that do not match the running pair, fail with a tagged error naming the running ports.
 - [ ] Acquisition state is not limited to `80|38080` and `443|38443`.
 - [ ] If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.
 - [ ] Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.

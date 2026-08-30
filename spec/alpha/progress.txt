@@ -216,3 +216,7 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Appended PRD-08 after Alpha 1 exit. Durable contract is spec/11-subsystems.md §10.2.3: HTTP 80,8080,8000,8888,8008,38080; HTTPS 443,8443,4443,4433,4444,444,38443; TCP bind; persist; Traefik publishes the chosen pair; 38080/38443 last-resort. Did not edit US-592..US-600. Did not implement acquisition or Traefik publish.
 - Verification: spec-only change; typecheck/lint not required for this package-creation append
 ---
+
+## 2026-08-30 19:45 CDT - US-601
+- Required global and Landofile `routing:` overrides (httpPort/httpsPort/fallbacks/bindAddress). App-level pins request the one host Traefik pair; mismatch with a running proxy fails closed. Did not edit US-592..US-600.
+---

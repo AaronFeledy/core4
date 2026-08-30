@@ -146,6 +146,7 @@
       "description": "As a maintainer, §10.2.3 is the durable contract for Traefik host-port acquisition before any implementation.",
       "acceptanceCriteria": [
         "US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, and doctor/start use persisted ports.",
+        "Users can override preferred ports, fallback arrays, and bind address globally (`routing:` in §7.5) and per app (Landofile `routing:` in §7.4). App-level pins are a request against the one host Traefik, not a second proxy.",
         "`38080`/`38443` are last-resort, not the degraded default.",
         "Topic lookup in `spec/README.md` names §10.2.3.",
         "This story does not change acquisition, Traefik publish, doctor, or start code.",
@@ -161,8 +162,10 @@
       "description": "As a user, Lando picks the first free familiar host ports and remembers them.",
       "acceptanceCriteria": [
         "Requires US-601. Do not start this story before §10.2.3 exists.",
-        "HTTP try order is `80, 8080, 8000, 8888, 8008, 38080`. HTTPS try order is `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.",
+        "HTTP try order defaults to `80, 8080, 8000, 8888, 8008, 38080`. HTTPS defaults to `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.",
+        "Merged lists are compiled defaults → global `routing:` → env → Landofile `routing:`. `httpPort`/`httpsPort` replace the preferred candidate; fallback arrays replace the rest of that protocol's list.",
         "Chosen `{ http, https }` is persisted and reused when preferred config still matches and the proxy still owns those binds.",
+        "If Traefik is already running and this app set `httpPort`/`httpsPort` that do not match the running pair, fail with a tagged error naming the running ports.",
         "Acquisition state is not limited to `80|38080` and `443|38443`.",
         "If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.",
         "Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.",
