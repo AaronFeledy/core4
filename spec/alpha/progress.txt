@@ -228,3 +228,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - On-disk Gemfile may carry a `# lando-generated:` marker; Bundler accepts it. Assert renderer Map bytes, not post-init disk bytes.
   - `ruby:3.3-slim` lacks `make`. `gem install rails` needs a prior `build.artifact` apt-get of `build-essential`. Live proof must use a freshly compiled `dist/lando` after renderer changes.
 ---
+
+## 2026-08-30 02:13 CDT - US-599 Review
+- Reviewed US-599 Rails canonical journey (sibling six-cell workflow + dest+Map Gemfile so README tooling exits 0). No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): unpinned `gem install rails` is not an AC and matches the live-proofed recipe path; missing `assets/Gemfile` is dest+Map (validate does not stat src); README `<Guide>` omitting rails/bundle is not the live gate (`scripts/rails-journey.ts` runs them); stale builtin README “Landofile only” is contributor copy, not PRD.
+- Guide-Coverage-Skip: generated CI workflow and recipe dest+Map so README tooling exits 0; recipes/rails/README.mdx already documents lando rails / lando bundle
+- Verification: typecheck, lint trusted from build (clean tree); QA spot checks passed (rails-journey, rails-journey-workflow, rails recipe, codegen-ci, ci-runbook); Bugbot found no bugs; guide-drift vs origin/main passed
+---
