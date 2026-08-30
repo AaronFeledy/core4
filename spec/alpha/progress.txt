@@ -259,3 +259,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - If runbook copy says `not Linux x64 only`, never `not.toContain("Linux x64 only")`; pin the full historical sentence instead.
   - Status already contains `unsigned`. Never `not.toContain("signed")`; use `signed 4.0.0` and a word-boundary GA check.
 ---
+
+## 2026-08-30 11:33 CDT - US-600 Review
+- Reviewed the Alpha 1 exit lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): duplicate Current: Beta 1 assertion is a nit, not a miss; YAML substring job-key freeze matches existing phrase-freeze style; GitHub #866 host-proxy shim on prerelease is US-593/start payload, not this lock; live virt-runner execution stays the US-595 fail-closed six-cell shape, not a re-demand.
+- Guide-Coverage-Skip: Alpha 1 exit lock restates Status and CI runbook over existing six-cell workflows; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract (23) and ci-runbook (9) spot checks passed; guide-drift vs origin/main passed; Bugbot found no bugs
+---
