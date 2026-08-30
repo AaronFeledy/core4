@@ -308,3 +308,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Guide-Coverage-Skip: specification-tree contract lock only; no CLI or executable-guide source surface changed
 - Verification: typecheck, lint passed; guide-drift vs origin/main passed; Bugbot found no bugs; review-work 5/5 PASS
 ---
+
+## 2026-08-30 12:42 CDT - US-601 Drift Audit
+- Trigger: 6 cycles, 18 changed lines, 2 commits. Four of six headers already on main; this branch is one Build plus Review. Did not escalate: no file-level dispute, no prior adjudication.
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint — pass; no new tests
+---
