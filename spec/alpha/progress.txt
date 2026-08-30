@@ -35,6 +35,7 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 
 - `lando init --name` without `--destination` writes `<cwd>/<name>/` (`resolveInitDestination`). Scripts that init then start must chdir into that directory.
 - Public recipes that must answer `recipes validate <path>` ship `recipes/<id>/recipe.yml` byte-identical to the builtin embed YAML (toolbox and rails). README.mdx-only public trees cannot be validated as a directory.
+- Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
 
 ## Status
 
@@ -205,4 +206,14 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Keep core/src/recipes/builtin/rails. Laravel/Symfony/Rails public trees do not replace the embed. Add recipe.yml only when validate-by-path is required (toolbox pattern).
   - `apps:init` has no `--destination` flag. `lando init --name=foo --yes` writes `<cwd>/foo`. Isolated init smoke must chdir or use cwd, not invent flags.
   - `codegen:check` treats untracked catalog outputs such as `recipes/<id>/.scaffold/default.md` as drift until that file is committed.
+---
+
+## 2026-08-30 01:27 CDT - US-599
+- Added a generated six-cell Rails journey workflow (sibling of Drupal): live init --recipe rails, start, info, README tooling (lando rails / lando bundle), destroy on every compile target. Reuses PLATFORM_READINESS_CELLS (darwin-x64 --provider=docker; linux PR+evidence; darwin/windows fail-closed lando-virt). Gate is scripts/rails-journey.ts. Did not mark the story complete.
+- Linux-x64 live in lando4-dev: init, start, and info succeeded (https://rails-journey.lndo.site). `lando rails` exited 127 (`rails: not found` in ruby:3.3-slim). Did not add a Gemfile, rails new, extra argv, or recipe files. Destroyed the app.
+- Verification: typecheck, lint passed; relevant test spot checks passed; live README tooling did not pass
+- **Learnings for future iterations:**
+  - `framework: rails` on ruby:3.3 only sets env/port/keep-alive. It does not install the rails or bundler gems. ruby:3.3-slim has neither on PATH.
+  - Bare `lando bundle` is Bundler `install` and needs a Gemfile. The public rails recipe writes only `.lando.yml`.
+  - Leftover sandbox podman on 38080/38443 blocks isolated setup Traefik. Poweroff the default-root runtime before a new isolated setup.
 ---
