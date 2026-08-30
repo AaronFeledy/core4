@@ -29,9 +29,11 @@ Core defines network *intent*, not implementation. The `RuntimeProvider` is resp
 
 There is no built-in concept of a "shared bridge network" in core. Providers that need one create and manage it themselves; the docker provider creates `lando_bridge_network` as an implementation detail.
 
-### 10.2 Proxy and routing
+### 10.2 Router and routes
 
-Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation.
+**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals still use `ProxyService` / `proxyServices:` / `@lando/proxy-traefik` until US-606 renames them to `RouterService` / `routerServices:` / `@lando/router-traefik`.
+
+Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation (US-606: `RouterService`).
 
 ```ts
 export class ProxyService extends Context.Service<ProxyService, {
@@ -120,10 +122,10 @@ Host ports are chosen from **fixed ordered lists**. First free candidate wins **
 
 `80`/`443` are the happy path (no port in the URL). `8080`/`8443` are the familiar first fallback (DDEV's documented alternate pair, plus Lando 3's remaining common ports). `38080`/`38443` are last-resort Lando-reserved ports, not the degraded default.
 
-**Config.** Users MUST be able to override preferred ports, fallback arrays, and bind address — globally and per app. Keys live under `routing:` in global config (§7.5) and the same `routing:` shape on the Landofile (§7.4). Env overrides follow §7.6 (`LANDO_ROUTING_HTTP_PORT`, `LANDO_ROUTING_HTTPS_PORT`, `LANDO_ROUTING_BIND_ADDRESS`, JSON-document setters for fallback arrays).
+**Config.** Users MUST be able to override preferred ports, fallback arrays, and bind address — globally and per app. Keys live under `router:` in global config (§7.5) and the same `router:` shape on the Landofile (§7.4). Env overrides follow §7.6 (`LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, JSON-document setters for fallback arrays).
 
 ```yaml
-routing:
+router:
   enabled: true
   bindAddress: 127.0.0.1
   httpPort: 80
@@ -134,12 +136,12 @@ routing:
 
 `httpPort`/`httpsPort` replace the preferred (first) candidate for that protocol. `httpFallbacks`/`httpsFallbacks` replace the rest of that protocol's list. Omitted keys inherit. An empty fallback array means preferred-only (no scan past the preferred port). Default `bindAddress` remains `127.0.0.1`.
 
-Merge order for an app start: compiled defaults → global `routing:` → env → this app's Landofile `routing:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT be a parallel host-port surface.
+Merge order for an app start: compiled defaults → global `router:` → env → this app's Landofile `router:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT be a parallel host-port surface.
 
-**Host-global listen.** Traefik binds **one** HTTP/HTTPS pair for the whole host. App-level `routing:` is a request against that pair, not a second proxy.
+**Host-global listen.** Traefik binds **one** HTTP/HTTPS pair for the whole host. App-level `router:` is a request against that pair, not a second router.
 
 - If Traefik is not running, acquisition uses the merged lists.
-- If Traefik is already running, this app MUST use the persisted pair. If the app set `httpPort` and/or `httpsPort` and they do not match the running pair, fail with a tagged error naming the running ports and remediation: set Landofile `routing:` to match, or change global `routing:` and `lando global:restart`.
+- If Traefik is already running, this app MUST use the persisted pair. If the app set `httpPort` and/or `httpsPort` and they do not match the running pair, fail with a tagged error naming the running ports and remediation: set Landofile `router:` to match, or change global `router:` and `lando global:restart`.
 
 **The chosen pair IS Traefik's host publish.** Container entrypoints stay `:80` / `:443`. Traefik MUST NOT always bind `38080`/`38443` in addition to the chosen pair. A second Lando on shared localhost (another WSL distro, another install) then takes the next free candidate instead of failing on a hardcoded high port.
 
@@ -149,7 +151,7 @@ Merge order for an app start: compiled defaults → global `routing:` → env �
 
 **Fail closed.** If a protocol finds no free port in its list, proxy start MUST fail with a tagged error naming the tried ports. Do not disable the proxy silently (Lando 3 did).
 
-**Fallback notice.** `80`/`443` are highly desirable. When acquisition cannot bind a preferred port (`httpPort`/`httpsPort`, default `80`/`443`) and selects a fallback, Lando MUST notify the user at that moment (setup, `global:start`, and the app start that acquires Traefik). The notice MUST name the occupied preferred port(s), the chosen fallback port(s), the holder when identified, and that stopping the holder then `lando global:restart` (or re-running setup) lets Lando take `80`/`443`. Silent fallback is forbidden.
+**Fallback notice.** `80`/`443` are highly desirable. When acquisition cannot bind a preferred port (`httpPort`/`httpsPort`, default `80`/`443`) and selects a fallback, Lando MUST notify the user at that moment (setup, `global:start`, and the app start that acquires the router). The notice MUST name the occupied preferred port(s), the chosen fallback port(s), the holder when identified, and that stopping the holder then `lando global:restart` (or re-running setup) lets Lando's router take `80`/`443`. Silent fallback is forbidden.
 
 **Doctor occupancy.** `lando doctor` MUST warn when preferred `80` and/or `443` are in use by a **non-Lando** holder, even if Traefik is healthy on fallbacks. Lando-owned binds (this instance's Traefik, socket-helper, or leftover rootlessport already covered by leftover-proxy checks) are not this warning. Status is `warn`, not `fail`.
 
@@ -164,7 +166,7 @@ The check MUST identify common holders from process comm/command line when possi
 | nginx (`nginx`) | Stop the system nginx service |
 | Caddy (`caddy`) | Stop Caddy |
 | IIS / `http.sys` (win32) | Stop the IIS site or HTTP.sys binding on 80/443 |
-| Unknown | Name the comm/pid when known; stop that process or change `routing.httpPort`/`httpsPort` |
+| Unknown | Name the comm/pid when known; stop that process or change `router.httpPort`/`httpsPort` |
 
 Doctor leftover checks and start-path `EADDRINUSE` remap MUST use the persisted chosen ports, not hardcoded `38080`/`38443` only.
 
