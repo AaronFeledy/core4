@@ -8,8 +8,7 @@ import { ConfigError } from "@lando/core/errors";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { ConfigService } from "@lando/core/services";
 import { mergeLandofiles } from "@lando/landofile/merge";
-import { resolveProviderSelection } from "../../src/testing/engine-layers.ts";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
+import { ConfigServiceLive, resolveProviderSelection } from "../../src/testing/engine-layers.ts";
 
 /**
  * Runs `body` with a temp `LANDO_USER_CONF_ROOT` and a clean slate of

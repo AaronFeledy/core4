@@ -113,12 +113,6 @@ const probeHttp = (host: string, port: number): Promise<boolean> =>
     request.end();
   });
 
-const forwardOnce = async (host: string, port: number): Promise<ForwardOutcome> => {
-  const tcp = await probeTcp(host, port);
-  if (tcp !== "open") return { kind: "failure" };
-  return { kind: (await probeHttp(host, port)) ? "success" : "failure" };
-};
-
 export const probeForward = (host: string, port: number): Effect.Effect<ForwardOutcome> =>
   Effect.gen(function* () {
     let last: ForwardOutcome = { kind: "failure" };
@@ -138,7 +132,11 @@ export const probeForward = (host: string, port: number): Effect.Effect<ForwardO
         },
       },
       Effect.tryPromise({
-        try: () => forwardOnce(host, port),
+        try: async () => {
+          const tcp = await probeTcp(host, port);
+          if (tcp !== "open") return { kind: "failure" as const };
+          return { kind: (await probeHttp(host, port)) ? ("success" as const) : ("failure" as const) };
+        },
         catch: (error) => error,
       }),
     ).pipe(Effect.catchAll(() => Effect.void));

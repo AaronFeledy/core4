@@ -21,9 +21,6 @@ export const ProxyCapabilities = Schema.Struct({
 });
 export type ProxyCapabilities = typeof ProxyCapabilities.Type;
 
-/**
- * Shared host-router bind address and port policy.
- */
 export const RouterConfig = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean).annotations({
     description: "Whether the shared host router is enabled.",

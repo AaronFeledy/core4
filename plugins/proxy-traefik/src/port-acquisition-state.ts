@@ -57,17 +57,6 @@ export const readAcquisitionState = (
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
-const isLinuxFamily = (platform: ProxyPaths["platform"]): boolean =>
-  platform === "linux" || platform === "wsl";
-
-const decisionFromPersisted = (state: AcquisitionState): AcquisitionDecision => ({
-  mode: state.mode,
-  httpPort: state.httpPort,
-  httpsPort: state.httpsPort,
-  notices: state.notices,
-  fingerprint: state.fingerprint,
-});
-
 export const persistPortAcquisition = (
   dependencies: TraefikProxyDependencies,
 ): Effect.Effect<AcquisitionDecision, unknown> =>
@@ -100,10 +89,16 @@ export const persistPortAcquisition = (
       fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
       (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
     ) {
-      return decisionFromPersisted(previous);
+      return {
+        mode: previous.mode,
+        httpPort: previous.httpPort,
+        httpsPort: previous.httpsPort,
+        notices: previous.notices,
+        fingerprint: previous.fingerprint,
+      };
     }
     if (
-      isLinuxFamily(dependencies.paths.platform) &&
+      (dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl") &&
       preferredEacces(probed) &&
       dependencies.socketProxy !== undefined
     ) {

@@ -40,17 +40,13 @@ export const advertisedPorts = (decision: AcquisitionDecision): AuthorityPorts =
     ? { http: DESIRED_HTTP_PORT, https: DESIRED_HTTPS_PORT }
     : { http: TRAEFIK_HTTP_PORT, https: TRAEFIK_HTTPS_PORT };
 
-const fallbackWarnBody = (decision: AcquisitionDecision): string => {
-  const joined = decision.notices.join(" ");
-  return joined.includes("lando global:restart") ? joined : `${joined} ${FALLBACK_RESTORE}`;
-};
-
 export const publishFallbackWarn = (
   dependencies: TraefikProxyDependencies,
   decision: AcquisitionDecision,
 ): Effect.Effect<void, unknown> =>
   Effect.gen(function* () {
-    const body = fallbackWarnBody(decision);
+    const joined = decision.notices.join(" ");
+    const body = joined.includes("lando global:restart") ? joined : `${joined} ${FALLBACK_RESTORE}`;
     const fromContext = yield* Effect.serviceOption(EventService);
     const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
     if (events === undefined) return;

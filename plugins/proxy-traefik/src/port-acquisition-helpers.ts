@@ -55,8 +55,7 @@ const overlayTryList = (
 ): readonly number[] => {
   const nextPreferred = preferred ?? defaults[0];
   if (nextPreferred === undefined) return defaults;
-  const rest = fallbacks !== undefined ? fallbacks : defaults.slice(1);
-  return [nextPreferred, ...rest];
+  return [nextPreferred, ...(fallbacks ?? defaults.slice(1))];
 };
 
 export const resolveTryLists = (dependencies: TraefikProxyDependencies): ResolvedTryLists => {
@@ -158,10 +157,9 @@ export const probeCurrent = (
     });
   }
   return Effect.gen(function* () {
-    const host = lists.bindAddress;
     const probe = dependencies.probeBind ?? probeBind;
-    const httpBinds = yield* probeTryList(host, lists.httpTryList, probe);
-    const httpsBinds = yield* probeTryList(host, lists.httpsTryList, probe);
+    const httpBinds = yield* probeTryList(lists.bindAddress, lists.httpTryList, probe);
+    const httpsBinds = yield* probeTryList(lists.bindAddress, lists.httpsTryList, probe);
     const preferredHttp = lists.httpTryList[0] ?? DESIRED_HTTP_PORT;
     const preferredHttps = lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT;
     const httpBind = httpBinds[preferredHttp] ?? { kind: "other-error" as const };
@@ -219,23 +217,22 @@ export const stillOwnPersisted = (
         overrideOwned(override.https, probed.httpsBinds[previous.httpsPort])
       );
     }
-    const host = bindAddress;
     const probe = dependencies.probeBind ?? probeBind;
-    const httpBind = yield* probe(host, previous.httpPort);
-    const httpsBind = yield* probe(host, previous.httpsPort);
+    const httpBind = yield* probe(bindAddress, previous.httpPort);
+    const httpsBind = yield* probe(bindAddress, previous.httpsPort);
     const httpHolder = yield* holderFor(previous.httpPort, httpBind);
     const httpsHolder = yield* holderFor(previous.httpsPort, httpsBind);
-    const helperOpen = previous.helperInstalled === true || previous.socketsActive === true;
+    const helperOpen = previous.helperInstalled || previous.socketsActive;
     return (
       stillOwnPort({
         bind: httpBind,
         holder: httpHolder,
-        helperTcpOpen: helperOpen && (yield* probeTcpOpen(host, previous.httpPort)),
+        helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpPort)),
       }) &&
       stillOwnPort({
         bind: httpsBind,
         holder: httpsHolder,
-        helperTcpOpen: helperOpen && (yield* probeTcpOpen(host, previous.httpsPort)),
+        helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpsPort)),
       })
     );
   });

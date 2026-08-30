@@ -86,13 +86,6 @@ type ProtocolWalk =
     }
   | { readonly kind: "exhausted" };
 
-const bindForPort = (
-  port: number,
-  preferred: number,
-  binds: Readonly<Record<number, BindOutcome>> | undefined,
-  scheme: SchemeProbe,
-): BindOutcome | undefined => binds?.[port] ?? (port === preferred ? scheme.bind : undefined);
-
 const walkProtocol = (
   tryList: readonly number[],
   preferred: number,
@@ -102,7 +95,7 @@ const walkProtocol = (
   let preferredOccupied = false;
   let holder: string | undefined;
   for (const port of tryList) {
-    const outcome = bindForPort(port, preferred, binds, scheme);
+    const outcome = binds?.[port] ?? (port === preferred ? scheme.bind : undefined);
     if (outcome === undefined) continue;
     switch (outcome.kind) {
       case "success":
