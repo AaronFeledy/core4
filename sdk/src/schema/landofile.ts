@@ -13,6 +13,7 @@ import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
+import { RouterConfig } from "./proxy.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
@@ -1325,6 +1326,9 @@ const LandofileShapeBase = Schema.Struct({
   sshAgent: Schema.optional(SshAgentConfig),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfigDecode })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
+  router: Schema.optional(RouterConfig).annotations({
+    description: "App-authored shared-router bind address and port policy.",
+  }),
   providers: Schema.optional(ProviderExtensionConfig),
   toolingDefaults: Schema.optional(ToolingDefaultsShape).annotations({
     description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",

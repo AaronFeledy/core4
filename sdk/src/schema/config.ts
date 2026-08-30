@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
+import { RouterConfig } from "./proxy.ts";
 
 // Global config — the host-level merged config.
 
@@ -163,6 +164,9 @@ export const GlobalConfig = Schema.Struct({
     }),
   ).annotations({
     description: "Global ingress proxy settings (global proxy). Distinct from network.proxy HTTP egress.",
+  }),
+  router: Schema.optional(RouterConfig).annotations({
+    description: "Global shared-router bind address and port policy (global router).",
   }),
   mcp: Schema.optional(McpConfig).annotations({
     description: "Global MCP command exposure policy (global mcp).",

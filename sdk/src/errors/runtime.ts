@@ -29,6 +29,29 @@ export class ProxySetupError extends Schema.TaggedError<ProxySetupError>()("Prox
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class RouterPortsExhausted extends Schema.TaggedError<RouterPortsExhausted>()("RouterPortsExhausted", {
+  message: Schema.String,
+  proxyId: Schema.String,
+  bindAddress: Schema.String,
+  httpTried: Schema.Array(Schema.Number),
+  httpsTried: Schema.Array(Schema.Number),
+  exhausted: Schema.Literal("http", "https", "both"),
+  remediation: Schema.String,
+}) {}
+
+export class RouterPortPinMismatch extends Schema.TaggedError<RouterPortPinMismatch>()(
+  "RouterPortPinMismatch",
+  {
+    message: Schema.String,
+    proxyId: Schema.String,
+    runningHttp: Schema.Number,
+    runningHttps: Schema.Number,
+    requestedHttp: Schema.optional(Schema.Number),
+    requestedHttps: Schema.optional(Schema.Number),
+    remediation: Schema.String,
+  },
+) {}
+
 export class ProxyApplyError extends Schema.TaggedError<ProxyApplyError>()("ProxyApplyError", {
   message: Schema.String,
   proxyId: Schema.String,

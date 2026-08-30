@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `ProxyService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
 - `@lando/sdk/errors` additively exports `ConfigExpressionError` (`message`, `expression`, `path`, `filePath`, `remediation`) for plan-time Landofile config expression failures such as authored route hostnames. It registers no JSON Schema. `AppPlanner.plan`'s error channel additively gains the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match.
 
 - `@lando/sdk/errors` additively exports `JsonProjectionError` (`message`, optional `command`, `keys`, `available`, `reason` of `unknown_key`|`duplicate_key`|`non_object_result`|`format_conflict`, `remediation`), `JsonJqConflictError` (`message`, `remediation`), and `JqExpressionError` (`message`, `expression`, `reason` of `eval`|`timeout`|`too_large`|`missing_value`, `remediation`, optional `detail`) for JSON projection and jq output failures. They register no JSON Schema and widen no frozen schema list.
@@ -352,6 +353,7 @@
 - `ProxyAuthority`
 - `ProxyCapabilities`
 - `ProxyConfig`
+- `RouterConfig`
 - `ProxyServiceContribution`
 - `ProxyStatus`
 - `RabbitMQServiceConfig`
