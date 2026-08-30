@@ -342,3 +342,38 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604
 - Verification: typecheck, lint, spot checks — pass
 ---
+
+## 2026-08-30 16:00 CDT - US-602 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev. Acquisition persisted `{http:8080,https:8443}` from the full try lists (not 80|38080 / 443|38443). Lamp init/start served `us602-ok` over HTTP and HTTPS; restart reused the pair unchanged. Landofile `router.httpPort: 9999` failed start with tagged `RouterPortPinMismatch`. Occupied preferred `LANDO_ROUTER_HTTP_PORT=18080` warned and fell back to 8080. Doctor/help/apps:list smoked. Destroyed scenario apps.
+- **Out-of-scope finding:** default preferred 80/443 are probed as EACCES for an unprivileged user even when those ports are already listening (host `*:80`, `systemd-socket-proxyd` on 443), so the occupancy fallback warn does not fire on the default list. Notify is proven on a bindable preferred port. Suspected unprivileged bind vs US-605 doctor occupancy.
+- **Out-of-scope finding:** `lando start --renderer json` `RouterPortPinMismatch` envelope includes `_tag`/message/remediation but omits `runningHttp`/`runningHttps`. The tagged error carries those fields. Suspected CLI error projector.
+---
+
+## 2026-08-30 17:08 CDT - Babysit
+- PR: #887 https://github.com/AaronFeledy/core4/pull/887
+- CI outcome: fail (runtime-bundle-linux-x64; linux-x64 guide-scenarios and provider-integration cascaded)
+- Review feedback: fixed (accepted additive router $defs schema-compat unknowns)
+- Merge: deferred (linux-x64 runtime-bundle fetch socket-close after aardvark compile, three identical runs; PR does not touch assemble/pin)
+---
+
+## 2026-08-30 17:10 CDT - US-602
+- Story verified complete on branch (no new code). Host Traefik still walks the familiar HTTP/HTTPS try lists, persists the chosen pair, reuses it when the fingerprint matches, fails closed on Landofile pin mismatch, and warns on occupied preferred ports. Advertised 38080/38443 publish stays the next story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-30 17:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports after the babysit schema-compat fix. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): walkProtocol EADDRINUSE without prior state is first-free TCP bind until US-603 publishes chosen ports; degraded-high-ports doctor passCheck on old files is leftover doctor (US-604) and next setup rewrites state; stillOwnPort unidentified-holder + sticky helperInstalled is the rootlessport scanner deferred at 15:25/15:41; BindAddress empty-string LAN probe is not a US-602 AC
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; guide-drift vs origin/main passed; QA 129 focused tests passed
+---
+
+## 2026-08-30 18:20 CDT - US-602 Drift Audit
+- Trigger: 5 cycles, 2603 inserted lines, 12 commits
+- Weakened proofs: setup try-list walk only used classifyOverride; resolveRouterConfigForApp had no Effect test
+- Review scar: fallback warn rewrote notices that already named restore
+- Ceremony: helpers/proxy-setup stay split (inline would exceed 250 LOC); dual default lists stay package-DAG
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604; EACCES notify stays occupancy-vs-permission, not expanded
+- Fixed: deleted the restore-text rewrite; restored setup probeBind walk of production lists and resolveRouterConfigForApp proofs
+- Verification: typecheck, lint, spot checks — pass
+---
