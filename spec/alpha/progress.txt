@@ -332,3 +332,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
 - Verification: typecheck, lint passed; port-acquisition setup/reuse/probe and socket-proxy plus router-config spot checks passed
 ---
+
+## 2026-08-30 15:41 CDT - US-602 Drift Audit
+- Trigger: 2 cycles, 2523 changed lines, 7 commits
+- Weakened proofs: try-list fixtures copied production defaults; exhaustion and fallback warn stopped at persist, not setup
+- Review scar: empty-notice rewrite after setup already wrote notices; unused SDK error re-exports
+- Dual paths: engine and plugin still each own the default try lists (package DAG); reuse ownership still depends on the rootlessport scanner until US-603 publishes chosen ports
+- Fixed: deleted dead re-exports and the empty-notice rewrite; pinned try-list tests to production constants; restored setup-level exhaustion and message.warn proofs
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604
+- Verification: typecheck, lint, spot checks — pass
+---
