@@ -46,10 +46,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
+- When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -291,4 +292,12 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 ## 2026-08-30 20:30 CDT - US-601
 - Ingress ubiquitous language is router/routes. User knobs are `router:` (not `routing:`). Appended US-606 to rename ProxyService / proxyServices: / @lando/proxy-traefik. HostProxy and network.proxy unchanged. Did not edit US-592..US-600.
 
+---
+
+## 2026-08-30 12:27 CDT - US-601
+- Story verified complete on branch (no new code). §10.2.3 already states the HTTP/HTTPS try lists, TCP bind, persist and reuse, Traefik publishes the chosen pair, fail closed, fallback notice from 80/443, and doctor occupancy of 80/443 by non-Lando holders including DDEV. Global and Landofile `router:` overrides and spec/README topic lookup for §10.2.3 are present. Did not change acquisition, Traefik publish, doctor, or start code.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - This contract lives in the specification tree. Do not restate host-port lists in README Status or public-alpha-contract tests.
+  - Code still publishes 38080/38443 until later stories. The contract forbids treating those as the degraded default; do not implement try-list acquisition in this story.
 ---
