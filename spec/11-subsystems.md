@@ -29,9 +29,11 @@ Core defines network *intent*, not implementation. The `RuntimeProvider` is resp
 
 There is no built-in concept of a "shared bridge network" in core. Providers that need one create and manage it themselves; the docker provider creates `lando_bridge_network` as an implementation detail.
 
-### 10.2 Proxy and routing
+### 10.2 Router and routes
 
-Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation.
+**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals still use `ProxyService` / `proxyServices:` / `@lando/proxy-traefik` until US-606 renames them to `RouterService` / `routerServices:` / `@lando/router-traefik`.
+
+Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation (US-606: `RouterService`).
 
 ```ts
 export class ProxyService extends Context.Service<ProxyService, {
@@ -106,6 +108,67 @@ Tagged errors:
 - `TunnelReadyTimeoutError` — the provider reported/created a tunnel but the readiness probe never reached green before the deadline.
 - `TunnelDetachedStateError` — detached registry or PID/socket state is corrupt, locked, stale, or cannot be reconciled.
 - `TunnelStopError` — control-plane or connector teardown failed; best-effort local cleanup already ran where safe.
+
+### 10.2.3 Host-port acquisition
+
+The default Traefik proxy publishes HTTP and HTTPS on `127.0.0.1`. User-facing URLs MUST omit the port when the chosen host port is `80` or `443`.
+
+Host ports are chosen from **fixed ordered lists**. First free candidate wins **per protocol**. "Free" means a TCP bind on the bind address succeeds — not an HTTP GET. Lando 3 scanned with HTTP reachability; v4 MUST NOT.
+
+**Default try order:**
+
+- HTTP: `80`, `8080`, `8000`, `8888`, `8008`, `38080`
+- HTTPS: `443`, `8443`, `4443`, `4433`, `4444`, `444`, `38443`
+
+`80`/`443` are the happy path (no port in the URL). `8080`/`8443` are the familiar first fallback (DDEV's documented alternate pair, plus Lando 3's remaining common ports). `38080`/`38443` are last-resort Lando-reserved ports, not the degraded default.
+
+**Config.** Users MUST be able to override preferred ports, fallback arrays, and bind address — globally and per app. Keys live under `router:` in global config (§7.5) and the same `router:` shape on the Landofile (§7.4). Env overrides follow §7.6 (`LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, JSON-document setters for fallback arrays).
+
+```yaml
+router:
+  enabled: true
+  bindAddress: 127.0.0.1
+  httpPort: 80
+  httpsPort: 443
+  httpFallbacks: [8080, 8000, 8888, 8008, 38080]
+  httpsFallbacks: [8443, 4443, 4433, 4444, 444, 38443]
+```
+
+`httpPort`/`httpsPort` replace the preferred (first) candidate for that protocol. `httpFallbacks`/`httpsFallbacks` replace the rest of that protocol's list. Omitted keys inherit. An empty fallback array means preferred-only (no scan past the preferred port). Default `bindAddress` remains `127.0.0.1`.
+
+Merge order for an app start: compiled defaults → global `router:` → env → this app's Landofile `router:`. `pluginConfig."@lando/proxy-traefik"` MUST NOT be a parallel host-port surface.
+
+**Host-global listen.** Traefik binds **one** HTTP/HTTPS pair for the whole host. App-level `router:` is a request against that pair, not a second router.
+
+- If Traefik is not running, acquisition uses the merged lists.
+- If Traefik is already running, this app MUST use the persisted pair. If the app set `httpPort` and/or `httpsPort` and they do not match the running pair, fail with a tagged error naming the running ports and remediation: set Landofile `router:` to match, or change global `router:` and `lando global:restart`.
+
+**The chosen pair IS Traefik's host publish.** Container entrypoints stay `:80` / `:443`. Traefik MUST NOT always bind `38080`/`38443` in addition to the chosen pair. A second Lando on shared localhost (another WSL distro, another install) then takes the next free candidate instead of failing on a hardcoded high port.
+
+**Persist** the chosen `{ http, https }` pair. Reuse it on later starts when preferred config still matches the cache and the proxy still owns those binds. Rescan a protocol when preferred config changed, the proxy container is gone, or the cached bind is not ours.
+
+**Privileged ports.** `EACCES` on `80`/`443` MAY use the existing socket-helper path. The helper hops to the first successful high port from the same lists. Occupied-hop remains for a foreign listener that can be forwarded; it MUST NOT treat another Lando instance's healthy Traefik as leftover `rootlessport`.
+
+**Fail closed.** If a protocol finds no free port in its list, proxy start MUST fail with a tagged error naming the tried ports. Do not disable the proxy silently (Lando 3 did).
+
+**Fallback notice.** `80`/`443` are highly desirable. When acquisition cannot bind a preferred port (`httpPort`/`httpsPort`, default `80`/`443`) and selects a fallback, Lando MUST notify the user at that moment (setup, `global:start`, and the app start that acquires the router). The notice MUST name the occupied preferred port(s), the chosen fallback port(s), the holder when identified, and that stopping the holder then `lando global:restart` (or re-running setup) lets Lando's router take `80`/`443`. Silent fallback is forbidden.
+
+**Doctor occupancy.** `lando doctor` MUST warn when preferred `80` and/or `443` are in use by a **non-Lando** holder, even if Traefik is healthy on fallbacks. Lando-owned binds (this instance's Traefik, socket-helper, or leftover rootlessport already covered by leftover-proxy checks) are not this warning. Status is `warn`, not `fail`.
+
+The check MUST identify common holders from process comm/command line when possible and attach holder-specific remediation:
+
+| Holder (match) | Remediation |
+|---|---|
+| DDEV (`ddev-router`, `ddev`, Traefik started by DDEV) | `ddev poweroff`, or `ddev config global --router-http-port=8080 --router-https-port=8443` then `ddev restart` if the user wants DDEV to keep running on high ports |
+| Lando 3 (`landoproxyhyperion`, `lando` v3 proxy) | `lando poweroff` in the v3 install |
+| Docksal (`docksal-vhost-proxy`, `fin`) | Stop Docksal proxy (`fin stop` / stop `docksal-vhost-proxy`) |
+| Apache (`apache2`, `httpd`) | Stop the system Apache service |
+| nginx (`nginx`) | Stop the system nginx service |
+| Caddy (`caddy`) | Stop Caddy |
+| IIS / `http.sys` (win32) | Stop the IIS site or HTTP.sys binding on 80/443 |
+| Unknown | Name the comm/pid when known; stop that process or change `router.httpPort`/`httpsPort` |
+
+Doctor leftover checks and start-path `EADDRINUSE` remap MUST use the persisted chosen ports, not hardcoded `38080`/`38443` only.
 
 ### 10.3 Certificates and CA
 

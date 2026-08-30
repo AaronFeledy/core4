@@ -551,6 +551,13 @@ events:
 proxy:
   <service>: <RouteConfig[]>
 
+router:                                # optional; same keys as global router: (§7.5, §10.2.3)
+  bindAddress: <ip>                    # omit to inherit global
+  httpPort: <port>                     # preferred HTTP; omit to inherit
+  httpsPort: <port>
+  httpFallbacks: [<port>, ...]         # replace fallbacks for this app's acquisition request
+  httpsFallbacks: [<port>, ...]
+
 remotes:                               # named RemoteSource configs for `lando pull`/`push` (§10.12); feature is 4.1
   <name>:
     source: <remoteSource-id>          # e.g. pantheon | rsync | s3 | local; validated by that source's configSchema
@@ -771,9 +778,13 @@ disablePlugins: []
 
 bindAddress: 127.0.0.1
 
-routing:
+router:
   enabled: true
   bindAddress: 127.0.0.1
+  httpPort: 80                         # preferred router HTTP host port (§10.2.3)
+  httpsPort: 443                       # preferred router HTTPS host port
+  httpFallbacks: [8080, 8000, 8888, 8008, 38080]
+  httpsFallbacks: [8443, 4443, 4433, 4444, 444, 38443]
 
 network:
   proxy:
@@ -813,12 +824,9 @@ mcp:
   tooling: false                       # also expose the resolved app's tooling tasks as MCP tools
   maxConcurrent: 4                     # positive cap on concurrent MCP tool calls
 
-pluginConfig:
-  "@lando/proxy-traefik":
-    httpPort: 80
-    httpsPort: 443
-    httpFallbacks: [8000, 8080, 8888, 8008]
-    httpsFallbacks: [444, 4433, 4444, 4443]
+pluginConfig: {}
+# Router host ports, fallbacks, and bind address are router: (§7.5, §10.2.3),
+# not pluginConfig."@lando/proxy-traefik".
 
 keys: true
 maxKeyWarning: 10
@@ -902,7 +910,7 @@ LANDO_DOMAIN=example.test
 LANDO_DEFAULT_PROVIDER=podman
 LANDO_RENDERER=json
 LANDO_PROVIDERS='{"podman":{"machine":"lando"}}'
-LANDO_PLUGIN_CONFIG_AT_LANDO_PROXY_TRAEFIK='{"httpPort":8080}'
+LANDO_ROUTER_HTTP_PORT=8080
 HTTPS_PROXY=http://proxy.corp.example:8080
 NO_PROXY=localhost,127.0.0.1,.lndo.site
 LANDO_NETWORK_CA_CERTS='["/etc/ssl/certs/CorpRootCA.pem"]'

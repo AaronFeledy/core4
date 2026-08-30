@@ -13,6 +13,7 @@ This set sequences the first public Alpha: unsigned `4.0.0-dev.N` binaries and t
 3. US-592 is the contract for this set. Keep it `passes: false` until the contract checks in PRD-01 are done.
 4. Live all-six evidence is required for setup, doctor, Drupal, and Rails. Compile smoke does not close those stories.
 5. Full-suite lock is always `bun test` (or explicit shard `--run` commands) with positive test counts.
+6. PRD-08 (US-601..US-606) runs after US-600. Item 1 applies to US-592..US-600. US-601 may additionally edit `spec/11-subsystems.md` §10.2.3 and the `router:` keys in `spec/07-landofile-and-config.md` §7.4/§7.5. Do not edit US-592..US-600.
 
 ## PRD table
 
@@ -26,6 +27,7 @@ This set sequences the first public Alpha: unsigned `4.0.0-dev.N` binaries and t
 | 05 | Drupal journey | existing Drupal recipe proven on every compile target | 04 |
 | 06 | Rails | contract, then bundled recipe, then all-six journey | 01 (contract); 04+recipe for journey |
 | 07 | Closure | Alpha 1 exit lock | 02 through 06 |
+| 08 | Proxy host ports | familiar Traefik host-port fallback after Alpha 1 exit | 07 |
 
 ## Dependency graph
 
@@ -39,11 +41,17 @@ US-595 -> US-596 (Drupal canonical journey on every compile target)
 US-597 -> US-598 (Rails bundled recipe)
 US-595 + US-598 -> US-599 (Rails canonical journey on every compile target)
 US-593..US-599 -> US-600 (Alpha 1 exit lock)
+US-600 -> US-601 (proxy host-port contract)
+US-601 -> US-602 (acquire and persist)
+US-602 -> US-603 (Traefik publishes chosen ports)
+US-603 -> US-604 (info/doctor/start surfaces)
+US-604 -> US-605 (doctor 80/443 occupancy)
+US-605 -> US-606 (ingress rename to router/routes)
 ```
 
 ## Parallelism
 
-US-593, US-594, and US-597 can parallelize after US-592. US-595 waits for both distribution and the Intel macOS split. US-596 waits for live setup/doctor. US-598 waits for the Rails contract. US-599 waits for live setup/doctor and the bundled Rails recipe. US-600 waits for US-593 through US-599.
+US-593, US-594, and US-597 can parallelize after US-592. US-595 waits for both distribution and the Intel macOS split. US-596 waits for live setup/doctor. US-598 waits for the Rails contract. US-599 waits for live setup/doctor and the bundled Rails recipe. US-600 waits for US-593 through US-599. US-601..US-606 wait for US-600 and run strictly in priority order.
 
 ## Verification contract
 
@@ -71,4 +79,4 @@ All US-592..US-600 `passes: true` with green verification. Unsigned `4.0.0-dev.N
 
 ## Authoritative spec parts
 
-§5 (bundled providers, capabilities, fail-closed unsupported intent), §8.8 (recipes, `recipes/` layout, bundled vs staged), §10.8 (`lando setup`, `lando doctor`), §13.5 (distribution forms and compile targets), §17 (binary build pipeline; signing stages stay non-goals for this wave), §19 (executable recipe READMEs).
+§5 (bundled providers, capabilities, fail-closed unsupported intent), §8.8 (recipes, `recipes/` layout, bundled vs staged), §10.8 (`lando setup`, `lando doctor`), §13.5 (distribution forms and compile targets), §17 (binary build pipeline; signing stages stay non-goals for this wave), §19 (executable recipe READMEs). PRD-08 adds §10.2.3 (host-port acquisition).
