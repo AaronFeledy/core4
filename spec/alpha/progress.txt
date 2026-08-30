@@ -177,3 +177,22 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - **Learnings for future iterations:**
   - US-598 must keep `core/src/recipes/builtin/rails` (or update the contract test). Laravel/Symfony kept the builtin embed after adding `recipes/<id>/`.
 ---
+
+## 2026-08-29 23:04 CDT - Babysit
+- PR: missing (no PR for us-597-rails-recipe-contract; push should have created it)
+- CI outcome: fail (no checks; branch never pushed)
+- Review feedback: none
+- Merge: deferred (PR missing)
+---
+
+## 2026-08-29 23:08 CDT - US-597
+- Story verified complete on branch (no new code). Rails contract remains locked: bundled for Alpha 1, public SoT recipes/rails/, builtin stub not duplicated, services/tooling/prompts/README.mdx named; recipes/rails/ not shipped.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-29 23:16 CDT - US-597 Drift Audit
+- Trigger: 3 cycles, 45 changed lines, 2 commits
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
