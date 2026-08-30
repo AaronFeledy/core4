@@ -79,6 +79,11 @@ describe("public alpha contract", () => {
     expect(exists).toBe(true);
   });
 
+  test("finds recipes/rails/README.mdx when the recipe file is checked", async () => {
+    const exists = await Bun.file(resolve(repoRoot, "recipes/rails/README.mdx")).exists();
+    expect(exists).toBe(true);
+  });
+
   test("mentions recipes/ when README is read", async () => {
     const readme = await readText(readmePath);
     expect(readme).toContain("recipes/");

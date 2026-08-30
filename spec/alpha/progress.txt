@@ -34,10 +34,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - A runtime-bundle host key can be assembled current-commit from `runtime-bundle-sources.json` and `RUNTIME_BUNDLE_TARGETS` before it appears in the committed published manifest. `REQUIRED_RUNTIME_HOST_KEYS` stays the published set.
 
 - `lando init --name` without `--destination` writes `<cwd>/<name>/` (`resolveInitDestination`). Scripts that init then start must chdir into that directory.
+- Public recipes that must answer `recipes validate <path>` ship `recipes/<id>/recipe.yml` byte-identical to the builtin embed YAML (toolbox and rails). README.mdx-only public trees cannot be validated as a directory.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599..US-600 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -195,4 +196,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 00:20 CDT - US-598
+- Shipped the public Rails recipe at recipes/rails/: recipe.yml byte-synced with the builtin embed, executable README.mdx, name prompt default for non-interactive init. Kept the builtin rails renderer (Ruby 3.3, PostgreSQL, Redis, rails/bundle tooling). meta recipes list/describe/validate now cover rails through machine output.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Keep core/src/recipes/builtin/rails. Laravel/Symfony/Rails public trees do not replace the embed. Add recipe.yml only when validate-by-path is required (toolbox pattern).
+  - `apps:init` has no `--destination` flag. `lando init --name=foo --yes` writes `<cwd>/foo`. Isolated init smoke must chdir or use cwd, not invent flags.
+  - `codegen:check` treats untracked catalog outputs such as `recipes/<id>/.scaffold/default.md` as drift until that file is committed.
 ---

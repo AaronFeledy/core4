@@ -149,6 +149,7 @@ export const sidebar = [
       { label: "Laravel", slug: "recipes/laravel" },
       { label: "LEMP", slug: "recipes/lemp" },
       { label: "MEAN", slug: "recipes/mean" },
+      { label: "Rails", slug: "recipes/rails" },
       { label: "Symfony", slug: "recipes/symfony" },
       { label: "WordPress", slug: "recipes/wordpress" },
     ],

@@ -1,0 +1,47 @@
+---
+id: rails
+provider: test
+timeout: 60000
+tags: [recipe, rails, ruby]
+---
+
+# Rails
+
+`lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails` and `bundle` tooling.
+
+```sh
+lando init --recipe rails --name=my-rails-app --yes
+lando start
+lando info
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+After start, run app tooling inside the web service:
+
+```sh
+lando rails
+lando bundle
+```
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="rails" display="my-rails-app" />
+      <Run command="lando init --recipe rails --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

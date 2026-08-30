@@ -17,6 +17,7 @@ const RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "rails",
   "symfony",
   "wordpress",
 ] as const;
@@ -204,7 +205,7 @@ describe("docs sidebar", () => {
     const serialized = JSON.stringify(sidebar);
 
     // When: planning-only paths are searched for.
-    // Then: the coverage matrix, PRD notes, and the specification tree stay out of the reader surface.
+    // Then: the coverage matrix, prd- path prefixes, and spec/ paths stay out of the reader surface.
     expect(serialized).not.toContain("guides/INDEX");
     expect(serialized).not.toContain("prd-");
     expect(serialized).not.toContain("spec/");
