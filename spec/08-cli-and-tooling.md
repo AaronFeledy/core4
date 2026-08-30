@@ -1304,10 +1304,13 @@ The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each shi
 | `lamp` | Generic LAMP starter: Apache, PHP, MariaDB; DB/PHP/composer/webroot options per §8.8.16 |
 | `lemp` | Generic LEMP starter: nginx, PHP-FPM (`via: fpm`, §6.12.5), MariaDB |
 | `toolbox` | Disposable tool-runner default (§21.10.3): one `type: lando` service with a version-pinned general-purpose CLI image; every prompt has a non-interactive default |
+| `rails` | Ruby on Rails with PostgreSQL and Redis |
 
 Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts`, which generates `core/src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
-Staged catalog growth (planned 4.x additions; not part of the v4.0 bundle): `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `rails`, `jekyll`, `hugo`, `eleventy`, and `empty`, prioritized by adoption signal per the ROADMAP. Out of scope for the v4.0 bundle: hoster recipes (`acquia`, `lagoon`, `pantheon`, `platformsh` — these are 4.1 `RemoteSource` connector work, §10.12) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
+Staged catalog growth (planned 4.x additions; not part of the v4.0 bundle): `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, prioritized by adoption signal per the ROADMAP. Out of scope for the v4.0 bundle: hoster recipes (`acquia`, `lagoon`, `pantheon`, `platformsh` — these are 4.1 `RemoteSource` connector work, §10.12) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
+
+Alpha 1 bundles recipe id `rails`. Public recipe source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Prompts include at least `name`, and every prompt has a non-interactive default. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling includes `rails` and `bundle`. The public tree requires an executable `README.mdx`.
 
 #### 8.8.11 Recipe authoring surface
 

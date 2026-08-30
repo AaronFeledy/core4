@@ -37,7 +37,7 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598..US-600 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -159,4 +159,40 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Review notes (deferred/rejected): fail-closed darwin/windows `lando-virt` cells stay the all-six evidence shape (same as US-595); `--name` path traversal is CI-hardcoded; unpinned action tags match platform-readiness; job-level `COMPOSER_PROCESS_TIMEOUT` is not in-container agent-env (linux-x64 live scaffold already passed; allowlist is out of this story)
 - Guide-Coverage-Skip: CI workflow and contributor runbook only; no CLI or executable-guide source surface changed
 - Verification: typecheck, lint passed; drupal-journey script and workflow spot checks passed
+---
+
+## 2026-08-29 22:20 CDT - US-597
+- Locked Rails as a bundled Alpha 1 recipe: id rails, public SoT recipes/rails/, builtin stub upgraded not duplicated, Ruby/Rails + PostgreSQL + Redis, tooling rails/bundle, non-interactive prompt defaults, executable README.mdx. Did not ship recipes/rails/ or the journey.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Contract stories restate facts in README Status and lock them in public-alpha-contract tests. Those tests must not cite spec/ or section signs.
+  - Do not assert recipes/rails exists until the bundled-recipe story. Keep the builtin stub as the only rails tree until then.
+---
+
+## 2026-08-29 22:35 CDT - US-597 Review
+- Reviewed the Rails recipe contract lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): 8.8.10 table intro still says v4.0 ships under recipes/<id>/ — that is the required staged-to-bundled move, not a missing recipes/rails tree; stub `name` prompt has no default (US-598); Layout recipes list omits rails until the public tree exists; lando3-parity leftover staged-rails copy is a different spec set; do not delete the builtin stub later without updating public-alpha-contract tests
+- Guide-Coverage-Skip: contract copy and public-alpha-contract tests only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract spot check passed (14 tests); guide-drift with origin/main passed; Bugbot found no bugs
+- **Learnings for future iterations:**
+  - US-598 must keep `core/src/recipes/builtin/rails` (or update the contract test). Laravel/Symfony kept the builtin embed after adding `recipes/<id>/`.
+---
+
+## 2026-08-29 23:04 CDT - Babysit
+- PR: missing (no PR for us-597-rails-recipe-contract; push should have created it)
+- CI outcome: fail (no checks; branch never pushed)
+- Review feedback: none
+- Merge: deferred (PR missing)
+---
+
+## 2026-08-29 23:08 CDT - US-597
+- Story verified complete on branch (no new code). Rails contract remains locked: bundled for Alpha 1, public SoT recipes/rails/, builtin stub not duplicated, services/tooling/prompts/README.mdx named; recipes/rails/ not shipped.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-29 23:16 CDT - US-597 Drift Audit
+- Trigger: 3 cycles, 45 changed lines, 2 commits
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
 ---
