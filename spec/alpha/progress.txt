@@ -18,8 +18,9 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - US-601 blocks US-602.
 - US-602 blocks US-603.
 - US-603 blocks US-604.
-- Follow-on IDs US-601..US-605. Priorities 10..14 run after US-600. Do not edit US-592..US-600.
+- Follow-on IDs US-601..US-606. Priorities 10..15 run after US-600. Do not edit US-592..US-600.
 - US-604 blocks US-605.
+- US-605 blocks US-606.
 - After US-592, US-593, US-594, and US-597 can parallelize.
 - Rails order is contract -> recipe -> journey. recipes/ is public recipe SoT. Upgrade the existing builtin rails stub; do not duplicate it.
 - Drupal already exists and is only being proven.
@@ -47,7 +48,7 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false. US-601..US-605 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false. US-601..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -261,4 +262,8 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 ## 2026-08-30 20:00 CDT - US-601
 - Fallback from 80/443 must notify. Doctor warns when 80/443 are held by non-Lando tools with holder-specific remediation including DDEV. Appended US-605. Did not edit US-592..US-600.
 
+---
+
+## 2026-08-30 20:30 CDT - US-601
+- Ingress ubiquitous language is router/routes. User knobs are `router:` (not `routing:`). Appended US-606 to rename ProxyService / proxyServices: / @lando/proxy-traefik. HostProxy and network.proxy unchanged. Did not edit US-592..US-600.
 ---

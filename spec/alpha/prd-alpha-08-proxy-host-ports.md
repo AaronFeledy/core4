@@ -10,16 +10,17 @@ This PRD sequences the change. Durable contract is §10.2.3. Do not edit US-592.
 
 Execute in priority order after US-600.
 
-1. **Contract (US-601).** §10.2.3 lists, persist, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, and `routing:` overrides at global and Landofile scope.
-2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the merged lists (defaults → global `routing:` → env → Landofile `routing:`). Fail with a tagged error if a list is exhausted or an app pins ports that do not match a running Traefik. Notify when falling back from preferred `80`/`443`.
+1. **Contract (US-601).** §10.2.3 lists, persist, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, and `router:` overrides at global and Landofile scope.
+2. **Acquisition (US-602).** Widen port-acquisition beyond `80|38080` / `443|38443`. TCP bind via `runProbe`. Persist and reuse the chosen pair. First free per protocol from the merged lists (defaults → global `router:` → env → Landofile `router:`). Fail with a tagged error if a list is exhausted or an app pins ports that do not match a running Traefik. Notify when falling back from preferred `80`/`443`.
 3. **Publish (US-603).** Global Traefik `PortBindings` are the chosen host ports → container `80`/`443`. Do not always bind `38080`/`38443`. Socket-helper hops to the chosen high port when `80`/`443` need a helper.
 4. **Surfaces (US-604).** `lando info` omits `:80`/`:443`. Doctor leftover probes and start-path `EADDRINUSE` remap use persisted ports. Occupied-hop must not treat another Lando's healthy Traefik as leftover `rootlessport`.
 5. **Privileged-port doctor (US-605).** `lando doctor` warns when `80`/`443` are held by non-Lando tools (DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS) with holder-specific remediation.
+6. **Ingress rename (US-606).** Rename ingress internals to the ubiquitous language: `RouterService`, `routerServices:`, `@lando/router-traefik`. Do not rename `HostProxyService` or `network.proxy`.
 
 ## Source References
 
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.2.3
-- [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.4 Landofile `routing:`, §7.5 global `routing:`
+- [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.4 Landofile `router:`, §7.5 global `router:`
 - Lando 3 defaults: `proxyHttpPort` `80`, `proxyHttpsPort` `443`, fallbacks `8000,8080,8888,8008` / `444,4433,4444,4443`, persist `proxyCache`, HTTP-scan (v4 replaces with TCP bind)
 - DDEV documented alternate pair: `8080` / `8443`
 - Current v4: `plugins/proxy-traefik/src/ports.ts`, `port-acquisition.ts`, `port-acquisition-state.ts`, `global-services/traefik.ts`
@@ -33,7 +34,8 @@ Execute in priority order after US-600.
 **Acceptance Criteria:**
 
 - [ ] US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, notify on fallback from `80`/`443`, and doctor occupancy of `80`/`443` by non-Lando holders including DDEV.
-- [ ] Users can override preferred ports, fallback arrays, and bind address globally (`routing:` in §7.5) and per app (Landofile `routing:` in §7.4). App-level pins are a request against the one host Traefik, not a second proxy.
+- [ ] Users can override preferred ports, fallback arrays, and bind address globally (`router:` in §7.5) and per app (Landofile `router:` in §7.4). App-level pins are a request against the one host Traefik, not a second router.
+- [ ] Ingress ubiquitous language is **router** / **routes**. Landofile `proxy:` remains a compat alias for per-service routes only. `HostProxyService` and `network.proxy` keep those names.
 - [ ] `38080`/`38443` are last-resort, not the degraded default.
 - [ ] Topic lookup in `spec/README.md` names §10.2.3.
 - [ ] This story does not change acquisition, Traefik publish, doctor, or start code.
@@ -41,7 +43,7 @@ Execute in priority order after US-600.
 
 **Failure path:** Implementing acquisition or Traefik publish before this contract. Leaving `38080`/`38443` as the only high-port fallback in the spec.
 
-**Verification:** §10.2.3 exists with the lists and behaviors above. `prd.json` IDs US-601..US-605, unique priorities 10..14, `passes: false`, no `dependsOn` field.
+**Verification:** §10.2.3 exists with the lists and behaviors above. `prd.json` IDs US-601..US-606, unique priorities 10..15, `passes: false`, no `dependsOn` field.
 
 ### US-602: Acquire and persist Traefik host ports
 
@@ -51,13 +53,13 @@ Execute in priority order after US-600.
 
 - [ ] Requires US-601. Do not start this story before §10.2.3 exists.
 - [ ] HTTP try order defaults to `80, 8080, 8000, 8888, 8008, 38080`. HTTPS defaults to `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.
-- [ ] Merged lists are compiled defaults → global `routing:` → env → Landofile `routing:`. `httpPort`/`httpsPort` replace the preferred candidate; fallback arrays replace the rest of that protocol's list.
+- [ ] Merged lists are compiled defaults → global `router:` → env → Landofile `router:`. `httpPort`/`httpsPort` replace the preferred candidate; fallback arrays replace the rest of that protocol's list.
 - [ ] Chosen `{ http, https }` is persisted and reused when preferred config still matches and the proxy still owns those binds.
 - [ ] If Traefik is already running and this app set `httpPort`/`httpsPort` that do not match the running pair, fail with a tagged error naming the running ports.
 - [ ] Acquisition state is not limited to `80|38080` and `443|38443`.
 - [ ] If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.
 - [ ] Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.
-- [ ] When a preferred port (`80`/`443` by default) is occupied and a fallback is chosen, notify at acquisition time: occupied port, chosen fallback, holder if known, and that stopping the holder then restarting the global proxy restores `80`/`443`. Silent fallback is forbidden.
+- [ ] When a preferred port (`80`/`443` by default) is occupied and a fallback is chosen, notify at acquisition time: occupied port, chosen fallback, holder if known, and that stopping the holder then restarting the global router restores `80`/`443`. Silent fallback is forbidden.
 - [ ] Tests pass; typecheck passes; lint passes
 
 **Failure path:** HTTP GET "open port" scans. Always binding `38080`. Silent proxy-off when the list is full.
@@ -112,3 +114,20 @@ Execute in priority order after US-600.
 **Failure path:** Treating DDEV's Traefik as leftover rootlessport. Failing doctor because 80 is busy. No remediation for DDEV.
 
 **Verification:** Doctor tests for DDEV-shaped, Apache-shaped, unknown, and Lando-owned holders. Positive test count; typecheck; lint.
+
+### US-606: Rename ingress internals to router/routes
+
+**Description:** As a maintainer, the ingress bounded context uses the same words in code as in user config: router and routes.
+
+**Acceptance Criteria:**
+
+- [ ] Requires US-605.
+- [ ] Spec and code rename ingress internals: `ProxyService` → `RouterService`, `proxyServices:` → `routerServices:`, bundled plugin `@lando/proxy-traefik` → `@lando/router-traefik` (or a documented alias that contribution surface is `routerServices:`).
+- [ ] User-facing doctor/start/setup copy says **router** / **routes**, not proxy, for Traefik listen and hostname maps.
+- [ ] `HostProxyService`, `host-proxy`, and `network.proxy` are unchanged.
+- [ ] Landofile top-level `proxy: <service>: routes` remains a compat alias for service `routes:`.
+- [ ] Tests pass; typecheck passes; lint passes
+
+**Failure path:** Renaming HostProxy or corporate network.proxy. Leaving user copy on "proxy" for 80/443.
+
+**Verification:** Schema/export/contribution-surface tests use RouterService / routerServices. Grep of user-facing doctor/start strings. Positive test count; typecheck; lint.
