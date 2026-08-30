@@ -5,15 +5,22 @@ import * as sdkErrors from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
-import type { BindOutcome, ForwardOutcome, SchemeProbe } from "../src/port-acquisition.ts";
+import {
+  type BindOutcome,
+  DEFAULT_HTTPS_TRY_LIST,
+  DEFAULT_HTTP_TRY_LIST,
+  type ForwardOutcome,
+  LOOPBACK_HOST,
+  type SchemeProbe,
+} from "../src/port-acquisition.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikProxyService } from "../src/proxy.ts";
 
-const LOOPBACK = "127.0.0.1" as const;
-const HTTP_TRY_LIST = [80, 8080, 8000, 8888, 8008, 38080] as const;
-const HTTPS_TRY_LIST = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
+const LOOPBACK = LOOPBACK_HOST;
+const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
+const HTTPS_TRY_LIST = DEFAULT_HTTPS_TRY_LIST;
 const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
 
 const bind = (kind: BindOutcome["kind"]): BindOutcome => {
@@ -436,6 +443,40 @@ describe("fallback notice", () => {
       "Port 80 is occupied by nginx; using 8080. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
       "Port 443 is occupied by nginx; using 8443. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
     ]);
+  });
+
+  test("Given occupied preferred, When setup runs, Then message.warn names occupied, chosen, holder, and lando global:restart", async () => {
+    // Given: 80/443 held by nginx; EventService captures acquisition-time warn.
+    const store = memoryFiles();
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "nginx",
+      httpsHolder: "nginx",
+    });
+    const bodies: string[] = [];
+    const service = makeTraefikProxyService(
+      makeDeps(store, classifyOverride, {
+        events: {
+          publish: (event: { readonly _tag: string; readonly body?: string }) =>
+            Effect.sync(() => {
+              if (event._tag === "message.warn" && event.body !== undefined) {
+                bodies.push(event.body);
+              }
+            }),
+        },
+      }),
+    );
+
+    // When: setup acquires the fallback pair.
+    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+
+    // Then: the warn body is the user-visible notice, not only decision.notices.
+    const joined = bodies.join(" ");
+    expect(joined).toContain("80");
+    expect(joined).toContain("8080");
+    expect(joined).toContain("nginx");
+    expect(joined).toContain("lando global:restart");
   });
 });
 

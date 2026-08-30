@@ -1,7 +1,5 @@
 import { Schema } from "effect";
 
-export { RouterPortPinMismatch, RouterPortsExhausted } from "@lando/sdk/errors";
-
 export class ProxydBinaryNotFound extends Schema.TaggedError<ProxydBinaryNotFound>()("ProxydBinaryNotFound", {
   message: Schema.String,
   remediation: Schema.String,

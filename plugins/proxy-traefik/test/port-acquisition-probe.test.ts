@@ -7,7 +7,10 @@ import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import {
   type BindOutcome,
   type ClassifyAcquisitionInput,
+  DEFAULT_HTTPS_TRY_LIST,
+  DEFAULT_HTTP_TRY_LIST,
   type ForwardOutcome,
+  LOOPBACK_HOST,
   classifyAcquisition,
   probeBind,
 } from "../src/port-acquisition.ts";
@@ -15,9 +18,9 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikProxyService } from "../src/proxy.ts";
 
-const LOOPBACK = "127.0.0.1" as const;
-const HTTP_TRY_LIST = [80, 8080, 8000, 8888, 8008, 38080] as const;
-const HTTPS_TRY_LIST = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
+const LOOPBACK = LOOPBACK_HOST;
+const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
+const HTTPS_TRY_LIST = DEFAULT_HTTPS_TRY_LIST;
 
 const bind = (kind: BindOutcome["kind"], code?: string): BindOutcome => {
   switch (kind) {

@@ -19,7 +19,7 @@ import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./pr
 import { isSocketProxyInstalled } from "./socket-proxy-install.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
-export const AcquisitionFingerprintSchema = Schema.Struct({
+const AcquisitionFingerprintSchema = Schema.Struct({
   http: Schema.Array(PortNumber),
   https: Schema.Array(PortNumber),
   bindAddress: Schema.String,

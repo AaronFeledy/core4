@@ -79,5 +79,5 @@ export interface TraefikProxyDependencies {
   readonly router?: TraefikRouterLists;
   readonly routerPin?: TraefikRouterPin;
   readonly probeBind?: (host: string, port: number) => Effect.Effect<BindOutcome>;
-  readonly events?: Context.Tag.Service<typeof EventService>;
+  readonly events?: Pick<Context.Tag.Service<typeof EventService>, "publish">;
 }
