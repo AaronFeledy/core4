@@ -27,6 +27,11 @@ const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => P
     "LANDO_NETWORK_CA_CERTS",
     "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
     "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES",
+    "LANDO_ROUTER_HTTP_PORT",
+    "LANDO_ROUTER_HTTPS_PORT",
+    "LANDO_ROUTER_BIND_ADDRESS",
+    "LANDO_ROUTER_HTTP_FALLBACKS",
+    "LANDO_ROUTER_HTTPS_FALLBACKS",
     ...Object.keys(vars),
   ]);
   // Also clear any pre-existing LANDO_CONFIG__ vars so the test is hermetic.
@@ -231,6 +236,98 @@ describe("notify environment overrides", () => {
         ),
       );
 
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
+      }
+    });
+  });
+});
+
+describe("router environment overrides", () => {
+  test("canonical aliases map ports, bind, and JSON fallback arrays to typed router config", async () => {
+    await withEnv(
+      {
+        LANDO_ROUTER_HTTP_PORT: "9080",
+        LANDO_ROUTER_HTTPS_PORT: "9443",
+        LANDO_ROUTER_BIND_ADDRESS: "0.0.0.0",
+        LANDO_ROUTER_HTTP_FALLBACKS: "[9000,9001]",
+        LANDO_ROUTER_HTTPS_FALLBACKS: "[9444,9445]",
+      },
+      async () => {
+        // Given / When
+        const config = await loadConfig();
+        // Then
+        expect(Reflect.get(config, "router")).toMatchObject({
+          httpPort: 9080,
+          httpsPort: 9443,
+          bindAddress: "0.0.0.0",
+          httpFallbacks: [9000, 9001],
+          httpsFallbacks: [9444, 9445],
+        });
+      },
+    );
+  });
+
+  test("canonical aliases override equivalent generic overlays", async () => {
+    await withEnv(
+      {
+        LANDO_ROUTER_HTTP_PORT: "9080",
+        LANDO_CONFIG__router__http_port: "80",
+        LANDO_ROUTER_HTTPS_PORT: "9443",
+        LANDO_CONFIG__router__https_port: "443",
+        LANDO_ROUTER_BIND_ADDRESS: "0.0.0.0",
+        LANDO_CONFIG__router__bind_address: "127.0.0.1",
+        LANDO_ROUTER_HTTP_FALLBACKS: "[9000,9001]",
+        LANDO_CONFIG__router__http_fallbacks: "[8080]",
+        LANDO_ROUTER_HTTPS_FALLBACKS: "[9444,9445]",
+        LANDO_CONFIG__router__https_fallbacks: "[8443]",
+      },
+      async () => {
+        // Given / When
+        const config = await loadConfig();
+        // Then
+        expect(Reflect.get(config, "router")).toMatchObject({
+          httpPort: 9080,
+          httpsPort: 9443,
+          bindAddress: "0.0.0.0",
+          httpFallbacks: [9000, 9001],
+          httpsFallbacks: [9444, 9445],
+        });
+      },
+    );
+  });
+
+  test("canonical router env aliases override config.yml router ports", async () => {
+    await withEnv(
+      {
+        LANDO_ROUTER_HTTP_PORT: "9080",
+        LANDO_ROUTER_HTTPS_PORT: "9443",
+      },
+      async (dir) => {
+        await writeConfig(dir, ["router:", "  httpPort: 80", "  httpsPort: 443"]);
+
+        const config = await loadConfig();
+
+        expect(Reflect.get(config, "router")).toMatchObject({
+          httpPort: 9080,
+          httpsPort: 9443,
+        });
+      },
+    );
+  });
+
+  test("malformed canonical alias values fail through ConfigError decode", async () => {
+    await withEnv({ LANDO_ROUTER_HTTP_FALLBACKS: "80,8080" }, async () => {
+      // Given / When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
+          Effect.provide(ConfigServiceLive),
+        ),
+      );
+      // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
