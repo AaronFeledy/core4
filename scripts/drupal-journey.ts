@@ -137,20 +137,29 @@ const evidenceFor = (
   return { stdout: bounded(step?.stdout ?? ""), stderr: bounded(step?.stderr ?? "") };
 };
 
+const spawnFailure = (step: DrupalJourneyStep, cause: unknown): DrupalJourneyStepResult => {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return { id: step.id, exitCode: 1, stdout: "", stderr: bounded(message) };
+};
+
 const runStep = async (step: DrupalJourneyStep, cwd: string): Promise<DrupalJourneyStepResult> => {
-  const proc = Bun.spawn({
-    cmd: [...step.argv],
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: process.env,
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { id: step.id, exitCode, stdout, stderr };
+  try {
+    const proc = Bun.spawn({
+      cmd: [...step.argv],
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    return { id: step.id, exitCode, stdout, stderr };
+  } catch (cause) {
+    return spawnFailure(step, cause);
+  }
 };
 
 const main = async (args: readonly string[]): Promise<void> => {
@@ -166,7 +175,11 @@ const main = async (args: readonly string[]): Promise<void> => {
   const steps: DrupalJourneyStepResult[] = [];
   for (const step of plan) {
     const cwd = step.id === "init" ? options.appDir : appRoot;
-    steps.push(await runStep(step, cwd));
+    const result = await runStep(step, cwd);
+    steps.push(result);
+    if (result.exitCode !== 0) {
+      break;
+    }
   }
 
   const classification = classifyDrupalJourney(steps);

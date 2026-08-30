@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
@@ -117,5 +118,47 @@ describe("drupal journey module source", () => {
     const source = await readFile(MODULE_PATH, "utf8");
     expect(source).not.toContain("advisory-skip");
     expect(source).not.toContain("continue-on-error");
+  });
+});
+
+describe("drupal journey runner", () => {
+  test("stops after failed init and still writes the JSON report", async () => {
+    // Given: a stub binary that fails init and records every invoked command.
+    // When: drupal-journey.ts is run against that stub.
+    // Then: only init is invoked, the report is written, and classification is failed.
+    const dir = await mkdtemp(join(tmpdir(), "drupal-journey-"));
+    const trace = join(dir, "trace");
+    const stub = join(dir, "lando-stub");
+    const report = join(dir, "report.json");
+    const appDir = join(dir, "app");
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bash
+echo "$1" >> "${trace}"
+if [ "$1" = "init" ]; then exit 1; fi
+exit 0
+`,
+    );
+    await chmod(stub, 0o755);
+
+    try {
+      const proc = Bun.spawn({
+        cmd: [process.execPath, MODULE_PATH, "--binary", stub, "--report", report, "--app-dir", appDir],
+        stdout: "pipe",
+        stderr: "pipe",
+        env: process.env,
+      });
+      const exitCode = await proc.exited;
+      expect(exitCode).toBe(1);
+      expect(await readFile(trace, "utf8")).toBe("init\n");
+      const written = JSON.parse(await readFile(report, "utf8")) as {
+        readonly classification: DrupalJourneyClassification;
+        readonly steps: readonly DrupalJourneyStepResult[];
+      };
+      expect(written.classification.outcome).toBe("failed");
+      expect(written.steps.map((step) => step.id)).toEqual(["init"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
