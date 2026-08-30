@@ -203,4 +203,18 @@ describe("platform-readiness workflow", () => {
     expect(workflow).not.toContain("continue-on-error: true");
     expect(workflow).not.toContain("advisory-skip");
   });
+
+  test("runs setup before the doctor gate on every cell", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const setup = job.indexOf("Setup provider");
+      const doctor = job.indexOf("Run platform-readiness doctor");
+      expect(setup).toBeGreaterThan(-1);
+      expect(doctor).toBeGreaterThan(setup);
+    }
+  });
 });

@@ -58,11 +58,13 @@ const doctorEnvelope = (
   });
 
 describe("platform readiness doctor classification", () => {
-  test("passes when doctor JSON is healthy with setup-readiness running", () => {
+  test("passes when doctor JSON is healthy with a warning and setup-readiness running", () => {
+    const report = healthyDoctorReport();
+    expect(report.provider.checks.some((check) => check.status === "warn")).toBe(true);
     expect(
       classifyPlatformReadinessDoctorResult({
         exitCode: 0,
-        stdout: doctorEnvelope(healthyDoctorReport()),
+        stdout: doctorEnvelope(report),
         stderr: "",
       }),
     ).toEqual({
@@ -106,23 +108,28 @@ describe("platform readiness doctor classification", () => {
     ).toMatchObject({ outcome: "failed", exitCode: 1 });
   });
 
-  test("fails exit 0 when a provider or subsystem check has status fail", () => {
+  test("fails exit 0 when a provider, subsystems, globalApp, or mcp check has status fail", () => {
     const report = healthyDoctorReport();
-    expect(
-      classifyPlatformReadinessDoctorResult({
-        exitCode: 0,
-        stdout: doctorEnvelope({
-          ...report,
-          provider: {
-            checks: [
-              ...report.provider.checks,
-              managedProviderCheck({ name: "engine", status: "fail", running: true }),
-            ],
-          },
+    const failingCheck = managedProviderCheck({ name: "engine", status: "fail", running: true });
+    const reports = {
+      provider: {
+        ...report,
+        provider: { checks: [...report.provider.checks, failingCheck] },
+      },
+      subsystems: { ...report, subsystems: { checks: [failingCheck] } },
+      globalApp: { ...report, globalApp: { checks: [failingCheck] } },
+      mcp: { ...report, mcp: { checks: [failingCheck] } },
+    } as const;
+
+    for (const next of Object.values(reports)) {
+      expect(
+        classifyPlatformReadinessDoctorResult({
+          exitCode: 0,
+          stdout: doctorEnvelope(next),
+          stderr: "",
         }),
-        stderr: "",
-      }),
-    ).toMatchObject({ outcome: "failed", exitCode: 1 });
+      ).toMatchObject({ outcome: "failed", exitCode: 1 });
+    }
   });
 
   test("fails when setup-readiness is missing", () => {
