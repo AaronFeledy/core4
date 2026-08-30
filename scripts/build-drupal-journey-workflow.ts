@@ -161,8 +161,9 @@ ${renderSetupStep(cell, binary)}
       - name: Teardown
         if: always()
         run: |
-          (cd "\${{ runner.temp }}/drupal-app/drupal-journey" && ${binary} destroy -y) || true
-          ${binary} poweroff || true
+          BINARY="\$GITHUB_WORKSPACE/${binary}"
+          (cd "\${{ runner.temp }}/drupal-app/drupal-journey" && "\$BINARY" destroy -y) || true
+          "\$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()

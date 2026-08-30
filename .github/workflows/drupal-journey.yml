@@ -124,8 +124,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando destroy -y) || true
-          dist/lando poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()
@@ -245,8 +246,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando destroy -y) || true
-          dist/lando poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()
@@ -292,8 +294,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando destroy -y) || true
-          dist/lando poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()
@@ -339,8 +342,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando destroy -y) || true
-          dist/lando poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()
@@ -395,8 +399,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando-windows-x64.exe destroy -y) || true
-          dist/lando-windows-x64.exe poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando-windows-x64.exe"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()
@@ -451,8 +456,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && dist/lando-windows-arm64.exe destroy -y) || true
-          dist/lando-windows-arm64.exe poweroff || true
+          BINARY="$GITHUB_WORKSPACE/dist/lando-windows-arm64.exe"
+          (cd "${{ runner.temp }}/drupal-app/drupal-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()

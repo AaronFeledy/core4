@@ -273,4 +273,17 @@ describe("drupal-journey workflow", () => {
     // Then
     expect(linuxX64).not.toContain("continue-on-error");
   });
+
+  test("teardown destroy uses a workspace-absolute compiled binary", async () => {
+    // Given: the generated Drupal journey workflow.
+    // When: teardown is inspected on every cell.
+    // Then: destroy runs via $GITHUB_WORKSPACE/dist/<binary>, not a cwd-relative dist/ path after cd.
+    const workflow = await readWorkflow();
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      expect(job).toContain('BINARY="$GITHUB_WORKSPACE/dist/');
+      expect(job).toContain('"$BINARY" destroy -y');
+      expect(job).not.toContain("&& dist/");
+    }
+  });
 });
