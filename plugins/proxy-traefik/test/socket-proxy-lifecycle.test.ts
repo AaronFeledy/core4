@@ -9,6 +9,7 @@ import type {
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikProxyService } from "../src/proxy.ts";
@@ -62,7 +63,7 @@ const makePrivilege = (
 };
 
 const makeLifecycleHarness = (input: {
-  readonly mode: "socket-helper" | "degraded-high-ports";
+  readonly mode: "socket-helper" | "occupied-hop";
   readonly helperInstalled: boolean;
 }) => {
   const files = new Map<string, string>();
@@ -73,9 +74,10 @@ const makeLifecycleHarness = (input: {
     acquisitionStateFile(paths),
     `${JSON.stringify({
       mode: input.mode,
-      httpPort: input.mode === "socket-helper" ? 80 : 38080,
-      httpsPort: input.mode === "socket-helper" ? 443 : 38443,
+      httpPort: input.mode === "socket-helper" ? 80 : 8080,
+      httpsPort: input.mode === "socket-helper" ? 443 : 8443,
       notices: [],
+      fingerprint: defaultAcquisitionFingerprint(),
       helperInstalled: input.helperInstalled,
       socketsActive: input.mode === "socket-helper",
     })}\n`,
@@ -140,8 +142,8 @@ describe("socket proxy lifecycle stop", () => {
   });
 
   test("stop leaves sockets running when acquisition is not socket-helper", async () => {
-    // Given: persisted acquisition is degraded-high-ports even if units exist.
-    const harness = makeLifecycleHarness({ mode: "degraded-high-ports", helperInstalled: true });
+    // Given: persisted acquisition is occupied-hop even if units exist.
+    const harness = makeLifecycleHarness({ mode: "occupied-hop", helperInstalled: true });
 
     // When: the global proxy stops.
     await Effect.runPromise(harness.service.stop);

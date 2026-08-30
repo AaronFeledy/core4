@@ -1,9 +1,10 @@
 import { Effect, Layer } from "effect";
 
-import { CaError, ProxyApplyError, ProxyError, ProxySetupError } from "@lando/sdk/errors";
-import type { AppId, ProxyApplyResult, RoutePlan } from "@lando/sdk/schema";
+import { CaError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
+import type { AppId, ProxyApplyResult, ProxyConfig, RoutePlan } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
+  EventService,
   FileSystem,
   GlobalAppService,
   InteractionService,
@@ -15,6 +16,7 @@ import {
 } from "@lando/sdk/services";
 
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
+import { DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
@@ -25,7 +27,8 @@ import {
   routeFile,
   routingStateFile,
 } from "./proxy-paths.ts";
-import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { advertisedPorts, mapSetupError, publishFallbackWarn } from "./proxy-setup.ts";
+import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
 import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
@@ -43,14 +46,6 @@ export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
-
-const setupError = (cause: unknown): ProxySetupError =>
-  new ProxySetupError({
-    message: "Traefik ingress setup failed.",
-    proxyId: TRAEFIK_PROXY_ID,
-    remediation: "Run `lando meta:global:start traefik` and resolve the reported global-app failure.",
-    cause,
-  });
 
 const applyError = (app: AppId, cause: unknown): ProxyApplyError =>
   new ProxyApplyError({
@@ -98,6 +93,19 @@ const releaseHelperSockets = (dependencies: TraefikProxyDependencies) =>
     });
   });
 
+const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
+  ...(router.bindAddress === undefined ? {} : { bindAddress: router.bindAddress }),
+  ...(router.httpPort === undefined ? {} : { httpPort: router.httpPort }),
+  ...(router.httpsPort === undefined ? {} : { httpsPort: router.httpsPort }),
+  ...(router.httpFallbacks === undefined ? {} : { httpFallbacks: router.httpFallbacks }),
+  ...(router.httpsFallbacks === undefined ? {} : { httpsFallbacks: router.httpsFallbacks }),
+});
+
+const routerPinFromConfig = (pin: NonNullable<ProxyConfig["routerPin"]>): TraefikRouterPin => ({
+  ...(pin.httpPort === undefined ? {} : { httpPort: pin.httpPort }),
+  ...(pin.httpsPort === undefined ? {} : { httpsPort: pin.httpsPort }),
+});
+
 export const makeTraefikProxyService = (
   dependencies: TraefikProxyDependencies,
 ): ProxyServiceShape & {
@@ -114,18 +122,24 @@ export const makeTraefikProxyService = (
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
-        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
         const socketProxy = yield* resolveSocketProxy(dependencies);
         const decision = yield* persistPortAcquisition({
           ...dependencies,
           ...(socketProxy === undefined ? {} : { socketProxy }),
+          ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+          ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
         });
-        authorityPorts = { http: decision.httpPort, https: decision.httpsPort };
+        const advertised = advertisedPorts(decision);
+        authorityPorts = advertised;
+        if (decision.httpPort !== DESIRED_HTTP_PORT || decision.httpsPort !== DESIRED_HTTPS_PORT) {
+          yield* publishFallbackWarn(dependencies, decision);
+        }
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
-          [`http://127.0.0.1:${decision.httpPort}`, `https://127.0.0.1:${decision.httpsPort}`].join("\n"),
+          [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
         );
-      }).pipe(Effect.mapError(setupError)),
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
+      }).pipe(Effect.mapError(mapSetupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
         const appKey = String(app);
@@ -201,6 +215,7 @@ export const proxy = Layer.effect(
     const privilege = yield* Effect.serviceOption(PrivilegeService);
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const interaction = yield* Effect.serviceOption(InteractionService);
+    const events = yield* Effect.serviceOption(EventService);
     const socketProxy = liveSocketProxy({
       privilege: privilege._tag === "Some" ? privilege.value : undefined,
       processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
@@ -215,6 +230,7 @@ export const proxy = Layer.effect(
       paths,
       globalApp,
       ...(socketProxy === undefined ? {} : { socketProxy }),
+      ...(events._tag === "Some" ? { events: events.value } : {}),
     });
   }),
 );
