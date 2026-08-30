@@ -139,6 +139,69 @@
       "priority": 9,
       "passes": false,
       "notes": ""
+    },
+    {
+      "id": "US-601",
+      "title": "Spec contract for familiar proxy host-port fallback",
+      "description": "As a maintainer, §10.2.3 is the durable contract for Traefik host-port acquisition before any implementation.",
+      "acceptanceCriteria": [
+        "US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, and doctor/start use persisted ports.",
+        "`38080`/`38443` are last-resort, not the degraded default.",
+        "Topic lookup in `spec/README.md` names §10.2.3.",
+        "This story does not change acquisition, Traefik publish, doctor, or start code.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-602",
+      "title": "Acquire and persist Traefik host ports",
+      "description": "As a user, Lando picks the first free familiar host ports and remembers them.",
+      "acceptanceCriteria": [
+        "Requires US-601. Do not start this story before §10.2.3 exists.",
+        "HTTP try order is `80, 8080, 8000, 8888, 8008, 38080`. HTTPS try order is `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.",
+        "Chosen `{ http, https }` is persisted and reused when preferred config still matches and the proxy still owns those binds.",
+        "Acquisition state is not limited to `80|38080` and `443|38443`.",
+        "If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.",
+        "Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-603",
+      "title": "Traefik publishes the chosen host ports",
+      "description": "As a user, Traefik listens on the acquired host ports, not on a hidden extra 38080/38443 pair.",
+      "acceptanceCriteria": [
+        "Requires US-602.",
+        "Global Traefik PortBindings map chosen HTTP to container 80 and chosen HTTPS to container 443 on 127.0.0.1.",
+        "Traefik MUST NOT always publish 38080/38443 in addition to the chosen pair.",
+        "Socket-helper / occupied-hop, when used, target the chosen high ports from the same lists.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-604",
+      "title": "Info, doctor, and start use persisted proxy ports",
+      "description": "As a user, URLs and diagnostics follow the ports Lando actually bound.",
+      "acceptanceCriteria": [
+        "Requires US-603.",
+        "lando info and post-start messages omit :80 / :443 and include the port when non-default.",
+        "Doctor leftover-proxy checks probe the persisted chosen ports (not only 38080/38443).",
+        "Start-path EADDRINUSE remap uses the persisted chosen ports.",
+        "Occupied-hop / leftover classification MUST NOT treat another Lando instance's healthy Traefik as leftover rootlessport.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

@@ -14,6 +14,11 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - US-597 blocks US-598.
 - US-595 and US-598 block US-599.
 - US-593..US-599 block US-600.
+- US-600 blocks US-601.
+- US-601 blocks US-602.
+- US-602 blocks US-603.
+- US-603 blocks US-604.
+- Follow-on IDs US-601..US-604. Priorities 10..13 run after US-600. Do not edit US-592..US-600.
 - After US-592, US-593, US-594, and US-597 can parallelize.
 - Rails order is contract -> recipe -> journey. recipes/ is public recipe SoT. Upgrade the existing builtin rails stub; do not duplicate it.
 - Drupal already exists and is only being proven.
@@ -38,7 +43,7 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599..US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599..US-600 passes: false. US-601..US-604 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -205,4 +210,9 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Keep core/src/recipes/builtin/rails. Laravel/Symfony/Rails public trees do not replace the embed. Add recipe.yml only when validate-by-path is required (toolbox pattern).
   - `apps:init` has no `--destination` flag. `lando init --name=foo --yes` writes `<cwd>/foo`. Isolated init smoke must chdir or use cwd, not invent flags.
   - `codegen:check` treats untracked catalog outputs such as `recipes/<id>/.scaffold/default.md` as drift until that file is committed.
+---
+
+## 2026-08-30 19:30 CDT - US-601
+- Appended PRD-08 after Alpha 1 exit. Durable contract is spec/11-subsystems.md §10.2.3: HTTP 80,8080,8000,8888,8008,38080; HTTPS 443,8443,4443,4433,4444,444,38443; TCP bind; persist; Traefik publishes the chosen pair; 38080/38443 last-resort. Did not edit US-592..US-600. Did not implement acquisition or Traefik publish.
+- Verification: spec-only change; typecheck/lint not required for this package-creation append
 ---
