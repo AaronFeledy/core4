@@ -135,3 +135,9 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
 ---
+
+## 2026-08-29 19:31 CDT - US-595 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev (default provider `lando`). `lando doctor --format json` exit 0; `scripts/platform-readiness-doctor.ts` classified `passed` (setup-readiness pass + running runtime; warnings not blocking). Lamp init/start served `us595-ok` over HTTPS; exec/info/help/apps:list smoked. Destroyed the app and `uninstall --yes --purge`.
+- **Out-of-scope finding:** `lando doctor` warned `runtime-service`/`selected-provider` for orphan pid that was the owned `podman system service` child of the Lando-owned pid. Warnings are not blocking. Suspected doctor process-ownership.
+- **Out-of-scope finding:** `lando doctor` `host-proxy` warn (`mode: none`, DNS not active). App start still succeeded. Suspected host-proxy subsystem, not this workflow story.
+---
