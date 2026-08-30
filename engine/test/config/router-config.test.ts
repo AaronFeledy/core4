@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 
-import { extractRouterPins, mergeRouterConfig } from "../../src/config/router-config.ts";
+import {
+  extractRouterPins,
+  mergeRouterConfig,
+  resolveRouterConfigForApp,
+} from "../../src/config/router-config.ts";
 
 const DEFAULT_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 38080] as const;
 const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
@@ -97,5 +102,32 @@ describe("extractRouterPins", () => {
     const pins = extractRouterPins(landofileRouter);
     // Then
     expect(pins).toEqual({});
+  });
+});
+
+describe("resolveRouterConfigForApp", () => {
+  test("returns compiled lists and empty pins when ConfigService is absent", async () => {
+    // Given: no ConfigService in the runtime
+    // When
+    const result = await Effect.runPromise(resolveRouterConfigForApp());
+    // Then
+    expect(result.router.httpPort).toBe(80);
+    expect(result.router.httpFallbacks).toEqual([8080, 8000, 8888, 8008, 38080]);
+    expect(result.router.httpsPort).toBe(443);
+    expect(result.router.httpsFallbacks).toEqual([8443, 4443, 4433, 4444, 444, 38443]);
+    expect(result.router.bindAddress).toBe("127.0.0.1");
+    expect(result.routerPin).toEqual({});
+  });
+
+  test("overlays Landofile preferred ports onto compiled lists and extracts pins", async () => {
+    // Given
+    const landofileRouter = { httpPort: 9090, httpsPort: 9443 };
+    // When
+    const result = await Effect.runPromise(resolveRouterConfigForApp(landofileRouter));
+    // Then
+    expect(result.router.httpPort).toBe(9090);
+    expect(result.router.httpFallbacks).toEqual([8080, 8000, 8888, 8008, 38080]);
+    expect(result.router.httpsPort).toBe(9443);
+    expect(result.routerPin).toEqual({ httpPort: 9090, httpsPort: 9443 });
   });
 });
