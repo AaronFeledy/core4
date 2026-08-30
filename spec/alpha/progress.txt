@@ -46,11 +46,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
+- With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -314,4 +315,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint — pass; no new tests
+---
+
+## 2026-08-30 15:05 CDT - US-602
+- Host Traefik now walks the familiar HTTP/HTTPS try lists, persists the chosen pair, and reuses it when the fingerprint still matches and Lando still owns the binds. App `router.httpPort`/`httpsPort` pins fail closed against a running pair. Exhausted lists raise a tagged error. Fallback from preferred 80/443 publishes a warn naming the holder and how to restore 80/443. Traefik still advertises 38080/38443 until the publish story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - `ProxyService.setup` must forward `config.router` / `config.routerPin` into acquisition. Engine merge is a no-op if setup only spreads layer deps.
+  - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `number | undefined` into `prop?: number`.
+  - Leave advertised routing-state on 38080/38443 when the chosen pair is not 80/443. Publishing the chosen pair is the next story.
 ---
