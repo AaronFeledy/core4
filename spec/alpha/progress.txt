@@ -411,3 +411,12 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 ## 2026-08-30 20:20 CDT - US-603 Review
 - Review notes (deferred/rejected): chooseHelperBindPorts ignoring EADDRINUSE hops is first-free TCP success on a fresh walk; reuse already keeps Traefik-owned hops, and treating EADDRINUSE as a hop without a holder would pick foreign binds
 ---
+
+## 2026-08-30 20:38 CDT - US-603 Drift Audit
+- Trigger: 5 cycles, 581 changed lines, 5 commits
+- Weakened proofs: factory default-export asserted host 38080; install without hop targets still hopped to 38080
+- Review scar: optional hop targets defaulted to last-resort 38080
+- Fixed: required helper hop targets; factory loopback test no longer assumes 38080; helper hops skip 80/443 even when those binds succeed
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---

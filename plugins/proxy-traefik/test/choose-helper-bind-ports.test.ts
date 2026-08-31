@@ -38,4 +38,22 @@ describe("chooseHelperBindPorts", () => {
     expect(chosen.bindHttpPort).toBe(8080);
     expect(chosen.bindHttpsPort).toBe(8443);
   });
+
+  test("skips 80 and 443 even when those binds succeed", () => {
+    // Given: 80/443 and 8080/8443 are all free.
+    const chosen = chooseHelperBindPorts({
+      httpBinds: {
+        80: { kind: "success" },
+        8080: { kind: "success" },
+      },
+      httpsBinds: {
+        443: { kind: "success" },
+        8443: { kind: "success" },
+      },
+    });
+
+    // Then: hops are the first high ports, not the helper listen ports.
+    expect(chosen.bindHttpPort).toBe(8080);
+    expect(chosen.bindHttpsPort).toBe(8443);
+  });
 });
