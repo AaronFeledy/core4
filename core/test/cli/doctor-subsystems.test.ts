@@ -45,12 +45,19 @@ const resultEnvelope = (ndjson: string) => {
 
 const writeAcquisitionState = (
   mode: string,
+  ports: { readonly httpPort: number; readonly httpsPort: number } = {
+    httpPort: 8080,
+    httpsPort: 8443,
+  },
 ): { readonly layer: Layer.Layer<PathsService>; readonly cleanup: () => void } => {
   const root = mkdtempSync(join(tmpdir(), "lando-doctor-acquisition-"));
   const paths = makeLandoPaths({ userDataRoot: root });
   const stateFile = join(paths.globalAppRoot, "proxy-traefik", "dynamic", ".lando-port-acquisition.json");
   mkdirSync(join(stateFile, ".."), { recursive: true });
-  writeFileSync(stateFile, `${JSON.stringify({ mode, httpPort: 38080, httpsPort: 38443, notices: [] })}\n`);
+  writeFileSync(
+    stateFile,
+    `${JSON.stringify({ mode, httpPort: ports.httpPort, httpsPort: ports.httpsPort, notices: [] })}\n`,
+  );
   return {
     layer: Layer.succeed(PathsService, paths),
     cleanup: () => rmSync(root, { recursive: true, force: true }),
@@ -248,7 +255,8 @@ describe("meta:doctor subsystem checks", () => {
       expect(proxy?.context.acquisitionMode).toBe("needs-helper");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
-      expect(proxy?.solutions[0]?.description).toContain(":38080/:38443");
+      expect(proxy?.solutions[0]?.description).toContain(":8080/:8443");
+      expect(proxy?.solutions[0]?.description).not.toContain(":38080");
     } finally {
       acquisition.cleanup();
     }
@@ -321,6 +329,7 @@ describe("meta:doctor subsystem checks", () => {
       expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.description).toContain("port in use");
+      expect(proxy?.solutions[0]?.description).not.toContain("38080");
     } finally {
       acquisition.cleanup();
     }

@@ -4,7 +4,10 @@ import { isManagedNftMissingMessage, startFailureRemediation } from "../src/brin
 import {
   LEFTOVER_PROXY_PORT_REMEDIATION,
   isLeftoverProxyPortBindMessage,
+  leftoverProxyPortRemediation,
 } from "../src/leftover-proxy-port.ts";
+
+const chosenPair = { httpPort: 8080, httpsPort: 8443 } as const;
 
 describe("startFailureRemediation", () => {
   test("nft-missing copy tells the user to run lando setup, not destroy or apt-get", () => {
@@ -107,5 +110,41 @@ describe("startFailureRemediation", () => {
     expect(LEFTOVER_PROXY_PORT_REMEDIATION).toContain("lando global:stop");
     expect(LEFTOVER_PROXY_PORT_REMEDIATION).toContain("rootlessport");
     expect(LEFTOVER_PROXY_PORT_REMEDIATION).toContain("lando setup");
+  });
+
+  test("EADDRINUSE on persisted proxy port 8080 remediates leftover proxy, not destroy", () => {
+    // Given
+    const message = "EADDRINUSE 8080";
+    // When
+    const remediation = startFailureRemediation(message, undefined, chosenPair);
+    // Then
+    expect(isLeftoverProxyPortBindMessage(message, chosenPair)).toBe(true);
+    expect(remediation).toMatch(/lando global:stop/u);
+    expect(remediation).toMatch(/rootlessport/u);
+    expect(remediation).toMatch(/lando setup/u);
+    expect(remediation).toContain("127.0.0.1:8080");
+    expect(remediation).toContain("127.0.0.1:8443");
+    expect(remediation).not.toMatch(/lando destroy/u);
+  });
+
+  test("address already in use on persisted proxy port 8443 remediates leftover proxy", () => {
+    // Given
+    const message = "address already in use 8443";
+    // When
+    const remediation = startFailureRemediation(message, undefined, chosenPair);
+    // Then
+    expect(isLeftoverProxyPortBindMessage(message, chosenPair)).toBe(true);
+    expect(remediation).toMatch(/lando global:stop/u);
+    expect(remediation).toContain("127.0.0.1:8443");
+    expect(remediation).not.toMatch(/lando destroy/u);
+  });
+
+  test("leftoverProxyPortRemediation names the persisted pair", () => {
+    // Then
+    const remediation = leftoverProxyPortRemediation(chosenPair);
+    expect(remediation).toContain("127.0.0.1:8080");
+    expect(remediation).toContain("127.0.0.1:8443");
+    expect(remediation).not.toContain("38080");
+    expect(remediation).toContain("lando global:stop");
   });
 });

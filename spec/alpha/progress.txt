@@ -48,11 +48,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
 - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
 - Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
+- Doctor leftover-proxy probes and start-path EADDRINUSE remap use the persisted Traefik publish pair (bind hops if set, else advertised ports). Missing acquisition state falls back to 38080/38443; HTTPS leftover HTTP probes use role, not port===38443.
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -419,4 +420,26 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: required helper hop targets; factory loopback test no longer assumes 38080; helper hops skip 80/443 even when those binds succeed
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 20:50 CDT - US-603 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev. After `global:rebuild` of leftover Traefik, PortBindings were `127.0.0.1:8080->80` and `127.0.0.1:8443->443` (not 38080/38443). Lamp init/start served `us603-ok` over HTTP `:8080` and HTTPS `:8443`; restart reused the pair; 38080/38443 refused. Socket-helper units hop to 8080/8443 (listen 80/443). Doctor/info/exec/apps:list smoked. Destroyed the app; `global:stop` released the ports.
+- **Out-of-scope finding:** `lando setup` rewrote `.lando.dist.yml` to hostPort 8080/8443 but left a 23h Traefik container bound to 38080/38443 until `lando global:rebuild`. Suspected up-to-date check ignoring published host ports.
+- **Out-of-scope finding:** `lando apps:poweroff` stopped the runtime socket but left Traefik `rootlessport` holding 8080/8443 until `lando global:stop`. Suspected leftover-rootlessport / US-604.
+---
+
+## 2026-08-30 21:46 CDT - Babysit
+- PR: #888 https://github.com/AaronFeledy/core4/pull/888
+- CI outcome: pass
+- Review feedback: none
+- Merge: merged (squash)
+---
+
+## 2026-08-30 21:55 CDT - US-604
+- Info and post-start URLs already omit :80/:443 and include non-default ports; locked 8080/8443. Doctor leftover-proxy now probes the persisted Traefik publish pair, not only 38080/38443. Start-path EADDRINUSE remap and needs-helper doctor copy name the persisted pair. Healthy Traefik answering HTTP on those ports is not leftover rootlessport.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Leftover HTTPS probe must use role (`http` vs `https`), not `port === 38443`.
+  - `startFailureRemediation` stays pure for tests (omitted pair = last-fallback). Production `podmanFailure` passes `readPersistedTraefikPublishPair()`. Do not auto-read host acquisition in the helper or unit tests pick up a live 8080/8443 file.
+  - `@lando/provider-lando` must not import `@lando/proxy-traefik`. Duplicate the four-line publish-port resolution (bind pair, socket-helper last-fallback, advertised pair).
 ---
