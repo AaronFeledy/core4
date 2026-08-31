@@ -53,6 +53,8 @@ import type {
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
@@ -223,7 +225,9 @@ export type StartAppError =
   | ProxyApplyError
   | ProxyError
   | ProxySetupError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | RouterPortPinMismatch
+  | RouterPortsExhausted;
 
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
 export type StopAppOptions = {};

@@ -730,5 +730,17 @@
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
     "justification": "Optional RoutePlan.backend.host is additive; RendererPanelContext event anyOf members that embed RoutePlan still accept every previously accepted form."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional global router config is additive; $defs gained the RouterConfig definition while previously accepted forms remain accepted (US-602)."
+  },
+  {
+    "surface": "schema:ProxyConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Optional ProxyConfig.router and routerPin are additive; $defs gained RouterConfig and RouterPin definitions while previously accepted forms remain accepted (US-602)."
   }
 ]

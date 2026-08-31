@@ -9,6 +9,8 @@ import type {
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
   ScannerError,
   SecretNotFoundError,
   SshError,
@@ -57,7 +59,9 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
 export interface ProxyServiceShape {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
-  readonly setup: (config: ProxyConfig) => Effect.Effect<void, ProxySetupError, Scope.Scope>;
+  readonly setup: (
+    config: ProxyConfig,
+  ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch, Scope.Scope>;
   readonly applyRoutes: (
     routes: ReadonlyArray<RoutePlan>,
     appId: AppId,

@@ -46,11 +46,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
+- With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -314,4 +315,65 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: none
 - Split/excise decisions: none
 - Verification: typecheck, lint — pass; no new tests
+---
+
+## 2026-08-30 15:05 CDT - US-602
+- Host Traefik now walks the familiar HTTP/HTTPS try lists, persists the chosen pair, and reuses it when the fingerprint still matches and Lando still owns the binds. App `router.httpPort`/`httpsPort` pins fail closed against a running pair. Exhausted lists raise a tagged error. Fallback from preferred 80/443 publishes a warn naming the holder and how to restore 80/443. Traefik still advertises 38080/38443 until the publish story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - `ProxyService.setup` must forward `config.router` / `config.routerPin` into acquisition. Engine merge is a no-op if setup only spreads layer deps.
+  - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `number | undefined` into `prop?: number`.
+  - Leave advertised routing-state on 38080/38443 when the chosen pair is not 80/443. Publishing the chosen pair is the next story.
+---
+
+## 2026-08-30 15:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports. Fixed false fallback warns on intentional custom preferred ports, httpPort ignored when fallbacks are omitted, and routing-state written before a failed Traefik start.
+- Review notes (deferred/rejected): stillOwnPersisted via rootlessport-only leftover scanner is pre-existing doctor budget code and Traefik still binds 38080/38443 until US-603; BindAddress schema tightening is not a US-602 AC; advertised 38080/38443 freeze is US-603; leftover doctor probes are US-604; walkProtocol skip of undefined binds is test-only
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; port-acquisition setup/reuse/probe and socket-proxy plus router-config spot checks passed
+---
+
+## 2026-08-30 15:41 CDT - US-602 Drift Audit
+- Trigger: 2 cycles, 2523 changed lines, 7 commits
+- Weakened proofs: try-list fixtures copied production defaults; exhaustion and fallback warn stopped at persist, not setup
+- Review scar: empty-notice rewrite after setup already wrote notices; unused SDK error re-exports
+- Dual paths: engine and plugin still each own the default try lists (package DAG); reuse ownership still depends on the rootlessport scanner until US-603 publishes chosen ports
+- Fixed: deleted dead re-exports and the empty-notice rewrite; pinned try-list tests to production constants; restored setup-level exhaustion and message.warn proofs
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 16:00 CDT - US-602 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev. Acquisition persisted `{http:8080,https:8443}` from the full try lists (not 80|38080 / 443|38443). Lamp init/start served `us602-ok` over HTTP and HTTPS; restart reused the pair unchanged. Landofile `router.httpPort: 9999` failed start with tagged `RouterPortPinMismatch`. Occupied preferred `LANDO_ROUTER_HTTP_PORT=18080` warned and fell back to 8080. Doctor/help/apps:list smoked. Destroyed scenario apps.
+- **Out-of-scope finding:** default preferred 80/443 are probed as EACCES for an unprivileged user even when those ports are already listening (host `*:80`, `systemd-socket-proxyd` on 443), so the occupancy fallback warn does not fire on the default list. Notify is proven on a bindable preferred port. Suspected unprivileged bind vs US-605 doctor occupancy.
+- **Out-of-scope finding:** `lando start --renderer json` `RouterPortPinMismatch` envelope includes `_tag`/message/remediation but omits `runningHttp`/`runningHttps`. The tagged error carries those fields. Suspected CLI error projector.
+---
+
+## 2026-08-30 17:08 CDT - Babysit
+- PR: #887 https://github.com/AaronFeledy/core4/pull/887
+- CI outcome: fail (runtime-bundle-linux-x64; linux-x64 guide-scenarios and provider-integration cascaded)
+- Review feedback: fixed (accepted additive router $defs schema-compat unknowns)
+- Merge: deferred (linux-x64 runtime-bundle fetch socket-close after aardvark compile, three identical runs; PR does not touch assemble/pin)
+---
+
+## 2026-08-30 17:10 CDT - US-602
+- Story verified complete on branch (no new code). Host Traefik still walks the familiar HTTP/HTTPS try lists, persists the chosen pair, reuses it when the fingerprint matches, fails closed on Landofile pin mismatch, and warns on occupied preferred ports. Advertised 38080/38443 publish stays the next story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-30 17:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports after the babysit schema-compat fix. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): walkProtocol EADDRINUSE without prior state is first-free TCP bind until US-603 publishes chosen ports; degraded-high-ports doctor passCheck on old files is leftover doctor (US-604) and next setup rewrites state; stillOwnPort unidentified-holder + sticky helperInstalled is the rootlessport scanner deferred at 15:25/15:41; BindAddress empty-string LAN probe is not a US-602 AC
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; guide-drift vs origin/main passed; QA 129 focused tests passed
+---
+
+## 2026-08-30 18:20 CDT - US-602 Drift Audit
+- Trigger: 5 cycles, 2603 inserted lines, 12 commits
+- Weakened proofs: setup try-list walk only used classifyOverride; resolveRouterConfigForApp had no Effect test
+- Review scar: fallback warn rewrote notices that already named restore
+- Ceremony: helpers/proxy-setup stay split (inline would exceed 250 LOC); dual default lists stay package-DAG
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604; EACCES notify stays occupancy-vs-permission, not expanded
+- Fixed: deleted the restore-text rewrite; restored setup probeBind walk of production lists and resolveRouterConfigForApp proofs
+- Verification: typecheck, lint, spot checks — pass
 ---

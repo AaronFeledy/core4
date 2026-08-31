@@ -10,7 +10,7 @@ import type {
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { DEFAULT_HTTPS_TRY_LIST, DEFAULT_HTTP_TRY_LIST } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikProxyService } from "../src/proxy.ts";
 import {
@@ -340,8 +340,8 @@ describe("setup classification after helper install", () => {
     expect(decoded.socketsActive).toBe(true);
   });
 
-  test("records degraded-high-ports when elevate exits nonzero and does not throw", async () => {
-    // Given: needs-helper but elevation is refused.
+  test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
+    // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikProxyService({
@@ -379,11 +379,11 @@ describe("setup classification after helper install", () => {
     // When: setup attempts helper install.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: acquisition degrades and setup still succeeds.
+    // Then: try-list continues to occupied-hop and setup still succeeds.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));
     const decoded = Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(raw ?? "null"));
-    expect(decoded.mode).toBe("degraded-high-ports");
-    expect(decoded.httpPort).toBe(TRAEFIK_HTTP_PORT);
-    expect(decoded.httpsPort).toBe(TRAEFIK_HTTPS_PORT);
+    expect(decoded.mode).toBe("occupied-hop");
+    expect(decoded.httpPort).toBe(DEFAULT_HTTP_TRY_LIST[1]);
+    expect(decoded.httpsPort).toBe(DEFAULT_HTTPS_TRY_LIST[1]);
   });
 });

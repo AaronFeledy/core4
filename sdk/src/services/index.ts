@@ -4,6 +4,7 @@ export type _ServiceTagCompatContext = typeof Context.Tag;
 
 import type {
   AbsolutePath,
+  AppId,
   AppPlan,
   DataEndpoint,
   DatasetApplyOptions,
@@ -36,6 +37,10 @@ import type {
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
+  ProxyApplyResult,
+  ProxyCapabilities,
+  ProxyConfig,
+  ProxyStatus,
   RecipeManifest,
   RemoteCapabilities,
   RemoteConfig,
@@ -45,6 +50,7 @@ import type {
   RemoteLocator,
   RemoteSendOptions,
   RemoteTestResult,
+  RoutePlan,
   ServiceConfig,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
@@ -103,12 +109,17 @@ import type {
   ProcessTimeoutError,
   ProviderConfigError,
   ProviderUnavailableError,
+  ProxyApplyError,
+  ProxyError,
+  ProxySetupError,
   PublicationUnsupportedError,
   RecipeExtendsError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
   RecipeSourceError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -144,7 +155,6 @@ import type {
   CertificateAuthorityShape,
   HealthcheckRunnerShape,
   HostProxyServiceShape,
-  ProxyServiceShape,
   SshServiceShape,
   UrlScannerShape,
 } from "./platform.ts";
@@ -755,7 +765,20 @@ export declare class CertificateAuthority extends Context.Tag("@lando/core/Certi
 
 export declare class ProxyService extends Context.Tag("@lando/core/ProxyService")<
   ProxyService,
-  ProxyServiceShape
+  {
+    readonly id: string;
+    readonly capabilities: ProxyCapabilities;
+    readonly setup: (
+      config: ProxyConfig,
+    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch, Scope.Scope>;
+    readonly applyRoutes: (
+      routes: ReadonlyArray<RoutePlan>,
+      appId: AppId,
+    ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
+    readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly status: Effect.Effect<ProxyStatus, ProxyError>;
+    readonly stop: Effect.Effect<void, ProxyError>;
+  }
 >() {}
 
 export declare class SshService extends Context.Tag("@lando/core/SshService")<
