@@ -407,3 +407,7 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Reuse now fails when a socket-helper hop port is neither free nor still ours, so Traefik does not rematerialize onto a stolen high port.
 - Verification: typecheck, lint passed; reuse/helper/publish spot checks passed
 ---
+
+## 2026-08-30 20:20 CDT - US-603 Review
+- Review notes (deferred/rejected): chooseHelperBindPorts ignoring EADDRINUSE hops is first-free TCP success on a fresh walk; reuse already keeps Traefik-owned hops, and treating EADDRINUSE as a hop without a holder would pick foreign binds
+---
