@@ -188,4 +188,45 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
   };
 };
 
+const firstHighSuccess = (
+  tryList: readonly number[],
+  preferred: number,
+  binds: Readonly<Record<number, BindOutcome>> | undefined,
+): number | undefined => {
+  for (const port of tryList) {
+    if (port === preferred) continue;
+    const outcome = binds?.[port];
+    if (outcome?.kind === "success") return port;
+  }
+  return undefined;
+};
+
+export const chooseHelperBindPorts = (input: {
+  readonly httpBinds?: Readonly<Record<number, BindOutcome>>;
+  readonly httpsBinds?: Readonly<Record<number, BindOutcome>>;
+  readonly httpTryList?: readonly number[];
+  readonly httpsTryList?: readonly number[];
+}): { readonly bindHttpPort: number; readonly bindHttpsPort: number } => {
+  const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
+  const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
+  const preferredHttp = httpTryList[0] ?? DESIRED_HTTP_PORT;
+  const preferredHttps = httpsTryList[0] ?? DESIRED_HTTPS_PORT;
+  const bindHttpPort = firstHighSuccess(httpTryList, preferredHttp, input.httpBinds);
+  const bindHttpsPort = firstHighSuccess(httpsTryList, preferredHttps, input.httpsBinds);
+  if (bindHttpPort === undefined || bindHttpsPort === undefined) {
+    throw portsExhausted({
+      bindAddress: LOOPBACK_HOST,
+      httpTried: httpTryList,
+      httpsTried: httpsTryList,
+      exhausted:
+        bindHttpPort === undefined && bindHttpsPort === undefined
+          ? "both"
+          : bindHttpPort === undefined
+            ? "http"
+            : "https",
+    });
+  }
+  return { bindHttpPort, bindHttpsPort };
+};
+
 export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";

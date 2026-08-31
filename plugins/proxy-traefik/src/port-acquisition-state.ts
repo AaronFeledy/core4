@@ -12,7 +12,7 @@ import {
   resolveTryLists,
   stillOwnPersisted,
 } from "./port-acquisition-helpers.ts";
-import { ACQUISITION_MODES, type AcquisitionDecision } from "./port-acquisition.ts";
+import { ACQUISITION_MODES, type AcquisitionDecision, chooseHelperBindPorts } from "./port-acquisition.ts";
 import { acquisitionStateFile, routingStateFile } from "./proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
 import { isSocketProxyInstalled } from "./socket-proxy-install.ts";
@@ -32,6 +32,8 @@ export const AcquisitionState = Schema.Struct({
   fingerprint: AcquisitionFingerprintSchema,
   helperInstalled: Schema.optional(Schema.Boolean),
   socketsActive: Schema.optional(Schema.Boolean),
+  bindHttpPort: Schema.optional(PortNumber),
+  bindHttpsPort: Schema.optional(PortNumber),
 });
 export type AcquisitionState = typeof AcquisitionState.Type;
 
@@ -102,15 +104,32 @@ export const persistPortAcquisition = (
       preferredEacces(probed) &&
       dependencies.socketProxy !== undefined
     ) {
-      const resolved = yield* resolveNeedsHelper(dependencies.socketProxy);
-      if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
-        const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
-        yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-          ...decision,
-          helperInstalled: resolved.helperInstalled,
-          socketsActive: resolved.socketsActive,
+      const hops = yield* Effect.try({
+        try: () =>
+          chooseHelperBindPorts({
+            httpBinds: probed.httpBinds,
+            httpsBinds: probed.httpsBinds,
+            httpTryList: lists.httpTryList,
+            httpsTryList: lists.httpsTryList,
+          }),
+        catch: (error) => error,
+      }).pipe(Effect.either);
+      if (hops._tag === "Right") {
+        const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
+          httpTarget: hops.right.bindHttpPort,
+          httpsTarget: hops.right.bindHttpsPort,
         });
-        return decision;
+        if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
+          const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
+          yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+            ...decision,
+            helperInstalled: resolved.helperInstalled,
+            socketsActive: resolved.socketsActive,
+            bindHttpPort: hops.right.bindHttpPort,
+            bindHttpsPort: hops.right.bindHttpsPort,
+          });
+          return decision;
+        }
       }
     }
     const decision = yield* classifyOrFail({

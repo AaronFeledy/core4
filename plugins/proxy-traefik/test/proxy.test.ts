@@ -175,8 +175,8 @@ describe("Traefik ProxyService", () => {
     const second = await Effect.runPromise(harness.service.applyRoutes(routes.slice(1), app));
 
     expect(first.authorities).toEqual([
-      { scheme: "https", hostname: "api.demo.lndo.site", port: 38443 },
-      { scheme: "http", hostname: "web.demo.lndo.site", port: 38080 },
+      { scheme: "https", hostname: "api.demo.lndo.site", port: 8443 },
+      { scheme: "http", hostname: "web.demo.lndo.site", port: 8080 },
     ]);
     expect(second.appliedRoutes).toHaveLength(1);
     expect([...harness.files.values()][0]).not.toContain("api.demo.lndo.site");
@@ -191,9 +191,9 @@ describe("Traefik ProxyService", () => {
 
     const status = await Effect.runPromise(freshService.status);
 
-    expect(applied.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
+    expect(applied.authorities.map(({ port }) => port)).toEqual([8443, 8080]);
     expect(status.state).toBe("running");
-    expect(status.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
+    expect(status.authorities.map(({ port }) => port)).toEqual([8443, 8080]);
   });
 
   test("stop durably disables routing and clears configured apps", async () => {

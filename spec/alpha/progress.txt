@@ -47,11 +47,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
 - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
+- Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -376,4 +377,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604; EACCES notify stays occupancy-vs-permission, not expanded
 - Fixed: deleted the restore-text rewrite; restored setup probeBind walk of production lists and resolveRouterConfigForApp proofs
 - Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 19:52 CDT - US-603
+- Global Traefik now publishes the persisted chosen HTTP/HTTPS pair on 127.0.0.1 to container 80/443. Occupied-hop advertises and binds 8080/8443 (or whichever try-list winner), not a hidden extra 38080/38443. Socket-helper still presents 80/443 and hops to the first free high ports from the same lists; existing helper units are rewritten when the hop target changes.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Do not call `regenerateDist` with only traefik — it replaces the whole global dist and drops mailpit. Persist acquisition, then let `ensureRunning` rematerialize; the Traefik factory reads `.lando-port-acquisition.json`.
+  - `advertisedPorts` must return the chosen pair. Remapping occupied-hop to 38080/38443 is the old freeze.
+  - Helper listen stays 80/443; hop targets are bind ports. Marker-only unit stubs have no hop line — treat them as already-installed, rewrite only when an ExecStart hop differs.
 ---

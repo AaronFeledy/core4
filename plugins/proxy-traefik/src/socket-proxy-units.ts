@@ -88,6 +88,8 @@ const renderSocketProxyUnits = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
 }): Readonly<Record<(typeof SOCKET_UNIT_NAMES)[number], string>> => ({
   "lando-proxy-http.socket": renderSocketUnit({
     description: "Lando proxy HTTP socket",
@@ -98,7 +100,7 @@ const renderSocketProxyUnits = (input: {
     description: "Lando proxy HTTP forwarder",
     socket: "lando-proxy-http.socket",
     binary: input.binary,
-    target: `127.0.0.1:${TRAEFIK_HTTP_PORT}`,
+    target: `127.0.0.1:${input.httpTarget}`,
     user: input.user,
     serviceType: input.serviceType,
   }),
@@ -111,7 +113,7 @@ const renderSocketProxyUnits = (input: {
     description: "Lando proxy HTTPS forwarder",
     socket: "lando-proxy-https.socket",
     binary: input.binary,
-    target: `127.0.0.1:${TRAEFIK_HTTPS_PORT}`,
+    target: `127.0.0.1:${input.httpsTarget}`,
     user: input.user,
     serviceType: input.serviceType,
   }),
@@ -124,8 +126,16 @@ export const buildInstallScript = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
+  readonly httpTarget?: number;
+  readonly httpsTarget?: number;
 }): string => {
-  const units = renderSocketProxyUnits(input);
+  const units = renderSocketProxyUnits({
+    user: input.user,
+    binary: input.binary,
+    serviceType: input.serviceType,
+    httpTarget: input.httpTarget ?? TRAEFIK_HTTP_PORT,
+    httpsTarget: input.httpsTarget ?? TRAEFIK_HTTPS_PORT,
+  });
   const writes = SOCKET_UNIT_NAMES.map((name) => heredoc(`${SYSTEMD_UNIT_DIR}/${name}`, units[name]));
   return [
     "set -eu",

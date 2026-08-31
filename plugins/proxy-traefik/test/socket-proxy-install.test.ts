@@ -24,6 +24,7 @@ import {
   renderPolkitRule,
   startSockets,
 } from "../src/socket-proxy-install.ts";
+import { buildInstallScript } from "../src/socket-proxy-units.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -167,6 +168,27 @@ describe("renderPolkitRule", () => {
     expect(rule).toContain("/^lando-proxy-[a-z0-9_-]+\\.(socket|service)$/");
     expect(rule).not.toContain("manage-unit-files");
     expect(rule).toContain("lando-dev");
+  });
+});
+
+describe("buildInstallScript", () => {
+  test("hops to supplied targets while listening on 80 and 443", () => {
+    // Given: hop targets 8080/8443.
+    // When: buildInstallScript is called with those hop targets.
+    const script = buildInstallScript({
+      user: "lando-dev",
+      binary: "/usr/lib/systemd/systemd-socket-proxyd",
+      serviceType: "notify",
+      httpTarget: 8080,
+      httpsTarget: 8443,
+    });
+
+    // Then: units listen on 80/443 and hop to 8080/8443, not 38080.
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).toContain("ListenStream=127.0.0.1:80\n");
+    expect(script).toContain("ListenStream=127.0.0.1:443\n");
+    expect(script).not.toContain("38080");
   });
 });
 
@@ -330,14 +352,20 @@ describe("setup classification after helper install", () => {
     // When: setup classifies, installs the helper, and re-probes.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: persisted mode is socket-helper on privileged ports.
+    // Then: persisted mode is socket-helper on privileged public ports with high-port hops.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));
     const decoded = Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(raw ?? "null"));
     expect(decoded.mode).toBe("socket-helper");
     expect(decoded.httpPort).toBe(80);
     expect(decoded.httpsPort).toBe(443);
+    expect(decoded.bindHttpPort).toBe(DEFAULT_HTTP_TRY_LIST[1]);
+    expect(decoded.bindHttpsPort).toBe(DEFAULT_HTTPS_TRY_LIST[1]);
     expect(decoded.helperInstalled).toBe(true);
     expect(decoded.socketsActive).toBe(true);
+    const installScript = privilege.calls()[0]?.join(" ") ?? "";
+    expect(installScript).toContain("127.0.0.1:8080");
+    expect(installScript).toContain("127.0.0.1:8443");
+    expect(installScript).not.toContain("38080");
   });
 
   test("records occupied-hop when elevate exits nonzero and does not throw", async () => {

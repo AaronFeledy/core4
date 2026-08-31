@@ -12,6 +12,11 @@ import {
 import type { SocketProxyDependencies } from "./proxy-types.ts";
 import { installSocketProxy, isSocketProxyInstalled, startSockets } from "./socket-proxy-install.ts";
 
+export type HelperHopTargets = {
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
+};
+
 const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDecision => ({
   mode,
   httpPort: DESIRED_HTTP_PORT,
@@ -46,6 +51,7 @@ const consentToInstall = (
 
 export const resolveNeedsHelper = (
   socketProxy: SocketProxyDependencies,
+  hops: HelperHopTargets,
 ): Effect.Effect<{
   readonly decision: AcquisitionDecision;
   readonly helperInstalled: boolean;
@@ -63,7 +69,11 @@ export const resolveNeedsHelper = (
         socketsActive: false,
       };
     }
-    const installed = yield* installSocketProxy(socketProxy);
+    const installed = yield* installSocketProxy({
+      ...socketProxy,
+      httpTarget: hops.httpTarget,
+      httpsTarget: hops.httpsTarget,
+    });
     switch (installed.kind) {
       case "installed":
       case "already-installed":

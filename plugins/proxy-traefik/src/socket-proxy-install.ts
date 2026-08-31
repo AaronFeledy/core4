@@ -8,6 +8,7 @@ import {
   type ForwardOutcome,
   probeForward,
 } from "./port-acquisition.ts";
+import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
 import {
   POLKIT_RULE_PATH,
@@ -49,6 +50,8 @@ export interface InstallSocketProxyInput extends HostPathAccess {
   readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
   readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
   readonly serviceType?: SocketProxyServiceType;
+  readonly httpTarget?: number;
+  readonly httpsTarget?: number;
 }
 
 export interface StartSocketsInput {
@@ -58,6 +61,8 @@ export interface StartSocketsInput {
 }
 
 const SOCKET_UNITS = ["lando-proxy-http.socket", "lando-proxy-https.socket"] as const;
+const HTTP_SERVICE_PATH = "/etc/systemd/system/lando-proxy-http.service";
+const HTTPS_SERVICE_PATH = "/etc/systemd/system/lando-proxy-https.service";
 
 export const discoverProxydBinary = (
   input: DiscoverProxydInput,
@@ -90,11 +95,34 @@ export const isSocketProxyInstalled = (access: HostPathAccess): Effect.Effect<bo
     return true;
   });
 
+const hopsMatchTargets = (
+  access: HostPathAccess,
+  httpTarget: number,
+  httpsTarget: number,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const httpUnit = yield* access
+      .readText(HTTP_SERVICE_PATH)
+      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const httpsUnit = yield* access
+      .readText(HTTPS_SERVICE_PATH)
+      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const hopPattern = /127\.0\.0\.1:\d+/u;
+    if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
+    return httpUnit.includes(`127.0.0.1:${httpTarget}`) && httpsUnit.includes(`127.0.0.1:${httpsTarget}`);
+  });
+
 export const installSocketProxy = (
   input: InstallSocketProxyInput,
 ): Effect.Effect<SocketProxyInstallOutcome> =>
   Effect.gen(function* () {
-    if (yield* isSocketProxyInstalled(input)) return { kind: "already-installed" };
+    const httpTarget = input.httpTarget ?? TRAEFIK_HTTP_PORT;
+    const httpsTarget = input.httpsTarget ?? TRAEFIK_HTTPS_PORT;
+    if (yield* isSocketProxyInstalled(input)) {
+      if (yield* hopsMatchTargets(input, httpTarget, httpsTarget)) {
+        return { kind: "already-installed" };
+      }
+    }
     const binary = yield* discoverProxydBinary(input).pipe(
       Effect.catchTag("ProxydBinaryNotFound", () => Effect.succeed(undefined)),
     );
@@ -103,6 +131,8 @@ export const installSocketProxy = (
       user: input.user,
       binary,
       serviceType: input.serviceType ?? "notify",
+      httpTarget,
+      httpsTarget,
     });
     const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
     if (elevated.exitCode !== 0) {

@@ -502,7 +502,7 @@ describe("fallback notice", () => {
 });
 
 describe("chosen 8080 vs routing-state", () => {
-  test("Given fallback 8080, When setup persists, Then 8080 is in acquisition JSON and not routing-state", async () => {
+  test("Given fallback 8080, When setup persists, Then 8080 is in acquisition JSON and routing-state", async () => {
     // Given: preferred 80/443 occupied; 8080/8443 bind.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -516,15 +516,15 @@ describe("chosen 8080 vs routing-state", () => {
     // When: setup writes acquisition JSON and routing-state.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: chosen 8080 is plugin-private; routing-state does not advertise it.
+    // Then: chosen 8080/8443 are in acquisition JSON and advertised in routing-state.
     expect(readJson(store.files).httpPort).toBe(8080);
     expect(readJson(store.files).httpsPort).toBe(8443);
     const routing = store.files.get(routingStateFile(paths)) ?? "";
-    expect(routing).not.toContain(":8080");
-    expect(routing).not.toContain(":8443");
+    expect(routing).toContain(":8080");
+    expect(routing).toContain(":8443");
   });
 
-  test("Given chosen 8080, When setup writes routing-state, Then advertised freeze is 38080/38443", async () => {
+  test("Given chosen 8080, When setup writes routing-state, Then advertised ports are the chosen pair", async () => {
     // Given: try-list fallback chose 8080/8443.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -538,12 +538,13 @@ describe("chosen 8080 vs routing-state", () => {
     // When: setup persists advertised authorities.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: routing-state stays on the frozen high pair, not the chosen 8080.
+    // Then: routing-state advertises the chosen pair, not the frozen high pair.
     const routing = store.files.get(routingStateFile(paths)) ?? "";
     expect(readJson(store.files).httpPort).toBe(8080);
-    expect(routing).toContain(`:${TRAEFIK_HTTP_PORT}`);
-    expect(routing).toContain(`:${TRAEFIK_HTTPS_PORT}`);
-    expect(routing).not.toContain(":8080");
+    expect(routing).toContain(":8080");
+    expect(routing).toContain(":8443");
+    expect(routing).not.toContain(`:${TRAEFIK_HTTP_PORT}`);
+    expect(routing).not.toContain(`:${TRAEFIK_HTTPS_PORT}`);
   });
 });
 
