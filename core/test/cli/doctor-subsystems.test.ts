@@ -11,6 +11,10 @@ import { makeTestProxyService } from "@lando/sdk/test";
 
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import {
+  HOST_PROXY_SPEC,
+  PROXY_SPEC,
+} from "../../src/cli/commands/doctor-subsystem-checks.ts";
+import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
   renderSubsystemDoctorResult,
@@ -58,6 +62,11 @@ const writeAcquisitionState = (
 };
 
 describe("meta:doctor subsystem checks", () => {
+  test("Traefik doctor check name is router and host-proxy is unchanged", () => {
+    expect(PROXY_SPEC.name).toBe("router");
+    expect(HOST_PROXY_SPEC.name).toBe("host-proxy");
+  });
+
   test("aggregates one check per subsystem with a {status, severity, context, solution} record", async () => {
     const result = await runDefault();
 

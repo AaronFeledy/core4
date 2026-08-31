@@ -482,6 +482,10 @@ describe("@lando/sdk package exports", () => {
     expect(services.Dataset).toBeDefined();
     expect(services.TunnelService).toBeDefined();
     expect(services.StateStore).toBeDefined();
+    expect(services.RouterService).toBeDefined();
+    expect(services.RouterService.key).toBe("@lando/core/RouterService");
+    expect(services.HostProxyService).toBeDefined();
+    expect(services.HostProxyService.key).toBe("@lando/core/HostProxyService");
   });
 
   test("secrets entry point exports the canonical redaction primitive", async () => {
