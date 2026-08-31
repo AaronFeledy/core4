@@ -32,6 +32,16 @@ const free = (port: number): LoopbackPortSnapshot => snapshot(port, { listening:
 const leftover = (port: number): LoopbackPortSnapshot =>
   snapshot(port, { listening: true, comm: "rootlessport", kind: "leftover-rootlessport" });
 
+const healthy = (port: number): LoopbackPortSnapshot =>
+  snapshot(port, { listening: true, comm: "rootlessport", kind: "healthy-proxy" });
+
+const foreign = (port: number): LoopbackPortSnapshot =>
+  snapshot(port, { listening: true, comm: "nginx", kind: "foreign" });
+
+const unknown = (port: number): LoopbackPortSnapshot => snapshot(port, { listening: true, kind: "unknown" });
+
+const chosenPair = { httpPort: 8080, httpsPort: 8443 } as const;
+
 const readersFor = (ports: Readonly<Record<number, LoopbackPortSnapshot>>): LoopbackPortReaders => ({
   readPort: async (port) => ports[port] ?? free(port),
 });
@@ -152,8 +162,6 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("returns no reports when a foreign process holds the ports", async () => {
     // Given: nginx is listening on both Traefik loopback ports.
-    const foreign = (port: number): LoopbackPortSnapshot =>
-      snapshot(port, { listening: true, comm: "nginx", kind: "foreign" });
     const readers = readersFor({
       [TRAEFIK_HTTP_PORT]: foreign(TRAEFIK_HTTP_PORT),
       [TRAEFIK_HTTPS_PORT]: foreign(TRAEFIK_HTTPS_PORT),
@@ -168,8 +176,6 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("returns no reports when a healthy proxy holds the ports", async () => {
     // Given: a healthy proxy is listening even though comm is rootlessport.
-    const healthy = (port: number): LoopbackPortSnapshot =>
-      snapshot(port, { listening: true, comm: "rootlessport", kind: "healthy-proxy" });
     const readers = readersFor({
       [TRAEFIK_HTTP_PORT]: healthy(TRAEFIK_HTTP_PORT),
       [TRAEFIK_HTTPS_PORT]: healthy(TRAEFIK_HTTPS_PORT),
@@ -184,8 +190,6 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("returns no reports when the holder is unknown", async () => {
     // Given: both ports are listening with an unknown holder.
-    const unknown = (port: number): LoopbackPortSnapshot =>
-      snapshot(port, { listening: true, kind: "unknown" });
     const readers = readersFor({
       [TRAEFIK_HTTP_PORT]: unknown(TRAEFIK_HTTP_PORT),
       [TRAEFIK_HTTPS_PORT]: unknown(TRAEFIK_HTTPS_PORT),
@@ -228,7 +232,6 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("probes persisted HTTPS with https role, not last-fallback port identity", async () => {
     // Given: a persisted 8080/8443 pair and a reader that records the role.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
     const probed: Array<{ readonly port: number; readonly role: string | undefined }> = [];
     const readers: LoopbackPortReaders = {
       readPort: async (port, _platform, role) => {
@@ -238,61 +241,58 @@ describe("makeLeftoverProxyPortsCheck", () => {
     };
 
     // When: the doctor contribution runs against the persisted pair.
-    await runCheck(readers, "linux", chosen);
+    await runCheck(readers, "linux", chosenPair);
 
     // Then: HTTPS is probed by role on 8443, not by port===38443.
     expect(probed).toHaveLength(2);
-    expect(probed).toContainEqual({ port: chosen.httpPort, role: "http" });
-    expect(probed).toContainEqual({ port: chosen.httpsPort, role: "https" });
+    expect(probed).toContainEqual({ port: chosenPair.httpPort, role: "http" });
+    expect(probed).toContainEqual({ port: chosenPair.httpsPort, role: "https" });
   });
 
   test("warns when leftover rootlessport holds the persisted HTTP port", async () => {
     // Given: 127.0.0.1:8080 is leftover rootlessport and last-fallback 38080 is also leftover.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
     const readers = readersFor({
-      [chosen.httpPort]: leftover(chosen.httpPort),
-      [chosen.httpsPort]: free(chosen.httpsPort),
+      [chosenPair.httpPort]: leftover(chosenPair.httpPort),
+      [chosenPair.httpsPort]: free(chosenPair.httpsPort),
       [TRAEFIK_HTTP_PORT]: leftover(TRAEFIK_HTTP_PORT),
       [TRAEFIK_HTTPS_PORT]: free(TRAEFIK_HTTPS_PORT),
     });
 
     // When: the doctor contribution runs against the persisted pair.
-    const reports = await runCheck(readers, "linux", chosen);
+    const reports = await runCheck(readers, "linux", chosenPair);
 
     // Then: one warn names only the persisted HTTP port.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(String(chosen.httpPort));
+    expect(reports[0]?.context.ports).toBe(String(chosenPair.httpPort));
     expect(reports[0]?.context.ports).not.toContain(String(TRAEFIK_HTTP_PORT));
   });
 
   test("collapses leftover persisted HTTP and TLS ports into one report", async () => {
     // Given: both persisted Traefik ports are leftover rootlessport holders.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
     const readers = readersFor({
-      [chosen.httpPort]: leftover(chosen.httpPort),
-      [chosen.httpsPort]: leftover(chosen.httpsPort),
+      [chosenPair.httpPort]: leftover(chosenPair.httpPort),
+      [chosenPair.httpsPort]: leftover(chosenPair.httpsPort),
     });
 
     // When: the doctor contribution runs against the persisted pair.
-    const reports = await runCheck(readers, "linux", chosen);
+    const reports = await runCheck(readers, "linux", chosenPair);
 
     // Then: a single report lists both persisted ports in HTTP-then-TLS order.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(`${chosen.httpPort},${chosen.httpsPort}`);
+    expect(reports[0]?.context.ports).toBe(`${chosenPair.httpPort},${chosenPair.httpsPort}`);
   });
 
   test("does not warn when leftover is only on last-fallback ports", async () => {
     // Given: leftover rootlessport on 38080/38443 while Traefik publishes 8080/8443.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
     const readers = readersFor({
-      [chosen.httpPort]: free(chosen.httpPort),
-      [chosen.httpsPort]: free(chosen.httpsPort),
+      [chosenPair.httpPort]: free(chosenPair.httpPort),
+      [chosenPair.httpsPort]: free(chosenPair.httpsPort),
       [TRAEFIK_HTTP_PORT]: leftover(TRAEFIK_HTTP_PORT),
       [TRAEFIK_HTTPS_PORT]: leftover(TRAEFIK_HTTPS_PORT),
     });
 
     // When: the doctor contribution runs against the persisted pair.
-    const reports = await runCheck(readers, "linux", chosen);
+    const reports = await runCheck(readers, "linux", chosenPair);
 
     // Then: last-fallback leftover is not this check.
     expect(reports).toEqual([]);
@@ -300,16 +300,13 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("does not warn when a healthy Traefik answers on persisted ports", async () => {
     // Given: another instance's healthy Traefik is listening via rootlessport on 8080/8443.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
-    const healthy = (port: number): LoopbackPortSnapshot =>
-      snapshot(port, { listening: true, comm: "rootlessport", kind: "healthy-proxy" });
     const readers = readersFor({
-      [chosen.httpPort]: healthy(chosen.httpPort),
-      [chosen.httpsPort]: healthy(chosen.httpsPort),
+      [chosenPair.httpPort]: healthy(chosenPair.httpPort),
+      [chosenPair.httpsPort]: healthy(chosenPair.httpsPort),
     });
 
     // When: the doctor contribution runs against the persisted pair.
-    const reports = await runCheck(readers, "linux", chosen);
+    const reports = await runCheck(readers, "linux", chosenPair);
 
     // Then: a classified healthy proxy is not leftover rootlessport.
     expect(reports).toEqual([]);
@@ -317,16 +314,13 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
   test("does not warn when a foreign or unknown holder occupies persisted ports", async () => {
     // Given: nginx and an unknown holder occupy the persisted pair.
-    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
-    const foreign = snapshot(chosen.httpPort, { listening: true, comm: "nginx", kind: "foreign" });
-    const unknown = snapshot(chosen.httpsPort, { listening: true, kind: "unknown" });
     const readers = readersFor({
-      [chosen.httpPort]: foreign,
-      [chosen.httpsPort]: unknown,
+      [chosenPair.httpPort]: foreign(chosenPair.httpPort),
+      [chosenPair.httpsPort]: unknown(chosenPair.httpsPort),
     });
 
     // When: the doctor contribution runs against the persisted pair.
-    const reports = await runCheck(readers, "linux", chosen);
+    const reports = await runCheck(readers, "linux", chosenPair);
 
     // Then: foreign and unknown holders are not leftover-proxy warnings.
     expect(reports).toEqual([]);

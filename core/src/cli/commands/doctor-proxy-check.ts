@@ -26,9 +26,6 @@ const LAST_FALLBACK_HTTPS = 38443;
 const OCCUPIED_HOP_REMEDIATION =
   "port in use by another program; Lando is serving on high ports instead of 80/443.";
 
-const degradedHighPortsRemediation = (httpPort: number, httpsPort: number): string =>
-  `URLs carry :${httpPort}/:${httpsPort}; run lando doctor --fix to enable 80/443 (admin access may be requested)`;
-
 interface AcquisitionSnapshot {
   readonly mode: AcquisitionMode;
   readonly httpPort: number;
@@ -83,15 +80,12 @@ const liveProxyStateContext = (
   }));
 
 const specForMode = (snapshot: AcquisitionSnapshot | undefined): SubsystemSpec => {
-  const mode = snapshot?.mode;
-  switch (mode) {
+  if (snapshot === undefined) return PROXY_SPEC;
+  switch (snapshot.mode) {
     case "needs-helper":
       return {
         ...PROXY_SPEC,
-        automaticRemediation: degradedHighPortsRemediation(
-          snapshot?.httpPort ?? LAST_FALLBACK_HTTP,
-          snapshot?.httpsPort ?? LAST_FALLBACK_HTTPS,
-        ),
+        automaticRemediation: `URLs carry :${snapshot.httpPort}/:${snapshot.httpsPort}; run lando doctor --fix to enable 80/443 (admin access may be requested)`,
       };
     case "occupied-hop":
       return {
@@ -102,10 +96,9 @@ const specForMode = (snapshot: AcquisitionSnapshot | undefined): SubsystemSpec =
       };
     case "direct":
     case "socket-helper":
-    case undefined:
       return PROXY_SPEC;
     default: {
-      const exhaustive: never = mode;
+      const exhaustive: never = snapshot.mode;
       return exhaustive;
     }
   }
