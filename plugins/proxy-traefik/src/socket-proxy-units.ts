@@ -127,13 +127,7 @@ export const buildInstallScript = (input: {
   readonly httpTarget: number;
   readonly httpsTarget: number;
 }): string => {
-  const units = renderSocketProxyUnits({
-    user: input.user,
-    binary: input.binary,
-    serviceType: input.serviceType,
-    httpTarget: input.httpTarget,
-    httpsTarget: input.httpsTarget,
-  });
+  const units = renderSocketProxyUnits(input);
   const writes = SOCKET_UNIT_NAMES.map((name) => heredoc(`${SYSTEMD_UNIT_DIR}/${name}`, units[name]));
   return [
     "set -eu",

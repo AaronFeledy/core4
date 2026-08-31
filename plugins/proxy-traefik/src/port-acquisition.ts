@@ -192,14 +192,7 @@ const firstHighSuccess = (
   tryList: readonly number[],
   skip: number,
   binds: Readonly<Record<number, BindOutcome>> | undefined,
-): number | undefined => {
-  for (const port of tryList) {
-    if (port === skip) continue;
-    const outcome = binds?.[port];
-    if (outcome?.kind === "success") return port;
-  }
-  return undefined;
-};
+): number | undefined => tryList.find((port) => port !== skip && binds?.[port]?.kind === "success");
 
 export const chooseHelperBindPorts = (input: {
   readonly httpBinds?: Readonly<Record<number, BindOutcome>>;
@@ -212,16 +205,19 @@ export const chooseHelperBindPorts = (input: {
   const bindHttpPort = firstHighSuccess(httpTryList, DESIRED_HTTP_PORT, input.httpBinds);
   const bindHttpsPort = firstHighSuccess(httpsTryList, DESIRED_HTTPS_PORT, input.httpsBinds);
   if (bindHttpPort === undefined || bindHttpsPort === undefined) {
+    let exhausted: "http" | "https" | "both";
+    if (bindHttpPort === undefined && bindHttpsPort === undefined) {
+      exhausted = "both";
+    } else if (bindHttpPort === undefined) {
+      exhausted = "http";
+    } else {
+      exhausted = "https";
+    }
     throw portsExhausted({
       bindAddress: LOOPBACK_HOST,
       httpTried: httpTryList,
       httpsTried: httpsTryList,
-      exhausted:
-        bindHttpPort === undefined && bindHttpsPort === undefined
-          ? "both"
-          : bindHttpPort === undefined
-            ? "http"
-            : "https",
+      exhausted,
     });
   }
   return { bindHttpPort, bindHttpsPort };

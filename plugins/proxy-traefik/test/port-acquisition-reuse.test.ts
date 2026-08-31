@@ -539,7 +539,7 @@ describe("chosen 8080 vs routing-state", () => {
     // When: setup persists advertised authorities.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: routing-state advertises the chosen pair, not the frozen high pair.
+    // Then: routing-state advertises the chosen pair, not the default Traefik ports.
     const routing = store.files.get(routingStateFile(paths)) ?? "";
     expect(readJson(store.files).httpPort).toBe(8080);
     expect(routing).toContain(":8080");
@@ -579,7 +579,7 @@ describe("ownership probe bind address", () => {
 
 describe("stillOwnPersisted hop ports", () => {
   test("rejects reuse when a socket-helper hop port is held by a foreign process", async () => {
-    // Given: helper still owns 80/443; hop 8080 is nginx.
+    // Given: helper still owns 80/443; hop 8080/8443 bind as other-error (not free, not EADDRINUSE+ours).
     const probeBind = (_host: string, port: number) => {
       if (port === 80 || port === 443) {
         return Effect.succeed(bind("EADDRINUSE"));
@@ -589,12 +589,9 @@ describe("stillOwnPersisted hop ports", () => {
       }
       return Effect.succeed(bind("success"));
     };
-    const base = makeDeps(memoryFiles(), own8080Override());
-    const { socketProxy: _socketProxy, ...withoutSocket } = base;
-    const deps = {
-      ...withoutSocket,
+    const { socketProxy: _socketProxy, ...deps } = makeDeps(memoryFiles(), own8080Override(), {
       probeBind,
-    };
+    });
 
     // When: ownership includes persisted bind ports.
     const owned = await Effect.runPromise(

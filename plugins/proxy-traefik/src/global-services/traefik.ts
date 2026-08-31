@@ -127,19 +127,18 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     environment: {},
   });
 
-const loadAcquisitionState = (): Effect.Effect<AcquisitionState | undefined> =>
-  Effect.gen(function* () {
-    const resolved = makeLandoPaths();
-    const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
-    const text = yield* Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
-      Effect.catchAll(() => Effect.succeed(undefined)),
-    );
-    if (text === undefined) return undefined;
-    return yield* Effect.try({
-      try: () => Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(text)),
-      catch: (error) => error,
-    }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-  });
+const loadAcquisitionState: Effect.Effect<AcquisitionState | undefined> = Effect.gen(function* () {
+  const resolved = makeLandoPaths();
+  const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
+  const text = yield* Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
+    Effect.catchAll(() => Effect.succeed(undefined)),
+  );
+  if (text === undefined) return undefined;
+  return yield* Effect.try({
+    try: () => Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(text)),
+    catch: (error) => error,
+  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+});
 
 const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
   mode: state.mode,
@@ -150,7 +149,7 @@ const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
 });
 
 const traefikGlobalService: Effect.Effect<ServiceConfig> = Effect.gen(function* () {
-  const state = yield* loadAcquisitionState();
+  const state = yield* loadAcquisitionState;
   return buildTraefikServiceConfig(
     resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
   );

@@ -41,11 +41,7 @@ const unusedPrivilege = {
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 };
 
-const makeHarness = (
-  failAtomic = false,
-  endpoints: ReadonlyArray<string> = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
-  classifyOverride: { readonly http: SchemeProbe; readonly https: SchemeProbe } = highPortOverride,
-) => {
+const makeHarness = (failAtomic = false) => {
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
   const socketProxy = {
@@ -55,7 +51,7 @@ const makeHarness = (
     readText: () => Effect.fail(new Error("missing")),
     processRunner: unusedRunner,
     privilege: unusedPrivilege,
-    classifyOverride,
+    classifyOverride: highPortOverride,
   };
   const service = makeTraefikProxyService({
     certificateAuthority: makeTestCertificateAuthority(),
@@ -75,18 +71,22 @@ const makeHarness = (
             .filter((file) => file.startsWith(`${path}/`))
             .map((file) => file.slice(path.length + 1)),
         ),
-      readText: (path) =>
-        files.has(path)
-          ? Effect.succeed(files.get(path) ?? "")
-          : path.startsWith("/tmp/test-certs/")
-            ? Effect.succeed("test pem")
-            : Effect.fail(new FileNotFoundError({ message: "removed", path })),
+      readText: (path) => {
+        if (files.has(path)) {
+          return Effect.succeed(files.get(path) ?? "");
+        }
+        if (path.startsWith("/tmp/test-certs/")) {
+          return Effect.succeed("test pem");
+        }
+        return Effect.fail(new FileNotFoundError({ message: "removed", path }));
+      },
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     globalApp: {
       ensureRunning: (services) =>
         Effect.sync(() => {
           ensured.push(services);
+          const endpoints = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"];
           return [{ name: "traefik", state: "running", endpoints }];
         }),
     },

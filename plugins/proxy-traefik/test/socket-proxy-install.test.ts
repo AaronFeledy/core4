@@ -64,7 +64,7 @@ const makeRunner = (
 };
 
 const makePrivilege = (
-  result: ProcessResult | ((command: ReadonlyArray<string>) => ProcessResult) = ok(),
+  result: ProcessResult | ((command: ReadonlyArray<string>) => ProcessResult),
 ): {
   readonly service: Context.Tag.Service<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
@@ -92,6 +92,7 @@ const hostFiles = (present: Readonly<Record<string, string>> = {}) => {
 };
 
 const markedUnit = "[Unit]\n# lando-proxy-socket-helper\n";
+const [packagedProxyd] = PROXYD_CANDIDATES;
 
 describe("discoverProxydBinary", () => {
   test("checks usr lib path before lib path before command -v", async () => {
@@ -197,13 +198,12 @@ describe("installSocketProxy", () => {
   test("elevates one script with units, polkit path, daemon-reload, and no enable", async () => {
     // Given: proxyd is at the first packaged path and units are not installed.
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
 
     // When: install runs.
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
-        exists: hostFiles({ [first]: "binary" }).exists,
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
@@ -233,9 +233,8 @@ describe("installSocketProxy", () => {
     // Given: all four unit files exist with the content marker.
     const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const installedHost = hostFiles(present);
-    const installHost = hostFiles({ ...present, [first]: "binary" });
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
 
     // When: install checks idempotency.
     const installed = await Effect.runPromise(
@@ -270,8 +269,7 @@ describe("installSocketProxy", () => {
     present["/etc/systemd/system/lando-proxy-http.service"] = staleHttp;
     present["/etc/systemd/system/lando-proxy-https.service"] = staleHttps;
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
-    const installHost = hostFiles({ ...present, [first]: "binary" });
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
 
     // When: install is asked to hop to 8080/8443.
     const outcome = await Effect.runPromise(
@@ -303,8 +301,7 @@ describe("installSocketProxy", () => {
     present["/etc/systemd/system/lando-proxy-http.service"] = httpUnit;
     present["/etc/systemd/system/lando-proxy-https.service"] = httpsUnit;
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
-    const installHost = hostFiles({ ...present, [first]: "binary" });
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
 
     // When: install is asked to hop to 8080/444.
     const outcome = await Effect.runPromise(
@@ -327,13 +324,12 @@ describe("installSocketProxy", () => {
   test("records elevation refusal without throwing when elevate exits nonzero", async () => {
     // Given: proxyd exists and elevate is refused.
     const privilege = makePrivilege(fail(1, "polkit denied"));
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
 
     // When: install runs.
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
-        exists: hostFiles({ [first]: "binary" }).exists,
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
@@ -387,7 +383,6 @@ describe("setup classification after helper install", () => {
     // Given: Linux+systemd, EACCES on 80/443, proxyd present, elevate and forward succeed.
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikProxyService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
@@ -409,7 +404,7 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         hasHostSystemd: () => true,
         autoApprove: true,
-        exists: (path) => Effect.succeed(path === first),
+        exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")))
           .service,
@@ -444,7 +439,6 @@ describe("setup classification after helper install", () => {
   test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikProxyService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
@@ -466,7 +460,7 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         hasHostSystemd: () => true,
         autoApprove: true,
-        exists: (path) => Effect.succeed(path === first),
+        exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner(() => fail(1, "not found")).service,
         privilege: makePrivilege(fail(1, "refused")).service,
