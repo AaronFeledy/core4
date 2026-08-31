@@ -226,6 +226,26 @@ describe("makeLeftoverProxyPortsCheck", () => {
     expect(check.relevant).toBeUndefined();
   });
 
+  test("probes persisted HTTPS with https role, not last-fallback port identity", async () => {
+    // Given: a persisted 8080/8443 pair and a reader that records the role.
+    const chosen = { httpPort: 8080, httpsPort: 8443 } as const;
+    const probed: Array<{ readonly port: number; readonly role: string | undefined }> = [];
+    const readers: LoopbackPortReaders = {
+      readPort: async (port, _platform, role) => {
+        probed.push({ port, role });
+        return free(port);
+      },
+    };
+
+    // When: the doctor contribution runs against the persisted pair.
+    await runCheck(readers, "linux", chosen);
+
+    // Then: HTTPS is probed by role on 8443, not by port===38443.
+    expect(probed).toHaveLength(2);
+    expect(probed).toContainEqual({ port: chosen.httpPort, role: "http" });
+    expect(probed).toContainEqual({ port: chosen.httpsPort, role: "https" });
+  });
+
   test("warns when leftover rootlessport holds the persisted HTTP port", async () => {
     // Given: 127.0.0.1:8080 is leftover rootlessport and last-fallback 38080 is also leftover.
     const chosen = { httpPort: 8080, httpsPort: 8443 } as const;

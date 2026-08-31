@@ -455,3 +455,11 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Leftover EADDRINUSE remap now applies only when the failing service is Traefik (or the helper omits a service name). App services that mention persisted 8080/8443 keep destroy remediation.
 - Verification: typecheck, lint passed; bring-up-nft (16) passed
 ---
+
+## 2026-08-30 22:49 CDT - US-604 Drift Audit
+- Trigger: 3 cycles, 516 changed lines, 4 commits
+- Weakened proofs: leftover HTTPS probe role was untested (stubs ignored role)
+- Fixed: restored role-passing proof on persisted 8443
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
