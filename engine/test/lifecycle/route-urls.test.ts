@@ -57,3 +57,19 @@ test("keeps explicit non-default ports for occupied-hop and degraded authorities
   expect(httpUrls).toEqual(["http://app.lndo.site:38080"]);
   expect(httpsUrls).toEqual(["https://app.lndo.site:38443"]);
 });
+
+test("keeps explicit first-fallback ports 8080 and 8443", () => {
+  // Given: familiar first-fallback authorities when 80/443 are unavailable.
+  const httpRoute = webRoute("app.lndo.site", "http");
+  const httpsRoute = webRoute("app.lndo.site", "https");
+  const httpAuthority: ProxyAuthority = { scheme: "http", hostname: "app.lndo.site", port: 8080 };
+  const httpsAuthority: ProxyAuthority = { scheme: "https", hostname: "app.lndo.site", port: 8443 };
+
+  // When: URLs are rendered from those authorities.
+  const httpUrls = proxyUrlsByService([httpRoute], [httpAuthority]).get(httpRoute.service);
+  const httpsUrls = proxyUrlsByService([httpsRoute], [httpsAuthority]).get(httpsRoute.service);
+
+  // Then: the explicit port is preserved.
+  expect(httpUrls).toEqual(["http://app.lndo.site:8080"]);
+  expect(httpsUrls).toEqual(["https://app.lndo.site:8443"]);
+});
