@@ -4,6 +4,7 @@ import { Cause, Effect, type Exit } from "effect";
 import * as sdkErrors from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
 import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import {
   type BindOutcome,
@@ -502,7 +503,7 @@ describe("fallback notice", () => {
 });
 
 describe("chosen 8080 vs routing-state", () => {
-  test("Given fallback 8080, When setup persists, Then 8080 is in acquisition JSON and not routing-state", async () => {
+  test("Given fallback 8080, When setup persists, Then 8080 is in acquisition JSON and routing-state", async () => {
     // Given: preferred 80/443 occupied; 8080/8443 bind.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -516,15 +517,15 @@ describe("chosen 8080 vs routing-state", () => {
     // When: setup writes acquisition JSON and routing-state.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: chosen 8080 is plugin-private; routing-state does not advertise it.
+    // Then: chosen 8080/8443 are in acquisition JSON and advertised in routing-state.
     expect(readJson(store.files).httpPort).toBe(8080);
     expect(readJson(store.files).httpsPort).toBe(8443);
     const routing = store.files.get(routingStateFile(paths)) ?? "";
-    expect(routing).not.toContain(":8080");
-    expect(routing).not.toContain(":8443");
+    expect(routing).toContain(":8080");
+    expect(routing).toContain(":8443");
   });
 
-  test("Given chosen 8080, When setup writes routing-state, Then advertised freeze is 38080/38443", async () => {
+  test("Given chosen 8080, When setup writes routing-state, Then advertised ports are the chosen pair", async () => {
     // Given: try-list fallback chose 8080/8443.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -538,12 +539,13 @@ describe("chosen 8080 vs routing-state", () => {
     // When: setup persists advertised authorities.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: routing-state stays on the frozen high pair, not the chosen 8080.
+    // Then: routing-state advertises the chosen pair, not the default Traefik ports.
     const routing = store.files.get(routingStateFile(paths)) ?? "";
     expect(readJson(store.files).httpPort).toBe(8080);
-    expect(routing).toContain(`:${TRAEFIK_HTTP_PORT}`);
-    expect(routing).toContain(`:${TRAEFIK_HTTPS_PORT}`);
-    expect(routing).not.toContain(":8080");
+    expect(routing).toContain(":8080");
+    expect(routing).toContain(":8443");
+    expect(routing).not.toContain(`:${TRAEFIK_HTTP_PORT}`);
+    expect(routing).not.toContain(`:${TRAEFIK_HTTPS_PORT}`);
   });
 });
 
@@ -572,5 +574,43 @@ describe("ownership probe bind address", () => {
     // Then: ownership probes 0.0.0.0, not loopback.
     expect(probedHosts.includes("0.0.0.0")).toBe(true);
     expect(probedHosts.includes("127.0.0.1")).toBe(false);
+  });
+});
+
+describe("stillOwnPersisted hop ports", () => {
+  test("rejects reuse when a socket-helper hop port is held by a foreign process", async () => {
+    // Given: helper still owns 80/443; hop 8080/8443 bind as other-error (not free, not EADDRINUSE+ours).
+    const probeBind = (_host: string, port: number) => {
+      if (port === 80 || port === 443) {
+        return Effect.succeed(bind("EADDRINUSE"));
+      }
+      if (port === 8080 || port === 8443) {
+        return Effect.succeed(bind("other-error"));
+      }
+      return Effect.succeed(bind("success"));
+    };
+    const { socketProxy: _socketProxy, ...deps } = makeDeps(memoryFiles(), own8080Override(), {
+      probeBind,
+    });
+
+    // When: ownership includes persisted bind ports.
+    const owned = await Effect.runPromise(
+      stillOwnPersisted(
+        deps,
+        {
+          httpPort: 80,
+          httpsPort: 443,
+          helperInstalled: true,
+          socketsActive: true,
+          bindHttpPort: 8080,
+          bindHttpsPort: 8443,
+        },
+        own8080Override(),
+        LOOPBACK,
+      ),
+    );
+
+    // Then: a hop that is neither free nor EADDRINUSE+ours is not owned.
+    expect(owned).toBe(false);
   });
 });

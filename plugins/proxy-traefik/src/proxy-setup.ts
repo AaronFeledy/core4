@@ -4,8 +4,7 @@ import { ProxySetupError, RouterPortPinMismatch, RouterPortsExhausted } from "@l
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { type AcquisitionDecision, DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
+import type { AcquisitionDecision } from "./port-acquisition.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import type { AuthorityPorts } from "./routing.ts";
 
@@ -25,12 +24,10 @@ export const mapSetupError = (
   });
 };
 
-export const advertisedPorts = (decision: AcquisitionDecision): AuthorityPorts =>
-  (decision.mode === "direct" || decision.mode === "socket-helper") &&
-  decision.httpPort === DESIRED_HTTP_PORT &&
-  decision.httpsPort === DESIRED_HTTPS_PORT
-    ? { http: DESIRED_HTTP_PORT, https: DESIRED_HTTPS_PORT }
-    : { http: TRAEFIK_HTTP_PORT, https: TRAEFIK_HTTPS_PORT };
+export const advertisedPorts = (decision: AcquisitionDecision): AuthorityPorts => ({
+  http: decision.httpPort,
+  https: decision.httpsPort,
+});
 
 export const publishFallbackWarn = (
   dependencies: TraefikProxyDependencies,

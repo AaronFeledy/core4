@@ -47,11 +47,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
 - Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
 - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
+- Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -375,5 +376,47 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Ceremony: helpers/proxy-setup stay split (inline would exceed 250 LOC); dual default lists stay package-DAG
 - Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604; EACCES notify stays occupancy-vs-permission, not expanded
 - Fixed: deleted the restore-text rewrite; restored setup probeBind walk of production lists and resolveRouterConfigForApp proofs
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 19:52 CDT - US-603
+- Global Traefik now publishes the persisted chosen HTTP/HTTPS pair on 127.0.0.1 to container 80/443. Occupied-hop advertises and binds 8080/8443 (or whichever try-list winner), not a hidden extra 38080/38443. Socket-helper still presents 80/443 and hops to the first free high ports from the same lists; existing helper units are rewritten when the hop target changes.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Do not call `regenerateDist` with only traefik — it replaces the whole global dist and drops mailpit. Persist acquisition, then let `ensureRunning` rematerialize; the Traefik factory reads `.lando-port-acquisition.json`.
+  - `advertisedPorts` must return the chosen pair. Remapping occupied-hop to 38080/38443 is the old freeze.
+  - Helper listen stays 80/443; hop targets are bind ports. Marker-only unit stubs have no hop line — treat them as already-installed, rewrite only when an ExecStart hop differs.
+---
+
+## 2026-08-30 20:09 CDT - US-603 Review
+- Reviewed Traefik publish of chosen host ports. Fixed socket-helper JSON without bind ports publishing 80/443, hop rewrite that never restarted live helper units, and 444 matching 4443 in hop compare.
+- Review notes (deferred/rejected): leftover doctor/info/EADDRINUSE remap stay US-604; factory reading host acquisition files in the default-export test is last-resort when no file exists, not a PRD miss; forcing reuse skip for helper-without-binds would demote a live helper to occupied-hop
+- Guide-Coverage-Skip: Traefik host-port publish internals and socket-helper hop rewrite; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; proxy-traefik publish/helper/reuse/proxy spot checks passed (54)
+- **Learnings for future iterations:**
+  - Socket-helper public 80/443 are not Traefik host bindings. Without bindHttpPort/bindHttpsPort, publish last-resort hops so Traefik does not steal 80 from the helper.
+  - Hop-target rewrite must `systemctl try-restart` the helper services after daemon-reload; `systemctl start` on an already-active socket is a no-op.
+---
+
+## 2026-08-30 20:12 CDT - US-603 Review
+- Helper hops now skip 80/443 listen ports, not try-list[0], so a pinned 8080/8443 preferred pair is used as the hop target.
+- Verification: choose-helper-bind-ports and helper install spot checks passed
+---
+
+## 2026-08-30 20:16 CDT - US-603 Review
+- Reuse now fails when a socket-helper hop port is neither free nor still ours, so Traefik does not rematerialize onto a stolen high port.
+- Verification: typecheck, lint passed; reuse/helper/publish spot checks passed
+---
+
+## 2026-08-30 20:20 CDT - US-603 Review
+- Review notes (deferred/rejected): chooseHelperBindPorts ignoring EADDRINUSE hops is first-free TCP success on a fresh walk; reuse already keeps Traefik-owned hops, and treating EADDRINUSE as a hop without a holder would pick foreign binds
+---
+
+## 2026-08-30 20:38 CDT - US-603 Drift Audit
+- Trigger: 5 cycles, 581 changed lines, 5 commits
+- Weakened proofs: factory default-export asserted host 38080; install without hop targets still hopped to 38080
+- Review scar: optional hop targets defaulted to last-resort 38080
+- Fixed: required helper hop targets; factory loopback test no longer assumes 38080; helper hops skip 80/443 even when those binds succeed
+- Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
 ---

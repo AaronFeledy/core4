@@ -188,4 +188,39 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
   };
 };
 
+const firstHighSuccess = (
+  tryList: readonly number[],
+  skip: number,
+  binds: Readonly<Record<number, BindOutcome>> | undefined,
+): number | undefined => tryList.find((port) => port !== skip && binds?.[port]?.kind === "success");
+
+export const chooseHelperBindPorts = (input: {
+  readonly httpBinds?: Readonly<Record<number, BindOutcome>>;
+  readonly httpsBinds?: Readonly<Record<number, BindOutcome>>;
+  readonly httpTryList?: readonly number[];
+  readonly httpsTryList?: readonly number[];
+}): { readonly bindHttpPort: number; readonly bindHttpsPort: number } => {
+  const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
+  const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
+  const bindHttpPort = firstHighSuccess(httpTryList, DESIRED_HTTP_PORT, input.httpBinds);
+  const bindHttpsPort = firstHighSuccess(httpsTryList, DESIRED_HTTPS_PORT, input.httpsBinds);
+  if (bindHttpPort === undefined || bindHttpsPort === undefined) {
+    let exhausted: "http" | "https" | "both";
+    if (bindHttpPort === undefined && bindHttpsPort === undefined) {
+      exhausted = "both";
+    } else if (bindHttpPort === undefined) {
+      exhausted = "http";
+    } else {
+      exhausted = "https";
+    }
+    throw portsExhausted({
+      bindAddress: LOOPBACK_HOST,
+      httpTried: httpTryList,
+      httpsTried: httpsTryList,
+      exhausted,
+    });
+  }
+  return { bindHttpPort, bindHttpsPort };
+};
+
 export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";
