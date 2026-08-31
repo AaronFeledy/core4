@@ -28,7 +28,7 @@ export const isLeftoverProxyPortBindMessage = (message: string, ports?: Leftover
   );
 };
 
-const pairFromAcquisition = (value: unknown): LeftoverProxyPortPair => {
+export const pairFromAcquisition = (value: unknown): LeftoverProxyPortPair => {
   if (typeof value !== "object" || value === null) return LAST_FALLBACK;
   const bindHttpPort = "bindHttpPort" in value ? value.bindHttpPort : undefined;
   const bindHttpsPort = "bindHttpsPort" in value ? value.bindHttpsPort : undefined;

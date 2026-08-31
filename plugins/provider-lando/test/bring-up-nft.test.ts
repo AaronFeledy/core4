@@ -5,6 +5,7 @@ import {
   LEFTOVER_PROXY_PORT_REMEDIATION,
   isLeftoverProxyPortBindMessage,
   leftoverProxyPortRemediation,
+  pairFromAcquisition,
 } from "../src/leftover-proxy-port.ts";
 
 const chosenPair = { httpPort: 8080, httpsPort: 8443 } as const;
@@ -146,5 +147,34 @@ describe("startFailureRemediation", () => {
     expect(remediation).toContain("127.0.0.1:8443");
     expect(remediation).not.toContain("38080");
     expect(remediation).toContain("lando global:stop");
+  });
+
+  test("pairFromAcquisition uses advertised occupied-hop ports", () => {
+    // Given / When / Then
+    expect(pairFromAcquisition({ mode: "occupied-hop", httpPort: 8080, httpsPort: 8443 })).toEqual({
+      httpPort: 8080,
+      httpsPort: 8443,
+    });
+  });
+
+  test("pairFromAcquisition uses socket-helper bind hops", () => {
+    // Given / When / Then
+    expect(
+      pairFromAcquisition({
+        mode: "socket-helper",
+        httpPort: 80,
+        httpsPort: 443,
+        bindHttpPort: 8080,
+        bindHttpsPort: 8443,
+      }),
+    ).toEqual({ httpPort: 8080, httpsPort: 8443 });
+  });
+
+  test("pairFromAcquisition socket-helper without binds is last-fallback", () => {
+    // Given / When / Then
+    expect(pairFromAcquisition({ mode: "socket-helper", httpPort: 80, httpsPort: 443 })).toEqual({
+      httpPort: 38080,
+      httpsPort: 38443,
+    });
   });
 });

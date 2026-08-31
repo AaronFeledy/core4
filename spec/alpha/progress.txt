@@ -443,3 +443,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - `startFailureRemediation` stays pure for tests (omitted pair = last-fallback). Production `podmanFailure` passes `readPersistedTraefikPublishPair()`. Do not auto-read host acquisition in the helper or unit tests pick up a live 8080/8443 file.
   - `@lando/provider-lando` must not import `@lando/proxy-traefik`. Duplicate the four-line publish-port resolution (bind pair, socket-helper last-fallback, advertised pair).
 ---
+
+## 2026-08-30 22:35 CDT - US-604 Review
+- Reviewed info/doctor/start persisted-port wiring. Added leftover-doctor tests that read `.lando-port-acquisition.json` with no override, and exported `pairFromAcquisition` so start remap locks occupied-hop advertised ports vs socket-helper bind hops.
+- Review notes (deferred/rejected): provider-lando vs proxy-traefik parser duplication is the package-DAG constraint, not drift to merge; doctor needs-helper copy uses advertised URL ports, not leftover bind hops; Error→last-fallback is the specified missing-state path; info/post-start do not read acquisition JSON because authorities already come from US-603 advertisedPorts; `readPersistedTraefikPublishPair` stays host-rooted so unit tests cannot auto-read a live file; optionalNumber range clamp is defense-in-depth, not a PRD miss
+- Guide-Coverage-Skip: leftover doctor and start EADDRINUSE tests plus parser export; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; leftover-proxy-ports (16) and bring-up-nft (15) spot checks passed; Bugbot found no bugs before the review tests
+---
