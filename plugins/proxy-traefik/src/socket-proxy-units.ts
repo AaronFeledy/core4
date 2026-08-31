@@ -147,5 +147,6 @@ export const buildInstallScript = (input: {
     `chown root:root ${SOCKET_UNIT_PATHS.join(" ")}`,
     `chmod 0644 ${SOCKET_UNIT_PATHS.join(" ")}`,
     "systemctl daemon-reload",
+    "systemctl try-restart lando-proxy-http.service lando-proxy-https.service",
   ].join("\n");
 };

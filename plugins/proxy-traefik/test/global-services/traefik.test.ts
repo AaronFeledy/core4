@@ -208,4 +208,15 @@ describe("resolveTraefikPublishPorts", () => {
     // Then: the container publishes on the bind ports, not 80/443.
     expect(ports).toEqual({ http: 8080, https: 8443 });
   });
+
+  test("does not publish 80/443 for socket-helper state without bind ports", () => {
+    // Given: pre-bind-port socket-helper JSON with public 80/443 only.
+    const state = { mode: "socket-helper", httpPort: 80, httpsPort: 443 };
+
+    // When: publish ports are resolved.
+    const ports = resolveTraefikPublishPorts(state);
+
+    // Then: Traefik stays on the last-resort hop pair, not 80/443.
+    expect(ports).toEqual({ http: 38080, https: 38443 });
+  });
 });

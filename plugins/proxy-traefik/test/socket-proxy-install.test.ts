@@ -189,6 +189,7 @@ describe("buildInstallScript", () => {
     expect(script).toContain("ListenStream=127.0.0.1:80\n");
     expect(script).toContain("ListenStream=127.0.0.1:443\n");
     expect(script).not.toContain("38080");
+    expect(script).toContain("systemctl try-restart lando-proxy-http.service lando-proxy-https.service");
   });
 });
 
@@ -219,6 +220,7 @@ describe("installSocketProxy", () => {
     expect(script).toContain("lando-proxy-https.service");
     expect(script).toContain(POLKIT_RULE_PATH);
     expect(script).toContain("daemon-reload");
+    expect(script).toContain("try-restart lando-proxy-http.service");
     expect(script).not.toContain("systemctl enable");
   });
 
@@ -251,6 +253,68 @@ describe("installSocketProxy", () => {
     expect(installed).toBe(true);
     expect(outcome.kind).toBe("already-installed");
     expect(privilege.calls()).toHaveLength(0);
+  });
+
+  test("rewrites units when an existing hop target differs", async () => {
+    // Given: marked units whose ExecStart still hops to 38080/38443.
+    const staleHttp = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38080\n`;
+    const staleHttps = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38443\n`;
+    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    present["/etc/systemd/system/lando-proxy-http.service"] = staleHttp;
+    present["/etc/systemd/system/lando-proxy-https.service"] = staleHttps;
+    const privilege = makePrivilege(ok());
+    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
+    const installHost = hostFiles({ ...present, [first]: "binary" });
+
+    // When: install is asked to hop to 8080/8443.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        exists: installHost.exists,
+        readText: installHost.readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
+      }),
+    );
+
+    // Then: elevate rewrites units to the new hop pair.
+    expect(outcome.kind).toBe("installed");
+    expect(privilege.calls()).toHaveLength(1);
+    const script = privilege.calls()[0]?.join(" ") ?? "";
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).toContain("try-restart lando-proxy-http.service");
+  });
+
+  test("does not treat 4443 as matching hop target 444", async () => {
+    // Given: marked units hopping to 4443/8080.
+    const httpUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`;
+    const httpsUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:4443\n`;
+    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    present["/etc/systemd/system/lando-proxy-http.service"] = httpUnit;
+    present["/etc/systemd/system/lando-proxy-https.service"] = httpsUnit;
+    const privilege = makePrivilege(ok());
+    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
+    const installHost = hostFiles({ ...present, [first]: "binary" });
+
+    // When: install is asked to hop to 8080/444.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        exists: installHost.exists,
+        readText: installHost.readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 444,
+      }),
+    );
+
+    // Then: 4443 is not a prefix match for 444, so units are rewritten.
+    expect(outcome.kind).toBe("installed");
+    expect(privilege.calls()).toHaveLength(1);
   });
 
   test("records elevation refusal without throwing when elevate exits nonzero", async () => {

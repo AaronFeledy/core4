@@ -95,6 +95,8 @@ export const isSocketProxyInstalled = (access: HostPathAccess): Effect.Effect<bo
     return true;
   });
 
+const hopTargetPattern = (port: number): RegExp => new RegExp(`127\\.0\\.0\\.1:${port}(?!\\d)`, "u");
+
 const hopsMatchTargets = (
   access: HostPathAccess,
   httpTarget: number,
@@ -109,7 +111,7 @@ const hopsMatchTargets = (
       .pipe(Effect.catchAll(() => Effect.succeed("")));
     const hopPattern = /127\.0\.0\.1:\d+/u;
     if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
-    return httpUnit.includes(`127.0.0.1:${httpTarget}`) && httpsUnit.includes(`127.0.0.1:${httpsTarget}`);
+    return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
   });
 
 export const installSocketProxy = (

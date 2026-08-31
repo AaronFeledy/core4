@@ -69,6 +69,7 @@ export type TraefikPublishPorts = {
 };
 
 export type TraefikPublishState = {
+  readonly mode?: string;
   readonly httpPort?: number;
   readonly httpsPort?: number;
   readonly bindHttpPort?: number;
@@ -79,6 +80,9 @@ export const resolveTraefikPublishPorts = (state: TraefikPublishState | undefine
   if (state === undefined) return { http: TRAEFIK_HTTP_PORT, https: TRAEFIK_HTTPS_PORT };
   if (state.bindHttpPort !== undefined && state.bindHttpsPort !== undefined) {
     return { http: state.bindHttpPort, https: state.bindHttpsPort };
+  }
+  if (state.mode === "socket-helper") {
+    return { http: TRAEFIK_HTTP_PORT, https: TRAEFIK_HTTPS_PORT };
   }
   if (state.httpPort !== undefined && state.httpsPort !== undefined) {
     return { http: state.httpPort, https: state.httpsPort };
@@ -138,6 +142,7 @@ const loadAcquisitionState = (): Effect.Effect<AcquisitionState | undefined> =>
   });
 
 const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
+  mode: state.mode,
   httpPort: state.httpPort,
   httpsPort: state.httpsPort,
   ...(state.bindHttpPort === undefined ? {} : { bindHttpPort: state.bindHttpPort }),
