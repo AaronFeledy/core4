@@ -8,7 +8,6 @@ import {
   type ForwardOutcome,
   probeForward,
 } from "./port-acquisition.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
 import {
   POLKIT_RULE_PATH,
@@ -50,8 +49,8 @@ export interface InstallSocketProxyInput extends HostPathAccess {
   readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
   readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
   readonly serviceType?: SocketProxyServiceType;
-  readonly httpTarget?: number;
-  readonly httpsTarget?: number;
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
 }
 
 export interface StartSocketsInput {
@@ -118,10 +117,8 @@ export const installSocketProxy = (
   input: InstallSocketProxyInput,
 ): Effect.Effect<SocketProxyInstallOutcome> =>
   Effect.gen(function* () {
-    const httpTarget = input.httpTarget ?? TRAEFIK_HTTP_PORT;
-    const httpsTarget = input.httpsTarget ?? TRAEFIK_HTTPS_PORT;
     if (yield* isSocketProxyInstalled(input)) {
-      if (yield* hopsMatchTargets(input, httpTarget, httpsTarget)) {
+      if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
         return { kind: "already-installed" };
       }
     }
@@ -133,8 +130,8 @@ export const installSocketProxy = (
       user: input.user,
       binary,
       serviceType: input.serviceType ?? "notify",
-      httpTarget,
-      httpsTarget,
+      httpTarget: input.httpTarget,
+      httpsTarget: input.httpsTarget,
     });
     const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
     if (elevated.exitCode !== 0) {

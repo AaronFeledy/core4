@@ -1,5 +1,3 @@
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
-
 export const UNIT_MARKER = "# lando-proxy-socket-helper" as const;
 export const POLKIT_RULE_PATH = "/etc/polkit-1/rules.d/10-lando-proxy.rules" as const;
 const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
@@ -126,15 +124,15 @@ export const buildInstallScript = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
-  readonly httpTarget?: number;
-  readonly httpsTarget?: number;
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
 }): string => {
   const units = renderSocketProxyUnits({
     user: input.user,
     binary: input.binary,
     serviceType: input.serviceType,
-    httpTarget: input.httpTarget ?? TRAEFIK_HTTP_PORT,
-    httpsTarget: input.httpsTarget ?? TRAEFIK_HTTPS_PORT,
+    httpTarget: input.httpTarget,
+    httpsTarget: input.httpsTarget,
   });
   const writes = SOCKET_UNIT_NAMES.map((name) => heredoc(`${SYSTEMD_UNIT_DIR}/${name}`, units[name]));
   return [

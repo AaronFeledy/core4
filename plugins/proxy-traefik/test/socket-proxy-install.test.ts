@@ -207,6 +207,8 @@ describe("installSocketProxy", () => {
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
@@ -221,6 +223,9 @@ describe("installSocketProxy", () => {
     expect(script).toContain(POLKIT_RULE_PATH);
     expect(script).toContain("daemon-reload");
     expect(script).toContain("try-restart lando-proxy-http.service");
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).not.toContain("38080");
     expect(script).not.toContain("systemctl enable");
   });
 
@@ -246,6 +251,8 @@ describe("installSocketProxy", () => {
         readText: installHost.readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
@@ -330,6 +337,8 @@ describe("installSocketProxy", () => {
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
