@@ -14,7 +14,7 @@ import {
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -212,7 +212,7 @@ describe("setup router lists", () => {
         ...portBinds([9443, 9444], 9443),
       },
     };
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup is given router lists, not deps.router.
     await Effect.runPromise(
@@ -244,7 +244,7 @@ describe("setup router lists", () => {
       httpBinds: { ...portBinds(HTTP_TRY_LIST, 80), 9080: bind("success") },
       httpsBinds: { ...portBinds(HTTPS_TRY_LIST, 443), 9443: bind("success") },
     };
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup receives preferred ports only.
     await Effect.runPromise(
@@ -273,7 +273,7 @@ describe("setup routing-state", () => {
       httpBinds: portBinds(HTTP_TRY_LIST, 80),
       httpsBinds: portBinds(HTTPS_TRY_LIST, 443),
     });
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       ...deps,
       globalApp: {
         ensureRunning: () => Effect.fail(new Error("traefik start failed")),
@@ -298,7 +298,7 @@ describe("setup router pin", () => {
       routingStateFile(paths),
       `http://127.0.0.1:${TRAEFIK_HTTP_PORT}\nhttps://127.0.0.1:${TRAEFIK_HTTPS_PORT}`,
     );
-    const service = makeTraefikProxyService(makeDeps(store, own8080Override()));
+    const service = makeTraefikRouterService(makeDeps(store, own8080Override()));
 
     // When: setup is given routerPin, not deps.routerPin.
     const exit = await Effect.runPromiseExit(
@@ -324,7 +324,7 @@ describe("setup exhausted lists", () => {
     const store = memoryFiles();
     const httpBinds = Object.fromEntries(HTTP_TRY_LIST.map((port) => [port, bind("EADDRINUSE")]));
     const httpsBinds = Object.fromEntries(HTTPS_TRY_LIST.map((port) => [port, bind("EADDRINUSE")]));
-    const service = makeTraefikProxyService(
+    const service = makeTraefikRouterService(
       makeDeps(store, {
         http: { bind: bind("EADDRINUSE"), forward: forward("failure"), holder: "nginx" },
         https: { bind: bind("EADDRINUSE"), forward: forward("failure"), holder: "nginx" },
@@ -354,7 +354,7 @@ describe("setup try-list probe walk", () => {
     // Given: no classifyOverride, so setup walks probeBind over the production lists.
     const store = memoryFiles();
     const probed: number[] = [];
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,

@@ -11,8 +11,8 @@ import {
   PathsService,
   PrivilegeService,
   ProcessRunner,
-  ProxyService,
-  type ProxyServiceShape,
+  RouterService,
+  type RouterServiceShape,
 } from "@lando/sdk/services";
 
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
@@ -60,7 +60,7 @@ const applyError = (app: AppId, cause: unknown): ProxyApplyError =>
 
 const proxyError = (operation: string, cause: unknown): ProxyError =>
   new ProxyError({
-    message: `Traefik proxy ${operation} failed.`,
+    message: `Traefik router ${operation} failed.`,
     proxyId: TRAEFIK_PROXY_ID,
     remediation: "Check the global Traefik service and its route-config directory, then retry.",
     cause,
@@ -106,9 +106,9 @@ const routerPinFromConfig = (pin: NonNullable<ProxyConfig["routerPin"]>): Traefi
   ...(pin.httpsPort === undefined ? {} : { httpsPort: pin.httpsPort }),
 });
 
-export const makeTraefikProxyService = (
+export const makeTraefikRouterService = (
   dependencies: TraefikProxyDependencies,
-): ProxyServiceShape & {
+): RouterServiceShape & {
   readonly readAppliedRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
   const routes = new Map<string, ReadonlyArray<RoutePlan>>();
@@ -206,7 +206,7 @@ export const makeTraefikProxyService = (
 };
 
 export const proxy = Layer.effect(
-  ProxyService,
+  RouterService,
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem;
     const paths = yield* PathsService;
@@ -214,7 +214,7 @@ export const proxy = Layer.effect(
     const certificateAuthority = yield* CertificateAuthority;
     const events = yield* Effect.serviceOption(EventService);
     const socketProxy = yield* resolveLiveSocketProxy;
-    return makeTraefikProxyService({
+    return makeTraefikRouterService({
       certificateAuthority,
       fileSystem: {
         ...fileSystem,

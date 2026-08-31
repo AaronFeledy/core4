@@ -3,7 +3,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
-import { PLUGIN_NAME, globalServices, manifest, proxy, proxyServices } from "../src/index.ts";
+import { PLUGIN_NAME, globalServices, manifest, proxy, routerServices } from "../src/index.ts";
 
 describe("@lando/proxy-traefik plugin exports", () => {
   test("PLUGIN_NAME is the package name", () => {
@@ -24,18 +24,18 @@ describe("@lando/proxy-traefik plugin exports", () => {
     expect(traefik?.module).toBe("./src/global-services/traefik.ts");
     expect(traefik?.enabledByDefault).toBe(true);
     expect(traefik?.requires?.providerCapabilities).toEqual(["sharedCrossAppNetwork"]);
-    expect(traefik?.summary).toBe("Global Traefik reverse proxy");
+    expect(traefik?.summary).toBe("Global Traefik router");
   });
 
-  test("manifest declares the traefik proxy contribution", () => {
-    expect(manifest.contributes?.proxyServices).toEqual([
+  test("manifest declares the traefik routerServices contribution", () => {
+    expect(manifest.contributes?.routerServices).toEqual([
       {
         id: "traefik",
         module: "./src/proxy.ts",
         defaultFor: { platform: ["darwin", "linux", "win32"] },
       },
     ]);
-    expect(proxyServices.get("traefik")).toBe(proxy);
+    expect(routerServices.get("traefik")).toBe(proxy);
   });
 
   test("globalServices map yields the traefik ServiceConfig effect", async () => {

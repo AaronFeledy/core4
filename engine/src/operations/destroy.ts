@@ -16,7 +16,7 @@ import {
   FileSyncEngine,
   LandofileService,
   PathsService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -58,7 +58,7 @@ export const destroyAppForTarget = (
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
     const paths = yield* PathsService;
-    const proxy = yield* Effect.serviceOption(ProxyService);
+    const proxy = yield* Effect.serviceOption(RouterService);
 
     const plan = target.plan;
     const provider = yield* registry.select(plan);

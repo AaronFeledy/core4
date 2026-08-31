@@ -16,7 +16,7 @@ import {
 } from "../src/port-acquisition.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -271,7 +271,7 @@ describe("setup persistence", () => {
   test("persists classified acquisition mode after the service is running", async () => {
     // Given: a Traefik proxy whose global service ensureRunning succeeds.
     const files = new Map<string, string>();
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

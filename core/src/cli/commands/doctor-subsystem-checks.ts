@@ -72,12 +72,12 @@ export interface SubsystemSpec {
 }
 
 export const PROXY_SPEC: SubsystemSpec = {
-  name: "proxy",
+  name: "router",
   recovery: "automatic",
   automaticRemediation:
-    "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
+    "The HTTPS router is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
   manualRemediation:
-    "The HTTPS reverse proxy is not running. Run `lando setup` to provision and start the global app with Traefik.",
+    "The HTTPS router is not running. Run `lando setup` to provision and start the global app with Traefik.",
 };
 
 export const CERTS_SPEC: SubsystemSpec = {

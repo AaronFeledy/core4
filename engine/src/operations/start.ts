@@ -17,7 +17,7 @@ import {
   LandofileService,
   type PathsService,
   type PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
 } from "@lando/sdk/services";
@@ -68,7 +68,7 @@ type StartAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
-  | ProxyService
+  | RouterService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -90,7 +90,7 @@ export const startAppForTarget = (
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
-    const proxy = yield* ProxyService;
+    const proxy = yield* RouterService;
 
     const plan = target.plan;
     const provider = yield* registry.select(plan);

@@ -5,11 +5,11 @@ import { ProxySetupError } from "@lando/sdk/errors";
 import {
   CertificateAuthority,
   HealthcheckRunner,
-  ProxyService,
+  RouterService,
   SshService,
   UrlScanner,
 } from "@lando/sdk/services";
-import { TestProxyService, makeTestProxyService, makeTestSshService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
@@ -23,11 +23,11 @@ import {
 } from "../../src/cli/commands/doctor-subsystems.ts";
 import { CertificateAuthorityUnavailableLive } from "../../src/testing/engine-layers.ts";
 import { HealthcheckRunnerUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { ProxyServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
+import { RouterServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
 import { UrlScannerUnavailableLive } from "../../src/testing/engine-layers.ts";
 import { SshServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
 
-const AUTOMATIC_SUBSYSTEMS = ["proxy", "ssh"] as const;
+const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;
 const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
 const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
@@ -115,12 +115,12 @@ describe("each subsystem failure path produces a tagged error with severity + so
   test("each bundled subsystem failure path fails with its tagged error and maps to a diagnostic", async () => {
     const proxy = await Effect.runPromiseExit(
       Effect.scoped(
-        Effect.flatMap(ProxyService, (s) => s.setup({ defaultDomain: "lndo.site" })).pipe(
-          Effect.provide(ProxyServiceUnavailableLive),
+        Effect.flatMap(RouterService, (s) => s.setup({ defaultDomain: "lndo.site" })).pipe(
+          Effect.provide(RouterServiceUnavailableLive),
         ),
       ),
     );
-    expectTaggedDiagnosticForFailure("proxy", proxy);
+    expectTaggedDiagnosticForFailure("router", proxy);
 
     const ca = await Effect.runPromiseExit(
       Effect.flatMap(CertificateAuthority, (s) => s.setup({ force: false })).pipe(
@@ -150,9 +150,9 @@ describe("each subsystem failure path produces a tagged error with severity + so
     );
     expectTaggedDiagnosticForFailure("scanner", scanner);
 
-    const diag = subsystemFailureDiagnostic("proxy", "unavailable", new Error("boom"));
+    const diag = subsystemFailureDiagnostic("router", "unavailable", new Error("boom"));
     expect(diag._tag).toBe("DoctorSubsystemFailure");
-    expect(diag.subsystem).toBe("proxy");
+    expect(diag.subsystem).toBe("router");
     expect(["info", "warn", "error"]).toContain(diag.severity);
     expect(diag.solution.description.length).toBeGreaterThan(0);
   });
@@ -193,10 +193,10 @@ describe("doctor --fix recovery", () => {
     }
   });
 
-  test("--fix recovers a selected-but-stopped ProxyService without using the unavailable stub", async () => {
+  test("--fix recovers a selected-but-stopped RouterService without using the unavailable stub", async () => {
     let setupCalls = 0;
-    const proxyService = makeTestProxyService();
-    const stoppedTraefik = Layer.succeed(ProxyService, {
+    const proxyService = makeTestRouterService();
+    const stoppedTraefik = Layer.succeed(RouterService, {
       ...proxyService,
       id: "traefik",
       setup: (config) =>
@@ -208,7 +208,7 @@ describe("doctor --fix recovery", () => {
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
-    const proxy = result.checks.find((c) => c.name === "proxy");
+    const proxy = result.checks.find((c) => c.name === "router");
 
     expect(setupCalls).toBe(1);
     expect(proxy?.status).toBe("pass");
@@ -251,8 +251,8 @@ describe("doctor --fix recovery", () => {
   });
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
-    const proxyService = makeTestProxyService();
-    const recoverableProxy = Layer.succeed(ProxyService, {
+    const proxyService = makeTestRouterService();
+    const recoverableProxy = Layer.succeed(RouterService, {
       ...proxyService,
       id: "unavailable",
       setup: (config) => proxyService.setup(config),
@@ -261,7 +261,7 @@ describe("doctor --fix recovery", () => {
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
-    const proxy = result.checks.find((c) => c.name === "proxy");
+    const proxy = result.checks.find((c) => c.name === "router");
 
     expect(proxy?.status).toBe("pass");
     expect(proxy?.severity).toBe("info");
@@ -274,8 +274,8 @@ describe("doctor --fix recovery", () => {
   });
 
   test("--fix redacts secret-like environment values from failed setup errors", async () => {
-    const secretErrorProxy = Layer.succeed(ProxyService, {
-      ...TestProxyService,
+    const secretErrorProxy = Layer.succeed(RouterService, {
+      ...TestRouterService,
       id: "unavailable",
       setup: () =>
         Effect.fail(
@@ -290,7 +290,7 @@ describe("doctor --fix recovery", () => {
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
-    const proxy = result.checks.find((c) => c.name === "proxy");
+    const proxy = result.checks.find((c) => c.name === "router");
     const text = renderSubsystemDoctorResult(result);
     const ndjson = renderSubsystemDoctorResultAsNdjson(result, {
       now: new Date("1970-01-01T00:00:00.000Z"),

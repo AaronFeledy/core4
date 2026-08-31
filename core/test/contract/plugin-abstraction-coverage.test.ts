@@ -78,9 +78,9 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {
-    abstraction: "ProxyService",
-    makeExport: "makeProxyServiceContractSuite",
-    runExport: "runProxyServiceContractSuite",
+    abstraction: "RouterService",
+    makeExport: "makeRouterServiceContractSuite",
+    runExport: "runRouterServiceContractSuite",
     defaultPolicy: "built-in",
     invocationFiles: ["engine/test/subsystems/proxy/traefik-contract.test.ts"],
   },

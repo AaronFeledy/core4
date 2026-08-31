@@ -8,8 +8,8 @@ import {
   plugin,
   preferredHostPortsCheck,
   proxy,
-  proxyServices,
   proxyTlsDoctorCheck,
+  routerServices,
 } from "../src/index.ts";
 
 const contributionIds = (
@@ -28,9 +28,9 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     // Given
     const contributes = manifest.contributes ?? {};
 
-    // When / Then — proxyServices
-    for (const id of contributionIds(contributes.proxyServices)) {
-      expect(plugin.proxyServices?.has(id)).toBe(true);
+    // When / Then — routerServices
+    for (const id of contributionIds(contributes.routerServices)) {
+      expect(plugin.routerServices?.has(id)).toBe(true);
     }
 
     // When / Then — globalServices
@@ -44,7 +44,7 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     // Then
     expect(plugin.manifest).toBe(manifest);
     expect(plugin.layer).toBe(proxy);
-    expect(plugin.proxyServices).toBe(proxyServices);
+    expect(plugin.routerServices).toBe(routerServices);
     expect(plugin.globalServices).toBe(globalServices);
   });
 

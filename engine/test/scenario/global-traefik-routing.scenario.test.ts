@@ -31,7 +31,7 @@ const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
         module: "./src/global-services/traefik.ts",
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
-        summary: "Global Traefik reverse proxy",
+        summary: "Global Traefik router",
       },
     ],
   },

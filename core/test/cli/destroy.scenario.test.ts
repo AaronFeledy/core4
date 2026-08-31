@@ -25,7 +25,7 @@ import {
   FileSyncEngine,
   LandofileService,
   PathsService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
@@ -247,7 +247,7 @@ const makeDestroyLayer = (
     list: () => Effect.succeed([]),
   };
 
-  const proxyLayer = Layer.succeed(ProxyService, {
+  const proxyLayer = Layer.succeed(RouterService, {
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () => Effect.void,

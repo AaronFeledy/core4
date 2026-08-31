@@ -14,11 +14,11 @@ import {
   EventService,
   FileSyncEngine,
   PathsService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
@@ -107,7 +107,7 @@ export const makeHarness = (
       waitForAny: () => Effect.die("not used"),
       query: () => Effect.succeed([]),
     }),
-    ...(options.proxyAvailable === false ? [] : [Layer.succeed(ProxyService, TestProxyService)]),
+    ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
   return { layer, events };

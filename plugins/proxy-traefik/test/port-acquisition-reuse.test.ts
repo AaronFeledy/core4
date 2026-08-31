@@ -17,7 +17,7 @@ import {
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -477,7 +477,7 @@ describe("fallback notice", () => {
       httpsHolder: "nginx",
     });
     const bodies: string[] = [];
-    const service = makeTraefikProxyService(
+    const service = makeTraefikRouterService(
       makeDeps(store, classifyOverride, {
         events: {
           publish: (event: { readonly _tag: string; readonly body?: string }) =>
@@ -512,7 +512,7 @@ describe("chosen 8080 vs routing-state", () => {
       httpHolder: "nginx",
       httpsHolder: "nginx",
     });
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup writes acquisition JSON and routing-state.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
@@ -534,7 +534,7 @@ describe("chosen 8080 vs routing-state", () => {
       httpHolder: "nginx",
       httpsHolder: "nginx",
     });
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup persists advertised authorities.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));

@@ -50,7 +50,7 @@ const normalizeExternalContributionModules = async (
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
-  const proxyServices = manifest.contributes?.proxyServices;
+  const routerServices = manifest.contributes?.routerServices;
   const remoteSources = manifest.contributes?.remoteSources;
   const datasets = manifest.contributes?.datasets;
   const tunnelServices = manifest.contributes?.tunnelServices;
@@ -62,7 +62,7 @@ const normalizeExternalContributionModules = async (
     httpClients === undefined &&
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
-    proxyServices === undefined &&
+    routerServices === undefined &&
     remoteSources === undefined &&
     datasets === undefined &&
     tunnelServices === undefined &&
@@ -162,11 +162,11 @@ const normalizeExternalContributionModules = async (
             module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
           })),
         );
-  const normalizedProxyServices =
-    proxyServices === undefined
+  const normalizedRouterServices =
+    routerServices === undefined
       ? undefined
       : await Promise.all(
-          proxyServices.map(async (contribution) => ({
+          routerServices.map(async (contribution) => ({
             ...contribution,
             module: await normalizeContributionModulePath(contribution.module),
           })),
@@ -231,7 +231,7 @@ const normalizeExternalContributionModules = async (
       ...(normalizedCertificateAuthorities === undefined
         ? {}
         : { certificateAuthorities: normalizedCertificateAuthorities }),
-      ...(normalizedProxyServices === undefined ? {} : { proxyServices: normalizedProxyServices }),
+      ...(normalizedRouterServices === undefined ? {} : { routerServices: normalizedRouterServices }),
       ...(normalizedRemoteSources === undefined ? {} : { remoteSources: normalizedRemoteSources }),
       ...(normalizedDatasets === undefined ? {} : { datasets: normalizedDatasets }),
       ...(normalizedTunnelServices === undefined ? {} : { tunnelServices: normalizedTunnelServices }),

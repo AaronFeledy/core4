@@ -373,7 +373,7 @@ describe("meta:doctor command", () => {
             {
               id: "proxy",
               status: "failed",
-              evidence: "Proxy setup failed: HTTP_PROXY_PASSWORD=super-secret",
+              evidence: "Router setup failed: HTTP_PROXY_PASSWORD=super-secret",
               remediation: "Rerun `lando setup`; HTTP_PROXY_PASSWORD=super-secret",
             },
           ],

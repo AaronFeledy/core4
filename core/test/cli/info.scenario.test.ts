@@ -22,11 +22,11 @@ import {
   AppPlanner,
   type ConfigService,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestRouterService } from "@lando/sdk/test";
 
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -301,7 +301,7 @@ const makeInfoLayer = (
       capabilities: Effect.succeed(providerCapabilities),
       select: () => Effect.succeed(provider),
     }),
-    Layer.succeed(ProxyService, {
+    Layer.succeed(RouterService, {
       id: "recording",
       capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
       setup: () => Effect.void,
@@ -583,7 +583,7 @@ describe("lando info — resolved log sources", () => {
         capabilities: Effect.succeed(caps),
         select: () => Effect.succeed(provider),
       }),
-      Layer.succeed(ProxyService, TestProxyService),
+      Layer.succeed(RouterService, TestRouterService),
       emptyConfigServiceLayer,
     );
   };

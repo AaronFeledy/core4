@@ -1,5 +1,5 @@
 /**
- * `lando meta:setup` prepares the host provider, CA, proxy, and shell integration.
+ * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
  * Setup ignores leftover `defaultProviderId` in user config so a last-used
  * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
@@ -105,8 +105,8 @@ export const setupSpec: LandoCommandSpec<
   resultSchema: SetupResultSchema,
   id: "meta:setup",
   helpGroup: "common",
-  summary: "Run host setup (provider, CA, proxy, shell integration).",
-  description: "Run provider, CA, proxy, and shell-integration setup.",
+  summary: "Run host setup (provider, CA, router, shell integration).",
+  description: "Run provider, CA, router, and shell-integration setup.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",

@@ -18,7 +18,7 @@ import {
   AppPlanner,
   EventService,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -49,7 +49,7 @@ type RebuildAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
-  | ProxyService
+  | RouterService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -60,7 +60,7 @@ export const rebuildApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
-    const proxy = yield* ProxyService;
+    const proxy = yield* RouterService;
     const resolvedTarget =
       target ??
       (yield* Effect.gen(function* () {

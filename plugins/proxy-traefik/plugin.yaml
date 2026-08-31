@@ -1,14 +1,14 @@
-# @lando/proxy-traefik — Traefik-backed ProxyService.
+# @lando/proxy-traefik — Traefik-backed RouterService.
 
 name: "@lando/proxy-traefik"
 version: "0.0.0"
 api: 4
-description: "Traefik-backed ProxyService implementation."
+description: "Traefik-backed RouterService implementation contributing routerServices."
 enabled: true
 updateable: true
 
 provides:
-  proxyServices:
+  routerServices:
     - id: traefik
       module: ./src/proxy.ts
       defaultFor:

@@ -9,8 +9,8 @@ import {
   CertificateAuthority,
   ConfigService,
   PathsService,
-  ProxyService,
-  type ProxyServiceShape,
+  RouterService,
+  type RouterServiceShape,
 } from "@lando/sdk/services";
 
 import {
@@ -18,15 +18,15 @@ import {
   type CertificateAuthorityResolverShape,
 } from "../../../src/testing/engine-layers.ts";
 import {
-  type ProxyServiceRegistration,
-  ProxyServiceRegistry,
-  SelectedProxyServiceLive,
-  makeProxyServiceRegistry,
-  makeProxyServiceRegistryLive,
+  type RouterServiceRegistration,
+  RouterServiceRegistry,
+  SelectedRouterServiceLive,
+  makeRouterServiceRegistry,
+  makeRouterServiceRegistryLive,
 } from "../../../src/testing/engine-layers.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
-const service = (id: string): ProxyServiceShape => ({
+const service = (id: string): RouterServiceShape => ({
   id,
   capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
   setup: () => Effect.void,
@@ -38,10 +38,10 @@ const service = (id: string): ProxyServiceShape => ({
 
 const registration = (
   id: string,
-  defaultFor?: ProxyServiceRegistration["defaultFor"],
-): ProxyServiceRegistration => ({
+  defaultFor?: RouterServiceRegistration["defaultFor"],
+): RouterServiceRegistration => ({
   id,
-  layer: Layer.succeed(ProxyService, service(id)),
+  layer: Layer.succeed(RouterService, service(id)),
   ...(defaultFor === undefined ? {} : { defaultFor }),
 });
 
@@ -52,38 +52,38 @@ const configLayer = Layer.succeed(ConfigService, {
 });
 const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 
-const proxyModule = (id: string, layer: ProxyServiceRegistration["layer"]): LandoPluginModule => ({
+const proxyModule = (id: string, layer: RouterServiceRegistration["layer"]): LandoPluginModule => ({
   name: "@lando/proxy-test",
   manifest: Schema.decodeSync(PluginManifest)({
     name: "@lando/proxy-test",
     version: "1.0.0",
     api: 4,
-    contributes: { proxyServices: [{ id, module: "./proxy.ts" }] },
+    contributes: { routerServices: [{ id, module: "./proxy.ts" }] },
   }),
-  proxyServices: new Map([[id, layer]]),
+  routerServices: new Map([[id, layer]]),
 });
 
 const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explicit: string) =>
   Effect.runPromise(
-    Effect.flatMap(ProxyServiceRegistry, (registry) => registry.select({ explicit })).pipe(
+    Effect.flatMap(RouterServiceRegistry, (registry) => registry.select({ explicit })).pipe(
       Effect.provide(
-        makeProxyServiceRegistryLive(modules).pipe(Layer.provide(Layer.merge(configLayer, pathsLayer))),
+        makeRouterServiceRegistryLive(modules).pipe(Layer.provide(Layer.merge(configLayer, pathsLayer))),
       ),
       Effect.either,
     ),
   );
 
 const buildSelectedProxy = (
-  registry: Context.Tag.Service<typeof ProxyServiceRegistry>,
+  registry: Context.Tag.Service<typeof RouterServiceRegistry>,
   resolver: CertificateAuthorityResolverShape,
 ) =>
   Effect.scoped(
     Effect.map(
       Layer.build(
-        SelectedProxyServiceLive.pipe(
+        SelectedRouterServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProxyServiceRegistry, registry),
+              Layer.succeed(RouterServiceRegistry, registry),
               Layer.succeed(CertificateAuthorityResolver, resolver),
               Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
               provideTestRuntime({ bootstrap: "global" }),
@@ -91,14 +91,14 @@ const buildSelectedProxy = (
           ),
         ),
       ),
-      (context) => Context.get(context, ProxyService),
+      (context) => Context.get(context, RouterService),
     ),
   );
 
-describe("ProxyService registry selection", () => {
+describe("RouterService registry selection", () => {
   test("resolves an id from an injected plugin descriptor module", async () => {
-    // Given: an injected descriptor module with one static ProxyService layer.
-    const fakeLayer = Layer.succeed(ProxyService, service("fake"));
+    // Given: an injected descriptor module with one static RouterService layer.
+    const fakeLayer = Layer.succeed(RouterService, service("fake"));
 
     // When: the descriptor-backed registry resolves its contributed id.
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "fake");
@@ -110,7 +110,7 @@ describe("ProxyService registry selection", () => {
 
   test("preserves the typed selection error for an id absent from injected modules", async () => {
     // Given: an injected descriptor module that contributes only the fake id.
-    const fakeLayer = Layer.succeed(ProxyService, service("fake"));
+    const fakeLayer = Layer.succeed(RouterService, service("fake"));
 
     // When: a different id is selected explicitly.
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "missing");
@@ -120,12 +120,12 @@ describe("ProxyService registry selection", () => {
     if (Either.isLeft(result)) {
       expect(result.left).toBeInstanceOf(ProxyError);
       expect(result.left.proxyId).toBe("missing");
-      expect(result.left.message).toBe("Proxy service missing is not installed.");
+      expect(result.left.message).toBe("Router service missing is not installed.");
     }
   });
 
   test("selects the sole bundled default", async () => {
-    const registry = makeProxyServiceRegistry({
+    const registry = makeRouterServiceRegistry({
       registrations: [registration("traefik")],
       configured: Effect.succeed(undefined),
       platform: "linux",
@@ -138,7 +138,7 @@ describe("ProxyService registry selection", () => {
 
   test("selects the Linux manifest default for a WSL host", async () => {
     // Given
-    const registry = makeProxyServiceRegistry({
+    const registry = makeRouterServiceRegistry({
       registrations: [
         registration("traefik", { platform: ["linux"] }),
         registration("remote", { platform: ["darwin"] }),
@@ -155,7 +155,7 @@ describe("ProxyService registry selection", () => {
   });
 
   test("explicit test contribution overrides a bundled default", async () => {
-    const registry = makeProxyServiceRegistry({
+    const registry = makeRouterServiceRegistry({
       registrations: [registration("traefik", { platform: ["linux"] }), registration("test")],
       configured: Effect.succeed("traefik"),
       platform: "linux",
@@ -167,7 +167,7 @@ describe("ProxyService registry selection", () => {
   });
 
   test("global config wins before manifest defaults", async () => {
-    const registry = makeProxyServiceRegistry({
+    const registry = makeRouterServiceRegistry({
       registrations: [registration("traefik", { platform: ["linux"] }), registration("remote")],
       configured: Effect.succeed("remote"),
       platform: "linux",
@@ -182,7 +182,7 @@ describe("ProxyService registry selection", () => {
     // Given: a contributed proxy Layer requiring CertificateAuthority and an observable resolver.
     let resolutions = 0;
     const requiringCa = Layer.effect(
-      ProxyService,
+      RouterService,
       Effect.map(CertificateAuthority, (authority) => ({
         ...service("needs-ca"),
         applyRoutes: (routes, app) =>
