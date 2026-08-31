@@ -74,6 +74,8 @@ export const persistPortAcquisition = (
             httpsPort: previous.httpsPort,
             helperInstalled: previous.helperInstalled === true,
             socketsActive: previous.socketsActive === true,
+            ...(previous.bindHttpPort === undefined ? {} : { bindHttpPort: previous.bindHttpPort }),
+            ...(previous.bindHttpsPort === undefined ? {} : { bindHttpsPort: previous.bindHttpsPort }),
           };
     if (routingExists && pin !== undefined && previousPair !== undefined && pinDiffers(previousPair, pin)) {
       return yield* Effect.fail(pinMismatch(previousPair, pin));

@@ -4,6 +4,7 @@ import { Cause, Effect, type Exit } from "effect";
 import * as sdkErrors from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
 import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import {
   type BindOutcome,
@@ -573,5 +574,46 @@ describe("ownership probe bind address", () => {
     // Then: ownership probes 0.0.0.0, not loopback.
     expect(probedHosts.includes("0.0.0.0")).toBe(true);
     expect(probedHosts.includes("127.0.0.1")).toBe(false);
+  });
+});
+
+describe("stillOwnPersisted hop ports", () => {
+  test("rejects reuse when a socket-helper hop port is held by a foreign process", async () => {
+    // Given: helper still owns 80/443; hop 8080 is nginx.
+    const probeBind = (_host: string, port: number) => {
+      if (port === 80 || port === 443) {
+        return Effect.succeed(bind("EADDRINUSE"));
+      }
+      if (port === 8080 || port === 8443) {
+        return Effect.succeed(bind("other-error"));
+      }
+      return Effect.succeed(bind("success"));
+    };
+    const base = makeDeps(memoryFiles(), own8080Override());
+    const { socketProxy: _socketProxy, ...withoutSocket } = base;
+    const deps = {
+      ...withoutSocket,
+      probeBind,
+    };
+
+    // When: ownership includes persisted bind ports.
+    const owned = await Effect.runPromise(
+      stillOwnPersisted(
+        deps,
+        {
+          httpPort: 80,
+          httpsPort: 443,
+          helperInstalled: true,
+          socketsActive: true,
+          bindHttpPort: 8080,
+          bindHttpsPort: 8443,
+        },
+        own8080Override(),
+        LOOPBACK,
+      ),
+    );
+
+    // Then: a hop that is neither free nor EADDRINUSE+ours is not owned.
+    expect(owned).toBe(false);
   });
 });

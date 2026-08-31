@@ -38,6 +38,8 @@ export type PersistedPair = {
   readonly httpsPort: number;
   readonly helperInstalled: boolean;
   readonly socketsActive: boolean;
+  readonly bindHttpPort?: number;
+  readonly bindHttpsPort?: number;
 };
 
 const holderFor = (port: number, bind: BindOutcome): Effect.Effect<string | undefined> =>
@@ -204,7 +206,7 @@ export const stillOwnPersisted = (
     const httpHolder = yield* holderFor(previous.httpPort, httpBind);
     const httpsHolder = yield* holderFor(previous.httpsPort, httpsBind);
     const helperOpen = previous.helperInstalled || previous.socketsActive;
-    return (
+    const publicOwned =
       stillOwnPort({
         bind: httpBind,
         holder: httpHolder,
@@ -214,8 +216,18 @@ export const stillOwnPersisted = (
         bind: httpsBind,
         holder: httpsHolder,
         helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpsPort)),
-      })
-    );
+      });
+    if (!publicOwned) return false;
+    for (const hop of [previous.bindHttpPort, previous.bindHttpsPort]) {
+      if (hop === undefined) continue;
+      const hopBind = yield* probe(bindAddress, hop);
+      const hopHolder = yield* holderFor(hop, hopBind);
+      if (hopBind.kind === "success") continue;
+      if (!stillOwnPort({ bind: hopBind, holder: hopHolder, helperTcpOpen: false })) {
+        return false;
+      }
+    }
+    return true;
   });
 
 export const pinMismatch = (

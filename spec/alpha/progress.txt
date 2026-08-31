@@ -402,3 +402,8 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Helper hops now skip 80/443 listen ports, not try-list[0], so a pinned 8080/8443 preferred pair is used as the hop target.
 - Verification: choose-helper-bind-ports and helper install spot checks passed
 ---
+
+## 2026-08-30 20:16 CDT - US-603 Review
+- Reuse now fails when a socket-helper hop port is neither free nor still ours, so Traefik does not rematerialize onto a stolen high port.
+- Verification: typecheck, lint passed; reuse/helper/publish spot checks passed
+---
