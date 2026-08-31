@@ -160,10 +160,10 @@
             "requires": {
               "providerCapabilities": ["sharedCrossAppNetwork"]
             },
-            "summary": "Global Traefik reverse proxy"
+            "summary": "Global Traefik router"
           }
         ],
-        "proxyServices": [
+        "routerServices": [
           {
             "defaultFor": {
               "platform": ["darwin", "linux", "win32"]
@@ -173,7 +173,7 @@
           }
         ]
       },
-      "description": "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+      "description": "Traefik-backed `RouterService` contributing routerServices: [traefik].",
       "enabled": true,
       "entry": "./src/index.ts",
       "name": "@lando/proxy-traefik",
