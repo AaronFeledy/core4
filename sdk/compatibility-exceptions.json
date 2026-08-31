@@ -576,6 +576,18 @@
     "justification": "The unreleased cas manifest key is replaced before Beta by the normative typed certificateAuthorities contribution; no shipped consumer contract exists (US-500)."
   },
   {
+    "surface": "schema:PluginContribution",
+    "changeKind": "property-removed",
+    "path": "$.proxyServices",
+    "justification": "The unreleased proxyServices contribution key is replaced before Beta by the normative typed routerServices surface; no shipped consumer contract exists."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "property-removed",
+    "path": "$.contributes.proxyServices",
+    "justification": "The unreleased proxyServices manifest key is replaced before Beta by the normative typed routerServices contribution; no shipped consumer contract exists."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.tooling.additionalProperties",

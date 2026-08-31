@@ -254,7 +254,7 @@ import {
   PluginManifest,
   PluginSetupContribution,
   PluginSetupFlagContribution,
-  ProxyServiceContribution,
+  RouterServiceContribution,
 } from "./plugin.ts";
 import {
   AppId,
@@ -575,7 +575,7 @@ const rawPublicSchemaRegistry = {
   PluginContribution,
   PluginDoctorReport,
   PluginManifest,
-  ProxyServiceContribution,
+  RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
   FileSyncEngineCapabilities,
@@ -901,7 +901,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PluginTrustState: "Public Lando schema contract for Plugin Trust State.",
   GlobalServiceContribution: "Public Lando schema contract for Global Service Contribution.",
-  ProxyServiceContribution: "Public Lando schema contract for Proxy Service Contribution.",
+  RouterServiceContribution: "Public Lando schema contract for Router Service Contribution.",
   FileSyncEngineCapabilities: "Public Lando schema contract for File Sync Engine Capabilities.",
   FileSyncSessionSpec: "Public Lando schema contract for File Sync Session Spec.",
   FileSyncSessionInfo: "Public Lando schema contract for File Sync Session Info.",

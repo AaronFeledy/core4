@@ -259,9 +259,7 @@ describe("PluginManifest", () => {
 
     expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
     if (Either.isRight(decoded)) {
-      expect(decoded.right.contributes?.routerServices?.[0]).toEqual(
-        encoded.contributes.routerServices[0],
-      );
+      expect(decoded.right.contributes?.routerServices?.[0]).toEqual(encoded.contributes.routerServices[0]);
     }
   });
 });

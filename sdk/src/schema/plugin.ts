@@ -130,12 +130,12 @@ export const InteractionServiceContribution = Schema.Struct({
 });
 export type InteractionServiceContribution = typeof InteractionServiceContribution.Type;
 
-export const ProxyServiceContribution = Schema.Struct({
+export const RouterServiceContribution = Schema.Struct({
   id: Schema.propertySignature(Schema.String).annotations({
-    description: "Unique ProxyService implementation id.",
+    description: "Unique RouterService implementation id.",
   }),
   module: Schema.propertySignature(Schema.String).annotations({
-    description: "Contained plugin module exporting the ProxyService Layer.",
+    description: "Contained plugin module exporting the RouterService Layer.",
   }),
   capabilities: Schema.optional(ProxyCapabilities).annotations({
     description: "Static capability declaration available before loading the implementation.",
@@ -155,7 +155,7 @@ export const ProxyServiceContribution = Schema.Struct({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });
-export type ProxyServiceContribution = typeof ProxyServiceContribution.Type;
+export type RouterServiceContribution = typeof RouterServiceContribution.Type;
 
 export const SshServiceContribution = Schema.Struct({
   id: Schema.propertySignature(Schema.String).annotations({
@@ -205,8 +205,8 @@ export const PluginContribution = Schema.Struct({
   appFeatures: Schema.optional(Schema.Array(ContributionRef)),
   /** Provider ids registered. */
   providers: Schema.optional(Schema.Array(ContributionRef)),
-  proxyServices: Schema.optional(Schema.Array(ProxyServiceContribution)).annotations({
-    description: "ProxyService implementations registered by this plugin.",
+  routerServices: Schema.optional(Schema.Array(RouterServiceContribution)).annotations({
+    description: "RouterService implementations registered by this plugin.",
   }),
   sshServices: Schema.optional(Schema.Array(SshServiceContribution)).annotations({
     description: "SshService implementations registered by this plugin.",

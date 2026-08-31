@@ -56,7 +56,7 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
   CertificateAuthorityShape
 >() {}
 
-export interface ProxyServiceShape {
+export interface RouterServiceShape {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
   readonly setup: (
@@ -71,9 +71,9 @@ export interface ProxyServiceShape {
   readonly stop: Effect.Effect<void, ProxyError>;
 }
 
-export class ProxyService extends Context.Tag("@lando/core/ProxyService")<
-  ProxyService,
-  ProxyServiceShape
+export class RouterService extends Context.Tag("@lando/core/RouterService")<
+  RouterService,
+  RouterServiceShape
 >() {}
 
 export interface SshSetupOptions {
