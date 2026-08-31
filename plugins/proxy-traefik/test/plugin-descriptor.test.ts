@@ -8,8 +8,8 @@ import {
   plugin,
   preferredHostPortsCheck,
   proxy,
-  proxyServices,
   proxyTlsDoctorCheck,
+  routerServices,
 } from "../src/index.ts";
 
 const contributionIds = (
@@ -18,7 +18,7 @@ const contributionIds = (
 
 describe("@lando/proxy-traefik plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
-    // Given / When the additive descriptor is exported
+    // Given / When
     // Then
     expect(plugin.name).toBe(manifest.name);
     expect(plugin.name).toBe(PLUGIN_NAME);
@@ -28,28 +28,28 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     // Given
     const contributes = manifest.contributes ?? {};
 
-    // When / Then — proxyServices
-    for (const id of contributionIds(contributes.proxyServices)) {
-      expect(plugin.proxyServices?.has(id)).toBe(true);
+    // When / Then
+    for (const id of contributionIds(contributes.routerServices)) {
+      expect(plugin.routerServices?.has(id)).toBe(true);
     }
 
-    // When / Then — globalServices
+    // When / Then
     for (const id of contributionIds(contributes.globalServices)) {
       expect(plugin.globalServices?.has(id)).toBe(true);
     }
   });
 
   test("descriptor values are reference-identical to existing exports", () => {
-    // Given / When the descriptor wraps existing package exports
+    // Given / When
     // Then
     expect(plugin.manifest).toBe(manifest);
     expect(plugin.layer).toBe(proxy);
-    expect(plugin.proxyServices).toBe(proxyServices);
+    expect(plugin.routerServices).toBe(routerServices);
     expect(plugin.globalServices).toBe(globalServices);
   });
 
   test("wires the proxy TLS, leftover loopback-port, and preferred-host-port doctor contributions", () => {
-    // Given / When the plugin descriptor is exported
+    // Given / When
     const doctorChecks = plugin.doctorChecks ?? [];
 
     // Then

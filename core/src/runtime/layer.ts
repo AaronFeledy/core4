@@ -29,9 +29,9 @@ import type {
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
-  ProxyService,
   Renderer,
   RootOverrides,
+  RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   ScratchAppService,
@@ -138,7 +138,7 @@ type ScratchRuntimeServices =
   | LandofileService
   | AppPlanner
   | BuildOrchestrator
-  | ProxyService
+  | RouterService
   | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
@@ -150,7 +150,7 @@ export type AppRuntimeServices =
   | ToolingEngine
   | ShellRunner
   | FileSyncEngine
-  | ProxyService
+  | RouterService
   | RuntimeCwd
   | EventCommandExecutor;
 type RuntimeLayer =

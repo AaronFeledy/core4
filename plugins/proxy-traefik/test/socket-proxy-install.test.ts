@@ -12,7 +12,7 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { DEFAULT_HTTPS_TRY_LIST, DEFAULT_HTTP_TRY_LIST } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import {
   POLKIT_RULE_PATH,
   PROXYD_CANDIDATES,
@@ -383,7 +383,7 @@ describe("setup classification after helper install", () => {
     // Given: Linux+systemd, EACCES on 80/443, proxyd present, elevate and forward succeed.
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
@@ -439,7 +439,7 @@ describe("setup classification after helper install", () => {
   test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

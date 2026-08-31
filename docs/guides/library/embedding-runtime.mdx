@@ -113,7 +113,7 @@ for the raw operations only when you need command-level dispatch.
     <Step name="start-info-stop">
       <Run
         runtime="library"
-        code={`const [{ ProxyService }, { TestProxyService }] = yield* Effect.promise(() =>
+        code={`const [{ RouterService }, { TestRouterService }] = yield* Effect.promise(() =>
   Promise.all([import("@lando/core/services"), import("@lando/sdk/test")]),
 );
 const providerLayers = [
@@ -123,7 +123,7 @@ const providerLayers = [
     capabilities: Effect.succeed(LandoTesting.TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(LandoTesting.TestRuntimeProvider),
   }),
-  LandoTesting.withService(ProxyService, TestProxyService),
+  LandoTesting.withService(RouterService, TestRouterService),
 ];
 yield* Effect.promise(() =>
   Bun.write(

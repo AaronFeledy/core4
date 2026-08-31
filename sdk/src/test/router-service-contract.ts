@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 
 import { AppId, type ProxyApplyResult, type RoutePlan, ServiceName } from "../schema/index.ts";
-import type { ProxyServiceShape } from "../services/index.ts";
+import type { RouterServiceShape } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
 
 const failure = (assertion: string, details?: unknown): ContractFailure =>
-  new ContractFailure({ message: `ProxyService contract failed: ${assertion}`, assertion, details });
+  new ContractFailure({ message: `RouterService contract failed: ${assertion}`, assertion, details });
 
 const requireContract = (
   condition: boolean,
@@ -14,8 +14,8 @@ const requireContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(failure(assertion, details));
 
-export interface ProxyServiceContractHarness {
-  readonly service: ProxyServiceShape;
+export interface RouterServiceContractHarness {
+  readonly service: RouterServiceShape;
   readonly readRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 }
 
@@ -35,8 +35,8 @@ const contractRoutes = (): ReadonlyArray<RoutePlan> => [
   },
 ];
 
-export const runProxyServiceContractSuite = (
-  harness: ProxyServiceContractHarness,
+export const runRouterServiceContractSuite = (
+  harness: RouterServiceContractHarness,
 ): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
     const proxy = harness.service;
@@ -100,9 +100,9 @@ export const runProxyServiceContractSuite = (
     yield* requireContract((yield* harness.readRoutes(app)).length === 0, "removeRoutes clears routes");
   });
 
-export const makeProxyServiceContractSuite = runProxyServiceContractSuite;
+export const makeRouterServiceContractSuite = runRouterServiceContractSuite;
 
-export const makeTestProxyService = (): ProxyServiceShape & {
+export const makeTestRouterService = (): RouterServiceShape & {
   readonly routesByApp: ReadonlyMap<string, ReadonlyArray<RoutePlan>>;
   readonly readRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
@@ -145,4 +145,4 @@ export const makeTestProxyService = (): ProxyServiceShape & {
   };
 };
 
-export const TestProxyService = makeTestProxyService();
+export const TestRouterService = makeTestRouterService();

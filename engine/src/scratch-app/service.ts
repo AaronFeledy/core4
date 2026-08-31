@@ -31,7 +31,7 @@ import {
   DataMover,
   FileSystem,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type ScratchAcquireInput,
   ScratchAppService,
@@ -484,7 +484,7 @@ const makeScratchAppService = (
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
   dataMover: Context.Tag.Service<typeof DataMover>,
   buildOrchestrator: Option.Option<Context.Tag.Service<typeof BuildOrchestrator>>,
-  proxy: Option.Option<Context.Tag.Service<typeof ProxyService>>,
+  proxy: Option.Option<Context.Tag.Service<typeof RouterService>>,
   initAppPort: Context.Tag.Service<typeof ScratchInitAppPort>,
   loadCurrentLandofile: UserAppResolution["loadUserLandofile"],
 ): Context.Tag.Service<typeof ScratchAppService> => {
@@ -587,7 +587,7 @@ const makeScratchAppService = (
               // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
               Effect.catchAllCause((cause) =>
                 Effect.logWarning(
-                  `Unable to apply proxy routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
+                  `Unable to apply routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
                 ),
               ),
             ),
@@ -1064,7 +1064,7 @@ const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loa
       const scanner = yield* ScratchResourceScanner;
       const dataMover = yield* DataMover;
       const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
-      const proxy = yield* Effect.serviceOption(ProxyService);
+      const proxy = yield* Effect.serviceOption(RouterService);
       const initAppPort = yield* ScratchInitAppPort;
       return makeScratchAppService(
         fileSystem,

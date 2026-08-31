@@ -10,7 +10,7 @@ describe("OpenTargetUnresolvedError", () => {
       message: "No openable target for app myapp.",
       app: "myapp",
       services: ["web", "db"],
-      remediation: "Declare a proxy route under `proxy:` in your Landofile.",
+      remediation: "Declare a route under `proxy:` in your Landofile.",
     });
 
     expect(error._tag).toBe("OpenTargetUnresolvedError");
@@ -26,7 +26,7 @@ describe("OpenTargetUnresolvedError", () => {
       message: "no routes",
       app: "myapp",
       services: ["web"],
-      remediation: "Add a proxy route.",
+      remediation: "Add a route.",
     });
 
     expect(Either.isRight(decoded)).toBe(true);

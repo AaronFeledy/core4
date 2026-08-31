@@ -78,9 +78,9 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {
-    abstraction: "ProxyService",
-    makeExport: "makeProxyServiceContractSuite",
-    runExport: "runProxyServiceContractSuite",
+    abstraction: "RouterService",
+    makeExport: "makeRouterServiceContractSuite",
+    runExport: "runRouterServiceContractSuite",
     defaultPolicy: "built-in",
     invocationFiles: ["engine/test/subsystems/proxy/traefik-contract.test.ts"],
   },
@@ -95,8 +95,6 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "ConfigTranslator",
     makeExport: "makeConfigTranslatorContractSuite",
     runExport: "runConfigTranslatorContractSuite",
-    // None bundled by default — core ships no ConfigTranslator; the SDK self-test
-    // is the only coverage until a plugin contributes one.
     defaultPolicy: "none-bundled",
     invocationFiles: [],
   },
@@ -193,7 +191,6 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
     for (const exportName of published) {
       expect(manifestMakeExports.has(exportName)).toBe(true);
     }
-    // And every kit export the manifest claims must actually be published.
     for (const exportName of KIT_MAKE_EXPORTS) {
       expect(published.includes(exportName)).toBe(true);
     }

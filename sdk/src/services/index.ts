@@ -763,8 +763,8 @@ export declare class CertificateAuthority extends Context.Tag("@lando/core/Certi
   CertificateAuthorityShape
 >() {}
 
-export declare class ProxyService extends Context.Tag("@lando/core/ProxyService")<
-  ProxyService,
+export declare class RouterService extends Context.Tag("@lando/core/RouterService")<
+  RouterService,
   {
     readonly id: string;
     readonly capabilities: ProxyCapabilities;

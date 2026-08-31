@@ -16,7 +16,7 @@ import type {
   PluginRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
-import { ProxyService } from "@lando/sdk/services";
+import { RouterService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
@@ -42,7 +42,7 @@ type RestartAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
-  | ProxyService
+  | RouterService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -53,7 +53,7 @@ export const restartApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
-    const proxy = yield* ProxyService;
+    const proxy = yield* RouterService;
     const resolvedTarget =
       target ??
       (yield* Effect.gen(function* () {

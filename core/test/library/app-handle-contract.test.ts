@@ -28,14 +28,14 @@ import {
 import {
   AppPlanner,
   FileSyncEngine,
-  ProxyService,
+  RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestRouterService } from "@lando/sdk/test";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -44,7 +44,7 @@ const testProviderLayers = [
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
   }),
-  Layer.succeed(ProxyService, TestProxyService),
+  Layer.succeed(RouterService, TestRouterService),
 ];
 
 // A single `redis` service keeps the plan route-free (tcp endpoint), so

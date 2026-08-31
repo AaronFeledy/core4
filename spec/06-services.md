@@ -819,7 +819,7 @@ Feature rules:
 | `lando.bun-self` | Container-side Bun primitive: install a Bun runtime inside the service so `bun` / `bunx` / `bun install` / `bun create` / `bun build` work directly without round-tripping through the host (§8.2.4 / §10.10.2 forbid `meta:bun` and mutating `runBun` verbs from the host-proxy path). The feature provisions Bun under `/usr/local/lib/lando/bun` with a stable PATH symlink, sets `BUN_INSTALL_GLOBAL_DIR` to a service-scoped directory so `bun add -g` does not write to the host user's home, and adds `LANDO_BUN_VERSION` / `LANDO_BUN_PATH` env. The feature MUST refuse to coexist with the `lando.host-proxy` shim symlinking `bun` (the §10.10.3 `lando.host-proxy.bun: true` opt-in) and rejects with `BunSelfFeatureConflictError` at plan time. Default Bun version tracks the §14.2 floor and is overridable via the feature's config schema. | 1260 |
 | `lando.git` | Install git, set safe.directory | 1300 |
 | `lando.sudo` | Install sudo, add user to sudo group | 1400 |
-| `lando.proxy` | Proxy-package config wiring (when ProxyService active) | 1500 |
+| `lando.proxy` | Proxy-package config wiring (when RouterService active) | 1500 |
 | `lando.user-image` | User-contributed pre-user image steps | 1900 |
 | `lando.user` | User-run image steps (matches the `user` artifact-build group from §6.3) | 2000 |
 

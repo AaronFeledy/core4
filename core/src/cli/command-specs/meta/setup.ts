@@ -1,12 +1,12 @@
 /**
- * `lando meta:setup` prepares the host provider, CA, proxy, and shell integration.
+ * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
  * Setup ignores leftover `defaultProviderId` in user config so a last-used
  * system runtime cannot poison `lando setup` / `lando setup --yes`. Effective
  * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
  * App commands may still honor leftover config as a last-used hint.
  */
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
 import {
   ConfigService,
@@ -31,7 +31,6 @@ import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/ap
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { formatSummary } from "@lando/renderer/summary";
-import { Either } from "effect";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
@@ -76,21 +75,12 @@ const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, nev
     const configPath = join(confRoot, "config.yml");
 
     try {
-      // Read existing config
       const existing = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
       const tree = existing.length > 0 ? (parseMinimalYaml(existing) as Record<string, unknown>) : {};
-
-      // Set defaultProviderId
       tree.defaultProviderId = providerId;
-
-      // Emit as YAML
       const emitted = emitConfigYaml({ file: configPath, value: tree, path: "defaultProviderId" });
       if (Either.isLeft(emitted)) return;
-
-      // Write atomically
-      if (!existsSync(confRoot)) {
-        mkdirSync(confRoot, { recursive: true });
-      }
+      mkdirSync(confRoot, { recursive: true });
       yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.right));
     } catch {
       // Silently fail - config persistence is optional
@@ -105,8 +95,8 @@ export const setupSpec: LandoCommandSpec<
   resultSchema: SetupResultSchema,
   id: "meta:setup",
   helpGroup: "common",
-  summary: "Run host setup (provider, CA, proxy, shell integration).",
-  description: "Run provider, CA, proxy, and shell-integration setup.",
+  summary: "Run host setup (provider, CA, router, shell integration).",
+  description: "Run provider, CA, router, and shell-integration setup.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",
@@ -201,7 +191,6 @@ export const setupSpec: LandoCommandSpec<
           evidence: `Provider ${selectedProviderId} setup completed.`,
         });
 
-        // Persist the provider selection if it came from --provider flag
         if (shouldPersistProvider) {
           yield* writeConfigDefaultProvider(selectedProviderId);
         }

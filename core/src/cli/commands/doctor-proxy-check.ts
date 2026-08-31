@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Effect, Either, Schema } from "effect";
 
 import { PortNumber } from "@lando/sdk/schema";
-import { FileSystem, PathsService, type ProxyService } from "@lando/sdk/services";
+import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
@@ -32,12 +32,8 @@ interface AcquisitionSnapshot {
   readonly httpsPort: number;
 }
 
-const isAcquisitionMode = (value: unknown): value is AcquisitionMode => {
-  for (const mode of ACQUISITION_MODES) {
-    if (mode === value) return true;
-  }
-  return false;
-};
+const isAcquisitionMode = (value: unknown): value is AcquisitionMode =>
+  ACQUISITION_MODES.some((mode) => mode === value);
 
 const decodePort = (value: unknown): number | undefined => {
   const decoded = Schema.decodeUnknownEither(PortNumber)(value);
@@ -71,7 +67,7 @@ const readAcquisitionSnapshot = (): Effect.Effect<AcquisitionSnapshot | undefine
   });
 
 const liveProxyStateContext = (
-  proxy: typeof ProxyService.Service,
+  proxy: typeof RouterService.Service,
   acquisitionMode: AcquisitionMode | undefined,
 ): Effect.Effect<Record<string, string>, never> =>
   Effect.map(Effect.either(proxy.status), (status) => ({
@@ -121,7 +117,7 @@ const occupiedHopCheck = (context: Record<string, string>): DoctorSubsystemCheck
 };
 
 export const buildProxyCheck = (
-  proxy: typeof ProxyService.Service,
+  proxy: typeof RouterService.Service,
   fix: boolean,
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
@@ -131,7 +127,7 @@ export const buildProxyCheck = (
     const acquisitionMode = snapshot?.mode;
     const running = isReadySubsystemId(proxy.id) && state === "running";
     const context: Record<string, string> = {
-      subsystem: "proxy",
+      subsystem: "router",
       subsystemId: proxy.id,
       ready: String(running),
       ...(state === undefined ? {} : { state }),
@@ -151,7 +147,7 @@ export const buildProxyCheck = (
           yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin }));
           const after = yield* readAcquisitionSnapshot();
           if (after?.mode === "needs-helper" || after?.mode === "occupied-hop") {
-            return yield* Effect.fail(new Error("Proxy is still serving on high ports after setup."));
+            return yield* Effect.fail(new Error("Router is still serving on high ports after setup."));
           }
         }),
       Either.isLeft(status) ? status.left : undefined,

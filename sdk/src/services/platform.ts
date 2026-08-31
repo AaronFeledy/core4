@@ -56,7 +56,7 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
   CertificateAuthorityShape
 >() {}
 
-export interface ProxyServiceShape {
+export interface RouterServiceShape {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
   readonly setup: (
@@ -71,9 +71,9 @@ export interface ProxyServiceShape {
   readonly stop: Effect.Effect<void, ProxyError>;
 }
 
-export class ProxyService extends Context.Tag("@lando/core/ProxyService")<
-  ProxyService,
-  ProxyServiceShape
+export class RouterService extends Context.Tag("@lando/core/RouterService")<
+  RouterService,
+  RouterServiceShape
 >() {}
 
 export interface SshSetupOptions {
@@ -202,9 +202,6 @@ export class HostProxyService extends Context.Tag("@lando/core/HostProxyService"
   HostProxyServiceShape
 >() {}
 
-/**
- * PluginSource — resolve and fetch a plugin spec.
- */
 export class PluginSource extends Context.Tag("@lando/core/PluginSource")<
   PluginSource,
   {
@@ -212,9 +209,6 @@ export class PluginSource extends Context.Tag("@lando/core/PluginSource")<
   }
 >() {}
 
-/**
- * UpdateService — check/apply updates to core and plugins.
- */
 export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
   UpdateService,
   {
@@ -223,7 +217,7 @@ export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
 >() {}
 
 /**
- * SecretStore — resolve `${secret:...}` references in Landofiles.
+ * SecretStore resolves `${secret:...}` references in Landofiles.
  *
  * Default: env-var store. Pluggable via the `secretStores:` contribution
  * surface (Vault, 1Password CLI, AWS SM, …). `get` fails with

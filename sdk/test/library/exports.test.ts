@@ -482,6 +482,10 @@ describe("@lando/sdk package exports", () => {
     expect(services.Dataset).toBeDefined();
     expect(services.TunnelService).toBeDefined();
     expect(services.StateStore).toBeDefined();
+    expect(services.RouterService).toBeDefined();
+    expect(services.RouterService.key).toBe("@lando/core/RouterService");
+    expect(services.HostProxyService).toBeDefined();
+    expect(services.HostProxyService.key).toBe("@lando/core/HostProxyService");
   });
 
   test("secrets entry point exports the canonical redaction primitive", async () => {
@@ -673,11 +677,11 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makePluginSourceContractSuite).toBeDefined();
   });
 
-  test("test entry point exports the proxy service contract suite", async () => {
+  test("test entry point exports the router service contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 
-    expect(sdkTest.runProxyServiceContractSuite).toBeDefined();
-    expect(sdkTest.makeProxyServiceContractSuite).toBeDefined();
+    expect(sdkTest.runRouterServiceContractSuite).toBeDefined();
+    expect(sdkTest.makeRouterServiceContractSuite).toBeDefined();
   });
 
   test("test entry point exports the renderer panel contract suite", async () => {

@@ -217,7 +217,7 @@ describe("PluginManifest", () => {
     }
   });
 
-  test("strict decoding rejects the unreleased legacy cas contribution", () => {
+  test("strict decoding rejects unknown cas contribution keys", () => {
     const decoded = Schema.decodeUnknownEither(PluginManifest)(
       {
         name: "@lando/legacy-ca",
@@ -229,6 +229,38 @@ describe("PluginManifest", () => {
     );
 
     expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("strict decoding rejects unknown proxyServices contribution keys", () => {
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+      {
+        name: "@lando/legacy-proxy",
+        version: "1.0.0",
+        api: 4,
+        contributes: { proxyServices: [{ id: "traefik", module: "./src/proxy.ts" }] },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("decodes typed routerServices contributions", () => {
+    const encoded = {
+      name: "@lando/router-test",
+      version: "1.0.0",
+      api: 4,
+      contributes: {
+        routerServices: [{ id: "traefik", module: "./src/proxy.ts" }],
+      },
+    };
+
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+
+    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    if (Either.isRight(decoded)) {
+      expect(decoded.right.contributes?.routerServices?.[0]).toEqual(encoded.contributes.routerServices[0]);
+    }
   });
 });
 

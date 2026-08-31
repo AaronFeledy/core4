@@ -24,10 +24,10 @@ import { renderCommands, renderIndex, renderMinimal, renderProvider } from "./bo
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT_DIR = resolve(REPO_ROOT, "core/src/runtime/generated/layers");
 
-const HEADER = (command = "bun run scripts/build-bootstrap-layers.ts") => `/**
+const HEADER = `/**
  * **GENERATED FILE** — do not edit by hand.
  *
- * Regenerate via \`${command}\`.
+ * Regenerate via \`bun run scripts/build-bootstrap-layers.ts\`.
  *
  * Source of truth: \`scripts/build-bootstrap-layers.ts\`, \`BootstrapLevel\`, and the
  * core runtime service membership graph.
@@ -132,7 +132,7 @@ const renderScratch = (): string =>
     'import { ScratchAppServiceLive } from "@lando/engine/scratch-app/service";',
     'import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";',
     'import { AppPlannerLive } from "@lando/engine/services/planner";',
-    'import { makeProxyServiceRegistryLive, SelectedProxyServiceLive } from "@lando/engine/subsystems/proxy/registry";',
+    'import { makeRouterServiceRegistryLive, SelectedRouterServiceLive } from "@lando/engine/subsystems/proxy/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     'import { ScratchInitAppPortLive } from "../../scratch-init-port.ts";',
     'import { makeProviderBootstrapLayer } from "./provider.ts";',
@@ -142,24 +142,24 @@ const renderScratch = (): string =>
     "  const plannerLive = AppPlannerLive.pipe(Layer.provide(providerBase));",
     "  const buildOrchestratorLive = BuildOrchestratorLive.pipe(Layer.provide(providerBase));",
     "  const scratchBase = Layer.mergeAll(providerBase, plannerLive, buildOrchestratorLive);",
-    "  const proxyRegistryLive = makeProxyServiceRegistryLive(bundledPluginModules()).pipe(",
+    "  const routerRegistryLive = makeRouterServiceRegistryLive(bundledPluginModules()).pipe(",
     "    Layer.provide(scratchBase),",
     "    Layer.mapError((cause) =>",
-    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "ProxyService bootstrap failed.", stage: "provider", cause }),',
+    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "provider", cause }),',
     "    ),",
     "  );",
     "  const globalAppRuntimeLive = GlobalAppRuntimeLive.pipe(Layer.provide(scratchBase));",
-    "  const proxyServiceLive = SelectedProxyServiceLive.pipe(",
-    "    Layer.provide(Layer.mergeAll(scratchBase, globalAppRuntimeLive, proxyRegistryLive)),",
+    "  const routerServiceLive = SelectedRouterServiceLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(scratchBase, globalAppRuntimeLive, routerRegistryLive)),",
     "    Layer.mapError((cause) =>",
-    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "ProxyService bootstrap failed.", stage: "provider", cause }),',
+    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "provider", cause }),',
     "    ),",
     "  );",
     "  const scratchDeps = Layer.mergeAll(",
     "    scratchBase,",
     "    globalAppRuntimeLive,",
-    "    proxyRegistryLive,",
-    "    proxyServiceLive,",
+    "    routerRegistryLive,",
+    "    routerServiceLive,",
     "    ScratchRegistryLive,",
     "    ScratchResourceScannerLive,",
     "    ScratchInitAppPortLive,",
@@ -167,8 +167,8 @@ const renderScratch = (): string =>
     "  return Layer.mergeAll(",
     "    scratchBase,",
     "    globalAppRuntimeLive,",
-    "    proxyRegistryLive,",
-    "    proxyServiceLive,",
+    "    routerRegistryLive,",
+    "    routerServiceLive,",
     "    ScratchRegistryLive,",
     "    ScratchResourceScannerLive,",
     "    ScratchInitAppPortLive,",
@@ -192,7 +192,7 @@ const renderApp = (): string =>
     'import { AppPlannerLive } from "@lando/engine/services/planner";',
     'import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";',
     'import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";',
-    'import { makeProxyServiceRegistryLive, SelectedProxyServiceLive } from "@lando/engine/subsystems/proxy/registry";',
+    'import { makeRouterServiceRegistryLive, SelectedRouterServiceLive } from "@lando/engine/subsystems/proxy/registry";',
     'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     'import { BUILT_IN_COMMAND_IDS } from "../../../cli/generated/command-ids.ts";',
     'import { EventCommandExecutorLive } from "../../../cli/event-command-executor.ts";',
@@ -210,20 +210,20 @@ const renderApp = (): string =>
     "    makeShellRunnerLive(makeProcessShellReplIO),",
     "    makeBundledFileSyncEngineLive(bundledPluginModules()).pipe(Layer.provide(providerBase)),",
     "  );",
-    "  const proxyRegistryLive = makeProxyServiceRegistryLive(bundledPluginModules()).pipe(",
+    "  const routerRegistryLive = makeRouterServiceRegistryLive(bundledPluginModules()).pipe(",
     "    Layer.provide(appBase),",
     "    Layer.mapError((cause) =>",
-    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "ProxyService bootstrap failed.", stage: "app", cause }),',
+    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "app", cause }),',
     "    ),",
     "  );",
     "  const globalAppRuntimeLive = GlobalAppRuntimeLive.pipe(Layer.provide(appBase));",
-    "  const proxyServiceLive = SelectedProxyServiceLive.pipe(",
-    "    Layer.provide(Layer.mergeAll(appBase, globalAppRuntimeLive, proxyRegistryLive)),",
+    "  const routerServiceLive = SelectedRouterServiceLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(appBase, globalAppRuntimeLive, routerRegistryLive)),",
     "    Layer.mapError((cause) =>",
-    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "ProxyService bootstrap failed.", stage: "app", cause }),',
+    '      new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "app", cause }),',
     "    ),",
     "  );",
-    "  const fullAppBase = Layer.mergeAll(appBase, globalAppRuntimeLive, proxyRegistryLive, proxyServiceLive);",
+    "  const fullAppBase = Layer.mergeAll(appBase, globalAppRuntimeLive, routerRegistryLive, routerServiceLive);",
     "  const eventCommandExecutorLive = EventCommandExecutorLive.pipe(Layer.provide(fullAppBase));",
     "  const runtimeAppBase = Layer.merge(fullAppBase, eventCommandExecutorLive);",
     "  const subscriberRuntimeLive = makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS).pipe(Layer.provide(runtimeAppBase));",
@@ -267,7 +267,7 @@ const main = async (): Promise<void> => {
     const render = renderers[name];
     if (render === undefined) throw new Error(`No bootstrap layer renderer for ${name}`);
     const output = resolve(OUTPUT_DIR, `${name}.ts`);
-    await writeFormattedOutput(output, `${HEADER()}\n${render()}`);
+    await writeFormattedOutput(output, `${HEADER}\n${render()}`);
   }
 
   const expectedFiles = new Set(files.map((file) => `${file}.ts`));

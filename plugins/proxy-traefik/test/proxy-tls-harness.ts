@@ -4,7 +4,7 @@ import type { CaError } from "@lando/sdk/errors";
 import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, CertificateSpec } from "@lando/sdk/services";
 
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 export const app = AppId.make("demo/app");
 export const httpsRoutes: ReadonlyArray<RoutePlan> = [
@@ -45,7 +45,7 @@ export const makeHarness = (issueFailure?: CaError) => {
       });
     },
   };
-  const service = makeTraefikProxyService({
+  const service = makeTraefikRouterService({
     certificateAuthority,
     fileSystem: {
       mkdir: (path) => Effect.sync(() => void operations.push(`mkdir:${path}`)),
