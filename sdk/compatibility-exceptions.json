@@ -588,6 +588,24 @@
     "justification": "The unreleased proxyServices manifest key is replaced before Beta by the normative typed routerServices contribution; no shipped consumer contract exists."
   },
   {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "property-removed",
+    "path": "$.defaultProxyService",
+    "justification": "The unreleased defaultProxyService global config key is replaced before Beta by defaultRouterService; no shipped consumer contract exists."
+  },
+  {
+    "surface": "schema:ProxyServiceContribution",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "The unreleased ProxyServiceContribution public schema is replaced before Beta by RouterServiceContribution; no shipped consumer contract exists."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "property-removed",
+    "path": "$.global.defaultProxyService",
+    "justification": "The unreleased TemplateRenderContext.global.defaultProxyService field is replaced before Beta by defaultRouterService; no shipped consumer contract exists."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.tooling.additionalProperties",
