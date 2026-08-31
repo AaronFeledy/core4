@@ -1,6 +1,11 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import type { HostPlatform } from "@lando/sdk/schema";
 
 import {
@@ -9,6 +14,7 @@ import {
   makeLeftoverProxyPortsCheck,
 } from "../src/leftover-proxy-ports.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
 
@@ -34,17 +40,39 @@ const runCheck = (
   readers: LoopbackPortReaders,
   platform: HostPlatform = "linux",
   ports?: { readonly httpPort: number; readonly httpsPort: number },
+  userDataRoot?: string,
 ) =>
   Effect.runPromise(
     makeLeftoverProxyPortsCheck(readers, ports).run({
       providerId: "lando",
       platform,
       env: {},
-      userDataRoot: undefined,
+      userDataRoot,
       binDir: undefined,
       stateDir: undefined,
     }),
   );
+
+const withAcquisitionFile = (state: {
+  readonly mode: string;
+  readonly httpPort?: number;
+  readonly httpsPort?: number;
+  readonly bindHttpPort?: number;
+  readonly bindHttpsPort?: number;
+}): { readonly userDataRoot: string; readonly cleanup: () => void } => {
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-leftover-acq-"));
+  const paths = makeLandoPaths({ userDataRoot, platform: "linux" });
+  const stateFile = acquisitionStateFile({
+    platform: paths.platform,
+    globalAppRoot: paths.globalAppRoot,
+  });
+  mkdirSync(dirname(stateFile), { recursive: true });
+  writeFileSync(stateFile, `${JSON.stringify(state)}\n`);
+  return {
+    userDataRoot,
+    cleanup: () => rmSync(userDataRoot, { recursive: true, force: true }),
+  };
+};
 
 const joinedSolutions = (
   solutions: ReadonlyArray<{ readonly description: string; readonly command?: string | undefined }>,
@@ -282,5 +310,60 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
     // Then: foreign and unknown holders are not leftover-proxy warnings.
     expect(reports).toEqual([]);
+  });
+
+  test("probes occupied-hop ports from the acquisition file without an override", async () => {
+    // Given: persisted occupied-hop 8080/8443 on disk; leftover on 8080 and last-fallback 38080.
+    const acquisition = withAcquisitionFile({
+      mode: "occupied-hop",
+      httpPort: 8080,
+      httpsPort: 8443,
+    });
+    const readers = readersFor({
+      8080: leftover(8080),
+      8443: free(8443),
+      [TRAEFIK_HTTP_PORT]: leftover(TRAEFIK_HTTP_PORT),
+      [TRAEFIK_HTTPS_PORT]: free(TRAEFIK_HTTPS_PORT),
+    });
+
+    try {
+      // When: the production check reads the acquisition file (no ports override).
+      const reports = await runCheck(readers, "linux", undefined, acquisition.userDataRoot);
+
+      // Then: leftover is the persisted HTTP port, not last-fallback 38080.
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.context.ports).toBe("8080");
+      expect(reports[0]?.context.ports).not.toContain(String(TRAEFIK_HTTP_PORT));
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
+  test("probes socket-helper bind hops from the acquisition file", async () => {
+    // Given: socket-helper advertises 80/443 and binds 8080/8443; leftover on the bind hop and on 80.
+    const acquisition = withAcquisitionFile({
+      mode: "socket-helper",
+      httpPort: 80,
+      httpsPort: 443,
+      bindHttpPort: 8080,
+      bindHttpsPort: 8443,
+    });
+    const readers = readersFor({
+      80: leftover(80),
+      443: free(443),
+      8080: leftover(8080),
+      8443: free(8443),
+    });
+
+    try {
+      // When: the production check reads the acquisition file (no ports override).
+      const reports = await runCheck(readers, "linux", undefined, acquisition.userDataRoot);
+
+      // Then: leftover is the bind hop, not the advertised 80/443 listen ports.
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.context.ports).toBe("8080");
+    } finally {
+      acquisition.cleanup();
+    }
   });
 });
