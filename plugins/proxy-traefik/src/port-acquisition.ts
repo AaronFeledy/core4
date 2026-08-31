@@ -190,11 +190,11 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
 
 const firstHighSuccess = (
   tryList: readonly number[],
-  preferred: number,
+  skip: number,
   binds: Readonly<Record<number, BindOutcome>> | undefined,
 ): number | undefined => {
   for (const port of tryList) {
-    if (port === preferred) continue;
+    if (port === skip) continue;
     const outcome = binds?.[port];
     if (outcome?.kind === "success") return port;
   }
@@ -209,10 +209,8 @@ export const chooseHelperBindPorts = (input: {
 }): { readonly bindHttpPort: number; readonly bindHttpsPort: number } => {
   const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
   const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
-  const preferredHttp = httpTryList[0] ?? DESIRED_HTTP_PORT;
-  const preferredHttps = httpsTryList[0] ?? DESIRED_HTTPS_PORT;
-  const bindHttpPort = firstHighSuccess(httpTryList, preferredHttp, input.httpBinds);
-  const bindHttpsPort = firstHighSuccess(httpsTryList, preferredHttps, input.httpsBinds);
+  const bindHttpPort = firstHighSuccess(httpTryList, DESIRED_HTTP_PORT, input.httpBinds);
+  const bindHttpsPort = firstHighSuccess(httpsTryList, DESIRED_HTTPS_PORT, input.httpsBinds);
   if (bindHttpPort === undefined || bindHttpsPort === undefined) {
     throw portsExhausted({
       bindAddress: LOOPBACK_HOST,

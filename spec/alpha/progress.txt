@@ -397,3 +397,8 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Socket-helper public 80/443 are not Traefik host bindings. Without bindHttpPort/bindHttpsPort, publish last-resort hops so Traefik does not steal 80 from the helper.
   - Hop-target rewrite must `systemctl try-restart` the helper services after daemon-reload; `systemctl start` on an already-active socket is a no-op.
 ---
+
+## 2026-08-30 20:12 CDT - US-603 Review
+- Helper hops now skip 80/443 listen ports, not try-list[0], so a pinned 8080/8443 preferred pair is used as the hop target.
+- Verification: choose-helper-bind-ports and helper install spot checks passed
+---
