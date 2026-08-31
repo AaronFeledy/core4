@@ -38,12 +38,12 @@ Core owns the `RoutePlan` schema. `RouterService` plugins own implementation.
 ```ts
 export class RouterService extends Context.Service<RouterService, {
   readonly id: string;
-  readonly capabilities: RouterCapabilities;
-  readonly setup: (config: RouterConfig) => Effect.Effect<void, RouterError, Scope.Scope>;
-  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, app: AppId) => Effect.Effect<RouterApplyResult, RouterError>;
-  readonly removeRoutes: (app: AppId) => Effect.Effect<void, RouterError>;
-  readonly status: Effect.Effect<RouterStatus, RouterError>;
-  readonly stop: Effect.Effect<void, RouterError>;
+  readonly capabilities: ProxyCapabilities;
+  readonly setup: (config: ProxyConfig) => Effect.Effect<void, ProxyError, Scope.Scope>;
+  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, app: AppId) => Effect.Effect<ProxyApplyResult, ProxyError>;
+  readonly removeRoutes: (app: AppId) => Effect.Effect<void, ProxyError>;
+  readonly status: Effect.Effect<ProxyStatus, ProxyError>;
+  readonly stop: Effect.Effect<void, ProxyError>;
 }>()("@lando/core/RouterService") {}
 ```
 

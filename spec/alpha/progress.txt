@@ -503,3 +503,11 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Guide-Coverage-Skip: ingress identifier rename and doctor/setup Traefik copy; no executable-guide CLI workflow changed
 - Verification: typecheck, lint passed; schema-compat accepted the hard-cuts; plugin schema and sdk-backward-compat spot checks passed (17)
 ---
+
+## 2026-08-31 10:15 CDT - US-606 Drift Audit
+- Trigger: 2 cycles, 1119 changed lines, 8 commits
+- Contract drift: §10.2 illustration invented RouterCapabilities/RouterError/RouterApplyResult/RouterStatus and used RouterConfig as setup config
+- Fixed: restored the illustration to the shipped Proxy* types on RouterService
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
