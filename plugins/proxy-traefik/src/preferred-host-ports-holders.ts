@@ -31,25 +31,18 @@ const assertNever = (value: never): never => {
   throw new Error(`unexpected occupancy holder kind: ${String(value)}`);
 };
 
-const haystackOf = (input: OccupancyHolderInput): string =>
-  `${input.comm ?? ""} ${input.cmdline ?? ""}`.toLowerCase();
-
 const includesAny = (haystack: string, needles: ReadonlyArray<string>): boolean =>
   needles.some((needle) => haystack.includes(needle));
 
-/**
- * Ordered substring classification of a process occupying preferred host ports.
- * Concatenates comm + cmdline and matches case-insensitively.
- */
+/** First matching substring wins; check order is significant. */
 export const classifyOccupancyHolder = (input: OccupancyHolderInput): OccupancyHolderKind => {
-  const haystack = haystackOf(input);
+  const haystack = `${input.comm ?? ""} ${input.cmdline ?? ""}`.toLowerCase();
 
-  // ddev: ddev-router, ddev, or (traefik AND ddev) — any haystack containing "ddev"
   if (haystack.includes("ddev")) {
     return "ddev";
   }
 
-  // lando3: landoproxyhyperion / landoproxy — not bare "lando"
+  // Match landoproxy* only — not bare "lando".
   if (includesAny(haystack, ["landoproxyhyperion", "landoproxy"])) {
     return "lando3";
   }
@@ -149,14 +142,14 @@ export const solutionsForOccupancyHolder = (
       const pid = identity?.pid;
       const hasComm = comm !== undefined && comm.length > 0;
       const hasPid = pid !== undefined;
-      const whoLabel =
-        hasComm && hasPid
-          ? `process "${comm}" (pid ${String(pid)})`
-          : hasComm
-            ? `process "${comm}"`
-            : hasPid
-              ? `pid ${String(pid)}`
-              : "the process holding the port";
+      let whoLabel = "the process holding the port";
+      if (hasComm && hasPid) {
+        whoLabel = `process "${comm}" (pid ${String(pid)})`;
+      } else if (hasComm) {
+        whoLabel = `process "${comm}"`;
+      } else if (hasPid) {
+        whoLabel = `pid ${String(pid)}`;
+      }
       return [
         {
           kind: "manual",

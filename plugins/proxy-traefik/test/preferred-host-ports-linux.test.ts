@@ -5,6 +5,10 @@ import { identifyAnyPortHolder, parseListenInodeForPort } from "../src/preferred
 
 const TCP_HEADER =
   "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+const TCP_LISTEN_ANY_80_TABLE = [
+  TCP_HEADER,
+  "   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 808080 1 0000000000000000 100 0 0 10 0",
+].join("\n");
 
 const walkFrom = (files: Readonly<Record<string, string | ReadonlyArray<string>>>): ProcWalk => ({
   names: async (path) => {
@@ -25,10 +29,7 @@ describe("parseListenInodeForPort", () => {
   test("reads the listen inode for 0.0.0.0:80", () => {
     // Contrast: leftover parseListenInodeForLoopbackPort ignores 0.0.0.0; this parser does not.
     // Given: /proc/net/tcp with 00000000:0050 LISTEN (0.0.0.0:80, 80 = 0x0050)
-    const table = [
-      TCP_HEADER,
-      "   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 808080 1 0000000000000000 100 0 0 10 0",
-    ].join("\n");
+    const table = TCP_LISTEN_ANY_80_TABLE;
 
     // When
     const inode = parseListenInodeForPort(table, 80);
@@ -66,12 +67,8 @@ describe("parseListenInodeForPort", () => {
 describe("identifyAnyPortHolder", () => {
   test("identifies nginx without skipping non-rootlessport comms", async () => {
     // Given: systemd plus nginx holding 0.0.0.0:80; occupancy walks every numeric pid
-    const tcp = [
-      TCP_HEADER,
-      "   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 808080 1 0000000000000000 100 0 0 10 0",
-    ].join("\n");
     const walk = walkFrom({
-      "/proc/net/tcp": tcp,
+      "/proc/net/tcp": TCP_LISTEN_ANY_80_TABLE,
       "/proc": ["1", "self", "42"],
       "/proc/1/comm": "systemd",
       "/proc/1/fd": ["0"],
@@ -91,12 +88,8 @@ describe("identifyAnyPortHolder", () => {
 
   test("includes cmdline when present", async () => {
     // Given: nginx with a null-separated cmdline
-    const tcp = [
-      TCP_HEADER,
-      "   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 808080 1 0000000000000000 100 0 0 10 0",
-    ].join("\n");
     const walk = walkFrom({
-      "/proc/net/tcp": tcp,
+      "/proc/net/tcp": TCP_LISTEN_ANY_80_TABLE,
       "/proc": ["42"],
       "/proc/42/comm": "nginx\n",
       "/proc/42/cmdline": "nginx\0-g\0daemon off;\0",
@@ -125,10 +118,7 @@ describe("identifyAnyPortHolder", () => {
       },
       text: async (path) => {
         if (path === "/proc/net/tcp") {
-          return [
-            TCP_HEADER,
-            "   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 808080 1 0000000000000000 100 0 0 10 0",
-          ].join("\n");
+          return TCP_LISTEN_ANY_80_TABLE;
         }
         return "nginx";
       },
