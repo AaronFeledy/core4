@@ -7,6 +7,7 @@ import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { plugin as mutagenPlugin } from "@lando/file-sync-mutagen";
 import { makeLandoPaths } from "@lando/paths";
 import { plugin as podmanPlugin } from "@lando/provider-podman";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -443,7 +444,7 @@ describe("meta:doctor command", () => {
       getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
     };
     const result = await Effect.runPromise(
-      doctor({ platform: "win32", env: {} }).pipe(Effect.provide(buildLayers(provider))),
+      doctor({ platform: "win32", env: {} }, [mutagenPlugin]).pipe(Effect.provide(buildLayers(provider))),
     );
     const actual = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const expected = readFileSync(WINDOWS_FIXTURE_PATH, "utf-8");

@@ -24,8 +24,8 @@ import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
+  collectDoctorReport,
   doctorDeprecations,
-  doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
@@ -34,6 +34,7 @@ import {
   appVersionConstraintsForReport,
   renderAppVersionConstraintResult,
 } from "../../src/cli/commands/doctor-version-constraint.ts";
+import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { DeprecationServiceLive, FileSystemLive } from "../../src/testing/engine-layers.ts";
@@ -97,6 +98,13 @@ const buildLayers = (
     ),
     DeprecationServiceLive,
   );
+
+const doctorReport = (options: DoctorOptions = {}) =>
+  collectDoctorReport({
+    options,
+    provider: doctor(options, []),
+    deprecations: doctorDeprecations(),
+  });
 
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
