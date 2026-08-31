@@ -53,7 +53,7 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
 });
 
 test("real filesystem status sees configured routing and stop removes route and certificate artifacts", async () => {
-  // Given: a configured proxy whose routes and TLS material live on FileSystemLive.
+  // Given
   const root = await mkdtemp(join(tmpdir(), "lando-proxy-lifecycle-"));
   try {
     const sourceCert = join(root, "issued.crt");
@@ -106,7 +106,7 @@ test("real filesystem status sees configured routing and stop removes route and 
       ),
     );
 
-    // When: a fresh service reads status and the active service is stopped.
+    // When
     const fresh = makeTraefikRouterService({
       certificateAuthority,
       fileSystem: proxyFileSystem,
@@ -116,7 +116,7 @@ test("real filesystem status sees configured routing and stop removes route and 
     const status = await Effect.runPromise(fresh.status);
     await Effect.runPromise(service.stop);
 
-    // Then: persisted routing was visible and every route/certificate artifact is gone.
+    // Then
     expect(status.state).toBe("running");
     expect(status.configuredApps).toEqual([app]);
     const dynamic = join(root, "proxy-traefik", "dynamic");

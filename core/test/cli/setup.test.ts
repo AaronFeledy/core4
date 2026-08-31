@@ -238,7 +238,6 @@ describe("meta:setup command", () => {
 
   test("is registered at the provider bootstrap level with the top-level setup alias", () => {
     expect(setupSpec.bootstrap).toBe("provider");
-    expect(setupSpec.bootstrap).toBe("provider");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.spec.bootstrap).toBe("provider");
     expect(resolveTopLevelAliases(setupSpec)).toContain("setup");
     expect(setupSpec.summary).toContain("CA, router");

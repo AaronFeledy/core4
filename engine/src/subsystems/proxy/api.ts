@@ -1,18 +1,8 @@
 /**
- * `RouterService` Effect service interface.
+ * Unavailable `RouterService` fallback when no router plugin is selected.
  *
- * Core owns the `RoutePlan` schema. `RouterService` plugins own implementation.
- *
- * Required behaviors:
- * - Default local domain configurable; default `lndo.site`.
- * - Route plans support hostnames, wildcard hostnames, ports, paths, TLS
- *   intent, filters.
- * - Route status appears in `lando info` and post-start messages.
- * - Offline/custom-domain workflows are supported via the global `domain`
- *   config.
- * - Router plugins reconcile stale routes during rebuild and destroy.
- * - Router plugins consume `RouteFilter` plugin contributions to translate
- *   filters into native middleware.
+ * Core owns the `RoutePlan` schema; router plugins own implementation.
+ * Doctor and bootstrap use this fail-closed Live layer until a plugin is wired.
  */
 import { Effect, Layer } from "effect";
 

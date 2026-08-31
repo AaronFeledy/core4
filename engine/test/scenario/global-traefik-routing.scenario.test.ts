@@ -223,7 +223,7 @@ describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
   });
 });
 
-describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
+describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("emits a per-app bridge plus shared cross-app membership for a service app", async () => {
     const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
     expect(plan.networking?.perAppBridge.name).toBe("lando-shop");

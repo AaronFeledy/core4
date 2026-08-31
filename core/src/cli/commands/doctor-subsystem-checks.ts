@@ -130,7 +130,7 @@ const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
   SUBSYSTEM_SPECS.map((spec) => [spec.name, spec] as const),
 );
 
-const degradedSolution = (spec: SubsystemSpec, _serviceId: string): DoctorSolution => {
+const degradedSolution = (spec: SubsystemSpec): DoctorSolution => {
   return spec.recovery === "automatic" && spec.automaticRemediation !== undefined
     ? automaticFixSolution(spec.automaticRemediation)
     : manualSetupSolution(spec.manualRemediation, spec.manualCommand);
@@ -138,7 +138,7 @@ const degradedSolution = (spec: SubsystemSpec, _serviceId: string): DoctorSoluti
 
 export const classifySubsystemFailure = (
   subsystem: string,
-  serviceId: string,
+  _serviceId: string,
   cause?: unknown,
 ): DoctorSubsystemFailure | undefined => {
   const spec = SPEC_BY_NAME.get(subsystem);
@@ -146,7 +146,7 @@ export const classifySubsystemFailure = (
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: degradedSolution(spec, serviceId),
+    solution: degradedSolution(spec),
     ...(cause === undefined ? {} : { cause }),
   });
 };
@@ -170,7 +170,7 @@ export const subsystemFailureDiagnostic = (
 
 const errorMessage = (cause: unknown): string => {
   if (typeof cause === "object" && cause !== null && "message" in cause) {
-    const message = (cause as { readonly message?: unknown }).message;
+    const message = cause.message;
     if (typeof message === "string" && message.length > 0) return redactString(message);
   }
   return redactString(String(cause));
@@ -249,7 +249,7 @@ export const buildDegradedCheck = (
       severity: diagnostic?.severity ?? "warn",
       recovery: spec.recovery,
       context: baseContext,
-      solutions: [diagnostic?.solution ?? degradedSolution(spec, serviceId)],
+      solutions: [diagnostic?.solution ?? degradedSolution(spec)],
     };
   });
 

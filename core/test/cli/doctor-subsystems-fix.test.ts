@@ -21,11 +21,13 @@ import {
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
-import { CertificateAuthorityUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { HealthcheckRunnerUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { RouterServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { UrlScannerUnavailableLive } from "../../src/testing/engine-layers.ts";
-import { SshServiceUnavailableLive } from "../../src/testing/engine-layers.ts";
+import {
+  CertificateAuthorityUnavailableLive,
+  HealthcheckRunnerUnavailableLive,
+  RouterServiceUnavailableLive,
+  SshServiceUnavailableLive,
+  UrlScannerUnavailableLive,
+} from "../../src/testing/engine-layers.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;
@@ -107,7 +109,7 @@ describe("each subsystem failure path produces a tagged error with severity + so
       expect(classified).toBeDefined();
       if (classified === undefined) throw new Error(`missing classification for ${name}`);
       expect(["info", "warn", "error"]).toContain(classified.severity);
-      expect(classified?.solution.description.length).toBeGreaterThan(0);
+      expect(classified.solution.description.length).toBeGreaterThan(0);
     }
     expect(classifySubsystemFailure("nope", "unavailable")).toBeUndefined();
   });

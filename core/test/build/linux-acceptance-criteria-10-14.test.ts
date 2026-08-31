@@ -56,7 +56,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
     longHarness,
   );
 
-  test("criterion 11: Windows installer harness is platform-gated until RC all-platform acceptance", async () => {
+  test("criterion 11: Windows installer harness is platform-gated until all-platform acceptance", async () => {
     const harnessSource = await readFile(harnessPath, "utf8");
     expect(harnessSource).toContain("platform-gated");
 

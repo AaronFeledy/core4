@@ -32,12 +32,8 @@ interface AcquisitionSnapshot {
   readonly httpsPort: number;
 }
 
-const isAcquisitionMode = (value: unknown): value is AcquisitionMode => {
-  for (const mode of ACQUISITION_MODES) {
-    if (mode === value) return true;
-  }
-  return false;
-};
+const isAcquisitionMode = (value: unknown): value is AcquisitionMode =>
+  ACQUISITION_MODES.some((mode) => mode === value);
 
 const decodePort = (value: unknown): number | undefined => {
   const decoded = Schema.decodeUnknownEither(PortNumber)(value);

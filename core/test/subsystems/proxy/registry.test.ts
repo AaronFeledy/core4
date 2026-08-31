@@ -16,8 +16,6 @@ import {
 import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
-} from "../../../src/testing/engine-layers.ts";
-import {
   type RouterServiceRegistration,
   RouterServiceRegistry,
   SelectedRouterServiceLive,
@@ -97,25 +95,25 @@ const buildSelectedProxy = (
 
 describe("RouterService registry selection", () => {
   test("resolves an id from an injected plugin descriptor module", async () => {
-    // Given: an injected descriptor module with one static RouterService layer.
+    // Given
     const fakeLayer = Layer.succeed(RouterService, service("fake"));
 
-    // When: the descriptor-backed registry resolves its contributed id.
+    // When
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "fake");
 
-    // Then: the descriptor's exact layer is selected.
+    // Then
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) expect(result.right.layer).toBe(fakeLayer);
   });
 
   test("preserves the typed selection error for an id absent from injected modules", async () => {
-    // Given: an injected descriptor module that contributes only the fake id.
+    // Given
     const fakeLayer = Layer.succeed(RouterService, service("fake"));
 
-    // When: a different id is selected explicitly.
+    // When
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "missing");
 
-    // Then: selection fails through the existing ProxyError path.
+    // Then
     expect(Either.isLeft(result)).toBe(true);
     if (Either.isLeft(result)) {
       expect(result.left).toBeInstanceOf(ProxyError);
@@ -179,7 +177,7 @@ describe("RouterService registry selection", () => {
   });
 
   test("selected proxy receives a CA that resolves only when the proxy uses it", async () => {
-    // Given: a contributed proxy Layer requiring CertificateAuthority and an observable resolver.
+    // Given
     let resolutions = 0;
     const requiringCa = Layer.effect(
       RouterService,
@@ -222,15 +220,15 @@ describe("RouterService registry selection", () => {
     );
     expect(resolutions).toBe(0);
 
-    // When: the selected proxy executes its CA-backed operation.
+    // When
     await Effect.runPromise(selected.applyRoutes([], AppId.make("demo")));
 
-    // Then: resolver evaluation occurs exactly at proxy use.
+    // Then
     expect(resolutions).toBe(1);
   });
 
   test("unavailable selected proxy builds without resolving a certificate authority", async () => {
-    // Given: an empty registry and an observable resolver.
+    // Given
     let resolutions = 0;
     const resolver: CertificateAuthorityResolverShape = {
       resolve: Effect.sync(() => {
@@ -243,7 +241,7 @@ describe("RouterService registry selection", () => {
       }),
     };
 
-    // When: the unavailable branch is built but not invoked.
+    // When
     const selected = await Effect.runPromise(
       buildSelectedProxy(
         {
@@ -260,7 +258,7 @@ describe("RouterService registry selection", () => {
       ),
     );
 
-    // Then: no CA selection occurs.
+    // Then
     expect(selected.id).toBe("unavailable");
     expect(resolutions).toBe(0);
   });

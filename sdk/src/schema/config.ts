@@ -4,8 +4,6 @@ import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 
-// Global config — the host-level merged config.
-
 /**
  * Telemetry defaults on for CLI global config. Library runtimes do not use this
  * schema default for their host decision; they stay opt-in at runtime creation.

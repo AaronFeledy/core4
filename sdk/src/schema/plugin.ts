@@ -21,11 +21,10 @@ export type DeprecatedContributionRef = typeof DeprecatedContributionRef.Type;
 export const ContributionRef = Schema.Union(Schema.String, DeprecatedContributionRef);
 export type ContributionRef = typeof ContributionRef.Type;
 
-// Plugin manifest — declared by every plugin's package.json + plugin.yaml.
+// ====
+// Plugin manifest declared by package.json + plugin.yaml.
 
 /**
- * Plugin-contributed global app service entry.
- *
  * Plugins use `globalServices:` to add a service to the global Lando app's
  * generated `dist` layer. The active provider must satisfy any capabilities
  * listed in `requires.providerCapabilities`; otherwise the planner drops the
@@ -56,17 +55,13 @@ export const GlobalServiceContribution = Schema.Struct({
 export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 
 /**
- * Plugin-contributed verified downloader entry.
- *
  * Plugins use `downloaders:` to register verified-download implementations for
- * later runtime selection by the `Downloader` service.
+ * runtime selection by the `Downloader` service.
  */
 export const DownloaderContribution = Schema.Struct({
-  /** Downloader id registered by the plugin. MUST be unique across plugins. */
+  /** Unique across plugins. */
   id: Schema.String,
-  /** Path to the module that produces the downloader implementation. */
   module: Schema.optional(Schema.String),
-  /** Static capabilities advertised by this downloader implementation. */
   capabilities: Schema.optional(DownloaderCapabilities),
   /** Initial enabled state when the plugin is first installed. */
   enabledByDefault: Schema.optional(Schema.Boolean),
@@ -77,17 +72,13 @@ export const DownloaderContribution = Schema.Struct({
 export type DownloaderContribution = typeof DownloaderContribution.Type;
 
 /**
- * Plugin-contributed HTTP client entry.
- *
- * Plugins use `httpClients:` to register HTTP client implementations for later
+ * Plugins use `httpClients:` to register HTTP client implementations for
  * runtime selection by the `HttpClient` service.
  */
 export const HttpClientContribution = Schema.Struct({
-  /** HTTP client id registered by the plugin. MUST be unique across plugins. */
+  /** Unique across plugins. */
   id: Schema.String,
-  /** Path to the module that produces the HTTP client implementation. */
   module: Schema.optional(Schema.String),
-  /** Static capabilities advertised by this HTTP client implementation. */
   capabilities: Schema.optional(HttpClientCapabilities),
   /** Initial enabled state when the plugin is first installed. */
   enabledByDefault: Schema.optional(Schema.Boolean),
@@ -98,22 +89,18 @@ export const HttpClientContribution = Schema.Struct({
 export type HttpClientContribution = typeof HttpClientContribution.Type;
 
 /**
- * Plugin-contributed interaction service entry.
- *
  * Plugins use `interactionServices:` to register an alternative prompting
- * transport selected at runtime by the `InteractionService` service. The
- * core-reserved `stdio` default cannot be replaced (additions only).
+ * transport selected at runtime by `InteractionService`. The core-reserved
+ * `stdio` default cannot be replaced (additions only).
  */
 export const InteractionServiceContribution = Schema.Struct({
-  /** Interaction service id. MUST be unique across plugins; `stdio` is reserved. */
+  /** Unique across plugins; `stdio` is reserved. */
   id: Schema.String.pipe(
     Schema.filter((id) => id !== "stdio", {
       message: () => "Interaction service id `stdio` is reserved by core.",
     }),
   ),
-  /** Path to the module that produces the interaction service implementation. */
   module: Schema.String,
-  /** Static capabilities advertised by this interaction service implementation. */
   capabilities: Schema.Struct({
     /** Whether the service can drive an interactive terminal prompt. */
     interactive: Schema.Boolean,
@@ -195,15 +182,10 @@ export const PluginSetupContribution = Schema.Struct({
 });
 export type PluginSetupContribution = typeof PluginSetupContribution.Type;
 
-/** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
-  /** Service types this plugin registers. */
   serviceTypes: Schema.optional(Schema.Array(ContributionRef)),
-  /** Service features this plugin registers. */
   serviceFeatures: Schema.optional(Schema.Array(ContributionRef)),
-  /** App-scoped features this plugin registers. */
   appFeatures: Schema.optional(Schema.Array(ContributionRef)),
-  /** Provider ids registered. */
   providers: Schema.optional(Schema.Array(ContributionRef)),
   routerServices: Schema.optional(Schema.Array(RouterServiceContribution)).annotations({
     description: "RouterService implementations registered by this plugin.",
@@ -211,33 +193,23 @@ export const PluginContribution = Schema.Struct({
   sshServices: Schema.optional(Schema.Array(SshServiceContribution)).annotations({
     description: "SshService implementations registered by this plugin.",
   }),
-  /** Logger ids registered. */
   loggers: Schema.optional(Schema.Array(ContributionRef)),
-  /** Renderer ids registered. */
   renderers: Schema.optional(Schema.Array(ContributionRef)),
-  /** Template engine ids registered. */
   templateEngines: Schema.optional(Schema.Array(ContributionRef)),
-  /** File-sync engine ids registered. */
   fileSyncEngines: Schema.optional(Schema.Array(ContributionRef)),
   certificateAuthorities: Schema.optional(Schema.Array(CertificateAuthorityContribution)).annotations({
     description: "CertificateAuthority implementations registered by this plugin.",
   }),
-  /** Built-in commands registered. */
   commands: Schema.optional(Schema.Array(ContributionRef)),
-  /** Global-app service contributions added by plugins. */
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
-  /** Verified-download implementations registered. */
   downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
-  /** HTTP client implementations registered. */
   httpClients: Schema.optional(Schema.Array(HttpClientContribution)),
-  /** Interaction (prompting) service implementations registered. */
   interactionServices: Schema.optional(Schema.Array(InteractionServiceContribution)),
   remoteSources: Schema.optional(Schema.Array(RemoteSourceContribution)),
   datasets: Schema.optional(Schema.Array(DatasetContribution)),
   tunnelServices: Schema.optional(Schema.Array(TunnelServiceContribution)),
   rendererPanels: Schema.optional(Schema.Array(RendererPanelManifestEntry)).annotations({
-    description:
-      "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
+    description: "Renderer panel contributions for named default-renderer slots.",
   }),
   setup: Schema.optional(PluginSetupContribution),
 });

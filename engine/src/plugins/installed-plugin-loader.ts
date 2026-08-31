@@ -1,13 +1,3 @@
-/**
- * Installed-plugin package loading and manifest normalization.
- *
- * `loadInstalledPlugin` reads a plugin package's `package.json` (or its
- * `landoPlugin` field), strict-decodes the {@link PluginManifest}, normalizes
- * every contribution module path to an in-package `file://` URL, and imports the
- * optional entry module. `normalizeExternalContributionModules` performs the
- * per-contribution path rewriting and duplicate-id checks so downstream service
- * wiring receives only validated, containment-checked module URLs.
- */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";

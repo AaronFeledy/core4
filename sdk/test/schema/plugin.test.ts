@@ -217,7 +217,7 @@ describe("PluginManifest", () => {
     }
   });
 
-  test("strict decoding rejects the unreleased legacy cas contribution", () => {
+  test("strict decoding rejects unknown cas contribution keys", () => {
     const decoded = Schema.decodeUnknownEither(PluginManifest)(
       {
         name: "@lando/legacy-ca",
@@ -231,7 +231,7 @@ describe("PluginManifest", () => {
     expect(Either.isLeft(decoded)).toBe(true);
   });
 
-  test("strict decoding rejects the unreleased legacy proxyServices contribution", () => {
+  test("strict decoding rejects unknown proxyServices contribution keys", () => {
     const decoded = Schema.decodeUnknownEither(PluginManifest)(
       {
         name: "@lando/legacy-proxy",

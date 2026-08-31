@@ -1,13 +1,6 @@
 /**
  * `@lando/proxy-traefik` — Traefik-backed RouterService + bundled global service.
  *
- * Contributes:
- *   - `routerServices: [traefik]` — the Traefik-backed `RouterService` id.
- *   - `globalServices: ["traefik"]` — the bundled global router service
- *     materialized into the global app's `.lando.dist.yml`.
- *   - `doctorChecks: ["proxy-tls", "proxy-loopback-ports", "preferred-host-ports"]` —
- *     HTTPS TLS material, leftover Traefik loopback ports, and preferred 80/443 occupancy.
- *
  * The `globalServices` map is the compiled-binary-safe contribution surface:
  * `meta:global:install`'s bundled-first loader reads it instead of dynamically
  * importing the manifest `module:` path (which cannot resolve in a

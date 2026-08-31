@@ -24,10 +24,10 @@ import { renderCommands, renderIndex, renderMinimal, renderProvider } from "./bo
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT_DIR = resolve(REPO_ROOT, "core/src/runtime/generated/layers");
 
-const HEADER = (command = "bun run scripts/build-bootstrap-layers.ts") => `/**
+const HEADER = `/**
  * **GENERATED FILE** — do not edit by hand.
  *
- * Regenerate via \`${command}\`.
+ * Regenerate via \`bun run scripts/build-bootstrap-layers.ts\`.
  *
  * Source of truth: \`scripts/build-bootstrap-layers.ts\`, \`BootstrapLevel\`, and the
  * core runtime service membership graph.
@@ -267,7 +267,7 @@ const main = async (): Promise<void> => {
     const render = renderers[name];
     if (render === undefined) throw new Error(`No bootstrap layer renderer for ${name}`);
     const output = resolve(OUTPUT_DIR, `${name}.ts`);
-    await writeFormattedOutput(output, `${HEADER()}\n${render()}`);
+    await writeFormattedOutput(output, `${HEADER}\n${render()}`);
   }
 
   const expectedFiles = new Set(files.map((file) => `${file}.ts`));

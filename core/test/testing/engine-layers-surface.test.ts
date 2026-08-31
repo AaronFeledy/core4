@@ -223,10 +223,10 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
 ] as const;
 
 test("exports the reviewed engine coupling surface", () => {
-  // Given the internal engine-coupling module
-  // When its runtime exports are enumerated
+  // Given
+  // When
   const exportedNames = Object.keys(engineLayers).sort();
 
-  // Then only the committed append-only migration surface is exposed
+  // Then
   expect(exportedNames).toEqual([...EXPECTED_ENGINE_LAYER_EXPORTS]);
 });

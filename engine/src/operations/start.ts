@@ -188,8 +188,9 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          yield* startFileSyncSessions(plan, events, managed).pipe((effect) =>
-            compensateFailure(effect, removeRoutesAndDestroyApp(proxy, provider, plan)),
+          yield* compensateFailure(
+            startFileSyncSessions(plan, events, managed),
+            removeRoutesAndDestroyApp(proxy, provider, plan),
           );
 
           const routedPlan = {
@@ -240,8 +241,8 @@ export const startAppForTarget = (
       Effect.onInterrupt(() =>
         Effect.all([Ref.get(applyStarted), Ref.get(routesApplied)]).pipe(
           Effect.flatMap(([started, routed]) => {
-            if (routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-            return started ? removeRoutesAndDestroyApp(proxy, provider, plan) : Effect.void;
+            if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
+            return Effect.void;
           }),
           Effect.orDie,
         ),

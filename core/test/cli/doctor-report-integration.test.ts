@@ -191,7 +191,7 @@ const mentionsUnavailableStub = (value: unknown): boolean => {
 
 describe("runtime-wired subsystem doctor", () => {
   test("uses injected Traefik running + SSH sidecar instead of unavailable stubs", async () => {
-    // Given a provider-shaped layer with selected, running proxy and sidecar SSH
+    // Given
     const config = makeConfig({});
     const proxy = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })));
@@ -226,7 +226,7 @@ describe("runtime-wired subsystem doctor", () => {
   });
 
   test("--fix invokes the injected stopped Traefik setup, not RouterServiceUnavailableLive", async () => {
-    // Given a selected Traefik proxy that is stopped
+    // Given
     const config = makeConfig({});
     let setupCalls = 0;
     const proxyService = makeTestRouterService();
