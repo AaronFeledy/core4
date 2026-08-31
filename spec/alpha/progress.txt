@@ -49,11 +49,12 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
 - Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
 - Doctor leftover-proxy probes and start-path EADDRINUSE remap use the persisted Traefik publish pair (bind hops if set, else advertised ports). Missing acquisition state falls back to 38080/38443; HTTPS leftover HTTP probes use role, not port===38443.
+- Preferred 80/443 occupancy is plugin doctor check `preferred-host-ports`, not leftover `proxy-loopback-ports`. Leftover probes persisted Traefik ports and only leftover-rootlessport. Occupancy TCP-probes 80/443 on all platforms, skips this-instance claims and leftover-rootlessport, and warns on foreign holders. Do not reuse leftover `readPort` (HTTP success is healthy-proxy) or `isOurLoopbackForwarder` (would skip DDEV Traefik).
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605 passes: true. US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -462,4 +463,13 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Fixed: restored role-passing proof on persisted 8443
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-31 00:10 CDT - US-605
+- `lando doctor` now warns (never fails) when preferred 80/443 are held by non-Lando tools, even if Traefik is healthy on fallbacks. Holder-specific remediation covers DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS/http.sys, and unknown comm/pid. This instance's claimed 80/443, socket-helper, and leftover-rootlessport stay silent on this check.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Occupancy is a separate plugin check (`preferred-host-ports`) from leftover (`proxy-loopback-ports`). Leftover still returns [] for foreign persisted Traefik ports.
+  - Skip Lando-owned via acquisition claims (advertised 80/443 or socket-helper mode), not `isOurLoopbackForwarder` — that matcher treats DDEV Traefik/`docker-proxy` as ours.
+  - Leftover `/proc` walk is rootlessport-only and loopback-only. Occupancy uses any-LISTEN inode + full pid walk so Apache/DDEV on 0.0.0.0:80 can be named.
 ---
