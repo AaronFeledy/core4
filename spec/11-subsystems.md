@@ -5,7 +5,7 @@
 
 This part defines the cross-cutting subsystems that sit between the core runtime and provider/plugin implementations. Each subsystem owns a small set of responsibilities, exposes a pluggable `Context.Service`, and is realized by one or more plugin implementations.
 
-Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `ProxyService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
+Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `RouterService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
 
 Byte movement is part of this subsystem surface and has two chokepoints, one per direction. **Outbound/remote** bytes go through `HttpClient` (§10.3.2) — the single egress abstraction that centralizes proxy/CA honoring, redaction, streaming request/response and upload, cancellation, and lifecycle events; `Downloader` (§10.3.3) is the verified-artifact specialization layered over it (checksum/size verification, atomic persistence, cache/offline short-circuiting, progress), and the tool-provisioning helper (§10.3.4) extracts and installs pinned host binaries over `Downloader`. **Local/volume/service** bytes go through `DataMover` (§10.11) — the on-host counterpart that moves bytes between host paths/archives, in-process streams, named volumes, service paths/commands, and built artifacts, owning snapshot/restore, verification, and the `Data` lifecycle events. A flow that does both (hosting `pull`/`push`, `image load` from a URL) composes them: `HttpClient` for the remote half, `DataMover` for the local landing half.
 
@@ -31,20 +31,20 @@ There is no built-in concept of a "shared bridge network" in core. Providers tha
 
 ### 10.2 Router and routes
 
-**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals still use `ProxyService` / `proxyServices:` / `@lando/proxy-traefik` until US-606 renames them to `RouterService` / `routerServices:` / `@lando/router-traefik`.
+**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals use `RouterService` / `routerServices:`. The bundled plugin package name stays `@lando/proxy-traefik` and contributes `routerServices: [traefik]`.
 
-Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation (US-606: `RouterService`).
+Core owns the `RoutePlan` schema. `RouterService` plugins own implementation.
 
 ```ts
-export class ProxyService extends Context.Service<ProxyService, {
+export class RouterService extends Context.Service<RouterService, {
   readonly id: string;
-  readonly capabilities: ProxyCapabilities;
-  readonly setup: (config: ProxyConfig) => Effect.Effect<void, ProxyError, Scope.Scope>;
-  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, app: AppId) => Effect.Effect<ProxyApplyResult, ProxyError>;
-  readonly removeRoutes: (app: AppId) => Effect.Effect<void, ProxyError>;
-  readonly status: Effect.Effect<ProxyStatus, ProxyError>;
-  readonly stop: Effect.Effect<void, ProxyError>;
-}>()("@lando/core/ProxyService") {}
+  readonly capabilities: RouterCapabilities;
+  readonly setup: (config: RouterConfig) => Effect.Effect<void, RouterError, Scope.Scope>;
+  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, app: AppId) => Effect.Effect<RouterApplyResult, RouterError>;
+  readonly removeRoutes: (app: AppId) => Effect.Effect<void, RouterError>;
+  readonly status: Effect.Effect<RouterStatus, RouterError>;
+  readonly stop: Effect.Effect<void, RouterError>;
+}>()("@lando/core/RouterService") {}
 ```
 
 **Required behaviors:**
@@ -60,13 +60,13 @@ export class ProxyService extends Context.Service<ProxyService, {
 
 **§10.2.1 Default Live Layer realization through the global app**
 
-The default `ProxyService` Live Layer in v4 — `ProxyServiceTraefikGlobalAppLive`, shipped with `@lando/proxy-traefik` (§1.4) — realizes its work through a `traefik` service running inside the global Lando app (§20). The plugin contributes BOTH a `proxyServices:` entry (the Live Layer) AND a paired `globalServices:` entry (the `traefik` service definition); installing one without the other is rejected at plugin load with `ProxyContributionPairError` (§20.10.1, §20.13).
+The default `RouterService` Live Layer in v4 — `RouterServiceTraefikGlobalAppLive`, shipped with `@lando/proxy-traefik` (§1.4; package name unchanged) — realizes its work through a `traefik` service running inside the global Lando app (§20). The plugin contributes BOTH a `routerServices:` entry (id `traefik`, the Live Layer) AND a paired `globalServices:` entry (the `traefik` service definition); installing one without the other is rejected at plugin load with `ProxyContributionPairError` (§20.10.1, §20.13).
 
 Required behaviors:
 
-- `ProxyService.applyRoutes(routes, app)` writes Traefik dynamic config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The `RoutePlan` schema is core's contract; the on-disk format is the proxy plugin's responsibility.
-- `ProxyService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the first user-app `lando start` after install brings the proxy up automatically.
-- The §10.2 `ProxyService` interface is unchanged; only the realization moved into the global app. Alternative `ProxyService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
+- `RouterService.applyRoutes(routes, app)` writes Traefik dynamic config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The `RoutePlan` schema is core's contract; the on-disk format is the proxy plugin's responsibility.
+- `RouterService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the first user-app `lando start` after install brings the proxy up automatically.
+- The §10.2 `RouterService` interface is the ingress contract; only the realization lives in the global app. Alternative `RouterService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
 - A user upgrading from a pre-§20 install whose host still has a v3-style out-of-band Traefik container running gets a `LegacyProxyContainerDetected` doctor diagnostic (§10.9, §20.10.3); migration is plugin-supplied.
 
 ### 10.2.2 Public tunnels and app sharing (`TunnelService`)
@@ -555,7 +555,7 @@ Required behaviors specific to the Mutagen engine:
 - The plugin MUST honor `network.proxy` and `network.ca` (§10.3.1) for both the binary download path and any registry call Mutagen makes for agent images. Proxy credentials are redacted from logs and the lifecycle event payloads identical to other Lando-owned network access.
 - The plugin's `FileSyncEngineCapabilities` declaration at runtime is fixed: `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`, `remoteAgentDeployment: "auto"`, `exclusionPatterns: true`, `conflictReporting: true`, `progressReporting: true`. The default `mode` for the planner-emitted `bind` realization is `two-way-safe` — Mutagen's safest mode that refuses ambiguous conflicts rather than auto-resolving them.
 
-**v4.0 scope: sync only.** Mutagen also offers TCP/UDP forwarding sessions; these are explicitly out of scope for v4.0 (§14.1). Lando's `RuntimeProvider` host-port and `ProxyService` route stories already cover host-facing networking, and adding forwarding through Mutagen would create two paths for one user-facing concern. A future plugin MAY contribute a `PortForwardingService` abstraction reusing the same daemon; v4.0 does not.
+**v4.0 scope: sync only.** Mutagen also offers TCP/UDP forwarding sessions; these are explicitly out of scope for v4.0 (§14.1). Lando's `RuntimeProvider` host-port and `RouterService` route stories already cover host-facing networking, and adding forwarding through Mutagen would create two paths for one user-facing concern. A future plugin MAY contribute a `PortForwardingService` abstraction reusing the same daemon; v4.0 does not.
 
 #### 10.6.3 Doctor checks
 
@@ -594,7 +594,7 @@ SQL helper behavior is plugin-provided. Core does not ship SQL helpers; the bund
 
 ### 10.8 Setup and host integration
 
-`lando setup` runs provider, CA, proxy, and shell-integration setup through plugin subscribers and direct service calls.
+`lando setup` runs provider, CA, router, and shell-integration setup through plugin subscribers and direct service calls.
 
 ```text
 lando setup [--yes] [--provider=<id>] [--skip-provider]

@@ -171,7 +171,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `meta:recipes:describe` | *(none)* | `minimal` | Print a recipe's prompts and metadata without running it (§8.8.11) |
 | `meta:recipes:list` | `recipes` | `none` | List canonical recipes shipped with the binary; served from compile-time embedded recipe registry, no Effect runtime constructed (§3.2) |
 | `meta:recipes:validate` | *(none)* | `minimal` | Validate a `recipe.yml` against the published schema (§8.8.11) |
-| `meta:setup` | `setup` | `provider` | Run host setup (provider, CA, proxy, shell integration) |
+| `meta:setup` | `setup` | `provider` | Run host setup (provider, CA, router, shell integration) |
 | `meta:shellenv` | `shellenv` | `none` | Print shell-profile snippets from compile-time embedded templates; no Effect runtime constructed (§3.2) |
 | `meta:uninstall` | `uninstall` | `minimal` | Remove Lando-owned installed files after confirmation (§17.7) |
 | `meta:update` | `update` | `plugins` | Update Lando core and plugins |
