@@ -6,6 +6,7 @@ import {
   leftoverProxyPortsCheck,
   manifest,
   plugin,
+  preferredHostPortsCheck,
   proxy,
   proxyServices,
   proxyTlsDoctorCheck,
@@ -47,15 +48,21 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(plugin.globalServices).toBe(globalServices);
   });
 
-  test("wires the proxy TLS and leftover loopback-port doctor contributions", () => {
+  test("wires the proxy TLS, leftover loopback-port, and preferred-host-port doctor contributions", () => {
     // Given / When the plugin descriptor is exported
     const doctorChecks = plugin.doctorChecks ?? [];
 
     // Then
-    expect(doctorChecks.map((check) => check.id)).toEqual(["proxy-tls", "proxy-loopback-ports"]);
+    expect(doctorChecks.map((check) => check.id)).toEqual([
+      "proxy-tls",
+      "proxy-loopback-ports",
+      "preferred-host-ports",
+    ]);
     expect(doctorChecks.at(0)).toBe(proxyTlsDoctorCheck);
     expect(doctorChecks.at(1)).toBe(leftoverProxyPortsCheck);
+    expect(doctorChecks.at(2)).toBe(preferredHostPortsCheck);
     expect(proxyTlsDoctorCheck.relevant).toBeUndefined();
     expect(leftoverProxyPortsCheck.relevant).toBeUndefined();
+    expect(preferredHostPortsCheck.relevant).toBeUndefined();
   });
 });
