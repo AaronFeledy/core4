@@ -125,6 +125,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/programmatic-recipe");
     expect(slugs).not.toContain("guides/recipes/remote-sources");
     expect(slugs).toContain("guides/subsystems/proxy-traefik");
+    expect(slugs).toContain("guides/subsystems/service-dns");
     expect(slugs).toContain("guides/subsystems/doctor-walkthrough");
     expect(slugs).not.toContain("guides/recipes/canonical-public-transcript");
     expect(slugs).not.toContain("guides/install/verify-installer-scripts");
