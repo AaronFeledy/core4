@@ -496,3 +496,10 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
   - Contribution-key renames are hard-cut like `cas` → `certificateAuthorities`: reject the old key; do not add a dual decoder.
   - Doctor Traefik title is `router`; setup step id remains `proxy` and the flag remains `--skip-proxy`. Generated bootstrap layers are gitignored — run `codegen:bootstrap-layers` after registry identifier changes.
 ---
+
+## 2026-08-31 07:46 CDT - US-606 Review
+- Reviewed the ingress rename. Fixed schema-compat: excepted the unreleased ProxyServiceContribution surface and defaultProxyService hard-cuts so the gate matches the documented gut-and-replace.
+- Review notes (deferred/rejected): plugin doctor check ids leftover-proxy-ports/proxy-tls are leftover/TLS diagnostics, not Traefik listen/hostname maps; setup absent-service label "Proxy" keeps step id proxy/--skip-proxy; stale guide ProxyService prose is outside ACs (guide-drift vs origin/main passed)
+- Guide-Coverage-Skip: ingress identifier rename and doctor/setup Traefik copy; no executable-guide CLI workflow changed
+- Verification: typecheck, lint passed; schema-compat accepted the hard-cuts; plugin schema and sdk-backward-compat spot checks passed (17)
+---
