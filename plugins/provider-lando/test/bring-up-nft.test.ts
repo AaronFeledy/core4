@@ -177,4 +177,14 @@ describe("startFailureRemediation", () => {
       httpsPort: 38443,
     });
   });
+
+  test("EADDRINUSE on persisted 8080 remediates leftover only for traefik", () => {
+    // Given
+    const message = "EADDRINUSE 8080";
+    // When / Then
+    expect(startFailureRemediation(message, undefined, chosenPair, "traefik")).toContain("127.0.0.1:8080");
+    expect(startFailureRemediation(message, undefined, chosenPair, "traefik")).not.toMatch(/lando destroy/u);
+    expect(startFailureRemediation(message, undefined, chosenPair, "apps")).toMatch(/lando destroy/u);
+    expect(startFailureRemediation(message, undefined, chosenPair, "apps")).not.toMatch(/lando global:stop/u);
+  });
 });

@@ -71,10 +71,12 @@ export const startFailureRemediation = (
   message: string,
   details?: unknown,
   ports?: LeftoverProxyPortPair,
+  serviceName?: string,
 ): string => {
   const haystack = `${message}\n${detailBody(details)}`;
   if (isManagedNftMissingMessage(haystack)) return NFT_REMEDIATION;
-  if (isLeftoverProxyPortBindMessage(haystack, ports)) {
+  const leftoverForService = serviceName === undefined || serviceName === "traefik";
+  if (leftoverForService && isLeftoverProxyPortBindMessage(haystack, ports)) {
     return ports === undefined ? LEFTOVER_PROXY_PORT_REMEDIATION : leftoverProxyPortRemediation(ports);
   }
   return APPLY_REMEDIATION;
@@ -137,6 +139,7 @@ const podmanFailure = (
       withApiReason(message, details),
       details,
       readPersistedTraefikPublishPair(),
+      String(service.name),
     ),
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),

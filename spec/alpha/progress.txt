@@ -450,3 +450,8 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Guide-Coverage-Skip: leftover doctor and start EADDRINUSE tests plus parser export; no executable-guide CLI surface changed
 - Verification: typecheck, lint passed; leftover-proxy-ports (16) and bring-up-nft (15) spot checks passed; Bugbot found no bugs before the review tests
 ---
+
+## 2026-08-30 22:42 CDT - US-604 Review
+- Leftover EADDRINUSE remap now applies only when the failing service is Traefik (or the helper omits a service name). App services that mention persisted 8080/8443 keep destroy remediation.
+- Verification: typecheck, lint passed; bring-up-nft (16) passed
+---
