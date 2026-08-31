@@ -33,13 +33,14 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
+- A user page names a missing wrapper, a hang, a product gap, or a GitHub issue. Teach the command path that actually ran as the expected flow
 
 ## Before you write
 
 1. Name the page type. Write only that type.
 2. Name the reader: user, contributor, or CI. User pages get the Lando voice. CI pages stay dry and stay out of the user path.
 3. If you show a command: run it with an isolated `LANDO` home and paste the real transcript, or show the command only (prose + fences). Do not invent stdout. Do not write `TODO: capture` on a user page.
-4. If a path is not up yet, say what *does* work. Do not stub.
+4. If a first-class wrapper is not there, document the command that actually ran (`lando exec web -- rake`, `lando exec database -- psql ...`) as the expected steps. Do not stub. Do not tell the reader something is missing.
 
 ## Voice
 
@@ -56,7 +57,7 @@ Brand shows up in the writing, not as slogans: easy path, full stack when you ne
 | Second person (`you`) | Third institutional voice |
 | Direct and concrete | Marketing fluff |
 | One earned aside | Forced jokes or meme spam |
-| Honest about limits | Fake perfection |
+| Working command path, taught as the normal way | Issue links, "there is no lando X", "until #N lands" |
 | Confident recommendation | Endless hedging |
 
 ### Jargon
@@ -103,6 +104,14 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Lando starts the proxy. Do not tell users to launch Traefik.
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
+
+## Shortcomings stay in issues
+
+If a familiar tool has no first-class `lando <tool>` wrapper, a flag hangs, or a recipe does not inject env the stack usually wants, still write the guide. Document the live command path as the expected way to do it.
+
+File an AaronFeledy/core4 issue with troubleshooting first (problem, code/tests/live, likely fix) and a sentence that names the guide which now teaches this path, so we can update that page if the issue lands a wrapper or fix.
+
+Never link the issue from the guide. Never say the wrapper is missing. Never say "until this lands."
 
 ## Transcripts
 
@@ -243,7 +252,7 @@ $ lando start
 ... started ...
 ```
 
-This feature is not available yet.
+This feature is not available yet. There is no `lando rake` wrapper, so use exec until #895 lands.
 
 ## Ship only if
 
@@ -257,6 +266,7 @@ This feature is not available yet.
 - [ ] Humor at most one line, next to a command
 - [ ] If executable: litmus passes; no vars-only; no empty Inspect; gates green
 - [ ] Warnings before destructive actions
+- [ ] No issue links or missing-tool callouts on the user page; working path is taught as the expected flow
 
 ## Authority
 

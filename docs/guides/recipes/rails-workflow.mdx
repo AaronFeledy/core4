@@ -25,7 +25,7 @@ Init writes `.lando.yml` plus a source-only `Gemfile` (`source "https://rubygems
 | `web` | `ruby:3.3`, `framework: rails`, port `3000`, depends on `database` and `cache` |
 | `database` | `type: postgres` |
 | `cache` | `type: redis` |
-| Tooling | `lando rails` and `lando bundle` against `web`; `rake` via `lando exec web -- rake` |
+| Tooling | `lando rails` and `lando bundle` against `web`; `lando exec web -- rake` for rake |
 
 Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTTPS.
 
@@ -61,7 +61,7 @@ Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTT
 
 ## Run day-to-day tooling
 
-After start, use the recipe tooling for app work and the service clients for Postgres and Redis:
+After start, Rails, Bundler, rake, Redis, and Postgres all run from the app:
 
 ```sh
 lando rails --version
@@ -73,23 +73,23 @@ lando exec database -- psql -U lando -d rails-demo -c 'select 1'
 
 `PONG` means Redis is awake. You can stop poking it.
 
-`rake` is already on `web` (`/usr/local/bin/rake`). There is no `lando rake` wrapper, so call it with `exec`. First word after `exec` is the service. After you have a Rakefile, keep that same shape for tasks. `lando rails` is the other door for Rails tasks.
+First word after `exec` is the service. After you have a Rakefile, keep `lando exec web -- rake` for tasks. `lando rails` is the other door for Rails tasks.
 
-Swap `rails-demo` for your app name. That database `exec` path is the reliable way to run a one-shot `psql -c` query. Prefer it over `lando psql -c` until [psql tooling hangs on non-interactive -c](https://github.com/AaronFeledy/core4/issues/893) lands.
+Swap `rails-demo` for your app name in that `psql` line.
 
 ## Connect ActiveRecord and Redis
 
-The recipe starts Postgres and Redis on the app network. It does not inject `DATABASE_URL`, `REDIS_URL`, or `PG*` into `web` yet ([Rails recipe should inject DATABASE_URL / Redis connection env into web](https://github.com/AaronFeledy/core4/issues/894)). Wire hosts yourself until that ships:
+Point the app at the services on the app network:
 
 | Setting | Postgres | Redis |
-| --- | --- | --- |
+| --- | --- |
 | Host | `database` | `cache` |
 | Database / DB | app name (here `rails-demo`) | n/a |
 | User | `lando` | n/a (no auth by default) |
 | Password | from `lando info` (generated) | n/a |
 | Port | `5432` | `6379` |
 
-Read the exact Postgres password from `lando info`. Do not hardcode it. Point ActiveRecord at host `database` and Redis at host `cache`. The recipe does not write your `database.yml` for you.
+Read the Postgres password from `lando info`. Do not hardcode it. Put host `database` in ActiveRecord and host `cache` in Redis.
 
 ## Destroy without surprises
 
