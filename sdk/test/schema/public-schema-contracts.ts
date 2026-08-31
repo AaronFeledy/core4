@@ -79,6 +79,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RoutePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProxyCapabilities: "sdk/test/contract/proxy-service.test.ts",
   ProxyConfig: "sdk/test/contract/proxy-service.test.ts",
+  RouterConfig: "sdk/test/schema/router-config.test.ts",
   ProxyAuthority: "sdk/test/contract/proxy-service.test.ts",
   ProxyApplyResult: "sdk/test/contract/proxy-service.test.ts",
   ProxyStatus: "sdk/test/contract/proxy-service.test.ts",

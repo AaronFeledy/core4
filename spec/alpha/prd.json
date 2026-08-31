@@ -137,6 +137,105 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-601",
+      "title": "Spec contract for familiar proxy host-port fallback",
+      "description": "As a maintainer, §10.2.3 is the durable contract for Traefik host-port acquisition before any implementation.",
+      "acceptanceCriteria": [
+        "US-601 edits `spec/11-subsystems.md` §10.2.3. That section states the HTTP list `80, 8080, 8000, 8888, 8008, 38080`, the HTTPS list `443, 8443, 4443, 4433, 4444, 444, 38443`, TCP bind (not HTTP GET), persist and reuse, Traefik publishes the chosen pair, fail closed, doctor/start use persisted ports, notify on fallback from `80`/`443`, and doctor occupancy of `80`/`443` by non-Lando holders including DDEV.",
+        "Users can override preferred ports, fallback arrays, and bind address globally (`router:` in §7.5) and per app (Landofile `router:` in §7.4). App-level pins are a request against the one host Traefik, not a second router.",
+        "Ingress ubiquitous language is router / routes. Landofile `proxy:` remains a compat alias for per-service routes only. `HostProxyService` and `network.proxy` keep those names.",
+        "`38080`/`38443` are last-resort, not the degraded default.",
+        "Topic lookup in `spec/README.md` names §10.2.3.",
+        "This story does not change acquisition, Traefik publish, doctor, or start code.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-602",
+      "title": "Acquire and persist Traefik host ports",
+      "description": "As a user, Lando picks the first free familiar host ports and remembers them.",
+      "acceptanceCriteria": [
+        "Requires US-601. Do not start this story before §10.2.3 exists.",
+        "HTTP try order defaults to `80, 8080, 8000, 8888, 8008, 38080`. HTTPS defaults to `443, 8443, 4443, 4433, 4444, 444, 38443`. First TCP-bind success per protocol wins.",
+        "Merged lists are compiled defaults → global `router:` → env → Landofile `router:`. `httpPort`/`httpsPort` replace the preferred candidate; fallback arrays replace the rest of that protocol's list.",
+        "Chosen `{ http, https }` is persisted and reused when preferred config still matches and the proxy still owns those binds.",
+        "If Traefik is already running and this app set `httpPort`/`httpsPort` that do not match the running pair, fail with a tagged error naming the running ports.",
+        "Acquisition state is not limited to `80|38080` and `443|38443`.",
+        "If a protocol's list is exhausted, proxy start fails with a tagged error naming the tried ports. Do not disable the proxy silently.",
+        "Bind probes use `@lando/sdk/probe` `runProbe`. No hand-rolled `Effect.retry` / `Schedule` loops.",
+        "When a preferred port (`80`/`443` by default) is occupied and a fallback is chosen, notify at acquisition time: occupied port, chosen fallback, holder if known, and that stopping the holder then restarting the global router restores `80`/`443`. Silent fallback is forbidden.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-603",
+      "title": "Traefik publishes the chosen host ports",
+      "description": "As a user, Traefik listens on the acquired host ports, not on a hidden extra 38080/38443 pair.",
+      "acceptanceCriteria": [
+        "Requires US-602.",
+        "Global Traefik PortBindings map chosen HTTP to container 80 and chosen HTTPS to container 443 on 127.0.0.1.",
+        "Traefik MUST NOT always publish 38080/38443 in addition to the chosen pair.",
+        "Socket-helper / occupied-hop, when used, target the chosen high ports from the same lists.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-604",
+      "title": "Info, doctor, and start use persisted proxy ports",
+      "description": "As a user, URLs and diagnostics follow the ports Lando actually bound.",
+      "acceptanceCriteria": [
+        "Requires US-603.",
+        "lando info and post-start messages omit :80 / :443 and include the port when non-default.",
+        "Doctor leftover-proxy checks probe the persisted chosen ports (not only 38080/38443).",
+        "Start-path EADDRINUSE remap uses the persisted chosen ports.",
+        "Occupied-hop / leftover classification MUST NOT treat another Lando instance's healthy Traefik as leftover rootlessport.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-605",
+      "title": "Doctor warns when 80/443 are held by non-Lando tools",
+      "description": "As a user who wants portless *.lndo.site URLs, lando doctor tells me what is using 80/443 and how to free them.",
+      "acceptanceCriteria": [
+        "Requires US-604.",
+        "`lando doctor` warns (not fail) when preferred `80` and/or `443` are in use by a non-Lando holder, even if Traefik is healthy on fallbacks.",
+        "Lando-owned binds (this instance's Traefik, socket-helper, leftover-rootlessport already reported) do not emit this warning.",
+        "Common holders are identified when possible, with holder-specific remediation: DDEV (`ddev poweroff` or move DDEV to 8080/8443), Lando 3 (`lando poweroff`), Docksal, Apache/httpd, nginx, Caddy, IIS/http.sys on win32. Unknown holders name comm/pid when known.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-606",
+      "title": "Rename ingress internals to router/routes",
+      "description": "As a maintainer, the ingress bounded context uses the same words in code as in user config: router and routes.",
+      "acceptanceCriteria": [
+        "Requires US-605.",
+        "Spec and code rename ingress internals: `ProxyService` → `RouterService`, `proxyServices:` → `routerServices:`, bundled plugin `@lando/proxy-traefik` → `@lando/router-traefik` (or a documented alias that contribution surface is `routerServices:`).",
+        "User-facing doctor/start/setup copy says router / routes, not proxy, for Traefik listen and hostname maps.",
+        "`HostProxyService`, `host-proxy`, and `network.proxy` are unchanged.",
+        "Landofile top-level `proxy: <service>: routes` remains a compat alias for service `routes:`.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 15,
       "passes": false,
       "notes": ""
     }

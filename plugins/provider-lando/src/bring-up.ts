@@ -25,7 +25,13 @@ import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./c
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
 import { waitForExit } from "./inspect.ts";
-import { LEFTOVER_PROXY_PORT_REMEDIATION, isLeftoverProxyPortBindMessage } from "./leftover-proxy-port.ts";
+import {
+  LEFTOVER_PROXY_PORT_REMEDIATION,
+  type LeftoverProxyPortPair,
+  isLeftoverProxyPortBindMessage,
+  leftoverProxyPortRemediation,
+  readPersistedTraefikPublishPair,
+} from "./leftover-proxy-port.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 import { volumeSelectorValue } from "./volume-prune.ts";
 
@@ -61,10 +67,18 @@ const detailBody = (details: unknown): string => {
   return typeof body === "string" ? body : "";
 };
 
-export const startFailureRemediation = (message: string, details?: unknown): string => {
+export const startFailureRemediation = (
+  message: string,
+  details?: unknown,
+  ports?: LeftoverProxyPortPair,
+  serviceName?: string,
+): string => {
   const haystack = `${message}\n${detailBody(details)}`;
   if (isManagedNftMissingMessage(haystack)) return NFT_REMEDIATION;
-  if (isLeftoverProxyPortBindMessage(haystack)) return LEFTOVER_PROXY_PORT_REMEDIATION;
+  const leftoverForService = serviceName === undefined || serviceName === "traefik";
+  if (leftoverForService && isLeftoverProxyPortBindMessage(haystack, ports)) {
+    return ports === undefined ? LEFTOVER_PROXY_PORT_REMEDIATION : leftoverProxyPortRemediation(ports);
+  }
   return APPLY_REMEDIATION;
 };
 
@@ -121,7 +135,12 @@ const podmanFailure = (
     operation,
     service: service.name,
     message: withApiReason(message, details),
-    remediation: startFailureRemediation(withApiReason(message, details), details),
+    remediation: startFailureRemediation(
+      withApiReason(message, details),
+      details,
+      readPersistedTraefikPublishPair(),
+      String(service.name),
+    ),
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
   });
@@ -303,7 +322,7 @@ const ensureNetwork = (
               operation: "bringUp.network",
               message,
               details: redactDetails(details),
-              remediation: startFailureRemediation(message, details),
+              remediation: startFailureRemediation(message, details, readPersistedTraefikPublishPair()),
             }),
           );
         }),

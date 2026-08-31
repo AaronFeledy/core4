@@ -1,5 +1,3 @@
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
-
 export const UNIT_MARKER = "# lando-proxy-socket-helper" as const;
 export const POLKIT_RULE_PATH = "/etc/polkit-1/rules.d/10-lando-proxy.rules" as const;
 const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
@@ -88,6 +86,8 @@ const renderSocketProxyUnits = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
 }): Readonly<Record<(typeof SOCKET_UNIT_NAMES)[number], string>> => ({
   "lando-proxy-http.socket": renderSocketUnit({
     description: "Lando proxy HTTP socket",
@@ -98,7 +98,7 @@ const renderSocketProxyUnits = (input: {
     description: "Lando proxy HTTP forwarder",
     socket: "lando-proxy-http.socket",
     binary: input.binary,
-    target: `127.0.0.1:${TRAEFIK_HTTP_PORT}`,
+    target: `127.0.0.1:${input.httpTarget}`,
     user: input.user,
     serviceType: input.serviceType,
   }),
@@ -111,7 +111,7 @@ const renderSocketProxyUnits = (input: {
     description: "Lando proxy HTTPS forwarder",
     socket: "lando-proxy-https.socket",
     binary: input.binary,
-    target: `127.0.0.1:${TRAEFIK_HTTPS_PORT}`,
+    target: `127.0.0.1:${input.httpsTarget}`,
     user: input.user,
     serviceType: input.serviceType,
   }),
@@ -124,6 +124,8 @@ export const buildInstallScript = (input: {
   readonly user: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
 }): string => {
   const units = renderSocketProxyUnits(input);
   const writes = SOCKET_UNIT_NAMES.map((name) => heredoc(`${SYSTEMD_UNIT_DIR}/${name}`, units[name]));
@@ -137,5 +139,6 @@ export const buildInstallScript = (input: {
     `chown root:root ${SOCKET_UNIT_PATHS.join(" ")}`,
     `chmod 0644 ${SOCKET_UNIT_PATHS.join(" ")}`,
     "systemctl daemon-reload",
+    "systemctl try-restart lando-proxy-http.service lando-proxy-https.service",
   ].join("\n");
 };

@@ -1,30 +1,39 @@
 import { Effect, Schema } from "effect";
 
-import { identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
+import { PortNumber } from "@lando/sdk/schema";
+
 import {
-  ACQUISITION_MODES,
-  type AcquisitionDecision,
-  type BindOutcome,
-  DESIRED_HTTPS_PORT,
-  DESIRED_HTTP_PORT,
-  LOOPBACK_HOST,
-  classifyAcquisition,
-  probeBind,
-  probeForward,
-} from "./port-acquisition.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
-import { acquisitionStateFile } from "./proxy-paths.ts";
+  classifyOrFail,
+  fingerprintsEqual,
+  pinDiffers,
+  pinMismatch,
+  preferredEacces,
+  probeCurrent,
+  resolveTryLists,
+  stillOwnPersisted,
+} from "./port-acquisition-helpers.ts";
+import { ACQUISITION_MODES, type AcquisitionDecision, chooseHelperBindPorts } from "./port-acquisition.ts";
+import { acquisitionStateFile, routingStateFile } from "./proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
 import { isSocketProxyInstalled } from "./socket-proxy-install.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
+const AcquisitionFingerprintSchema = Schema.Struct({
+  http: Schema.Array(PortNumber),
+  https: Schema.Array(PortNumber),
+  bindAddress: Schema.String,
+});
+
 export const AcquisitionState = Schema.Struct({
   mode: Schema.Literal(...ACQUISITION_MODES),
-  httpPort: Schema.Literal(DESIRED_HTTP_PORT, TRAEFIK_HTTP_PORT),
-  httpsPort: Schema.Literal(DESIRED_HTTPS_PORT, TRAEFIK_HTTPS_PORT),
+  httpPort: PortNumber,
+  httpsPort: PortNumber,
   notices: Schema.Array(Schema.String),
+  fingerprint: AcquisitionFingerprintSchema,
   helperInstalled: Schema.optional(Schema.Boolean),
   socketsActive: Schema.optional(Schema.Boolean),
+  bindHttpPort: Schema.optional(PortNumber),
+  bindHttpsPort: Schema.optional(PortNumber),
 });
 export type AcquisitionState = typeof AcquisitionState.Type;
 
@@ -49,118 +58,98 @@ export const readAcquisitionState = (
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
-const holderFor = (port: number, bind: BindOutcome): Effect.Effect<string | undefined> =>
-  bind.kind === "EADDRINUSE"
-    ? Effect.promise(() => identifyLoopbackHolderComm(port))
-    : Effect.succeed(undefined);
-
-const degradedDecision: AcquisitionDecision = {
-  mode: "degraded-high-ports",
-  httpPort: TRAEFIK_HTTP_PORT,
-  httpsPort: TRAEFIK_HTTPS_PORT,
-  notices: [],
-};
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
-};
-
-export const acquirePorts = (input: {
-  readonly platform: ProxyPaths["platform"];
-  readonly helperInstalled: boolean;
-  readonly socketsActive: boolean;
-  readonly host?: string;
-}): Effect.Effect<AcquisitionDecision> =>
-  Effect.gen(function* () {
-    const host = input.host ?? LOOPBACK_HOST;
-    const httpForward = yield* probeForward(host, DESIRED_HTTP_PORT);
-    const httpsForward = yield* probeForward(host, DESIRED_HTTPS_PORT);
-    const occupied = { kind: "EADDRINUSE" as const, code: "EADDRINUSE" as const };
-    const httpBind = httpForward.kind === "success" ? occupied : yield* probeBind(host, DESIRED_HTTP_PORT);
-    const httpsBind = httpsForward.kind === "success" ? occupied : yield* probeBind(host, DESIRED_HTTPS_PORT);
-    const httpHolder = yield* holderFor(DESIRED_HTTP_PORT, httpBind);
-    const httpsHolder = yield* holderFor(DESIRED_HTTPS_PORT, httpsBind);
-    return classifyAcquisition({
-      platform: input.platform,
-      helperInstalled: input.helperInstalled,
-      socketsActive: input.socketsActive,
-      http: {
-        bind: httpBind,
-        forward: httpForward,
-        ...(httpHolder === undefined ? {} : { holder: httpHolder }),
-      },
-      https: {
-        bind: httpsBind,
-        forward: httpsForward,
-        ...(httpsHolder === undefined ? {} : { holder: httpsHolder }),
-      },
-    });
-  });
-
-const classifyCurrent = (
-  dependencies: TraefikProxyDependencies,
-  helperInstalled: boolean,
-  socketsActive: boolean,
-): Effect.Effect<AcquisitionDecision> => {
-  const override = dependencies.socketProxy?.classifyOverride;
-  if (override !== undefined) {
-    return Effect.succeed(
-      classifyAcquisition({
-        platform: dependencies.paths.platform,
-        helperInstalled,
-        socketsActive,
-        http: override.http,
-        https: override.https,
-      }),
-    );
-  }
-  return acquirePorts({
-    platform: dependencies.paths.platform,
-    helperInstalled,
-    socketsActive,
-  }).pipe(Effect.catchAll(() => Effect.succeed(degradedDecision)));
-};
-
 export const persistPortAcquisition = (
   dependencies: TraefikProxyDependencies,
 ): Effect.Effect<AcquisitionDecision, unknown> =>
   Effect.gen(function* () {
+    const lists = resolveTryLists(dependencies);
     const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+    const routingExists = yield* dependencies.fileSystem.exists(routingStateFile(dependencies.paths));
+    const pin = dependencies.routerPin;
+    const previousPair =
+      previous === undefined
+        ? undefined
+        : {
+            httpPort: previous.httpPort,
+            httpsPort: previous.httpsPort,
+            helperInstalled: previous.helperInstalled === true,
+            socketsActive: previous.socketsActive === true,
+            ...(previous.bindHttpPort === undefined ? {} : { bindHttpPort: previous.bindHttpPort }),
+            ...(previous.bindHttpsPort === undefined ? {} : { bindHttpsPort: previous.bindHttpsPort }),
+          };
+    if (routingExists && pin !== undefined && previousPair !== undefined && pinDiffers(previousPair, pin)) {
+      return yield* Effect.fail(pinMismatch(previousPair, pin));
+    }
     const unitsInstalled =
       dependencies.socketProxy === undefined
         ? (previous?.helperInstalled ?? false)
         : yield* isSocketProxyInstalled(dependencies.socketProxy);
     const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
-    const decision = yield* classifyCurrent(dependencies, helperInstalled, false);
-    const resolved = yield* (() => {
-      switch (decision.mode) {
-        case "needs-helper":
-        case "socket-helper": {
-          const socketProxy = dependencies.socketProxy;
-          if (
-            (dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl") &&
-            socketProxy !== undefined
-          ) {
-            return resolveNeedsHelper(socketProxy);
-          }
-          return Effect.succeed({
-            decision: degradedDecision,
-            helperInstalled,
-            socketsActive: false,
+    const probed = yield* probeCurrent(dependencies, lists);
+    if (
+      previous !== undefined &&
+      previousPair !== undefined &&
+      fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
+      (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
+    ) {
+      // Reuse is silent: occupancy fallback warn only on a fresh walk.
+      return {
+        mode: previous.mode,
+        httpPort: previous.httpPort,
+        httpsPort: previous.httpsPort,
+        notices: [],
+        fingerprint: previous.fingerprint,
+      };
+    }
+    if (
+      (dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl") &&
+      preferredEacces(probed) &&
+      dependencies.socketProxy !== undefined
+    ) {
+      const hops = yield* Effect.try({
+        try: () =>
+          chooseHelperBindPorts({
+            httpBinds: probed.httpBinds,
+            httpsBinds: probed.httpsBinds,
+            httpTryList: lists.httpTryList,
+            httpsTryList: lists.httpsTryList,
+          }),
+        catch: (error) => error,
+      }).pipe(Effect.either);
+      if (hops._tag === "Right") {
+        const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
+          httpTarget: hops.right.bindHttpPort,
+          httpsTarget: hops.right.bindHttpsPort,
+        });
+        if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
+          const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
+          yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+            ...decision,
+            helperInstalled: resolved.helperInstalled,
+            socketsActive: resolved.socketsActive,
+            bindHttpPort: hops.right.bindHttpPort,
+            bindHttpsPort: hops.right.bindHttpsPort,
           });
+          return decision;
         }
-        case "direct":
-        case "occupied-hop":
-        case "degraded-high-ports":
-          return Effect.succeed({ decision, helperInstalled, socketsActive: false });
-        default:
-          return assertNever(decision.mode);
       }
-    })();
-    yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-      ...resolved.decision,
-      helperInstalled: resolved.helperInstalled,
-      socketsActive: resolved.socketsActive,
+    }
+    const decision = yield* classifyOrFail({
+      platform: dependencies.paths.platform,
+      helperInstalled,
+      socketsActive: false,
+      http: probed.http,
+      https: probed.https,
+      httpBinds: probed.httpBinds,
+      httpsBinds: probed.httpsBinds,
+      httpTryList: lists.httpTryList,
+      httpsTryList: lists.httpsTryList,
+      bindAddress: lists.bindAddress,
     });
-    return resolved.decision;
+    yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+      ...decision,
+      helperInstalled,
+      socketsActive: false,
+    });
+    return decision;
   });

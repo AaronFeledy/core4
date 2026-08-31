@@ -3,23 +3,26 @@ import { Effect } from "effect";
 import type { InteractionService, PrivilegeService, ProcessRunner } from "@lando/sdk/services";
 
 import { hasHostSystemd } from "./host-systemd.ts";
-import { type AcquisitionDecision, DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
+import {
+  type AcquisitionDecision,
+  DESIRED_HTTPS_PORT,
+  DESIRED_HTTP_PORT,
+  defaultAcquisitionFingerprint,
+} from "./port-acquisition.ts";
 import type { SocketProxyDependencies } from "./proxy-types.ts";
 import { installSocketProxy, isSocketProxyInstalled, startSockets } from "./socket-proxy-install.ts";
 
-const degraded = (): AcquisitionDecision => ({
-  mode: "degraded-high-ports",
-  httpPort: TRAEFIK_HTTP_PORT,
-  httpsPort: TRAEFIK_HTTPS_PORT,
-  notices: [],
-});
+export type HelperHopTargets = {
+  readonly httpTarget: number;
+  readonly httpsTarget: number;
+};
 
-const socketHelper = (): AcquisitionDecision => ({
-  mode: "socket-helper",
+const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDecision => ({
+  mode,
   httpPort: DESIRED_HTTP_PORT,
   httpsPort: DESIRED_HTTPS_PORT,
   notices: [],
+  fingerprint: defaultAcquisitionFingerprint(),
 });
 
 const assertNever = (value: never): never => {
@@ -48,6 +51,7 @@ const consentToInstall = (
 
 export const resolveNeedsHelper = (
   socketProxy: SocketProxyDependencies,
+  hops: HelperHopTargets,
 ): Effect.Effect<{
   readonly decision: AcquisitionDecision;
   readonly helperInstalled: boolean;
@@ -55,20 +59,28 @@ export const resolveNeedsHelper = (
 }> =>
   Effect.gen(function* () {
     if (!socketProxy.hasHostSystemd()) {
-      return { decision: degraded(), helperInstalled: false, socketsActive: false };
+      return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
     }
     const alreadyInstalled = yield* isSocketProxyInstalled(socketProxy);
     if (!(yield* consentToInstall(socketProxy, alreadyInstalled))) {
-      return { decision: degraded(), helperInstalled: alreadyInstalled, socketsActive: false };
+      return {
+        decision: helperDecision("needs-helper"),
+        helperInstalled: alreadyInstalled,
+        socketsActive: false,
+      };
     }
-    const installed = yield* installSocketProxy(socketProxy);
+    const installed = yield* installSocketProxy({
+      ...socketProxy,
+      httpTarget: hops.httpTarget,
+      httpsTarget: hops.httpsTarget,
+    });
     switch (installed.kind) {
       case "installed":
       case "already-installed":
         break;
       case "elevation-refused":
       case "proxyd-missing":
-        return { decision: degraded(), helperInstalled: false, socketsActive: false };
+        return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
       default:
         return assertNever(installed);
     }
@@ -78,12 +90,16 @@ export const resolveNeedsHelper = (
       ...(socketProxy.probeForward === undefined ? {} : { probeForward: socketProxy.probeForward }),
     });
     if (started.kind === "started" && started.http.kind === "success" && started.https.kind === "success") {
-      return { decision: socketHelper(), helperInstalled: true, socketsActive: true };
+      return { decision: helperDecision("socket-helper"), helperInstalled: true, socketsActive: true };
     }
-    return { decision: degraded(), helperInstalled: true, socketsActive: false };
+    return { decision: helperDecision("needs-helper"), helperInstalled: true, socketsActive: false };
   }).pipe(
     Effect.catchAll(() =>
-      Effect.succeed({ decision: degraded(), helperInstalled: false, socketsActive: false }),
+      Effect.succeed({
+        decision: helperDecision("needs-helper"),
+        helperInstalled: false,
+        socketsActive: false,
+      }),
     ),
   );
 

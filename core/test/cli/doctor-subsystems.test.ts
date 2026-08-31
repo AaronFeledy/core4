@@ -50,7 +50,7 @@ const writeAcquisitionState = (
   const paths = makeLandoPaths({ userDataRoot: root });
   const stateFile = join(paths.globalAppRoot, "proxy-traefik", "dynamic", ".lando-port-acquisition.json");
   mkdirSync(join(stateFile, ".."), { recursive: true });
-  writeFileSync(stateFile, `${JSON.stringify({ mode, httpPort: 38080, httpsPort: 38443, notices: [] })}\n`);
+  writeFileSync(stateFile, `${JSON.stringify({ mode, httpPort: 8080, httpsPort: 8443, notices: [] })}\n`);
   return {
     layer: Layer.succeed(PathsService, paths),
     cleanup: () => rmSync(root, { recursive: true, force: true }),
@@ -227,9 +227,9 @@ describe("meta:doctor subsystem checks", () => {
     expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
   });
 
-  test("surfaces degraded-high-ports remediation from persisted acquisition state", async () => {
-    // Given: a running Traefik proxy whose persisted acquisition mode is degraded-high-ports.
-    const acquisition = writeAcquisitionState("degraded-high-ports");
+  test("surfaces needs-helper remediation from persisted acquisition state", async () => {
+    // Given: a running Traefik proxy whose persisted acquisition mode is needs-helper.
+    const acquisition = writeAcquisitionState("needs-helper");
     const proxyService = { ...makeTestProxyService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
@@ -244,19 +244,20 @@ describe("meta:doctor subsystem checks", () => {
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
       const proxy = result.checks.find((check) => check.name === "proxy");
 
-      // Then: the acquisition mode and high-port --fix remediation surface.
-      expect(proxy?.context.acquisitionMode).toBe("degraded-high-ports");
+      // Then: the acquisition mode and 8080/8443 --fix remediation surface.
+      expect(proxy?.context.acquisitionMode).toBe("needs-helper");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
-      expect(proxy?.solutions[0]?.description).toContain(":38080/:38443");
+      expect(proxy?.solutions[0]?.description).toContain(":8080/:8443");
+      expect(proxy?.solutions[0]?.description).not.toContain(":38080");
     } finally {
       acquisition.cleanup();
     }
   });
 
-  test("does not report proxy --fix recovered while acquisition stays degraded-high-ports", async () => {
-    // Given: a running proxy still persisted as degraded-high-ports after setup.
-    const acquisition = writeAcquisitionState("degraded-high-ports");
+  test("does not report proxy --fix recovered while acquisition stays needs-helper", async () => {
+    // Given: a running proxy still persisted as needs-helper after setup.
+    const acquisition = writeAcquisitionState("needs-helper");
     const proxyService = { ...makeTestProxyService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
@@ -274,7 +275,7 @@ describe("meta:doctor subsystem checks", () => {
       // Then: the check stays warn and does not claim recovered.
       expect(proxy?.status).toBe("warn");
       expect(proxy?.context.fixOutcome).not.toBe("recovered");
-      expect(proxy?.context.acquisitionMode).toBe("degraded-high-ports");
+      expect(proxy?.context.acquisitionMode).toBe("needs-helper");
     } finally {
       acquisition.cleanup();
     }
@@ -321,6 +322,7 @@ describe("meta:doctor subsystem checks", () => {
       expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.description).toContain("port in use");
+      expect(proxy?.solutions[0]?.description).not.toContain("38080");
     } finally {
       acquisition.cleanup();
     }

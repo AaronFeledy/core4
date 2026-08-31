@@ -20,6 +20,11 @@ const FRIENDLY_ENV_OVERLAYS = [
   ["LANDO_NOTIFY_COMMANDS", ["notify", "commands"]],
   ["LANDO_NETWORK_CA_INJECT_INTO_SERVICES", ["network", "ca", "injectIntoServices"]],
   ["LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES", ["network", "proxy", "injectIntoServices"]],
+  ["LANDO_ROUTER_HTTP_PORT", ["router", "httpPort"]],
+  ["LANDO_ROUTER_HTTPS_PORT", ["router", "httpsPort"]],
+  ["LANDO_ROUTER_BIND_ADDRESS", ["router", "bindAddress"]],
+  ["LANDO_ROUTER_HTTP_FALLBACKS", ["router", "httpFallbacks"]],
+  ["LANDO_ROUTER_HTTPS_FALLBACKS", ["router", "httpsFallbacks"]],
 ] as const;
 
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.

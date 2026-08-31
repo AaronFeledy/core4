@@ -273,7 +273,14 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
-import { ProxyApplyResult, ProxyAuthority, ProxyCapabilities, ProxyConfig, ProxyStatus } from "./proxy.ts";
+import {
+  ProxyApplyResult,
+  ProxyAuthority,
+  ProxyCapabilities,
+  ProxyConfig,
+  ProxyStatus,
+  RouterConfig,
+} from "./proxy.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -453,6 +460,7 @@ const rawPublicSchemaRegistry = {
   RoutePlan,
   ProxyCapabilities,
   ProxyConfig,
+  RouterConfig,
   ProxyAuthority,
   ProxyApplyResult,
   ProxyStatus,
@@ -777,6 +785,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RoutePlan: "Public Lando schema contract for Route Plan.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
+  RouterConfig: "Shared host-router bind address and port policy.",
   ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",

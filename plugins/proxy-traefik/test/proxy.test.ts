@@ -41,11 +41,7 @@ const unusedPrivilege = {
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 };
 
-const makeHarness = (
-  failAtomic = false,
-  endpoints: ReadonlyArray<string> = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
-  classifyOverride: { readonly http: SchemeProbe; readonly https: SchemeProbe } = highPortOverride,
-) => {
+const makeHarness = (failAtomic = false) => {
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
   const socketProxy = {
@@ -55,7 +51,7 @@ const makeHarness = (
     readText: () => Effect.fail(new Error("missing")),
     processRunner: unusedRunner,
     privilege: unusedPrivilege,
-    classifyOverride,
+    classifyOverride: highPortOverride,
   };
   const service = makeTraefikProxyService({
     certificateAuthority: makeTestCertificateAuthority(),
@@ -75,18 +71,22 @@ const makeHarness = (
             .filter((file) => file.startsWith(`${path}/`))
             .map((file) => file.slice(path.length + 1)),
         ),
-      readText: (path) =>
-        files.has(path)
-          ? Effect.succeed(files.get(path) ?? "")
-          : path.startsWith("/tmp/test-certs/")
-            ? Effect.succeed("test pem")
-            : Effect.fail(new FileNotFoundError({ message: "removed", path })),
+      readText: (path) => {
+        if (files.has(path)) {
+          return Effect.succeed(files.get(path) ?? "");
+        }
+        if (path.startsWith("/tmp/test-certs/")) {
+          return Effect.succeed("test pem");
+        }
+        return Effect.fail(new FileNotFoundError({ message: "removed", path }));
+      },
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     globalApp: {
       ensureRunning: (services) =>
         Effect.sync(() => {
           ensured.push(services);
+          const endpoints = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"];
           return [{ name: "traefik", state: "running", endpoints }];
         }),
     },
@@ -175,8 +175,8 @@ describe("Traefik ProxyService", () => {
     const second = await Effect.runPromise(harness.service.applyRoutes(routes.slice(1), app));
 
     expect(first.authorities).toEqual([
-      { scheme: "https", hostname: "api.demo.lndo.site", port: 38443 },
-      { scheme: "http", hostname: "web.demo.lndo.site", port: 38080 },
+      { scheme: "https", hostname: "api.demo.lndo.site", port: 8443 },
+      { scheme: "http", hostname: "web.demo.lndo.site", port: 8080 },
     ]);
     expect(second.appliedRoutes).toHaveLength(1);
     expect([...harness.files.values()][0]).not.toContain("api.demo.lndo.site");
@@ -191,9 +191,9 @@ describe("Traefik ProxyService", () => {
 
     const status = await Effect.runPromise(freshService.status);
 
-    expect(applied.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
+    expect(applied.authorities.map(({ port }) => port)).toEqual([8443, 8080]);
     expect(status.state).toBe("running");
-    expect(status.authorities.map(({ port }) => port)).toEqual([38443, 38080]);
+    expect(status.authorities.map(({ port }) => port)).toEqual([8443, 8080]);
   });
 
   test("stop durably disables routing and clears configured apps", async () => {

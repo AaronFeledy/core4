@@ -199,7 +199,7 @@ export const startAppForTarget = (
               published: inspectedServices.flatMap((service) => service.published),
             }),
           };
-          const applyRoutes = applyAppRoutes(proxy, routedPlan);
+          const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
           const proxyResult = yield* compensateFailure(
             routedPlan.routes.length === 0
               ? applyRoutes

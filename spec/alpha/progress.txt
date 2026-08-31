@@ -14,6 +14,13 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - US-597 blocks US-598.
 - US-595 and US-598 block US-599.
 - US-593..US-599 block US-600.
+- US-600 blocks US-601.
+- US-601 blocks US-602.
+- US-602 blocks US-603.
+- US-603 blocks US-604.
+- Follow-on IDs US-601..US-606. Priorities 10..15 run after US-600. Do not edit US-592..US-600.
+- US-604 blocks US-605.
+- US-605 blocks US-606.
 - After US-592, US-593, US-594, and US-597 can parallelize.
 - Rails order is contract -> recipe -> journey. recipes/ is public recipe SoT. Upgrade the existing builtin rails stub; do not duplicate it.
 - Drupal already exists and is only being proven.
@@ -38,10 +45,15 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - Recipe journeys clone as sibling committed-workflow generators that import `PLATFORM_READINESS_CELLS`. Do not fold them into setup/doctor jobs or fork a second cell table.
 - Bundled `lando init` writes only `manifest.files` dests. Extra renderer Map keys are dropped. Dest + Map must ship together; keep `recipes/<id>/recipe.yml` byte-identical to the embed YAML.
 - `ruby:3.3-slim` has no `make`. A recipe that `gem install`s native gems must add a prior `build.artifact` apt-get of `build-essential`. Recompile `dist/lando` after renderer changes; live init uses the compiled embed.
+- Alpha 1 exit is a Status + runbook lock over existing six-cell workflows. Do not invent new journeys. Tests freeze README/ci.md phrases plus job keys in platform-readiness, drupal-journey, and rails-journey; they must not read the specification tree. If ci.md says `not Linux x64 only`, assert absence of the full historical sentence `Historical Alpha CI was Linux x64 only`, not the substring `Linux x64 only`.
+- With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
+- Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
+- Doctor leftover-proxy probes and start-path EADDRINUSE remap use the persisted Traefik publish pair (bind hops if set, else advertised ports). Missing acquisition state falls back to 38080/38443; HTTPS leftover HTTP probes use role, not port===38443.
+- When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605..US-606 passes: false.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -239,6 +251,215 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 ## 2026-08-30 02:19 CDT - US-599 Drift Audit
 - Trigger: 3 cycles, 1427 changed lines, 4 commits
 - Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 03:29 CDT - Babysit
+- PR: #884 https://github.com/AaronFeledy/core4/pull/884
+- CI outcome: pass
+- Review feedback: fixed (exclude generated guide tests from aggregate typecheck so darwin-arm64 tsc no longer OOMs)
+- Merge: merged (squash)
+---
+
+## 2026-08-30 11:25 CDT - US-600
+- Locked Alpha 1 exit in README Status and the CI runbook: every compile target must have live setup, doctor, Drupal journey, and Rails journey; compile smoke is not an exit; a long-term roadmap rewrite is not an exit. Public artifacts stay unsigned 4.0.0-dev.N; signing, installers, self-update, and Beta stay later. Contract tests freeze those phrases plus the six-cell jobs in platform-readiness, Drupal journey, and Rails journey, and the Intel Mac fail-close remediation. Did not add workflows or edit the long-term roadmap.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Exit locks compose over existing six-cell workflows and Status copy. Do not invent a fourth workflow.
+  - If runbook copy says `not Linux x64 only`, never `not.toContain("Linux x64 only")`; pin the full historical sentence instead.
+  - Status already contains `unsigned`. Never `not.toContain("signed")`; use `signed 4.0.0` and a word-boundary GA check.
+---
+
+## 2026-08-30 11:33 CDT - US-600 Review
+- Reviewed the Alpha 1 exit lock. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): duplicate Current: Beta 1 assertion is a nit, not a miss; YAML substring job-key freeze matches existing phrase-freeze style; GitHub #866 host-proxy shim on prerelease is US-593/start payload, not this lock; live virt-runner execution stays the US-595 fail-closed six-cell shape, not a re-demand.
+- Guide-Coverage-Skip: Alpha 1 exit lock restates Status and CI runbook over existing six-cell workflows; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; public-alpha-contract (23) and ci-runbook (9) spot checks passed; guide-drift vs origin/main passed; Bugbot found no bugs
+---
+
+## 2026-08-30 19:30 CDT - US-601
+- Appended PRD-08 after Alpha 1 exit. Durable contract is spec/11-subsystems.md §10.2.3: HTTP 80,8080,8000,8888,8008,38080; HTTPS 443,8443,4443,4433,4444,444,38443; TCP bind; persist; Traefik publishes the chosen pair; 38080/38443 last-resort. Did not edit US-592..US-600. Did not implement acquisition or Traefik publish.
+- Verification: spec-only change; typecheck/lint not required for this package-creation append
+---
+
+## 2026-08-30 19:45 CDT - US-601
+- Required global and Landofile `routing:` overrides (httpPort/httpsPort/fallbacks/bindAddress). App-level pins request the one host Traefik pair; mismatch with a running proxy fails closed. Did not edit US-592..US-600.
+---
+
+## 2026-08-30 20:00 CDT - US-601
+- Fallback from 80/443 must notify. Doctor warns when 80/443 are held by non-Lando tools with holder-specific remediation including DDEV. Appended US-605. Did not edit US-592..US-600.
+
+---
+
+## 2026-08-30 20:30 CDT - US-601
+- Ingress ubiquitous language is router/routes. User knobs are `router:` (not `routing:`). Appended US-606 to rename ProxyService / proxyServices: / @lando/proxy-traefik. HostProxy and network.proxy unchanged. Did not edit US-592..US-600.
+
+---
+
+## 2026-08-30 12:27 CDT - US-601
+- Story verified complete on branch (no new code). §10.2.3 already states the HTTP/HTTPS try lists, TCP bind, persist and reuse, Traefik publishes the chosen pair, fail closed, fallback notice from 80/443, and doctor occupancy of 80/443 by non-Lando holders including DDEV. Global and Landofile `router:` overrides and spec/README topic lookup for §10.2.3 are present. Did not change acquisition, Traefik publish, doctor, or start code.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - This contract lives in the specification tree. Do not restate host-port lists in README Status or public-alpha-contract tests.
+  - Code still publishes 38080/38443 until later stories. The contract forbids treating those as the degraded default; do not implement try-list acquisition in this story.
+---
+
+## 2026-08-30 12:37 CDT - US-601 Review
+- Reviewed the §10.2.3 familiar proxy host-port fallback contract. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): runtime 38080/38443 hardcode is US-602+; GitHub #764 HTTPS-only 404 is US-603/604; re-editing §10.2.3 after #883 would be cargo-cult; historical progress `routing:` line is superseded
+- Guide-Coverage-Skip: specification-tree contract lock only; no CLI or executable-guide source surface changed
+- Verification: typecheck, lint passed; guide-drift vs origin/main passed; Bugbot found no bugs; review-work 5/5 PASS
+---
+
+## 2026-08-30 12:42 CDT - US-601 Drift Audit
+- Trigger: 6 cycles, 18 changed lines, 2 commits. Four of six headers already on main; this branch is one Build plus Review. Did not escalate: no file-level dispute, no prior adjudication.
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck, lint — pass; no new tests
+---
+
+## 2026-08-30 15:05 CDT - US-602
+- Host Traefik now walks the familiar HTTP/HTTPS try lists, persists the chosen pair, and reuses it when the fingerprint still matches and Lando still owns the binds. App `router.httpPort`/`httpsPort` pins fail closed against a running pair. Exhausted lists raise a tagged error. Fallback from preferred 80/443 publishes a warn naming the holder and how to restore 80/443. Traefik still advertises 38080/38443 until the publish story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - `ProxyService.setup` must forward `config.router` / `config.routerPin` into acquisition. Engine merge is a no-op if setup only spreads layer deps.
+  - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `number | undefined` into `prop?: number`.
+  - Leave advertised routing-state on 38080/38443 when the chosen pair is not 80/443. Publishing the chosen pair is the next story.
+---
+
+## 2026-08-30 15:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports. Fixed false fallback warns on intentional custom preferred ports, httpPort ignored when fallbacks are omitted, and routing-state written before a failed Traefik start.
+- Review notes (deferred/rejected): stillOwnPersisted via rootlessport-only leftover scanner is pre-existing doctor budget code and Traefik still binds 38080/38443 until US-603; BindAddress schema tightening is not a US-602 AC; advertised 38080/38443 freeze is US-603; leftover doctor probes are US-604; walkProtocol skip of undefined binds is test-only
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; port-acquisition setup/reuse/probe and socket-proxy plus router-config spot checks passed
+---
+
+## 2026-08-30 15:41 CDT - US-602 Drift Audit
+- Trigger: 2 cycles, 2523 changed lines, 7 commits
+- Weakened proofs: try-list fixtures copied production defaults; exhaustion and fallback warn stopped at persist, not setup
+- Review scar: empty-notice rewrite after setup already wrote notices; unused SDK error re-exports
+- Dual paths: engine and plugin still each own the default try lists (package DAG); reuse ownership still depends on the rootlessport scanner until US-603 publishes chosen ports
+- Fixed: deleted dead re-exports and the empty-notice rewrite; pinned try-list tests to production constants; restored setup-level exhaustion and message.warn proofs
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 16:00 CDT - US-602 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev. Acquisition persisted `{http:8080,https:8443}` from the full try lists (not 80|38080 / 443|38443). Lamp init/start served `us602-ok` over HTTP and HTTPS; restart reused the pair unchanged. Landofile `router.httpPort: 9999` failed start with tagged `RouterPortPinMismatch`. Occupied preferred `LANDO_ROUTER_HTTP_PORT=18080` warned and fell back to 8080. Doctor/help/apps:list smoked. Destroyed scenario apps.
+- **Out-of-scope finding:** default preferred 80/443 are probed as EACCES for an unprivileged user even when those ports are already listening (host `*:80`, `systemd-socket-proxyd` on 443), so the occupancy fallback warn does not fire on the default list. Notify is proven on a bindable preferred port. Suspected unprivileged bind vs US-605 doctor occupancy.
+- **Out-of-scope finding:** `lando start --renderer json` `RouterPortPinMismatch` envelope includes `_tag`/message/remediation but omits `runningHttp`/`runningHttps`. The tagged error carries those fields. Suspected CLI error projector.
+---
+
+## 2026-08-30 17:08 CDT - Babysit
+- PR: #887 https://github.com/AaronFeledy/core4/pull/887
+- CI outcome: fail (runtime-bundle-linux-x64; linux-x64 guide-scenarios and provider-integration cascaded)
+- Review feedback: fixed (accepted additive router $defs schema-compat unknowns)
+- Merge: deferred (linux-x64 runtime-bundle fetch socket-close after aardvark compile, three identical runs; PR does not touch assemble/pin)
+---
+
+## 2026-08-30 17:10 CDT - US-602
+- Story verified complete on branch (no new code). Host Traefik still walks the familiar HTTP/HTTPS try lists, persists the chosen pair, reuses it when the fingerprint matches, fails closed on Landofile pin mismatch, and warns on occupied preferred ports. Advertised 38080/38443 publish stays the next story.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+---
+
+## 2026-08-30 17:25 CDT - US-602 Review
+- Reviewed acquire/persist Traefik host ports after the babysit schema-compat fix. No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): walkProtocol EADDRINUSE without prior state is first-free TCP bind until US-603 publishes chosen ports; degraded-high-ports doctor passCheck on old files is leftover doctor (US-604) and next setup rewrites state; stillOwnPort unidentified-holder + sticky helperInstalled is the rootlessport scanner deferred at 15:25/15:41; BindAddress empty-string LAN probe is not a US-602 AC
+- Guide-Coverage-Skip: host-port acquisition internals and tagged errors; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; guide-drift vs origin/main passed; QA 129 focused tests passed
+---
+
+## 2026-08-30 18:20 CDT - US-602 Drift Audit
+- Trigger: 5 cycles, 2603 inserted lines, 12 commits
+- Weakened proofs: setup try-list walk only used classifyOverride; resolveRouterConfigForApp had no Effect test
+- Review scar: fallback warn rewrote notices that already named restore
+- Ceremony: helpers/proxy-setup stay split (inline would exceed 250 LOC); dual default lists stay package-DAG
+- Split/excise decisions: none; advertised 38080 freeze and leftover doctor stay US-603/604; EACCES notify stays occupancy-vs-permission, not expanded
+- Fixed: deleted the restore-text rewrite; restored setup probeBind walk of production lists and resolveRouterConfigForApp proofs
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 19:52 CDT - US-603
+- Global Traefik now publishes the persisted chosen HTTP/HTTPS pair on 127.0.0.1 to container 80/443. Occupied-hop advertises and binds 8080/8443 (or whichever try-list winner), not a hidden extra 38080/38443. Socket-helper still presents 80/443 and hops to the first free high ports from the same lists; existing helper units are rewritten when the hop target changes.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Do not call `regenerateDist` with only traefik — it replaces the whole global dist and drops mailpit. Persist acquisition, then let `ensureRunning` rematerialize; the Traefik factory reads `.lando-port-acquisition.json`.
+  - `advertisedPorts` must return the chosen pair. Remapping occupied-hop to 38080/38443 is the old freeze.
+  - Helper listen stays 80/443; hop targets are bind ports. Marker-only unit stubs have no hop line — treat them as already-installed, rewrite only when an ExecStart hop differs.
+---
+
+## 2026-08-30 20:09 CDT - US-603 Review
+- Reviewed Traefik publish of chosen host ports. Fixed socket-helper JSON without bind ports publishing 80/443, hop rewrite that never restarted live helper units, and 444 matching 4443 in hop compare.
+- Review notes (deferred/rejected): leftover doctor/info/EADDRINUSE remap stay US-604; factory reading host acquisition files in the default-export test is last-resort when no file exists, not a PRD miss; forcing reuse skip for helper-without-binds would demote a live helper to occupied-hop
+- Guide-Coverage-Skip: Traefik host-port publish internals and socket-helper hop rewrite; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; proxy-traefik publish/helper/reuse/proxy spot checks passed (54)
+- **Learnings for future iterations:**
+  - Socket-helper public 80/443 are not Traefik host bindings. Without bindHttpPort/bindHttpsPort, publish last-resort hops so Traefik does not steal 80 from the helper.
+  - Hop-target rewrite must `systemctl try-restart` the helper services after daemon-reload; `systemctl start` on an already-active socket is a no-op.
+---
+
+## 2026-08-30 20:12 CDT - US-603 Review
+- Helper hops now skip 80/443 listen ports, not try-list[0], so a pinned 8080/8443 preferred pair is used as the hop target.
+- Verification: choose-helper-bind-ports and helper install spot checks passed
+---
+
+## 2026-08-30 20:16 CDT - US-603 Review
+- Reuse now fails when a socket-helper hop port is neither free nor still ours, so Traefik does not rematerialize onto a stolen high port.
+- Verification: typecheck, lint passed; reuse/helper/publish spot checks passed
+---
+
+## 2026-08-30 20:20 CDT - US-603 Review
+- Review notes (deferred/rejected): chooseHelperBindPorts ignoring EADDRINUSE hops is first-free TCP success on a fresh walk; reuse already keeps Traefik-owned hops, and treating EADDRINUSE as a hop without a holder would pick foreign binds
+---
+
+## 2026-08-30 20:38 CDT - US-603 Drift Audit
+- Trigger: 5 cycles, 581 changed lines, 5 commits
+- Weakened proofs: factory default-export asserted host 38080; install without hop targets still hopped to 38080
+- Review scar: optional hop targets defaulted to last-resort 38080
+- Fixed: required helper hop targets; factory loopback test no longer assumes 38080; helper hops skip 80/443 even when those binds succeed
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-30 20:50 CDT - US-603 Verify
+- Compiled `core/dist/lando` and ran live `setup --yes --no-interactive` in lando4-dev. After `global:rebuild` of leftover Traefik, PortBindings were `127.0.0.1:8080->80` and `127.0.0.1:8443->443` (not 38080/38443). Lamp init/start served `us603-ok` over HTTP `:8080` and HTTPS `:8443`; restart reused the pair; 38080/38443 refused. Socket-helper units hop to 8080/8443 (listen 80/443). Doctor/info/exec/apps:list smoked. Destroyed the app; `global:stop` released the ports.
+- **Out-of-scope finding:** `lando setup` rewrote `.lando.dist.yml` to hostPort 8080/8443 but left a 23h Traefik container bound to 38080/38443 until `lando global:rebuild`. Suspected up-to-date check ignoring published host ports.
+- **Out-of-scope finding:** `lando apps:poweroff` stopped the runtime socket but left Traefik `rootlessport` holding 8080/8443 until `lando global:stop`. Suspected leftover-rootlessport / US-604.
+---
+
+## 2026-08-30 21:46 CDT - Babysit
+- PR: #888 https://github.com/AaronFeledy/core4/pull/888
+- CI outcome: pass
+- Review feedback: none
+- Merge: merged (squash)
+---
+
+## 2026-08-30 21:55 CDT - US-604
+- Info and post-start URLs already omit :80/:443 and include non-default ports; locked 8080/8443. Doctor leftover-proxy now probes the persisted Traefik publish pair, not only 38080/38443. Start-path EADDRINUSE remap and needs-helper doctor copy name the persisted pair. Healthy Traefik answering HTTP on those ports is not leftover rootlessport.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Leftover HTTPS probe must use role (`http` vs `https`), not `port === 38443`.
+  - `startFailureRemediation` stays pure for tests (omitted pair = last-fallback). Production `podmanFailure` passes `readPersistedTraefikPublishPair()`. Do not auto-read host acquisition in the helper or unit tests pick up a live 8080/8443 file.
+  - `@lando/provider-lando` must not import `@lando/proxy-traefik`. Duplicate the four-line publish-port resolution (bind pair, socket-helper last-fallback, advertised pair).
+---
+
+## 2026-08-30 22:35 CDT - US-604 Review
+- Reviewed info/doctor/start persisted-port wiring. Added leftover-doctor tests that read `.lando-port-acquisition.json` with no override, and exported `pairFromAcquisition` so start remap locks occupied-hop advertised ports vs socket-helper bind hops.
+- Review notes (deferred/rejected): provider-lando vs proxy-traefik parser duplication is the package-DAG constraint, not drift to merge; doctor needs-helper copy uses advertised URL ports, not leftover bind hops; Error→last-fallback is the specified missing-state path; info/post-start do not read acquisition JSON because authorities already come from US-603 advertisedPorts; `readPersistedTraefikPublishPair` stays host-rooted so unit tests cannot auto-read a live file; optionalNumber range clamp is defense-in-depth, not a PRD miss
+- Guide-Coverage-Skip: leftover doctor and start EADDRINUSE tests plus parser export; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; leftover-proxy-ports (16) and bring-up-nft (15) spot checks passed; Bugbot found no bugs before the review tests
+---
+
+## 2026-08-30 22:42 CDT - US-604 Review
+- Leftover EADDRINUSE remap now applies only when the failing service is Traefik (or the helper omits a service name). App services that mention persisted 8080/8443 keep destroy remediation.
+- Verification: typecheck, lint passed; bring-up-nft (16) passed
+---
+
+## 2026-08-30 22:49 CDT - US-604 Drift Audit
+- Trigger: 3 cycles, 516 changed lines, 4 commits
+- Weakened proofs: leftover HTTPS probe role was untested (stubs ignored role)
+- Fixed: restored role-passing proof on persisted 8443
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
 ---

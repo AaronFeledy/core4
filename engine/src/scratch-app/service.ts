@@ -20,6 +20,7 @@ import {
   type NetworkingPlan,
   PortablePath,
   type ProviderCapabilities,
+  type RouterConfig,
   ServiceName,
   landoNetworkingPlan,
   sameAppMountTarget,
@@ -50,6 +51,7 @@ import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
+import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
@@ -568,7 +570,7 @@ const makeScratchAppService = (
       Effect.catchAll(() => Effect.succeed(undefined)),
     );
 
-  const applyScratchRoutes = (plan: AppPlan): Effect.Effect<void, never> =>
+  const applyScratchRoutes = (plan: AppPlan, landofileRouter?: RouterConfig): Effect.Effect<void, never> =>
     plan.routes.length === 0
       ? Effect.void
       : Option.match(proxy, {
@@ -576,7 +578,8 @@ const makeScratchAppService = (
           onSome: (service) =>
             Effect.gen(function* () {
               const defaultDomain = yield* resolveProxyDefaultDomain;
-              yield* Effect.scoped(service.setup({ defaultDomain })).pipe(
+              const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
+              yield* Effect.scoped(service.setup({ defaultDomain, router, routerPin })).pipe(
                 Effect.zipRight(service.applyRoutes(plan.routes, plan.id)),
               );
             }).pipe(
@@ -661,6 +664,7 @@ const makeScratchAppService = (
     instanceRoot: AbsolutePath,
     planCache: AbsolutePath,
     detached: boolean,
+    landofileRouter?: RouterConfig,
   ) =>
     Effect.gen(function* () {
       const markedPlan = markScratchPlan(plan, scratchId);
@@ -697,7 +701,7 @@ const makeScratchAppService = (
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
       );
-      yield* applyScratchRoutes(builtPlan);
+      yield* applyScratchRoutes(builtPlan, landofileRouter);
       if (!detached) {
         // Skip the destroy when the entry was converted to detached mid-scope
         // (`apps:scratch:run --keep`): the registry owns the scratch from there.
@@ -786,6 +790,7 @@ const makeScratchAppService = (
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
+        landofile.router,
       ).pipe(
         Effect.tap(() =>
           scratchRegistry.upsert({
@@ -886,6 +891,7 @@ const makeScratchAppService = (
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
+        landofile.router,
       ).pipe(
         Effect.tap(() =>
           scratchRegistry.upsert({

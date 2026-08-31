@@ -10,7 +10,7 @@ import type {
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
-import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { DEFAULT_HTTPS_TRY_LIST, DEFAULT_HTTP_TRY_LIST } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikProxyService } from "../src/proxy.ts";
 import {
@@ -24,6 +24,7 @@ import {
   renderPolkitRule,
   startSockets,
 } from "../src/socket-proxy-install.ts";
+import { buildInstallScript } from "../src/socket-proxy-units.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -63,7 +64,7 @@ const makeRunner = (
 };
 
 const makePrivilege = (
-  result: ProcessResult | ((command: ReadonlyArray<string>) => ProcessResult) = ok(),
+  result: ProcessResult | ((command: ReadonlyArray<string>) => ProcessResult),
 ): {
   readonly service: Context.Tag.Service<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
@@ -91,6 +92,7 @@ const hostFiles = (present: Readonly<Record<string, string>> = {}) => {
 };
 
 const markedUnit = "[Unit]\n# lando-proxy-socket-helper\n";
+const [packagedProxyd] = PROXYD_CANDIDATES;
 
 describe("discoverProxydBinary", () => {
   test("checks usr lib path before lib path before command -v", async () => {
@@ -170,20 +172,43 @@ describe("renderPolkitRule", () => {
   });
 });
 
+describe("buildInstallScript", () => {
+  test("hops to supplied targets while listening on 80 and 443", () => {
+    // Given: hop targets 8080/8443.
+    // When: buildInstallScript is called with those hop targets.
+    const script = buildInstallScript({
+      user: "lando-dev",
+      binary: "/usr/lib/systemd/systemd-socket-proxyd",
+      serviceType: "notify",
+      httpTarget: 8080,
+      httpsTarget: 8443,
+    });
+
+    // Then: units listen on 80/443 and hop to 8080/8443, not 38080.
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).toContain("ListenStream=127.0.0.1:80\n");
+    expect(script).toContain("ListenStream=127.0.0.1:443\n");
+    expect(script).not.toContain("38080");
+    expect(script).toContain("systemctl try-restart lando-proxy-http.service lando-proxy-https.service");
+  });
+});
+
 describe("installSocketProxy", () => {
   test("elevates one script with units, polkit path, daemon-reload, and no enable", async () => {
     // Given: proxyd is at the first packaged path and units are not installed.
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
 
     // When: install runs.
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
-        exists: hostFiles({ [first]: "binary" }).exists,
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
@@ -197,6 +222,10 @@ describe("installSocketProxy", () => {
     expect(script).toContain("lando-proxy-https.service");
     expect(script).toContain(POLKIT_RULE_PATH);
     expect(script).toContain("daemon-reload");
+    expect(script).toContain("try-restart lando-proxy-http.service");
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).not.toContain("38080");
     expect(script).not.toContain("systemctl enable");
   });
 
@@ -204,9 +233,8 @@ describe("installSocketProxy", () => {
     // Given: all four unit files exist with the content marker.
     const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const installedHost = hostFiles(present);
-    const installHost = hostFiles({ ...present, [first]: "binary" });
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
 
     // When: install checks idempotency.
     const installed = await Effect.runPromise(
@@ -222,6 +250,8 @@ describe("installSocketProxy", () => {
         readText: installHost.readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
@@ -231,19 +261,80 @@ describe("installSocketProxy", () => {
     expect(privilege.calls()).toHaveLength(0);
   });
 
+  test("rewrites units when an existing hop target differs", async () => {
+    // Given: marked units whose ExecStart still hops to 38080/38443.
+    const staleHttp = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38080\n`;
+    const staleHttps = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38443\n`;
+    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    present["/etc/systemd/system/lando-proxy-http.service"] = staleHttp;
+    present["/etc/systemd/system/lando-proxy-https.service"] = staleHttps;
+    const privilege = makePrivilege(ok());
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
+
+    // When: install is asked to hop to 8080/8443.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        exists: installHost.exists,
+        readText: installHost.readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
+      }),
+    );
+
+    // Then: elevate rewrites units to the new hop pair.
+    expect(outcome.kind).toBe("installed");
+    expect(privilege.calls()).toHaveLength(1);
+    const script = privilege.calls()[0]?.join(" ") ?? "";
+    expect(script).toContain("127.0.0.1:8080");
+    expect(script).toContain("127.0.0.1:8443");
+    expect(script).toContain("try-restart lando-proxy-http.service");
+  });
+
+  test("does not treat 4443 as matching hop target 444", async () => {
+    // Given: marked units hopping to 4443/8080.
+    const httpUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`;
+    const httpsUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:4443\n`;
+    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    present["/etc/systemd/system/lando-proxy-http.service"] = httpUnit;
+    present["/etc/systemd/system/lando-proxy-https.service"] = httpsUnit;
+    const privilege = makePrivilege(ok());
+    const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
+
+    // When: install is asked to hop to 8080/444.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        exists: installHost.exists,
+        readText: installHost.readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 444,
+      }),
+    );
+
+    // Then: 4443 is not a prefix match for 444, so units are rewritten.
+    expect(outcome.kind).toBe("installed");
+    expect(privilege.calls()).toHaveLength(1);
+  });
+
   test("records elevation refusal without throwing when elevate exits nonzero", async () => {
     // Given: proxyd exists and elevate is refused.
     const privilege = makePrivilege(fail(1, "polkit denied"));
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
 
     // When: install runs.
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
-        exists: hostFiles({ [first]: "binary" }).exists,
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
         privilege: privilege.service,
+        httpTarget: 8080,
+        httpsTarget: 8443,
       }),
     );
 
@@ -292,7 +383,6 @@ describe("setup classification after helper install", () => {
     // Given: Linux+systemd, EACCES on 80/443, proxyd present, elevate and forward succeed.
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikProxyService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
@@ -314,7 +404,7 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         hasHostSystemd: () => true,
         autoApprove: true,
-        exists: (path) => Effect.succeed(path === first),
+        exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")))
           .service,
@@ -330,20 +420,25 @@ describe("setup classification after helper install", () => {
     // When: setup classifies, installs the helper, and re-probes.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: persisted mode is socket-helper on privileged ports.
+    // Then: persisted mode is socket-helper on privileged public ports with high-port hops.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));
     const decoded = Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(raw ?? "null"));
     expect(decoded.mode).toBe("socket-helper");
     expect(decoded.httpPort).toBe(80);
     expect(decoded.httpsPort).toBe(443);
+    expect(decoded.bindHttpPort).toBe(DEFAULT_HTTP_TRY_LIST[1]);
+    expect(decoded.bindHttpsPort).toBe(DEFAULT_HTTPS_TRY_LIST[1]);
     expect(decoded.helperInstalled).toBe(true);
     expect(decoded.socketsActive).toBe(true);
+    const installScript = privilege.calls()[0]?.join(" ") ?? "";
+    expect(installScript).toContain("127.0.0.1:8080");
+    expect(installScript).toContain("127.0.0.1:8443");
+    expect(installScript).not.toContain("38080");
   });
 
-  test("records degraded-high-ports when elevate exits nonzero and does not throw", async () => {
-    // Given: needs-helper but elevation is refused.
+  test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
+    // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
-    const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikProxyService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
@@ -365,7 +460,7 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         hasHostSystemd: () => true,
         autoApprove: true,
-        exists: (path) => Effect.succeed(path === first),
+        exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner(() => fail(1, "not found")).service,
         privilege: makePrivilege(fail(1, "refused")).service,
@@ -379,11 +474,11 @@ describe("setup classification after helper install", () => {
     // When: setup attempts helper install.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
-    // Then: acquisition degrades and setup still succeeds.
+    // Then: try-list continues to occupied-hop and setup still succeeds.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));
     const decoded = Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(raw ?? "null"));
-    expect(decoded.mode).toBe("degraded-high-ports");
-    expect(decoded.httpPort).toBe(TRAEFIK_HTTP_PORT);
-    expect(decoded.httpsPort).toBe(TRAEFIK_HTTPS_PORT);
+    expect(decoded.mode).toBe("occupied-hop");
+    expect(decoded.httpPort).toBe(DEFAULT_HTTP_TRY_LIST[1]);
+    expect(decoded.httpsPort).toBe(DEFAULT_HTTPS_TRY_LIST[1]);
   });
 });
