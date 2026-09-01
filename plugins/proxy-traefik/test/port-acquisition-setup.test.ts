@@ -378,7 +378,7 @@ describe("setup try-list probe walk", () => {
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
 
     // Then: every default candidate is probed in order; first success wins.
-    expect(probed).toEqual([...HTTP_TRY_LIST, ...HTTPS_TRY_LIST]);
+    expect(probed).toEqual([...HTTP_TRY_LIST, 38080, 48080, 58080, ...HTTPS_TRY_LIST, 38443, 48443, 58443]);
     expect(readJson(store.files).httpPort).toBe(80);
     expect(readJson(store.files).httpsPort).toBe(443);
   });

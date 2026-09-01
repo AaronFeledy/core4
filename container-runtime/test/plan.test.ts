@@ -6,6 +6,8 @@ import {
   containerHostConfigFragment,
   containerPortBindings,
   envArrayFromRecord,
+  fingerprintInspectPublishPorts,
+  fingerprintPlannedPublishPorts,
   mountSuffix,
 } from "@lando/container-runtime/plan";
 import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
@@ -250,5 +252,66 @@ describe("container plan helpers", () => {
         { HostIp: "0.0.0.0", HostPort: "48080" },
       ],
     });
+  });
+});
+
+describe("publish port fingerprints", () => {
+  test("planned and inspect fingerprints match for the same host ports", () => {
+    // Given: a published endpoint on 127.0.0.1:38080.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      },
+    });
+    // Then: fingerprints are equal.
+    expect(planned).toBe(inspected);
+    expect(planned.length).toBeGreaterThan(0);
+  });
+
+  test("detects a host-port mismatch", () => {
+    // Given: plan wants 8080 but inspect has 38080.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      },
+    });
+    // Then: fingerprints differ.
+    expect(planned).not.toBe(inspected);
+  });
+
+  test("unpinned planned host ports produce an empty fingerprint", () => {
+    // Given: a published endpoint with no hostPort pin.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1" },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "32768" }] },
+      },
+    });
+    // Then: planned fingerprint is empty so bring-up will not recreate.
+    expect(planned).toBe("");
+    expect(inspected.length).toBeGreaterThan(0);
   });
 });

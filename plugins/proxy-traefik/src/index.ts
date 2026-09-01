@@ -11,6 +11,7 @@ import { type Effect, Schema } from "effect";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
+import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
@@ -20,6 +21,7 @@ import { proxy } from "./proxy.ts";
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
 export { makeTraefikRouterService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
@@ -64,5 +66,10 @@ export const plugin = definePlugin({
   layer: proxy,
   routerServices,
   globalServices,
-  doctorChecks: [proxyTlsDoctorCheck, leftoverProxyPortsCheck, preferredHostPortsCheck],
+  doctorChecks: [
+    proxyTlsDoctorCheck,
+    leftoverProxyPortsCheck,
+    preferredHostPortsCheck,
+    advertisedProxyPortsCheck,
+  ],
 });

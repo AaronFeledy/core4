@@ -95,9 +95,11 @@ const probeTcp = (host: string, port: number): Promise<"open" | "closed"> =>
 export const probeTcpOpen = (host: string, port: number): Effect.Effect<boolean> =>
   Effect.promise(() => probeTcp(host, port).then((result) => result === "open"));
 
-const probeHttp = (host: string, port: number): Promise<boolean> =>
+export type ForwardProbeRole = "http" | "https";
+
+const probeHttp = (host: string, port: number, role: ForwardProbeRole): Promise<boolean> =>
   new Promise((resolve) => {
-    const transport = port === 443 ? https : http;
+    const transport = role === "https" ? https : http;
     const request = transport.request(
       { host, port, path: "/", method: "GET", timeout: 500, rejectUnauthorized: false },
       (response) => {
@@ -113,7 +115,11 @@ const probeHttp = (host: string, port: number): Promise<boolean> =>
     request.end();
   });
 
-export const probeForward = (host: string, port: number): Effect.Effect<ForwardOutcome> =>
+export const probeForward = (
+  host: string,
+  port: number,
+  role: ForwardProbeRole,
+): Effect.Effect<ForwardOutcome> =>
   Effect.gen(function* () {
     let last: ForwardOutcome = { kind: "failure" };
     yield* runProbe(
@@ -135,7 +141,7 @@ export const probeForward = (host: string, port: number): Effect.Effect<ForwardO
         try: async () => {
           const tcp = await probeTcp(host, port);
           if (tcp !== "open") return { kind: "failure" as const };
-          return { kind: (await probeHttp(host, port)) ? ("success" as const) : ("failure" as const) };
+          return { kind: (await probeHttp(host, port, role)) ? ("success" as const) : ("failure" as const) };
         },
         catch: (error) => error,
       }),

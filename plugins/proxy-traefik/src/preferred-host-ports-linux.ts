@@ -2,6 +2,8 @@ import { readdir, readlink } from "node:fs/promises";
 
 import type { ProcWalk } from "./leftover-proxy-ports-linux.ts";
 
+import { systemdServiceFromCgroup } from "./occupied-port-warning.ts";
+
 const TCP_LISTEN = "0A";
 const COMM_SCAN_BUDGET_MS = 800;
 
@@ -111,4 +113,13 @@ export const identifyAnyPortHolder = async (
     if (holder !== undefined) return holder;
   }
   return undefined;
+};
+
+export const systemdUnitForPid = async (
+  pid: number,
+  walk: ProcWalk = systemWalk,
+): Promise<string | undefined> => {
+  const cgroup = await walk.text(`/proc/${pid}/cgroup`);
+  if (cgroup === undefined) return undefined;
+  return systemdServiceFromCgroup(cgroup);
 };

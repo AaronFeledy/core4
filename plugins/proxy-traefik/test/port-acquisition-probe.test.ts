@@ -113,7 +113,7 @@ describe("classifyAcquisition", () => {
     const decision = classifyAcquisition(input);
 
     // Then: 8888 wins; 38080 is last-resort, not the hop target.
-    expect(input.httpTryList).toEqual([80, 8080, 8000, 8888, 8008, 38080]);
+    expect(input.httpTryList).toEqual([80, 8080, 8000, 8888, 8008]);
     expect(decision.httpPort).toBe(8888);
     expect(decision.httpPort).not.toBe(TRAEFIK_HTTP_PORT);
   });
@@ -126,7 +126,7 @@ describe("classifyAcquisition", () => {
     const decision = classifyAcquisition(input);
 
     // Then: 4443 wins; 38443 is last-resort, not the hop target.
-    expect(input.httpsTryList).toEqual([443, 8443, 4443, 4433, 4444, 444, 38443]);
+    expect(input.httpsTryList).toEqual([443, 8443, 4443, 4433, 4444, 444]);
     expect(decision.httpsPort).toBe(4443);
     expect(decision.httpsPort).not.toBe(TRAEFIK_HTTPS_PORT);
   });

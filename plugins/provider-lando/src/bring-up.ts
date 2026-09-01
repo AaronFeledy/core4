@@ -2,6 +2,8 @@ import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
+  fingerprintInspectPublishPorts,
+  fingerprintPlannedPublishPorts,
 } from "@lando/container-runtime/plan";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import { type Context, DateTime, Effect } from "effect";
@@ -85,6 +87,7 @@ export const startFailureRemediation = (
 interface InspectResult {
   readonly exists: boolean;
   readonly running: boolean;
+  readonly publishFingerprint: string;
 }
 
 interface StartResult {
@@ -178,7 +181,7 @@ const inspectContainer = (
       path: `/containers/${encodeURIComponent(name)}/json`,
     });
     if (response.status === 404) {
-      return { exists: false, running: false };
+      return { exists: false, running: false, publishFingerprint: "" };
     }
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
@@ -196,10 +199,14 @@ const inspectContainer = (
     }
     const body = yield* parseJson(response, "bringUp.inspect");
     if (typeof body !== "object" || body === null || !("State" in body)) {
-      return { exists: true, running: false };
+      return { exists: true, running: false, publishFingerprint: fingerprintInspectPublishPorts(body) };
     }
     const inspect = body as ContainerInspect;
-    return { exists: true, running: inspect.State?.Running === true || inspect.State?.Status === "running" };
+    return {
+      exists: true,
+      running: inspect.State?.Running === true || inspect.State?.Status === "running",
+      publishFingerprint: fingerprintInspectPublishPorts(body),
+    };
   });
 
 const hostConfig = (plan: AppPlan, service: ServicePlan) => {
@@ -439,6 +446,26 @@ const removeContainerSilent = (api: PodmanApiClient, name: string): Effect.Effec
     Effect.catchAll(() => Effect.void),
   );
 
+const removeContainer = (
+  api: PodmanApiClient,
+  service: ServicePlan,
+  name: string,
+): Effect.Effect<void, BringUpError> =>
+  request(api, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
+    Effect.flatMap((response) =>
+      response.status === 204 || response.status === 200 || response.status === 404
+        ? Effect.void
+        : Effect.fail(
+            podmanFailure(
+              service,
+              "bringUp.remove",
+              `Podman container remove failed with HTTP ${response.status}.`,
+              { status: response.status, body: response.body },
+            ),
+          ),
+    ),
+  );
+
 const removeNetworkSilent = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<void> =>
   request(api, {
     method: "DELETE",
@@ -504,7 +531,22 @@ const startService = (
       }),
     );
 
-    const before = yield* inspectContainer(api, name);
+    const inspected = yield* inspectContainer(api, name);
+    const published = service.endpoints.flatMap((endpoint) =>
+      endpoint._tag === "published" ? [endpoint] : [],
+    );
+    const plannedFingerprint = fingerprintPlannedPublishPorts(published);
+    let before = inspected;
+    if (
+      before.exists &&
+      plannedFingerprint.length > 0 &&
+      before.publishFingerprint.length > 0 &&
+      before.publishFingerprint !== plannedFingerprint
+    ) {
+      yield* stopContainerSilent(api, name);
+      yield* removeContainer(api, service, name);
+      before = { exists: false, running: false, publishFingerprint: "" };
+    }
     recordTouched({
       name,
       created: !before.exists,

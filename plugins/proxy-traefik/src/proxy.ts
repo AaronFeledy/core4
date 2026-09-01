@@ -26,7 +26,12 @@ import {
   routeFile,
   routingStateFile,
 } from "./proxy-paths.ts";
-import { advertisedPorts, mapSetupError, publishFallbackWarn } from "./proxy-setup.ts";
+import {
+  advertisedPorts,
+  assertAdvertisedForward,
+  mapSetupError,
+  publishFallbackWarn,
+} from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
 import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
@@ -135,6 +140,7 @@ export const makeTraefikRouterService = (
           yield* publishFallbackWarn(dependencies, decision);
         }
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
+        yield* assertAdvertisedForward(dependencies, advertised);
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
           [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
