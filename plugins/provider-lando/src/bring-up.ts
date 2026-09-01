@@ -537,7 +537,12 @@ const startService = (
     );
     const plannedFingerprint = fingerprintPlannedPublishPorts(published);
     let before = inspected;
-    if (before.exists && plannedFingerprint.length > 0 && before.publishFingerprint !== plannedFingerprint) {
+    if (
+      before.exists &&
+      plannedFingerprint.length > 0 &&
+      before.publishFingerprint.length > 0 &&
+      before.publishFingerprint !== plannedFingerprint
+    ) {
       yield* stopContainerSilent(api, name);
       yield* removeContainer(api, service, name);
       before = { exists: false, running: false, publishFingerprint: "" };

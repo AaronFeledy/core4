@@ -78,7 +78,10 @@ const inspectBody = (hostPort: string, running: boolean): string =>
     },
   });
 
-const makeFakeApi = (input: { readonly deleteStatus: number }) => {
+const inspectWithoutPortBindings = (running: boolean): string =>
+  JSON.stringify({ State: { Running: running } });
+
+const makeFakeApi = (input: { readonly deleteStatus: number; readonly omitPortBindings?: boolean }) => {
   const calls: PodmanHttpRequest[] = [];
   let exists = true;
   let running = true;
@@ -99,7 +102,12 @@ const makeFakeApi = (input: { readonly deleteStatus: number }) => {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
-          return exists ? { status: 200, body: inspectBody(hostPort, running) } : { status: 404, body: "{}" };
+          if (!exists) return { status: 404, body: "{}" };
+          const body =
+            input.omitPortBindings === true
+              ? inspectWithoutPortBindings(running)
+              : inspectBody(hostPort, running);
+          return { status: 200, body };
         }
         if (request.method === "POST" && action === "stop") {
           running = false;
@@ -162,5 +170,20 @@ describe("provider-lando publish-port recreate", () => {
     // Then
     expect(result.changed).toBe(true);
     expect(createCalls(fake.calls)).toHaveLength(1);
+  });
+
+  test("Given inspect without PortBindings, When bringing up a pinned hostPort plan, Then the running container is not recreated", async () => {
+    // Given: fake inspect returns State.Running only; planned hostPort is pinned.
+    const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true });
+    const plan = planWithHostPort(38080);
+
+    // When
+    const first = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    const second = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+
+    // Then: unknown inspect fingerprint is not a proven mismatch.
+    expect(first.changed).toBe(false);
+    expect(second.changed).toBe(false);
+    expect(createCalls(fake.calls)).toEqual([]);
   });
 });
