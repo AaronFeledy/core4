@@ -4,7 +4,8 @@
 
 ## Compatibility notes
 
-- `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `ProxyService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
+- `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `RouterService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
+- Replaces the unreleased PluginContribution.proxyServices key with the normative typed routerServices manifest entries, replaces the unreleased ProxyService tag (@lando/core/ProxyService) with RouterService (@lando/core/RouterService), replaces the unreleased ProxyServiceContribution public schema with RouterServiceContribution, and replaces GlobalConfig.defaultProxyService (and TemplateRenderContext.global.defaultProxyService) with defaultRouterService. The removed tag, contribution key, public schema, and config spelling have no alias or compatibility path.
 - `@lando/sdk/errors` additively exports `ConfigExpressionError` (`message`, `expression`, `path`, `filePath`, `remediation`) for plan-time Landofile config expression failures such as authored route hostnames. It registers no JSON Schema. `AppPlanner.plan`'s error channel additively gains the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match.
 
 - `@lando/sdk/errors` additively exports `JsonProjectionError` (`message`, optional `command`, `keys`, `available`, `reason` of `unknown_key`|`duplicate_key`|`non_object_result`|`format_conflict`, `remediation`), `JsonJqConflictError` (`message`, `remediation`), and `JqExpressionError` (`message`, `expression`, `reason` of `eval`|`timeout`|`too_large`|`missing_value`, `remediation`, optional `detail`) for JSON projection and jq output failures. They register no JSON Schema and widen no frozen schema list.
@@ -41,7 +42,7 @@
   `StateStoreError | ParseResult.ParseError`, matching tunnel-registry persistence and request decode
   failures. The start, stop, restart, rebuild, destroy, logs, pull, and push SDK error unions are not
   widened by this change.
-- `ProxyServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
+- `RouterServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
   artifact builders can verify and pack host CA inputs without adding provider-specific intent,
@@ -56,7 +57,7 @@
 - `@lando/sdk/schema` additively exports `ComposeProjectFieldKey` and `ComposeProjectFieldCapabilities`, and `ProviderCapabilities` additively gains optional `composeProjectFields`. This native-tier fail-closed refinement covers preserved top-level Compose `configs` and `secrets`; omission means no support, while top-level `x-*` remains losslessly preserved inert metadata outside the capability surface.
 - `PluginContribution.sshServices` is a new additive optional field for contributing `SshService` implementations. The `SshServiceContribution` schema includes `id`, optional `name`, `defaultFor` (app sshAgent: true), and the type-only Layer. The bundled `@lando/ssh-agent` plugin contributes the default SSH agent sidecar.
 
-- `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
+- `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `RouterService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
 - `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
 - `InstallUidmapHostChange` schema is widened to accept flexible `distribution: String` and `version: String` (previously hardcoded to `Literal("ubuntu")` and `Literal("26.04")`). Supported distributions are Ubuntu and Debian via apt-get. `ProviderSetupHostChange` union additively includes `ProvisionSubuidHostChange`, `ProvisionSubgidHostChange`, and `ProvisionCgroupsDelegationHostChange` for missing-only prerequisite provisioning (add subuid/subgid ranges when user has none, create systemd cgroups delegation drop-in when absent, never overwrite existing config). Error schemas `ProviderSetupConsentDeniedError`, `ProviderSetupPrivilegeUnavailableError`, and `ProviderSetupProvisioningError` have widened `change` literals to accept all four change types (`"install-uidmap" | "provision-subuid" | "provision-subgid" | "provision-cgroups-delegation"`), and `ProviderSetupProvisioningError.stage` additively includes `"provision"` and `"reload"` for the extended provisioning workflow stages.
@@ -354,7 +355,7 @@
 - `ProxyCapabilities`
 - `ProxyConfig`
 - `RouterConfig`
-- `ProxyServiceContribution`
+- `RouterServiceContribution`
 - `ProxyStatus`
 - `RabbitMQServiceConfig`
 - `TomcatServiceConfig`
@@ -786,7 +787,7 @@
 - `PluginSource`
 - `PluginTrustStore`
 - `PrivilegeService`
-- `ProxyService`
+- `RouterService`
 - `RecipeManifestService`
 - `Renderer`
 - `SchemaValidator`
@@ -841,7 +842,7 @@
 - `PluginContractInput`
 - `PluginSourceContractHarness`
 - `PluginSourceTaggedError`
-- `ProxyServiceContractHarness`
+- `RouterServiceContractHarness`
 - `ProviderDataPlaneContractInput`
 - `RemoteSourceContractHarness`
 - `RemoteSourceContractObservations`
@@ -876,7 +877,7 @@
 - `makeDatasetContractSuite`
 - `makeDoctorCheckContractSuite`
 - `makePluginSourceContractSuite`
-- `makeProxyServiceContractSuite`
+- `makeRouterServiceContractSuite`
 - `makeRemoteSourceContractSuite`
 - `makeRouteFilterContractSuite`
 - `makeSecretStoreContractSuite`
@@ -895,7 +896,7 @@
 - `runConfigTranslatorContractSuite`
 - `runDoctorCheckContractSuite`
 - `runPluginSourceContractSuite`
-- `runProxyServiceContractSuite`
+- `runRouterServiceContractSuite`
 - `runRemoteSourceContract`
 - `runRouteFilterContractSuite`
 - `runSecretStoreContractSuite`

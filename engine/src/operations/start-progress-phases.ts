@@ -100,7 +100,7 @@ export const withRoutesStartProgress = <A, E, R>(input: {
   runPrefixedPhase(input.events, {
     parentId: startRoutesTreeId(String(input.plan.id)),
     label: `Routes ${input.plan.name}`,
-    children: [{ id: "apply", label: "Apply proxy routes" }],
+    children: [{ id: "apply", label: "Apply routes" }],
     summaries: {
       success: `${input.plan.name} routes applied`,
       failure: `${input.plan.name} routes failed`,

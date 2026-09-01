@@ -8,7 +8,7 @@ import type {
   RouterPortsExhausted,
 } from "@lando/sdk/errors";
 import type { AppPlan, ProxyApplyResult, RouterConfig } from "@lando/sdk/schema";
-import type { ProviderError, ProxyServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
+import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
@@ -16,7 +16,7 @@ import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
 export const applyAppRoutes = (
-  proxy: ProxyServiceShape,
+  proxy: RouterServiceShape,
   plan: AppPlan,
   landofileRouter?: RouterConfig,
 ): Effect.Effect<
@@ -35,7 +35,7 @@ export const teardownAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan
   provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
 
 export const removeRoutesAndDestroyApp = (
-  proxy: ProxyServiceShape,
+  proxy: RouterServiceShape,
   provider: RuntimeProviderShape,
   plan: AppPlan,
 ) =>
@@ -46,9 +46,9 @@ export const removeRoutesAndDestroyApp = (
 
 export const destroyAppAndRemoveRoutes = <E, R>(
   providerDestroy: Effect.Effect<void, E, R>,
-  proxy: ProxyServiceShape,
+  proxy: RouterServiceShape,
   plan: AppPlan,
 ) => runAllAndMergeFailures<E | ProxyError, R>([providerDestroy, proxy.removeRoutes(plan.id)]);
 
-export const routeUrlsForPlan = (proxy: ProxyServiceShape, plan: AppPlan) =>
+export const routeUrlsForPlan = (proxy: RouterServiceShape, plan: AppPlan) =>
   proxy.status.pipe(Effect.map((status) => proxyUrlsByService(plan.routes, status.authorities)));

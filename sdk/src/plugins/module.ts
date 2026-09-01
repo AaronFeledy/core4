@@ -25,7 +25,7 @@ import type {
   GlobalAppService,
   PathsService,
   ProcessRunner,
-  ProxyService,
+  RouterService,
   RuntimeProviderShape,
   ServiceFeatureDefinition,
   ServiceType,
@@ -96,8 +96,8 @@ export type CertificateAuthorityContributionLayer = Layer.Layer<
   never,
   PathsService | Downloader | ProcessRunner
 >;
-export type ProxyServiceContributionLayer = Layer.Layer<
-  ProxyService,
+export type RouterServiceContributionLayer = Layer.Layer<
+  RouterService,
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
@@ -119,7 +119,7 @@ export interface LandoPluginModule {
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
-  readonly proxyServices?: ReadonlyMap<string, ProxyServiceContributionLayer>;
+  readonly routerServices?: ReadonlyMap<string, RouterServiceContributionLayer>;
   readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;

@@ -205,10 +205,10 @@ export const openForPlan = (
       }
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
-          message: `No openable URL for ${plan.name}: the app declares no matching proxy route. Known services: ${knownServicesText}.`,
+          message: `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
           app: plan.name,
           services: knownServices,
-          remediation: "Declare a proxy route under `proxy:` in your Landofile, then rerun `lando open`.",
+          remediation: "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
         }),
       );
     }

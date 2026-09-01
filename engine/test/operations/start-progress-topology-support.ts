@@ -19,12 +19,12 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -172,7 +172,7 @@ export const makeHarness = (
     ConfigServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(ProxyService, TestProxyService),
+    Layer.succeed(RouterService, TestRouterService),
     makeShellRunnerLive(() => {
       throw new TypeError("Interactive shell IO is not used by start progress topology tests.");
     }),

@@ -274,14 +274,14 @@ export {
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 export type { HostProxyWorkerRecord } from "@lando/engine/subsystems/host-proxy/worker-state";
 export { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
-export { ProxyServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
+export { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
 export {
-  makeProxyServiceRegistry,
-  makeProxyServiceRegistryLive,
-  ProxyServiceRegistry,
-  SelectedProxyServiceLive,
+  makeRouterServiceRegistry,
+  makeRouterServiceRegistryLive,
+  RouterServiceRegistry,
+  SelectedRouterServiceLive,
 } from "@lando/engine/subsystems/proxy/registry";
-export type { ProxyServiceRegistration } from "@lando/engine/subsystems/proxy/registry";
+export type { RouterServiceRegistration } from "@lando/engine/subsystems/proxy/registry";
 export { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
 export { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
 export {

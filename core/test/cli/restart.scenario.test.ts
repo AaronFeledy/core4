@@ -21,17 +21,17 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   ToolingEngine,
 } from "@lando/core/services";
 import type {
   AppSelector,
   DestroyOptions,
-  ProxyServiceShape,
+  RouterServiceShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -159,7 +159,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const requiredStartServicesLayer = (proxy: ProxyServiceShape) =>
+const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
     ConfigServiceLive,
     FileSystemLive,
@@ -174,7 +174,7 @@ const requiredStartServicesLayer = (proxy: ProxyServiceShape) =>
     Layer.succeed(RedactionService, {
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
-    Layer.succeed(ProxyService, proxy),
+    Layer.succeed(RouterService, proxy),
     shellRunnerLive,
   );
 
@@ -186,8 +186,8 @@ const makeRestartLayer = (
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{ readonly reconcile: boolean }> = [];
   const routeRemovals: string[] = [];
-  const proxy: ProxyServiceShape = {
-    ...TestProxyService,
+  const proxy: RouterServiceShape = {
+    ...TestRouterService,
     removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
   };
   const provider: RuntimeProviderShape = {

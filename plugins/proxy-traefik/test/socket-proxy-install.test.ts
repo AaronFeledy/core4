@@ -10,9 +10,14 @@ import type {
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
-import { DEFAULT_HTTPS_TRY_LIST, DEFAULT_HTTP_TRY_LIST } from "../src/port-acquisition.ts";
+import {
+  DEFAULT_BACKEND_HTTPS_TRY_LIST,
+  DEFAULT_BACKEND_HTTP_TRY_LIST,
+  DEFAULT_HTTPS_TRY_LIST,
+  DEFAULT_HTTP_TRY_LIST,
+} from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import {
   POLKIT_RULE_PATH,
   PROXYD_CANDIDATES,
@@ -383,7 +388,7 @@ describe("setup classification after helper install", () => {
     // Given: Linux+systemd, EACCES on 80/443, proxyd present, elevate and forward succeed.
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
@@ -426,20 +431,20 @@ describe("setup classification after helper install", () => {
     expect(decoded.mode).toBe("socket-helper");
     expect(decoded.httpPort).toBe(80);
     expect(decoded.httpsPort).toBe(443);
-    expect(decoded.bindHttpPort).toBe(DEFAULT_HTTP_TRY_LIST[1]);
-    expect(decoded.bindHttpsPort).toBe(DEFAULT_HTTPS_TRY_LIST[1]);
+    expect(decoded.bindHttpPort).toBe(DEFAULT_BACKEND_HTTP_TRY_LIST[0]);
+    expect(decoded.bindHttpsPort).toBe(DEFAULT_BACKEND_HTTPS_TRY_LIST[0]);
     expect(decoded.helperInstalled).toBe(true);
     expect(decoded.socketsActive).toBe(true);
     const installScript = privilege.calls()[0]?.join(" ") ?? "";
-    expect(installScript).toContain("127.0.0.1:8080");
-    expect(installScript).toContain("127.0.0.1:8443");
-    expect(installScript).not.toContain("38080");
+    expect(installScript).toContain("127.0.0.1:38080");
+    expect(installScript).toContain("127.0.0.1:38443");
+    expect(installScript).not.toContain("127.0.0.1:8080");
   });
 
   test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

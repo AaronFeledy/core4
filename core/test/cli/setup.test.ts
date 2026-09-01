@@ -16,7 +16,7 @@ import {
   InteractionService,
   type InteractionServiceShape,
   PrivilegeService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/core/services";
@@ -41,7 +41,7 @@ import {
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
-  makeTestProxyService,
+  makeTestRouterService,
   makeTestSshService,
 } from "@lando/sdk/test";
 import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
@@ -111,7 +111,7 @@ const buildSetupLayersWithHostIntegrations = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
   services: {
     readonly ca: Context.Tag.Service<typeof CertificateAuthority>;
-    readonly proxy: Context.Tag.Service<typeof ProxyService>;
+    readonly proxy: Context.Tag.Service<typeof RouterService>;
     readonly ssh: Context.Tag.Service<typeof SshService>;
     readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
   },
@@ -120,7 +120,7 @@ const buildSetupLayersWithHostIntegrations = (
   Layer.mergeAll(
     buildSetupLayers(registry, configOverrides),
     Layer.succeed(CertificateAuthority, services.ca),
-    Layer.succeed(ProxyService, services.proxy),
+    Layer.succeed(RouterService, services.proxy),
     Layer.succeed(SshService, services.ssh),
     Layer.succeed(FileSyncEngine, services.fileSync),
   );
@@ -238,9 +238,11 @@ describe("meta:setup command", () => {
 
   test("is registered at the provider bootstrap level with the top-level setup alias", () => {
     expect(setupSpec.bootstrap).toBe("provider");
-    expect(setupSpec.bootstrap).toBe("provider");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.spec.bootstrap).toBe("provider");
     expect(resolveTopLevelAliases(setupSpec)).toContain("setup");
+    expect(setupSpec.summary).toContain("CA, router");
+    expect(setupSpec.description).toContain("CA, router");
+    expect(Object.keys(setupSpec.flags ?? {})).toContain("skip-proxy");
   });
 
   test("publishes CA injection as a boolean condition and no certificate count", () => {
@@ -481,7 +483,7 @@ describe("meta:setup command", () => {
     ]);
   });
 
-  test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
+  test("runs provider, CA, router, shell integration, and file sync in deterministic order", async () => {
     const calls: string[] = [];
     const provider = {
       ...TestRuntimeProvider,
@@ -500,7 +502,7 @@ describe("meta:setup command", () => {
         }),
     };
     const proxy = {
-      ...makeTestProxyService(),
+      ...makeTestRouterService(),
       setup: () =>
         Effect.sync(() => {
           calls.push("proxy");
@@ -557,7 +559,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync: TestFileSyncEngine,
               },
@@ -623,7 +625,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync: TestFileSyncEngine,
               },
@@ -697,7 +699,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync: TestFileSyncEngine,
               },
@@ -762,7 +764,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync: TestFileSyncEngine,
               },
@@ -900,7 +902,7 @@ describe("meta:setup command", () => {
         select: () => Effect.succeed(provider),
       };
       const proxy = {
-        ...makeTestProxyService(),
+        ...makeTestRouterService(),
         setup: () =>
           Effect.fail(
             new ProxySetupError({
@@ -986,7 +988,7 @@ describe("meta:setup command", () => {
                 registry,
                 {
                   ca: makeTestCertificateAuthority(),
-                  proxy: makeTestProxyService(),
+                  proxy: makeTestRouterService(),
                   ssh: makeTestSshService(),
                   fileSync: TestFileSyncEngine,
                 },
@@ -1034,7 +1036,7 @@ describe("meta:setup command", () => {
         select: () => Effect.succeed(provider),
       };
       const failingProxy = {
-        ...makeTestProxyService(),
+        ...makeTestRouterService(),
         setup: () =>
           Effect.fail(
             new ProxySetupError({
@@ -1070,7 +1072,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync: TestFileSyncEngine,
               },
@@ -1316,7 +1318,7 @@ describe("meta:setup command", () => {
                 registry,
                 {
                   ca: makeTestCertificateAuthority(),
-                  proxy: makeTestProxyService(),
+                  proxy: makeTestRouterService(),
                   ssh: makeTestSshService(),
                   fileSync,
                 },
@@ -1389,7 +1391,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync,
               },
@@ -1916,7 +1918,7 @@ describe("meta:setup command", () => {
         Effect.provide(
           buildSetupLayersWithHostIntegrations(registry, {
             ca: makeTestCertificateAuthority(),
-            proxy: makeTestProxyService(),
+            proxy: makeTestRouterService(),
             ssh: makeTestSshService(),
             fileSync,
           }),
@@ -1954,7 +1956,7 @@ describe("meta:setup command", () => {
               registry,
               {
                 ca: makeTestCertificateAuthority(),
-                proxy: makeTestProxyService(),
+                proxy: makeTestRouterService(),
                 ssh: makeTestSshService(),
                 fileSync,
               },
@@ -2001,7 +2003,7 @@ describe("meta:setup command", () => {
         }),
     };
     const proxy = {
-      ...makeTestProxyService(),
+      ...makeTestRouterService(),
       setup: () =>
         Effect.sync(() => {
           calls.push("proxy");

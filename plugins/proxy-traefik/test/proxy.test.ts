@@ -6,7 +6,7 @@ import { AppId, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import type { SchemeProbe } from "../src/port-acquisition.ts";
-import { makeTraefikProxyService, renderTraefikDynamicConfig } from "../src/proxy.ts";
+import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 
 const app = AppId.make("demo");
 const routes = [
@@ -53,7 +53,7 @@ const makeHarness = (failAtomic = false) => {
     privilege: unusedPrivilege,
     classifyOverride: highPortOverride,
   };
-  const service = makeTraefikProxyService({
+  const service = makeTraefikRouterService({
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
@@ -93,7 +93,7 @@ const makeHarness = (failAtomic = false) => {
     socketProxy,
   });
   const makePersistedService = () =>
-    makeTraefikProxyService({
+    makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
@@ -116,7 +116,7 @@ const makeHarness = (failAtomic = false) => {
   return { ensured, files, makePersistedService, service };
 };
 
-describe("Traefik ProxyService", () => {
+describe("Traefik RouterService", () => {
   test("renders resolved HTTPS and named non-80 backends", () => {
     const rendered = renderTraefikDynamicConfig(routes, app);
 
@@ -212,7 +212,7 @@ describe("Traefik ProxyService", () => {
   });
 
   test("status skips route files removed after the directory snapshot", async () => {
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,

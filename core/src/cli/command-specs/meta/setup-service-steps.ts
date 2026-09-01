@@ -1,5 +1,5 @@
 /**
- * `meta:setup` optional-service setup steps (CA, proxy, shell integration).
+ * `meta:setup` optional-service setup steps (CA, router, shell integration).
  *
  * Each step resolves its service optionally, runs its `setup`, and records the
  * readiness outcome (satisfied / skipped / unavailable / failed) — honoring the
@@ -8,7 +8,7 @@
  */
 import { type Context, Effect } from "effect";
 
-import { CertificateAuthority, type PrivilegeService, ProxyService, SshService } from "@lando/sdk/services";
+import { CertificateAuthority, type PrivilegeService, RouterService, SshService } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
@@ -116,18 +116,18 @@ export const runProxySetupStep = (
       yield* recorder.record({
         id: "proxy",
         status: "skipped",
-        evidence: "Proxy setup skipped by --skip-proxy.",
+        evidence: "Router setup skipped by --skip-proxy.",
       });
       return;
     }
-    const proxy = yield* Effect.serviceOption(ProxyService);
+    const proxy = yield* Effect.serviceOption(RouterService);
     if (proxy._tag === "Some") {
       const defaultDomain = yield* resolveProxyDefaultDomain;
       const { router, routerPin } = yield* resolveRouterConfigForApp();
       yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin })).pipe(
         Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
       );
-      yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });
+      yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
     } else {
       yield* recordAbsentHostIntegration(recorder, selectedProviderId, "proxy", "Proxy");
     }

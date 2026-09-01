@@ -24,8 +24,8 @@ import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
+  collectDoctorReport,
   doctorDeprecations,
-  doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
@@ -34,6 +34,7 @@ import {
   appVersionConstraintsForReport,
   renderAppVersionConstraintResult,
 } from "../../src/cli/commands/doctor-version-constraint.ts";
+import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { DeprecationServiceLive, FileSystemLive } from "../../src/testing/engine-layers.ts";
@@ -98,6 +99,13 @@ const buildLayers = (
     DeprecationServiceLive,
   );
 
+const doctorReport = (options: DoctorOptions = {}) =>
+  collectDoctorReport({
+    options,
+    provider: doctor(options, []),
+    deprecations: doctorDeprecations(),
+  });
+
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
 
@@ -132,7 +140,7 @@ describe("meta:doctor combined report", () => {
 
     expect(report.provider.checks[0]?.name).toBe("selected-provider");
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
-      "proxy",
+      "router",
       "certs",
       "ssh",
       "healthcheck",
@@ -151,7 +159,7 @@ describe("meta:doctor combined report", () => {
     const text = renderDoctorReport(report);
 
     expect(text).toContain("selected-provider: pass");
-    for (const name of ["proxy", "certs", "ssh", "healthcheck", "scanner", "host-proxy", "network-trust"]) {
+    for (const name of ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy", "network-trust"]) {
       expect(text).toContain(`${name}:`);
     }
     expect(text).toContain("global-app:");
@@ -185,7 +193,7 @@ describe("meta:doctor combined report", () => {
     expect(checks.map((line) => line.name)).toEqual([
       "selected-provider",
       "runtime-service",
-      "proxy",
+      "router",
       "certs",
       "ssh",
       "healthcheck",

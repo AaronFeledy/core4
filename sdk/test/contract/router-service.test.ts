@@ -4,18 +4,18 @@ import { Effect, Schema } from "effect";
 import { AppId, ProxyApplyResult, ProxyCapabilities, ProxyStatus, ServiceName } from "@lando/sdk/schema";
 import {
   ContractFailure,
-  TestProxyService,
-  makeProxyServiceContractSuite,
-  makeTestProxyService,
-  runProxyServiceContractSuite,
+  TestRouterService,
+  makeRouterServiceContractSuite,
+  makeTestRouterService,
+  runRouterServiceContractSuite,
 } from "@lando/sdk/test";
 
-describe("ProxyService contract", () => {
-  test("TestProxyService satisfies the governed contract suite", async () => {
+describe("RouterService contract", () => {
+  test("TestRouterService satisfies the governed contract suite", async () => {
     const exit = await Effect.runPromiseExit(
-      runProxyServiceContractSuite({
-        service: TestProxyService,
-        readRoutes: (app) => TestProxyService.readRoutes(app),
+      runRouterServiceContractSuite({
+        service: TestRouterService,
+        readRoutes: (app) => TestRouterService.readRoutes(app),
       }),
     );
     if (exit._tag === "Failure") {
@@ -25,19 +25,19 @@ describe("ProxyService contract", () => {
   });
 
   test("make and run contract-suite exports are aliases", () => {
-    expect(makeProxyServiceContractSuite).toBe(runProxyServiceContractSuite);
+    expect(makeRouterServiceContractSuite).toBe(runRouterServiceContractSuite);
   });
 
-  test("TestProxyService has the expected id", () => {
-    expect(TestProxyService.id).toBe("test");
+  test("TestRouterService has the expected id", () => {
+    expect(TestRouterService.id).toBe("test");
   });
 
   test("ContractFailure is exported from the SDK test module", () => {
     expect(ContractFailure).toBeDefined();
   });
 
-  test("makeTestProxyService tracks applyRoutes and removeRoutes by appId", async () => {
-    const proxy = makeTestProxyService();
+  test("makeTestRouterService tracks applyRoutes and removeRoutes by appId", async () => {
+    const proxy = makeTestRouterService();
     const appId = AppId.make("myapp");
     const routes = [
       {
@@ -56,16 +56,16 @@ describe("ProxyService contract", () => {
     expect(proxy.routesByApp.get("myapp")).toBeUndefined();
   });
 
-  test("makeTestProxyService setup resolves", async () => {
-    const proxy = makeTestProxyService();
+  test("makeTestRouterService setup resolves", async () => {
+    const proxy = makeTestRouterService();
     await expect(
       Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" }))),
     ).resolves.toBeUndefined();
     expect(Schema.is(ProxyCapabilities)(proxy.capabilities)).toBe(true);
   });
 
-  test("makeTestProxyService status and stop are schema-backed", async () => {
-    const proxy = makeTestProxyService();
+  test("makeTestRouterService status and stop are schema-backed", async () => {
+    const proxy = makeTestRouterService();
     const status = await Effect.runPromise(proxy.status);
     expect(Schema.is(ProxyStatus)(status)).toBe(true);
     await Effect.runPromise(proxy.stop);

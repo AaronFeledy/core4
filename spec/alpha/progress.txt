@@ -49,11 +49,13 @@ Origin: public Alpha 1 is current. Historical internal phases are pre-alpha. No 
 - With `exactOptionalPropertyTypes`, copy Schema.optional fields by omitting undefined keys; do not assign `T | undefined` into `prop?: T`.
 - Traefik host publish is the persisted chosen pair (socket-helper uses bindHttpPort/bindHttpsPort). 38080/38443 are last-resort try-list entries, not a hidden extra PortBinding.
 - Doctor leftover-proxy probes and start-path EADDRINUSE remap use the persisted Traefik publish pair (bind hops if set, else advertised ports). Missing acquisition state falls back to 38080/38443; HTTPS leftover HTTP probes use role, not port===38443.
+- Preferred 80/443 occupancy is plugin doctor check `preferred-host-ports`, not leftover `proxy-loopback-ports`. Leftover probes persisted Traefik ports and only leftover-rootlessport. Occupancy TCP-probes 80/443 on all platforms, skips this-instance claims and leftover-rootlessport, and warns on foreign holders. Do not reuse leftover `readPort` (HTTP success is healthy-proxy) or `isOurLoopbackForwarder` (would skip DDEV Traefik).
 - When a story names a specification-tree section as the durable contract, that section is the lock. Do not restate those facts in README Status unless the story requires it. public-alpha-contract tests freeze Alpha 1 copy only and must not cite the specification tree.
+- Pre-ship contribution-key hard-cut: reject the old key in a schema test (cas / proxyServices). Package directory may stay if spec documents that it contributes the new key (`@lando/proxy-traefik` → `routerServices:`). Traefik doctor display name is `router`; setup step id stays `proxy` / `--skip-proxy`. Do not rename HostProxy with the ingress tag.
 
 ## Status
 
-US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605..US-606 passes: false.
+US-592 passes: true. US-593 passes: true. US-594 passes: true. US-595 passes: true. US-596 passes: true. US-597 passes: true. US-598 passes: true. US-599 passes: true. US-600 passes: true. US-601 passes: true. US-602 passes: true. US-603 passes: true. US-604 passes: true. US-605 passes: true. US-606 passes: true.
 
 Public Alpha 1 contract locked in README Status, contributing npm version scheme, and core/test/build/public-alpha-contract.test.ts. Downloadable GitHub prerelease ships unsigned binaries for all six compile targets.
 
@@ -460,6 +462,52 @@ Public Alpha 1 contract locked in README Status, contributing npm version scheme
 - Trigger: 3 cycles, 516 changed lines, 4 commits
 - Weakened proofs: leftover HTTPS probe role was untested (stubs ignored role)
 - Fixed: restored role-passing proof on persisted 8443
+- Split/excise decisions: none
+- Verification: typecheck, lint, spot checks — pass
+---
+
+## 2026-08-31 00:10 CDT - US-605
+- `lando doctor` now warns (never fails) when preferred 80/443 are held by non-Lando tools, even if Traefik is healthy on fallbacks. Holder-specific remediation covers DDEV, Lando 3, Docksal, Apache, nginx, Caddy, IIS/http.sys, and unknown comm/pid. This instance's claimed 80/443, socket-helper, and leftover-rootlessport stay silent on this check.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Occupancy is a separate plugin check (`preferred-host-ports`) from leftover (`proxy-loopback-ports`). Leftover still returns [] for foreign persisted Traefik ports.
+  - Skip Lando-owned via acquisition claims (advertised 80/443 or socket-helper mode), not `isOurLoopbackForwarder` — that matcher treats DDEV Traefik/`docker-proxy` as ours.
+  - Leftover `/proc` walk is rootlessport-only and loopback-only. Occupancy uses any-LISTEN inode + full pid walk so Apache/DDEV on 0.0.0.0:80 can be named.
+---
+
+## 2026-08-31 00:19 CDT - US-605 Review
+- Reviewed occupancy doctor (`preferred-host-ports`). No in-scope bugs; no code changes.
+- Review notes (deferred/rejected): win32 IIS-specific copy is classifier-only because production identification is linux/wsl `/proc` — PRD says identify holders when possible, TCP still warns as unknown; HTTPS-only occupancy is implemented (`occupied[0]`) but untested — coverage gap, not a PRD miss; Docksal `fin` substring is a heuristic nit, not an AC miss; leftover-rootlessport skip of any rootlessport comm on 80/443 is the story constraint, do not re-merge leftover
+- Guide-Coverage-Skip: occupancy doctor internals and holder classification; no executable-guide CLI surface changed
+- Verification: typecheck, lint passed; QA 72 focused tests passed (preferred-host-ports, holders, linux, plugin-descriptor, leftover-proxy-ports); Bugbot found no bugs; guide-drift vs origin/main passed; review-work 5/5 PASS
+---
+
+## 2026-08-31 06:30 CDT - Babysit
+- PR: #890 https://github.com/AaronFeledy/core4/pull/890
+- CI outcome: pass
+- Review feedback: fixed (isolate preferred-host-ports occupancy from combined doctor tests)
+- Merge: merged (squash)
+---
+
+## 2026-08-31 07:28 CDT - US-606
+- Renamed ingress internals to ubiquitous language: `RouterService`, `routerServices:`, with `@lando/proxy-traefik` documented as contributing `routerServices: [traefik]`. Doctor/start/setup copy uses router/routes for Traefik listen and hostname maps. HostProxy, `--skip-proxy`, Landofile `proxy:`, and on-disk `proxy-traefik` are unchanged.
+- Verification: typecheck, lint passed; relevant test spot checks passed
+- **Learnings for future iterations:**
+  - Contribution-key renames are hard-cut like `cas` → `certificateAuthorities`: reject the old key; do not add a dual decoder.
+  - Doctor Traefik title is `router`; setup step id remains `proxy` and the flag remains `--skip-proxy`. Generated bootstrap layers are gitignored — run `codegen:bootstrap-layers` after registry identifier changes.
+---
+
+## 2026-08-31 07:46 CDT - US-606 Review
+- Reviewed the ingress rename. Fixed schema-compat: excepted the unreleased ProxyServiceContribution surface and defaultProxyService hard-cuts so the gate matches the documented gut-and-replace.
+- Review notes (deferred/rejected): plugin doctor check ids leftover-proxy-ports/proxy-tls are leftover/TLS diagnostics, not Traefik listen/hostname maps; setup absent-service label "Proxy" keeps step id proxy/--skip-proxy; stale guide ProxyService prose is outside ACs (guide-drift vs origin/main passed)
+- Guide-Coverage-Skip: ingress identifier rename and doctor/setup Traefik copy; no executable-guide CLI workflow changed
+- Verification: typecheck, lint passed; schema-compat accepted the hard-cuts; plugin schema and sdk-backward-compat spot checks passed (17)
+---
+
+## 2026-08-31 10:15 CDT - US-606 Drift Audit
+- Trigger: 2 cycles, 1119 changed lines, 8 commits
+- Contract drift: §10.2 illustration invented RouterCapabilities/RouterError/RouterApplyResult/RouterStatus and used RouterConfig as setup config
+- Fixed: restored the illustration to the shipped Proxy* types on RouterService
 - Split/excise decisions: none
 - Verification: typecheck, lint, spot checks — pass
 ---

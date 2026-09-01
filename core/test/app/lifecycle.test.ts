@@ -22,7 +22,7 @@ import {
 import {
   AppPlanner,
   FileSyncEngine,
-  ProxyService,
+  RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -30,7 +30,7 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestRouterService } from "@lando/sdk/test";
 
 const fixedDateTime = DateTime.unsafeMake("2026-06-22T00:00:00Z");
 
@@ -182,7 +182,7 @@ const appLayer = (
         }),
         Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
         Layer.succeed(FileSyncEngine, engine),
-        Layer.succeed(ProxyService, TestProxyService),
+        Layer.succeed(RouterService, TestRouterService),
       ],
     },
   });
@@ -927,7 +927,7 @@ describe("App handle managed lifecycle scopes", () => {
                   }),
                   Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
                   Layer.succeed(FileSyncEngine, tracking.engine),
-                  Layer.succeed(ProxyService, TestProxyService),
+                  Layer.succeed(RouterService, TestRouterService),
                 ],
               },
             });

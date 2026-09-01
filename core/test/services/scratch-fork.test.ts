@@ -10,7 +10,7 @@ import {
   AppPlanner,
   LandofileService,
   PathsService,
-  ProxyService,
+  RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -285,7 +285,7 @@ const makeScratchForkLayer = (
     routeRecorder === undefined
       ? []
       : [
-          Layer.succeed(ProxyService, {
+          Layer.succeed(RouterService, {
             id: "recording",
             capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
             setup: () => Effect.void,

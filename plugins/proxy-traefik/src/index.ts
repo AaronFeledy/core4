@@ -1,12 +1,5 @@
 /**
- * `@lando/proxy-traefik` — Traefik-backed ProxyService + bundled global service.
- *
- * Contributes:
- *   - `proxies: ["traefik"]` — the Traefik-backed `ProxyService` id.
- *   - `globalServices: ["traefik"]` — the bundled global reverse-proxy service
- *     materialized into the global app's `.lando.dist.yml`.
- *   - `doctorChecks: ["proxy-tls", "proxy-loopback-ports"]` — HTTPS TLS material
- *     and leftover Traefik loopback ports.
+ * `@lando/proxy-traefik` — Traefik-backed RouterService + bundled global service.
  *
  * The `globalServices` map is the compiled-binary-safe contribution surface:
  * `meta:global:install`'s bundled-first loader reads it instead of dynamically
@@ -18,18 +11,22 @@ import { type Effect, Schema } from "effect";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
+import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
+import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 import { proxy } from "./proxy.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-export { makeTraefikProxyService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { makeTraefikRouterService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
+export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
-export const proxyServices = new Map([["traefik", proxy]]);
+export const routerServices = new Map([["traefik", proxy]]);
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["traefik", traefikGlobalService],
@@ -40,10 +37,10 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   version: "0.0.0",
   api: 4,
   requires: { "@lando/core": "^4.0.0" },
-  description: "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+  description: "Traefik-backed `RouterService` contributing routerServices: [traefik].",
   enabled: true,
   contributes: {
-    proxyServices: [
+    routerServices: [
       {
         id: "traefik",
         module: "./src/proxy.ts",
@@ -56,7 +53,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         module: "./src/global-services/traefik.ts",
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
-        summary: "Global Traefik reverse proxy",
+        summary: "Global Traefik router",
       },
     ],
   },
@@ -67,7 +64,12 @@ export const plugin = definePlugin({
   name: manifest.name,
   manifest,
   layer: proxy,
-  proxyServices,
+  routerServices,
   globalServices,
-  doctorChecks: [proxyTlsDoctorCheck, leftoverProxyPortsCheck],
+  doctorChecks: [
+    proxyTlsDoctorCheck,
+    leftoverProxyPortsCheck,
+    preferredHostPortsCheck,
+    advertisedProxyPortsCheck,
+  ],
 });

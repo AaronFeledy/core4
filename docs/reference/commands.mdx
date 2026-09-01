@@ -1085,7 +1085,7 @@ Arguments:
 
 ## `lando meta:setup`
 
-Run host setup (provider, CA, proxy, shell integration).
+Run host setup (provider, CA, router, shell integration).
 
 Aliases: `lando setup`
 
@@ -1101,7 +1101,7 @@ Flags:
 | `--skip-file-sync` | Skip Mutagen binary download; deferred to first accelerated app:start. |
 | `--skip-install-ca` |  |
 | `--skip-provider` |  |
-| `--skip-proxy` |  |
+| `--skip-proxy` | Skip router setup. |
 | `--skip-shell-integration` |  |
 | `--smoke` | Verify container run, image build, and healthcheck operations during setup. |
 | `--yes` | Consent to confirmation prompts and privileged host changes. Does not switch providers. |

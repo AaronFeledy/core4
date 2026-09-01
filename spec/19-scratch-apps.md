@@ -26,7 +26,7 @@ A **scratch app** is a Lando app that:
 
 - Has a synthesized identity disjoint from any user app's identity (§21.2).
 - Has a Lando-managed root under `<userCacheRoot>/scratch/<scratch-id>/` populated either by copying a source app root (fork mode) or by rendering a recipe (scratch mode) (§21.3, §21.4).
-- Goes through the same `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `ProxyService`, and `CertificateAuthority` user apps go through; only the identity and the lifetime contract differ.
+- Goes through the same `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `RouterService`, and `CertificateAuthority` user apps go through; only the identity and the lifetime contract differ.
 - Has its lifetime bound to an Effect `Scope` whose finalizer destroys every resource: containers, volumes (per the §21.8 storage rules), proxy routes, host-proxy socket, build transcripts, the materialized root.
 - Is invisible to cwd-based app discovery (§7.1) and to the `cwd-app-map` cache (§12.1); only `apps:scratch:*` commands and the library API resolve to it.
 
@@ -179,7 +179,7 @@ Required behaviors:
 - **Single-writer lock per id.** Concurrent `acquire` calls produce different ids by construction (the 6-hex suffix is unique per acquisition). Concurrent operations against the *same* id (e.g., a foreground stop racing a `gc --prune`) are serialized by an in-process `Ref<Map<id, Mutex>>`. Cross-process serialization uses the registry file (§21.11) plus a fcntl-style lockfile under `<userCacheRoot>/scratch/<id>/lock`.
 - **Errors are tagged.** `ScratchMaterializeError`, `ScratchSourceUnresolvedError`, `ScratchUnknownIdError`, `ScratchIsolationUnsupportedError`, `ScratchRecipeAnswersError`, plus the umbrella `ScratchAppError` for state transitions.
 
-`ScratchAppService` reuses every existing core service: `LandofileService` for parse/merge against the scratch root, `AppPlanner` for plan derivation, `BuildOrchestrator` for build, `ProxyService` and `CertificateAuthority` for routing/certs (with the §21.9 route-suffix transformation applied at plan time). Treating the scratch app as "an app whose root, identity, and lifetime are managed by Lando" is the design's north star.
+`ScratchAppService` reuses every existing core service: `LandofileService` for parse/merge against the scratch root, `AppPlanner` for plan derivation, `BuildOrchestrator` for build, `RouterService` and `CertificateAuthority` for routing/certs (with the §21.9 route-suffix transformation applied at plan time). Treating the scratch app as "an app whose root, identity, and lifetime are managed by Lando" is the design's north star.
 
 ### 21.6 Lifecycle
 

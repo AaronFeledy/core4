@@ -21,7 +21,7 @@ import {
   AppPlanner,
   type ConfigService,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -186,7 +186,7 @@ export const infoForPlan = (
 ): Effect.Effect<InfoAppResult, InfoAppError, RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
-    const proxy = yield* Effect.serviceOption(ProxyService);
+    const proxy = yield* Effect.serviceOption(RouterService);
     const provider = yield* registry.select(plan);
     const routedUrls =
       proxy._tag === "Some"

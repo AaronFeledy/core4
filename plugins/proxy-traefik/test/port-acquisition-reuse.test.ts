@@ -17,7 +17,7 @@ import {
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -198,6 +198,7 @@ const makeDeps = (
         },
       ]),
   },
+  probeForward: () => Effect.succeed({ kind: "success" as const }),
   socketProxy: {
     user: "test",
     hasHostSystemd: () => false,
@@ -240,25 +241,25 @@ describe("persistPortAcquisition reuse", () => {
     expect(readJson(store.files).fingerprint).toEqual(defaultFingerprint);
   });
 
-  test("Given persisted notices and owned binds, When reusing, Then decision notices are empty", async () => {
+  test("Given persisted occupied-hop and owned binds, When reusing, Then occupancy warning is re-emitted", async () => {
     // Given: prior acquisition stored an occupancy notice; pair is still owned.
     const store = memoryFiles();
     seedAcquisition(store.files, {
       httpPort: 8080,
       httpsPort: 8443,
-      notices: [
-        "Port 80 is occupied by nginx; using 8080. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
-      ],
+      notices: ["stale"],
     });
     const deps = makeDeps(store, own8080Override());
 
     // When: persist reuses the pair.
     const decision = await Effect.runPromise(persistPortAcquisition(deps));
 
-    // Then: reuse does not re-surface acquisition-time notices for setup to warn on.
+    // Then: reuse still warns that preferred ports are not advertised.
     expect(decision.httpPort).toBe(8080);
     expect(decision.httpsPort).toBe(8443);
-    expect(decision.notices).toEqual([]);
+    expect(decision.notices.length).toBeGreaterThan(0);
+    expect(decision.notices.join(" ")).toContain("8080");
+    expect(decision.notices.join(" ")).toContain("lando global:restart");
   });
 
   test("Given a changed fingerprint, When persisting, Then acquisition rescans the new try list", async () => {
@@ -461,10 +462,14 @@ describe("fallback notice", () => {
     const decision = await Effect.runPromise(persistPortAcquisition(deps));
 
     // Then: notice body carries occupied preferred, chosen fallback, holder, and restart.
-    expect(decision.notices).toEqual([
-      "Port 80 is occupied by nginx; using 8080. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
-      "Port 443 is occupied by nginx; using 8443. Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.",
-    ]);
+    expect(decision.notices).toHaveLength(2);
+    expect(decision.notices[0]).toContain("80");
+    expect(decision.notices[0]).toContain("8080");
+    expect(decision.notices[0]).toContain("nginx");
+    expect(decision.notices[0]).toContain("sudo systemctl stop nginx");
+    expect(decision.notices[0]).toContain("lando global:restart");
+    expect(decision.notices[1]).toContain("443");
+    expect(decision.notices[1]).toContain("8443");
   });
 
   test("Given occupied preferred, When setup runs, Then message.warn names occupied, chosen, holder, and lando global:restart", async () => {
@@ -477,7 +482,7 @@ describe("fallback notice", () => {
       httpsHolder: "nginx",
     });
     const bodies: string[] = [];
-    const service = makeTraefikProxyService(
+    const service = makeTraefikRouterService(
       makeDeps(store, classifyOverride, {
         events: {
           publish: (event: { readonly _tag: string; readonly body?: string }) =>
@@ -512,7 +517,7 @@ describe("chosen 8080 vs routing-state", () => {
       httpHolder: "nginx",
       httpsHolder: "nginx",
     });
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup writes acquisition JSON and routing-state.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
@@ -534,7 +539,7 @@ describe("chosen 8080 vs routing-state", () => {
       httpHolder: "nginx",
       httpsHolder: "nginx",
     });
-    const service = makeTraefikProxyService(makeDeps(store, classifyOverride));
+    const service = makeTraefikRouterService(makeDeps(store, classifyOverride));
 
     // When: setup persists advertised authorities.
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
@@ -612,5 +617,210 @@ describe("stillOwnPersisted hop ports", () => {
 
     // Then: a hop that is neither free nor EADDRINUSE+ours is not owned.
     expect(owned).toBe(false);
+  });
+});
+
+describe("persistPortAcquisition helper-owned preferred ports", () => {
+  test("Given helper installed and systemd-socket-proxyd on 80/443, When persisting, Then advertised ports are 80/443", async () => {
+    // Given: leftover occupied-hop state, helper units present, preferred ports held by our forwarder.
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "systemd-socket-proxyd",
+      httpsHolder: "systemd-socket-proxyd",
+    });
+    const unitMarker = "# lando-proxy-socket-helper";
+    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
+    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-http.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
+    );
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-https.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
+    );
+    store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
+    const deps = makeDeps(store, classifyOverride, {
+      socketProxy: {
+        user: "test",
+        hasHostSystemd: () => true,
+        exists: (path: string) => Effect.succeed(store.files.has(path)),
+        readText: (path: string) =>
+          store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
+        processRunner: unusedRunner,
+        privilege: unusedPrivilege,
+        classifyOverride,
+        probeForward: () => Effect.succeed({ kind: "success" as const }),
+      },
+    });
+
+    // When: persist sees our helper owning 80/443.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    // Then: advertise 80/443 (socket-helper) instead of occupied-hop 8080/8443.
+    expect(decision.mode).toBe("socket-helper");
+    expect(decision.httpPort).toBe(80);
+    expect(decision.httpsPort).toBe(443);
+    expect(readJson(store.files).bindHttpPort).toBe(8080);
+    expect(readJson(store.files).bindHttpsPort).toBe(8443);
+  });
+
+  test("Given helper backends occupied by Traefik, When persisting, Then bind ports stay on unit hop targets", async () => {
+    // Given: helper units forward to 8080/8443, those ports are busy (running Traefik), next free is 8000/4443.
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 80, httpsPort: 443 });
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8000,
+      httpsFirstFree: 4443,
+      httpHolder: "systemd-socket-",
+      httpsHolder: "systemd-socket-",
+    });
+    const unitMarker = "# lando-proxy-socket-helper";
+    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
+    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-http.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
+    );
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-https.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
+    );
+    const deps = makeDeps(store, classifyOverride, {
+      socketProxy: {
+        user: "test",
+        hasHostSystemd: () => true,
+        exists: (path: string) => Effect.succeed(store.files.has(path)),
+        readText: (path: string) =>
+          store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
+        processRunner: unusedRunner,
+        privilege: unusedPrivilege,
+        classifyOverride,
+        probeForward: () => Effect.succeed({ kind: "success" as const }),
+      },
+    });
+
+    // When: persist keeps socket-helper mode.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    // Then: Traefik bind ports stay on the helper backends, not the next free pair.
+    expect(decision.mode).toBe("socket-helper");
+    expect(decision.httpPort).toBe(80);
+    expect(readJson(store.files).bindHttpPort).toBe(8080);
+    expect(readJson(store.files).bindHttpsPort).toBe(8443);
+  });
+
+  test("Given truncated systemd-socket- comm on 80/443, When persisting, Then advertised ports are 80/443", async () => {
+    // Given: /proc/comm truncates systemd-socket-proxyd to systemd-socket-.
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "systemd-socket-",
+      httpsHolder: "systemd-socket-",
+    });
+    const unitMarker = "# lando-proxy-socket-helper";
+    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
+    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-http.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
+    );
+    store.files.set(
+      "/etc/systemd/system/lando-proxy-https.service",
+      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
+    );
+    store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
+    const deps = makeDeps(store, classifyOverride, {
+      socketProxy: {
+        user: "test",
+        hasHostSystemd: () => true,
+        exists: (path: string) => Effect.succeed(store.files.has(path)),
+        readText: (path: string) =>
+          store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
+        processRunner: unusedRunner,
+        privilege: unusedPrivilege,
+        classifyOverride,
+        probeForward: () => Effect.succeed({ kind: "success" as const }),
+      },
+    });
+
+    // When: persist sees the truncated helper comm.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    // Then: still classified as socket-helper on 80/443.
+    expect(decision.mode).toBe("socket-helper");
+    expect(decision.httpPort).toBe(80);
+    expect(decision.httpsPort).toBe(443);
+  });
+});
+
+describe("persistPortAcquisition helperOwnsPreferred", () => {
+  test("Given helperInstalled and rootlessport on 80, When persisting, Then do not claim socket-helper", async () => {
+    // Given: stale helperInstalled and another stack publishing 80 via rootlessport.
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    const raw = store.files.get(acquisitionStateFile(paths));
+    const parsed = JSON.parse(raw ?? "{}") as Record<string, unknown>;
+    parsed.helperInstalled = true;
+    store.files.set(acquisitionStateFile(paths), `${JSON.stringify(parsed)}\n`);
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "rootlessport",
+      httpsHolder: "rootlessport",
+    });
+    const deps = makeDeps(store, classifyOverride);
+    // When
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+    // Then: foreign rootlessport is occupied-hop, not our helper.
+    expect(decision.mode).not.toBe("socket-helper");
+  });
+});
+
+describe("persistPortAcquisition EACCES helper install", () => {
+  test("Given 80/443 EACCES and 8080 free, When installing helper, Then backends are 38080/38443", async () => {
+    // Given: privileged ports fail with EACCES; 8080/8443 are free.
+    const store = memoryFiles();
+    const classifyOverride = {
+      http: { bind: bind("EACCES"), forward: forward("failure") },
+      https: { bind: bind("EACCES"), forward: forward("failure") },
+      httpBinds: {
+        80: bind("EACCES"),
+        8080: bind("success"),
+      },
+      httpsBinds: {
+        443: bind("EACCES"),
+        8443: bind("success"),
+      },
+    };
+    store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
+    const deps = makeDeps(store, classifyOverride, {
+      socketProxy: {
+        user: "test",
+        hasHostSystemd: () => true,
+        exists: (path: string) => Effect.succeed(store.files.has(path)),
+        readText: (path: string) =>
+          store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
+        processRunner: unusedRunner,
+        privilege: unusedPrivilege,
+        classifyOverride,
+        probeForward: () => Effect.succeed({ kind: "success" as const }),
+        autoApprove: true,
+      },
+    });
+
+    // When: persist installs the socket helper.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    // Then: advertised 80/443, Traefik backends stay on 38080/38443 not 8080/8443.
+    expect(decision.mode).toBe("socket-helper");
+    expect(decision.httpPort).toBe(80);
+    expect(readJson(store.files).bindHttpPort).toBe(38080);
+    expect(readJson(store.files).bindHttpsPort).toBe(38443);
   });
 });

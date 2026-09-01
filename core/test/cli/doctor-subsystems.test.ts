@@ -6,10 +6,11 @@ import { Effect, Layer, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { StreamFrame } from "@lando/sdk/schema";
-import { PathsService, ProxyService } from "@lando/sdk/services";
-import { makeTestProxyService } from "@lando/sdk/test";
+import { PathsService, RouterService } from "@lando/sdk/services";
+import { makeTestRouterService } from "@lando/sdk/test";
 
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
+import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
@@ -21,7 +22,7 @@ import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
 
-const EXPECTED_SUBSYSTEMS = ["proxy", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
+const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
 
 const runDefault = (): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
@@ -58,6 +59,11 @@ const writeAcquisitionState = (
 };
 
 describe("meta:doctor subsystem checks", () => {
+  test("Traefik doctor check name is router and host-proxy is unchanged", () => {
+    expect(PROXY_SPEC.name).toBe("router");
+    expect(HOST_PROXY_SPEC.name).toBe("host-proxy");
+  });
+
   test("aggregates one check per subsystem with a {status, severity, context, solution} record", async () => {
     const result = await runDefault();
 
@@ -193,12 +199,12 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("reports a ready subsystem as pass with no remediation when a real implementation is wired", async () => {
-    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
-    const readyProxy = Layer.succeed(ProxyService, proxyService);
+    const readyProxy = Layer.succeed(RouterService, proxyService);
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, readyProxy);
     const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
-    const proxy = result.checks.find((check) => check.name === "proxy");
+    const proxy = result.checks.find((check) => check.name === "router");
 
     expect(proxy?.status).toBe("pass");
     expect(proxy?.severity).toBe("info");
@@ -209,13 +215,13 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("reports a selected-but-stopped proxy as warn with automatic doctor --fix", async () => {
-    const stoppedProxy = Layer.succeed(ProxyService, {
-      ...makeTestProxyService(),
+    const stoppedProxy = Layer.succeed(RouterService, {
+      ...makeTestRouterService(),
       id: "traefik",
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedProxy);
     const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
-    const proxy = result.checks.find((check) => check.name === "proxy");
+    const proxy = result.checks.find((check) => check.name === "router");
 
     expect(proxy?.status).toBe("warn");
     expect(proxy?.severity).toBe("warn");
@@ -228,23 +234,23 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("surfaces needs-helper remediation from persisted acquisition state", async () => {
-    // Given: a running Traefik proxy whose persisted acquisition mode is needs-helper.
+    // Given
     const acquisition = writeAcquisitionState("needs-helper");
-    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
-      Layer.succeed(ProxyService, proxyService),
+      Layer.succeed(RouterService, proxyService),
       acquisition.layer,
       FileSystemLive,
     );
 
     try {
-      // When: doctor probes the proxy subsystem.
+      // When
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
-      const proxy = result.checks.find((check) => check.name === "proxy");
+      const proxy = result.checks.find((check) => check.name === "router");
 
-      // Then: the acquisition mode and 8080/8443 --fix remediation surface.
+      // Then
       expect(proxy?.context.acquisitionMode).toBe("needs-helper");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
@@ -256,23 +262,23 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("does not report proxy --fix recovered while acquisition stays needs-helper", async () => {
-    // Given: a running proxy still persisted as needs-helper after setup.
+    // Given
     const acquisition = writeAcquisitionState("needs-helper");
-    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
-      Layer.succeed(ProxyService, proxyService),
+      Layer.succeed(RouterService, proxyService),
       acquisition.layer,
       FileSystemLive,
     );
 
     try {
-      // When: doctor --fix re-runs proxy setup.
+      // When
       const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
-      const proxy = result.checks.find((check) => check.name === "proxy");
+      const proxy = result.checks.find((check) => check.name === "router");
 
-      // Then: the check stays warn and does not claim recovered.
+      // Then
       expect(proxy?.status).toBe("warn");
       expect(proxy?.context.fixOutcome).not.toBe("recovered");
       expect(proxy?.context.acquisitionMode).toBe("needs-helper");
@@ -283,17 +289,17 @@ describe("meta:doctor subsystem checks", () => {
 
   test("does not report proxy --fix recovered while acquisition stays occupied-hop", async () => {
     const acquisition = writeAcquisitionState("occupied-hop");
-    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
-      Layer.succeed(ProxyService, proxyService),
+      Layer.succeed(RouterService, proxyService),
       acquisition.layer,
       FileSystemLive,
     );
     try {
       const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
-      const proxy = result.checks.find((check) => check.name === "proxy");
+      const proxy = result.checks.find((check) => check.name === "router");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.context.fixOutcome).not.toBe("recovered");
     } finally {
@@ -302,23 +308,23 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("surfaces occupied-hop remediation from persisted acquisition state", async () => {
-    // Given: a running Traefik proxy whose persisted acquisition mode is occupied-hop.
+    // Given
     const acquisition = writeAcquisitionState("occupied-hop");
-    const proxyService = { ...makeTestProxyService(), id: "traefik" };
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
-      Layer.succeed(ProxyService, proxyService),
+      Layer.succeed(RouterService, proxyService),
       acquisition.layer,
       FileSystemLive,
     );
 
     try {
-      // When: doctor probes the proxy subsystem.
+      // When
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
-      const proxy = result.checks.find((check) => check.name === "proxy");
+      const proxy = result.checks.find((check) => check.name === "router");
 
-      // Then: the occupied-hop mode and port-in-use remediation surface.
+      // Then
       expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
       expect(proxy?.status).toBe("warn");
       expect(proxy?.solutions[0]?.description).toContain("port in use");

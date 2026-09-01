@@ -4,8 +4,6 @@ import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 
-// Global config — the host-level merged config.
-
 /**
  * Telemetry defaults on for CLI global config. Library runtimes do not use this
  * schema default for their host decision; they stay opt-in at runtime creation.
@@ -129,8 +127,8 @@ export const GlobalConfig = Schema.Struct({
   userCacheRoot: Schema.optional(AbsolutePath),
   systemPluginRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
-  defaultProxyService: Schema.optional(Schema.String).annotations({
-    description: "Globally selected ProxyService contribution id.",
+  defaultRouterService: Schema.optional(Schema.String).annotations({
+    description: "Globally selected RouterService contribution id.",
   }),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),

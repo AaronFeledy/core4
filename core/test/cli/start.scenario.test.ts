@@ -40,13 +40,13 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   ToolingEngine,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -288,7 +288,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
-  Layer.succeed(ProxyService, TestProxyService),
+  Layer.succeed(RouterService, TestRouterService),
   makeShellRunnerLive(() => {
     throw new TypeError("Interactive shell IO is not used by start scenarios.");
   }),
@@ -345,7 +345,7 @@ const makeStartLayer = (
     readonly removeState: boolean;
   }> = [];
   const proxy = {
-    ...TestProxyService,
+    ...TestRouterService,
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () =>
@@ -523,7 +523,7 @@ const makeStartLayer = (
       query: () => Effect.succeed([]),
     }),
     unusedGlobalServicesLayer,
-    Layer.succeed(ProxyService, proxy),
+    Layer.succeed(RouterService, proxy),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
       buildApp: () =>
@@ -755,7 +755,7 @@ const makeAutoStartLayer = async (options: {
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
-    Layer.succeed(ProxyService, TestProxyService),
+    Layer.succeed(RouterService, TestRouterService),
     Layer.succeed(RedactionService, {
       forProfile: (profile, redactionOptions) =>
         Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),

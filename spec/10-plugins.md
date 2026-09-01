@@ -126,7 +126,7 @@ provides:
   initSources:
     - id: github
       module: ./src/init/github.ts
-  proxyServices:
+  routerServices:
     - id: traefik
       module: ./src/proxy.ts
   tunnelServices:
@@ -248,7 +248,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `globalServices` | Service definitions contributed to the **global Lando app** (§20.4) | `GlobalAppService` |
 | `commands` | Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
-| `proxyServices` | `ProxyService` implementations | Proxy subsystem |
+| `routerServices` | `RouterService` implementations | Router subsystem |
 | `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
 | `remoteSources` | `RemoteSource` implementations for remote data sync (`lando pull`/`push`; §10.12) — hosting platforms (Pantheon/Acquia/Platform.sh/Lagoon) and generic transports (rsync/ssh/s3/url/local) | Remote-sync subsystem |
 | `datasets` | `Dataset` implementations (the syncable units `database`/`files`/`config`/`blob`; §10.12) — typically contributed by a service-type (`database`) or app-feature (`files`) | Remote-sync subsystem |

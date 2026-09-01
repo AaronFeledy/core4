@@ -49,8 +49,8 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "PluginRegistry",
   "PluginRegistryLive",
   "ProviderExecToolingEngineLive",
-  "ProxyServiceRegistry",
-  "ProxyServiceUnavailableLive",
+  "RouterServiceRegistry",
+  "RouterServiceUnavailableLive",
   "RuntimeCwd",
   "RuntimeLayerFactory",
   "RuntimeProviderRegistryLive",
@@ -61,7 +61,7 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "ScratchResourceScanner",
   "ScratchResourceScannerLive",
   "SecretStoreLive",
-  "SelectedProxyServiceLive",
+  "SelectedRouterServiceLive",
   "SetupFlagCollisionError",
   "SshServiceUnavailableLive",
   "StreamFrameSink",
@@ -143,8 +143,8 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
   "makeLandoPluginContext",
   "makePluginRegistryLive",
   "makePluginTrustStore",
-  "makeProxyServiceRegistry",
-  "makeProxyServiceRegistryLive",
+  "makeRouterServiceRegistry",
+  "makeRouterServiceRegistryLive",
   "makeRuntimeProviderRegistry",
   "makeScratchAppServiceLive",
   "makeScratchRegistry",
@@ -223,10 +223,10 @@ const EXPECTED_ENGINE_LAYER_EXPORTS = [
 ] as const;
 
 test("exports the reviewed engine coupling surface", () => {
-  // Given the internal engine-coupling module
-  // When its runtime exports are enumerated
+  // Given
+  // When
   const exportedNames = Object.keys(engineLayers).sort();
 
-  // Then only the committed append-only migration surface is exposed
+  // Then
   expect(exportedNames).toEqual([...EXPECTED_ENGINE_LAYER_EXPORTS]);
 });
