@@ -8,7 +8,13 @@ import type {
   ProcessRunner,
 } from "@lando/sdk/services";
 
-import type { AcquisitionFingerprint, BindOutcome, ForwardOutcome, SchemeProbe } from "./port-acquisition.ts";
+import type {
+  AcquisitionFingerprint,
+  BindOutcome,
+  ForwardOutcome,
+  ForwardProbeRole,
+  SchemeProbe,
+} from "./port-acquisition.ts";
 import type { SocketProxyServiceType } from "./socket-proxy-units.ts";
 
 export interface ProxyFileSystem {
@@ -47,7 +53,11 @@ export interface SocketProxyDependencies {
   readonly interaction?: Pick<Context.Tag.Service<typeof InteractionService>, "confirm" | "isInteractive">;
   readonly autoApprove?: boolean;
   readonly serviceType?: SocketProxyServiceType;
-  readonly probeForward?: (host: string, port: number) => Effect.Effect<ForwardOutcome>;
+  readonly probeForward?: (
+    host: string,
+    port: number,
+    role: ForwardProbeRole,
+  ) => Effect.Effect<ForwardOutcome>;
   readonly classifyOverride?: {
     readonly http: SchemeProbe;
     readonly https: SchemeProbe;
@@ -79,5 +89,10 @@ export interface TraefikProxyDependencies {
   readonly router?: TraefikRouterLists;
   readonly routerPin?: TraefikRouterPin;
   readonly probeBind?: (host: string, port: number) => Effect.Effect<BindOutcome>;
+  readonly probeForward?: (
+    host: string,
+    port: number,
+    role: ForwardProbeRole,
+  ) => Effect.Effect<ForwardOutcome>;
   readonly events?: Pick<Context.Tag.Service<typeof EventService>, "publish">;
 }
