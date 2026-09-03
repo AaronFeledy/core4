@@ -79,6 +79,9 @@ const derivedSourcesSteps = `      - name: Regenerate derived sources
 const renderCompileStep = (platform: CiPlatform): string => `      - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun run --filter='@lando/core' build:log-file-helper
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external`;
 
