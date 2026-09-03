@@ -1,6 +1,7 @@
 import { createConnection } from "node:net";
 
 import {
+  ContainerTransportError,
   connectSocket,
   makeSocketHttpClient,
   normalizeNamedPipePath,
@@ -19,17 +20,28 @@ const TRANSPORT_REMEDIATION =
 const podmanApiFailure = (
   request: PodmanHttpRequest,
   cause: unknown,
-): ProviderUnavailableError | ProviderInternalError =>
-  cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-    ? cause
-    : new ProviderUnavailableError({
-        providerId: PROVIDER_ID,
-        operation: "podman-api",
-        message: "Failed to call the Podman API.",
-        details: redactDetails({ method: request.method, path: request.path }),
-        remediation: TRANSPORT_REMEDIATION,
-        cause: redactDetails(cause),
-      });
+): ProviderUnavailableError | ProviderInternalError => {
+  if (cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError) {
+    return cause;
+  }
+  // Every transport failure (connect, write, truncated response, HTTP status)
+  // means the Lando-managed runtime is not usable right now, so it stays
+  // `ProviderUnavailableError` with the doctor/setup remediation. Preserve the
+  // transport's own message and details instead of a generic one.
+  const transport = cause instanceof ContainerTransportError ? cause : undefined;
+  return new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "podman-api",
+    message: transport?.message ?? "Failed to call the Podman API.",
+    details: redactDetails({
+      method: request.method,
+      path: request.path,
+      ...(transport?.details === undefined ? {} : { transport: transport.details }),
+    }),
+    remediation: TRANSPORT_REMEDIATION,
+    cause: redactDetails(cause),
+  });
+};
 
 const makePodmanSocketClient = (socketPath: string) =>
   makeSocketHttpClient({
