@@ -17,6 +17,37 @@ lando info
 
 Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
 
+## Use fallback ports
+
+Lando prefers host ports 80 and 443. If another process already owns either port, `lando start` keeps going and prints a fallback notice. The default fallback pair is 8080 for HTTP and 8443 for HTTPS.
+
+Run `lando info` after the app starts:
+
+```sh
+lando info
+```
+
+The URL includes the selected fallback port. An HTTP route uses `:8080`; an HTTPS route uses `:8443`. Open that URL as printed. You do not need to edit the Landofile or start Traefik yourself.
+
+Check which preferred ports are occupied with JSON output:
+
+```sh
+lando doctor --format=json
+```
+
+Look in `result.provider.checks` for the object whose `name` is `preferred-host-ports`. When another process owns 80 or 443, that object has `status: warn`, `runtimeStatus: preferred-port-occupied`, and lists the occupied ports in `context.ports`.
+
+## Reclaim ports 80 and 443
+
+Stop the process that owns the preferred ports first. Then restart Lando's global services so Traefik can acquire them:
+
+```sh
+lando global:restart
+lando info
+```
+
+After the restart, `lando info` prints the app URL without `:8080` or `:8443`. If a fallback port remains, run `lando doctor --format=json` again and inspect `preferred-host-ports` before restarting another time.
+
 ## Prepare HTTPS
 
 HTTPS routes need a certificate authority. Run `lando setup` first so mkcert can issue certs and trust the local CA:
@@ -33,7 +64,7 @@ The default domain is `lndo.site`. `lando setup` writes `*.lndo.site` into this 
 
 You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
 
-## Verify
+## Verify the proxy
 
 ```sh
 lando doctor
@@ -42,6 +73,4 @@ lando info
 
 Doctor's proxy check should pass after setup. If it fails, rerun `lando setup`, then start the app again.
 
-If the URL is empty or resets, run `lando doctor`. If `lando info` shows `:8080`, something else owns port 80.
-
-Lando starts the proxy. Do not launch Traefik yourself.
+If the URL is empty or resets, run `lando doctor`. Lando starts the proxy. Do not launch Traefik yourself.

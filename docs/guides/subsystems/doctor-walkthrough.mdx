@@ -23,6 +23,7 @@ Each check is `pass`, `warn`, or `fail`. Failed checks print remediation. Most p
 | Check | What to do |
 | --- | --- |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| preferred-host-ports | Stop the process using 80 or 443, run `lando global:restart`, then check the URLs with `lando info`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 
@@ -45,7 +46,7 @@ lando doctor --format=json
 lando doctor --format=yaml
 ```
 
-Use those formats in scripts. Doctor redacts secrets, certificate bodies, and proxy URLs.
+Use those formats in scripts. Doctor redacts secrets, certificate bodies, and proxy URLs. When 80 or 443 is occupied, find the `preferred-host-ports` object in `result.provider.checks`. Its `context.ports` value names the occupied ports.
 
 ## Verify
 
