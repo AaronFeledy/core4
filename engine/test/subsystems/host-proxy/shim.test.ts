@@ -114,6 +114,16 @@ describe("remapHostCwd", () => {
   test("does not treat a sibling prefix as inside the mount", () => {
     expect(remapHostCwd("/home/u/site2/web", mount)).toBeUndefined();
   });
+
+  test("never resolves a relative path against the process cwd", () => {
+    const original = process.cwd();
+    process.chdir("/");
+    try {
+      expect(remapHostCwd("web", { containerRoot: "/app", hostRoot: "/" })).toBeUndefined();
+    } finally {
+      process.chdir(original);
+    }
+  });
 });
 
 describe("tryMapHostCwd", () => {
@@ -147,6 +157,21 @@ describe("resolveContainerCwd", () => {
 
   test("keeps an explicit container path that is not under a host mount", () => {
     expect(resolveContainerCwd(mounted, "/app/web", "/tmp")).toBe("/app/web");
+  });
+
+  test("keeps a relative authored dir verbatim regardless of where the command was invoked", () => {
+    // Given: a landofile task `dir: web` and the user invoking from inside the app mount.
+    const original = process.cwd();
+    process.chdir("/");
+    try {
+      // Then: `web` must not be resolved against the process cwd and re-mapped.
+      expect(resolveContainerCwd(mounted, "web", "/workspace/drupal/web")).toBe("web");
+      expect(resolveContainerCwd({ ...mounted, appMount: { source: "/", target: "/app" } }, "web", "/")).toBe(
+        "web",
+      );
+    } finally {
+      process.chdir(original);
+    }
   });
 
   test("maps an implicit host cwd under a bind mount", () => {

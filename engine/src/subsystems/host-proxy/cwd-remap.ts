@@ -50,9 +50,12 @@ export const remapContainerCwd = (containerCwd: string, mount: HostProxyMountInf
 /**
  * Remap a host cwd onto a container path using one bind mount. Returns
  * `undefined` when `hostCwd` is not inside `mount.hostRoot` (including sibling
- * prefixes and parent escapes).
+ * prefixes and parent escapes). A relative `hostCwd` is never a host path
+ * (an authored task `dir` or `--cwd web` is container-relative), so it is
+ * never resolved against the process cwd.
  */
 export const remapHostCwd = (hostCwd: string, mount: HostProxyMountInfo): string | undefined => {
+  if (!isAbsolute(hostCwd)) return undefined;
   const hostRoot = resolve(stripTrailingSlash(mount.hostRoot));
   const cwd = resolve(stripTrailingSlash(hostCwd));
   const containerRoot = stripTrailingSlash(posix.normalize(mount.containerRoot));
@@ -109,8 +112,9 @@ export const bindMountsFromService = (service: CwdRemapService): ReadonlyArray<H
  *
  * Precedence:
  * 1. When `explicitCwd` is given, map it through the service bind mounts if it
- *    is a host path under a mount; otherwise keep it (authored `dir`, container
- *    paths, and `--cwd` that do not sit on a host root).
+ *    is an absolute host path under a mount; otherwise keep it verbatim
+ *    (authored `dir`, relative paths, container paths, and `--cwd` values that
+ *    do not sit on a host root).
  * 2. Otherwise map `hostCwd` (the caller-supplied `process.cwd()`) the same way.
  * 3. If `hostCwd` is not under any bind mount, use `service.appMount.target`,
  *    then `service.workingDirectory`.
