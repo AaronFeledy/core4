@@ -17,6 +17,17 @@ lando info
 
 Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
 
+When 80 and 443 are free, those URLs omit the port. When something else owns them, start says `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. `lando info` then prints `http://myapp.lndo.site:8080` and `https://myapp.lndo.site:8443`. The colon is not decorative. That is the port Traefik bound.
+
+## Read lando info and lando doctor
+
+```sh
+lando info
+lando doctor --format=json
+```
+
+Doctor warns on `preferred-host-ports` when 80 or 443 is occupied. Status is `warn`. `runtimeStatus` is `preferred-port-occupied`. The router stays running in `occupied-hop` mode. Stop the holder, or set `router.httpPort` and `router.httpsPort` to free ports.
+
 ## Prepare HTTPS
 
 HTTPS routes need a certificate authority. Run `lando setup` first so mkcert can issue certs and trust the local CA:
@@ -33,6 +44,23 @@ The default domain is `lndo.site`. `lando setup` writes `*.lndo.site` into this 
 
 You can author extra `routes:` when a service needs more than the default hostname. Most apps do not need that block.
 
+## Set router ports
+
+HTTP tries `80`, then `8080`, `8000`, `8888`, `8008`, `38080`. HTTPS tries `443`, then `8443`, `4443`, `4433`, `4444`, `444`, `38443`. First free port per protocol wins. An empty fallback array means preferred-only.
+
+```yaml
+name: proxy-host-ports
+services:
+  app:
+    type: "node:22"
+    primary: true
+router:
+  httpPort: 8080
+  httpsPort: 8443
+```
+
+Same keys work in global config. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values are JSON arrays such as `[8000,8888]`. Default bind is `127.0.0.1`.
+
 ## Verify
 
 ```sh
@@ -40,8 +68,38 @@ lando doctor
 lando info
 ```
 
-Doctor's proxy check should pass after setup. If it fails, rerun `lando setup`, then start the app again.
-
-If the URL is empty or resets, run `lando doctor`. If `lando info` shows `:8080`, something else owns port 80.
+A `preferred-host-ports` warn means the app is reachable on the fallback ports. If the URL is empty, run `lando doctor`.
 
 Lando starts the proxy. Do not launch Traefik yourself.
+
+<Guide>
+  <Scenario id="router-config" render>
+    <Step name="scaffold">
+      <UseFixture name="proxy-host-ports" />
+    </Step>
+    <Step name="inspect-router">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"proxy-host-ports\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpPort\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpsPort\":\\s*8443" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpFallbacks\":\\s*\\[\\s*8000,\\s*8888,\\s*8008,\\s*38080\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="preferred-only" render={false} reason="Regression for empty router fallback arrays">
+    <Step name="inspect-preferred-only">
+      <UseFixture name="proxy-preferred-only" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpPort\":\\s*80" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpsPort\":\\s*443" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpFallbacks\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpsFallbacks\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run lando doctor](./doctor-walkthrough.mdx)
+- [Trust local HTTPS certificates](./certificates-mkcert.mdx)
+- [Reach an app from another device](./external-access.mdx)
