@@ -67,6 +67,16 @@ describe("family command builders", () => {
     }
   });
 
+  test("loadCommand uses mariadb for mariadb family and mysql for mysql family", () => {
+    expect(loadCommand("mariadb", creds)[0]).toBe("mariadb");
+    expect(loadCommand("mysql", creds)[0]).toBe("mysql");
+  });
+
+  test("dumpCommand uses mariadb-dump for mariadb family and mysqldump for mysql family", () => {
+    expect(dumpCommand("mariadb", creds)[0]).toBe("mariadb-dump");
+    expect(dumpCommand("mysql", creds)[0]).toBe("mysqldump");
+  });
+
   test("loadCommand never puts the password on argv", () => {
     for (const family of families) {
       expect(argvHasSecret(loadCommand(family, creds))).toBe(false);

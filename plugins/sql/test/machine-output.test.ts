@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { Effect, Exit, Schema } from "effect";
 
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
@@ -8,7 +8,9 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 import { type DbCommandInput, dbCommandRedactionTokens, executeDbCommand } from "../src/run.ts";
 import { DbCommandResult } from "../src/schemas.ts";
-import { makeSqlTestDeps } from "./support/fakes.ts";
+import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+
+afterEach(cleanupSqlTestDeps);
 
 const decodeEnvelope = (encoded: string) =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(encoded));

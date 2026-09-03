@@ -1,18 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Effect, Exit } from "effect";
 
 import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
+  SqlDumpNotFoundError,
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
 
 import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 import { executeDbCommand } from "../src/run.ts";
-import { FakeRestoreError, makeSqlTestDeps } from "./support/fakes.ts";
+import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 const SECRET = "s3cret-pass";
+
+afterEach(cleanupSqlTestDeps);
 
 const run = (
   deps: ReturnType<typeof makeSqlTestDeps>["deps"],
@@ -29,7 +34,7 @@ describe("executeDbCommand", () => {
     if (Exit.isFailure(exit)) throw new Error("expected success");
     expect(exit.value.service).toBe("database");
     expect(exit.value.family).toBe("mysql");
-    expect(exit.value.file).toBe("/tmp/sql-app/database.sql.gz");
+    expect(exit.value.file).toBe(join(harness.root, "database.sql.gz"));
     expect(exit.value.steps.length).toBeGreaterThan(0);
     expect(exit.value.redactionTokens).toContain(SECRET);
     expect(harness.published()).toEqual([
@@ -150,6 +155,25 @@ describe("executeDbCommand", () => {
     expect(harness.transfers()).toEqual([]);
   });
 
+  test("fails closed when the import dump file is missing, before the count probe", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    const exit = await run(harness.deps, { action: "import", file: "_backups/missing.sql.gz", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+    if (error instanceof SqlDumpNotFoundError) {
+      expect(error.path).toBe(join(harness.root, "_backups/missing.sql.gz"));
+      expect(error.appRoot).toBe(harness.root);
+      expect(error.message).toContain("Dump file not found");
+    }
+    expect(harness.transfers()).toEqual([]);
+    expect(harness.published()).toEqual([]);
+    expect(harness.execs()).toEqual([]);
+  });
+
   test("requires confirmation before importing into a non-empty database", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "3" });
 
@@ -165,6 +189,24 @@ describe("executeDbCommand", () => {
     }
     expect(harness.transfers()).toEqual([]);
     expect(harness.published()).toEqual([]);
+  });
+
+  test("resolves a relative import dump from hostCwd when it is inside the app root", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const nested = join(harness.root, "backups");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(nested, "nested.sql.gz"), "x");
+
+    const exit = await run(harness.deps, {
+      action: "import",
+      file: "nested.sql.gz",
+      yes: false,
+      hostCwd: nested,
+    });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected success");
+    expect(exit.value.file).toBe(join(nested, "nested.sql.gz"));
   });
 
   test("imports an empty database without confirmation", async () => {

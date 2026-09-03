@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Effect } from "effect";
 
 import type { DataTransferResult, DataTransferSpec, SnapshotHandle } from "@lando/sdk/schema";
@@ -53,13 +57,17 @@ export class FakeStartError extends Error {
 }
 
 export type SqlTestHarness = {
+  readonly root: string;
   readonly deps: SqlCommandDeps;
   readonly transfers: () => ReadonlyArray<DataTransferSpec>;
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly execs: () => ReadonlyArray<RecordedExec>;
   readonly published: () => ReadonlyArray<string>;
   readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;
+  readonly dispose: () => void;
 };
+
+const liveHarnesses: SqlTestHarness[] = [];
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
@@ -96,12 +104,17 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     ),
   };
 
+  const root = mkdtempSync(join(tmpdir(), "lando-sql-"));
   const plan: SqlPlan = {
     id: "sql-app",
     name: "sql-app",
-    root: "/tmp/sql-app",
+    root,
     services,
   };
+
+  for (const name of ["dump.sql.gz", "dump.sql", "dump.bak"] as const) {
+    writeFileSync(join(plan.root, name), "x");
+  }
 
   const deps: SqlCommandDeps = {
     landofile,
@@ -152,12 +165,24 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       }),
   };
 
-  return {
+  const harness: SqlTestHarness = {
+    root,
     deps,
     transfers: () => transfers,
     snapshots: () => snapshots,
     execs: () => execs,
     published: () => published,
     lifecycle: () => lifecycle,
+    dispose: () => {
+      rmSync(root, { recursive: true, force: true });
+    },
   };
+  liveHarnesses.push(harness);
+  return harness;
+};
+
+export const cleanupSqlTestDeps = (): void => {
+  for (const harness of liveHarnesses.splice(0)) {
+    harness.dispose();
+  }
 };
