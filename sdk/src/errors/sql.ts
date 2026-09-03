@@ -45,3 +45,10 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     remediation: Schema.String,
   },
 ) {}
+
+export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundError>()("SqlDumpNotFoundError", {
+  message: Schema.String,
+  path: Schema.String,
+  appRoot: Schema.String,
+  remediation: Schema.String,
+}) {}

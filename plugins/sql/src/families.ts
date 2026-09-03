@@ -49,12 +49,21 @@ export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> => 
   `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
 ];
 
-const mysqlClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
-  "mysql",
-  "-u",
-  creds.user,
-  ...extra,
-];
+type MysqlFamily = "mysql" | "mariadb";
+
+const MYSQL_FAMILY_BINARIES = {
+  mysql: { client: "mysql", dump: "mysqldump" },
+  mariadb: { client: "mariadb", dump: "mariadb-dump" },
+} as const satisfies Record<MysqlFamily, { readonly client: string; readonly dump: string }>;
+
+const mysqlFamilyBinaries = (family: MysqlFamily): (typeof MYSQL_FAMILY_BINARIES)[MysqlFamily] =>
+  MYSQL_FAMILY_BINARIES[family];
+
+const mysqlClient = (
+  family: MysqlFamily,
+  creds: SqlCommandCreds,
+  extra: ReadonlyArray<string>,
+): ReadonlyArray<string> => [mysqlFamilyBinaries(family).client, "-u", creds.user, ...extra];
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
@@ -80,7 +89,7 @@ export const dumpCommand = (
   switch (family) {
     case "mysql":
     case "mariadb":
-      return ["mysqldump", "-u", creds.user, creds.database];
+      return [mysqlFamilyBinaries(family).dump, "-u", creds.user, creds.database];
     case "postgres":
       return ["pg_dump", "-U", creds.user, "-d", creds.database];
     case "mongodb":
@@ -94,7 +103,7 @@ export const loadCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonly
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [creds.database]);
+      return mysqlClient(family, creds, [creds.database]);
     case "postgres":
       return postgresClient(creds, []);
     case "mongodb":
@@ -110,7 +119,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [
+      return mysqlClient(family, creds, [
         "-D",
         creds.database,
         "-N",
@@ -145,7 +154,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [
+      return mysqlClient(family, creds, [
         "-e",
         `DROP DATABASE IF EXISTS \`${creds.database}\`; CREATE DATABASE \`${creds.database}\`;`,
       ]);

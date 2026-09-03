@@ -172,7 +172,43 @@ describe("socket HTTP transport", () => {
 
     expect(chunks).toEqual([bytes("done")]);
     expect(connection.writes[0]).toContain("POST /v1.43/exec/abc/start HTTP/1.1\r\n");
+    expect(connection.writes[0]).toContain("Connection: Upgrade");
+    expect(connection.writes[0]).toContain("Upgrade: tcp");
+    expect(connection.writes[0]).not.toContain("Connection: close");
     expect(connection.writes.at(-1)).toBe("typed\n");
+  });
+
+  test("does not override an explicit Connection header when stdin is present", async () => {
+    const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n"), bytes("done")]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    const chunks = await Array.fromAsync(
+      client.stream({
+        method: "POST",
+        path: "/exec/abc/start",
+        headers: { Connection: "keep-alive" },
+        body: { Detach: false, Tty: true },
+        stdin: stdinBytes("typed\n"),
+      }),
+    );
+
+    expect(chunks).toEqual([bytes("done")]);
+    expect(connection.writes[0]).toContain("Connection: keep-alive");
+    expect(connection.writes[0]).not.toContain("Connection: Upgrade");
+    expect(connection.writes[0]).not.toContain("Upgrade: tcp");
+    expect(connection.writes[0]).not.toContain("Connection: close");
+  });
+
+  test("keeps Connection: close and omits Upgrade headers when stdin is absent", async () => {
+    const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n"), bytes("done")]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    const chunks = await Array.fromAsync(client.stream({ method: "GET", path: "/events" }));
+
+    expect(chunks).toEqual([bytes("done")]);
+    expect(connection.writes[0]).toContain("Connection: close");
+    expect(connection.writes[0]).not.toContain("Connection: Upgrade");
+    expect(connection.writes[0]).not.toContain("Upgrade: tcp");
   });
 
   test("buffers delayed stdin until upgraded response headers are available", async () => {

@@ -31,6 +31,11 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports every bundled plugin, and `@lando/file-sync-mutagen` statically
+    // imports `mutagen-versions.json`. Without this edge both run in the same
+    // wave and the import can observe the file mid-truncation (`Bun.write` is
+    // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
+    dependsOn: ["mutagen-versions"],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -67,6 +72,8 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Also imports every bundled plugin; see `bundled-plugins`.
+    dependsOn: ["mutagen-versions"],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
