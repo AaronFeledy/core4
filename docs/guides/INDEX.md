@@ -198,6 +198,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
 | — | — | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
 | — | — | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
+| - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |
 | — | — | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
 | — | — | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
 | — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |

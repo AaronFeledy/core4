@@ -1,0 +1,121 @@
+---
+id: service-dns
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 90000
+tags: [beta, docs, subsystems, networking, dns]
+---
+
+# Reach services by name
+
+Start the app, then connect with the service key. Open `lando info` URLs only in the host browser.
+
+```sh
+lando start
+lando info
+```
+
+The URL `lando info` prints is for your browser. It is not the hostname PHP uses to reach MySQL.
+
+The default provider is `lando` (managed Podman). `LANDO_PROVIDER` does not persist.
+
+## Pick the right name
+
+| Where you are | Name to use | Example |
+| --- | --- | --- |
+| Another service in this app | The service key | `database` |
+| Another app, or Traefik's backend | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| Host browser | `*.lndo.site` | `https://app.service-dns-demo.lndo.site` |
+
+Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
+
+## Connect with the service key
+
+Point MySQL at `database`. Do not send that traffic through `*.lndo.site`.
+
+```yaml
+name: service-dns-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    db_client: auto
+  database:
+    type: mysql
+    creds:
+      user: app
+      password: secret
+      database: app
+tooling:
+  db-query:
+    service: app
+    cmd: mysql -h database -u app app -e "SELECT 1"
+```
+
+That `-h database` is intra-app DNS on the per-app bridge `lando-service-dns-demo`.
+
+## Reach another app with `.internal`
+
+Cross-app names live on `lando_bridge_network`. The alias is `<service>.<app>.internal`. Traefik dials `http://app.service-dns-demo.internal:80` for this app, not a `*.lndo.site` hostname.
+
+Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services get `LANDO_MAIL_HOST=mailpit.global.internal` and `LANDO_MAIL_PORT=1025`. Point SMTP at those env values.
+
+`lando info` omits `_tag: "internal"` endpoints. Do not look for `.internal` there.
+
+Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
+
+Routes need shared cross-app networking. The default `lando` provider advertises that on Linux, macOS, and Windows.
+
+## Open `*.lndo.site` on this machine
+
+`*.lndo.site` is host DNS plus Traefik. `lando setup` writes that resolution on this machine. Other devices do not get it. See [Reach an app from another device](./external-access.mdx) and [Resolve lndo.site on this machine](./host-proxy.mdx).
+
+## Keep host gateways separate
+
+These names are not service DNS:
+
+| Name | What it is |
+| --- | --- |
+| `host.lando.internal` | Traefik `extra_hosts` mapping to the host gateway |
+| `host.containers.internal` | Win32 Podman host-gateway hostname |
+| `host.docker.internal` | Xdebug `client_host` |
+
+Do not swap them. Do not use them as database hosts.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="service-dns-demo" />
+    </Step>
+    <Step name="inspect-landofile">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"service-dns-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "-h database" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: service-dns-demo" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info-as-json">
+      <Run command="lando app:info --format=json" />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"service-dns-demo\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"database\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Use the Traefik proxy](./proxy-traefik.mdx)
+- [Add Mailpit](../services/mailpit.mdx)

@@ -104,6 +104,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "Use the Traefik proxy", slug: "guides/subsystems/proxy-traefik" },
+          { label: "Reach services by name", slug: "guides/subsystems/service-dns" },
           { label: "Run lando doctor", slug: "guides/subsystems/doctor-walkthrough" },
           { label: "Reach an app from another device", slug: "guides/subsystems/external-access" },
           { label: "Trust local HTTPS certificates", slug: "guides/subsystems/certificates-mkcert" },
