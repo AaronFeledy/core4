@@ -1,4 +1,5 @@
-import { stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 
 import { Effect } from "effect";
 
@@ -40,6 +41,10 @@ export const ensureReadableDump = (
     try: async () => {
       const info = await stat(path);
       if (info.isDirectory()) throw dumpNotFound(path, appRoot, "directory");
+      // `stat` succeeds on a file the current user cannot open; ask for read
+      // permission explicitly so import fails here, before the count probe and
+      // overwrite confirmation, instead of inside DataMover.
+      await access(path, constants.R_OK);
     },
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),

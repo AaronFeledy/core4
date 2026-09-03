@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect, Exit } from "effect";
 
@@ -172,6 +172,27 @@ describe("executeDbCommand", () => {
     expect(harness.transfers()).toEqual([]);
     expect(harness.published()).toEqual([]);
     expect(harness.execs()).toEqual([]);
+  });
+
+  test("fails closed when the import dump exists but is unreadable, before the count probe", async () => {
+    // root bypasses mode bits, so the permission miss cannot be provoked there.
+    if (process.getuid?.() === 0 || process.platform === "win32") return;
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "3" });
+    const locked = join(harness.root, "locked.sql.gz");
+    writeFileSync(locked, "x");
+    chmodSync(locked, 0o000);
+
+    const exit = await run(harness.deps, { action: "import", file: "locked.sql.gz", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+    if (error instanceof SqlDumpNotFoundError) expect(error.message).toContain("not readable");
+    // Neither the count probe nor the overwrite confirmation ran.
+    expect(harness.execs()).toEqual([]);
+    expect(harness.published()).toEqual([]);
+    expect(harness.transfers()).toEqual([]);
   });
 
   test("requires confirmation before importing into a non-empty database", async () => {

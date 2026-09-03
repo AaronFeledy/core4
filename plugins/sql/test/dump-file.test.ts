@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +32,31 @@ describe("ensureReadableDump", () => {
     expect(error.path).toBe(path);
     expect(error.appRoot).toBe(appRoot);
     expect(error.message).toContain("Dump file not found");
+  });
+
+  test("passes for a readable dump file", async () => {
+    const path = join(appRoot, "ok.sql.gz");
+    await writeFile(path, "x");
+    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
+  test("fails with SqlDumpNotFoundError when the dump file exists but is not readable", async () => {
+    // root bypasses mode bits, so the permission miss cannot be provoked there.
+    if (process.getuid?.() === 0 || process.platform === "win32") return;
+    const path = join(appRoot, "locked.sql.gz");
+    await writeFile(path, "x");
+    await chmod(path, 0o000);
+    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+    if (!(error instanceof SqlDumpNotFoundError)) return;
+    expect(error.path).toBe(path);
+    expect(error.message).toContain("not readable");
   });
 
   test("fails with SqlDumpNotFoundError when the dump path is a directory", async () => {
