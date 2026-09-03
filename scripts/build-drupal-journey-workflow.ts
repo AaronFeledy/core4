@@ -73,6 +73,12 @@ const setupBunSteps = `      - name: Setup Bun
       - name: Install dependencies
         run: bun install --frozen-lockfile`;
 
+const derivedSourcesSteps = `      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest`;
+
 const renderCompileStep = (platform: CiPlatform): string => `      - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
@@ -158,6 +164,8 @@ ${isolateEnv}
 ${isolateRootsStep}
 
 ${setupBunSteps}
+
+${derivedSourcesSteps}
 
 ${renderCompileStep(platform)}
 ${renderBundleSteps(cell)}${renderLinuxLandoPrereqs(cell)}
