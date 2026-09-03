@@ -17,7 +17,7 @@ lando info
 
 Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
 
-When 80 and 443 are free, those URLs omit the port. When something else owns them, start says `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. `lando info` then prints `http://myapp.lndo.site:8080` and `https://myapp.lndo.site:8443`. The colon is not decorative. That is the port Traefik bound.
+When 80 and 443 are free, those URLs omit the port. When something else owns them, the start notice begins with `Port 80 is in use` or `Port 443 is in use`, identifies the holder when it can, and reports the selected port with text such as `using 8080.` or `using 8443.` For a service with HTTP and HTTPS routes, `lando info` then prints URLs such as `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`. The colon is not decorative. That is the port Traefik bound.
 
 ## Read lando info and lando doctor
 
@@ -26,7 +26,7 @@ lando info
 lando doctor --format=json
 ```
 
-Doctor warns on `preferred-host-ports` when 80 or 443 is occupied. Status is `warn`. `runtimeStatus` is `preferred-port-occupied`. The router stays running in `occupied-hop` mode. Stop the holder, or set `router.httpPort` and `router.httpsPort` to free ports.
+In `result.provider.checks`, Doctor reports `preferred-host-ports` with `status: warn` and `runtimeStatus: preferred-port-occupied` when another process owns 80 or 443. In `result.subsystems.checks`, the `router` check reports `context.acquisitionMode: occupied-hop` while Traefik serves the selected fallback ports.
 
 ## Prepare HTTPS
 
@@ -59,7 +59,15 @@ router:
   httpsPort: 8443
 ```
 
-Same keys work in global config. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values are JSON arrays such as `[8000,8888]`. Default bind is `127.0.0.1`.
+The same `router` block works in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`. The default bind address is `127.0.0.1`.
+
+Router ports are shared by every app. After changing the preferred ports or fallback lists, restart the shared router before starting the app:
+
+```sh
+lando global:restart
+lando start
+lando info
+```
 
 ## Verify
 
@@ -68,7 +76,7 @@ lando doctor
 lando info
 ```
 
-A `preferred-host-ports` warn means the app is reachable on the fallback ports. If the URL is empty, run `lando doctor`.
+A `preferred-host-ports` warning names host-port occupancy. Read the app's selected endpoint with `lando info`, and inspect the `router` check when the URL is empty.
 
 Lando starts the proxy. Do not launch Traefik yourself.
 
@@ -83,6 +91,7 @@ Lando starts the proxy. Do not launch Traefik yourself.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpPort\":\\s*8080" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpsPort\":\\s*8443" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpFallbacks\":\\s*\\[\\s*8000,\\s*8888,\\s*8008,\\s*38080\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"httpsFallbacks\":\\s*\\[\\s*4443,\\s*4433,\\s*4444,\\s*444,\\s*38443\\s*\\]" } }} />
     </Step>
   </Scenario>
 
