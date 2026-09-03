@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { remapContainerCwd } from "../../../src/subsystems/host-proxy/cwd-remap.ts";
+import {
+  remapContainerCwd,
+  remapHostCwd,
+  resolveContainerCwd,
+  tryMapHostCwd,
+} from "../../../src/subsystems/host-proxy/cwd-remap.ts";
 import { buildRunLandoRequest, filterHostProxyEnv } from "../../../src/subsystems/host-proxy/shim.ts";
 
 describe("filterHostProxyEnv", () => {
@@ -88,5 +93,75 @@ describe("remapContainerCwd", () => {
 
   test("does not treat a sibling prefix as inside the mount", () => {
     expect(remapContainerCwd("/application/web", mount)).toBe("/home/u/site");
+  });
+});
+
+describe("remapHostCwd", () => {
+  const mount = { containerRoot: "/app", hostRoot: "/home/u/site" };
+
+  test("remaps a host path under the mount to the container root", () => {
+    expect(remapHostCwd("/home/u/site/web", mount)).toBe("/app/web");
+  });
+
+  test("maps the host root itself to the container root", () => {
+    expect(remapHostCwd("/home/u/site", mount)).toBe("/app");
+  });
+
+  test("returns undefined for a path outside the mount", () => {
+    expect(remapHostCwd("/var/tmp", mount)).toBeUndefined();
+  });
+
+  test("does not treat a sibling prefix as inside the mount", () => {
+    expect(remapHostCwd("/home/u/site2/web", mount)).toBeUndefined();
+  });
+});
+
+describe("tryMapHostCwd", () => {
+  test("prefers the longest matching host root", () => {
+    const mapped = tryMapHostCwd("/home/u/site/web/modules", [
+      { hostRoot: "/home/u/site", containerRoot: "/app" },
+      { hostRoot: "/home/u/site/web", containerRoot: "/app/web" },
+    ]);
+    expect(mapped).toBe("/app/web/modules");
+  });
+});
+
+describe("resolveContainerCwd", () => {
+  const mounted = {
+    appMount: { source: "/workspace/drupal", target: "/app" },
+    mounts: [] as const,
+    workingDirectory: "/app/web",
+  };
+  const unmounted = {
+    mounts: [] as const,
+    workingDirectory: "/srv/worker",
+  };
+  const bare = { mounts: [] as const };
+
+  test("maps an explicit host path under a bind mount", () => {
+    // Given: an explicit cwd under the app mount source.
+    // When: container cwd is resolved.
+    // Then: the matching container path is returned.
+    expect(resolveContainerCwd(mounted, "/workspace/drupal/web", "/tmp")).toBe("/app/web");
+  });
+
+  test("keeps an explicit container path that is not under a host mount", () => {
+    expect(resolveContainerCwd(mounted, "/app/web", "/tmp")).toBe("/app/web");
+  });
+
+  test("maps an implicit host cwd under a bind mount", () => {
+    expect(resolveContainerCwd(mounted, undefined, "/workspace/drupal/web")).toBe("/app/web");
+  });
+
+  test("falls back to the app mount target when the implicit host cwd is unmappable", () => {
+    expect(resolveContainerCwd(mounted, undefined, "/home/aaron/somewhere/else")).toBe("/app");
+  });
+
+  test("falls back to workingDirectory when implicit host cwd is unmappable and there is no app mount", () => {
+    expect(resolveContainerCwd(unmounted, undefined, "/home/aaron/somewhere/else")).toBe("/srv/worker");
+  });
+
+  test("returns undefined when there is no app mount and no workingDirectory", () => {
+    expect(resolveContainerCwd(bare, undefined, "/home/aaron/somewhere/else")).toBeUndefined();
   });
 });
