@@ -70,7 +70,7 @@ describe("runtime-bundle workflow supply chain", () => {
 
   test("installs Ubuntu build prerequisites from one fixed snapshot", async () => {
     const workflow = await renderWorkflow();
-    const snapshotConfig = workflow.indexOf("UBUNTU_SNAPSHOT=20260812T000000Z");
+    const snapshotConfig = workflow.indexOf("UBUNTU_SNAPSHOT=20260902T000000Z");
     const aptConfig = workflow.indexOf("APT::Snapshot", snapshotConfig);
     const packageIndex = workflow.indexOf("sudo apt-get update", aptConfig);
     const packageInstall = workflow.indexOf("sudo apt-get install", packageIndex);
@@ -97,7 +97,7 @@ describe("runtime-bundle workflow supply chain", () => {
   Candidate: 1.0
   Version table:
  *** 1.0 500
-        500 https://snapshot.ubuntu.com/ubuntu/20260812T000000Z noble/main amd64 Packages
+        500 https://snapshot.ubuntu.com/ubuntu/20260902T000000Z noble/main amd64 Packages
 POLICY
 seq 1 100000`;
 
@@ -111,7 +111,7 @@ seq 1 100000`;
  *** 2.0 500
         500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
      1.0 100
-        100 https://snapshot.ubuntu.com/ubuntu/20260812T000000Z noble/main amd64 Packages
+        100 https://snapshot.ubuntu.com/ubuntu/20260902T000000Z noble/main amd64 Packages
 POLICY`;
 
     expect(await runPrerequisiteScript(aptCacheBody, "2.0")).not.toBe(0);
