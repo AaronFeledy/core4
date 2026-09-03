@@ -18,7 +18,7 @@
 
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
-- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, and `SqlCommandFailedError` for database helper target selection, confirmation, and failed in-service dump/load/reset commands.
+- `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 

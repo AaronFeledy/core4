@@ -851,17 +851,33 @@ const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransfe
       }),
   }).pipe(Effect.map((info) => info.isDirectory()));
 
+const hostErrno = (cause: unknown): string | undefined =>
+  typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
+    ? cause.code
+    : undefined;
+
+const hostReadError = (path: string, cause: unknown): DataTransferError => {
+  const code = hostErrno(cause);
+  const missing = code === "ENOENT";
+  const denied = code === "EACCES" || code === "EPERM";
+  return new DataTransferError({
+    message: missing
+      ? `Host data file not found: ${path}`
+      : denied
+        ? `Host data file is not readable: ${path}`
+        : "Failed to read host data endpoint.",
+    fromEndpoint: `hostPath:${path}`,
+    operation: "read-host",
+    cause,
+    remediation: "Check that the host path exists and is readable.",
+  });
+};
+
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
   Stream.unwrap(
     Effect.tryPromise({
       try: () => readFile(path),
-      catch: (cause) =>
-        new DataTransferError({
-          message: "Failed to read host data endpoint.",
-          fromEndpoint: `hostPath:${path}`,
-          operation: "read-host",
-          cause,
-        }),
+      catch: (cause) => hostReadError(path, cause),
     }).pipe(Effect.map((payload) => Stream.make(new Uint8Array(payload)))),
   );
 

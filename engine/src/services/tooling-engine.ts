@@ -14,6 +14,7 @@ import {
 
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
+import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -179,7 +180,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
-    const cwd = invocation.cwd ?? service.appMount?.target ?? service.workingDirectory;
+    const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
     const env = withAgentContextEnv(invocation.env, process.env, {
       lowerThanEnv: service.environment,
       ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),

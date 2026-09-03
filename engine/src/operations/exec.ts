@@ -26,6 +26,7 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -228,9 +229,10 @@ export const execApp = (
         }
       : undefined;
     const mergedEnv = env === undefined && ttyEnv === undefined ? undefined : { ...ttyEnv, ...env };
+    const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
     const spec: CommandSpec = {
       command: split.command,
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(cwd === undefined ? {} : { cwd }),
       ...(mergedEnv === undefined || Object.keys(mergedEnv).length === 0 ? {} : { env: mergedEnv }),
       ...(tty
         ? {

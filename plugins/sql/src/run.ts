@@ -1,4 +1,4 @@
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
 
@@ -25,6 +25,7 @@ import {
   runSnapshot,
 } from "./actions.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
+import { ensureReadableDump } from "./dump-file.ts";
 import { countCommand } from "./families.ts";
 import { isGzipPath } from "./gzip.ts";
 import { type SqlPublisher, confirmOrFail, publishTree } from "./progress.ts";
@@ -41,6 +42,7 @@ export type DbCommandInput = {
   readonly file?: string;
   readonly snapshotId?: string;
   readonly label?: string;
+  readonly hostCwd?: string;
 };
 
 export type SqlCommandDeps = SqlMover & {
@@ -57,8 +59,21 @@ const assertNever = (value: never): never => {
   throw new Error(`unexpected db action: ${String(value)}`);
 };
 
-const hostFile = (plan: SqlPlan, service: string, file = `${service}.sql.gz`): string =>
-  isAbsolute(file) ? file : join(plan.root, file);
+const isInsideAppRoot = (hostCwd: string, appRoot: string): boolean => {
+  const rel = relative(resolve(appRoot), resolve(hostCwd));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+
+const hostFile = (
+  plan: SqlPlan,
+  service: string,
+  file = `${service}.sql.gz`,
+  hostCwd = process.cwd(),
+): string => {
+  if (isAbsolute(file)) return file;
+  const base = isInsideAppRoot(hostCwd, plan.root) ? hostCwd : plan.root;
+  return join(base, file);
+};
 
 const parseCount = (stdout: string): number | undefined => {
   const match = stdout.trim().match(/\d+/u);
@@ -104,9 +119,12 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     });
     const tokens = secretTokens(creds);
     const env = credsEnv(target.family, creds);
-    const file = hostFile(deps.plan, target.name, input.file);
-    const gzip = isGzipPath(file);
+    const file = hostFile(deps.plan, target.name, input.file, input.hostCwd ?? process.cwd());
     const action = input.action;
+    if (action === "import") {
+      yield* ensureReadableDump(file, deps.plan.root);
+    }
+    const gzip = isGzipPath(file);
     const steps: DbCommandStep[] = [
       {
         id: action,
@@ -185,6 +203,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
 export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInput): DbCommandInput => ({
   action,
   yes: input.flags.yes === true,
+  hostCwd: process.cwd(),
   ...(typeof input.flags.service === "string" ? { service: input.flags.service } : {}),
   ...(typeof input.args.file === "string" ? { file: input.args.file } : {}),
   ...(typeof input.args.snapshot === "string" ? { snapshotId: input.args.snapshot } : {}),

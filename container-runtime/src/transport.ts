@@ -353,7 +353,14 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
   async function* stream(input: SocketHttpRequest): AsyncGenerator<Bytes> {
     const connection = await connect(options, input);
-    writeRequest(connection, input, options);
+    const hasConnectionHeader = Object.keys(input.headers ?? {}).some(
+      (key) => key.toLowerCase() === "connection",
+    );
+    const request =
+      input.stdin === undefined || hasConnectionHeader
+        ? input
+        : { ...input, headers: { ...input.headers, Connection: "Upgrade", Upgrade: "tcp" } };
+    writeRequest(connection, request, options);
     let stdinPump: Promise<void> | undefined;
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     let stdinReady = false;

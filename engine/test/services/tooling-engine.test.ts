@@ -267,6 +267,107 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(provider.calls[0]?.command.cwd).toBe("/app");
   });
 
+  test("maps a host cwd under the app mount to the matching container path", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/app/web"),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      cwd: "/workspace/drupal/web",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/app/web");
+  });
+
+  test("keeps an explicit container dir that is not under a host mount", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      cwd: "/app/web",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/app/web");
+  });
+
+  test("host cwd outside every mount falls back to the app mount target", async () => {
+    // Given: appserver is mounted at /workspace/drupal → /app, and process.cwd()
+    // is outside every bind mount (app targeting from outside the app root).
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/app/web"),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      commands: [["drush", "status"]],
+    };
+
+    // When: provider-exec tooling runs with no explicit cwd.
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: execution falls back to the app mount target, not the raw host path.
+    expect(provider.calls[0]?.command.cwd).toBe("/app");
+  });
+
+  test("unmappable host cwd without an app mount falls back to the working directory", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/srv/worker"),
+    };
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/srv/worker");
+  });
+
   test("defaults provider exec cwd to the service working directory without an app mount", async () => {
     // Given: a service has no app mount and declares its only meaningful working directory.
     const service = {

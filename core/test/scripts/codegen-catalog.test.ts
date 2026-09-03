@@ -75,13 +75,13 @@ const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
-  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo"],
+  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions"]],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
-  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
+  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo", ["mutagen-versions"]],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
     "host-proxy-allowlist",
@@ -175,6 +175,37 @@ describe("codegen catalog", () => {
       expectedCatalog.map((entry) => Object.keys(entry).sort()),
     );
     expect(commands).toEqual(expectedCommands);
+  });
+
+  test("generates the mutagen pin before every generator that imports bundled plugins", async () => {
+    // Given: `@lando/file-sync-mutagen` statically imports `mutagen-versions.json`,
+    // so any generator that imports the bundled plugin list transitively reads
+    // that pin. Derive those generators from source instead of hard-coding ids,
+    // so a newly added one is covered automatically.
+    const pluginImporters = (
+      await Promise.all(
+        catalog.map(async (entry) => {
+          const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
+          return source.includes("bundledPlugins") ? entry : undefined;
+        }),
+      )
+    ).filter((entry) => entry !== undefined);
+    const waves = groupCodegenWaves(catalog);
+    const waveIndexOf = (id: string): number =>
+      waves.findIndex((wave) => wave.some((entry) => entry.id === id));
+
+    // When: the pin generator is placed in a wave.
+    const pinWave = waveIndexOf("mutagen-versions");
+
+    // Then: the pin is fully written before any importer reads it. Sharing a wave
+    // lets the import observe the file mid-truncation, because `Bun.write`
+    // truncates in place (`JSON Parse error: Unexpected EOF` on Windows CI).
+    expect(pinWave).toBeGreaterThanOrEqual(0);
+    expect(pluginImporters.length).toBeGreaterThan(0);
+    for (const entry of pluginImporters) {
+      expect(entry.dependsOn ?? []).toContain("mutagen-versions");
+      expect(waveIndexOf(entry.id)).toBeGreaterThan(pinWave);
+    }
   });
 
   test("generates command graph prerequisites before schema artifacts", () => {
