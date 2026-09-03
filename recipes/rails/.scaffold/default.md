@@ -19,6 +19,8 @@ lando bundle
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and DB/Redis hosts, see [Run the Rails recipe](/guides/recipes/rails-workflow/).
+
 ## 1. scaffold
 
 ```bash

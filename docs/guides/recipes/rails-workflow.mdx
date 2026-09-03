@@ -1,0 +1,102 @@
+---
+id: rails-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, rails, ruby, postgres, redis]
+---
+
+# Run the Rails recipe
+
+```sh
+lando init --recipe rails --name=rails-demo --yes
+lando start
+```
+
+`--yes` skips the name prompt. First start builds `web`: `build-essential`, then `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
+
+The `web` container stays up. The Rails server does not start on its own.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `ruby:3.3`, `framework: rails`, port `3000`, depends on `database` and `cache` |
+| `database` | `type: postgres` (image `postgres:16`) |
+| `cache` | `type: redis` |
+| Tooling | `lando rails` and `lando bundle` on `web`; rake via `lando exec web -- rake` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="rails-workflow" display="rails-demo" />
+      <Run command="lando init --recipe rails --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"ruby:3\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"rails\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bundle\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Run Rails, Bundler, and the clients
+
+Put a Rails app in the directory (keep `.lando.yml`). Then:
+
+```sh
+lando rails --version
+lando bundle --version
+lando exec web -- rake --version
+lando redis-cli ping
+lando psql
+lando rails server -b 0.0.0.0
+```
+
+Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prints.
+
+Rake goes through `lando exec web -- rake`. Swap `rails-demo` for your app name anywhere you pass the database name yourself.
+
+## Connect ActiveRecord and Redis
+
+| Setting | Postgres | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `rails-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | generated; `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Port | `5432` | `6379` |
+
+Do not hardcode the Postgres password. Put host `database` in ActiveRecord and host `cache` in Redis.
+
+## Tear down
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Rails recipe](/recipes/rails/)
+- [Add Ruby](../services/ruby.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Add Redis](../services/redis.mdx)
