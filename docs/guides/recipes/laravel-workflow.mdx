@@ -12,23 +12,21 @@ lando init --recipe laravel --name=laravel-demo --yes
 lando start
 ```
 
-`--yes` is consent on init. It skips prompts. It is not a start flag.
+`--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Init writes `.lando.yml` only. Apache is up after start. Drop a Laravel app in so `artisan` exists.
 
-The default provider is `lando` (managed Podman). First start builds `appserver`, `database`, and `cache`. Open the URL `lando info` prints when it finishes. If host ports 80 or 443 are already taken, that URL may use fallback ports such as `:8080` and `:8443`.
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 ## See what the recipe writes
-
-Init writes `.lando.yml`. It does not create a Laravel app tree. Drop your app into that directory (or create one with Composer) so `artisan` exists at the app root.
 
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.3`, `framework: laravel`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
 | `database` | `type: mariadb:11.4` |
 | `cache` | `type: redis` |
-| `worker` (optional) | `php:8.3`, `via: cli`, `command: php artisan queue:work` when you pass `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` against `appserver` |
+| `worker` (optional) | `php:8.3`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
+| Tooling | `lando artisan`, `lando composer`, and `lando npm` on `appserver` |
 
-Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTTPS.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
 ## Init, start, and tear down
 
@@ -60,52 +58,45 @@ Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTT
   </Scenario>
 </Guide>
 
-## Run day-to-day tooling
+## Run Artisan, Composer, and the clients
 
-After start, put a Laravel app in the app root. One path that works from an empty recipe directory:
+`create-project` wants an empty directory, and `.lando.yml` is already there:
 
 ```sh
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
 ```
 
-Move `tmp-app` up into the app root and keep `.lando.yml`. Artisan without an `artisan` file is just PHP yelling at you.
-
-Then:
+Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
 
 ```sh
 lando artisan --version
 lando composer --version
+lando npm --version
 lando redis-cli ping
-lando exec database -- sh -c 'mariadb -u lando -p"$MYSQL_PASSWORD" -D laravel-demo -e "SELECT 1"'
+lando mariadb
 ```
 
-`PONG` means Redis is awake. You can stop poking it.
-
-`$MYSQL_PASSWORD` is already set inside the `database` service. Swap `laravel-demo` for your app name in that `mariadb` line.
-
-Optional queue worker on init:
+Add a queue worker at init with `--answer=worker=true`:
 
 ```sh
 lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 ```
 
-That adds a `worker` service running `php artisan queue:work`.
+That service runs `php artisan queue:work`.
 
 ## Connect Eloquent and Redis
-
-Point the app at the services on the app network:
 
 | Setting | MariaDB | Redis |
 | --- | --- | --- |
 | Host | `database` | `cache` |
-| Database / DB | app name (here `laravel-demo`) | n/a |
-| User | `lando` | n/a (no auth by default) |
-| Password | from `lando info` (generated) | n/a |
+| Database | app name (here `laravel-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | `lando` | n/a |
 | Port | `3306` | `6379` |
 
-Read the MariaDB password from `lando info`. Do not hardcode it. Put host `database` in your DB config and host `cache` in Redis.
+Put host `database` in your DB config and host `cache` in Redis. Root password is generated; you do not need it for Eloquent.
 
-## Destroy without surprises
+## Destroy the app
 
 ```sh
 lando destroy -y
