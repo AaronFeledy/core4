@@ -53,10 +53,14 @@ const setupFlags = (cell: PlatformReadinessCell): string => {
   return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
 };
 
-const isolateEnv = `    env:
-      LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache`;
+// GitHub does not expose the `runner` context to job-level `env:`, so these
+// roots are exported from the first step instead. Declaring them at job level
+// makes GitHub reject the entire workflow file.
+const isolateRootsStep = `      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"`;
 
 const setupBunSteps = `      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -144,9 +148,10 @@ const renderJob = (cell: PlatformReadinessCell): string => {
   return `  platform-readiness-${cell.id}:
 ${renderCadenceIf(cell.cadence)}    runs-on: ${renderRunsOn(cell.runsOn)}
     timeout-minutes: 45
-${isolateEnv}
     steps:
       - uses: actions/checkout@v5
+
+${isolateRootsStep}
 
 ${setupBunSteps}
 

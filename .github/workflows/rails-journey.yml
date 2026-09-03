@@ -18,12 +18,14 @@ jobs:
   rails-journey-linux-x64:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -139,12 +141,14 @@ jobs:
   rails-journey-linux-arm64:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -261,12 +265,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, macOS, ARM64]
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -308,12 +314,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, macOS, X64]
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -355,12 +363,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, Windows, X64]
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -411,12 +421,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, Windows, ARM64]
     timeout-minutes: 90
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
