@@ -1,0 +1,112 @@
+---
+id: laravel-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, laravel, php, mariadb, redis]
+---
+
+# Run the Laravel recipe
+
+```sh
+lando init --recipe laravel --name=laravel-demo --yes
+lando start
+```
+
+`--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Init writes `.lando.yml` only. Apache is up after start. Drop a Laravel app in so `artisan` exists.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: laravel`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
+| `database` | `type: mariadb:11.4` |
+| `cache` | `type: redis` |
+| `worker` (optional) | `php:8.3`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
+| Tooling | `lando artisan`, `lando composer`, and `lando npm` on `appserver` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="laravel-workflow" display="laravel-demo" />
+      <Run command="lando init --recipe laravel --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"artisan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Run Artisan, Composer, and the clients
+
+`create-project` wants an empty directory, and `.lando.yml` is already there:
+
+```sh
+lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+```
+
+Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+
+```sh
+lando artisan --version
+lando composer --version
+lando npm --version
+lando redis-cli ping
+lando mariadb
+```
+
+Add a queue worker at init with `--answer=worker=true`:
+
+```sh
+lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
+```
+
+That service runs `php artisan queue:work`.
+
+## Connect Eloquent and Redis
+
+| Setting | MariaDB | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `laravel-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | `lando` | n/a |
+| Port | `3306` | `6379` |
+
+Put host `database` in your DB config and host `cache` in Redis. Root password is generated; you do not need it for Eloquent.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Laravel recipe](/recipes/laravel/)
+- [Add PHP](../services/php.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Add Redis](../services/redis.mdx)

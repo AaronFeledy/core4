@@ -23,6 +23,8 @@ lando init --recipe laravel --name=my-laravel-app --yes \
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/recipes/laravel-workflow/).
+
 ## 1. scaffold
 
 ```bash
