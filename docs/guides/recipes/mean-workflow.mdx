@@ -14,7 +14,7 @@ lando start
 
 `--yes` is consent on init. It skips prompts. It is not a start flag.
 
-The default provider is `lando` (managed Podman). First start builds `api` and `database`. Open the URL `lando info` prints when it finishes. If host ports 80 or 443 are already taken, that URL may use fallback ports such as `:8080` and `:8443`.
+First start builds `api` and `database`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`. Those URLs return HTTP 502 until the scaffold is serving. The next section covers install plus a Landofile `command` or `lando node server.js`.
 
 ## See what the recipe writes
 
