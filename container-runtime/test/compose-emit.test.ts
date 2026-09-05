@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
-import { makeTestRuntime } from "@lando/core/testing";
-import { composePath, emitCompose, renderCompose } from "@lando/provider-lando";
+import { FileIoError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -13,8 +12,57 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { FileSystem } from "@lando/sdk/services";
+
+import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+
+interface FileSystemCall {
+  readonly operation: string;
+  readonly path: string;
+}
+
+/** In-memory FileSystem fake: real behaviour for the writes compose emission performs. */
+const makeFileSystemFake = () => {
+  const calls: FileSystemCall[] = [];
+  const files = new Map<string, string>();
+  const directories = new Set<string>();
+  const unsupported = (operation: string, path: string) =>
+    Effect.fail(new FileIoError({ message: `fake FileSystem does not support ${operation}`, path }));
+  const layer = Layer.succeed(FileSystem, {
+    read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
+    readText: (path: string) => unsupported("readText", path),
+    write: (path: string, content: string | Uint8Array) => {
+      calls.push({ operation: "write", path });
+      files.set(path, String(content));
+      return Effect.void;
+    },
+    writeAtomic: (path: string, content: string | Uint8Array) => {
+      calls.push({ operation: "writeAtomic", path });
+      files.set(path, String(content));
+      return Effect.void;
+    },
+    exists: (path: string) => Effect.succeed(files.has(path) || directories.has(path)),
+    stat: (path: string) => unsupported("stat", path),
+    lstat: (path: string) => unsupported("lstat", path),
+    mkdir: (path: string) => {
+      calls.push({ operation: "mkdir", path });
+      directories.add(path);
+      return Effect.void;
+    },
+    remove: (path: string) => unsupported("remove", path),
+    readDir: (path: string) => unsupported("readDir", path),
+    readFile: (path: string) => unsupported("readFile", path),
+    writeFile: (path: string, content: string) => {
+      calls.push({ operation: "writeFile", path });
+      files.set(path, content);
+      return Effect.void;
+    },
+  });
+  return { calls, files, layer };
+};
 const appId = AppId.make("myapp");
 const appRoot = AbsolutePath.make("/srv/apps/myapp");
 const userDataRoot = AbsolutePath.make("/tmp/lando-data");
@@ -128,9 +176,9 @@ const serviceKeys = (content: string, service: string): string[] => {
     .map((line) => line.trim().slice(0, line.trim().indexOf(":")));
 };
 
-describe("provider-lando Compose emission", () => {
+describe("Podman Compose emission", () => {
   test("renders AppPlan services, networks, volumes, and ports as Compose v3 YAML", () => {
-    const content = renderCompose(plan);
+    const content = renderCompose(plan, ctx);
 
     expect(content).toStartWith('version: "3.9"\nservices:\n');
     expect(content).toContain("  web:\n");
@@ -160,10 +208,13 @@ describe("provider-lando Compose emission", () => {
       ...web,
       extensions: { compose: { labels: { "example.com/role": "web", "dev.lando.app": "user-value" } } },
     };
-    const content = renderCompose({
-      ...plan,
-      services: { [labeledWeb.name]: labeledWeb, [database.name]: database },
-    });
+    const content = renderCompose(
+      {
+        ...plan,
+        services: { [labeledWeb.name]: labeledWeb, [database.name]: database },
+      },
+      ctx,
+    );
 
     expect(content).toContain(
       '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
@@ -182,17 +233,20 @@ describe("provider-lando Compose emission", () => {
         },
       },
     };
-    const content = renderCompose({
-      ...plan,
-      services: { [webWithConfigs.name]: webWithConfigs, [database.name]: database },
-      extensions: {
-        compose: {
-          configs: {
-            phpini: { file: "./php.ini" },
+    const content = renderCompose(
+      {
+        ...plan,
+        services: { [webWithConfigs.name]: webWithConfigs, [database.name]: database },
+        extensions: {
+          compose: {
+            configs: {
+              phpini: { file: "./php.ini" },
+            },
           },
         },
       },
-    });
+      ctx,
+    );
 
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
@@ -204,7 +258,7 @@ describe("provider-lando Compose emission", () => {
   });
 
   test("keeps Compose output inside the MVP key allowlist", () => {
-    const content = renderCompose(plan);
+    const content = renderCompose(plan, ctx);
 
     expect(topLevelKeys(content).sort()).toEqual(["networks", "services", "version", "volumes"]);
     expect(serviceKeys(content, "web").sort()).toEqual([
@@ -235,10 +289,13 @@ describe("provider-lando Compose emission", () => {
       ...web,
       dependsOn: [{ service: ServiceName.make("database"), condition: "service_healthy", required: true }],
     };
-    const content = renderCompose({
-      ...plan,
-      services: { [healthyWeb.name]: healthyWeb, [database.name]: database },
-    });
+    const content = renderCompose(
+      {
+        ...plan,
+        services: { [healthyWeb.name]: healthyWeb, [database.name]: database },
+      },
+      ctx,
+    );
 
     expect(content).toContain('      database:\n        condition: "service_healthy"\n');
     expect(content).toContain('    depends_on:\n      database:\n        condition: "service_healthy"\n');
@@ -258,10 +315,13 @@ describe("provider-lando Compose emission", () => {
         },
       ],
     };
-    const content = renderCompose({
-      ...plan,
-      services: { [webWithTmpfs.name]: webWithTmpfs, [database.name]: database },
-    });
+    const content = renderCompose(
+      {
+        ...plan,
+        services: { [webWithTmpfs.name]: webWithTmpfs, [database.name]: database },
+      },
+      ctx,
+    );
 
     expect(content).toContain('    tmpfs:\n      - "/tmp/cache"\n');
 
@@ -307,13 +367,16 @@ describe("provider-lando Compose emission", () => {
       ],
     };
 
-    const content = renderCompose({
-      ...plan,
-      services: {
-        [webWithMountOptions.name]: webWithMountOptions,
-        [databaseWithSubpath.name]: databaseWithSubpath,
+    const content = renderCompose(
+      {
+        ...plan,
+        services: {
+          [webWithMountOptions.name]: webWithMountOptions,
+          [databaseWithSubpath.name]: databaseWithSubpath,
+        },
       },
-    });
+      ctx,
+    );
 
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
@@ -329,41 +392,85 @@ describe("provider-lando Compose emission", () => {
   });
 
   test("writes compose.yml through FileSystem under the per-app data directory", async () => {
-    const runtime = makeTestRuntime();
+    const fileSystem = makeFileSystemFake();
     const result = await Effect.runPromise(
-      emitCompose(plan, { userDataRoot }).pipe(Effect.provide(runtime.layer)),
+      emitCompose(plan, { userDataRoot, ctx }).pipe(Effect.provide(fileSystem.layer)),
     );
 
     expect(result.path).toBe("/tmp/lando-data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot })).toBe("/tmp/lando-data/apps/myapp/compose.yml");
+    expect(composePath(plan, { userDataRoot, ctx })).toBe("/tmp/lando-data/apps/myapp/compose.yml");
     expect(result.content).toStartWith('version: "3.9"\n');
-    expect(runtime.calls.fileSystem.some((call) => call.operation === "mkdir")).toBe(true);
-    expect(runtime.calls.fileSystem.some((call) => call.operation === "writeAtomic")).toBe(true);
+    expect(fileSystem.calls.some((call) => call.operation === "mkdir")).toBe(true);
+    expect(fileSystem.calls.some((call) => call.operation === "writeAtomic")).toBe(true);
     expect(
-      runtime.calls.fileSystem.some((call) => call.operation === "write" || call.operation === "writeFile"),
+      fileSystem.calls.some((call) => call.operation === "write" || call.operation === "writeFile"),
     ).toBe(false);
   });
 
-  test("pathJoin preserves leading slash including root-only input", () => {
-    expect(composePath(plan, { userDataRoot: "/data" })).toBe("/data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot: "/data/" })).toBe("/data/apps/myapp/compose.yml");
+  test("Given a podman ctx and an unbuilt artifact, When emitting, Then the failure carries the caller providerId", async () => {
+    // Given
+    const fileSystem = makeFileSystemFake();
+    const unbuilt: ServicePlan = { ...web, artifact: undefined };
 
-    const content = renderCompose(plan);
+    // When
+    const error = await Effect.runPromise(
+      emitCompose(
+        { ...plan, services: { [unbuilt.name]: unbuilt, [database.name]: database } },
+        { userDataRoot, ctx },
+      ).pipe(Effect.flip, Effect.provide(fileSystem.layer)),
+    );
+
+    // Then
+    expect(error.providerId).toBe("podman");
+    expect(error.operation).toBe("emitCompose");
+    expect(error.remediation).toBe(ctx.remediation);
+    expect(fileSystem.calls).toEqual([]);
+  });
+
+  test("Given a podman ctx, When renderCompose rejects a sourceless mount, Then the thrown error names that providerId", () => {
+    // Given
+    const sourceless: ServicePlan = {
+      ...database,
+      mounts: [
+        {
+          type: "bind",
+          source: undefined,
+          target: PortablePath.make("/nope"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+
+    // When / Then
+    expect(() => renderCompose({ ...plan, services: { [sourceless.name]: sourceless } }, ctx)).toThrowError(
+      expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
+    );
+  });
+
+  test("pathJoin preserves leading slash including root-only input", () => {
+    expect(composePath(plan, { userDataRoot: "/data", ctx })).toBe("/data/apps/myapp/compose.yml");
+    expect(composePath(plan, { userDataRoot: "/data/", ctx })).toBe("/data/apps/myapp/compose.yml");
+
+    const content = renderCompose(plan, ctx);
     const volumeLines = content.split("\n").filter((line) => /^ {6}- "\//.test(line));
     expect(volumeLines.length).toBeGreaterThan(0);
   });
 
   test("renders typed NetworkingPlan custom shared network membership", () => {
-    const content = renderCompose({
-      ...plan,
-      networking: {
-        perAppBridge: { name: "custom-app-net", driver: "bridge" },
-        sharedNetworkMembership: {
-          name: "custom-shared-net",
-          aliases: { [web.name]: ["web.custom.internal"] },
+    const content = renderCompose(
+      {
+        ...plan,
+        networking: {
+          perAppBridge: { name: "custom-app-net", driver: "bridge" },
+          sharedNetworkMembership: {
+            name: "custom-shared-net",
+            aliases: { [web.name]: ["web.custom.internal"] },
+          },
         },
       },
-    });
+      ctx,
+    );
 
     expect(content).toContain("      custom-app-net:\n");
     expect(content).toContain(
@@ -375,10 +482,13 @@ describe("provider-lando Compose emission", () => {
   });
 
   test("omits shared compose network for per-app-only NetworkingPlan", () => {
-    const content = renderCompose({
-      ...plan,
-      networking: { perAppBridge: { name: "custom-app-net", driver: "bridge" } },
-    });
+    const content = renderCompose(
+      {
+        ...plan,
+        networking: { perAppBridge: { name: "custom-app-net", driver: "bridge" } },
+      },
+      ctx,
+    );
 
     expect(content).toContain("      custom-app-net:\n");
     expect(content).toContain('  custom-app-net:\n    driver: "bridge"');

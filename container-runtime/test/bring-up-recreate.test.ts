@@ -2,12 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import {
-  type PodmanApiClient,
-  type PodmanHttpRequest,
-  type PodmanHttpResponse,
-  bringUp,
-} from "@lando/provider-lando";
-import {
   AbsolutePath,
   AppId,
   type AppPlan,
@@ -15,13 +9,16 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/engine-api.ts";
+import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const appId = AppId.make("recreate-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-09-01T00:00:00Z"),
-  source: "provider-lando/bring-up-recreate.test.ts",
+  source: "container-runtime/bring-up-recreate.test.ts",
   runtime: 4 as const,
 };
 const containerName = "lando-recreate-ports-web";
@@ -142,14 +139,14 @@ const makeFakeApi = (input: { readonly deleteStatus: number; readonly omitPortBi
 const createCalls = (calls: ReadonlyArray<PodmanHttpRequest>): ReadonlyArray<PodmanHttpRequest> =>
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
-describe("provider-lando publish-port recreate", () => {
+describe("Podman publish-port recreate", () => {
   test("Given a fingerprint mismatch and a failed remove, When bringing up, Then start fails instead of keeping old PortBindings", async () => {
     // Given: existing container still publishes 18080; planned host port is 38080; DELETE is rejected.
     const fake = makeFakeApi({ deleteStatus: 409 });
     const plan = planWithHostPort(38080);
 
     // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then: recreate must not treat 409-create as success on the leftover container.
     const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
@@ -165,7 +162,7 @@ describe("provider-lando publish-port recreate", () => {
     const plan = planWithHostPort(38080);
 
     // When
-    const result = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     expect(result.changed).toBe(true);
@@ -178,8 +175,8 @@ describe("provider-lando publish-port recreate", () => {
     const plan = planWithHostPort(38080);
 
     // When
-    const first = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    const second = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    const first = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+    const second = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then: unknown inspect fingerprint is not a proven mismatch.
     expect(first.changed).toBe(false);

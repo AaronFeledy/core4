@@ -3,7 +3,7 @@ import { DateTime } from "effect";
 
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import { realizePodmanComposeKnobs } from "../src/compose-knobs.ts";
+import { realizePodmanComposeKnobs } from "../src/podman/compose-knobs.ts";
 import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
 
 interface InvalidCall {

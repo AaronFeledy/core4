@@ -7,8 +7,6 @@ import {
   type DockerHttpResponse,
   buildImagePullRequest,
   makeRuntimeProvider,
-  parseImagePullFrame,
-  parseImageReference,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -29,7 +27,6 @@ const metadata = {
 };
 
 const mailpitRef = "axllent/mailpit:v1.30.1";
-const traefikRef = "traefik:v3.3";
 
 const makeService = (name: string, ref: string): ServicePlan => ({
   name: ServiceName.make(name),
@@ -152,89 +149,6 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
   const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
   return Effect.runPromise(Effect.flip(Effect.scoped(provider.apply(plan, { reconcile: false }))));
 };
-
-describe("buildImagePullRequest", () => {
-  test("targets Docker Engine /images/create with encoded fromImage and tag", () => {
-    const mailpit = buildImagePullRequest(mailpitRef);
-    expect(mailpit.method).toBe("POST");
-    expect(mailpit.path.startsWith("/images/create?")).toBe(true);
-    expect(mailpit.path).not.toContain("/libpod/images/pull");
-    expect(mailpit.path).toContain(`fromImage=${encodeURIComponent("axllent/mailpit")}`);
-    expect(mailpit.path).toContain(`tag=${encodeURIComponent("v1.30.1")}`);
-
-    const traefik = buildImagePullRequest(traefikRef);
-    expect(traefik.path).toContain("fromImage=traefik");
-    expect(traefik.path).toContain("tag=v3.3");
-
-    const registryHost = buildImagePullRequest("docker.io/axllent/mailpit:v1.30.1");
-    expect(registryHost.path).toContain(`fromImage=${encodeURIComponent("docker.io/axllent/mailpit")}`);
-    expect(registryHost.path).toContain(`tag=${encodeURIComponent("v1.30.1")}`);
-  });
-
-  test("splits digest references onto the tag query parameter", () => {
-    const request = buildImagePullRequest(
-      "traefik@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    );
-    expect(request.path).toContain("fromImage=traefik");
-    expect(request.path).toContain(
-      `tag=${encodeURIComponent("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}`,
-    );
-  });
-
-  test("strips the tag from name:tag@digest so fromImage is the name", () => {
-    const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    expect(parseImageReference(`nginx:latest@${digest}`)).toEqual({ fromImage: "nginx", tag: digest });
-    expect(parseImageReference(`docker.io/library/nginx:stable@${digest}`)).toEqual({
-      fromImage: "docker.io/library/nginx",
-      tag: digest,
-    });
-    const request = buildImagePullRequest(`nginx:stable@${digest}`);
-    expect(request.path).toContain("fromImage=nginx");
-    expect(request.path).toContain(`tag=${encodeURIComponent(digest)}`);
-    expect(request.path).not.toContain(encodeURIComponent("nginx:stable"));
-  });
-
-  test("defaults an untagged name to latest so the daemon does not pull every tag", () => {
-    expect(parseImageReference("nginx")).toEqual({ fromImage: "nginx", tag: "latest" });
-    expect(parseImageReference("localhost:5000/team/app")).toEqual({
-      fromImage: "localhost:5000/team/app",
-      tag: "latest",
-    });
-  });
-});
-
-describe("parseImagePullFrame", () => {
-  test("maps Docker {status,progressDetail} frames to progress", () => {
-    expect(
-      parseImagePullFrame(
-        '{"status":"Downloading","id":"abc","progressDetail":{"current":1048576,"total":1234567}}',
-      ),
-    ).toEqual({
-      kind: "progress",
-      stream: "Downloading",
-      current: 1048576,
-      total: 1234567,
-    });
-  });
-
-  test("maps {error} and {errorDetail} frames to pull failures", () => {
-    expect(parseImagePullFrame('{"error":"manifest unknown"}')).toEqual({
-      kind: "error",
-      message: "manifest unknown",
-    });
-    expect(parseImagePullFrame('{"errorDetail":{"message":"denied"},"error":"denied"}')).toEqual({
-      kind: "error",
-      message: "denied",
-    });
-  });
-
-  test("ignores blank lines and unparseable JSON without throwing", () => {
-    expect(parseImagePullFrame("")).toEqual({ kind: "ignore" });
-    expect(parseImagePullFrame("   ")).toEqual({ kind: "ignore" });
-    expect(parseImagePullFrame("not-json")).toEqual({ kind: "ignore" });
-    expect(parseImagePullFrame('{"id":"onlyid"}')).toEqual({ kind: "ignore" });
-  });
-});
 
 describe("provider-docker pullArtifact", () => {
   test("POSTs /images/create and returns providerId docker with the ref", async () => {

@@ -12,10 +12,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpResponse } from "../src/capabilities.ts";
-import { waitForServiceHealth } from "../src/health.ts";
-import { inspect } from "../src/inspect.ts";
 
+import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { waitForServiceHealth } from "../src/podman/health.ts";
+import { inspect } from "../src/podman/inspect.ts";
+
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("healthapp");
 const appRoot = AbsolutePath.make("/tmp/lando-health-app");
@@ -90,13 +92,11 @@ const stoppedInspectBody = (health?: string): string =>
     },
   });
 
-const apiFromResponses = (responses: ReadonlyArray<PodmanHttpResponse>) => {
+const apiFromResponses = (responses: ReadonlyArray<EngineHttpResponse>) => {
   const firstResponse = responses[0];
   if (firstResponse === undefined) throw new TypeError("at least one Podman response is required");
   let calls = 0;
-  const api: PodmanApiClient = {
-    info: Effect.succeed({}),
-    ping: Effect.succeed(undefined),
+  const api: EngineHttpApi = {
     request: () =>
       Effect.sync(() => {
         const response = responses[Math.min(calls, responses.length - 1)] ?? firstResponse;
@@ -121,13 +121,13 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
   throw new Error("Expected ProviderUnavailableError");
 };
 
-describe("provider-lando inspect health", () => {
+describe("podman inspect health", () => {
   test.each(["healthy", "starting", "unhealthy"])(
     "maps Podman State.Health.Status=%s onto ServiceRuntimeInfo.health",
     async (health) => {
       const fake = apiWithHealth(health);
 
-      const info = await Effect.runPromise(inspect(plan, target, { podmanApi: fake.api }));
+      const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
 
       expect(info.health).toBe(health);
     },
@@ -136,7 +136,7 @@ describe("provider-lando inspect health", () => {
   test("leaves health undefined when Podman inspect has no Health field", async () => {
     const fake = apiWithHealth();
 
-    const info = await Effect.runPromise(inspect(plan, target, { podmanApi: fake.api }));
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
 
     expect(info.health).toBeUndefined();
     expect(info.status).toBe("running");
@@ -145,9 +145,33 @@ describe("provider-lando inspect health", () => {
   test("leaves health undefined when Podman health status is malformed", async () => {
     const fake = apiWithHealth("weird");
 
-    const info = await Effect.runPromise(inspect(plan, target, { podmanApi: fake.api }));
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
 
     expect(info.health).toBeUndefined();
+  });
+
+  test("tags a failed inspect with the caller provider id and remediation", async () => {
+    // Given an engine that rejects the inspect request
+    const fake = apiFromResponses([{ status: 500, body: JSON.stringify({ message: "boom" }) }]);
+
+    // When
+    const error = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }).pipe(Effect.flip));
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.providerId).toBe("podman");
+    expect(error.remediation).toBe(ctx.remediation);
+  });
+
+  test("tags a missing-api failure with the caller provider id", async () => {
+    // Given no engine API client
+    // When
+    const error = await Effect.runPromise(inspect(plan, target, { ctx }).pipe(Effect.flip));
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.providerId).toBe("podman");
+    expect(error.message).toContain("provider-podman");
   });
 });
 
@@ -157,7 +181,8 @@ describe("waitForServiceHealth", () => {
 
     const info = await Effect.runPromise(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 3, delay: Duration.zero },
       }),
     );
@@ -174,7 +199,8 @@ describe("waitForServiceHealth", () => {
 
     const info = await Effect.runPromise(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 3, delay: Duration.zero },
       }),
     );
@@ -188,13 +214,15 @@ describe("waitForServiceHealth", () => {
 
     const exit = await Effect.runPromiseExit(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 2, delay: Duration.zero },
       }),
     );
 
     const error = expectProviderUnavailable(exit);
     expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.providerId).toBe("podman");
     expect(error.message).toContain(String(serviceName));
     expect(JSON.stringify(error.details)).toContain('"attempts":2');
   });
@@ -204,7 +232,8 @@ describe("waitForServiceHealth", () => {
 
     const info = await Effect.runPromise(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 3, delay: Duration.zero },
       }),
     );
@@ -218,7 +247,8 @@ describe("waitForServiceHealth", () => {
 
     const exit = await Effect.runPromiseExit(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 1, delay: Duration.zero },
       }),
     );
@@ -233,7 +263,8 @@ describe("waitForServiceHealth", () => {
 
     const exit = await Effect.runPromiseExit(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 1, delay: Duration.zero },
       }),
     );
@@ -248,7 +279,8 @@ describe("waitForServiceHealth", () => {
 
     const exit = await Effect.runPromiseExit(
       waitForServiceHealth(plan, target, {
-        podmanApi: fake.api,
+        api: fake.api,
+        ctx,
         policy: { maxAttempts: 50, delay: Duration.millis(1), timeout: Duration.millis(1) },
       }),
     );
@@ -260,13 +292,11 @@ describe("waitForServiceHealth", () => {
 
   test("redacts probe lastError before surfacing failure details", async () => {
     const secretUrl = "https://user:secretpass@registry.example.com/x";
-    const api: PodmanApiClient = {
-      info: Effect.succeed({}),
-      ping: Effect.succeed(undefined),
+    const api: EngineHttpApi = {
       request: () =>
         Effect.fail(
           new ProviderUnavailableError({
-            providerId: "lando",
+            providerId: ctx.providerId,
             operation: "inspect",
             message: `failed to reach ${secretUrl}`,
             details: { url: secretUrl },
@@ -276,7 +306,8 @@ describe("waitForServiceHealth", () => {
 
     const exit = await Effect.runPromiseExit(
       waitForServiceHealth(plan, target, {
-        podmanApi: api,
+        api,
+        ctx,
         policy: { maxAttempts: 1, delay: Duration.zero },
       }),
     );

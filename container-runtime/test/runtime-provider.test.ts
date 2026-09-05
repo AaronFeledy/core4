@@ -260,7 +260,7 @@ describe("resolved provider operations", () => {
     ];
 
     // When
-    const exits = await Promise.all(failures.map(Effect.runPromiseExit));
+    const exits = await Promise.all(failures.map((failure) => Effect.runPromiseExit(failure)));
 
     // Then
     expect(exits).toHaveLength(10);

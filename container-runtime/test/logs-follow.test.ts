@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { logs } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
@@ -16,8 +16,10 @@ import {
 } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
 
-import type { PodmanApiClient, PodmanHttpRequest } from "../src/capabilities.ts";
+import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
+import { logs } from "../src/podman/logs.ts";
 
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("logfollowapp");
 const appRoot = AbsolutePath.make("/tmp/lando-log-follow-app");
@@ -91,10 +93,8 @@ const makePlan = (logSources?: ReadonlyArray<LogSourceType>): AppPlan => {
 };
 
 const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
-  const calls: PodmanHttpRequest[] = [];
-  const api: PodmanApiClient = {
-    info: Effect.succeed({}),
-    ping: Effect.succeed(undefined),
+  const calls: EngineHttpRequest[] = [];
+  const api: EngineHttpApi = {
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);
@@ -109,7 +109,7 @@ const rawConsole = (line: string): Uint8Array => textEncoder.encode(`2026-05-14T
 const collect = (stream: Stream.Stream<LogChunk, unknown>): Promise<ReadonlyArray<LogChunk>> =>
   Effect.runPromise(Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks])));
 
-describe("provider-lando log followers", () => {
+describe("podman log followers", () => {
   test("merges finite console and file-follow logs when follow is false", async () => {
     const fileSource = source();
     const plan = makePlan([fileSource]);
@@ -122,7 +122,7 @@ describe("provider-lando log followers", () => {
         plan,
         { app: appId, service: node.name },
         { follow: false, sources: [fileSource] },
-        { podmanApi: fake.api, logFileAccess: fs.access },
+        { api: fake.api, logFileAccess: fs.access, ctx },
       ),
     );
 
@@ -147,7 +147,7 @@ describe("provider-lando log followers", () => {
         plan,
         { app: appId, service: node.name },
         { follow: false, sources: [freshSource] },
-        { podmanApi: fake.api, logFileAccess: fs.access },
+        { api: fake.api, logFileAccess: fs.access, ctx },
       ),
     );
 
@@ -170,7 +170,7 @@ describe("provider-lando log followers", () => {
         makePlan([redirectSource]),
         { app: appId, service: node.name },
         { follow: false, sources: [redirectSource] },
-        { podmanApi: fake.api, logFileAccess: fs.access },
+        { api: fake.api, logFileAccess: fs.access, ctx },
       ),
     );
 
@@ -190,7 +190,7 @@ describe("provider-lando log followers", () => {
         plan,
         { app: appId, service: node.name },
         { follow: false, sources: [fileSource], source: fileSource.id },
-        { podmanApi: fake.api, logFileAccess: fs.access },
+        { api: fake.api, logFileAccess: fs.access, ctx },
       ),
     );
 
@@ -198,5 +198,19 @@ describe("provider-lando log followers", () => {
     expect(chunks.every((chunk) => chunk.source === fileSource.id)).toBe(true);
     expect(chunks.some((chunk) => chunk.line === "console noise")).toBe(false);
     expect(fake.calls).toEqual([]);
+  });
+
+  test("tags a missing-api failure with the caller provider id and remediation", async () => {
+    // Given a caller context for the podman provider and no engine API client
+    // When
+    const error = await Effect.runPromise(
+      Stream.runCollect(logs(makePlan(), { app: appId, service: node.name }, {}, { ctx })).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.providerId).toBe("podman");
+    expect(error.message).toContain("provider-podman");
+    expect(error.remediation).toBe(ctx.remediation);
   });
 });

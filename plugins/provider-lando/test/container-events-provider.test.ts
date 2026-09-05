@@ -1,16 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
 import { Effect } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
-import {
-  type PodmanApiClient,
-  getContainerDiedEvents,
-  makePodmanApiClient,
-  makeRuntimeProvider,
-  parseContainerEventPayloads,
-} from "@lando/provider-lando";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { getContainerDiedEvents, makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const diedEvent = {
@@ -27,80 +19,7 @@ const oomEventsLive = liveIntegrationEligibility([
   { available: resolveLiveProviderSocket() !== undefined, reason: "a live Podman socket is required" },
 ]);
 
-describe("provider-lando container died event collection", () => {
-  test("parses Podman JSON Lines event history and array responses", () => {
-    expect(parseContainerEventPayloads(`${JSON.stringify(diedEvent)}\n{"Type":"image"}\n`)).toEqual([
-      diedEvent,
-      { Type: "image" },
-    ]);
-    expect(parseContainerEventPayloads(JSON.stringify([diedEvent]))).toEqual([diedEvent]);
-    expect(parseContainerEventPayloads("not json\n")).toEqual([]);
-  });
-
-  test("requests finite Podman died events and returns raw payloads", async () => {
-    const paths: string[] = [];
-    const api: PodmanApiClient = {
-      info: Effect.succeed({}),
-      ping: Effect.succeed(undefined),
-      request: (request) =>
-        Effect.sync(() => {
-          paths.push(request.path);
-          return { status: 200, body: JSON.stringify([diedEvent]) };
-        }),
-    };
-
-    const payloads = await Effect.runPromise(getContainerDiedEvents(api));
-
-    expect(payloads).toEqual([diedEvent]);
-    expect(paths[0]).toContain("/libpod/events");
-    expect(paths[0]).toContain("since=");
-    expect(paths[0]).toContain("until=");
-    expect(paths[0]).not.toContain("stream=false");
-    expect(decodeURIComponent(paths[0] ?? "")).toContain("container");
-    expect(decodeURIComponent(paths[0] ?? "")).toContain("die");
-  });
-
-  test("enriches died events with OOMKilled from container inspect", async () => {
-    const eventWithoutOom = {
-      ...diedEvent,
-      OOMKilled: undefined,
-      id: "oom-container-id",
-    };
-    const paths: string[] = [];
-    const api: PodmanApiClient = {
-      info: Effect.succeed({}),
-      ping: Effect.succeed(undefined),
-      request: (request) =>
-        Effect.sync(() => {
-          paths.push(request.path);
-          return request.path.startsWith("/libpod/events")
-            ? { status: 200, body: JSON.stringify([eventWithoutOom]) }
-            : { status: 200, body: JSON.stringify({ State: { OOMKilled: true } }) };
-        }),
-    };
-
-    const payloads = await Effect.runPromise(getContainerDiedEvents(api));
-
-    expect(paths).toEqual([expect.stringContaining("/libpod/events"), "/containers/oom-container-id/json"]);
-    expect(payloads).toEqual([{ ...eventWithoutOom, OOMKilled: true }]);
-  });
-
-  test("maps event collection failures to the requested provider id", async () => {
-    const api: PodmanApiClient = {
-      info: Effect.succeed({}),
-      ping: Effect.succeed(undefined),
-      request: () => Effect.succeed({ status: 500, body: "registry ACCESS_TOKEN=s3cr3t" }),
-    };
-
-    const error = await Effect.runPromise(
-      getContainerDiedEvents(api, { providerId: "podman" }).pipe(Effect.flip),
-    );
-
-    expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
-    expect(JSON.stringify(error)).not.toContain("s3cr3t");
-  });
-
+describe("provider-lando container died event provider surface", () => {
   test("provider exposes died events structurally for doctor", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({

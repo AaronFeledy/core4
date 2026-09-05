@@ -12,7 +12,6 @@ import {
   type SetupOptions,
   setupProviderLando,
 } from "../src/setup.ts";
-import { parsePodmanVersionNumbers, podmanVersionMeetsFloor } from "../src/version-floor.ts";
 
 const podmanCommand = (output: string): PodmanCommandRunner => ({
   version: Effect.succeed(output),
@@ -47,28 +46,6 @@ const expectVersionRejection = (
   });
   expect(error.remediation).toContain(`Podman >= ${MINIMUM_PODMAN_VERSION}`);
 };
-
-describe("podman version floor parser", () => {
-  test("minimum podman version is the Podman 6 floor", () => {
-    expect(MINIMUM_PODMAN_VERSION).toBe("6.0.0");
-  });
-
-  test("parses numeric major.minor.patch and ignores pre-release/build suffixes", () => {
-    expect(parsePodmanVersionNumbers("6.1.0-rc1")).toEqual({ major: 6, minor: 1, patch: 0 });
-    expect(parsePodmanVersionNumbers("6.0.2+build.5")).toEqual({ major: 6, minor: 0, patch: 2 });
-    expect(parsePodmanVersionNumbers("podman version 5.2.0")).toEqual({ major: 5, minor: 2, patch: 0 });
-    expect(parsePodmanVersionNumbers("not a version")).toBeUndefined();
-  });
-
-  test("compares numerically over major.minor.patch", () => {
-    expect(podmanVersionMeetsFloor("5.2.0", "6.0.0")).toBe(false);
-    expect(podmanVersionMeetsFloor("6.0.0", "6.0.0")).toBe(true);
-    expect(podmanVersionMeetsFloor("6.1.0-rc1", "6.0.0")).toBe(true);
-    expect(podmanVersionMeetsFloor("10.0.0", "6.0.0")).toBe(true);
-    expect(podmanVersionMeetsFloor("6.0.0", "6.0.1")).toBe(false);
-    expect(podmanVersionMeetsFloor("not a version", "6.0.0")).toBe(false);
-  });
-});
 
 describe("provider-lando setup version gate (CLI source)", () => {
   test("rejects podman --version output below the floor", async () => {

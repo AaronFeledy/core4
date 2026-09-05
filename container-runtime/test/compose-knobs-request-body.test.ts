@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { type PodmanApiClient, type PodmanHttpRequest, bringUp } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -10,14 +9,17 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { PodmanApiClient, PodmanHttpRequest } from "../src/engine-api.ts";
+import { bringUp } from "../src/podman/bring-up.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
-  source: "provider-lando/compose-knobs-request-body.test.ts",
+  source: "container-runtime/compose-knobs-request-body.test.ts",
   runtime: 4 as const,
 };
 
@@ -84,7 +86,7 @@ const captureCreateRequest = async (compose: Record<string, unknown>): Promise<P
       }),
   };
 
-  await Effect.runPromise(bringUp(planWithCompose(compose), { podmanApi: api }));
+  await Effect.runPromise(bringUp(planWithCompose(compose), { api, ctx }));
   if (createRequest === undefined) throw new Error("bringUp did not issue a container create request");
   return createRequest;
 };
@@ -92,7 +94,7 @@ const captureCreateRequest = async (compose: Record<string, unknown>): Promise<P
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
-describe("provider-lando Compose knob create request", () => {
+describe("Podman Compose knob create request", () => {
   for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {
     test(`Given the ${knob} knob, when bringUp creates the container, then the final request contains its mapping`, async () => {
       const request = await captureCreateRequest(fixture.input);

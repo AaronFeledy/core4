@@ -3,14 +3,17 @@ import { Effect, Exit } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
+import type { EngineHttpApi, PodmanApiClient } from "../src/engine-api.ts";
 import {
+  type VolumeFilterMap,
   buildLandoVolumeFilters,
   buildVolumePruneRequest,
   parseVolumePruneResult,
   pruneVolumes,
   volumeMatchesFilters,
-} from "@lando/provider-lando";
-import type { PodmanApiClient, VolumeFilterMap } from "@lando/provider-lando";
+} from "../src/podman/volume-prune.ts";
+
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 
 const decodeFilters = (path: string): Record<string, ReadonlyArray<string>> => {
   const match = path.match(/[?&]filters=([^&]+)/);
@@ -86,7 +89,12 @@ describe("volumeMatchesFilters", () => {
   });
 
   test("rejects a current-app volume without the provider ownership label", () => {
-    expect(volumeMatchesFilters({ "dev.lando.app": "myapp" }, buildLandoVolumeFilters("myapp"))).toBe(false);
+    expect(
+      volumeMatchesFilters(
+        { "dev.lando.app": "myapp" },
+        buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      ),
+    ).toBe(false);
   });
 
   test("rejects a cache volume of the same app via label! negation", () => {
@@ -103,7 +111,10 @@ describe("volumeMatchesFilters", () => {
 
 describe("buildVolumePruneRequest", () => {
   test("targets the libpod prune endpoint with anonymous-only default (no all key, no dryrun)", () => {
-    const request = buildVolumePruneRequest({ filters: buildLandoVolumeFilters("myapp") });
+    const request = buildVolumePruneRequest({
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      ctx,
+    });
     expect(request.method).toBe("POST");
     expect(request.path.startsWith("/libpod/volumes/prune")).toBe(true);
     expect(request.path).not.toContain("dryrun=true");
@@ -113,7 +124,11 @@ describe("buildVolumePruneRequest", () => {
   });
 
   test("opts into named-volume cleanup only when all=true is explicitly requested", () => {
-    const request = buildVolumePruneRequest({ filters: buildLandoVolumeFilters("myapp"), all: true });
+    const request = buildVolumePruneRequest({
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      ctx,
+      all: true,
+    });
     const filters = decodeFilters(request.path);
     expect(request.path).toContain("all=true");
     expect(filters.all).toBeUndefined();
@@ -122,7 +137,8 @@ describe("buildVolumePruneRequest", () => {
 
   test("marks the request as a dry run so destructive deletion is previewable", () => {
     const request = buildVolumePruneRequest({
-      filters: buildLandoVolumeFilters("myapp"),
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      ctx,
       all: true,
       dryRun: true,
     });
@@ -162,7 +178,7 @@ describe("pruneVolumes", () => {
   test("prunes and returns a stamped report on success", async () => {
     const api = requestClient({ status: 200, body: '[{"Id":"v1","Size":10}]' });
     const exit = await Effect.runPromiseExit(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp") }),
+      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
@@ -177,7 +193,12 @@ describe("pruneVolumes", () => {
   test("stamps dryRun and forwards dryrun=true when previewing", async () => {
     const api = requestClient({ status: 200, body: "[]" });
     const exit = await Effect.runPromiseExit(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp"), all: true, dryRun: true }),
+      pruneVolumes(api, {
+        filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+        ctx,
+        all: true,
+        dryRun: true,
+      }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) expect(exit.value.dryRun).toBe(true);
@@ -187,16 +208,39 @@ describe("pruneVolumes", () => {
   test("fails with a typed ProviderUnavailableError on a non-2xx response", async () => {
     const api = requestClient({ status: 500, body: '{"message":"internal server error"}' });
     const error = await Effect.runPromise(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp") }).pipe(Effect.flip),
+      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }).pipe(
+        Effect.flip,
+      ),
     );
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error.operation).toBe("pruneVolumes");
+    expect(error.providerId).toBe("podman");
+    expect(error.remediation).toBe(ctx.remediation);
+  });
+
+  test("Given a podman ctx and a request-less client, When pruning, Then the failure is tagged with the caller providerId", async () => {
+    // Given
+    const api: EngineHttpApi = {};
+
+    // When
+    const error = await Effect.runPromise(
+      pruneVolumes(api, {
+        filters: buildLandoVolumeFilters("myapp", { providerId: "podman" }),
+        ctx,
+      }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(error.providerId).toBe("podman");
+    expect(error.remediation).toBe(ctx.remediation);
   });
 
   test("fails with a typed ProviderInternalError when the client cannot make requests", async () => {
     const api: PodmanApiClient = { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
     const error = await Effect.runPromise(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp") }).pipe(Effect.flip),
+      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }).pipe(
+        Effect.flip,
+      ),
     );
     expect(error).toBeInstanceOf(ProviderInternalError);
   });

@@ -2,12 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import {
-  type PodmanApiClient,
-  type PodmanHttpRequest,
-  type PodmanHttpResponse,
-  bringUp,
-} from "@lando/provider-lando";
-import {
   AbsolutePath,
   AppId,
   type AppPlan,
@@ -16,13 +10,16 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/engine-api.ts";
+import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const appId = AppId.make("compose-knob-bringup");
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
-  source: "provider-lando/compose-knobs-bringup.test.ts",
+  source: "container-runtime/compose-knobs-bringup.test.ts",
   runtime: 4 as const,
 };
 
@@ -142,14 +139,14 @@ const hostConfig = (request: PodmanHttpRequest | undefined): unknown => field(re
 const BASELINE_CREATE_BODY_JSON =
   '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
 
-describe("provider-lando Compose knob bring-up realization", () => {
+describe("Podman Compose knob bring-up realization", () => {
   test("Given knobs and plan-derived networking, when creating a container, then HostConfig merges every source", async () => {
     // Given
     const fake = makeFakeApi();
     const plan = planWithCompose({ privileged: true, cap_add: ["NET_ADMIN"] });
 
     // When
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     const host = hostConfig(findCreateRequest(fake.calls));
@@ -176,7 +173,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const plan = planWithCompose({ stop_signal: "SIGUSR1", stop_grace_period: 30 });
 
     // When
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     const create = findCreateRequest(fake.calls);
@@ -192,7 +189,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const plan = planWithCompose({ platform: "linux/amd64" });
 
     // When
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     const create = findCreateRequest(fake.calls);
@@ -207,7 +204,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const plan = planWithCompose({ tmpfs: ["/workspace:size=64m"] });
 
     // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
@@ -223,7 +220,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const plan = planWithCompose({ tmpfs: ["/etc/config"] });
 
     // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
@@ -239,7 +236,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const plan = planWithCompose({ extra_hosts: { "api.local": ["10.0.0.1", "10.0.0.2"] } });
 
     // When
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
     expect(field(hostConfig(findCreateRequest(fake.calls)), "ExtraHosts")).toEqual([
@@ -254,10 +251,11 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const knobsFake = makeFakeApi();
 
     // When
-    await Effect.runPromise(bringUp(planWithCompose(), { podmanApi: baselineFake.api }));
+    await Effect.runPromise(bringUp(planWithCompose(), { api: baselineFake.api, ctx }));
     await Effect.runPromise(
       bringUp(planWithCompose({ privileged: true, platform: "linux/arm64" }), {
-        podmanApi: knobsFake.api,
+        api: knobsFake.api,
+        ctx,
       }),
     );
 
@@ -286,7 +284,7 @@ describe("provider-lando Compose knob bring-up realization", () => {
     const fake = makeFakeApi();
 
     // When
-    await Effect.runPromise(bringUp(planWithCompose(), { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(planWithCompose(), { api: fake.api, ctx }));
 
     // Then
     const create = findCreateRequest(fake.calls);

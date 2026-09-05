@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
-import { type PodmanApiClient, type PodmanHttpRequest, bringUp } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -10,8 +9,11 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { PodmanApiClient, PodmanHttpRequest } from "../src/engine-api.ts";
+import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const appId = AppId.make("bring-up-order-app");
 const dbName = ServiceName.make("db");
 const dependentNames = {
@@ -20,7 +22,7 @@ const dependentNames = {
 };
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
-  source: "provider-lando/bring-up-order.test.ts",
+  source: "container-runtime/bring-up-order.test.ts",
   runtime: 4 as const,
 };
 
@@ -83,7 +85,7 @@ const makePodmanApi = (
   const running = new Set<string>();
   const failedStartNames = new Set(failedStarts);
   const record = (request: PodmanHttpRequest) => requests.push(`${request.method} ${request.path}`);
-  const podmanApi: PodmanApiClient = {
+  const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
@@ -127,16 +129,16 @@ const makePodmanApi = (
       return Stream.empty;
     },
   };
-  return { podmanApi, requests };
+  return { api, requests };
 };
 
 test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
-  const { podmanApi, requests } = makePodmanApi(0);
+  const { api, requests } = makePodmanApi(0);
 
   // When
-  await Effect.runPromise(bringUp(plan, { podmanApi }));
+  await Effect.runPromise(bringUp(plan, { api, ctx }));
 
   // Then
   const dbStart = requests.indexOf("POST /containers/lando-bring-up-order-app-db/start");
@@ -151,10 +153,10 @@ test("does not delete a pre-existing stopped container during rollback", async (
   // Given
   const plan = planWithDependency(dependentNames.web, true);
   const db = "lando-bring-up-order-app-db";
-  const { podmanApi, requests } = makePodmanApi(1, [db]);
+  const { api, requests } = makePodmanApi(1, [db]);
 
   // When
-  await Effect.runPromise(bringUp(plan, { podmanApi }).pipe(Effect.flip));
+  await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
 
   // Then
   expect(requests).toContain(`POST /containers/${db}/stop`);
@@ -164,10 +166,10 @@ test("does not delete a pre-existing stopped container during rollback", async (
 test("fails with ServiceStartError naming the unmet gate and rolls back when a required gate fails", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
-  const { podmanApi, requests } = makePodmanApi(1);
+  const { api, requests } = makePodmanApi(1);
 
   // When
-  const error = await Effect.runPromise(bringUp(plan, { podmanApi }).pipe(Effect.flip));
+  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
 
   // Then
   expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
@@ -180,10 +182,10 @@ test("fails with ServiceStartError naming the unmet gate and rolls back when a r
 test("succeeds without rolling back when only an optional gate fails", async () => {
   // Given
   const plan = planWithDependency(dependentNames.cache, false);
-  const { podmanApi, requests } = makePodmanApi(1);
+  const { api, requests } = makePodmanApi(1);
 
   // When
-  const result = await Effect.runPromise(bringUp(plan, { podmanApi }));
+  const result = await Effect.runPromise(bringUp(plan, { api, ctx }));
 
   // Then
   expect(result.changed).toBe(true);
@@ -195,14 +197,14 @@ test("succeeds without rolling back when only an optional gate fails", async () 
 test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
   // Given
   const base = planWithDependency(dependentNames.cache, false);
-  const api = servicePlan(ServiceName.make("api"), false);
-  const plan = { ...base, services: { api, ...base.services } };
+  const apiService = servicePlan(ServiceName.make("api"), false);
+  const plan = { ...base, services: { api: apiService, ...base.services } };
   const apiName = "lando-bring-up-order-app-api";
   const db = "lando-bring-up-order-app-db";
-  const { podmanApi, requests } = makePodmanApi(0, [], [db]);
+  const { api, requests } = makePodmanApi(0, [], [db]);
 
   // When
-  await Effect.runPromise(bringUp(plan, { podmanApi }));
+  await Effect.runPromise(bringUp(plan, { api, ctx }));
 
   // Then
   expect(requests).toContain(`POST /containers/${apiName}/start`);
@@ -217,12 +219,12 @@ test("cleans only a failed optional dependency and preserves an unrelated starte
 test("interrupts an aborted optional dependency instead of starting its dependent", async () => {
   // Given
   const plan = planWithDependency(dependentNames.cache, false);
-  const { podmanApi, requests } = makePodmanApi(0);
+  const { api, requests } = makePodmanApi(0);
   const controller = new AbortController();
   controller.abort();
 
   // When
-  const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi, signal: controller.signal }));
+  const exit = await Effect.runPromiseExit(bringUp(plan, { api, ctx, signal: controller.signal }));
 
   // Then
   expect(Exit.isFailure(exit)).toBe(true);

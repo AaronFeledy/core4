@@ -16,8 +16,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import { bringUp } from "../src/bring-up.ts";
-import { makePodmanApiClient } from "../src/capabilities.ts";
+import { makePodmanApiClient } from "../src/podman/api-client.ts";
+import { bringUp } from "../src/podman/bring-up.ts";
 
 interface CreateRequest {
   readonly url: string;
@@ -30,10 +30,11 @@ interface IpcFixture {
 }
 
 const providerId = ProviderId.make("lando");
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
-  source: "provider-lando/compose-knobs-transport.test.ts",
+  source: "container-runtime/compose-knobs-transport.test.ts",
   runtime: 4 as const,
 };
 
@@ -83,7 +84,7 @@ const respond = (response: ServerResponse, status: number, body = ""): void => {
 };
 
 const withIpcServer = async <A>(action: (fixture: IpcFixture) => Promise<A>): Promise<A> => {
-  const root = await mkdtemp(join(tmpdir(), "lando-compose-knobs-transport-"));
+  const root = await mkdtemp(join(tmpdir(), "container-runtime-compose-knobs-transport-"));
   const endpoint =
     process.platform === "win32"
       ? `\\\\.\\pipe\\lando-compose-knobs-${process.pid}-${randomUUID()}`
@@ -130,14 +131,14 @@ const withIpcServer = async <A>(action: (fixture: IpcFixture) => Promise<A>): Pr
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
-describe("provider-lando Compose knob transport", () => {
+describe("Podman Compose knob transport", () => {
   test("Given a privileged service, when bringUp uses the platform IPC transport, then create carries Privileged", async () => {
     // Given
     await withIpcServer(async ({ endpoint, createRequests }) => {
-      const client = makePodmanApiClient(endpoint);
+      const client = makePodmanApiClient(endpoint, ctx);
 
       // When
-      await Effect.runPromise(bringUp(plan, { podmanApi: client }));
+      await Effect.runPromise(bringUp(plan, { api: client, ctx }));
 
       // Then
       expect(createRequests).toHaveLength(1);

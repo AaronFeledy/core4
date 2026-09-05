@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { type PodmanApiClient, getContainerDiedEvents, makeRuntimeProvider } from "@lando/provider-podman";
+import { makeRuntimeProvider } from "@lando/provider-podman";
 
 const diedEvent = {
   Type: "container",
@@ -10,28 +10,7 @@ const diedEvent = {
   Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
 };
 
-describe("provider-podman container died event collection", () => {
-  test("requests finite Podman died events and returns raw payloads", async () => {
-    const paths: string[] = [];
-    const api: PodmanApiClient = {
-      info: Effect.succeed({}),
-      ping: Effect.succeed(undefined),
-      request: (request) =>
-        Effect.sync(() => {
-          paths.push(request.path);
-          return { status: 200, body: JSON.stringify([diedEvent]) };
-        }),
-    };
-
-    const payloads = await Effect.runPromise(getContainerDiedEvents(api));
-
-    expect(payloads).toEqual([diedEvent]);
-    expect(paths[0]).toContain("/libpod/events");
-    expect(paths[0]).toContain("since=");
-    expect(paths[0]).toContain("until=");
-    expect(paths[0]).not.toContain("stream=false");
-  });
-
+describe("provider-podman container died event provider surface", () => {
   test("provider exposes died events structurally for doctor", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({

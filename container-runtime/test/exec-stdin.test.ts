@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
-import { exec } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -11,8 +11,11 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
+import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { exec } from "../src/podman/exec.ts";
+
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
@@ -20,7 +23,7 @@ const containerName = "lando-exec-stdin-app-web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
-  source: "provider-lando/exec-stdin.test.ts",
+  source: "container-runtime/exec-stdin.test.ts",
   runtime: 4 as const,
 };
 
@@ -59,12 +62,10 @@ const plan: AppPlan = {
 const target = { app: appId, service: serviceName };
 
 const makeFakeApi = () => {
-  const calls: PodmanHttpRequest[] = [];
-  const api: PodmanApiClient = {
-    info: Effect.succeed({}),
-    ping: Effect.void,
+  const calls: EngineHttpRequest[] = [];
+  const api: EngineHttpApi = {
     request: (input) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(input);
         if (input.method === "POST" && input.path === createPath) {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
@@ -86,13 +87,13 @@ const oneChunkStdin = async function* (): AsyncIterable<Uint8Array> {
   yield new Uint8Array([0x61]);
 };
 
-const runExec = (api: PodmanApiClient, command: CommandSpec) =>
-  Effect.runPromise(exec(plan, target, command, { podmanApi: api }));
+const runExec = (api: EngineHttpApi, command: CommandSpec) =>
+  Effect.runPromise(exec(plan, target, command, { api, ctx }));
 
-const createBody = (calls: ReadonlyArray<PodmanHttpRequest>) =>
+const createBody = (calls: ReadonlyArray<EngineHttpRequest>) =>
   calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
 
-describe("provider-lando exec AttachStdin", () => {
+describe("podman exec AttachStdin", () => {
   test("sets AttachStdin true when only stdinStream is provided", async () => {
     // Given
     const fake = makeFakeApi();
@@ -124,5 +125,21 @@ describe("provider-lando exec AttachStdin", () => {
 
     // Then
     expect(createBody(fake.calls)).toMatchObject({ AttachStdin: false });
+  });
+});
+
+describe("podman exec error context", () => {
+  test("tags a missing-api failure with the caller provider id and remediation", async () => {
+    // Given a caller context for the podman provider and no engine API client
+    // When
+    const error = await Effect.runPromise(
+      exec(plan, target, { command: ["true"] }, { ctx }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.providerId).toBe("podman");
+    expect(error.message).toContain("provider-podman");
+    expect(error.remediation).toBe(ctx.remediation);
   });
 });
