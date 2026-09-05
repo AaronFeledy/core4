@@ -54,7 +54,10 @@ describe("redactDetails", () => {
 
   test("redacts Error messages while preserving the error name", () => {
     const error = new Error("connection refused; POSTGRES_PASSWORD=hunter2 in url");
-    const out = redactDetails(error) as { name: string; message: string };
+    const out = redactDetails(error);
+    if (typeof out !== "object" || out === null || !("name" in out) || !("message" in out)) {
+      throw new Error("Expected redacted error details");
+    }
     expect(out.name).toBe("Error");
     expect(out.message).toContain("[redacted]");
     expect(out.message).not.toContain("hunter2");
@@ -63,7 +66,10 @@ describe("redactDetails", () => {
   test("masks percent-encoded URL userinfo in Podman request paths", () => {
     const out = redactDetails({
       path: "/libpod/images/pull?reference=https%3A%2F%2Fuser%3As3cr3tPass%40registry.internal%2Fteam%2Fimg%3A1.0&pullProgress=true",
-    }) as { path: string };
+    });
+    if (typeof out !== "object" || out === null || !("path" in out) || typeof out.path !== "string") {
+      throw new Error("Expected redacted request path");
+    }
     expect(out.path).not.toContain("s3cr3tPass");
     expect(out.path).toContain("https%3A%2F%2F[redacted]%40registry.internal");
   });
