@@ -3,7 +3,16 @@ import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
+import type {
+  DockerApiClient,
+  DockerHttpRequest,
+  DockerHttpResponse,
+  ProviderErrorContext,
+} from "@lando/container-runtime/engine-api";
+import { engineApiFailure } from "@lando/container-runtime/engine-errors";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
@@ -14,18 +23,21 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
+import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
   makeLogDecoder as makeRuntimeLogDecoder,
 } from "@lando/container-runtime/streams";
 import {
-  ContainerTransportError,
   type SocketHttpConnection,
   connectSocket,
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
+import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { Effect, Layer, Schema, type Scope, Stream } from "effect";
 
 import {
@@ -72,11 +84,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
-import { PULL_REMEDIATION, buildImageInspectRequest, pullImage } from "./image-pull.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
-import { redactDetails, redactString } from "./redact.ts";
-import { postServiceLifecycle } from "./service-lifecycle.ts";
-import { waitForExit } from "./wait-for-exit.ts";
 
 export {
   appliedPlanPath,
@@ -86,14 +94,11 @@ export {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-export {
-  buildImageInspectRequest,
-  buildImagePullRequest,
-  parseImagePullFrame,
-  parseImageReference,
-  pullImage,
-} from "./image-pull.ts";
-export type { ImagePullFrame, ParsedImageReference, PulledImage } from "./image-pull.ts";
+export type {
+  DockerApiClient,
+  DockerHttpRequest,
+  DockerHttpResponse,
+} from "@lando/container-runtime/engine-api";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
@@ -104,62 +109,17 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
 const PROVIDER_ID = "docker";
 const textDecoder = new TextDecoder();
 
+const DOCKER_CTX: ProviderErrorContext = {
+  providerId: "docker",
+  remediation:
+    "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
+};
+
 const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
 
 const IMAGE_MISSING_REMEDIATION =
   "The image is not present on this Docker engine and could not be pulled. Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.";
-
-// Docker API error responses are JSON: `{ message: "..." }`.
-const apiReasonFromBody = (details: unknown): string | undefined => {
-  if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
-  const body = (details as { body?: unknown }).body;
-  if (typeof body !== "string" || body.trim().length === 0) return undefined;
-  let reason: string | undefined;
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      const candidate = (parsed as { message?: unknown; cause?: unknown }).message;
-      const fallback = (parsed as { message?: unknown; cause?: unknown }).cause;
-      if (typeof candidate === "string" && candidate.trim().length > 0) reason = candidate.trim();
-      else if (typeof fallback === "string" && fallback.trim().length > 0) reason = fallback.trim();
-    }
-  } catch {
-    return undefined;
-  }
-  return reason === undefined ? undefined : redactString(reason);
-};
-
-const withApiReason = (message: string, details: unknown): string => {
-  const reason = apiReasonFromBody(details);
-  return reason === undefined ? message : `${message} ${reason}`;
-};
-export interface DockerHttpRequest {
-  readonly method: "GET" | "POST" | "PUT" | "DELETE";
-  readonly path: `/${string}`;
-  readonly body?: unknown;
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly signal?: AbortSignal;
-  readonly stdin?: AsyncIterable<Uint8Array>;
-}
-
-export interface DockerHttpResponse {
-  readonly status: number;
-  readonly body: string;
-}
-
-export interface DockerApiClient {
-  readonly info: Effect.Effect<
-    unknown,
-    ProviderCapabilityError | ProviderUnavailableError | ProviderInternalError
-  >;
-  readonly request?: (
-    request: DockerHttpRequest,
-  ) => Effect.Effect<DockerHttpResponse, ProviderUnavailableError | ProviderInternalError>;
-  readonly stream?: (
-    request: DockerHttpRequest,
-  ) => Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError>;
-}
 
 export interface ProviderLayerOptions {
   readonly dockerApi?: DockerApiClient;
@@ -402,19 +362,8 @@ const interruptOnAbort = <E, R>(
 const dockerApiFailure = (
   request: DockerHttpRequest,
   cause: unknown,
-): ProviderUnavailableError | ProviderInternalError => {
-  if (cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError) return cause;
-  if (cause instanceof ContainerTransportError) {
-    return cause.kind === "parse"
-      ? internal("docker-api", cause.message, cause.details, cause)
-      : unavailable("docker-api", cause.message, cause.details, cause);
-  }
-  return unavailable("docker-api", "Failed to call the Docker API.", {
-    method: request.method,
-    path: request.path,
-    cause,
-  });
-};
+): ProviderUnavailableError | ProviderInternalError =>
+  engineApiFailure(DOCKER_CTX, "docker-api", request, cause);
 
 const makeNamedPipeTransportClient = (pipePath: string) =>
   makeSocketHttpClient({
@@ -931,10 +880,13 @@ const inspectContainer = (api: DockerApiClient, name: string) =>
 
 const ensureImagePresent = (api: DockerApiClient, imageRef: string) =>
   Effect.gen(function* () {
-    const inspectResponse = yield* request(api, "apply", buildImageInspectRequest(imageRef));
+    const inspectResponse = yield* request(api, "apply", {
+      method: "GET",
+      path: `/images/${encodeURIComponent(imageRef)}/json`,
+    });
     if (inspectResponse.status === 200) return;
     if (inspectResponse.status === 404) {
-      yield* pullImage(api, imageRef);
+      yield* pullImage(api, imageRef, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
       return;
     }
     yield* Effect.fail(
@@ -943,7 +895,7 @@ const ensureImagePresent = (api: DockerApiClient, imageRef: string) =>
         `Docker image inspect failed with HTTP ${inspectResponse.status}.`,
         inspectResponse,
         undefined,
-        PULL_REMEDIATION,
+        DOCKER_CTX.remediation,
       ),
     );
   });
@@ -973,7 +925,7 @@ const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePl
     const response = yield* request(api, "apply", createRequest);
     if (response.status === 201 || response.status === 409) return;
     if (isMissingImageCreateResponse(response) && service.artifact?.kind === "ref") {
-      yield* pullImage(api, service.artifact.ref);
+      yield* pullImage(api, service.artifact.ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
       const retry = yield* request(api, "apply", createRequest);
       if (retry.status === 201 || retry.status === 409) return;
       yield* Effect.fail(
@@ -1227,7 +1179,9 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           plan,
           { app: plan.id, service: service.name },
           {
-            dockerApi: api,
+            api,
+            ctx: DOCKER_CTX,
+            dialect: dockerWaitDialect,
             ...(signal === undefined ? {} : { signal }),
           },
         ),
@@ -1743,6 +1697,27 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
 
+  const resolvedOps = makeResolvedProviderOps({
+    ctx: DOCKER_CTX,
+    resolvePlan: (app) => resolvePlan({ app }),
+    noPlanError: (_app, operation) => makeUnavailable(operation),
+    service: {
+      lifecycle: (plan, target, action) =>
+        postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+      waitForExit: (plan, target, waitOptions) =>
+        waitForExit(plan, target, {
+          api: dockerApi,
+          ctx: DOCKER_CTX,
+          dialect: dockerWaitDialect,
+          ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+        }),
+      exec: (plan, target, command) => exec(plan, target, command, dockerApi),
+      execStream: (plan, target, command) => execStream(plan, target, command, dockerApi),
+      inspect: (plan, target) => inspectService(plan, target, dockerApi),
+    },
+    dataPlane,
+  });
+
   return runtimeCapabilities.pipe(
     Effect.map(
       ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
@@ -1761,7 +1736,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         getVersions: Effect.succeed({ provider: "0.0.0" }),
         buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
         pullArtifact: (spec) =>
-          pullImage(dockerApi, spec.ref).pipe(
+          pullImage(dockerApi, spec.ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect }).pipe(
             Effect.map((result) => ({
               providerId: ProviderId.make(PROVIDER_ID),
               ref: result.ref,
@@ -1771,41 +1746,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
           bringUp(plan, dockerApi, applyOptions.signal).pipe(Effect.tap(() => rememberPlan(plan))),
-        start: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("start"))
-                : postServiceLifecycle({ api: dockerApi, plan, target, action: "start" }),
-            ),
-          ),
-        stop: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("stop"))
-                : postServiceLifecycle({ api: dockerApi, plan, target, action: "stop" }),
-            ),
-          ),
-        restart: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("restart"))
-                : postServiceLifecycle({ api: dockerApi, plan, target, action: "restart" }),
-            ),
-          ),
-        waitForExit: (target, options) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("waitForExit"))
-                : waitForExit(plan, target, {
-                    dockerApi,
-                    ...(options?.signal === undefined ? {} : { signal: options.signal }),
-                  }),
-            ),
-          ),
+        ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
@@ -1823,26 +1764,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   ),
             ),
           ),
-        exec: (target, command) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("exec"))
-                : exec(plan, target, command, dockerApi),
-            ),
-          ),
-        execStream: (target, command) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                plan === undefined
-                  ? Stream.fail(makeUnavailable("execStream"))
-                  : execStream(plan, target, command, dockerApi),
-              ),
-            ),
-          ),
-        run: dataPlane.run,
-        runStream: dataPlane.runStream,
         logs: (target, logOptions) =>
           Stream.unwrap(
             resolvePlan(target).pipe(
@@ -1893,14 +1814,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               }),
             ),
           ),
-        inspect: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeUnavailable("inspect"))
-                : inspectService(plan, target, dockerApi),
-            ),
-          ),
         list: (filter) =>
           discoverContainers(dockerApi, "dev.lando.app").pipe(
             Effect.flatMap((containers) =>
@@ -1947,26 +1860,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               ),
             ),
           ),
-        snapshotVolume: dataPlane.snapshotVolume,
-        restoreVolume: dataPlane.restoreVolume,
-        listVolumes: dataPlane.listVolumes,
-        removeVolume: dataPlane.removeVolume,
-        copyToService: (target, spec) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
-            ),
-          ),
-        copyFromService: (target, spec) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
-              ),
-            ),
-          ),
-        exportArtifact: dataPlane.exportArtifact,
-        importArtifact: dataPlane.importArtifact,
       }),
     ),
   );

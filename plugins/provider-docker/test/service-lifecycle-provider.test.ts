@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
   makeRuntimeProvider,
+  persistAppliedPlan,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
@@ -60,7 +62,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const target = { app: appId, service: serviceName, plan };
+const target = { app: appId, service: serviceName };
 const missingPlanTarget = { app: appId, service: serviceName };
 
 const makeFakeApi = (response: DockerHttpResponse) => {
@@ -75,8 +77,17 @@ const makeFakeApi = (response: DockerHttpResponse) => {
   return { api, calls };
 };
 
-const makeProvider = (api: DockerApiClient) =>
-  Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+const makeProvider = async (api: DockerApiClient, appliedPlan?: AppPlan) => {
+  if (appliedPlan === undefined) {
+    return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  }
+  const appliedPlanState = makePluginStateStore(
+    makeTestStateStore().service,
+    AbsolutePath.make("/tmp/provider-docker-service-lifecycle-state"),
+  );
+  await Effect.runPromise(persistAppliedPlan(appliedPlanState, appliedPlan));
+  return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }));
+};
 
 const hasStringTag = (value: object): value is { readonly _tag: string } =>
   typeof Reflect.get(value, "_tag") === "string";
@@ -103,7 +114,7 @@ describe("provider-docker service lifecycle", () => {
     test(`issues POST /${action} for the planned container and does not DELETE`, async () => {
       // Given
       const fake = makeFakeApi({ status: 204, body: "" });
-      const provider = await makeProvider(fake.api);
+      const provider = await makeProvider(fake.api, plan);
 
       // When
       await Effect.runPromise(provider[action](target));
@@ -119,7 +130,7 @@ describe("provider-docker service lifecycle", () => {
     test(`treats HTTP 304 as success for ${action}`, async () => {
       // Given
       const fake = makeFakeApi({ status: 304, body: "" });
-      const provider = await makeProvider(fake.api);
+      const provider = await makeProvider(fake.api, plan);
 
       // When
       const exit = await Effect.runPromiseExit(provider[action](target));
@@ -133,7 +144,7 @@ describe("provider-docker service lifecycle", () => {
     test(`fails with ServiceNotFoundError when ${action} returns HTTP 404`, async () => {
       // Given
       const fake = makeFakeApi({ status: 404, body: "" });
-      const provider = await makeProvider(fake.api);
+      const provider = await makeProvider(fake.api, plan);
 
       // When
       const exit = await Effect.runPromiseExit(provider[action](target));

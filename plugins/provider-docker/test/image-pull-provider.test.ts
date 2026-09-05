@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { dockerPullDialect } from "@lando/container-runtime/dialect";
+import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
-  buildImagePullRequest,
   makeRuntimeProvider,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
@@ -158,7 +159,7 @@ describe("provider-docker pullArtifact", () => {
     const result = await Effect.runPromise(provider.pullArtifact({ ref: mailpitRef }));
 
     expect(result).toMatchObject({ providerId: "docker", ref: mailpitRef, digest: "sha256:test" });
-    expect(fake.requests).toContain(`POST ${buildImagePullRequest(mailpitRef).path}`);
+    expect(fake.requests).toContain(`POST ${buildImagePullRequest(mailpitRef, dockerPullDialect).path}`);
     expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(true);
     expect(fake.requests.some((entry) => entry.includes("/libpod/images/pull"))).toBe(false);
   });
@@ -205,7 +206,7 @@ describe("provider-docker apply image pull", () => {
     await apply(plan, fake.api);
 
     const inspect = fake.requests.indexOf(`GET /images/${encodeURIComponent(mailpitRef)}/json`);
-    const pull = fake.requests.indexOf(`POST ${buildImagePullRequest(mailpitRef).path}`);
+    const pull = fake.requests.indexOf(`POST ${buildImagePullRequest(mailpitRef, dockerPullDialect).path}`);
     const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app-mailpit");
     expect(inspect).toBeGreaterThan(-1);
     expect(pull).toBeGreaterThan(inspect);

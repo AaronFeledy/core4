@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
   makeRuntimeProvider,
+  persistAppliedPlan,
 } from "@lando/provider-docker";
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
@@ -73,11 +75,18 @@ const makeFakeApi = (responses: ReadonlyArray<DockerHttpResponse>) => {
 };
 
 const waitForExit = async (api: DockerApiClient, requestedService = serviceName, signal?: AbortSignal) => {
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  const appliedPlanState = makePluginStateStore(
+    makeTestStateStore().service,
+    AbsolutePath.make("/tmp/provider-docker-wait-for-exit-state"),
+  );
+  await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
+  );
   return Effect.runPromise(
     Effect.scoped(
       provider.waitForExit(
-        { app: appId, service: requestedService, plan },
+        { app: appId, service: requestedService },
         signal === undefined ? undefined : { signal },
       ),
     ),
@@ -86,13 +95,17 @@ const waitForExit = async (api: DockerApiClient, requestedService = serviceName,
 
 const waitFailure = async (api: DockerApiClient, requestedService = serviceName) =>
   Effect.runPromise(
-    Effect.flip(
-      Effect.scoped(
-        Effect.flatMap(makeRuntimeProvider({ platform: "linux", dockerApi: api }), (provider) =>
-          provider.waitForExit({ app: appId, service: requestedService, plan }),
-        ),
-      ),
-    ),
+    Effect.gen(function* () {
+      const appliedPlanState = makePluginStateStore(
+        makeTestStateStore().service,
+        AbsolutePath.make("/tmp/provider-docker-wait-for-exit-failure-state"),
+      );
+      yield* persistAppliedPlan(appliedPlanState, plan);
+      const provider = yield* makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState });
+      return yield* Effect.flip(
+        Effect.scoped(provider.waitForExit({ app: appId, service: requestedService })),
+      );
+    }),
   );
 
 describe("provider-docker waitForExit", () => {
