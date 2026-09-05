@@ -18,12 +18,14 @@ jobs:
   platform-readiness-linux-x64:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -32,6 +34,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-x64 binary
         run: |
@@ -136,12 +144,14 @@ jobs:
   platform-readiness-linux-arm64:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -150,6 +160,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-arm64 binary
         run: |
@@ -255,12 +271,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, macOS, ARM64]
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -269,6 +287,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-arm64 binary
         run: |
@@ -299,12 +323,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, macOS, X64]
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -313,6 +339,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-x64 binary
         run: |
@@ -343,12 +375,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, Windows, X64]
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -357,6 +391,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build windows-x64 binary
         run: |
@@ -396,12 +436,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, lando-virt, Windows, ARM64]
     timeout-minutes: 45
-    env:
-      LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-conf
-      LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-      LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -410,6 +452,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
 
       - name: Build windows-arm64 binary
         run: |
