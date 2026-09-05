@@ -204,6 +204,69 @@ describe("rails-journey workflow", () => {
     expect(workflow).not.toContain("advisory-skip");
   });
 
+  test("exports LANDO_USER roots from a post-checkout step via RUNNER_TEMP", async () => {
+    // Given: the generated Rails journey workflow.
+    const workflow = await readWorkflow();
+
+    // When: every cell is inspected for how LANDO_USER roots are set.
+    // Then: roots are exported through $GITHUB_ENV from $RUNNER_TEMP after checkout,
+    // never via job-level env interpolating the runner context.
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const checkout = job.indexOf("actions/checkout@v5");
+      const isolate = job.indexOf("Isolate Lando roots");
+      const setupBun = job.indexOf("Setup Bun");
+      expect(checkout).toBeGreaterThan(-1);
+      expect(isolate).toBeGreaterThan(checkout);
+      expect(setupBun).toBeGreaterThan(isolate);
+      expect(job).toContain('echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"');
+      expect(job).toContain('echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"');
+      expect(job).toContain('echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"');
+      expect(job).not.toContain("LANDO_USER_CONF_ROOT: ${{ runner.temp }}");
+      expect(job).not.toContain("\n    env:\n");
+    }
+  });
+
+  test("regenerates derived sources and the command registry before compiling", async () => {
+    // Given: the generated Rails journey workflow.
+    const workflow = await readWorkflow();
+
+    // When: every cell's build prelude is inspected.
+    // Then: codegen and build:manifest run after bun install and before the binary build.
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const install = job.indexOf("bun install --frozen-lockfile");
+      const codegen = job.indexOf("bun run codegen");
+      const manifest = job.indexOf("bun run --filter='@lando/core' build:manifest");
+      const compile = job.indexOf(`Build ${id} binary`);
+      expect(install).toBeGreaterThan(-1);
+      expect(codegen).toBeGreaterThan(install);
+      expect(manifest).toBeGreaterThan(codegen);
+      expect(compile).toBeGreaterThan(manifest);
+    }
+  });
+
+  test("builds host-proxy shim and log-file helper into dist before the binary", async () => {
+    // Given: the generated Rails journey workflow.
+    const workflow = await readWorkflow();
+
+    // When: every cell's compile step is inspected.
+    // Then: local sidecar builds copy into dist/ before build-compiled-binary.ts.
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const shim = job.indexOf("build:host-proxy-shim");
+      const helper = job.indexOf("build:log-file-helper");
+      const hostProxyCopy = job.indexOf("core/dist/host-proxy");
+      const logFileCopy = job.indexOf("core/dist/log-file-access");
+      const binary = job.indexOf("scripts/build-compiled-binary.ts");
+      expect(shim).toBeGreaterThan(-1);
+      expect(helper).toBeGreaterThan(shim);
+      expect(hostProxyCopy).toBeGreaterThan(helper);
+      expect(logFileCopy).toBeGreaterThan(hostProxyCopy);
+      expect(binary).toBeGreaterThan(logFileCopy);
+    }
+  });
+
   test("runs setup before the Rails journey on every cell", async () => {
     // Given / When
     const workflow = await readWorkflow();
