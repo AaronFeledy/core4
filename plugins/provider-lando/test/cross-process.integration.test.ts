@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
@@ -25,7 +30,6 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 
 const providerId = ProviderId.make("lando");

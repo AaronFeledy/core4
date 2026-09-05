@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -13,7 +18,6 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { nodeLtsServiceType, serviceFeatures } from "@lando/service-lando";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -144,7 +148,7 @@ describe("provider-lando exec env contract", () => {
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
 
     const createCall = fake.calls.find(
       (call) =>
@@ -178,7 +182,7 @@ describe("provider-lando exec env contract", () => {
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
 
     const commandEnv: Record<string, string> = {
       LANDO_PLUGIN_TOOLING_VAR: "ok",
@@ -190,7 +194,7 @@ describe("provider-lando exec env contract", () => {
         plan,
         { app: plan.id, service: servicePlan.name },
         { command: ["printenv", "LANDO_PLUGIN_TOOLING_VAR"], env: commandEnv },
-        { podmanApi: fake.api },
+        { api: fake.api },
       ),
     );
 

@@ -124,7 +124,7 @@ const sendMailFromService = async (
       `printf '%b' '${smtpPayload}' | nc -w 5 ${MAILPIT_SHARED_NETWORK_HOST} ${MAILPIT_SMTP_PORT}`,
     ],
   };
-  const result = await Effect.runPromise(exec(plan, target, command, { podmanApi: api }));
+  const result = await Effect.runPromise(exec(plan, target, command, { api }));
   if (result.exitCode !== 0) {
     throw new Error(
       `SMTP send from per-app service failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`,
@@ -182,10 +182,10 @@ describe("global Mailpit capture — live integration", () => {
       const shopPlan = appPlan("shop", senderService());
 
       try {
-        const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { podmanApi: api }));
+        const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { api }));
         expect(mailpitApplied.changed).toBe(true);
 
-        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { podmanApi: api }));
+        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
         expect(shopApplied.changed).toBe(true);
 
         // Wait for Mailpit's API to come up before driving SMTP from the per-app
@@ -194,8 +194,8 @@ describe("global Mailpit capture — live integration", () => {
         await sendMailFromService(shopPlan, api);
         await waitForCapturedMessage(120_000);
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(shopPlan, { podmanApi: api })));
-        await Effect.runPromise(Effect.either(bringDown(globalPlan, { podmanApi: api })));
+        await Effect.runPromise(Effect.either(bringDown(shopPlan, { api })));
+        await Effect.runPromise(Effect.either(bringDown(globalPlan, { api })));
       }
     },
     240_000,

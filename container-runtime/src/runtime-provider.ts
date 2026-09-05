@@ -3,6 +3,7 @@ import { Effect, type Scope, Stream } from "effect";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppId, AppPlan } from "@lando/sdk/schema";
 import type {
+  AppSelector,
   CommandSpec,
   ExecChunk,
   ExecResult,
@@ -96,27 +97,38 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
             : before.pipe(Effect.flatMap(() => delegate(plan))),
         ),
       );
-  const resolveStream = <A, E extends ProviderError, R>(
-    app: AppId,
+  const resolveTarget = <A, E extends ProviderError, R>(
+    target: AppSelector,
+    operation: string,
+    delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, ProviderError | E, R> => {
+    const directPlan = target.plan;
+    return directPlan === undefined
+      ? resolve(target.app, operation, delegate)
+      : before.pipe(Effect.flatMap(() => delegate(directPlan)));
+  };
+  const resolveTargetStream = <A, E extends ProviderError, R>(
+    target: AppSelector,
     operation: string,
     delegate: (plan: AppPlan) => Stream.Stream<A, E, R>,
   ): Stream.Stream<A, ProviderError | E, R> =>
-    Stream.unwrap(resolve(app, operation, (plan) => Effect.succeed(delegate(plan))));
+    Stream.unwrap(resolveTarget(target, operation, (plan) => Effect.succeed(delegate(plan))));
   const requireDataPlane = (operation: string): Effect.Effect<ProviderDataPlane, ProviderUnavailableError> =>
     input.dataPlane === undefined ? Effect.fail(unavailable(operation)) : Effect.succeed(input.dataPlane);
 
   return {
-    start: (target) => resolve(target.app, "start", (plan) => input.service.lifecycle(plan, target, "start")),
-    stop: (target) => resolve(target.app, "stop", (plan) => input.service.lifecycle(plan, target, "stop")),
+    start: (target) =>
+      resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start")),
+    stop: (target) => resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop")),
     restart: (target) =>
-      resolve(target.app, "restart", (plan) => input.service.lifecycle(plan, target, "restart")),
+      resolveTarget(target, "restart", (plan) => input.service.lifecycle(plan, target, "restart")),
     waitForExit: (target, options) =>
-      resolve(target.app, "waitForExit", (plan) => input.service.waitForExit(plan, target, options)),
+      resolveTarget(target, "waitForExit", (plan) => input.service.waitForExit(plan, target, options)),
     exec: (target, command) =>
-      resolve(target.app, "exec", (plan) => input.service.exec(plan, target, command)),
+      resolveTarget(target, "exec", (plan) => input.service.exec(plan, target, command)),
     execStream: (target, command) =>
-      resolveStream(target.app, "execStream", (plan) => input.service.execStream(plan, target, command)),
-    inspect: (target) => resolve(target.app, "inspect", (plan) => input.service.inspect(plan, target)),
+      resolveTargetStream(target, "execStream", (plan) => input.service.execStream(plan, target, command)),
+    inspect: (target) => resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target)),
     run: (spec) =>
       requireDataPlane("run").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.run(spec)))),
@@ -146,14 +158,16 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     copyToService: (target, spec) =>
       requireDataPlane("copyToService").pipe(
         Effect.flatMap((dataPlane) =>
-          resolve(target.app, "copyToService", (plan) => dataPlane.copyToService({ ...target, plan }, spec)),
+          resolveTarget(target, "copyToService", (plan) =>
+            dataPlane.copyToService({ ...target, plan }, spec),
+          ),
         ),
       ),
     copyFromService: (target, spec) =>
       Stream.unwrap(
         requireDataPlane("copyFromService").pipe(
           Effect.map((dataPlane) =>
-            resolveStream(target.app, "copyFromService", (plan) =>
+            resolveTargetStream(target, "copyFromService", (plan) =>
               dataPlane.copyFromService({ ...target, plan }, spec),
             ),
           ),

@@ -89,7 +89,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
 
         const api = makePodmanApiClient(socketPath);
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           await waitForOpenSearch(OS_PORT, 180_000);
@@ -103,7 +103,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
           expect(indicesResp.ok).toBe(true);
           expect(await indicesResp.text()).toBeString();
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

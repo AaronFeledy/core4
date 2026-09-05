@@ -87,7 +87,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
 
         const api = makePodmanApiClient(socketPath);
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           await waitForElasticsearch(ES_PORT, 120_000);
@@ -101,7 +101,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           expect(indicesResp.ok).toBe(true);
           expect(await indicesResp.text()).toBeString();
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

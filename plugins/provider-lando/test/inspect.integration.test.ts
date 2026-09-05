@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Effect } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, inspect, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
@@ -14,7 +19,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("inspectapp");
@@ -180,7 +184,7 @@ describe("provider-lando inspect", () => {
     fake.existing.add("lando-inspectapp-node");
 
     const snapshot = await Effect.runPromise(
-      inspect(plan, { app: appId, service: node.name }, { podmanApi: fake.api }),
+      inspect(plan, { app: appId, service: node.name }, { api: fake.api }),
     );
 
     expect(snapshot).toMatchObject({
@@ -202,16 +206,14 @@ describe("provider-lando inspect", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+      await Effect.runPromise(bringUp(plan, { api }));
       try {
-        const snapshot = await Effect.runPromise(
-          inspect(plan, { app: appId, service: node.name }, { podmanApi: api }),
-        );
+        const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
         expect(snapshot.state).toBe("running");
         expect(snapshot.endpoints).toEqual(node.endpoints);
       } finally {
-        await Effect.runPromise(bringDown(plan, { podmanApi: api }));
+        await Effect.runPromise(bringDown(plan, { api }));
       }
     },
     60_000,

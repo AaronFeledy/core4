@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { Duration, Effect } from "effect";
 
-import type { PodmanApiClient } from "../src/capabilities.ts";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import type { LinuxRuntimeFilesystem, RuntimeGenerationStore } from "../src/linux-runtime-generation.ts";
 import { type PodmanServiceRunner, buildPodmanServiceArgs } from "../src/podman-service-runner.ts";

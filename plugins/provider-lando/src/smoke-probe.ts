@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { Effect, type Scope } from "effect";
 
+import { redactDetails } from "@lando/container-runtime/redact";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
-
-import { redactDetails } from "./redact.ts";
 import {
   DEFAULT_BASE_IMAGE,
   ProviderLandoSmokeError,

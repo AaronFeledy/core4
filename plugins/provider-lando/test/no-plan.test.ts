@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { runScopedExit } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");

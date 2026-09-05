@@ -21,8 +21,8 @@ import {
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
 
+import type { PodmanHttpResponse } from "@lando/container-runtime/engine-api";
 import { loadLogFileHelperPayloads } from "@lando/core/testing";
-import type { PodmanHttpResponse } from "../src/capabilities.ts";
 
 const liveSocket = resolveLiveProviderSocket();
 const providerId = ProviderId.make("lando");

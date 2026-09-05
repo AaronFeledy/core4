@@ -5,7 +5,7 @@ import { Cause, Effect, Exit } from "effect";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ProviderError } from "@lando/sdk/services";
 
-import type { PodmanApiClient } from "../src/capabilities.ts";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import {
   MINIMUM_PODMAN_VERSION,
   type PodmanCommandRunner,

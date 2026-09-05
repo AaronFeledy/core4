@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
+import type { PodmanApiClient, PodmanHttpRequest } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, logs, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -13,7 +14,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest } from "../src/capabilities.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("logsapp");
@@ -99,7 +99,7 @@ describe("provider-lando logs", () => {
     const fake = makeFakeApi(frame("stdout", "2026-05-14T00:00:00Z lando logs ready\n"));
 
     const chunks = await Effect.runPromise(
-      logs(plan, { app: appId, service: node.name }, { follow: false }, { podmanApi: fake.api }).pipe(
+      logs(plan, { app: appId, service: node.name }, { follow: false }, { api: fake.api }).pipe(
         Stream.runCollect,
       ),
     );
@@ -115,7 +115,7 @@ describe("provider-lando logs", () => {
     const fake = makeFakeApi(textEncoder.encode("2026-05-14T00:00:00Z raw podman ready\n"));
 
     const chunks = await Effect.runPromise(
-      logs(plan, { app: appId, service: node.name }, { follow: false }, { podmanApi: fake.api }).pipe(
+      logs(plan, { app: appId, service: node.name }, { follow: false }, { api: fake.api }).pipe(
         Stream.runCollect,
       ),
     );
@@ -132,7 +132,7 @@ describe("provider-lando logs", () => {
     );
 
     const chunks = await Effect.runPromise(
-      logs(plan, { app: appId, service: node.name }, { follow: false }, { podmanApi: fake.api }).pipe(
+      logs(plan, { app: appId, service: node.name }, { follow: false }, { api: fake.api }).pipe(
         Stream.runCollect,
       ),
     );
@@ -146,7 +146,7 @@ describe("provider-lando logs", () => {
     const fake = makeFakeApi(frame("stdout", "first\n"), frame("stderr", "second\n"));
 
     const chunks = await Effect.runPromise(
-      logs(plan, { app: appId, service: node.name }, {}, { podmanApi: fake.api }).pipe(Stream.runCollect),
+      logs(plan, { app: appId, service: node.name }, {}, { api: fake.api }).pipe(Stream.runCollect),
     );
 
     expect(Array.from(chunks, (chunk) => [chunk.stream, chunk.line])).toEqual([
@@ -164,7 +164,7 @@ describe("provider-lando logs", () => {
         plan,
         { app: appId, service: node.name },
         { follow: false, since: "1778371200" },
-        { podmanApi: fake.api },
+        { api: fake.api },
       ).pipe(Stream.runCollect),
     );
 
@@ -178,11 +178,11 @@ describe("provider-lando logs", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+      await Effect.runPromise(bringUp(plan, { api }));
       try {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         const chunks = await Effect.runPromise(
-          logs(plan, { app: appId, service: node.name }, { follow: true, tail: 20 }, { podmanApi: api }).pipe(
+          logs(plan, { app: appId, service: node.name }, { follow: true, tail: 20 }, { api }).pipe(
             Stream.take(1),
             Stream.runCollect,
           ),
@@ -190,7 +190,7 @@ describe("provider-lando logs", () => {
 
         expect(collectLines(chunks).join("\n")).toContain("lando logs ready");
       } finally {
-        await Effect.runPromise(bringDown(plan, { podmanApi: api }));
+        await Effect.runPromise(bringDown(plan, { api }));
       }
     },
     60_000,

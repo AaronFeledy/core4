@@ -7,8 +7,6 @@ import {
   introspectProviderCapabilities,
   linuxMvpCapabilities,
   macosMvpCapabilities,
-  makePodmanInfoRequest,
-  makePodmanPingRequest,
   makeProviderLayer,
   mvpProviderCapabilities,
 } from "@lando/provider-lando";
@@ -287,29 +285,6 @@ describe("provider-lando capabilities", () => {
       containerTargets: [],
       tcpHostGateway: "host.containers.internal",
     });
-  });
-
-  test("builds Podman API HTTP-over-UNIX requests without invoking the podman binary", () => {
-    const request = makePodmanInfoRequest("/tmp/podman.sock");
-
-    expect(request.command).toBe("curl");
-    expect(request.command).not.toBe("podman");
-    expect(request.socketUrl).toBe("unix:///tmp/podman.sock");
-    expect(request.args).toContain("--unix-socket");
-    expect(request.args).toContain("/tmp/podman.sock");
-    expect(request.args).toContain("http://localhost/v6.0.0/libpod/info");
-  });
-
-  test("builds cheap Podman API ping requests without invoking capability detection", () => {
-    const request = makePodmanPingRequest("/tmp/podman.sock");
-
-    expect(request.command).toBe("curl");
-    expect(request.command).not.toBe("podman");
-    expect(request.socketUrl).toBe("unix:///tmp/podman.sock");
-    expect(request.args).toContain("--unix-socket");
-    expect(request.args).toContain("/tmp/podman.sock");
-    expect(request.args).toContain("http://localhost/v6.0.0/libpod/_ping");
-    expect(request.args).not.toContain("http://localhost/v6.0.0/libpod/info");
   });
 
   test("decodes capabilities through the SDK schema", async () => {

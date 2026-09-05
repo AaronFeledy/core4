@@ -185,6 +185,30 @@ describe("resolved provider operations", () => {
     expect(exit.cause.error).toEqual(noPlanError(app, "start"));
   });
 
+  test("uses a plan supplied on the selector without consulting the plan resolver", async () => {
+    // Given: no applied plan is stored, but the caller carries the plan on the target.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls, () => Effect.succeed(undefined)));
+    const directTarget = { ...target, plan };
+
+    // When
+    await Effect.runPromise(ops.start(directTarget));
+    const inspected = await Effect.runPromise(ops.inspect(directTarget));
+    await Effect.runPromise(Effect.scoped(ops.execStream(directTarget, command).pipe(Stream.runDrain)));
+
+    // Then: before still runs, and every delegate receives the supplied plan.
+    expect(inspected.service).toBe(service);
+    expect(calls.map((call) => call.name)).toEqual([
+      "before",
+      "lifecycle",
+      "before",
+      "inspect",
+      "before",
+      "execStream",
+    ]);
+    expect(calls.filter((call) => call.name !== "before").every((call) => call.args[0] === plan)).toBe(true);
+  });
+
   test("runs before and delegates all ten data-plane members with their arguments", async () => {
     // Given
     const calls: Call[] = [];

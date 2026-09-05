@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Cause, Effect, Exit, Stream } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
@@ -13,7 +18,6 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
 
 const textEncoder = new TextEncoder();

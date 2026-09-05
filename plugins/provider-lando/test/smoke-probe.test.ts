@@ -4,7 +4,7 @@ import { Deferred, Duration, Effect, Fiber, TestClock, TestContext } from "effec
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
 
-import type { PodmanApiClient, PodmanHttpRequest } from "../src/capabilities.ts";
+import type { PodmanApiClient, PodmanHttpRequest } from "@lando/container-runtime/engine-api";
 import { ProviderLandoSmokeError, type SmokeOperation, runSmokeReadinessProbe } from "../src/smoke-probe.ts";
 
 const retryPolicy: RetryPolicy = {

@@ -6,9 +6,9 @@ import { stripHostProxyRunLando } from "@lando/core/testing";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { PodmanApiClient } from "../src/capabilities.ts";
 import type { PodmanServiceRunner, PodmanServiceSpec } from "../src/podman-service-runner.ts";
 import { probeRuntimeServiceStatus } from "../src/runtime-status.ts";
 

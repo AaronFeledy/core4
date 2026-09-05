@@ -1,10 +1,13 @@
 import { Duration, Effect } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
+import { redactDetails } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
-
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
-import { redactDetails } from "./redact.ts";
 
 export const DEFAULT_BASE_IMAGE = "docker.io/library/alpine:3.20.3";
 export const defaultSmokeRetryPolicy: RetryPolicy = {

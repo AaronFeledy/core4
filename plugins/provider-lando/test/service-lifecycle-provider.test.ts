@@ -13,7 +13,11 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("lifecycle-app");

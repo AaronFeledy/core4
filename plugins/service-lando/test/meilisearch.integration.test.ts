@@ -97,7 +97,7 @@ describe("meilisearch service type — live integration: index create + document
 
         const api = makePodmanApiClient(socketPath);
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           await waitForMeilisearch(MEILI_PORT, 120_000);
@@ -165,7 +165,7 @@ describe("meilisearch service type — live integration: index create + document
           expect(searchBody.hits.length).toBeGreaterThan(0);
           expect(searchBody.hits[0]?.title).toBe("Casablanca");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

@@ -85,7 +85,7 @@ describe("solr service type — live integration: system info endpoint", () => {
 
         const api = makePodmanApiClient(socketPath);
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           // Solr takes longer to start than Redis/Memcached; allow 90s.
@@ -96,7 +96,7 @@ describe("solr service type — live integration: system info endpoint", () => {
           const sysBody = (await sysResp.json()) as Record<string, unknown>;
           expect(sysBody.responseHeader).toBeTruthy();
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

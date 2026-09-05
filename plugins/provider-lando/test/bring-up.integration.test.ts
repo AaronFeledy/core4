@@ -3,6 +3,11 @@ import { createServer as createHttpServer } from "node:http";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
@@ -16,7 +21,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type LandoEvent, RuntimeProvider } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringupapp");
@@ -308,8 +312,8 @@ describe("provider-lando bringUp", () => {
       publish: (event: LandoEvent) => Effect.sync(() => events.push(event)).pipe(Effect.asVoid),
     };
 
-    const first = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api, eventService }));
-    const second = await Effect.runPromise(bringUp(plan, { podmanApi: fake.api, eventService }));
+    const first = await Effect.runPromise(bringUp(plan, { api: fake.api, eventService }));
+    const second = await Effect.runPromise(bringUp(plan, { api: fake.api, eventService }));
 
     expect(first.changed).toBe(true);
     expect(second.changed).toBe(false);
@@ -363,7 +367,7 @@ describe("provider-lando bringUp", () => {
       },
     };
 
-    await Effect.runPromise(bringUp(customPlan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(customPlan, { api: fake.api }));
 
     const nodeCreate = fake.calls.find(
       (call) =>
@@ -399,7 +403,7 @@ describe("provider-lando bringUp", () => {
       stores: [{ name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" }],
     };
 
-    await Effect.runPromise(bringUp(cachePlan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(cachePlan, { api: fake.api }));
 
     const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
     expect(volumeCreate?.body).toEqual({
@@ -430,7 +434,7 @@ describe("provider-lando bringUp", () => {
       networking: { perAppBridge: { name: "custom-app-only", driver: "bridge" } },
     };
 
-    await Effect.runPromise(bringUp(perAppOnlyPlan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(perAppOnlyPlan, { api: fake.api }));
 
     const nodeCreate = fake.calls.find(
       (call) =>
@@ -480,7 +484,7 @@ describe("provider-lando bringUp", () => {
       stores: [],
     };
 
-    await Effect.runPromise(bringUp(acceleratedPlan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(acceleratedPlan, { api: fake.api }));
 
     const create = fake.calls.find(
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
@@ -513,7 +517,7 @@ describe("provider-lando bringUp", () => {
       stores: [],
     };
 
-    const exit = await Effect.runPromiseExit(bringUp(invalidPlan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(invalidPlan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
@@ -537,7 +541,7 @@ describe("provider-lando bringUp", () => {
       stores: [],
     };
 
-    await Effect.runPromise(bringUp(shellPlan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(shellPlan, { api: fake.api }));
 
     const nodeCreate = fake.calls.find(
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
@@ -559,7 +563,7 @@ describe("provider-lando bringUp", () => {
     };
 
     const exit = await Effect.runPromiseExit(
-      bringUp(plan, { podmanApi: fake.api, eventService, signal: controller.signal }),
+      bringUp(plan, { api: fake.api, eventService, signal: controller.signal }),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -570,7 +574,7 @@ describe("provider-lando bringUp", () => {
   test("rolls back containers and network when the first service start fails after network create", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.existing.size).toBe(0);
@@ -591,7 +595,7 @@ describe("provider-lando bringUp", () => {
   test("rolls back the first service and network when the second service start fails", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-node"]) });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.existing.size).toBe(0);
@@ -613,7 +617,7 @@ describe("provider-lando bringUp", () => {
   test("failure errors include providerId, operation, redacted details, remediation, and cause", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -647,7 +651,7 @@ describe("provider-lando bringUp", () => {
       }),
     });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -676,7 +680,7 @@ describe("provider-lando bringUp", () => {
       }),
     });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -706,7 +710,7 @@ describe("provider-lando bringUp", () => {
       }),
     });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -729,7 +733,7 @@ describe("provider-lando bringUp", () => {
   test("keeps the base message when the Podman failure body is not JSON", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -748,7 +752,7 @@ describe("provider-lando bringUp", () => {
   test("redacts credential-like env values in error details", async () => {
     const fake = makeFakeApi({ failCreateFor: new Set(["lando-bringupapp-database"]) });
 
-    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
@@ -801,7 +805,7 @@ describe("provider-lando bringUp", () => {
         throw new Error("missing request client");
       }
       try {
-        const result = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+        const result = await Effect.runPromise(bringUp(plan, { api }));
         expect(result.changed).toBe(true);
 
         for (const service of Object.values(plan.services)) {
