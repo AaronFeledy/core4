@@ -1,0 +1,107 @@
+---
+id: symfony-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, symfony, php, postgres, redis]
+---
+
+# Run the Symfony recipe
+
+```sh
+lando init --recipe symfony --name=symfony-demo --yes
+lando start
+```
+
+`--yes` keeps PHP 8.3, PostgreSQL 16, Composer 2, and webroot `/app/public`. Init writes `.lando.yml` only. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
+
+Default PHP is 8.3. Match the skeleton to that, or bump PHP with `--answer=php=8.4`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
+| `database` | `type: postgres:16` |
+| `cache` | `type: redis` |
+| Tooling | `lando console` (`php bin/console`) and `lando composer` on `appserver` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=mariadb:11.4` when you want MariaDB instead.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="symfony-workflow" display="symfony-demo" />
+      <Run command="lando init --recipe symfony --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres:16\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Run console, Composer, and the clients
+
+Composer will not install into a directory that already has `.lando.yml`:
+
+```sh
+lando composer create-project symfony/skeleton tmp-app --no-interaction
+```
+
+Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+
+```sh
+lando console --version
+lando console about
+lando composer --version
+lando redis-cli ping
+lando psql
+```
+
+`lando console` is `php bin/console` on `appserver`. Swap `symfony-demo` for your app name anywhere you pass the database name yourself.
+
+## Connect Doctrine and Redis
+
+Put host `database` and host `cache` in `.env` (`DATABASE_URL`, Redis DSN, or whatever your config reads):
+
+| Setting | Postgres | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `symfony-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | generated; `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Port | `5432` | `6379` |
+
+Do not hardcode the Postgres password.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Symfony recipe](/recipes/symfony/)
+- [Add PHP](../services/php.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Add Redis](../services/redis.mdx)
