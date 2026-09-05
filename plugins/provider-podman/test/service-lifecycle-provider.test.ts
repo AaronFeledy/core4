@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
+import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/container-runtime/engine-api";
+import { makePluginStateStore } from "@lando/core/testing";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
@@ -12,9 +16,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeStateStore } from "@lando/state-store/service";
+import { persistAppliedPlan } from "../src/applied-state.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("lifecycle-app");
+const missingAppId = AppId.make("missing-lifecycle-app");
 const serviceName = ServiceName.make("web");
 const containerName = "lando-lifecycle-app-web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
@@ -56,8 +63,9 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const target = { app: appId, service: serviceName, plan };
-const missingPlanTarget = { app: appId, service: serviceName };
+const target = { app: appId, service: serviceName };
+const missingPlanTarget = { app: missingAppId, service: serviceName };
+const temporaryDirectories: string[] = [];
 
 const makeFakeApi = (response: PodmanHttpResponse) => {
   const calls: PodmanHttpRequest[] = [];
@@ -72,15 +80,25 @@ const makeFakeApi = (response: PodmanHttpResponse) => {
   return { api, calls };
 };
 
-const makeProvider = (api: PodmanApiClient) =>
-  Effect.runPromise(
+const makeProvider = async (api: PodmanApiClient) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-lifecycle-"));
+  temporaryDirectories.push(stateDir);
+  const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+  await Effect.runPromise(persistAppliedPlan(state, plan));
+  return Effect.runPromise(
     makeRuntimeProvider({
       podmanApi: api,
       platform: "linux",
       env: {},
       conflictDetector: () => Effect.void,
+      appliedPlanState: state,
     }),
   );
+};
+
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })));
+});
 
 const hasStringTag = (value: object): value is { readonly _tag: string } =>
   typeof Reflect.get(value, "_tag") === "string";

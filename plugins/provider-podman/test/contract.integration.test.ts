@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
+import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
-import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {

@@ -2,47 +2,47 @@
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
  * Podman socket.
  *
- * Unlike `@lando/provider-lando`, this plugin does NOT manage a private Podman
- * machine. It targets an existing user-installed rootless Podman (Linux) or a
- * Podman Desktop machine on macOS / Windows.
+ * This plugin does NOT manage a private Podman machine. It targets an existing
+ * user-installed rootless Podman (Linux) or a Podman Desktop machine on macOS /
+ * Windows.
  *
- * Wire format reuses the Podman REST API client and lifecycle ops from
- * `@lando/provider-lando` (apply / inspect / exec / logs / destroy speak the
- * same Podman API). Provider-podman overrides provider identity at the public
- * provider surface and shared helper seams it exposes directly.
+ * Wire format reuses the provider-neutral Podman REST API client and lifecycle
+ * operations from `@lando/container-runtime`.
  */
 import { readFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
+import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { Effect, Layer, Schema, Stream } from "effect";
-
+import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { bringDown } from "@lando/container-runtime/podman/bring-down";
+import { type BringUpOptions, bringUp } from "@lando/container-runtime/podman/bring-up";
+import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
+import { exec, execStream } from "@lando/container-runtime/podman/exec";
+import { inspect } from "@lando/container-runtime/podman/inspect";
+import { logs } from "@lando/container-runtime/podman/logs";
 import {
-  type BringUpOptions,
   MINIMUM_PODMAN_VERSION,
-  type PodmanApiClient,
-  bringDown,
-  bringUp,
-  exec,
-  execStream,
-  getContainerDiedEvents,
-  inspect,
-  logs,
-  makePodmanApiClient as makeUnixPodmanApiClient,
-  podmanComposeKnobs,
   podmanVersionMeetsFloor,
-  postServiceLifecycle,
-  providerStatePath as providerLandoStatePath,
-  pullImage,
-  waitForExit,
-} from "@lando/provider-lando";
-import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
+} from "@lando/container-runtime/podman/version-floor";
+import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
+import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { waitForExit } from "@lando/container-runtime/wait-for-exit";
+import {
+  type ProviderCapabilityError,
+  ProviderInternalError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import {
   type PluginDoctorCheckContribution,
@@ -60,23 +60,28 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
-  type AppSelector,
   LogFileHelperAssets,
   PathsService,
   RuntimeProvider,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect, Layer, Schema, Stream } from "effect";
 
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
-import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
-import { redactDetails, redactString } from "./redact.ts";
+import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
 const PROVIDER_ID = "podman";
 const providerIdBranded = ProviderId.make(PROVIDER_ID);
+const PODMAN_CTX: ProviderErrorContext = {
+  providerId: "podman",
+  remediation:
+    "Run `lando doctor --provider=podman` to inspect the Podman socket, then retry the failing command.",
+};
 
-export { getContainerDiedEvents } from "@lando/provider-lando";
+export const getContainerDiedEvents = (api: PodmanApiClient) =>
+  getRuntimeContainerDiedEvents(api, { ctx: PODMAN_CTX });
 
 type RuntimeProviderWithContainerEvents = RuntimeProviderShape & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
@@ -341,7 +346,6 @@ export const podmanCapabilitiesForPlatform = (
     rootless: true,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
-    // Compose field support matches provider-lando (see that package's justification).
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -410,7 +414,7 @@ export class PodmanMachineNotRunningError extends ProviderUnavailableError {
 const readProviderLandoSetupState = async (
   stateDir: string,
 ): Promise<{ readonly path: string; readonly state: ProviderLandoSetupState } | undefined> => {
-  const path = providerLandoStatePath(stateDir);
+  const path = providerLandoSetupStatePath(stateDir);
   try {
     const raw = await readFile(path, "utf8");
     const parsed = JSON.parse(raw) as unknown;
@@ -481,9 +485,7 @@ const unsupportedSocket = (
 };
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
-  socketPath.startsWith("npipe:")
-    ? makeNamedPipePodmanApiClient(socketPath)
-    : makeUnixPodmanApiClient(socketPath);
+  makeRuntimePodmanApiClient(socketPath, PODMAN_CTX);
 
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
@@ -515,8 +517,7 @@ const makeNoPlanError = (appId: AppId, operation: string) =>
     providerId: PROVIDER_ID,
     operation,
     message: `No applied plan found for app "${appId}". provider-podman does implement ${operation}, but the app must be started first.`,
-    remediation:
-      "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
+    remediation: "Run `lando start` (or `lando app:start`) to start the app, then retry.",
   });
 
 const podmanUnavailable = (operation: string, socketPath: string, cause?: unknown) =>
@@ -669,6 +670,9 @@ export const makeRuntimeProvider = (
         }
         return podmanUnavailable("capabilities", socketPath, cause);
       }
+      if (cause instanceof ProviderInternalError) {
+        return podmanUnavailable("capabilities", socketPath, cause);
+      }
       return cause;
     }),
   );
@@ -679,15 +683,14 @@ export const makeRuntimeProvider = (
     redactDetails,
   });
 
-  const resolvePlan = (target: AppSelector): Effect.Effect<AppPlan | undefined, never> => {
-    if (target.plan !== undefined) return Effect.succeed(target.plan);
-    const cached = plans.get(target.app);
+  const resolvePlan = (app: AppId): Effect.Effect<AppPlan | undefined, never> => {
+    const cached = plans.get(app);
     if (cached !== undefined) return Effect.succeed(cached);
     if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
+    return loadAppliedPlan(options.appliedPlanState, app).pipe(
       Effect.tap((loaded) =>
         Effect.sync(() => {
-          if (loaded !== undefined) plans.set(target.app, loaded);
+          if (loaded !== undefined) plans.set(app, loaded);
         }),
       ),
     );
@@ -704,6 +707,28 @@ export const makeRuntimeProvider = (
       ? Effect.void
       : removeAppliedPlan(options.appliedPlanState, appId)
     ).pipe(Effect.tap(() => Effect.sync(() => plans.delete(appId))));
+
+  const resolvedOps = makeResolvedProviderOps({
+    ctx: PODMAN_CTX,
+    resolvePlan,
+    noPlanError: makeNoPlanError,
+    service: {
+      lifecycle: (plan, target, action) =>
+        postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
+      waitForExit: (plan, target, waitOptions) =>
+        waitForExit(plan, target, {
+          api: podmanApi,
+          ctx: PODMAN_CTX,
+          dialect: libpodWaitDialect,
+          ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+        }),
+      exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+      execStream: (plan, target, command) =>
+        execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+      inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
+    },
+    dataPlane,
+  });
 
   return conflictCheck.pipe(
     Effect.flatMap(() => gatedRuntime),
@@ -726,80 +751,36 @@ export const makeRuntimeProvider = (
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
-        getContainerDiedEvents: getContainerDiedEvents(podmanApi, { providerId: PROVIDER_ID }),
+        getContainerDiedEvents: getContainerDiedEvents(podmanApi),
         buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
         pullArtifact: (spec) =>
           pullImage(podmanApi, spec.ref, {
-            providerId: PROVIDER_ID,
+            ctx: PODMAN_CTX,
+            dialect: libpodPullDialect,
             publish: (event) =>
               options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void,
-          }).pipe(Effect.as({ providerId: providerIdBranded, ref: spec.ref })),
+          }).pipe(
+            Effect.map((result) => ({
+              providerId: providerIdBranded,
+              ref: result.ref,
+              ...(result.digest === undefined ? {} : { digest: result.digest }),
+            })),
+          ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
           bringUp(plan, {
-            podmanApi,
+            api: podmanApi,
+            ctx: PODMAN_CTX,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberPlan(plan))),
-        start: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeNoPlanError(target.app, "start"))
-                : postServiceLifecycle({
-                    api: podmanApi,
-                    plan,
-                    target,
-                    action: "start",
-                    providerId: PROVIDER_ID,
-                  }),
-            ),
-          ),
-        stop: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeNoPlanError(target.app, "stop"))
-                : postServiceLifecycle({
-                    api: podmanApi,
-                    plan,
-                    target,
-                    action: "stop",
-                    providerId: PROVIDER_ID,
-                  }),
-            ),
-          ),
-        restart: (target) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeNoPlanError(target.app, "restart"))
-                : postServiceLifecycle({
-                    api: podmanApi,
-                    plan,
-                    target,
-                    action: "restart",
-                    providerId: PROVIDER_ID,
-                  }),
-            ),
-          ),
-        waitForExit: (target, waitOptions) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              plan === undefined
-                ? Effect.fail(makeNoPlanError(target.app, "waitForExit"))
-                : waitForExit(plan, target, {
-                    podmanApi,
-                    ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
-                  }),
-            ),
-          ),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
+            const plan = yield* resolvePlan(target.app);
             if (plan === undefined) return;
             yield* bringDown(plan, {
-              podmanApi,
+              api: podmanApi,
+              ctx: PODMAN_CTX,
               volumes: destroyOptions.volumes,
               ...(destroyOptions.purgeCaches === undefined
                 ? {}
@@ -809,32 +790,15 @@ export const makeRuntimeProvider = (
               yield* forgetPlan(target.app);
             }
           }),
-        exec: (target, command) =>
-          Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "exec"));
-            return yield* exec(plan, target, command, { podmanApi });
-          }),
-        execStream: (target, command) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                plan === undefined
-                  ? Stream.fail(makeNoPlanError(target.app, "execStream"))
-                  : execStream(plan, target, command, { podmanApi }),
-              ),
-            ),
-          ),
-        run: dataPlane.run,
-        runStream: dataPlane.runStream,
         logs: (target, logOptions) =>
           Stream.unwrap(
-            resolvePlan(target).pipe(
+            resolvePlan(target.app).pipe(
               Effect.map((plan) =>
                 plan === undefined
                   ? Stream.fail(makeNoPlanError(target.app, "logs"))
                   : logs(plan, target, logOptions, {
-                      podmanApi,
+                      api: podmanApi,
+                      ctx: PODMAN_CTX,
                       ...(() => {
                         const logFileAccess =
                           options.logFileAccess ??
@@ -855,13 +819,6 @@ export const makeRuntimeProvider = (
               ),
             ),
           ),
-        inspect: (target) =>
-          Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
-            const snapshot = yield* inspect(plan, target, { podmanApi });
-            return { ...snapshot, providerId: providerIdBranded };
-          }),
         list: (filter) =>
           Effect.gen(function* () {
             const persistedPlans =
@@ -870,35 +827,18 @@ export const makeRuntimeProvider = (
 
             const snapshots = yield* Effect.forEach(allPlans, (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>
-                inspect(plan, { app: plan.id, service: service.name }, { podmanApi }).pipe(
-                  Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded })),
-                ),
+                inspect(
+                  plan,
+                  { app: plan.id, service: service.name },
+                  { api: podmanApi, ctx: PODMAN_CTX },
+                ).pipe(Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded }))),
               ),
             );
 
             const flat = snapshots.flat();
             return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
           }),
-        snapshotVolume: dataPlane.snapshotVolume,
-        restoreVolume: dataPlane.restoreVolume,
-        listVolumes: dataPlane.listVolumes,
-        removeVolume: dataPlane.removeVolume,
-        copyToService: (target, spec) =>
-          resolvePlan(target).pipe(
-            Effect.flatMap((plan) =>
-              dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
-            ),
-          ),
-        copyFromService: (target, spec) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
-              ),
-            ),
-          ),
-        exportArtifact: dataPlane.exportArtifact,
-        importArtifact: dataPlane.importArtifact,
+        ...resolvedOps,
       }),
     ),
   );
@@ -946,7 +886,7 @@ const conflictCheck: PluginDoctorCheckContribution = {
             platform: input.platform,
             conflictKind: "provider-lando-podman-socket",
             socketPath,
-            providerLandoStatePath: providerLandoStatePath(stateDir),
+            providerLandoStatePath: providerLandoSetupStatePath(stateDir),
           },
           solutions: [
             {
@@ -991,4 +931,4 @@ export const plugin = definePlugin({
   doctorChecks: [conflictCheck],
 });
 
-export type { PodmanApiClient } from "@lando/provider-lando";
+export type { PodmanApiClient } from "@lando/container-runtime/engine-api";

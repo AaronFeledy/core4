@@ -110,7 +110,6 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
     writePackage("plugins/provider-podman", "@lando/provider-podman", {
       dependencies: {
         "@lando/container-runtime": "workspace:*",
-        "@lando/provider-lando": "workspace:*",
         "@lando/sdk": "workspace:*",
       },
     }),

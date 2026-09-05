@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
+import { makePluginStateStore } from "@lando/core/testing";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import {
   AbsolutePath,
@@ -10,6 +14,8 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeStateStore } from "@lando/state-store/service";
+import { persistAppliedPlan } from "../src/applied-state.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("podman-wait-app");
@@ -53,6 +59,7 @@ const plan: AppPlan = {
 };
 
 test("waitForExit forwards cancellation to the Podman wait request", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-wait-"));
   const controller = new AbortController();
   let observedSignal: AbortSignal | undefined;
   const podmanApi: PodmanApiClient = {
@@ -64,21 +71,28 @@ test("waitForExit forwards cancellation to the Podman wait request", async () =>
         return { status: 200, body: "0" };
       }),
   };
-  const provider = await Effect.runPromise(
-    makeRuntimeProvider({
-      podmanApi,
-      platform: "linux",
-      env: {},
-      conflictDetector: () => Effect.void,
-    }),
-  );
+  try {
+    const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+    await Effect.runPromise(persistAppliedPlan(state, plan));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        podmanApi,
+        platform: "linux",
+        env: {},
+        conflictDetector: () => Effect.void,
+        appliedPlanState: state,
+      }),
+    );
 
-  const result = await Effect.runPromise(
-    Effect.scoped(
-      provider.waitForExit({ app: appId, service: serviceName, plan }, { signal: controller.signal }),
-    ),
-  );
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        provider.waitForExit({ app: appId, service: serviceName }, { signal: controller.signal }),
+      ),
+    );
 
-  expect(result).toEqual({ exitCode: 0 });
-  expect(observedSignal).toBe(controller.signal);
+    expect(result).toEqual({ exitCode: 0 });
+    expect(observedSignal).toBe(controller.signal);
+  } finally {
+    await rm(stateDir, { recursive: true });
+  }
 });

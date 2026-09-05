@@ -95,7 +95,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: ["@lando/core"],
   },
   "@lando/provider-podman": {
-    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/provider-lando"],
+    dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: ["@lando/core"],
   },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },

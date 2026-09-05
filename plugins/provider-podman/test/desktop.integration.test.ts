@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { Cause, Effect, Exit, Stream } from "effect";
 import { DateTime } from "effect";
 
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "@lando/container-runtime/engine-api";
 import {
   PodmanMachineNotRunningError,
   makeProviderLayer,
