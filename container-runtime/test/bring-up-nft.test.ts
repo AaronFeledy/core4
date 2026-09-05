@@ -97,7 +97,7 @@ describe("bringUp start-failure remediation hook", () => {
 
   test("Given a hook, When a service fails to start, Then it receives the service, message, and details", async () => {
     // Given
-    const seen: Array<{ service: string; message: string; details?: unknown }> = [];
+    const seen: Array<{ service?: string; message: string; details?: unknown }> = [];
 
     // When
     await startFailure({
@@ -157,6 +157,51 @@ describe("bringUp start-failure remediation hook", () => {
     // Then
     expect(messages[0]).toContain('unable to execute "nft"');
     expect(error.remediation).toBe("provision nft via lando setup");
+  });
+});
+
+describe("bringUp network-create remediation hook", () => {
+  const networkCreateFailingApi: EngineHttpApi = {
+    request: (request) =>
+      Effect.succeed(
+        request.method === "GET" && request.path.startsWith("/networks/")
+          ? { status: 404, body: "{}" }
+          : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
+      ),
+  };
+
+  test("Given a hook, When network creation fails, Then the hook is consulted without a service and its answer wins", async () => {
+    // Given
+    const seen: Array<{ service?: string; message: string }> = [];
+    const startFailureRemediation: BringUpOptions["startFailureRemediation"] = (input) => {
+      seen.push({
+        message: input.message,
+        ...(input.service === undefined ? {} : { service: input.service }),
+      });
+      return "hook remediation";
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      bringUp(plan, { api: networkCreateFailingApi, ctx, startFailureRemediation }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(error.operation).toBe("bringUp.network");
+    expect(error.remediation).toBe("hook remediation");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.service).toBeUndefined();
+    expect(seen[0]?.message).toContain("nft");
+  });
+
+  test("Given no hook, When network creation fails, Then the neutral APPLY remediation is used", async () => {
+    // Given / When
+    const error = await Effect.runPromise(
+      bringUp(plan, { api: networkCreateFailingApi, ctx }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(error.remediation).toBe(APPLY_REMEDIATION);
   });
 });
 

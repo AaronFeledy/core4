@@ -70,9 +70,13 @@ interface StartResult {
   readonly changed: boolean;
 }
 
-/** Provider-supplied remediation for a service start failure; `undefined` keeps the neutral default. */
+/**
+ * Provider-supplied remediation for a bring-up failure; `undefined` keeps the
+ * neutral default. `service` is absent for app-scoped steps such as network
+ * creation, whose failures still deserve provider-specific diagnosis.
+ */
 export type StartFailureRemediation = (input: {
-  readonly service: string;
+  readonly service?: string;
   readonly message: string;
   readonly details?: unknown;
 }) => string | undefined;
@@ -326,7 +330,7 @@ const ensureNetwork = (
               operation: "bringUp.network",
               message,
               details: redactDetails(details),
-              remediation: APPLY_REMEDIATION,
+              remediation: deps.options.startFailureRemediation?.({ message, details }) ?? APPLY_REMEDIATION,
             }),
           );
         }),

@@ -255,6 +255,23 @@ describe("resolved provider operations", () => {
     ]);
   });
 
+  test("copies through the data plane with a bare target when no plan is applied", async () => {
+    // Given: nothing applied, so the data plane owns the missing-plan diagnosis.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls, () => Effect.succeed(undefined)));
+    const copyIn = { sourcePath: AbsolutePath.make("/tmp/in"), targetPath: PortablePath.make("/tmp/out") };
+    const copyOut = { sourcePath: PortablePath.make("/tmp/out") };
+
+    // When
+    await Effect.runPromise(Effect.scoped(ops.copyToService(target, copyIn)));
+    await Effect.runPromise(Effect.scoped(ops.copyFromService(target, copyOut).pipe(Stream.runDrain)));
+
+    // Then: before still runs and the selector reaches the data plane without a plan.
+    expect(calls.map((call) => call.name)).toEqual(["before", "copyToService", "before", "copyFromService"]);
+    const copyCalls = calls.filter(({ name }) => name === "copyToService" || name === "copyFromService");
+    expect(copyCalls.map((call) => call.args[0])).toEqual([target, target]);
+  });
+
   test("fails every data-plane member as unavailable when no data plane exists", async () => {
     // Given
     const ops = makeResolvedProviderOps(makeInput([], undefined, false));

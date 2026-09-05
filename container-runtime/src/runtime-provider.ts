@@ -107,6 +107,12 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       ? resolve(target.app, operation, delegate)
       : before.pipe(Effect.flatMap(() => delegate(directPlan)));
   };
+  const withOptionalPlan = (target: ExecTarget): Effect.Effect<ExecTarget> =>
+    target.plan === undefined
+      ? input
+          .resolvePlan(target.app)
+          .pipe(Effect.map((plan) => (plan === undefined ? target : { ...target, plan })))
+      : Effect.succeed(target);
   const resolveTargetStream = <A, E extends ProviderError, R>(
     target: AppSelector,
     operation: string,
@@ -158,17 +164,21 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     copyToService: (target, spec) =>
       requireDataPlane("copyToService").pipe(
         Effect.flatMap((dataPlane) =>
-          resolveTarget(target, "copyToService", (plan) =>
-            dataPlane.copyToService({ ...target, plan }, spec),
+          withOptionalPlan(target).pipe(
+            Effect.flatMap((resolved) =>
+              before.pipe(Effect.flatMap(() => dataPlane.copyToService(resolved, spec))),
+            ),
           ),
         ),
       ),
     copyFromService: (target, spec) =>
       Stream.unwrap(
         requireDataPlane("copyFromService").pipe(
-          Effect.map((dataPlane) =>
-            resolveTargetStream(target, "copyFromService", (plan) =>
-              dataPlane.copyFromService({ ...target, plan }, spec),
+          Effect.flatMap((dataPlane) =>
+            withOptionalPlan(target).pipe(
+              Effect.flatMap((resolved) =>
+                before.pipe(Effect.map(() => dataPlane.copyFromService(resolved, spec))),
+              ),
             ),
           ),
         ),

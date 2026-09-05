@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
+import { EventEmitter } from "node:events";
+
 import {
+  type ConnectableSocket,
   ContainerTransportError,
   type SocketHttpConnection,
+  connectSocket,
+  decodeChunkedBody,
+  flushChunkedBufferAtEnd,
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
@@ -340,5 +346,49 @@ describe("socket HTTP transport", () => {
       "\\\\.\\pipe\\podman-machine-default",
     );
     expect(normalizeNamedPipePath("/tmp/podman.sock")).toBe("/tmp/podman.sock");
+  });
+});
+
+describe("chunked body end-of-stream handling", () => {
+  test("keeps the final chunk even when the trailing CRLF is missing at end-of-stream", () => {
+    const chunks = flushChunkedBufferAtEnd(bytes("5\r\nhello"));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+
+  test("keeps complete chunked frames unchanged", () => {
+    const chunks = flushChunkedBufferAtEnd(bytes("5\r\nhello\r\n0\r\n\r\n"));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+
+  test("decodes the final chunk when the trailing CRLF is missing at end-of-stream", async () => {
+    const chunks = await Array.fromAsync(decodeChunkedBody(stdinBytes("5\r\nhello")));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+});
+
+describe("socket connection handshake", () => {
+  test("destroys the socket when the connection fails before connect", async () => {
+    class FailingSocket extends EventEmitter implements ConnectableSocket {
+      destroyedByClient = false;
+
+      destroy(): this {
+        this.destroyedByClient = true;
+        return this;
+      }
+    }
+    const socket = new FailingSocket();
+    const failure = new Error("connect ENOENT");
+
+    const connected = connectSocket(socket);
+    socket.emit("error", failure);
+
+    await expect(connected).rejects.toBe(failure);
+    expect(socket.destroyedByClient).toBe(true);
   });
 });
