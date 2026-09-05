@@ -53,9 +53,6 @@ const setupFlags = (cell: PlatformReadinessCell): string => {
   return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
 };
 
-const isolateEnv = `    env:
-      COMPOSER_PROCESS_TIMEOUT: "2000"`;
-
 // GitHub does not expose the `runner` context to job-level `env:`, so these
 // roots are exported from the first step instead. Declaring them at job level
 // makes GitHub reject the entire workflow file.
@@ -160,7 +157,8 @@ const renderJob = (cell: PlatformReadinessCell): string => {
   return `  drupal-journey-${cell.id}:
 ${renderCadenceIf(cell.cadence)}    runs-on: ${renderRunsOn(cell.runsOn)}
     timeout-minutes: 90
-${isolateEnv}
+    env:
+      COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
       - uses: actions/checkout@v5
 

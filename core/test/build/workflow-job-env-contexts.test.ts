@@ -18,7 +18,10 @@ const CONTEXTS_INVALID_AT_JOB_LEVEL = ["runner", "steps", "job", "env"] as const
 const EXPRESSION = /\$\{\{(?<body>.*?)\}\}/gu;
 
 type WorkflowJob = { readonly env?: Record<string, unknown> };
-type Workflow = { readonly jobs?: Record<string, WorkflowJob> };
+type Workflow = {
+  readonly name?: unknown;
+  readonly jobs?: Record<string, WorkflowJob>;
+};
 
 const contextsUsedIn = (value: string): ReadonlyArray<string> =>
   [...value.matchAll(EXPRESSION)].flatMap((match) => {
@@ -48,11 +51,7 @@ describe("workflow job-level env contexts", () => {
       Object.entries(workflow.jobs ?? {}).flatMap(([jobId, job]) =>
         Object.entries(job.env ?? {}).flatMap(([key, value]) =>
           contextsUsedIn(String(value))
-            .filter((context) =>
-              CONTEXTS_INVALID_AT_JOB_LEVEL.includes(
-                context as (typeof CONTEXTS_INVALID_AT_JOB_LEVEL)[number],
-              ),
-            )
+            .filter((context) => CONTEXTS_INVALID_AT_JOB_LEVEL.some((invalid) => invalid === context))
             .map((context) => `${file} job ${jobId} env.${key} uses ${context}.*`),
         ),
       ),
@@ -69,7 +68,7 @@ describe("workflow job-level env contexts", () => {
 
     // Then: every workflow declares a name, and never the raw file path.
     for (const [file, workflow] of workflows) {
-      const name = (workflow as { readonly name?: unknown }).name;
+      const name = workflow.name;
       expect(typeof name === "string" && name.length > 0).toBe(true);
       expect(name).not.toContain(".github/workflows/");
       expect(name).not.toBe(file);
