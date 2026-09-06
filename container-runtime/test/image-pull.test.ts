@@ -357,6 +357,39 @@ describe("pull failure handling", () => {
     expect(JSON.stringify(failure)).not.toContain("s3cr3tPass");
   });
 
+  test("re-tags non-2xx stream failures as pull failures with registry-auth remediation", async () => {
+    // Given: the stream transport rejected before the pull loop saw any frame.
+    const transportError = new ProviderUnavailableError({
+      providerId: "docker",
+      operation: "docker-api",
+      message: "Container runtime stream request failed with HTTP 401.",
+      details: {
+        method: "POST",
+        path: "/images/create?fromImage=registry.internal%2Fteam%2Fimg&tag=1.0",
+        status: 401,
+        body: '{"message":"unauthorized: authentication required"}',
+      },
+    });
+
+    // When
+    const failure = await Effect.runPromise(
+      pullImage({ stream: () => Stream.fail(transportError) }, "registry.internal/team/img:1.0", {
+        ctx: { providerId: "docker", remediation: "docker remediation" },
+        dialect: dockerPullDialect,
+      }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.providerId).toBe("docker");
+    expect(failure.operation).toBe("pullArtifact");
+    expect(failure.message).toBe(
+      "Container image pull failed: HTTP 401. unauthorized: authentication required",
+    );
+    expect(failure.details).toMatchObject({ failureKind: "registry-auth" });
+    expect(failure.remediation).toContain("`docker logout`");
+  });
+
   test("preserves stream transport failures", async () => {
     // Given
     const transportError = new ProviderUnavailableError({

@@ -6,7 +6,7 @@ import { ImagePullProgressEvent } from "@lando/sdk/events";
 import type { PullDialect } from "./dialect.ts";
 import type { EngineHttpApi, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi } from "./engine-errors.ts";
-import { redactDetails, redactString } from "./redact.ts";
+import { redactDetails, redactString, withApiReason } from "./redact.ts";
 
 const REGISTRY_AUTH_REMEDIATION =
   "The container engine may be using stale registry credentials from ${XDG_RUNTIME_DIR}/containers/auth.json, $REGISTRY_AUTH_FILE, $DOCKER_CONFIG, or ~/.docker/config.json. Run `podman logout --all` or `docker logout`, or remove the stale `auths` entry for the affected registry, then retry the pull.";
@@ -100,7 +100,7 @@ const pullFailure = (
   const failureKind = classifyPullFailure(message);
   return new ProviderUnavailableError({
     providerId: ctx.providerId,
-    operation: "pullImage",
+    operation: "pullArtifact",
     message: redactString(`Container image pull failed: ${message}`),
     details: redactDetails({
       reference,
@@ -112,6 +112,28 @@ const pullFailure = (
   });
 };
 
+const httpStatusOf = (details: unknown): number | undefined => {
+  if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
+  return typeof details.status === "number" ? details.status : undefined;
+};
+
+/**
+ * The stream transport rejects non-2xx responses before the pull loop sees them. Re-tag
+ * those as pull failures so the status and engine reason reach `classifyPullFailure`
+ * (HTTP 401 → registry-auth remediation) exactly like the buffered path. Connect and
+ * parse failures carry no status and pass through untouched.
+ */
+const pullFailureFromTransport = (
+  ctx: ProviderErrorContext,
+  reference: string,
+  error: ProviderUnavailableError | ProviderInternalError,
+): ProviderUnavailableError | ProviderInternalError => {
+  const status = httpStatusOf(error.details);
+  return status === undefined
+    ? error
+    : pullFailure(ctx, reference, withApiReason(`HTTP ${status}.`, error.details), error.details);
+};
+
 const parseResponseJson = (
   response: EngineHttpResponse,
   ctx: ProviderErrorContext,
@@ -121,7 +143,7 @@ const parseResponseJson = (
     catch: (cause) =>
       new ProviderInternalError({
         providerId: ctx.providerId,
-        operation: "pullImage",
+        operation: "pullArtifact",
         message: "Container engine API returned malformed JSON.",
         details: redactDetails(response),
         remediation: ctx.remediation,
@@ -162,6 +184,7 @@ export const pullImage = <E = never>(
       const decoder = new TextDecoder();
       const buffer = yield* Ref.make("");
       yield* api.stream(buildImagePullRequest(reference, options.dialect)).pipe(
+        Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error)),
         Stream.runForEach((chunk) =>
           Effect.gen(function* () {
             const text = (yield* Ref.get(buffer)) + decoder.decode(chunk, { stream: true });
@@ -176,15 +199,17 @@ export const pullImage = <E = never>(
     } else if (api.request !== undefined) {
       const response = yield* api.request(buildImagePullRequest(reference, options.dialect));
       if (response.status < 200 || response.status >= 300) {
-        return yield* Effect.fail(pullFailure(options.ctx, reference, `HTTP ${response.status}.`, response));
+        return yield* Effect.fail(
+          pullFailure(options.ctx, reference, withApiReason(`HTTP ${response.status}.`, response), response),
+        );
       }
       yield* Effect.forEach(response.body.split("\n"), emitFrame, { discard: true });
     } else {
       return yield* Effect.fail(
         missingApi(
           options.ctx,
-          "pullImage",
-          `provider-${options.ctx.providerId} pullImage requires a container engine API client.`,
+          "pullArtifact",
+          `provider-${options.ctx.providerId} pullArtifact requires a container engine API client.`,
         ),
       );
     }
@@ -196,8 +221,8 @@ export const pullImage = <E = never>(
       return yield* Effect.fail(
         missingApi(
           options.ctx,
-          "pullImage",
-          `provider-${options.ctx.providerId} pullImage inspect requires a container engine API client.`,
+          "pullArtifact",
+          `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
         ),
       );
     }
