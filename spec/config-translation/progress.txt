@@ -77,3 +77,15 @@
 - Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch awaits the Push step (no PR yet).
 - Verification: typecheck, lint, check:boundaries passed; 165 spot-check tests across 10 SDK schema, landofile, contract, exports, and CLI harness files passed.
 ---
+
+## 2026-09-06 17:15 - Babysit
+- PR: none (branch `us-608a-authoring-translation-contracts` not pushed to origin)
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:25 - US-608A
+- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch still awaits the Push step (no PR yet).
+- Verification: typecheck, lint passed; 160 spot-check tests across 9 SDK schema, landofile, contract, exports, and CLI harness files passed.
+---
