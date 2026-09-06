@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
 - `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `RouterService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
 - Replaces the unreleased PluginContribution.proxyServices key with the normative typed routerServices manifest entries, replaces the unreleased ProxyService tag (@lando/core/ProxyService) with RouterService (@lando/core/RouterService), replaces the unreleased ProxyServiceContribution public schema with RouterServiceContribution, and replaces GlobalConfig.defaultProxyService (and TemplateRenderContext.global.defaultProxyService) with defaultRouterService. The removed tag, contribution key, public schema, and config spelling have no alias or compatibility path.
 - `@lando/sdk/errors` additively exports `ConfigExpressionError` (`message`, `expression`, `path`, `filePath`, `remediation`) for plan-time Landofile config expression failures such as authored route hostnames. It registers no JSON Schema. `AppPlanner.plan`'s error channel additively gains the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match.
@@ -149,6 +150,39 @@
 
 ## Additive schema exports
 
+- `AUTHORING_EXPRESSION_SCOPES`
+- `AuthoringExpression`
+- `AuthoringExpressionExpectedType`
+- `AuthoringExpressionForm`
+- `authoringExpressionSlot`
+- `classifyAuthoringSource`
+- `isPlainAuthoringString`
+- `deriveAuthoringAst`
+- `LandofileAuthoringShape`
+- `LandofileAuthoringFragment`
+- `LandofileAuthoringShapeWire`
+- `LandofileAuthoringFragmentWire`
+- `ConfigTranslateAnswerValue`
+- `ConfigTranslateConfidence`
+- `ConfigTranslateDeletion`
+- `ConfigTranslateDetectInput`
+- `ConfigTranslateDiagnostic`
+- `ConfigTranslateDiagnosticKind`
+- `ConfigTranslateDocument`
+- `ConfigTranslateDocumentBytes`
+- `ConfigTranslateDocumentSetInput`
+- `ConfigTranslateEncodeInput`
+- `ConfigTranslateEncodeResult`
+- `ConfigTranslateInput`
+- `ConfigTranslateLayerFragment`
+- `ConfigTranslateMatch`
+- `ConfigTranslateMode`
+- `ConfigTranslateOutput`
+- `ConfigTranslateRecipeRequestInput`
+- `ConfigTranslateResult`
+- `ConfigTranslateSecretReference`
+- `ConfigTranslateSourceId`
+- `ConfigTranslateSpan`
 - `PluginDoctorReport`
 - `FileRef`
 - `ImportRef`

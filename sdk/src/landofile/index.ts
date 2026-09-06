@@ -2,6 +2,11 @@
 // filesystem, or CLI). `@lando/core/landofile` re-exports for in-tree writers.
 
 export { emitLandofileYaml, emitLandofileYamlEither } from "./emit.ts";
+export {
+  declaredConfigTranslateSourceIds,
+  validateConfigTranslateInput,
+  validateConfigTranslateResult,
+} from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
 export {
   detectLandofileTags,

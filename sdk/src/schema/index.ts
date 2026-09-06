@@ -1,6 +1,7 @@
 export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
+export * from "./config-translate.ts";
 export * from "./certificate-authority-contribution.ts";
 export {
   ComposeProjectFieldCapabilities,
@@ -97,6 +98,8 @@ export { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "../events/global.
 export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./landofile.ts";
+export * from "./landofile-authoring-expression.ts";
+export * from "./landofile-authoring.ts";
 export * from "./landofile-reference.ts";
 export * from "./log-level.ts";
 export * from "./log-source.ts";

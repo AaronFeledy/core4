@@ -6,6 +6,7 @@ import { Either, Schema } from "effect";
 import {
   JSON_SCHEMA_NAMES,
   type JsonSchemaName,
+  authoringExpressionSlot,
   getJsonSchema,
   publicSchemaRegistry,
 } from "../../src/schema/index.ts";
@@ -19,6 +20,33 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  AuthoringExpression: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  AuthoringExpressionExpectedType: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileAuthoringShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileAuthoringFragment: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileAuthoringShapeWire: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileAuthoringFragmentWire: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateAnswerValue: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateConfidence: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDeletion: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDetectInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDiagnostic: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDiagnosticKind: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDocument: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDocumentBytes: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateDocumentSetInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateEncodeInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateEncodeResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateLayerFragment: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateMatch: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateMode: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateOutput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateRecipeRequestInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateSecretReference: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateSourceId: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateSpan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DeprecationNotice: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DeprecationUse: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileExpressionParseError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -461,7 +489,28 @@ const materializeJsonSchemaFixture = (root: JsonSchemaNode, node: JsonSchemaNode
   return null;
 };
 
+const documentSetFixture = {
+  _tag: "landofile-document-set",
+  documents: [],
+  mode: "full",
+  selectedSourceIds: [],
+  currentLowerV4Fragments: [],
+  writableLayerIds: ["canonical"],
+} as const;
+
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  AuthoringExpression: Schema.decodeUnknownSync(authoringExpressionSlot("string"))("{{ env.NAME }}"),
+  ConfigTranslateDocumentBytes: "bmFtZTogZGVtbwo=",
+  ConfigTranslateDocument: {
+    sourceId: "lando.yml",
+    layerId: "canonical",
+    mediaType: "application/yaml",
+    contentDigest: `sha256:${"a".repeat(64)}`,
+    bytes: "bmFtZTogZGVtbwo=",
+  },
+  ConfigTranslateDocumentSetInput: documentSetFixture,
+  ConfigTranslateInput: documentSetFixture,
+  ConfigTranslateDetectInput: { documents: [] },
   CliCommandInitEvent: {
     _tag: "cli-meta:version-init",
     commandId: "meta:version",

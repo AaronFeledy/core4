@@ -1,12 +1,15 @@
-import { Effect, Either, Exit, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
-import { emitLandofileYamlEither, parseLandofile } from "../landofile/index.ts";
+import { ConfigTranslateError } from "../errors/config.ts";
+import { validateConfigTranslateInput, validateConfigTranslateResult } from "../landofile/index.ts";
+import { ConfigTranslateResult } from "../schema/config-translate.ts";
 import type {
+  ConfigTranslateDetectInput,
   ConfigTranslateInput,
-  ConfigTranslateMatch,
   ConfigTranslatorShape,
-  LandofileFragment,
 } from "../services/index.ts";
+import { type ConfigTranslatorEncodeSample, checkAuthoringLaws } from "./config-translator-authoring.ts";
+export type { ConfigTranslatorEncodeSample } from "./config-translator-authoring.ts";
 import { ContractFailure, isNonEmptyString } from "./_shared.ts";
 
 const stableUnknown = (value: unknown): unknown => {
@@ -38,40 +41,16 @@ const configTranslatorContractFailure = (assertion: string, details?: unknown): 
 const requireConfigTranslatorContract = (condition: boolean, assertion: string, details?: unknown) =>
   condition ? Effect.void : Effect.fail(configTranslatorContractFailure(assertion, details));
 
-/**
- * Drives any `ConfigTranslator` through the published config-translator contract:
- * `detect()` is authoritative; `translate()` returns a schema-valid
- * `LandofileShape` fragment plus diagnostics (never an `AppPlan`, never a file
- * mutation/provider contact/plugin install); output is deterministic; and the
- * emitted fragment round-trips through the canonical Landofile serializer.
- * `translator` and `matchingInput` are required; the remaining fields
- * are optional probes asserted only when the harness supplies the hook.
- */
 export interface ConfigTranslatorContractHarness {
-  /** Optional label woven into failure messages. */
   readonly name?: string;
-  /** The translator under test. */
   readonly translator: ConfigTranslatorShape;
-  /** An input the translator detects and translates. */
-  readonly matchingInput: ConfigTranslateInput;
-  /**
-   * Optional: an input the translator must NOT detect, proving detection is
-   * authoritative (advisory globs alone never force translation).
-   */
-  readonly nonMatchingInput?: ConfigTranslateInput;
-  /** Optional: the exact fragment the translator must emit for `matchingInput`. */
-  readonly expectedFragment?: LandofileFragment;
-  /**
-   * Optional: an options schema and an invalid options value. When supplied the
-   * suite asserts invalid options are rejected before `translate` runs.
-   */
-  readonly optionsSchema?: Schema.Schema.AnyNoContext;
-  /** Optional: an options value that must fail `optionsSchema` decode. */
-  readonly invalidOptions?: unknown;
-  /**
-   * Optional: a snapshot/assert pair proving `translate` performed no external
-   * mutation (no file write, provider contact, or plugin install).
-   */
+  readonly translateInput: ConfigTranslateInput;
+  readonly expectedResult?: ConfigTranslateResult;
+  readonly detectInput?: ConfigTranslateDetectInput;
+  readonly nonMatchingDetectInput?: ConfigTranslateDetectInput;
+  readonly encodeSamples?: ReadonlyArray<ConfigTranslatorEncodeSample>;
+  readonly decodeAuthoring?: (text: string) => Effect.Effect<unknown, unknown>;
+  readonly completeMerge?: boolean;
   readonly mutationProbe?: {
     readonly snapshot: Effect.Effect<unknown>;
     readonly assertUnchanged: (before: unknown) => Effect.Effect<boolean>;
@@ -104,154 +83,69 @@ export const runConfigTranslatorContractSuite = (
     const mutationBaseline =
       harness.mutationProbe === undefined ? undefined : yield* harness.mutationProbe.snapshot;
 
-    // --- detect() is authoritative for the matching input ---
-    const detectInput = { appRoot: harness.matchingInput.appRoot, files: harness.matchingInput.files };
-    const matches = yield* translator
-      .detect(detectInput)
-      .pipe(
-        Effect.mapError((cause) =>
-          configTranslatorContractFailure(`${label}: detect(matching) resolves`, cause),
-        ),
+    const resolve = <A, E>(effect: Effect.Effect<A, E>) =>
+      effect.pipe(
+        Effect.mapError((cause) => configTranslatorContractFailure(`${label}: operation resolves`, cause)),
       );
-    yield* requireConfigTranslatorContract(
-      matches.length > 0,
-      `${label}: detect returns at least one match for the matching input`,
-      matches,
-    );
-    yield* requireConfigTranslatorContract(
-      matches.every((match: ConfigTranslateMatch) => isNonEmptyString(match.translator)),
-      `${label}: each detect match names its translator`,
-      matches,
-    );
-
-    // --- detect() is authoritative for a non-matching input ---
-    if (harness.nonMatchingInput) {
-      const nonMatches = yield* translator
-        .detect({ appRoot: harness.nonMatchingInput.appRoot, files: harness.nonMatchingInput.files })
-        .pipe(
-          Effect.mapError((cause) =>
-            configTranslatorContractFailure(`${label}: detect(non-matching) resolves`, cause),
+    if (harness.detectInput) {
+      const matches = yield* resolve(translator.detect(harness.detectInput));
+      const declared = new Set(harness.detectInput.documents.map(({ sourceId }) => sourceId));
+      yield* requireConfigTranslatorContract(
+        matches.length > 0 &&
+          matches.every(
+            (match) => match.translator === translator.id && match.sourceIds.every((id) => declared.has(id)),
           ),
-        );
+        `${label}: detection names this translator and declared sources`,
+        matches,
+      );
+      const repeated = yield* resolve(translator.detect(harness.detectInput));
       yield* requireConfigTranslatorContract(
-        nonMatches.length === 0,
-        `${label}: detect returns no match for the non-matching input (globs alone never force translation)`,
-        nonMatches,
+        stableJson(matches) === stableJson(repeated),
+        `${label}: detection is deterministic`,
+        { matches, repeated },
       );
     }
-
-    // --- translate() returns a fragment + diagnostics ---
-    const result = yield* translator
-      .translate(harness.matchingInput)
-      .pipe(
-        Effect.mapError((cause) =>
-          configTranslatorContractFailure(`${label}: translate(matching) resolves`, cause),
-        ),
-      );
-    yield* requireConfigTranslatorContract(
-      typeof result.fragment === "object" && result.fragment !== null && !Array.isArray(result.fragment),
-      `${label}: translate returns an object fragment (never an AppPlan/array)`,
-      result.fragment,
-    );
-    yield* requireConfigTranslatorContract(
-      !("plan" in result.fragment) && !("appId" in result.fragment),
-      `${label}: fragment is a LandofileShape fragment, not an AppPlan`,
-      result.fragment,
-    );
-    yield* requireConfigTranslatorContract(
-      Array.isArray(result.diagnostics),
-      `${label}: translate returns diagnostics`,
-      result.diagnostics,
-    );
-
-    if (harness.expectedFragment) {
+    if (harness.nonMatchingDetectInput) {
+      const matches = yield* resolve(translator.detect(harness.nonMatchingDetectInput));
       yield* requireConfigTranslatorContract(
-        stableJson(result.fragment) === stableJson(harness.expectedFragment),
-        `${label}: translate emits the expected fragment`,
-        { actual: result.fragment, expected: harness.expectedFragment },
+        matches.length === 0,
+        `${label}: non-matching detection is empty`,
+        matches,
       );
     }
-
-    // --- translate() is deterministic ---
-    const result2 = yield* translator
-      .translate(harness.matchingInput)
-      .pipe(
-        Effect.mapError((cause) =>
-          configTranslatorContractFailure(`${label}: repeat translate resolves`, cause),
-        ),
-      );
+    yield* resolve(validateConfigTranslateInput(harness.translateInput));
+    const result = yield* resolve(translator.translate(harness.translateInput));
     yield* requireConfigTranslatorContract(
-      stableJson(result.fragment) === stableJson(result2.fragment),
-      `${label}: translate is deterministic for identical input`,
-      { first: result.fragment, second: result2.fragment },
+      !("plan" in result) && !("appId" in result),
+      `${label}: result is not an AppPlan`,
+      result,
     );
-
-    // --- the emitted fragment round-trips through the canonical serializer ---
-    const emitEither = emitLandofileYamlEither(result.fragment as Record<string, unknown>);
-    let emitted: string;
-    if (Either.isLeft(emitEither)) {
-      yield* requireConfigTranslatorContract(
-        false,
-        `${label}: emitted fragment is serializable by the canonical Landofile emitter`,
-        emitEither.left,
-      );
-      emitted = "";
-    } else {
-      emitted = emitEither.right;
-    }
-    const reparsed = yield* parseLandofile({ file: "lando.yml", content: emitted, cwd: "/" }).pipe(
-      Effect.mapError((cause) =>
-        configTranslatorContractFailure(
-          `${label}: emitted fragment parses through the canonical serializer`,
-          cause,
-        ),
+    yield* resolve(Schema.encodeUnknownEither(ConfigTranslateResult)(result, { onExcessProperty: "error" }));
+    yield* resolve(
+      validateConfigTranslateResult(harness.translateInput, result).pipe(
+        Either.mapLeft((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
       ),
     );
+    const repeated = yield* resolve(translator.translate(harness.translateInput));
     yield* requireConfigTranslatorContract(
-      stableJson(reparsed) === stableJson(result.fragment),
-      `${label}: emitted fragment round-trips through the canonical Landofile serializer`,
-      { reparsed, fragment: result.fragment, emitted },
+      stableJson(result) === stableJson(repeated),
+      `${label}: translation and diagnostics are deterministic`,
+      { result, repeated },
     );
-
-    // --- optional: options are validated before translate ---
-    if (harness.optionsSchema && harness.invalidOptions !== undefined) {
-      const decoded = Schema.decodeUnknownEither(harness.optionsSchema)(harness.invalidOptions);
+    if (harness.expectedResult !== undefined) {
       yield* requireConfigTranslatorContract(
-        Either.isLeft(decoded),
-        `${label}: invalid options fail schema decode before translate`,
-        decoded,
-      );
-
-      const invalidOptionsRecord: Record<string, unknown> =
-        typeof harness.invalidOptions === "object" &&
-        harness.invalidOptions !== null &&
-        !Array.isArray(harness.invalidOptions)
-          ? (harness.invalidOptions as Record<string, unknown>)
-          : { value: harness.invalidOptions };
-      const invalidInput: ConfigTranslateInput = {
-        ...harness.matchingInput,
-        options: invalidOptionsRecord,
-      };
-      const invalidTranslateExit = yield* Effect.exit(translator.translate(invalidInput));
-      yield* requireConfigTranslatorContract(
-        Exit.isFailure(invalidTranslateExit),
-        `${label}: translate rejects invalid options (must not succeed before schema validation)`,
-        invalidTranslateExit,
+        stableJson(result) === stableJson(harness.expectedResult),
+        `${label}: translation equals expected result`,
+        { result, expected: harness.expectedResult },
       );
     }
+    yield* resolve(checkAuthoringLaws(harness, result, stableJson));
 
     // --- optional: translate performed no external mutation ---
     if (harness.mutationProbe) {
-      yield* translator
-        .translate(harness.matchingInput)
-        .pipe(
-          Effect.mapError((cause) =>
-            configTranslatorContractFailure(`${label}: mutation-probe translate resolves`, cause),
-          ),
-        );
-      const unchanged = yield* harness.mutationProbe.assertUnchanged(mutationBaseline);
+      yield* resolve(translator.translate(harness.translateInput));
       yield* requireConfigTranslatorContract(
-        unchanged,
+        yield* harness.mutationProbe.assertUnchanged(mutationBaseline),
         `${label}: translate did not mutate files / contact providers / install plugins`,
         mutationBaseline,
       );

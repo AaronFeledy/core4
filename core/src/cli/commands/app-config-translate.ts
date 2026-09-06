@@ -1,5 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, extname, join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -12,22 +11,33 @@ import {
   type NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import type { AbsolutePath, PortablePath } from "@lando/sdk/schema";
-import { LandofileShape } from "@lando/sdk/schema";
-import type { ConfigTranslateMatch, ConfigTranslatorShape } from "@lando/sdk/services";
+import {
+  type ConfigTranslateDocument,
+  ConfigTranslateSourceId,
+  LandofileAuthoringShape,
+  type PortablePath,
+} from "@lando/sdk/schema";
+import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import {
   detectConfigTranslators,
   resolveConfigTranslators,
-  runConfigTranslators,
+  runConfigTranslator,
 } from "@lando/landofile/config-translate";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
 import { parseLandofile } from "@lando/landofile/parser";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 
-export type AppConfigTranslateFormat = "yaml" | "table" | "json";
+import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
+import { selectTranslator } from "./app-config-translate-selection.ts";
+import { discoverSourceFiles, parseSourceFilePath } from "./app-config-translate-sources.ts";
+export {
+  AppConfigTranslateResultSchema,
+  renderConfigTranslateResult,
+} from "./app-config-translate-output.ts";
+export type { AppConfigTranslateFormat, AppConfigTranslateResult } from "./app-config-translate-output.ts";
 
 export interface AppConfigTranslateOptions {
   readonly cwd?: string;
@@ -39,73 +49,6 @@ export interface AppConfigTranslateOptions {
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
 }
 
-const ConfigTranslateDiagnosticSchema = Schema.Struct({
-  kind: Schema.Union(
-    Schema.Literal("generated"),
-    Schema.Literal("unsupported"),
-    Schema.Literal("non-portable"),
-    Schema.Literal("needs-review"),
-  ),
-  message: Schema.String,
-  path: Schema.optional(Schema.String),
-});
-
-const TranslatorInfoSchema = Schema.Struct({
-  id: Schema.String,
-  summary: Schema.String,
-  inputKinds: Schema.Array(Schema.String),
-});
-
-const ListResultSchema = Schema.Struct({
-  mode: Schema.Literal("list"),
-  translators: Schema.Array(TranslatorInfoSchema),
-});
-
-const ConfigTranslateMatchSchema = Schema.Struct({
-  translator: Schema.String,
-  files: Schema.Array(Schema.String),
-  confidence: Schema.Union(Schema.Literal("exact"), Schema.Literal("likely"), Schema.Literal("possible")),
-  summary: Schema.optional(Schema.String),
-});
-
-const DetectResultSchema = Schema.Struct({
-  mode: Schema.Literal("detect"),
-  inputPath: Schema.String,
-  files: Schema.Array(Schema.String),
-  matches: Schema.Array(ConfigTranslateMatchSchema),
-});
-
-const PreviewResultSchema = Schema.Struct({
-  mode: Schema.Literal("preview"),
-  inputPath: Schema.String,
-  translator: Schema.String,
-  files: Schema.Array(Schema.String),
-  content: Schema.String,
-  diagnostics: Schema.Array(ConfigTranslateDiagnosticSchema),
-});
-
-const WriteResultSchema = Schema.Struct({
-  mode: Schema.Literal("write"),
-  inputPath: Schema.String,
-  outputPath: Schema.String,
-  backupPath: Schema.optional(Schema.String),
-  diagnostics: Schema.Array(ConfigTranslateDiagnosticSchema),
-});
-
-export const AppConfigTranslateResultSchema = Schema.Union(
-  ListResultSchema,
-  DetectResultSchema,
-  PreviewResultSchema,
-  WriteResultSchema,
-);
-
-export type AppConfigTranslateResult = Schema.Schema.Type<typeof AppConfigTranslateResultSchema>;
-
-type TranslateDiagnostic = Schema.Schema.Type<typeof ConfigTranslateDiagnosticSchema>;
-type ConfigTranslateRenderedMatch = Schema.Schema.Type<typeof ConfigTranslateMatchSchema>;
-type TranslatorInfo = Schema.Schema.Type<typeof TranslatorInfoSchema>;
-type WriteResult = Schema.Schema.Type<typeof WriteResultSchema>;
-
 export type AppConfigTranslateError =
   | LandofileNotFoundError
   | LandofileParseError
@@ -114,7 +57,7 @@ export type AppConfigTranslateError =
   | ConfigTranslateError
   | ConfigTranslatorConflictError;
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownEither(LandofileAuthoringShape);
 
 const writeFile = (path: string, content: string): Effect.Effect<void, ConfigTranslateError> =>
   Effect.tryPromise({
@@ -126,145 +69,54 @@ const writeFile = (path: string, content: string): Effect.Effect<void, ConfigTra
       }),
   });
 
-const fromRemediation = (translators: ReadonlyArray<ConfigTranslatorShape>): string => {
-  const choices = translators.map((translator) => `--from ${translator.id}`).join(", ");
-  return `Choose an explicit translator with one of: ${choices}.`;
-};
+export const CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES = 1_048_576;
 
-const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
-
-const sourceFilePathError = (file: string): ConfigTranslateError =>
-  new ConfigTranslateError({
-    message: `Config translator source file "${file}" must be a relative path inside the app root.`,
-    remediation:
-      "Pass a source file relative to the app root. Reading outside the app root requires an explicit outside-root opt-in before it can be supported.",
-  });
-
-const parseSourceFilePath = (file: string): Effect.Effect<PortablePath, ConfigTranslateError> => {
-  const portable = file.replace(/\\/gu, "/");
-  const segments = portable.split("/");
-  if (
-    portable.length === 0 ||
-    portable.startsWith("/") ||
-    file.startsWith("\\") ||
-    WINDOWS_ABSOLUTE_PATH.test(file) ||
-    segments.some((segment) => segment === "..")
-  ) {
-    return Effect.fail(sourceFilePathError(file));
-  }
-  return Effect.succeed(portable as PortablePath);
-};
-
-// Directories that never contain application config sources. Descending into
-// these makes default discovery slow (`node_modules` can hold thousands of
-// files) and feeds translators spurious paths, such as a nested dependency's
-// own `docker-compose.yml`. Mirrors the app-mount sync excludes convention
-// (`FILE_SYNC_DEFAULT_EXCLUDES` in `services/planner.ts`).
-const DISCOVERY_PRUNED_DIRECTORIES: ReadonlySet<string> = new Set(["node_modules", ".git", "vendor", "tmp"]);
-
-const discoverSourceFiles = (
+const readTranslateDocuments = (
   appRoot: string,
-): Effect.Effect<ReadonlyArray<PortablePath>, ConfigTranslateError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const files: Array<PortablePath> = [];
-      const visit = async (dir: string): Promise<void> => {
-        const entries = await readdir(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          const absolute = join(dir, entry.name);
-          if (entry.isDirectory()) {
-            if (DISCOVERY_PRUNED_DIRECTORIES.has(entry.name)) continue;
-            await visit(absolute);
-            continue;
-          }
-          if (entry.isFile()) {
-            files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
-            continue;
-          }
-          if (entry.isSymbolicLink()) {
-            // `Dirent.isFile()` is false for symlinks even when the link target is a
-            // regular file, so resolve the target explicitly before deciding to skip it.
-            const target = await stat(absolute).catch(() => undefined);
-            if (target?.isFile() === true) {
-              files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
-            }
-          }
-        }
-      };
-      await visit(appRoot);
-      return files.sort();
-    },
-    catch: (cause) =>
-      new ConfigTranslateError({
-        message: `Could not discover config translator source files: ${cause instanceof Error ? cause.message : String(cause)}`,
-        cause,
-      }),
-  });
-
-const distinctMatchIds = (matches: ReadonlyArray<ConfigTranslateMatch>): ReadonlyArray<string> => {
-  const seen: Array<string> = [];
-  for (const match of matches) if (!seen.includes(match.translator)) seen.push(match.translator);
-  return seen;
-};
-
-/**
- * Select the single translator to run. `--from` forces a translator by id;
- * otherwise the registered translators' `detect` surfaces are probed and the
- * lone `exact`/`likely` match wins. Zero or multiple matches fail with a
- * remediation enumerating the `--from` choices when detection is ambiguous.
- */
-const selectTranslator = (
-  translators: ReadonlyArray<ConfigTranslatorShape>,
-  from: string | undefined,
-  appRoot: AbsolutePath,
   files: ReadonlyArray<PortablePath>,
-): Effect.Effect<ConfigTranslatorShape, ConfigTranslateError | ConfigTranslatorConflictError> =>
+  options: { readonly explicit: boolean },
+): Effect.Effect<ReadonlyArray<ConfigTranslateDocument>, ConfigTranslateError> =>
   Effect.gen(function* () {
-    if (from !== undefined) {
-      const forced = translators.find((translator) => translator.id === from);
-      if (forced === undefined) {
-        return yield* Effect.fail(
+    const documents: ConfigTranslateDocument[] = [];
+    for (const path of files) {
+      const bytes = yield* Effect.tryPromise({
+        try: () =>
+          Bun.file(join(appRoot, path))
+            .slice(0, CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES + 1)
+            .bytes(),
+        catch: (cause) =>
           new ConfigTranslateError({
-            message: `No config translator with id "${from}" is registered.`,
-            remediation: fromRemediation(translators),
+            message: `Could not read translation source ${path}.`,
+            cause,
+            remediation: "Check that the source file exists and is readable.",
           }),
-        );
+      });
+      if (bytes.byteLength > CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES) {
+        if (options.explicit)
+          return yield* Effect.fail(
+            new ConfigTranslateError({
+              message: `Translation source ${path} exceeds ${CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES} bytes.`,
+              remediation: "Reduce the source file to at most 1 MiB before passing --file.",
+            }),
+          );
+        continue;
       }
-      return forced;
+      const mediaTypes: Readonly<Record<string, string>> = {
+        ".yml": "application/yaml",
+        ".yaml": "application/yaml",
+        ".json": "application/json",
+        ".toml": "application/toml",
+      };
+      documents.push({
+        sourceId: ConfigTranslateSourceId.make(path),
+        layerId: "canonical",
+        path,
+        mediaType: mediaTypes[extname(path).toLowerCase()] ?? "application/octet-stream",
+        contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`,
+        bytes,
+      });
     }
-
-    const matches = yield* detectConfigTranslators(translators, { appRoot, files });
-    const confident = matches.filter(
-      (match) => match.confidence === "exact" || match.confidence === "likely",
-    );
-    const ids = distinctMatchIds(confident);
-    if (ids.length === 0) {
-      return yield* Effect.fail(
-        new ConfigTranslateError({
-          message: "No config translator detected a supported source file under the app root.",
-          remediation: `${fromRemediation(translators)} Scope the input files with --file <path> when a translator cannot autodetect.`,
-        }),
-      );
-    }
-    if (ids.length > 1) {
-      const matched = translators.filter((translator) => ids.includes(translator.id));
-      return yield* Effect.fail(
-        new ConfigTranslateError({
-          message: `Config translation is ambiguous: ${ids.join(", ")} all detected the source.`,
-          remediation: fromRemediation(matched),
-        }),
-      );
-    }
-    const selected = translators.find((translator) => translator.id === ids[0]);
-    if (selected === undefined) {
-      return yield* Effect.fail(
-        new ConfigTranslateError({
-          message: `Detected translator "${ids[0]}" is not registered.`,
-          remediation: fromRemediation(translators),
-        }),
-      );
-    }
-    return selected;
+    return documents;
   });
 
 export const appConfigTranslate = (
@@ -310,26 +162,24 @@ export const appConfigTranslate = (
       options.files !== undefined && options.files.length > 0
         ? yield* Effect.all(options.files.map(parseSourceFilePath))
         : yield* discoverSourceFiles(appRoot);
+    const documents = yield* readTranslateDocuments(appRoot, detectFiles, {
+      explicit: (options.files?.length ?? 0) > 0,
+    });
+    const files = documents.map((document) => String(document.sourceId));
 
     if (options.detect === true) {
       const matches = yield* detectConfigTranslators(resolved, {
-        appRoot: appRoot as AbsolutePath,
-        files: detectFiles,
+        documents,
       });
       return {
         mode: "detect",
         inputPath,
-        files: detectFiles.map((file) => String(file)),
-        matches: matches.map((match) => ({
-          translator: match.translator,
-          files: match.files.map((file) => String(file)),
-          confidence: match.confidence,
-          ...(match.summary === undefined ? {} : { summary: match.summary }),
-        })),
+        files,
+        matches,
       };
     }
 
-    const selected = yield* selectTranslator(resolved, options.from, appRoot as AbsolutePath, detectFiles);
+    const selected = yield* selectTranslator(resolved, options.from, documents);
 
     const content = yield* Effect.tryPromise({
       try: () => Bun.file(inputPath).text(),
@@ -357,14 +207,29 @@ export const appConfigTranslate = (
       );
     }
 
-    const { fragment, diagnostics } = yield* runConfigTranslators([selected], {
-      appRoot: appRoot as AbsolutePath,
-      files: detectFiles,
-      current: currentDecoded.right,
-      options: {},
+    const { outputs, diagnostics, deletions } = yield* runConfigTranslator(selected, {
+      _tag: "landofile-document-set",
+      documents,
+      mode: "full",
+      selectedSourceIds: documents.map((document) => document.sourceId),
+      currentLowerV4Fragments: [],
+      writableLayerIds: ["canonical"],
     });
 
-    const merged = mergeLandofiles([parsed as Record<string, unknown>, fragment as Record<string, unknown>]);
+    const fragments = yield* Schema.decodeUnknown(
+      Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+    )([parsed, ...outputs.map((output) => output.fragment)]).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigTranslateError({
+            message: "The canonical Landofile and translation fragments must be objects to merge.",
+            translator: selected.id,
+            cause,
+            remediation: "Use a mapping at the Landofile root.",
+          }),
+      ),
+    );
+    const merged = mergeLandofiles(fragments);
     yield* rejectUnsupportedToolingFeatures(inputPath, merged);
     const mergedDecoded = decodeLandofile(merged, { onExcessProperty: "error" });
     if (mergedDecoded._tag === "Left") {
@@ -382,81 +247,27 @@ export const appConfigTranslate = (
     const canonicalYaml = emitLandofileYaml(merged);
 
     if (options.write === true) {
+      if (deletions.length > 0)
+        return yield* Effect.fail(
+          new ConfigTranslateError({
+            translator: selected.id,
+            message: "Cannot write translation with deletion intents.",
+            remediation: "Deletions land with the managed-file transaction.",
+          }),
+        );
       const backupPath = `${inputPath}.bak`;
       yield* writeFile(backupPath, content);
       yield* writeFile(inputPath, canonicalYaml);
-      return { mode: "write", inputPath, outputPath: inputPath, backupPath, diagnostics };
+      return { mode: "write", inputPath, outputPath: inputPath, backupPath, diagnostics, deletions };
     }
 
     return {
       mode: "preview",
       inputPath,
       translator: selected.id,
-      files: detectFiles.map((file) => String(file)),
+      files,
       content: canonicalYaml,
       diagnostics,
+      deletions,
     };
   });
-
-const DIAGNOSTIC_GLYPH: Readonly<Record<string, string>> = {
-  generated: "+",
-  unsupported: "!",
-  "non-portable": "~",
-  "needs-review": "?",
-};
-
-const diagnosticComment = (diagnostic: TranslateDiagnostic): string => {
-  const glyph = DIAGNOSTIC_GLYPH[diagnostic.kind] ?? " ";
-  const where = diagnostic.path === undefined ? "" : ` (${diagnostic.path})`;
-  return `# ${glyph} ${diagnostic.message}${where}`;
-};
-
-const renderList = (translators: ReadonlyArray<TranslatorInfo>): string => {
-  if (translators.length === 0) return "No config translators are installed.";
-  return translators
-    .map((translator) => `${translator.id}\t${translator.inputKinds.join(", ")}\t${translator.summary}`)
-    .join("\n");
-};
-
-const renderDetect = (matches: ReadonlyArray<ConfigTranslateRenderedMatch>): string => {
-  if (matches.length === 0) return "No config translator matches detected.";
-  return matches
-    .map((match) => `${match.translator}\t${match.confidence}\t${match.files.join(", ")}`)
-    .join("\n");
-};
-
-const renderPreview = (content: string, diagnostics: ReadonlyArray<TranslateDiagnostic>): string => {
-  if (diagnostics.length === 0) return content;
-  const trimmed = content.endsWith("\n") ? content : `${content}\n`;
-  return `${trimmed}${diagnostics.map(diagnosticComment).join("\n")}`;
-};
-
-const renderWrite = (result: WriteResult): string => {
-  const header =
-    result.backupPath === undefined
-      ? `${result.outputPath}: wrote canonical Landofile.`
-      : `${result.outputPath}: wrote canonical Landofile (backup at ${result.backupPath}).`;
-  const lines = [header];
-  for (const diagnostic of result.diagnostics) {
-    const glyph = DIAGNOSTIC_GLYPH[diagnostic.kind] ?? " ";
-    const where = diagnostic.path === undefined ? "" : ` (${diagnostic.path})`;
-    lines.push(`  ${glyph} ${diagnostic.message}${where}`);
-  }
-  return lines.join("\n");
-};
-
-export const renderConfigTranslateResult = (
-  result: AppConfigTranslateResult,
-  _format: AppConfigTranslateFormat = "yaml",
-): string => {
-  switch (result.mode) {
-    case "list":
-      return renderList(result.translators);
-    case "detect":
-      return renderDetect(result.matches);
-    case "preview":
-      return renderPreview(result.content, result.diagnostics);
-    case "write":
-      return renderWrite(result);
-  }
-};

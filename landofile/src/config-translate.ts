@@ -1,14 +1,13 @@
 import { Effect } from "effect";
 
-import { type ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
+import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
+import { validateConfigTranslateInput, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDetectInput,
-  ConfigTranslateDiagnostic,
   ConfigTranslateInput,
   ConfigTranslateMatch,
   ConfigTranslateResult,
   ConfigTranslatorShape,
-  LandofileFragment,
 } from "@lando/sdk/services";
 
 export const resolveConfigTranslators = (
@@ -47,24 +46,38 @@ export const detectConfigTranslators = (
   Effect.gen(function* () {
     const resolved = yield* resolveConfigTranslators(translators);
     const matches: Array<ConfigTranslateMatch> = [];
+    const sourceIds = new Set(input.documents.map((document) => document.sourceId));
     for (const translator of resolved) {
-      matches.push(...(yield* translator.detect(input)));
+      const detected = yield* translator.detect(input);
+      if (
+        detected.some(
+          (match) => match.translator !== translator.id || match.sourceIds.some((id) => !sourceIds.has(id)),
+        )
+      ) {
+        return yield* Effect.fail(
+          new ConfigTranslateError({
+            translator: translator.id,
+            message: "Detection returned a foreign translator or source identity.",
+            remediation:
+              "Attribute matches to the producing translator and only sources in the input documents.",
+          }),
+        );
+      }
+      matches.push(...detected);
     }
     return matches;
   });
 
-export const runConfigTranslators = (
-  translators: ReadonlyArray<ConfigTranslatorShape>,
+export const runConfigTranslator = (
+  translator: ConfigTranslatorShape,
   input: ConfigTranslateInput,
-): Effect.Effect<ConfigTranslateResult, ConfigTranslateError | ConfigTranslatorConflictError> =>
+): Effect.Effect<ConfigTranslateResult, ConfigTranslateError> =>
   Effect.gen(function* () {
-    const resolved = yield* resolveConfigTranslators(translators);
-    let fragment: LandofileFragment = {};
-    const diagnostics: Array<ConfigTranslateDiagnostic> = [];
-    for (const translator of resolved) {
-      const result = yield* translator.translate(input);
-      fragment = { ...fragment, ...result.fragment };
-      diagnostics.push(...result.diagnostics);
-    }
-    return { fragment, diagnostics };
-  });
+    const validated = yield* validateConfigTranslateInput(input);
+    const result = yield* translator.translate(validated);
+    return yield* validateConfigTranslateResult(validated, result);
+  }).pipe(
+    Effect.mapError(
+      (error) => new ConfigTranslateError({ ...error, message: error.message, translator: translator.id }),
+    ),
+  );
