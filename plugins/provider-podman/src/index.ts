@@ -776,7 +776,7 @@ export const makeRuntimeProvider = (
           }).pipe(Effect.tap(() => rememberPlan(plan))),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
-            const plan = yield* resolvePlan(target.app);
+            const plan = target.plan ?? (yield* resolvePlan(target.app));
             if (plan === undefined) return;
             yield* bringDown(plan, {
               api: podmanApi,
@@ -792,7 +792,7 @@ export const makeRuntimeProvider = (
           }),
         logs: (target, logOptions) =>
           Stream.unwrap(
-            resolvePlan(target.app).pipe(
+            (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
               Effect.map((plan) =>
                 plan === undefined
                   ? Stream.fail(makeNoPlanError(target.app, "logs"))
@@ -932,3 +932,4 @@ export const plugin = definePlugin({
 });
 
 export type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+export { providerLandoSetupStatePath } from "./provider-lando-state.ts";

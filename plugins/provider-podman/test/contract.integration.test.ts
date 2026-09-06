@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
 
-import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/container-runtime/engine-api";
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
@@ -177,19 +177,19 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -295,7 +295,7 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 };
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
   const volumes = new Map<string, Uint8Array>();
   const snapshots = new Map<string, Uint8Array>();
@@ -307,7 +307,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.promise(async (): Promise<PodmanHttpResponse> => {
+      Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
@@ -492,13 +492,13 @@ interface FakePodmanApiHooks {
 const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -760,6 +760,29 @@ describe("provider-podman RuntimeProvider contract", () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
+  });
+
+  test("destroy and logs honor a caller-supplied plan when no plan is persisted", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
+      ),
+    );
+    const containerName = `lando-${plan.slug}-${serviceName}`;
+
+    const chunks = await Effect.runPromise(
+      Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
+    );
+    expect(Chunk.toReadonlyArray(chunks).length).toBeGreaterThan(0);
+    expect(fake.calls.some((call) => call.path.includes(`/containers/${containerName}/logs?`))).toBe(true);
+
+    await Effect.runPromise(provider.destroy({ app: appId, plan }, { volumes: false }));
+    expect(
+      fake.calls.some(
+        (call) => call.method === "DELETE" && call.path === `/containers/${containerName}?force=true`,
+      ),
+    ).toBe(true);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(
