@@ -1,0 +1,116 @@
+# PRD: Lando v4 IR gaps user stories
+
+Global priorities, dependencies, and standard gates are recorded in the index and `prd.json`. Each story retains behavior for every config frontend.
+
+## Guide Coverage
+
+| Story | Feature | Guide or README |
+|---|---|---|
+| US-613 | tooling normalization and execution | `docs/guides/tooling/flags-and-args.mdx` |
+| US-614 | task and restart events | `docs/guides/events/task-events.mdx` |
+| US-615 | routes and filters | `docs/guides/proxy/route-shorthand.mdx` |
+| US-616 | build users | `docs/guides/services/build-steps.mdx` |
+| US-617A | home and host | `docs/guides/services/home-and-host.mdx` |
+| US-617B | router and scanner | `docs/guides/services/router-and-scanner.mdx` |
+| US-618A..US-618C | catalog options | affected recipe READMEs |
+| US-618D1, US-618D3 | scoped commands and global defaults | `docs/guides/landofile/lando3-transition-options.mdx` |
+
+### US-613: Normalize and execute tooling definitions
+
+**Description:** As a tooling author, validated metadata and ordered steps behave consistently across every projection and execution target.
+
+**Acceptance Criteria:**
+- [ ] Extend the schema for user, disabled, flags, args, and ordered step objects; normalize alias, choices, boolean, default, requiredness, and positional order once before native command creation.
+- [ ] Reuse that schema for native aliases/options/types, CLI help, machine index, cache, and MCP; stale cache cannot bypass disabled prechecks, and accepted/unsupported schema plus applicable standard gates pass.
+- [ ] Execute mixed string/object steps in order, resolve `:<flag>` from validated values, route `:host` through the host engine without provider initialization, and honor task/step user and directory precedence.
+- [ ] Reject unknown services, missing dynamic flags, invalid args, disabled direct/stale-cache calls, and unsupported fields with tagged source-aware errors; CLI/MCP parity, guide, and applicable standard gates pass.
+
+### US-614: Resolve dynamic and nested task events
+
+**Description:** As a Landofile author, task and restart events validate and fail consistently.
+
+**Acceptance Criteria:**
+- [ ] Extend event names from fully resolved layered/included tooling before semantic validation, add restart brackets, report the complete valid set, and bound nested command-event recursion with visited-stack cycle and depth rejection.
+- [ ] Preserve event order and primary-service default; pre/body/post follow command semantics and post-step failure is fatal with redacted tail; guide and applicable standard gates pass.
+
+### US-615: Implement route shorthand and filters
+
+**Description:** As a Landofile author, concise routes lower to provider-neutral explicit middleware.
+
+**Acceptance Criteria:**
+- [ ] Normalize host, port, path, wildcard, and combined shorthand; implement strip/add prefix, request/response header, and redirect filters merged by name then type identity and rendered in authored order with no implicit stripping.
+- [ ] Tagged invalid input, schema/merge/filter contracts, Traefik goldens, real routing evidence, guide, and applicable standard gates pass.
+
+### US-616: Resolve per-step build users in planning
+
+**Description:** As a service author, each artifact and app build step runs as its planned user.
+
+**Acceptance Criteria:**
+- [ ] Accept string or `{run,user?}` steps, resolve omitted users per service during planning, and carry every resolved user through `BuildPlan`, provider execution, and ordered build-key hashing.
+- [ ] Artifact generation switches USER only when needed and restores the final service USER; app steps pass explicit users; root/interleaved/provider/guide and applicable standard gates pass.
+
+### US-617A: Add home persistence and host reachability
+
+**Description:** As a user, service home persists only when its path is knowable and supported containers can reach the host.
+
+**Acceptance Criteria:**
+- [ ] Define `home: false | {path?: AbsoluteContainerPath}` with default enabled: known catalog user/home metadata creates one idempotent service-scoped store; custom/compose images lacking known USER/HOME fail `HomePathCapabilityError` before provider action unless disabled or given an explicit path.
+- [ ] Deduplicate equivalent authored storage, preserve ownership, exclude changing contents from build keys, and realize host alias/IP only from declared capability and known gateway data; guide, real runtime, and applicable standard gates pass.
+
+### US-617B: Honor router disablement and scan startup URLs
+
+**Description:** As a user, router disablement and post-start URL scanning affect real behavior.
+
+**Acceptance Criteria:**
+- [ ] Resolve router enablement through normal precedence; false prevents router startup/publication and info reports only published endpoints.
+- [ ] Add `scanner: false | {path?, okCodes?, retries?, timeout?}` and run bounded post-start `UrlScanner` through `runProbe`; redact errors and warn without failing start; real route/scan, guide, and applicable standard gates pass.
+
+### US-618A: Implement file-backed catalog configuration
+
+**Description:** As a catalog user, service config files have fixed typed destinations and startup behavior.
+
+**Acceptance Criteria:**
+- [ ] Add `solr.config.dir` mounted read-only as the config source copied into each declared core's `/var/solr/data/<core>/conf`, plus `config.server` for PostgreSQL at `/etc/lando/postgresql.conf` with `-c config_file=...`, MySQL/MariaDB at `/etc/mysql/conf.d/99-lando.cnf`, and MongoDB at `/etc/lando/mongod.conf` with `--config`.
+- [ ] Validate app-relative regular sources, containment and symlink safety before provider action; source identity enters plan/build keys; golden plans, real config loading, README, and applicable standard gates pass.
+
+### US-618B: Implement Node and PHP package options
+
+**Description:** As a catalog user, global Node tools and Composer version/packages build deterministically.
+
+**Acceptance Criteria:**
+- [ ] Implement deterministic `node.globals` and additive PHP `composer: {version, packages}` while preserving string and false forms; normalize package order and validate versions.
+- [ ] Hash commands, resolved users, versions, packages, and sources while redacting secrets; unchanged-build, real invocation, README, and applicable standard gates pass.
+
+### US-618C: Implement Redis and Mailpit behavior
+
+**Description:** As a catalog user, Redis auth/persistence and Mailpit sender wiring work end to end.
+
+**Acceptance Criteria:**
+- [ ] Apply Redis password to startup, healthcheck, creds, tooling, and redaction and use `persist` for durable versus ephemeral data intent.
+- [ ] Add Mailpit `mailFrom?: false | ServiceName[]`: omitted targets every resolved PHP service, false targets none, arrays dedupe in authored order and reject unknown/non-PHP names; only targets receive sendmail wiring; real runtime/mail, README, and applicable standard gates pass.
+
+### US-618D1: Add service-scoped rebuild and info
+
+**Description:** As a user, I can rebuild or inspect selected services with each command's exact dependency semantics.
+
+**Acceptance Criteria:**
+- [ ] For rebuild, add repeatable `--service/-s` and library/MCP `services?: ServiceName[]`, dedupe first occurrence, validate every name before provider action, and compute selected services plus transitive `dependsOn` prerequisites in stable topological plan order.
+- [ ] Stop, force-build, and restart exactly that closure, including already-running prerequisites, while unrelated services and dependents remain untouched; CLI/library/MCP, provider closure, guide, and applicable standard gates pass.
+- [ ] For info, add repeatable `--service/-s` and library/MCP `services?: ServiceName[]`, dedupe first occurrence, validate all names before inspection, and select no dependencies.
+- [ ] Return the existing schema-stable info shape in app-plan order for selected services only; empty selection retains all-services behavior; CLI/library/MCP, guide, and applicable standard gates pass.
+
+### US-618D3: Add bounded global app environment and labels
+
+**Description:** As a user, bounded v4 global defaults apply only to user-app services and never override service-authored values.
+
+**Acceptance Criteria:**
+- [ ] Add `appEnv` and `appLabels` only to v4 global config: config layers deep-merge low to high, environment overrides replace the whole map, and each user-app service's authored map wins; never apply to global/scratch apps or import Lando 3 global state.
+- [ ] Limit each map to 256 entries; env keys are POSIX identifiers, values at most 32 KiB, encoded map at most 1 MiB, and the exact generated catalog of core-owned `LANDO`/`LANDO_*` keys is reserved rather than an ad hoc wildcard; label keys are 1..253 bytes without NUL or `=`, values at most 4 KiB, map at most 256 KiB, and `dev.lando.*` is reserved; redaction, guide, and applicable standard gates pass.
+
+### US-618E: Honor Apache/Node fields and enforce catalog versions
+
+**Description:** As a service user, authored webroot/port values work and unavailable runtimes fail closed.
+
+**Acceptance Criteria:**
+- [ ] Apache uses authored webroot for generated config/routes and Node uses authored port for endpoints, health, and generated commands.
+- [ ] Make ServiceType version metadata the single shipped matrix used by planner validation, generated docs, and tests; reject unknown/absent versions including unavailable old PHP images with tagged remediation; supported real-runtime, rejection, README, and applicable standard gates pass.
