@@ -1,0 +1,49 @@
+# Config translation progress
+
+## Codebase Patterns
+- Spec-class stories edit `spec/01..19-*.md` + `spec/README.md`; cross-refs use `§N.N` numbers (README topic lookup maps `§N` to file). Core spec text must state durable detail itself and never cite story ids or the PRD subdirectories.
+- Gates for spec-only work: `bun run spec/config-translation/check-coordinated-plan.mjs` (omit `--initial` once any story passes), `bun run check:boundaries`, `bun run lint`, plus a grep scan for forbidden tokens (`ConfigFormat`, `LANDO_MOUNT`, `!lando3`, `LANDO_INFO`, `US-6xx`) and no new em-dashes in added lines.
+- The plan checker only scans the three PRD directories for stale story refs and forbidden strings; the core spec files are covered by the grep scan, not the script.
+- Parallel spec editing works well when partitioned by file (no two editors on one file); README topic rows go last because they cite final headings.
+- Frozen naming contract for later stories: translators `lando4` / `recipe` / `lando3` (decode-only); inputs `landofile-document-set` / `recipe-request`; diagnostics `generated | dropped | rewritten | unsupported | non-portable | needs-review`; transaction states `prepared | committing | committed | blocked`; artifacts `<file>.bak.<full-before-sha256>` and `<target>.lando-stage.<transaction-id>`; secret dispositions `secret-store` or one `postInit.stdin` / `postInit.secretEnv.<name>` sink; commands `app:config:translate --to`, `app:config:explain`, `app:config:migrate`; events `pre-restart` / `post-restart`; doctor checks `lando3-leftovers` / `lando3-shadow`; binary `lando4` / `lando4.exe` during Alpha/Beta.
+
+## 2026-09-06 14:55 - US-607
+- Amended the durable core spec so it owns the config-translation, IR-gap, and Lando 3 coexistence contracts: two-way `ConfigTranslator` with the authoring IR (`LandofileAuthoringShape` / `LandofileAuthoringFragment`), set-based inputs, encode round-trip law, six diagnostic kinds, lazy registration with collision failure, and target/write policy (§4.2, §7.4.1, §9.5, §13.1).
+- Un-forbade `recipe:` and defined the inert object provenance form with mandatory producer agreement, the `recipe.<option>` expression scope, expression-aware tag-free `emitLandofileYaml` with a provenance comment block, and the recipe-as-decomposer model with declarative `migrations:` snapshots, the pure helper allowlist, secret dispositions, and post-commit-only auxiliary actions (§7.3.1, §7.4, §7.8.1, §8.8.x).
+- Cataloged the managed-file transaction lifecycle and guard under §12.4.1 and the loader failure path (`Lando3LandofileDetected`, `LandofileDialectMixError`) under §7.1; seven-layer set conversion and recipe-layer folding under §7.2.
+- Froze IR-gap semantics in their owning sections: restart brackets (§3.5/§11.4/§8.2), normalized tooling metadata and dynamic events (§8.5.1/§8.5.7), route shorthand and filters (§6.6/§10.2), planned build users (§6.2/§6.3/§6.13), default `home:` storage (§6.5), scanner union and router disablement (§7.5/§10.5), catalog options and the single shipped version matrix (§6.11.2/§6.12), scoped `rebuild`/`info --service` (§8.2), bounded `appEnv`/`appLabels` with reserved generated `LANDO_*` keys and `dev.lando.*` (§7.5/§6.9/§6.5); removed every `LANDO_INFO` mention and added no mount alias.
+- Softened the v3 boundary (core runs nothing v3; the bundled `@lando/lando3` plugin translates on explicit request), added the bundle row, `lando4` side-by-side install/update/uninstall/shellenv ownership, bounded `DoctorCheckContext` ports, and the `lando3-leftovers` / `lando3-shadow` checks with `LegacyProxyContainerDetected` as single legacy-proxy owner (§1.x, §14.1, §10.9, §17.6.2, §17.7, §20.10.3); exclusions for upgrade/adoption, legacy state import, image manufacture, and emulation recorded as non-goals.
+- Verification: plan checker PASS (42 stories), check:boundaries and lint passed; forbidden-token scan empty; no dangling `§` references; no new em-dashes. Typecheck ran as a no-code sanity gate.
+- **Learnings for future iterations:**
+  - Later implementation stories should cite the core sections above rather than the PRD directory; the core spec now states every contract they need.
+  - The §6.3 artifact example now uses `run:` steps with optional `user:`; `instructions:` is gone from the spec and implementation should follow the `string | { run, user? }` union.
+  - §20.10.3 no longer describes a `meta:setup --migrate-proxy` upgrade path; legacy proxy handling is diagnostic plus conflict error only.
+---
+
+## 2026-09-06 15:20 - US-607 Review
+- Review-work failed on durable-contract contradictions; Bugbot found no bugs. Fixed: secret argv/file/default wording now rejects raw secrets and treats secret-store as resolve-only references; `meta:uninstall` matches side-by-side §17.7 ownership; `non-portable` keeps the lossless target-policy exception; conversion/init commands request BootstrapLevel `plugins`; include-level `dir:` no longer claims task-level `dir` is rejected; README added-line em-dashes removed; `node-ts` is not claimed as a current bundle member.
+- Review notes (deferred/rejected): SecretWriter / owner-only backup creation / debug-argv full-value logging — not required by US-607 ACs and not newly introduced. 24-recipe catalog expansion — owned by US-609E staged growth. Appendix §15.C / §16.2 SDK export inventory — out of this story's amendment table (US-608A).
+- Verification: coordinated-plan, check:boundaries, lint, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; forbidden-token and added-line em-dash scans empty. Typecheck not rerun (markdown-only). Guide-Coverage-Skip: specification-only durable core amendment with no runtime CLI or guide-covered source surface change.
+- **Learnings for future iterations:** Command-table `minimal` is not translator-capable; `ConfigTranslatorRegistry` lives at `plugins`. When freezing IR-gap task/step `dir` precedence, do not leave include-level `dir:` claiming the task-level field is rejected.
+---
+
+## 2026-09-06 15:35 - US-607 Review
+- Post-commit Bugbot: moved `LANDO_HOST_IP` into the conditional env catalog so the host-reachability omission rule is the one implementers follow.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up; previous gates unchanged.
+---
+
+## 2026-09-06 15:45 - US-607 Review
+- Post-commit Bugbot: restart payloads match start (not stop) payload shape.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up.
+---
+
+## 2026-09-06 16:10 - US-607 Drift Audit
+- Trigger: 4 cycles, 538 changed lines, 6 commits
+- Findings by category (only categories with findings; one line each, outcome-focused)
+- Contract drift: §3.2 still listed `apps:init` at `minimal` after conversion/init moved to BootstrapLevel `plugins`; §1.2 called the lando3 path two-way; §1.3 still described fragment application instead of authoring/transaction writes
+- Fixed: conversion/init now appear on the `plugins` used-by list; lando3 conversion is named decode-only; the core-owns pipeline bullet names authoring validation, encoding, and managed-file writes
+- Split/excise decisions: none
+- Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
+---

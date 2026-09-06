@@ -21,7 +21,7 @@ v4 differs from prior versions on six fundamental axes:
 2. **Bun-native.** Bun is the runtime, package manager, test runner, subprocess driver (`Bun.spawn`), shell substrate (`Bun.$` / Bun Shell), file IO layer, and bundler. The two host-execution primitives are deliberately complementary: `Bun.spawn` is exposed through the `ProcessRunner` service for argv-precise calls, `Bun.$` is exposed through the `ShellRunner` service for shell-shaped pipelines that must work identically on Linux, macOS, and Windows (§3.4, §4.2).
 3. **Effect-driven.** All side effects, errors, resources, concurrency, logging, and dependencies flow through Effect.
 4. **Plug-everything.** Every meaningful capability — containerization, tooling execution, logging, output rendering, certificates, proxy, schema validation, plugin sources, even the CLI parser — lives behind an interface and ships as a replaceable plugin.
-5. **Hard reset.** v3 services, v3 service inheritance, v3 recipes, legacy raw passthrough shims, and Traefik labels are not part of core. Plugins may offer v3 affordances through the config-translation surface (§7.4.1/§9.5); core does not.
+5. **Hard reset.** v3 services, v3 service inheritance, v3 recipes, legacy raw passthrough shims, and Traefik labels are not part of core. Core MUST NOT execute any Lando 3 code path. Explicit conversion of Lando 3 configuration is provided by the bundled `@lando/lando3` plugin (decode-only) through the config-translation surface (§7.4.1/§9.5). Conversion MUST run only on explicit request, never during bootstrap or `start`.
 6. **CLI-and-library.** The `lando` binary is one imperative shell; a Bun-based program that imports `@lando/core` is another. The runtime, every Effect service, every schema, and every tagged error is part of a stable, versioned public API. Anything the CLI can do, an embedding host can do — using the same Effect runtime, the same `LandoRuntimeLive` Layer, the same plugins, and the same lifecycle events. See §16 ([09 Embedding and Library Use](./09-embedding.md)).
 7. **Agent-native.** AI coding agents are a first-class operator of Lando, alongside humans and scripts. This is the dual of CLI-and-library: the library tenet makes Lando *programmable by code*; the agent-native tenet makes Lando *operable by agents*. In practice that means two design defaults. **Context continuity:** when work crosses a boundary — host into container, one command into another — the context an agent depends on travels with it rather than being silently dropped. **Machine-legibility:** every surface an agent touches is structured and predictable — typed results an agent can consume without scraping prose, failures that carry machine-readable cause and remediation, and observable operations — so an agent can drive, observe, and recover. When a design choice would otherwise force an agent to parse human output or lose state at a boundary, prefer the approach that keeps it legible and coherent.
 
@@ -52,7 +52,7 @@ Core owns:
 - Landofile discovery, parsing, merging, validation, and schema publication.
 - Supported Compose-subset Landofile input parsing and normalization before provider planning.
 - Global config loading and environment-variable overrides.
-- The config-translation pipeline: plugin registration, detection orchestration, preview, validation, and atomic application of generated Landofile fragments. Core does not own any external format-specific translator.
+- The config-translation pipeline: plugin registration, detection orchestration, preview, authoring validation, encoding, and managed-file transaction writes of authoring fragments (§7.4.1, §12.4). Core does not own any external format-specific translator.
 - Plugin discovery, manifest validation, dependency resolution, and contribution registration.
 - Native command registry, command routing, help/manifest generation, and CLI↔Effect adaptation (§8.4.1).
 - v4 service planning and app lifecycle orchestration.
@@ -69,10 +69,12 @@ Core does not own:
 - Docker daemon access, Docker Desktop integration, or BuildKit configuration.
 - Podman, Lima, OrbStack, Hyper-V, WSL integration, or any other host runtime.
 - Traefik configuration, proxy container labels, or proxy daemon lifecycle.
-- v3 services, v3 inheritance, v3 migration shims, v3 recipe compatibility, or v3 fixture compatibility. An external plugin MAY translate v3 config into v4 Landofile fragments, but that plugin is outside the core rewrite.
+- v3 services, v3 inheritance, runtime shims, v3 recipe expansion, or v3 fixture compatibility. Core MUST NOT run anything v3. A bundled plugin MAY translate v3 configuration into v4 authoring fragments through the explicit translation pipeline (§7.4.1/§9.5); shared bundled recipe decomposers own recipe output (§8.8).
 - mkcert, dockerode, dockerfile-generator, docker-compose binaries, or any provider-specific runtime.
 
-Core *does* own — and ships in the binary — the comprehensive service-type catalog (PHP, Node, Python, Ruby, Go runtimes; common databases, caches, search engines, mail capture, queues, static servers; see §6.12) and the canonical recipe set (Yeoman-style scaffolds for common stacks; see §8.8.10). The v3 model where each stack lived in its own `@lando/recipe-*` plugin is removed: stack starters are no longer code, they are init-time scaffolds.
+Core and the bundled translator MUST NOT provide an upgrade or adoption operation: no container, volume, network, or resource adoption; existing v3 resources remain owned by v3. They MUST NOT import legacy user state or custom Landofile basename settings from the legacy home directory; explicitly supplied custom-name settings MUST be diagnosed only. They MUST NOT manufacture retired images, emulate v3 images, entrypoints, helpers, environment, or execution order at runtime, perform hoster synchronization, or download or manage a Lando 3 binary.
+
+Core *does* own and ship in the binary the service-type catalog (PHP, Node, Python, Ruby, Go runtimes; common databases, caches, search engines, mail capture, queues, static servers; see §6.12) and the canonical recipe set (Yeoman-style scaffolds for common stacks; see §8.8.10). The v3 model where each stack lived in its own `@lando/recipe-*` plugin is removed. Recipes are init-time scaffolds. Bundled recipes MUST decompose into ordinary Landofile data with inert producer provenance (§8.8).
 
 ### 1.4 Default distribution
 
@@ -85,6 +87,7 @@ Reference bundle (subject to change in §14):
 | Default runtime | `@lando/provider-lando` | Optional (bundled by default) |
 | System Docker provider | `@lando/provider-docker` | Optional |
 | System Podman provider | `@lando/provider-podman` | Optional |
+| Lando 3 conversion | `@lando/lando3` | Optional (bundled by default; contributes `configTranslators: [lando3]` decode-only and the read-only `lando3-leftovers` / `lando3-shadow` doctor checks (§10.9); MUST depend only on `@lando/sdk` and `@lando/paths`; MUST NOT participate in normal bootstrap) |
 | Proxy | `@lando/proxy-traefik` | Optional |
 | CA / certs | `@lando/ca-mkcert` | Optional |
 | Service base | `@lando/service-lando` | Required for `type: lando` |
@@ -109,7 +112,7 @@ Lando v4 ships in two distribution forms (see §13.5 for the artifact catalog an
 | Form | Audience | Built from |
 |---|---|---|
 | **Single-binary CLI** | End users | `scripts/build-compiled-binary.ts` wrapping programmatic `Bun.build({ compile })` for `bin/lando.ts` (§17.3.1); bare compile is helper-binary-only |
-| **Library package** | Bun programs that embed Lando, plus end users who prefer a package-manager install | Standard `@lando/core` publish with multiple ESM entry points; `package.json#bin` exposes `lando` on PATH for `bun add -g @lando/core` users |
+| **Library package** | Bun programs that embed Lando, plus end users who prefer a package-manager install | Standard `@lando/core` publish with multiple ESM entry points; `package.json#bin` MUST expose `lando4` on PATH during Alpha and Beta for `bun add -g @lando/core` users. The GA executable name is decided at RC. The package-manager-owned `lando` executable remains Lando 3 and MUST NOT be touched (§17.7). |
 
 The two forms are produced from the same source and pinned to the same version; they are never out of sync.
 
@@ -119,8 +122,13 @@ The two forms are produced from the same source and pinned to the same version; 
 
 ### 14.1 Non-goals
 
-- v3 service compatibility in core.
-- v3 Landofile migration behavior in core (a config translator plugin may exist outside core).
+- v3 execution or emulation in core: no v3 services, images, entrypoints, helpers, environment, or execution order.
+- Automatic or bootstrap-time v3 Landofile translation; conversion is explicit through the bundled translator (§7.4.1).
+- Upgrade or adoption of v3 containers, volumes, networks, or resources.
+- Import of legacy user state or custom Landofile basenames.
+- Manufacture of retired images.
+- Hoster synchronization.
+- Managing a Lando 3 binary.
 - Docker Compose as core's internal runtime model or as a required provider implementation. Landofile input supports the documented Compose subset (§7.4).
 - Traefik as a required proxy implementation.
 - Docker as a required runtime provider.

@@ -527,15 +527,12 @@ A future plugin MAY contribute a global-app-resident CA service (e.g., for envir
 
 #### 20.10.3 Migration policy
 
-A user who upgrades from a pre-§20 build to a v4 build with §20 implemented:
+`LegacyProxyContainerDetected` MUST remain the single owner of legacy proxy container detection. The preferred-port holder table (§10.2.3) and the `lando3-leftovers` check (§10.9) MUST cross-reference this owner rather than duplicate detection. No plugin MAY add a separate proxy-port check.
 
-- The first `lando start` after the upgrade triggers `meta:setup` (or surfaces a remediation if setup is skipped) which generates `<userDataRoot>/global/.lando.yml` and `<userDataRoot>/global/.lando.dist.yml` from the installed plugin contributions.
-- A previously-running v3-style proxy container (managed out-of-band by the old proxy plugin) is surfaced two ways:
-  - **Read-only doctor diagnostic** `LegacyProxyContainerDetected` (§20.13) — surfaces in `lando doctor` output with remediation pointing at the plugin-supplied `meta:setup --migrate-proxy`. The diagnostic does not block any command on its own.
-  - **Hard error at `meta:setup` and at first `meta:global:start`** as `LegacyProxyContainerConflictError` (§20.13). The global app's `traefik` service refuses to start while a legacy proxy container is present, because both would compete for ports 80/443/8443 and leave the host in a half-migrated state. The user MUST run the plugin-supplied migration (or manually `docker rm` / `podman rm` the legacy container) before the global proxy can come up.
-- The hard error is provider-aware (the diagnostic side scans labels via the active `RuntimeProvider`'s metadata API and matches against an allowlist of v3-era proxy container labels published by the proxy plugin's manifest); core does not know the v3 container labels itself, but the failure path is core-owned so users can never silently end up with two proxies running.
-- The migration command (`meta:setup --migrate-proxy`) is plugin-supplied. Core defines only (a) the diagnostic shape, (b) the hard-error shape, and (c) the contract that `meta:global:start` and `meta:setup` MUST consult the diagnostic before any `traefik` (or otherwise-named) global proxy service starts. Plugin authors who replace `@lando/proxy-traefik` with an alternative proxy MUST publish the same legacy-container detection contract so v3-era containers from any prior proxy plugin are caught.
-- Users on the §20 implementation never see the legacy container after migration; the diagnostic clears once the legacy container is removed.
+- The read-only `lando doctor` diagnostic (§20.13) MUST identify the container and provide remediation; it is informational and MUST NOT block commands by itself.
+- `meta:setup` and first `meta:global:start` MUST consult this same owner before starting a global proxy service. A conflicting legacy container MUST raise `LegacyProxyContainerConflictError` (§20.13), preventing competing proxies.
+- Detection MUST be provider-aware and use the selected provider's bounded metadata inspection through the diagnostic context (§10.9). Proxy plugins supply the recognized legacy name/label metadata; core owns the diagnostic and conflict boundary. Replacement proxy plugins MUST honor the same ownership contract.
+- Diagnosis MUST NOT mutate or remove containers. Remediation MUST tell the user to back up or confirm data before removing resources with Lando 3. The diagnostic clears when the matching container is absent.
 
 ### 20.11 Plugins that contribute to the global app
 
@@ -631,8 +628,8 @@ Tagged errors specific to the global app live in `@lando/core/errors`:
 - `GlobalDistReadOnlyError` — a write target that resolves into the generated `dist` layer was attempted via `meta:global:config`. Payload: `{ path }`.
 - `GlobalServiceCommandReferenceError` — a `globalServices:` entry's `commands:` field references a canonical command id that does not appear in the same plugin's `provides.commands` block. Payload: `{ plugin, serviceId, missingCommandId }`. Caught at plugin load; the plugin fails to register until the manifest is consistent.
 - `ProxyContributionPairError` — `@lando/proxy-traefik` (or any plugin replacing it) contributes a `routerServices:` entry without a paired `globalServices:` entry of the expected id, or vice versa. Payload: `{ plugin, missingSide }`.
-- `LegacyProxyContainerDetected` — Read-only `lando doctor` diagnostic reporting an out-of-band proxy container from a pre-§20 install. Payload: `{ containerId, name, remediation }`. Informational; does not block commands.
-- `LegacyProxyContainerConflictError` — Hard error raised at `meta:setup` and at first `meta:global:start` when the same condition the diagnostic detects is present. Refuses to start the global proxy service to prevent a half-migrated host where the legacy container and the new global-app `traefik` service would compete for ports. Payload: `{ containerId, name, conflictingService, remediation, migrationCommand }`. The migration command is plugin-supplied per §20.10.3.
+- `LegacyProxyContainerDetected`: Read-only `lando doctor` diagnostic reporting an out-of-band legacy proxy container. Payload: `{ containerId, name, remediation }`. Informational; does not block commands. The single detection owner (§20.10.3) MUST be shared by the §10.2.3 holder table and cross-referenced by `lando3-leftovers` (§10.9), never duplicated.
+- `LegacyProxyContainerConflictError`: Hard error raised at `meta:setup` and first `meta:global:start` from the same detection owner (§20.10.3). It MUST refuse to start the global proxy while the conflicting legacy container is present. Payload: `{ containerId, name, conflictingService, remediation }`. Remediation MUST preserve the read-only diagnostic and resource-safety requirements of §10.9.
 - `GlobalAppError` — umbrella for state-transition failures (start failed, stop failed, plan derivation failed). Payload: `{ phase, cause }`.
 
 ### 20.14 Non-goals for v4.0

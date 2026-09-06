@@ -265,7 +265,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `urlScanners` | `UrlScanner` impls | Scanner subsystem |
 | `pluginSources` | `PluginSource` impls | Plugin install |
 | `secretStores` | `SecretStore` impls | Config expression resolution + tooling |
-| `configTranslators` | Translators from external config formats to Landofile fragments | `app config translate` / embedding hosts |
+| `configTranslators` | Decode one ordered document set or recipe request into authoring fragments; MAY encode authoring values (§7.4.1) | Explicit `app:config:translate`, `app:config:explain`, `app:config:migrate`, `apps:init`, or matching embedding-host request only |
 | `templateEngines` | `TemplateEngine` impls for whole-file or string template rendering (§7.3.2) | Template renderer + mount materializer + recipe scaffold |
 | `doctorChecks` | Diagnostic checks with automatic or manual remediations | `doctor` command / `DoctorService` |
 | `messages` | Message factories | Lifecycle service |
@@ -276,11 +276,12 @@ There are no legacy autoload directories. All contributions go through the manif
 **Config translator contribution rules:**
 
 - Each `configTranslators:` entry MUST declare a unique `id`, `module`, and `inputKinds:` metadata.
-- `detects:` glob patterns are advisory metadata for help, docs, and cheap discovery. The translator module's `detect()` result is authoritative.
+- `detects:` glob patterns are advisory metadata for help, docs, and explicit conversion matching only. The translator module's `detect()` result is authoritative and MUST NOT be invoked by normal discovery.
 - `optionsSchema:` is optional. When present, CLI and library callers validate translator-specific options against it before invoking `translate()`.
-- Translators return Landofile fragments plus diagnostics. They MUST NOT return an `AppPlan`, mutate files directly, contact providers, or install plugins.
-- Translators run only on explicit request; they never participate in normal app bootstrap.
-- Translators emit fragment *data*; core owns serialization. Authors who need to preview or unit-test a fragment as canonical YAML use the published `emitLandofileYaml` / `parseLandofile` serializer pair from `@lando/sdk/landofile` (§7.8.1) rather than hand-writing YAML; the serializer round-trips the same block-style subset core writes to disk, including `${secret:…}` references.
+- Translators MUST decode one core-ordered document set or one `recipe-request` into `LandofileAuthoringFragment` outputs with diagnostics (§7.4.1). They MAY implement `encode?` over authoring values. They MUST NOT emit `AppPlan`, read files, mutate files, contact providers, or install plugins.
+- Translators run only on explicit request, never during bootstrap, discovery, normal loading, `start`, or tooling hot paths. They MUST NOT have a cold-start entry. Native routing requests the translator-capable tier only for explicit conversion; help/version/loading/tooling MUST NOT construct their factories.
+- Public methods MUST require `never`; factories close over injected SDK ports such as `RecipeDecomposer`. `PluginContribution` and `LandoPluginModule` MUST carry `configTranslators`; the module set validates ids, and generated bundled factories remain lazy. Duplicate ids from any source MUST fail with a tagged collision naming both producer identities, with no precedence winner (§7.4.1).
+- Decode emits fragment data; core selects and invokes the encoder and owns all mutation. Canonical YAML encoding MUST use `emitLandofileYaml` / `parseLandofile` (§7.8.1), preserving authoring expressions and `${secret:...}` references without resolving them. The §7.4.1 round-trip law and diagnostic/target policies apply to every encoder.
 
 **Template engine contribution rules:**
 
@@ -366,6 +367,7 @@ There are no legacy autoload directories. All contributions go through the manif
 
 - Each `doctorChecks:` entry MUST declare a unique `id` and `module`; `summary:` and `tags:` are metadata for filtering and help.
 - A doctor check module exports a `DoctorCheck` whose `run()` method returns a `DoctorCheckResult` with zero or more issues.
+- Checks receive `DoctorCheckContext` (§10.9): optional app identity, optional selected provider identity, a bounded resource name/label inspector, and a bounded path-only executable locator. The locator MUST perform filesystem/PATH resolution only and return the normalized running executable basename plus resolved candidate path. It MUST NOT execute a candidate, read executable contents, or read user/Lando state. A doctor check MUST NOT import `@lando/container-runtime`.
 - Issues MUST include either an `automatic` solution command, a `manual` solution with user instructions, or enough detail to explain why no remediation is available.
 - Automatic solution commands run only when the user explicitly passes `--fix`; default doctor runs are read-only.
 - Checks MUST redact secrets and MUST NOT require provider-native commands for normal diagnosis unless the provider itself is the subject of the check.
