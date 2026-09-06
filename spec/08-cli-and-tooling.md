@@ -114,9 +114,9 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 |---|---|---|---|
 | `app:cache:refresh` | *(none)* | `app` | Rebuild the app plan, tooling graph, and app command index without starting services |
 | `app:config` | *(none — `config` is reserved by `meta:config`)* | `app` | Read/write the current app's Landofile (§8.2.1) |
-| `app:config:explain` | *(none)* | `minimal` | Report recipe provenance and managed or taken-over value sites; `--format json` (§8.2.1) |
-| `app:config:migrate` | *(none)* | `minimal` | Propose and transactionally commit recipe migration edges; `--yes`, `--dry-run`, `--format json` (§8.2.1) |
-| `app:config:translate` | *(none)* | `minimal` | Explicit conversion with `--from`, `--to`, and optional `--write`; never plans or contacts a provider (§8.2.1) |
+| `app:config:explain` | *(none)* | `plugins` | Report recipe provenance and managed or taken-over value sites; `--format json` (§8.2.1) |
+| `app:config:migrate` | *(none)* | `plugins` | Propose and transactionally commit recipe migration edges; `--yes`, `--dry-run`, `--format json` (§8.2.1) |
+| `app:config:translate` | *(none)* | `plugins` | Explicit conversion with `--from`, `--to`, and optional `--write`; never plans or contacts a provider (§8.2.1) |
 | `app:destroy` | `destroy` | `app` | Destroy the current app's resources |
 | `app:exec` | `exec` | `app` | Execute a command inside a service |
 | `app:includes:update` | *(none)* | `minimal` | Refresh one or more `includes:` lockfile entries (§7.7.4); with no arguments, refreshes all |
@@ -133,7 +133,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |
-| `apps:init` | `init` | `minimal` | Generate a new Lando app (§8.8) |
+| `apps:init` | `init` | `plugins` | Generate a new Lando app (§8.8) |
 | `apps:list` | `list` | `minimal` | List apps known to Lando |
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy a scratch app's resources without first stopping; `<id>` required, `--keep-volumes` retains volumes for inspection (§21.10) |
@@ -198,7 +198,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:shell` requires a TTY; with `--no-interactive` it errors with `ShellRequiresTtyError`. Defaults to host mode (a `Bun.$`-backed REPL via `ShellRunner`) so ad-hoc commands run cross-platform without leaving the project's env; `--service <name>` runs the REPL inside a service via provider exec instead. Behavioral details in §8.2.3.
 - `app:destroy` requires confirmation unless `--yes` is passed.
 - `meta:events:follow` supports `--follow`, `--format json|table`, repeated `--event`, `--scope`, and `--since`; it reads the EventService trace sink used by diagnostics/e2e and does not subscribe to plugin events itself.
-- `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, removes the binary when Lando owns the install path, removes `<userDataRoot>` and `<userCacheRoot>`, and leaves provider-owned runtime resources to provider-specific cleanup docs.
+- `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, and MUST remove only recorded v4-owned entries (the `lando4`/`lando4.exe` binary when Lando owns the install path, plus recorded v4 state). Unrecorded contents of `<userDataRoot>` and `<userCacheRoot>`, Lando 3 executables and state, and foreign installations MUST remain untouched. Provider-owned runtime resources are left to provider-specific cleanup docs (§17.7).
 - `--clear` is accepted at any level and purges relevant caches.
 - `app:rebuild` accepts repeatable `--service/-s` (library/MCP `services?: ServiceName[]`). It MUST deduplicate on first occurrence, validate every name before any provider action, and compute selected services plus transitive `dependsOn` prerequisites in stable topological plan order. It MUST stop, force-build, and restart exactly that closure, including already-running prerequisites; unrelated services and dependents MUST remain untouched. An empty selection retains whole-app behavior.
 - `app:start` and `app:rebuild` materialize app-declared Lando dependencies when needed: app-scoped plugins from `plugins:`, remote includes without warm cache entries, provider artifacts, and provider/runtime metadata. After a successful materialization/build, repeating `app:start` for the same app MUST NOT require network access unless a declared source is missing from the cache, the lockfile changed, or the app's own build/tooling commands require network.
@@ -949,7 +949,7 @@ Rules:
 - `excludes` removes tasks from the include before flattening or namespace registration.
 - A fragment's own `tooling:` entries win over tasks contributed by its `toolingIncludes:` when a task id collides — the same precedence the parent Landofile's own `tooling:` holds over its top-level `includes:`.
 - `checksum:` is not part of the Beta 1 tooling-include shape. Tooling fragments are local-file only, so there is no remote source to pin; a remote-source `checksum:` is reserved for a future release that adds remote tooling includes.
-- `dir:` is likewise not part of the Beta 1 tooling-include shape. Task-level `dir:` is itself rejected in Beta 1 (§8.5.1), so an include-level working directory would be accepted and then ignored; authoring it fails closed as an unsupported key rather than silently having no effect. It is reserved for the release that accepts task-level `dir:`.
+- Include-level `dir:` is not part of the Beta 1 tooling-include shape. Task-level and step-level `dir:` remain valid on the parent Landofile (§8.5.1, §8.5.5); an include-level working directory would be accepted and then ignored, so authoring it fails closed as an unsupported key rather than silently having no effect.
 - Cyclic includes are rejected with a tagged `ToolingIncludeCycleError`.
 
 Per-include `topLevelAlias` settings on individual tasks within an included file behave identically to top-level Landofile-defined tasks (§8.5.1). An include MAY NOT set a single `topLevelAlias` at the include level that applies to all of its tasks; per-task aliases keep collision detection precise.
@@ -1102,12 +1102,12 @@ Behavior:
 - `<destination>` is the output directory. Defaults to `--name` if given, otherwise to the current directory. The destination MAY already contain files. A Landofile dest (`.lando.yml`, `.lando.yaml`, `.lando.ts`, or another Landofile layer basename) that already exists fails closed with `InitTargetExistsError`. Any other recipe dest that already exists is a scaffold conflict: the entire scaffold set is skipped and only free Landofile dests are written. No `--force` / `--full` override is required for a free Landofile write.
 - `--recipe=<ref>` selects a recipe by reference (§8.8.4). When omitted in interactive mode, Lando prompts with the list of canonical recipes shipped in the binary.
 - `--source=<source>` (optional) provides source materials in addition to the recipe. Sources are plugin-contributed (`cwd`, `git`, `tarball`); the recipe's file manifest is layered on top of the source's files. Most users do not pass `--source`.
-- `--answer key=value` (repeatable) provides a value for a single recipe prompt. Bypasses the interactive prompt for that key.
-- `--answers <file>` reads a JSON or YAML map of answers. Combines with `--answer` (later wins).
+- `--answer key=value` (repeatable) provides a value for a single nonsecret recipe prompt. Secret prompt keys MUST be rejected; secret-store prompts accept only an existing `${secret:...}` reference, and init-only secrets MUST NOT arrive through argv.
+- `--answers <file>` reads a JSON or YAML map of nonsecret answers. Combines with `--answer` (later wins). Secret keys MUST be rejected; the file MUST NOT contain raw secret values.
 - `--no-interactive` disables prompting. Every prompt without a default and without an `--answer` value fails fast with `RecipeMissingAnswerError`.
 - `--yes` accepts every prompt's default without asking and is mutually exclusive with `--no-interactive` only when defaults exist; otherwise behaves like `--no-interactive` for unanswered prompts.
 - `--full` accepts the recipe's full default answer set without prompting. It does not change dest write rules.
-- The command runs at bootstrap level `minimal`; no provider is contacted.
+- The command runs at bootstrap level `plugins`; no provider is contacted.
 
 #### 8.8.2 Recipe directory layout
 
@@ -1173,7 +1173,7 @@ prompts:                                 # ordered; later prompts may reference 
     type: text | select | multiselect | confirm | number | secret | path | editor
     disposition: <secret-disposition>   # secret only; exactly one named field/sink (§8.8.5)
     message: <string>
-    default: <value | expression>        # optional
+    default: <value | expression>        # optional; secret prompts MUST NOT default a raw value
     when: <expression>                   # optional; skip prompt when falsy
     deprecated: <DeprecationNotice>      # optional; per-prompt deprecation; see §18
     validate:                            # optional; per-type validation
@@ -1248,7 +1248,7 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 | `multiselect` | Array picked from `choices:` | Empty selection allowed unless `validate.min: 1`. |
 | `confirm` | Boolean | TTY shows `(Y/n)` or `(y/N)` based on `default`. |
 | `number` | Integer or float | Validated with `min:` / `max:`. |
-| `secret` | Single-line string, masked input | MUST never be echoed and MUST be centrally redacted. Each prompt declares exactly one disposition: `secret-store`, writing a `${secret:...}` reference into the named field, or `init-only`, naming one `postInit.stdin` or `postInit.secretEnv.<name>` sink. |
+| `secret` | Single-line string, masked input | MUST never be echoed and MUST be centrally redacted. Each prompt declares exactly one disposition: `secret-store`, recording an existing `${secret:...}` reference into the named field (`SecretStore` remains resolve-only), or `init-only`, naming one `postInit.stdin` or `postInit.secretEnv.<name>` sink acquired through `InteractionService` (masked TTY or dedicated stdin), never argv, answer files, or recipe defaults. |
 | `path` | Filesystem path with shell completion | `validate.exists: true` requires the path to exist; relative paths are resolved against the destination directory. |
 | `editor` | Multi-line string entered via `$VISUAL` / `$EDITOR` | Falls back to `text` when no editor is configured or when `--no-interactive` is set. |
 
@@ -1360,8 +1360,8 @@ Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. T
    scaffold dest already exists; otherwise retain every auxiliary dest for post-commit work.
 4. Run prompts in order:
      a. Skip if `when:` is falsy.
-     b. Use --answer/--answers value when provided.
-     c. Use the recipe's default when --yes or --no-interactive is set.
+     b. Use --answer/--answers for nonsecret prompts; reject secret keys from argv/files.
+     c. Use the recipe's default when --yes or --no-interactive is set; secret prompts have no raw default.
      d. Otherwise prompt interactively via the renderer (TTY) or fail when --no-interactive.
 5. Translate safe options through `recipe` / `decompose`, validate authoring data,
    encode through `lando4`, and prevalidate auxiliary manifests/templates (§7.4.1).
@@ -1394,7 +1394,7 @@ The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each MUS
 
 Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts`, which generates `core/src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
-The bundled `node-ts` recipe's generated Landofile artifact MUST be YAML. Its programmatic `.lando.ts` example is documentation only; the CLI MUST NOT auto-generate `.lando.ts`.
+Generated Landofile artifacts MUST be YAML. A programmatic `.lando.ts` example is documentation only; the CLI MUST NOT auto-generate `.lando.ts`.
 
 Staged catalog growth (planned 4.x additions; not part of the v4.0 bundle): `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, prioritized by adoption signal per the ROADMAP. Out of scope for the v4.0 bundle: hoster recipes (`acquia`, `lagoon`, `pantheon`, `platformsh` — these are 4.1 `RemoteSource` connector work, §10.12) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
 

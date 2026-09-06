@@ -19,3 +19,10 @@
   - The §6.3 artifact example now uses `run:` steps with optional `user:`; `instructions:` is gone from the spec and implementation should follow the `string | { run, user? }` union.
   - §20.10.3 no longer describes a `meta:setup --migrate-proxy` upgrade path; legacy proxy handling is diagnostic plus conflict error only.
 ---
+
+## 2026-09-06 15:20 - US-607 Review
+- Review-work failed on durable-contract contradictions; Bugbot found no bugs. Fixed: secret argv/file/default wording now rejects raw secrets and treats secret-store as resolve-only references; `meta:uninstall` matches side-by-side §17.7 ownership; `non-portable` keeps the lossless target-policy exception; conversion/init commands request BootstrapLevel `plugins`; include-level `dir:` no longer claims task-level `dir` is rejected; README added-line em-dashes removed; `node-ts` is not claimed as a current bundle member.
+- Review notes (deferred/rejected): SecretWriter / owner-only backup creation / debug-argv full-value logging — not required by US-607 ACs and not newly introduced. 24-recipe catalog expansion — owned by US-609E staged growth. Appendix §15.C / §16.2 SDK export inventory — out of this story's amendment table (US-608A).
+- Verification: coordinated-plan, check:boundaries, lint, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; forbidden-token and added-line em-dash scans empty. Typecheck not rerun (markdown-only). Guide-Coverage-Skip: specification-only durable core amendment with no runtime CLI or guide-covered source surface change.
+- **Learnings for future iterations:** Command-table `minimal` is not translator-capable; `ConfigTranslatorRegistry` lives at `plugins`. When freezing IR-gap task/step `dir` precedence, do not leave include-level `dir:` claiming the task-level field is rejected.
+---
