@@ -607,7 +607,7 @@ export const PostRestartEvent = Schema.TaggedStruct("post-restart", {
 export type PostRestartEvent = Schema.Schema.Type<typeof PostRestartEvent>;
 ```
 
-Restart payloads MUST use the same app/plan/trigger/timestamp shape as start/stop payloads, differing only in their event tags.
+Restart payloads MUST use the same app/plan/trigger/timestamp shape as start payloads, differing only in their event tags.
 
 `PreScratchStartEvent` illustrates the Scratch-scope payload shape (§21.6.2 is canonical; remaining Scratch-scope events follow the same pattern):
 

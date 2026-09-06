@@ -32,3 +32,9 @@
 - Review notes (deferred/rejected): none new.
 - Verification: markdown-only follow-up; previous gates unchanged.
 ---
+
+## 2026-09-06 15:45 - US-607 Review
+- Post-commit Bugbot: restart payloads match start (not stop) payload shape.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up.
+---
