@@ -3,9 +3,9 @@ import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Effect } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, inspect, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
@@ -93,12 +93,12 @@ const plan: AppPlan = {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");

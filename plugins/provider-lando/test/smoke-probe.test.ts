@@ -4,7 +4,7 @@ import { Deferred, Duration, Effect, Fiber, TestClock, TestContext } from "effec
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
 
-import type { PodmanApiClient, PodmanHttpRequest } from "@lando/container-runtime/engine-api";
+import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderLandoSmokeError, type SmokeOperation, runSmokeReadinessProbe } from "../src/smoke-probe.ts";
 
 const retryPolicy: RetryPolicy = {
@@ -21,7 +21,7 @@ interface FakeOptions {
   readonly blockHealthInspect?: Deferred.Deferred<void>;
 }
 
-const fakeApi = (requests: PodmanHttpRequest[], options: FakeOptions = {}): PodmanApiClient => {
+const fakeApi = (requests: EngineHttpRequest[], options: FakeOptions = {}): PodmanApiClient => {
   let healthInspect = 0;
   let imageExists = options.failBaseImage !== true;
   return {
@@ -58,7 +58,7 @@ const fakeApi = (requests: PodmanHttpRequest[], options: FakeOptions = {}): Podm
   };
 };
 
-const run = (requests: PodmanHttpRequest[], options: FakeOptions = {}) =>
+const run = (requests: EngineHttpRequest[], options: FakeOptions = {}) =>
   Effect.scoped(
     runSmokeReadinessProbe({
       podmanApi: fakeApi(requests, options),
@@ -66,12 +66,12 @@ const run = (requests: PodmanHttpRequest[], options: FakeOptions = {}) =>
     }),
   );
 
-const deletionPaths = (requests: ReadonlyArray<PodmanHttpRequest>): ReadonlyArray<string> =>
+const deletionPaths = (requests: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<string> =>
   requests.filter((request) => request.method === "DELETE").map((request) => request.path);
 
 describe("runSmokeReadinessProbe", () => {
   test("completes run, build-and-resolve, and healthy-container outcomes", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     await Effect.runPromise(run(requests));
 
@@ -85,7 +85,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("uses Docker-compatible lifecycle endpoints with matching create bodies", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     await Effect.runPromise(run(requests));
 
@@ -120,7 +120,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("reports a non-zero run exit with a redacted operation discriminator", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     const failure = await Effect.runPromise(run(requests, { runExitCode: 17 }).pipe(Effect.flip));
 
@@ -131,7 +131,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("confirms the built image resolves after submitting a tar build context", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     await Effect.runPromise(run(requests));
 
@@ -154,7 +154,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("retries a starting healthcheck deterministically before healthy", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -170,7 +170,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("reports unhealthy as a health operation failure", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     const failure = await Effect.runPromise(run(requests, { health: ["unhealthy"] }).pipe(Effect.flip));
 
@@ -180,7 +180,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("distinguishes base-image acquisition from host operation incapability and redacts lastError", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
 
     const failure = await Effect.runPromise(run(requests, { failBaseImage: true }).pipe(Effect.flip));
 
@@ -191,7 +191,7 @@ describe("runSmokeReadinessProbe", () => {
   });
 
   test("cleans acquired resources when interrupted", async () => {
-    const requests: PodmanHttpRequest[] = [];
+    const requests: EngineHttpRequest[] = [];
     const blocker = await Effect.runPromise(Deferred.make<void>());
     const api = fakeApi(requests, { blockHealthInspect: blocker });
     const program = Effect.scoped(runSmokeReadinessProbe({ podmanApi: api, retryPolicy }));

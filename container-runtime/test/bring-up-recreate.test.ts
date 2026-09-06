@@ -9,7 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/engine-api.ts";
+import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
@@ -79,7 +79,7 @@ const inspectWithoutPortBindings = (running: boolean): string =>
   JSON.stringify({ State: { Running: running } });
 
 const makeFakeApi = (input: { readonly deleteStatus: number; readonly omitPortBindings?: boolean }) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   let exists = true;
   let running = true;
   let hostPort = "18080";
@@ -87,7 +87,7 @@ const makeFakeApi = (input: { readonly deleteStatus: number; readonly omitPortBi
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -136,7 +136,7 @@ const makeFakeApi = (input: { readonly deleteStatus: number; readonly omitPortBi
   return { api, calls };
 };
 
-const createCalls = (calls: ReadonlyArray<PodmanHttpRequest>): ReadonlyArray<PodmanHttpRequest> =>
+const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<EngineHttpRequest> =>
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {

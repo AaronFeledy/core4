@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import {
   HOST_PROXY_CONTAINER_LANDO,
@@ -223,13 +223,13 @@ const makeFakePodmanState = () => {
       },
     ]),
   );
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");

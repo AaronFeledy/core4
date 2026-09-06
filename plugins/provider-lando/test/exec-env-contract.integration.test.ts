@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
@@ -77,7 +77,7 @@ const containerName = (slug: string, service: string) =>
   `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const makeFakeApi = () => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const created = new Set<string>();
   const networks = new Set<string>();
 
@@ -85,7 +85,7 @@ const makeFakeApi = () => {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") {

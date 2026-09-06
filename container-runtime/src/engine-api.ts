@@ -45,10 +45,4 @@ export interface PodmanApiClient extends EngineApiClient {
   readonly ping: Effect.Effect<void, EngineInfoError>;
 }
 
-export type PodmanHttpRequest = EngineHttpRequest;
-export type PodmanHttpResponse = EngineHttpResponse;
-export type DockerApiClient = EngineApiClient;
-export type DockerHttpRequest = EngineHttpRequest;
-export type DockerHttpResponse = EngineHttpResponse;
-
 export const isSuccessStatus = (status: number): boolean => status >= 200 && status < 300;

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/container-runtime/engine-api";
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/core/testing";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -67,8 +67,8 @@ const target = { app: appId, service: serviceName };
 const missingPlanTarget = { app: missingAppId, service: serviceName };
 const temporaryDirectories: string[] = [];
 
-const makeFakeApi = (response: PodmanHttpResponse) => {
-  const calls: PodmanHttpRequest[] = [];
+const makeFakeApi = (response: EngineHttpResponse) => {
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,

@@ -10,7 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/engine-api.ts";
+import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
@@ -87,14 +87,14 @@ const planWithCompose = (compose?: Record<string, unknown>): AppPlan => {
 };
 
 const makeFakeApi = () => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const existing = new Set<string>();
   const running = new Set<string>();
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -128,13 +128,13 @@ const makeFakeApi = () => {
   return { api, calls };
 };
 
-const findCreateRequest = (calls: ReadonlyArray<PodmanHttpRequest>): PodmanHttpRequest | undefined =>
+const findCreateRequest = (calls: ReadonlyArray<EngineHttpRequest>): EngineHttpRequest | undefined =>
   calls.find((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
-const hostConfig = (request: PodmanHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
+const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
   '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';

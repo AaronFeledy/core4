@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { makeRuntimeProvider } from "@lando/provider-lando";
@@ -81,8 +81,8 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
   return {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
-    request: (request: PodmanHttpRequest) =>
-      Effect.sync((): PodmanHttpResponse => {
+    request: (request: EngineHttpRequest) =>
+      Effect.sync((): EngineHttpResponse => {
         if (request.method === "POST" && request.path.includes("/exec")) {
           return { status: 201, body: JSON.stringify({ Id: "exec-fake-1" }) };
         }
@@ -91,7 +91,7 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
-    stream: (_request: PodmanHttpRequest) => Stream.make(frame("ok\n")),
+    stream: (_request: EngineHttpRequest) => Stream.make(frame("ok\n")),
   };
 };
 

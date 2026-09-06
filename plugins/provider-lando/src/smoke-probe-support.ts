@@ -1,9 +1,9 @@
 import { Duration, Effect } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { redactDetails } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -62,8 +62,8 @@ export const smokeRemediation = (operation: SmokeOperation): string => {
 export const smokeApiRequest = (
   deps: SmokeProbeDeps,
   operation: SmokeOperation,
-  input: PodmanHttpRequest,
-): Effect.Effect<PodmanHttpResponse, ProviderLandoSmokeError> => {
+  input: EngineHttpRequest,
+): Effect.Effect<EngineHttpResponse, ProviderLandoSmokeError> => {
   if (deps.podmanApi.request === undefined) {
     return Effect.fail(
       new ProviderLandoSmokeError({
@@ -89,7 +89,7 @@ export const smokeApiRequest = (
 
 export const expectSmokeSuccess = (
   operation: SmokeOperation,
-  response: PodmanHttpResponse,
+  response: EngineHttpResponse,
   message: string,
 ) =>
   response.status >= 200 && response.status < 300

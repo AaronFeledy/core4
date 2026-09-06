@@ -2,7 +2,11 @@ import { Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
-import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import {
   type PullImageOptions,
@@ -152,11 +156,9 @@ export {
   removeAppliedPlan,
 } from "./applied-state.ts";
 export { buildImagePullRequest, parseContainerEventPayloads, parseImagePullFrame, withApiReason };
-export type {
-  PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
-} from "@lando/container-runtime/engine-api";
+export type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+export type PodmanHttpRequest = EngineHttpRequest;
+export type PodmanHttpResponse = EngineHttpResponse;
 export type { ImagePullFrame, PullImageDeps, PulledImage } from "@lando/container-runtime/image-pull";
 export type { ContainerDiedEventsOptions } from "@lando/container-runtime/podman/container-events";
 export type { EmitComposeOptions, EmitComposeResult } from "@lando/container-runtime/podman/compose";

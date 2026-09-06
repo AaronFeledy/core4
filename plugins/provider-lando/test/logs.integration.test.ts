@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
-import type { PodmanApiClient, PodmanHttpRequest } from "@lando/container-runtime/engine-api";
+import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, logs, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -79,7 +79,7 @@ const frame = (stream: "stdout" | "stderr", text: string): Uint8Array => {
 };
 
 const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),

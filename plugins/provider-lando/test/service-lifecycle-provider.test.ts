@@ -14,9 +14,9 @@ import {
 } from "@lando/sdk/schema";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 
 const providerId = ProviderId.make("lando");
@@ -65,8 +65,8 @@ const plan: AppPlan = {
 const target = { app: appId, service: serviceName, plan };
 const missingPlanTarget = { app: appId, service: serviceName };
 
-const makeFakeApi = (response: PodmanHttpResponse) => {
-  const calls: PodmanHttpRequest[] = [];
+const makeFakeApi = (response: EngineHttpResponse) => {
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.void,

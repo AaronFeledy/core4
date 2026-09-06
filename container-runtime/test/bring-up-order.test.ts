@@ -9,7 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest } from "../src/engine-api.ts";
+import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
@@ -84,7 +84,7 @@ const makePodmanApi = (
   const containers = new Set(existing);
   const running = new Set<string>();
   const failedStartNames = new Set(failedStarts);
-  const record = (request: PodmanHttpRequest) => requests.push(`${request.method} ${request.path}`);
+  const record = (request: EngineHttpRequest) => requests.push(`${request.method} ${request.path}`);
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),

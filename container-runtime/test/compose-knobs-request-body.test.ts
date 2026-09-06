@@ -9,7 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest } from "../src/engine-api.ts";
+import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
@@ -58,8 +58,8 @@ const planWithCompose = (compose: Record<string, unknown>): AppPlan => {
   };
 };
 
-const captureCreateRequest = async (compose: Record<string, unknown>): Promise<PodmanHttpRequest> => {
-  let createRequest: PodmanHttpRequest | undefined;
+const captureCreateRequest = async (compose: Record<string, unknown>): Promise<EngineHttpRequest> => {
+  let createRequest: EngineHttpRequest | undefined;
   let running = false;
   const api: PodmanApiClient = {
     info: Effect.succeed({}),

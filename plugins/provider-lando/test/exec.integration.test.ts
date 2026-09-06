@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Fiber, Stream } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
@@ -89,12 +89,12 @@ const makeFakeApi = (
   stderr = "",
   streamOverride?: NonNullable<PodmanApiClient["stream"]>,
 ) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         if (request.method === "POST" && request.path === "/containers/lando-execapp-node/exec") {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };

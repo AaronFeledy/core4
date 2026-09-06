@@ -5,9 +5,9 @@ import { buildProviderCapabilities } from "@lando/container-runtime/capabilities
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
-  DockerApiClient,
-  DockerHttpRequest,
-  DockerHttpResponse,
+  EngineApiClient,
+  EngineHttpRequest,
+  EngineHttpResponse,
   ProviderErrorContext,
 } from "@lando/container-runtime/engine-api";
 import { engineApiFailure } from "@lando/container-runtime/engine-errors";
@@ -94,11 +94,9 @@ export {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-export type {
-  DockerApiClient,
-  DockerHttpRequest,
-  DockerHttpResponse,
-} from "@lando/container-runtime/engine-api";
+export type DockerApiClient = EngineApiClient;
+export type DockerHttpRequest = EngineHttpRequest;
+export type DockerHttpResponse = EngineHttpResponse;
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {

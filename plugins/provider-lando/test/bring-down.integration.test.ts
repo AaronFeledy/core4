@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
   PodmanApiClient,
-  PodmanHttpRequest,
-  PodmanHttpResponse,
 } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
@@ -123,12 +123,12 @@ const makeFakeApi = () => {
       },
     ]),
   );
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -258,7 +258,7 @@ describe("provider-lando bringDown", () => {
       services: {},
       stores: [{ name: "foreign-data", scope: "app", kind: "data" }],
     };
-    const calls: PodmanHttpRequest[] = [];
+    const calls: EngineHttpRequest[] = [];
     const api: PodmanApiClient = {
       info: Effect.succeed({}),
       ping: Effect.succeed(undefined),
