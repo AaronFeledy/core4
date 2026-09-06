@@ -60,3 +60,15 @@
   - `expect<unknown>(...)` is the repo idiom when `toEqual` compares branded/readonly schema values against literals.
   - Deprecated helper aliases (`pathJoin`, ...) are not registered in the evaluator, so `EXPRESSION_HELPER_NAMES` does not include them yet.
 ---
+
+## 2026-09-06 17:05 - Babysit
+- PR: none — branch us-608a-authoring-translation-contracts not pushed to origin, no PR exists
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:15 - US-608A
+- Story verified complete on branch (no new code): both acceptance criteria hold against the committed authoring schemas, set-based `ConfigTranslator` port, validators, and rewritten contract suite.
+- Verification: typecheck, lint, check:boundaries, check:schema-compatibility (27 compatible, 0 breaking, 1 accepted) passed; 1,095 spot-check tests across story and adjacent SDK schema, landofile, contract, and CLI files passed, including the `app:config:translate` command harness.
+---
