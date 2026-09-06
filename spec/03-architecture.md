@@ -87,8 +87,8 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 | Level | Adds | Used by |
 |---|---|---|
 | `none` | Command-base depth: do not pre-build an Effect runtime layer before the command body runs. The **pre-dispatch fast path** (below) is a subset that also skips the dispatcher/Effect entirely; other `none` commands still resolve through the native dispatcher and may build a runtime *inside* their program. | Fast path: `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v`. Dispatcher-routed `none` with in-program runtime: `meta:doctor` (builds `provider` itself per §10.9.1) |
-| `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:init`, `apps:list` |
-| `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update` |
+| `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:list` |
+| `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update`, `apps:init`, `app:config:translate`, `app:config:explain`, `app:config:migrate` |
 | `commands` | Lando command registry services and command-cache refresh ability | command-management and docs/reference commands |
 | `tooling` | Commands plus a cache-only app plan / `ToolingProgram` read | Landofile-defined tooling commands that do not need full app planning |
 | `provider` | Provider selection and adapter initialization | `meta:setup`, `apps:poweroff`, `apps:list --all` (also `meta:doctor`, which declares `none` and builds this level itself per §10.9.1) |

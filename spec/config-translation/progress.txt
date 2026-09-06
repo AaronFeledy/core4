@@ -38,3 +38,12 @@
 - Review notes (deferred/rejected): none new.
 - Verification: markdown-only follow-up.
 ---
+
+## 2026-09-06 16:10 - US-607 Drift Audit
+- Trigger: 4 cycles, 538 changed lines, 6 commits
+- Findings by category (only categories with findings; one line each, outcome-focused)
+- Contract drift: §3.2 still listed `apps:init` at `minimal` after conversion/init moved to BootstrapLevel `plugins`; §1.2 called the lando3 path two-way; §1.3 still described fragment application instead of authoring/transaction writes
+- Fixed: conversion/init now appear on the `plugins` used-by list; lando3 conversion is named decode-only; the core-owns pipeline bullet names authoring validation, encoding, and managed-file writes
+- Split/excise decisions: none
+- Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
+---
