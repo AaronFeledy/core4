@@ -367,7 +367,6 @@ describe("pull failure handling", () => {
         method: "POST",
         path: "/images/create?fromImage=registry.internal%2Fteam%2Fimg&tag=1.0",
         status: 401,
-        body: '{"message":"unauthorized: authentication required"}',
       },
     });
 
@@ -383,9 +382,7 @@ describe("pull failure handling", () => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.providerId).toBe("docker");
     expect(failure.operation).toBe("pullArtifact");
-    expect(failure.message).toBe(
-      "Container image pull failed: HTTP 401. unauthorized: authentication required",
-    );
+    expect(failure.message).toBe("Container image pull failed: HTTP 401.");
     expect(failure.details).toMatchObject({ failureKind: "registry-auth" });
     expect(failure.remediation).toContain("`docker logout`");
   });

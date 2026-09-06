@@ -393,7 +393,6 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       let parsed: ParsedHttpHead | undefined;
       let chunkedBody = false;
       let bodyBuffer: Bytes = new Uint8Array(0) as Bytes;
-      let failedStatus: number | undefined;
 
       for await (const chunk of connection) {
         if (parsed === undefined) {
@@ -401,15 +400,19 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           const merged = concatBytes(initialChunks);
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
-          chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
           if (parsed.status !== 101 && (parsed.status < 200 || parsed.status >= 300)) {
-            // Keep draining so the error body (registry reason, engine message) reaches the caller;
-            // the request carries `Connection: close`, so the engine ends the socket after the body.
-            failedStatus = parsed.status;
-            bodyBuffer = parsed.bodyStart;
-            continue;
+            // Fail immediately rather than draining the error body: hijacked (`Connection: Upgrade`)
+            // requests declare no body end and the engine can hold the socket open after an error
+            // status. Consumers classify from `status` in the details instead.
+            throw fail(
+              "http",
+              operation,
+              `Container runtime stream request failed with HTTP ${parsed.status}.`,
+              { method: input.method, path: input.path, status: parsed.status },
+            );
           }
           flushStdin();
+          chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
           if (chunkedBody) {
             bodyBuffer = parsed.bodyStart;
             const decoded = decodeChunkedBuffer(bodyBuffer);
@@ -419,11 +422,6 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           } else if (parsed.bodyStart.length > 0) {
             yield parsed.bodyStart;
           }
-          continue;
-        }
-
-        if (failedStatus !== undefined) {
-          bodyBuffer = concatBytes([bodyBuffer, chunk]);
           continue;
         }
 
@@ -443,15 +441,6 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
         throw fail("parse", operation, "Container runtime stream response ended before HTTP headers.", {
           method: input.method,
           path: input.path,
-        });
-      }
-      if (failedStatus !== undefined) {
-        const body = chunkedBody ? concatBytes(flushChunkedBufferAtEnd(bodyBuffer)) : bodyBuffer;
-        throw fail("http", operation, `Container runtime stream request failed with HTTP ${failedStatus}.`, {
-          method: input.method,
-          path: input.path,
-          status: failedStatus,
-          body: textDecoder.decode(body),
         });
       }
       if (chunkedBody && bodyBuffer.length > 0) {

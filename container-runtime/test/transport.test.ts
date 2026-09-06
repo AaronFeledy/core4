@@ -59,8 +59,15 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 };
 
 class WaitingConnection extends FakeConnection {
+  constructor(
+    chunks: ReadonlyArray<Bytes> = [],
+    private readonly head = "HTTP/1.1 200 OK\r\n\r\n",
+  ) {
+    super(chunks);
+  }
+
   override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
-    yield bytes("HTTP/1.1 200 OK\r\n\r\n");
+    yield bytes(this.head);
     while (!this.destroyed) await sleep(1);
   }
 }
@@ -326,16 +333,20 @@ describe("socket HTTP transport", () => {
     expect(connection.destroyed).toBe(true);
   });
 
-  test("drains the error body of a non-2xx stream response into the transport error", async () => {
-    const connection = new FakeConnection([
-      bytes("HTTP/1.1 401 Unauthorized\r\nTransfer-Encoding: chunked\r\n\r\n"),
-      bytes('1f\r\n{"message":"unauthorized: bad"}\r\n0\r\n\r\n'),
-    ]);
+  test("fails a non-2xx stream response immediately with its status, without draining the body", async () => {
+    // A hijacked request declares no body end, so waiting for one would hang the caller.
+    const connection = new WaitingConnection([], "HTTP/1.1 404 Not Found\r\n\r\n");
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
 
     let caught: unknown;
     try {
-      await Array.fromAsync(client.stream({ method: "POST", path: "/images/create?fromImage=x" }));
+      await Array.fromAsync(
+        client.stream({
+          method: "POST",
+          path: "/exec/abc/start",
+          headers: { Connection: "Upgrade", Upgrade: "tcp" },
+        }),
+      );
     } catch (cause) {
       caught = cause;
     }
@@ -343,12 +354,7 @@ describe("socket HTTP transport", () => {
     expect(caught).toBeInstanceOf(ContainerTransportError);
     const error = caught as ContainerTransportError;
     expect(error.kind).toBe("http");
-    expect(error.details).toEqual({
-      method: "POST",
-      path: "/images/create?fromImage=x",
-      status: 401,
-      body: '{"message":"unauthorized: bad"}',
-    });
+    expect(error.details).toEqual({ method: "POST", path: "/exec/abc/start", status: 404 });
     expect(connection.destroyed).toBe(true);
   });
 
