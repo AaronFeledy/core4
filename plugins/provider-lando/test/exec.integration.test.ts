@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Fiber, Stream } from "effect";
 
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -13,7 +18,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { ExecChunk } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("execapp");
@@ -85,12 +89,12 @@ const makeFakeApi = (
   stderr = "",
   streamOverride?: NonNullable<PodmanApiClient["stream"]>,
 ) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         if (request.method === "POST" && request.path === "/containers/lando-execapp-node/exec") {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
@@ -141,7 +145,7 @@ describe("provider-lando exec", () => {
         plan,
         { app: appId, service: node.name },
         { command: ["node", "-e", "console.log('hi')"] },
-        { podmanApi: fake.api },
+        { api: fake.api },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
     const decoded = decodeChunks(chunks);
@@ -160,7 +164,7 @@ describe("provider-lando exec", () => {
         plan,
         { app: appId, service: node.name },
         { command: ["sh", "-l"], stdin: "inherit", tty: true },
-        { podmanApi: fake.api },
+        { api: fake.api },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
 
@@ -188,7 +192,7 @@ describe("provider-lando exec", () => {
           terminalSize: { columns: 132, rows: 43 },
           terminalResize: Stream.fromIterable([{ columns: 100, rows: 20 }]),
         },
-        { podmanApi: fake.api },
+        { api: fake.api },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
     const decoded = decodeChunks(chunks);
@@ -210,7 +214,7 @@ describe("provider-lando exec", () => {
             plan,
             { app: appId, service: node.name },
             { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
-            { podmanApi: fake.api },
+            { api: fake.api },
           ).pipe(Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           controller.abort();
@@ -227,7 +231,7 @@ describe("provider-lando exec", () => {
     const fake = makeFakeApi(1, "");
 
     const result = await Effect.runPromise(
-      exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { podmanApi: fake.api }),
+      exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { api: fake.api }),
     );
 
     expect(result).toEqual({ exitCode: 1, stdout: "", stderr: "" });
@@ -240,19 +244,19 @@ describe("provider-lando exec", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+      await Effect.runPromise(bringUp(plan, { api }));
       try {
         const chunks = await Effect.runPromise(
           execStream(
             plan,
             { app: appId, service: node.name },
             { command: ["node", "-e", "console.log('hi')"] },
-            { podmanApi: api },
+            { api },
           ).pipe(Stream.runCollect, Effect.scoped),
         );
         const streamed = decodeChunks(chunks);
         const failed = await Effect.runPromise(
-          exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { podmanApi: api }),
+          exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { api }),
         );
 
         expect(streamed.stdout).toContain("hi\n");
@@ -260,7 +264,7 @@ describe("provider-lando exec", () => {
         expect(failed.exitCode).toBe(1);
         expect(failed.stderr).toBe("");
       } finally {
-        await Effect.runPromise(bringDown(plan, { podmanApi: api }));
+        await Effect.runPromise(bringDown(plan, { api }));
       }
     },
     60_000,

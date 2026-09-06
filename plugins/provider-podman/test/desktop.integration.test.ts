@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { Cause, Effect, Exit, Stream } from "effect";
 import { DateTime } from "effect";
 
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import {
   PodmanMachineNotRunningError,
   makeProviderLayer,
@@ -80,13 +84,13 @@ const FRAMED_LOG = (channel: 1 | 2, text: string): Uint8Array => {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { os: "darwin" }, version: { Version: "6.0.2" } }),
     ping: Effect.void,
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") return { status: 201, body: "{}" };

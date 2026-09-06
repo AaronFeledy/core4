@@ -333,7 +333,9 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         }),
       );
 
-      await runScopedExit(provider.exec({ app: appId, service: serviceName }, { command: ["echo", "hi"] }));
+      await runScopedExit(
+        provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
+      );
 
       expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
       expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");

@@ -1,7 +1,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { MINIMUM_PODMAN_VERSION, type PodmanApiClient } from "@lando/provider-lando";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { MINIMUM_PODMAN_VERSION } from "@lando/container-runtime/podman/version-floor";
 import { makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";

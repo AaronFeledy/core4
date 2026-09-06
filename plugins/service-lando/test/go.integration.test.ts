@@ -178,7 +178,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
         );
 
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           // `go run` needs time to compile before it starts serving; allow generous headroom.
@@ -214,7 +214,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toMatch(/go version go1\.22/u);
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

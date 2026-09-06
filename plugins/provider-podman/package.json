@@ -24,7 +24,6 @@
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
-    "@lando/provider-lando": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "^3.21.2"
   },

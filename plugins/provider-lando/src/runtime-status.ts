@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { Effect } from "effect";
 import {
   type ManagedRuntimeServicePaths,
@@ -7,7 +8,6 @@ import {
   terminateOwnedRuntimeService,
 } from "./managed-runtime-service.ts";
 
-import type { PodmanApiClient } from "./capabilities.ts";
 import type { PodmanServiceRunner, PodmanServiceSpec } from "./podman-service-runner.ts";
 
 export interface RuntimeServiceStatus {

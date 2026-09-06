@@ -161,14 +161,14 @@ describe("scratch fork app resources — live integration", () => {
       const sourcePlan = appPlan("forksrc");
       const forkPlan = rewritePlanIdentity(sourcePlan, "scratch-forksrc-abc123");
 
-      await Effect.runPromise(Effect.either(bringDown(forkPlan, { podmanApi: api, volumes: true })));
-      await Effect.runPromise(Effect.either(bringDown(sourcePlan, { podmanApi: api, volumes: true })));
+      await Effect.runPromise(Effect.either(bringDown(forkPlan, { api, volumes: true })));
+      await Effect.runPromise(Effect.either(bringDown(sourcePlan, { api, volumes: true })));
 
       try {
-        const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { podmanApi: api }));
+        const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { api }));
         expect(sourceApplied.changed).toBe(true);
 
-        const forkApplied = await Effect.runPromise(bringUp(forkPlan, { podmanApi: api }));
+        const forkApplied = await Effect.runPromise(bringUp(forkPlan, { api }));
         expect(forkApplied.changed).toBe(true);
 
         expect(forkPlan.root).toBe(sourcePlan.root);
@@ -189,8 +189,8 @@ describe("scratch fork app resources — live integration", () => {
           expect(forkContainerIds).not.toContain(containerId);
         }
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(forkPlan, { podmanApi: api, volumes: true })));
-        await Effect.runPromise(Effect.either(bringDown(sourcePlan, { podmanApi: api, volumes: true })));
+        await Effect.runPromise(Effect.either(bringDown(forkPlan, { api, volumes: true })));
+        await Effect.runPromise(Effect.either(bringDown(sourcePlan, { api, volumes: true })));
       }
     },
     240_000,

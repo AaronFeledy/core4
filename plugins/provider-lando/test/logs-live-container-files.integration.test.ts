@@ -21,8 +21,8 @@ import {
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
 
+import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { loadLogFileHelperPayloads } from "@lando/core/testing";
-import type { PodmanHttpResponse } from "../src/capabilities.ts";
 
 const liveSocket = resolveLiveProviderSocket();
 const providerId = ProviderId.make("lando");
@@ -341,7 +341,7 @@ describe("provider-lando live container-file logs", () => {
         await rm(appRoot, { recursive: true, force: true });
       }
 
-      const inspectAfterDestroy: PodmanHttpResponse = await Effect.runPromise(
+      const inspectAfterDestroy: EngineHttpResponse = await Effect.runPromise(
         api.request?.({ method: "GET", path: `/containers/${containerName}/json` }) ??
           Effect.succeed({ status: 500, body: "missing request client" }),
       );

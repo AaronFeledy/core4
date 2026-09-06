@@ -958,3 +958,5 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["importArtifact"],
   };
 };
+
+export type ProviderDataPlane = ReturnType<typeof makeProviderDataPlane>;

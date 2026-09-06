@@ -15,9 +15,6 @@
     },
     {
       "path": "../../container-runtime"
-    },
-    {
-      "path": "../provider-lando"
     }
   ]
 }

@@ -8,6 +8,7 @@ import path from "node:path";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
+import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -16,6 +17,7 @@ import {
   makeDockerApiClient,
   makeProviderLayer,
   makeRuntimeProvider,
+  persistAppliedPlan,
   renderCompose,
 } from "@lando/provider-docker";
 import {
@@ -426,6 +428,10 @@ const makeFakeApi = () => {
       }),
     stream: (request) => {
       calls.push(request);
+      if (request.path.startsWith("/images/create?")) {
+        imageInspectAndPullResponse(images, request);
+        return Stream.empty;
+      }
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
@@ -778,6 +784,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
       }),
     stream: (request) => {
       calls.push(request);
+      if (request.path.startsWith("/images/create?")) {
+        imageInspectAndPullResponse(images, request);
+      }
       return Stream.empty;
     },
   };
@@ -900,13 +909,20 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("data-plane copies use the applied plan slug for service container names", async () => {
     const fake = makeDataPlaneFakeApi();
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
     const plan = { ...makePlan(), slug: "custom-slug" };
+    const appliedPlanState = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/provider-docker-copy-state"),
+    );
+    await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", dockerApi: fake.api, appliedPlanState }),
+    );
 
     await Effect.runPromise(
       Effect.scoped(
         provider.copyToService(
-          { app: appId, service: serviceName, plan },
+          { app: appId, service: serviceName },
           {
             sourcePath: AbsolutePath.make(import.meta.path),
             targetPath: PortablePath.make("/tmp/payload"),
@@ -943,10 +959,15 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("runs the provider data-plane contract through the Docker Engine API", async () => {
     const fake = makeDataPlaneFakeApi();
+    const appliedPlanState = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/provider-docker-data-plane-contract-state"),
+    );
+    await Effect.runPromise(persistAppliedPlan(appliedPlanState, makePlan()));
     await Effect.runPromise(
       runProviderDataPlaneContract({
         providerName: "docker",
-        factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }),
+        factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: fake.api, appliedPlanState }),
         observations: {
           usedCopyVolumeSnapshot: () =>
             fake.calls.some(
@@ -966,8 +987,17 @@ describe("provider-docker RuntimeProvider contract", () => {
   });
 
   test("emits ServiceCopyError for copyToService failures", async () => {
+    const appliedPlanState = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/provider-docker-copy-failure-state"),
+    );
+    await Effect.runPromise(persistAppliedPlan(appliedPlanState, makePlan()));
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({ platform: "linux", dockerApi: makeDataPlaneFakeApi({ failCopyTo: true }).api }),
+      makeRuntimeProvider({
+        platform: "linux",
+        dockerApi: makeDataPlaneFakeApi({ failCopyTo: true }).api,
+        appliedPlanState,
+      }),
     );
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
@@ -1098,17 +1128,18 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("emits raw stdout chunks for TTY exec streams and forwards stdin and terminal resize events", async () => {
     const fake = makeFakeApi();
+    const baseStream = fake.api.stream;
     const stdinStream = (async function* () {
       yield textEncoder.encode("typed\n");
     })();
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      fake.calls.push(request);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+        fake.calls.push(request);
         return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
       }
-      return Stream.empty;
+      return baseStream?.(request) ?? Stream.empty;
     };
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
@@ -1151,12 +1182,15 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("interrupts provider exec streams when the abort signal fires", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
+    const baseStream = fake.api.stream;
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      fake.calls.push(request);
-      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) return Stream.never;
-      return Stream.empty;
+      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+        fake.calls.push(request);
+        return Stream.never;
+      }
+      return baseStream?.(request) ?? Stream.empty;
     };
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
@@ -1205,14 +1239,15 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes raw Docker log bytes", async () => {
     const fake = makeFakeApi();
+    const baseStream = fake.api.stream;
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      fake.calls.push(request);
       if (request.path.includes("/logs?")) {
+        fake.calls.push(request);
         return Stream.fromIterable([textEncoder.encode("2026-05-17T12:00:00.000Z raw ready\n")]);
       }
-      return Stream.empty;
+      return baseStream?.(request) ?? Stream.empty;
     };
 
     const provider = await Effect.runPromise(
@@ -1240,15 +1275,16 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes split framed Docker log bytes", async () => {
     const fake = makeFakeApi();
+    const baseStream = fake.api.stream;
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      fake.calls.push(request);
       if (request.path.includes("/logs?")) {
+        fake.calls.push(request);
         const frame = attachFrame(1, "2026-05-17T12:00:00.000Z split ready\n");
         return Stream.fromIterable([frame.slice(0, 5), frame.slice(5)]);
       }
-      return Stream.empty;
+      return baseStream?.(request) ?? Stream.empty;
     };
 
     const provider = await Effect.runPromise(

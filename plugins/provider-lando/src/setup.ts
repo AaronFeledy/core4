@@ -4,6 +4,12 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import {
+  MINIMUM_PODMAN_VERSION,
+  podmanVersionMeetsFloor,
+} from "@lando/container-runtime/podman/version-floor";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -12,7 +18,6 @@ import { type HostPlatform, type HostPlatformFamily, hostPlatformFamily } from "
 import type { ProviderError } from "@lando/sdk/services";
 import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
 
-import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import {
   buildManagedMachineInitArgs,
@@ -28,15 +33,14 @@ export {
   rejectIntelMacHost,
 } from "./host-support.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
+import { LANDO_CTX } from "./provider-context.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
-import { podmanVersionMeetsFloor } from "./version-floor.ts";
 
 const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
 const PROVIDER_ID = "lando";
-const MINIMUM_PODMAN_VERSION = "6.0.0";
 const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
 
 export class PodmanNotInstalledError extends ProviderUnavailableError {
@@ -952,7 +956,8 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
       }
 
       const api =
-        options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
+        options.podmanApi ??
+        (socketPath === undefined ? undefined : makeRuntimePodmanApiClient(socketPath, LANDO_CTX));
 
       let info: unknown;
       if (probesSocket && socketStep !== undefined) {
