@@ -26,3 +26,9 @@
 - Verification: coordinated-plan, check:boundaries, lint, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; forbidden-token and added-line em-dash scans empty. Typecheck not rerun (markdown-only). Guide-Coverage-Skip: specification-only durable core amendment with no runtime CLI or guide-covered source surface change.
 - **Learnings for future iterations:** Command-table `minimal` is not translator-capable; `ConfigTranslatorRegistry` lives at `plugins`. When freezing IR-gap task/step `dir` precedence, do not leave include-level `dir:` claiming the task-level field is rejected.
 ---
+
+## 2026-09-06 15:35 - US-607 Review
+- Post-commit Bugbot: moved `LANDO_HOST_IP` into the conditional env catalog so the host-reachability omission rule is the one implementers follow.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up; previous gates unchanged.
+---

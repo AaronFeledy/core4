@@ -558,7 +558,6 @@ Credentials MUST be exposed only through typed per-service keys such as the `LAN
 ```text
 LANDO=ON
 LANDO_DEBUG=<empty|1>
-LANDO_HOST_IP=<host gateway alias or IP>
 LANDO_HOST_OS=<platform>
 LANDO_HOST_USER=<host user>
 LANDO_HOST_UID=<host uid>
@@ -578,6 +577,7 @@ LANDO_DOMAIN=<configured domain>
 **Conditional:**
 
 ```text
+LANDO_HOST_IP               # only when declared provider capability and known gateway data permit host reachability (§5.5)
 LANDO_SERVICE_CERT          # when certs enabled
 LANDO_SERVICE_KEY           # when certs enabled
 LANDO_CA_CERT               # when CA available
