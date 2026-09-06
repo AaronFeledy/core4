@@ -47,3 +47,16 @@
 - Split/excise decisions: none
 - Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
 ---
+
+## 2026-09-06 17:30 - US-608A
+- Added expression-aware authoring schemas to `@lando/sdk/schema`: `LandofileAuthoringShape` (complete) and `LandofileAuthoringFragment` (recursively partial) are derived at runtime by walking `LandofileShape.ast` with `SchemaAST` (`deriveAuthoringAst`), unioning a typed expression slot at every value site; `Wire` twins publish the encoded string-bearing form. Types come from generic mappers over the runtime Encoded type, not handwritten trees.
+- Expression slots (`authoringExpressionSlot`, `AuthoringExpression`) parse with the SDK expression parser and check whole-vs-composite form (composite only at string sites), the closed scope list, known helper names (`EXPRESSION_HELPER_NAMES` now exported from `@lando/sdk/expressions`), and a static return-type inference; they never evaluate.
+- Replaced the one-way `ConfigTranslator` port: schema-backed `ConfigTranslateInput` (`landofile-document-set` | `recipe-request`), bounded `ConfigTranslateDocument` snapshots, `ConfigTranslateDetectInput { documents }`, set outputs by target layer with wire fragments, six diagnostic kinds, deletion intents, optional `encode`, and explicit `never` requirements. `validateConfigTranslateInput` / `validateConfigTranslateResult` (`@lando/sdk/landofile`) enforce source ids by variant, unique allowlisted target layers, no deletions for recipe requests, diagnostic ordering, and full authoring-fragment decoding.
+- Contract suite rewritten around the new harness with the encoder round-trip law (expression AST preserved) and cumulative-prefix/final-complete validation; coverage row stays `none-bundled`. `app:config:translate` now builds bounded document sets in core, validates merges with the authoring shape, reports deletions, and fails closed on `--write` with deletions.
+- Verification: typecheck, lint, check:boundaries, codegen:schema-snapshot, check:schema-compatibility (one accepted pre-release finding for the translate command result), lint:guides passed; 216 spot-check tests across 13 files passed; CLI `app:config:translate --list` and the no-translator failure path verified.
+- **Learnings for future iterations:**
+  - Document roots currently derive as `Union(object, expression-slot)` like every other object site; making the root object-only breaks the public-field-description gate path (it resolves descriptions through the union branch) and the `Wire` schemas lose field descriptions under `encodedSchema`. Fixing that needs the annotation gate to follow the derived root TypeLiteral first; do it together with the `lando4` codec story.
+  - Registering a schema also requires a fixture entry in `sdk/test/schema/public-schema-contracts.ts`; `AuthoringExpression` must publish through the expression-definition emission path or JSON Schema generation overflows the stack.
+  - `expect<unknown>(...)` is the repo idiom when `toEqual` compares branded/readonly schema values against literals.
+  - Deprecated helper aliases (`pathJoin`, ...) are not registered in the evaluator, so `EXPRESSION_HELPER_NAMES` does not include them yet.
+---
