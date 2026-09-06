@@ -1,0 +1,293 @@
+{
+  "project": "Lando v4 config translation and recipe provenance",
+  "branchName": "feat/lando3-compat",
+  "description": "Set-based config translation, expression-aware authoring codecs, safe recipe provenance, and recoverable file migration.",
+  "userStories": [
+    {
+      "id": "US-607",
+      "title": "Amend the durable core specification",
+      "description": "As a maintainer, I have one durable core contract before implementation begins.",
+      "acceptanceCriteria": [
+        "Amend the owning core sections for authoring schemas, set-based translation, expression-preserving encoding, registration, producer provenance, declarative snapshots, secret dispositions, and the managed-file transaction and guard; add no `ConfigFormat`, bootstrap sniffing, YAML provenance tag, compatibility delete operator, or runtime emulation.",
+        "Remove recipe wording that permits raw secrets in templates, argv, files, or provenance; add the §12.4 transaction-artifact lifecycle and exact topic/command/plugin/testing/release registry entries; the specification-only standard gates pass.",
+        "Amend owning core specs for restart brackets, planned build users, default home storage, normalized tooling metadata, dynamic events, routes, catalog options, scoped rebuild/info, bounded global maps, and the service-version catalog; remove `LANDO_INFO`, add no `LANDO_MOUNT`, and import no legacy global state.",
+        "Freeze the exact semantics in US-613 through US-618E, including generated reserved-env ownership, `dev.lando.*` label reservation, unknown-home failure, and catalog-derived supported versions; specification standard gates pass.",
+        "Amend owning core sections for `@lando/lando3`, set-based conversion, authoring fragments, safe loader remediation, side-by-side operation ownership, path-only doctor ports, and removal of aggregate `LANDO_INFO`; add no `LANDO_MOUNT`.",
+        "Exclude upgrade/adoption, legacy user-state/custom-basename import, old-image manufacture, compatibility delete values, and runtime emulation; specification standard gates pass."
+      ],
+      "dependsOn": [],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-608A",
+      "title": "Define authoring and set-translation contracts",
+      "description": "As a plugin author, I can translate one ordered foreign document set without pretending its documents are valid v4.",
+      "acceptanceCriteria": [
+        "Derive complete `LandofileAuthoringShape` and recursive partial `LandofileAuthoringFragment` Effect Schemas from shared runtime field definitions, including typed whole expressions and string-only composite interpolation, with no handwritten parallel public types or value resolution during parse/check/encode.",
+        "Extend `ConfigTranslator` with tagged `landofile-document-set` and `recipe-request` inputs and set outputs exactly as §1.1 defines; validate document or synthetic source ids by variant, methods require `never`, factories close over injected SDK ports, detection consumes bounded snapshots only, and the SDK/schema standard gates pass."
+      ],
+      "dependsOn": ["US-607"],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-608B",
+      "title": "Register translators through every plugin seam",
+      "description": "As a host, I can contribute translators through the real plugin graph with deterministic collision failure.",
+      "acceptanceCriteria": [
+        "Add `configTranslators` to `PluginContribution` and `LandoPluginModule`, index it in the module set, preserve lazy generated bundling, and reject duplicate ids with both stable producer identities and no precedence winner.",
+        "Route CLI and library conversion through the same translator-capable bootstrap tier while help, version, loading, and tooling hot paths avoid translator factories; baseline/bundle/cold-start and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608A"],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-608C",
+      "title": "Implement the managed-file transaction coordinator",
+      "description": "As a caller, I can prepare and commit a recoverable multi-file edit without bypassing repository services.",
+      "acceptanceCriteria": [
+        "Add the private managed-file transaction module with canonical-root StateStore locking, symlink rejection, contained parents, same-directory stages, `<file>.bak.<full-before-sha256>` immutable backups, exact hashes/modes, owner-only secret artifacts, and no raw bytes in output channels.",
+        "Durably write the complete owner-only `prepared` journal after backups/stages and before mutation, transition through `committing` and fsynced `committed`, clean committed transactions only, expose no migration UI, and pass failure-boundary plus applicable standard gates."
+      ],
+      "dependsOn": ["US-607"],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-608D",
+      "title": "Recover and guard managed-file transactions",
+      "description": "As a user, native loading never consumes a partial conversion or overwrites a concurrent edit during recovery.",
+      "acceptanceCriteria": [
+        "Recover incomplete journals by preflighting every lock/path/absence/symlink/hash/mode and determining applied renames from before/after digests; conflicts preserve files, mark `blocked`, and require manual resolution rather than overwrite or rollback over edits.",
+        "Add the thin non-translator load/start guard, committed cleanup, pending dry-run report, originally absent/removal recovery, and cooperative-lock/no-CAS wording; cancellation/crash and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608C"],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609A",
+      "title": "Implement the expression-aware lando4 codec",
+      "description": "As a conversion caller, I can parse and emit v4 authoring data without flattening expressions or layers.",
+      "acceptanceCriteria": [
+        "Parse bounded v4 YAML sets to authoring fragments and encode complete or context-validated fragment authoring trees without resolving environment, secret, file, provider, include, `.lando.ts`, or command values.",
+        "Register the bundled `lando4` factory with its real contract-suite invocation and prove `decodeAuthoring(encode(v))` equals canonical authoring `v`, partial-prefix/final-complete validation, fragment-only emission, deterministic formatting, and no future provenance-header assertion; codec and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608A"],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609B",
+      "title": "Implement recipe provenance and migration contracts",
+      "description": "As a translator and recipe producer, I can decompose merged options into traceable authoring data and publish inert migration history.",
+      "acceptanceCriteria": [
+        "Add the schema-backed SDK `RecipeDecomposer` port over recipe identity, merged nonsecret options/references, and authoring-fragment output; its implementation performs no app-root detection, provider action, write, or arbitrary programmatic recipe execution.",
+        "Contract tests cover typed option failure, missing recipe, stable identity, side-effect absence, and injected-port closure with `R = never`; applicable standard gates pass.",
+        "Add mandatory object producer provenance, identity agreement, collision-safe family/version identity, noncircular transitive content digest, injective service map, and expression-aware option sites exactly as §3 defines; place provenance-header tests here.",
+        "Require each secret prompt to choose `secret-store` reference or one named init-only stdin/secret-env sink; decompose receives no raw secret, central redaction covers sink failures, and schema/redaction/applicable standard gates pass.",
+        "Add exact producer identities, `fromSnapshot`/`toSnapshot`, option types/defaults/templates/assets, the closed pure expression/helper allowlist, and declarative hunk schemas; reject IO helpers, arbitrary JS, callbacks, gaps, forks, cycles, overlap, identity drift, and missing old snapshots.",
+        "Make bundled current snapshots safe to render without arbitrary recipe code; local programmatic recipes remain normal-init-only absent snapshots; SDK compatibility/schema/contract and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608A", "US-609A"],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609C",
+      "title": "Orchestrate preview and safe v4 writes in core",
+      "description": "As a user, one explicit operation reads, translates, validates, previews, and safely writes a document set.",
+      "acceptanceCriteria": [
+        "Core reads and orders once, invokes the frontend once per set, validates unique allowlisted outputs and partial prefixes plus final complete authoring shape, invokes the target encoder, and preserves ordered redacted diagnostics without planning or provider contact.",
+        "`--to lando4` writes only declared v4 YAML targets through the transaction; non-v4 encoders are preview-only absent a separate safe mapping; single-layer writes only its dependency closure and fails closed on required nonselected legacy edits; guide and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608B", "US-608D", "US-609A"],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E0",
+      "title": "Integrate recipe init with conversion and transactions",
+      "description": "As a recipe user, init encodes first and runs declared auxiliary actions only after a safe commit.",
+      "acceptanceCriteria": [
+        "Register and contract-test the bundled `recipe` translator, then implement the private init pipeline against an isolated test recipe using translation, expression-aware encoding, and the managed-file transaction; leave the public init registry unchanged until US-609E and pass raw secrets only to declared init-only sinks.",
+        "Validation or commit failure runs no auxiliary action; a later postInit failure reports the committed scaffold and failed action without pretending external side effects can roll back. Shared negative secret fixtures, current public guides, and applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608D", "US-609B", "US-609C"],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E1",
+      "title": "Convert the PHP web recipe family",
+      "description": "As a PHP web recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/lamp/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/lamp/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/lemp/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/lemp/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/wordpress/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/wordpress/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/laravel/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/laravel/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/symfony/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/symfony/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["lamp", "lemp", "wordpress", "laravel", "symfony"],
+      "dependsOn": ["US-609E0"],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E2",
+      "title": "Convert the PHP CMS recipe family",
+      "description": "As a PHP CMS recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/drupal/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/drupal/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/drupal-cms/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/drupal-cms/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/backdrop/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/backdrop/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/joomla/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/joomla/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["drupal", "drupal-cms", "backdrop", "joomla"],
+      "dependsOn": ["US-609E0"],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E3",
+      "title": "Convert the Node application recipe family",
+      "description": "As a Node application recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/node-postgres/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/node-postgres/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/node-api/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/node-api/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/mean/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/mean/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/node-ts/{manifest,render}.ts` rendering with deterministic YAML decomposition and publish its declarative current snapshot; never auto-generate `.lando.ts`.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/node-ts/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["node-postgres", "node-api", "mean", "node-ts"],
+      "dependsOn": ["US-609E0"],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E4",
+      "title": "Convert the Node frontend recipe family",
+      "description": "As a Node frontend recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/astro/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/astro/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/sveltekit/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/sveltekit/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/nextjs/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/nextjs/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["astro", "sveltekit", "nextjs"],
+      "dependsOn": ["US-609E0"],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E5",
+      "title": "Convert the Python and Ruby recipe family",
+      "description": "As a Python or Ruby recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/django/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/django/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/fastapi/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/fastapi/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/rails/{manifest,render}.ts` rendering from `recipes/rails/recipe.yml` with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, `recipes/rails/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["django", "fastapi", "rails"],
+      "dependsOn": ["US-609E0"],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E6",
+      "title": "Convert the static and utility recipe family",
+      "description": "As a static-site or utility recipe user, init emits native authoring data and retains every scaffold asset.",
+      "acceptanceCriteria": [
+        "Replace `core/src/recipes/builtin/jekyll/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/jekyll/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/hugo/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/hugo/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/eleventy/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/eleventy/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/empty/{manifest,render}.ts` rendering with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault or explicit no-option behavior, an explicit empty auxiliary inventory, generated `recipes/empty/README.mdx`, provider-free init, and applicable standard gates.",
+        "Replace `core/src/recipes/builtin/toolbox/{manifest,render}.ts` rendering from `recipes/toolbox/recipe.yml` with deterministic decomposition and publish its declarative current snapshot.",
+        "Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/toolbox/README.mdx`, provider-free init, and applicable standard gates."
+      ],
+      "recipeIds": ["jekyll", "hugo", "eleventy", "empty", "toolbox"],
+      "dependsOn": ["US-609E0"],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-609E",
+      "title": "Verify the bundled recipe conversion milestone",
+      "description": "As a maintainer, the complete 24-recipe registry has aggregate evidence across six cohesive implementation batches.",
+      "acceptanceCriteria": [
+        "Verify the exact `core/build.config.ts` 24-id registry has one passing batch story per recipe id, current declarative snapshot, generated or existing executable README, default/nondefault coverage, and explicit auxiliary inventory.",
+        "Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no recipe-specific implementation."
+      ],
+      "dependsOn": ["US-609E1", "US-609E2", "US-609E3", "US-609E4", "US-609E5", "US-609E6"],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-610",
+      "title": "Explain provenance without inferring intent",
+      "description": "As a user, I can inspect bounded producer and expression facts without app execution or mutation.",
+      "acceptanceCriteria": [
+        "Report exact producer/version/options, accepted-by-value or chosen-by-value as a heuristic, complete expression references, taken-over literals, and injective service mapping from matched declarative snapshots.",
+        "Block `.lando.ts`, includes, missing/older producer snapshots, and invalid maps from semantic comparison while still reporting bounded current facts; planner/provider/write/app-code doubles stay unused, and guide plus applicable standard gates pass."
+      ],
+      "dependsOn": ["US-609B", "US-609E"],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-611B",
+      "title": "Analyze and commit recipe migration edges",
+      "description": "As a user, I can review stable hunks and commit only a fully satisfied edge prefix through the shared transaction.",
+      "acceptanceCriteria": [
+        "Render old/new snapshots with current persistable options, classify stable hunk ids as `already-satisfied`, `selected`, `retained-option`, or `blocking`, and enforce exact ownership/presence/value checks, higher-layer option ownership, and site-level takeovers.",
+        "Retained options may satisfy an edge; structural decline/conflict/dependency block blocks the entire edge and all later edges; service rename updates its map and all managed references atomically or blocks; deterministic interactive/yes/dry-run and applicable standard gates pass.",
+        "Apply only the longest fully satisfied edge prefix, advance each edge in memory and persist the final version and producer once in the same transaction, retain taken-over literals, and store no partial-edge or durable per-hunk progress state.",
+        "Repeats are byte-identical no-ops, lossy fallback is forbidden, pending/blocked recovery is honored, the migration guide ships, and failure-injection plus applicable standard gates pass."
+      ],
+      "dependsOn": ["US-608D", "US-609B", "US-610"],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
