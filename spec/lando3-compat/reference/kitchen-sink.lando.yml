@@ -1,0 +1,1041 @@
+# =============================================================================
+# Lando 3 Landofile — kitchen-sink reference
+# =============================================================================
+#
+# This is the union of every Lando 3 Landofile surface found by scanning
+# ~/projects on 2026-09-05: 1047 `.lando*.yml` files, 573 unique by content,
+# 561 that parsed as Lando 3 (Lando 4 files excluded). Sources include the
+# Lando 3 core examples, every @lando/* plugin's examples tree, and ~40
+# real-world client/side projects (Drupal 7–11, WordPress, Pantheon, Acquia,
+# Platform.sh, Go, Node, Python, Minecraft, Milvus, EventStore, Tyk, ...).
+#
+# It is a syntactically valid Lando 3 Landofile so it can double as a
+# sniff/translator fixture, but it is not meant to `lando start`: it mixes
+# api 3 and api 4 services, a recipe, hoster keys, and every plugin type at
+# once. Each key carries a comment when its meaning or shape is not obvious.
+# Frequencies in comments (e.g. "seen 55x") are counts across the 561 parsed
+# files, to show what real users actually lean on.
+#
+# Things that are NOT in this file because they are not Landofile keys:
+#   - ~/.lando/config.yml global config (proxy: OFF, domain, landoFile name
+#     overrides, orchestratorVersion, pluginDirs, ...). It can rename which
+#     files count as Landofiles, so a compat layer must at least detect it.
+#   - `lando init` sources/recipes, plugin.yml, Docker labels, compose output.
+#
+# Layering (Lando 3 loads all of these from the FIRST directory walking up
+# from cwd that has any of them; later files deep-merge over earlier ones):
+#   .lando.base.yml → .lando.dist.yml → .lando.recipe.yml → .lando.upstream.yml
+#   → .lando.yml → .lando.local.yml → .lando.user.yml
+# Real-world use: .lando.base.yml as team default + .lando.yml per developer,
+# .lando.upstream.yml/.lando.recipe.yml for downstream template repos,
+# .lando.local.yml for gitignored personal overrides. `name` is usually
+# re-asserted in the local file. Legacy deep merge: mappings merge, arrays
+# concatenate (verify against lib/config.js before relying on it).
+#
+# Naming derived from `name`:
+#   app.name    = slugify(name)                        e.g. "My App!" → my-app
+#   app.project = lower(name) minus [_ - .]           e.g. my-app → myapp
+#   containers  = <project>_<service>_1               e.g. myapp_appserver_1
+#   volumes     = <project>_data_<service>, <project>_home_<service>,
+#                 <project>_<top-level-volume-key>
+#   networks    = <project>_default plus shared lando_bridge_network
+#   hostnames   = <service>.<project>.internal ; proxy default <name>.lndo.site
+#
+# YAML extensions Lando 3 understands (all seen in the wild):
+#   &anchor / <<: *anchor    standard YAML; Lando ignores top-level x-* keys
+#   !load path               inline file contents; `!load path @yaml|@json|
+#                            @string|@binary` picks the decoding
+#   !import path             inline a script file (tooling cmd / events)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# App identity
+# -----------------------------------------------------------------------------
+# Required. Any string; unicode and punctuation survive via slugify
+# (a real example in the corpus is "ландоьслуггы | Lando-Sluggy").
+name: kitchen-sink
+
+# Only ever seen as `runtime: 3` (once). Not a Lando 3 concept; a Lando 4
+# Landofile says `runtime: 4`. Its absence is NOT proof of a Lando 3 file.
+# runtime: 3
+
+# -----------------------------------------------------------------------------
+# Recipe (seen 215x — the dominant way real apps are written)
+# -----------------------------------------------------------------------------
+# A recipe is a plugin (@lando/drupal, @lando/lamp, ...) that injects services,
+# tooling, and proxy entries you never see in this file. `config:` is the
+# recipe's option bag; keys are recipe-specific. Anything you put under
+# `services:` with the SAME name as an injected service (appserver, database,
+# cache, index, edge, ...) is deep-merged over it — that is how users add
+# build steps or env to the recipe's PHP container.
+#
+# Corpus frequency: platformsh 55, drupal10 21, lamp 20, pantheon 14,
+# drupal11 12, acquia 11, backdrop 11, joomla 10, symfony 10, wordpress 10,
+# laravel 9, lemp 9, drupal9 8, drupal7 5, lagoon 3, mean 3, drupal8 2.
+recipe: drupal10
+config:
+  # --- keys shared by the PHP-family recipes (drupal*, wordpress, lamp, lemp,
+  #     laravel, symfony, backdrop, joomla) ---
+  php: "8.3"                     # PHP minor. Quote it: YAML reads 8.1 as a float.
+  via: apache:2.4                # apache[:ver] | nginx[:ver] | cli. Webserver in
+                                 # front of PHP; `cli` = no webserver.
+  webroot: web                   # relative to app root; "." is common
+  database: mysql:8.0            # mysql|mariadb|postgres[:ver]. Recipe picks the
+                                 # image; seen as bare "mysql" too.
+  composer_version: 2-latest     # "1-latest" | "2-latest" | exact "2.3.10" | false
+  xdebug: debug,develop          # bool | comma list of XDEBUG_MODE values
+  ssl: true                      # expose https on the appserver (default true)
+  drush: false                   # drupal*: false | version | "^12". Installs drush
+                                 # globally in the appserver when truthy.
+  build:                         # drupal*/acquia/pantheon: per-recipe build knobs
+    run_scripts: false           # skip composer scripts during recipe install
+  config:                        # path (relative to root) to config files the
+    php: config/php.ini          # recipe mounts into the right place
+    database: config/mysql.cnf
+    vhosts: config/default.conf  # webserver vhost template
+    server: config/nginx.conf    # (lemp/nginx) main server conf
+  # --- backdrop / symfony ---
+  bee: 1.x-1.x                   # backdrop's drush equivalent version
+  # --- laravel / symfony ---
+  cache: memcached:1.5.12        # redis|memcached[:ver]; false to drop the cache svc
+  # --- mean ---
+  node: "14"                     # node version for the mean appserver
+  port: "8055"                   # app port the mean appserver listens on
+  # --- pantheon (hoster; not portable) ---
+  framework: drupal8             # drupal|drupal8|drupal9|wordpress|backdrop
+  site: my-pantheon-site         # pantheon site machine name
+  id: abeca340-5eda-4b04-9ae1-a77911d421c4   # pantheon site uuid
+  index: false                   # disable the solr "index" service
+  edge: false                    # disable the varnish "edge" service
+  # cache: false                 # disable the redis "cache" service (same key as
+                                 # laravel's, different meaning)
+  # --- acquia (hoster) ---
+  acli_version: 2.21.0
+  ah_application_uuid: 327dc8fd-7b17-4271-bd5b-9e828205fb9b
+  ah_site_group: ukhc
+  inbox: false                   # disable the mailhog "inbox" service
+  # --- platformsh (hoster): everything else comes from .platform.app.yaml ---
+  # id: om2hlkobxcbwe            # platform.sh project id (seen 54x)
+  # variables: {php: {env: {APP_ENV: lando}}}
+  # overrides: {db: {configuration: {properties: {max_allowed_packet: 64}}}}
+  # --- lagoon (hoster): everything else comes from docker-compose.yml ---
+  # flavor: drupal
+  # --- free-form: recipes ignore keys they do not know (seen: bob, pizza) ---
+
+# -----------------------------------------------------------------------------
+# Global-ish app keys
+# -----------------------------------------------------------------------------
+# dotenv files, relative to app root, injected into EVERY service's container
+# environment (not auto-sourced by your app). Arrays concatenate across
+# Landofile layers. Also seen misspelled as `env-file:` (silently ignored).
+env_file:
+  - .env
+  - environment/moar.env
+
+# Paths under the app root that Lando 3 swaps for named volumes instead of
+# bind-mounting, for macOS/Windows performance. `!path` re-includes something
+# an earlier layer excluded. Ignored for api 4 services.
+excludes:
+  - vendor
+  - web/modules/contrib
+  - web/sites/default/files
+  - "!web/sites/default/files/keep-me"
+
+# SSH key loading into containers (`lando ssh` agent forwarding). Default true
+# (load everything in ~/.ssh and ~/.lando/keys). false disables; a list names
+# specific files under ~/.ssh.
+keys:
+  - id_rsa
+  - work_ed25519
+
+# Raw Docker Compose files, relative to app root, merged into the app as-is.
+# Their services are NOT Lando services: no entrypoint, certs, helpers, or
+# tooling defaults, and they only become the default event/tooling target if
+# no Lando service exists. Seen 21x, mostly in core tests.
+compose:
+  - compose.yml
+  - docker-compose/moar.yml
+
+# Plugins the app requires. Values are a version/range, a git ref
+# (`lando/php#main`), or a local path (`../..`, `./plugins/foo`). Local paths
+# dominate the corpus because every plugin repo pins itself this way in its
+# examples. Real user apps mostly rely on globally installed plugins and omit
+# this entirely.
+plugins:
+  "@lando/core": ^3.26.0
+  "@lando/php": lando/php#main
+  "@lando/mailpit": ../..
+  "@pirog/test-plugin": ./plugins/test-plugin
+
+# Extra directories to scan for plugins (each subdir with an index.js).
+pluginDirs:
+  - plugins
+
+# Compose-level named volumes and networks. Volumes become
+# <project>_<key>; reference them from api 4 `volumes:` / `overrides.volumes`.
+volumes:
+  my-data:
+  go_path:
+    driver: local
+networks:
+  my-network:
+
+# Top-level x-* keys are ignored by Lando and exist to hold YAML anchors.
+x-vars:
+  - &PATCHES_APPLY PATCHES_APPLY=0
+x-service: &default-web
+  api: 4
+  image:
+    imagefile: nginxinc/nginx-unprivileged:1.26.1
+    context:
+      - ./default-ssl.conf:/etc/nginx/conf.d/default.conf
+  certs:
+    cert: /frank/cert.crt
+    key: /bob/key.key
+  user: nginx
+  ports:
+    - 8080/http
+    - 8443/https
+
+# -----------------------------------------------------------------------------
+# Services
+# -----------------------------------------------------------------------------
+# Three families live under one key and are told apart by `api` and `type`:
+#   1. Plugin/recipe types (api 3, the default): `type: php:8.3`, `mariadb`,
+#      `node:20`, ... Keys are type-specific and interpreted by the plugin.
+#      This is what almost every real app uses (php 125x, node 96x,
+#      mariadb 55x, nginx 27x, postgres 26x, mysql 25x, redis 24x, ...).
+#   2. `api: 3` + `type: lando` (72x): the raw escape hatch. A nested
+#      `services:` mapping is a literal Compose service; Lando adds
+#      entrypoint, certs, /helpers, home/data volumes, and build-step exec.
+#   3. `api: 4` (187x, mostly plugin/core tests): the in-tree "next" service
+#      API. `type: l337` is Compose-like with rich image building; `type:
+#      lando` (also the default when api is 4 and type is omitted) layers
+#      app-mount, mounts, storage, certs, security, build.image/build.app on
+#      top of l337.
+services:
+
+  # ===========================================================================
+  # 1a. Recipe-injected service, customized. `appserver` does not need `type`
+  #     because the drupal10 recipe already created it as php; everything
+  #     here merges over the recipe's definition.
+  # ===========================================================================
+  appserver:
+    # Re-declaring type is allowed and common (mjff pins `type: php:8.1`).
+    type: php:8.3
+    # --- @lando/php keys (also used by every PHP recipe's appserver) ---
+    via: apache:2.4
+    webroot: web
+    composer_version: "2.3.10"
+    composer:                     # global composer packages to install
+      phpunit/phpunit: "*"
+    xdebug:                       # bool | "debug,develop,trace" | object:
+      mode: debug
+      start_with_request: "yes"
+      client_port: 9003
+      config:                     # extra xdebug.* ini pass-through
+        max_nesting_level: 256
+    db_client: mysql:8.4          # which mysql/psql client to bake in when
+                                  # auto-detection from `database` is wrong
+    ssl: true
+    sslExpose: false              # publish the https port to the host or not
+    scanner:                      # post-start URL scanner. false | object
+      okCodes: [200, 301, 302, 401, 404]
+      timeout: 1000
+      retry: 10
+      path: /health
+      maxRedirects: 6
+    moreHttpPorts: ["8888"]       # extra container ports scanned/proxied as http
+    app_mount: cached             # api 3 spelling. cached|delegated|consistent
+                                  # (macOS bind flags) | false|disabled to drop
+                                  # the /app bind entirely
+    path:                         # prepended to PATH inside the container
+      - /app/vendor/bin
+    environment:                  # plain env (plugin types accept this AND
+      DRUSH_OPTIONS_URI: https://kitchen-sink.lndo.site    # overrides.environment)
+      COMPOSER_PROCESS_TIMEOUT: 600
+    # Config files to drop into well-known locations. Keys are plugin-defined
+    # (php, vhosts, server, database, pool, params, vcl, config, dir, ...).
+    config:
+      php: config/php.ini
+      vhosts: config/default.conf
+      pool: config/www.conf        # php-fpm pool (via: nginx)
+    # --- build steps: run by `docker exec` AFTER the container exists, gated
+    #     by ~/.lando/cache/<name>.build.lock (config hash). Not baked into an
+    #     image. Order: build_as_root → build (as meUser) before "start"
+    #     completes; run_as_root → run after start. *_internal variants are
+    #     recipe-owned and run before the user's steps. ---
+    build_as_root:
+      - apt-get update -y && apt-get install -y vim jq
+    build:
+      - composer install --no-interaction
+      - |
+        if [ -f composer.json ]; then
+          echo "multi-line steps are fine"
+        fi
+      - !load scripts/build.sh    # inline a script; !import also works here
+    run_as_root:
+      - ln -snf /usr/share/zoneinfo/America/New_York /etc/localtime
+    run:
+      - drush cr
+    build_internal: []            # recipe-owned; users rarely set these but
+    run_internal: []              # downstream template repos do
+    build_as_root_internal: []
+    run_as_root_internal: []
+    # Raw Compose merged LAST over whatever the plugin generated. This is the
+    # universal escape hatch (seen 51x on recipe services alone).
+    overrides:
+      image: devwithlando/php:8.3-apache-7   # swap the image
+      build: ./php                 # or build from a local Dockerfile dir
+      platform: linux/amd64
+      environment:
+        PHP_MEMORY_LIMIT: 256M
+        XDEBUG_MODE: debug
+      volumes:
+        - ./private:/app/private
+        - my-data:/my-data         # top-level volume by short name
+      ports:
+        - "9003:9003"
+        - target: 80               # long Compose port syntax also works
+          published: 8080
+          protocol: tcp
+          mode: host
+      logging:
+        driver: json-file
+        options: {max-file: "5", max-size: "5m"}
+      restart: unless-stopped
+      depends_on: [database]
+      extra_hosts: ["api.local:host-gateway"]
+
+  # Recipe database service, customized.
+  database:
+    type: mysql:8.0
+    portforward: true             # true = random host port; or a fixed number
+    creds:                        # recipe defaults are all "drupal"/"lamp"/...
+      user: drupal
+      password: drupal
+      database: drupal
+    authentication: mysql_native_password   # mysql 8 auth plugin
+    config:
+      database: config/my.cnf
+    overrides:
+      image: bitnamilegacy/mysql:8.0.36
+
+  # ===========================================================================
+  # 1b. Standalone plugin service types, one of each, with every key seen.
+  # ===========================================================================
+  node:
+    type: node:22
+    port: 3000                    # the port your app serves; wired to proxy/ssl
+    ssl: true                     # true | false | port number to terminate on
+    sslExpose: false
+    command: npm run dev          # keep-alive command; default is a no-op sleep
+    globals:                      # `npm i -g <pkg>@<ver>` during build
+      pnpm: latest-10
+      turbo: latest
+      yarn: "1.22.4"
+      gulp-cli: latest
+    path:
+      - /var/www/.local/share/pnpm/bin
+    scanner: false
+    build:
+      - pnpm install --frozen-lockfile
+    build_as_root:
+      - apt-get update -y && apt-get install -y vim
+    run_as_root:
+      - mkdir -p /var/www/.cache/yarn && chmod 777 /var/www/.cache/yarn
+    overrides:
+      environment:
+        PNPM_HOME: /var/www/.local/share/pnpm
+
+  mariadb:
+    type: mariadb:11.4
+    portforward: 3307
+    creds: {user: app, password: app, database: app}
+    config:
+      database: config/my.cnf
+    overrides:
+      image: bitnamilegacy/mariadb:11.4.7-debian-12-r2
+
+  postgres:
+    type: postgres:16
+    portforward: true
+    creds:
+      database: trouble           # postgres only honors database (user is postgres)
+    config:
+      database: config/postgresql.conf
+
+  mongo:
+    type: mongo:7
+    portforward: true
+    config:
+      database: config/mongod.conf
+
+  mssql:
+    type: mssql:2022
+    portforward: true
+
+  redis:
+    type: redis:7
+    password: nerfherder
+    persist: true                 # keep an AOF/RDB data volume across restarts
+    portforward: true
+    config:
+      server: config/redis.conf
+
+  memcached:
+    type: memcached:1.6
+    mem: 256                      # MB
+    portforward: true
+
+  elasticsearch:
+    type: elasticsearch:8
+    mem: 1026m                    # ES_JAVA_OPTS heap
+    plugins:                      # ES plugins to install at build
+      - analysis-icu
+    portforward: 4547
+    config:
+      server: config/elasticsearch.yml
+
+  solr:
+    type: solr:9
+    core: solo                    # core name (default "lando")
+    portforward: 8983
+    config:
+      dir: config/solr            # a conf dir (schema.xml, solrconfig.xml, ...)
+    scanner:
+      okCodes: [302]
+
+  mailpit:
+    type: mailpit:1.29
+    mailFrom:                     # services whose sendmail is pointed at mailpit
+      - appserver
+    # sendFrom: [appserver]       # older alias seen once
+    maxMessages: 54321
+    port: 2025                    # SMTP port inside the network (default 1025)
+
+  mailhog:
+    type: mailhog:v1.0.1
+    hogfrom:                      # same idea as mailFrom
+      - appserver
+    portforward: true
+    ssl: true
+    sslExpose: false
+
+  phpmyadmin:
+    type: phpmyadmin:5.2
+    hosts:                        # db services to show in the PMA server list
+      - database
+      - mariadb
+    config:
+      config: .lando/config.user.inc.php
+    build_as_root:
+      - apk --update add openssl wget unzip
+
+  nginx:
+    type: nginx:1.27
+    webroot: public
+    ssl: true
+    config:
+      server: config/nginx.conf
+      vhosts: config/default.conf
+      params: config/fastcgi_params
+    build_as_root:
+      - apt-get update && apt-get install -y curl
+
+  apache:
+    type: apache:2.4
+    webroot: web
+    ssl: true
+    config:
+      server: config/httpd.conf
+      vhosts: config/custom.conf
+
+  varnish:
+    type: varnish:6
+    backends: [appserver]         # services varnish fronts
+    backend: appserver            # single-backend alias
+    backend_port: 8000
+    ssl: true
+    config:
+      vcl: config/custom.vcl
+
+  tomcat:
+    type: tomcat:10
+    webroot: .
+    ssl: true
+    build_as_root:
+      - apt update -y && apt install -y curl
+
+  python:
+    type: python:3.12
+    port: 8000
+    ssl: true
+    command: python /app/http-server.py
+
+  ruby:
+    type: ruby:3.3
+    port: 8080
+    command: ruby /app/server.rb
+
+  go:
+    type: go:1.22
+    ssl: true
+    command: go run /app/http.go
+    build_as_root:
+      - chmod -R 777 /go
+    build:
+      - cd /app/src && go mod download
+    run:
+      - .lando/scripts/task.sh setup
+    overrides:
+      environment:
+        - TYK_SYNC_VERSION=1.3.0   # array-form env also seen
+
+  dotnet:
+    type: dotnet:8
+    command: dotnet run
+
+  # @lando/compose: a bare Compose service with Lando's tooling/proxy glue but
+  # no entrypoint magic. `services:` is the literal Compose service.
+  compose:
+    type: compose
+    app_mount: false
+    ssl: 3000                     # terminate TLS in front of port 3000
+    sslExpose: false
+    scanner:
+      okCodes: [401]
+    user: root                    # user for tooling/events exec
+    services:
+      image: elasticsearch:1.7.4
+      command: /docker-entrypoint.sh elasticsearch
+      user: elasticsearch
+      ports: ["9200"]
+      volumes:
+        - eventstore-volume-data:/var/lib/eventstore
+    volumes:
+      eventstore-volume-data:
+    networks:
+      elasticsearch:
+    build_as_root:
+      - mkdir -p /go/src/github.com/example
+    build:
+      - echo "build steps work here too"
+
+  # ===========================================================================
+  # 2. api 3 `type: lando` — the raw service (72x). Everything Lando adds to a
+  #    plugin service, minus the plugin. The nested `services:` is Compose.
+  # ===========================================================================
+  raw3:
+    api: 3                        # optional; 3 is the default
+    type: lando
+    meUser: www-data              # user for build/run/tooling/events exec.
+                                  # Default www-data; set to the image's user.
+    scriptsDir: scripts           # host dir of scripts mounted at /helpers/user
+    ssl: true                     # generate a cert for this service and set
+    sslExpose: true               #   LANDO_SERVICE_CERT/KEY; expose sport
+    sport: "8443"                 # the container's https port (default 443)
+    moreHttpPorts: ["8888"]
+    scanner: false
+    # healthcheck: string cmd | multi-line script | object | disabled
+    healthcheck:
+      command: mysql -uroot --silent --execute "SHOW DATABASES;"
+      user: mysql
+      retry: 10
+      delay: 1000
+    build_as_root:
+      - apt-get -y update && apt-get -y install vim
+    build:
+      - echo "$(id)" > /var/www/build.txt
+    run_as_root:
+      - echo "$(id)" > /run_as_root.txt
+    run:
+      - echo "$(id)" > /var/www/run.txt
+    # `config` on the raw type is an inline file dropper: key = container
+    # path, value = contents (string or !import/!load).
+    config:
+      /tmp/somewhere: rooster
+      /tmp/somewhere-else: !import rooster
+      /tmp/multi: |
+        here they come
+        to snuff the rooster
+    overrides:
+      environment:
+        THING: STUFF
+      volumes:
+        - ./test.txt:/var/www/test.txt
+    services:                     # literal Compose service
+      image: nginx:1.22.1
+      command: /docker-entrypoint.sh nginx -g "daemon off;"
+      platform: linux/amd64
+      user: root
+      ports:
+        - "0:80"                  # "0:" = let Docker pick the host port
+        - "8443"
+      volumes:
+        - ./:/usr/share/nginx/html:ro
+        - ./default-ssl.conf:/etc/nginx/conf.d/default.conf
+      environment:
+        PRIMARY_SERVICE: "yes"
+        LANDO_WEBROOT_USER: nginx     # Lando reads these back to fix perms
+        LANDO_WEBROOT_GROUP: nginx
+        LANDO_WEBROOT_UID: "1000"
+        LANDO_WEBROOT_GID: "1000"
+      depends_on: [appserver]
+      links: [appserver]
+      extra_hosts: ["host.lando.internal:host-gateway"]
+      restart: unless-stopped
+      networks:
+        - my-network
+
+  # ===========================================================================
+  # 3a. api 4 `type: l337` — Compose-shaped service with a rich image builder.
+  # ===========================================================================
+  leet:
+    api: 4
+    type: l337
+    primary: true                 # default target for untargeted events/tooling
+    # image: <string>   → a registry image, a path to a Dockerfile, or an
+    #                     inline Dockerfile (multi-line string)
+    # image: <object>   → everything below
+    image:
+      imagefile: |                # inline Dockerfile (alias: dockerfile: <path>)
+        # syntax=docker/dockerfile:1.7
+        ARG VERSION=bookworm
+        FROM nginxinc/nginx-unprivileged:1.26.1
+        USER root
+        RUN apt-get update -y && apt-get install -y procps
+        RUN --mount=type=ssh,id=agent git clone git@github.com:lando/lando.git /tmp/lando
+        ENV SERVICE leet
+      tag: lando/nginx:powerman-5000   # default lando/<name>-<appid>-<svc>:latest
+      buildx: true                # use docker buildx (default follows engine)
+      buildkit: true              # enable BuildKit features
+      ssh: true                   # forward the host ssh agent into RUN --mount=type=ssh
+      args:                       # build args; list "k=v" or mapping
+        nginx: 1.21.5
+        vibe: rising
+      # context: files to COPY/ADD into the image. Forms (all seen):
+      context:
+        - ./folder                          # COPY ./folder /folder
+        - ./folder:thing                    # COPY ./folder /thing
+        - file1:/file2                      # COPY file1 /file2
+        - src: file1                        # src/dest aliases
+          dest: file3
+        - source: file1
+          destination: /tmp/file4
+          owner: nginx:nginx                # --chown
+          permissions: "775"                # chmod after copy
+        - source: file1
+          destination: file8
+          user: nginx                       # owner split into user/group
+          group: dialout
+        - source: file1
+          destination: file4
+          instructions: |                   # replace the generated COPY
+            COPY /file4 /file6
+            ENV HALL OATES
+        - source: https://example.com/remote.json   # URL → ADD
+          dest: /etc/config/remote.json
+      # groups: named, weighted, user-scoped sections of the Dockerfile.
+      # Built-ins: default, context, system, setup-user, storage, user-image.
+      # Reference a group from a step as "<group>", "<group>-<n>-before|after",
+      # or "<group>-<user>-after-<n>" for fine-grained ordering.
+      groups:
+        - name: system
+          description: Install system packages
+          weight: -10000
+          user: root
+        - name: user
+          weight: 10000
+          user: nginx
+        - val-jean: 24601         # shorthand name: weight (user root)
+      # steps: Dockerfile instructions inserted into a group / at a weight.
+      steps:
+        - instructions: RUN echo "${LANDO_IMAGE_USER}-${LANDO_IMAGE_GROUP}" >> /tmp/groups
+          group: system
+        - instructions: |
+            ENV VIBES RISING
+            COPY my-script.sh /runme.sh
+            RUN chmod +x /runme.sh && /runme.sh
+          group: user
+        - instructions:           # dockerfile-generator array form
+            - env: {KIRK: wesley}
+            - run: env
+            - run: [stat, /tmp]
+        - instructions: RUN echo "detached at an arbitrary weight" >> /stuff
+          weight: 999
+    # build.dockerfile is an alternate spelling for a Dockerfile path
+    # build:
+    #   dockerfile: Dockerfile
+    user: nginx
+    command: tail -f /dev/null
+    working_dir: /tmp
+    tty: true
+    stdin_open: true
+    environment:
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 1
+      PATCHES: *PATCHES_APPLY
+    # ports: Compose syntax plus Lando qualifiers. "<port>/http" and
+    # "<port>/https" tell the scanner and proxy what protocol the port speaks
+    # instead of guessing; "0:80" publishes on a random host port.
+    ports:
+      - 8888/http
+      - 8443/https
+      - "0:80"
+    volumes:
+      - ./:/site
+      - ./file1:/file-ro:ro
+      - my-data:/data             # top-level named volume
+    networks:
+      my-network:
+    scanner: false
+
+  # ===========================================================================
+  # 3b. api 4 `type: lando` (default type when api is 4; 125x). l337 plus the
+  #     Lando conveniences. Defaults: app-mount /app, certs true,
+  #     packages {git, ssh-agent, sudo} = true, healthcheck false.
+  # ===========================================================================
+  web4:
+    <<: *default-web              # anchors work on services (seen 5x)
+    api: 4
+    type: lando
+    image: nginxinc/nginx-unprivileged:1.26.1     # any l337 image form
+    user: nginx
+    command: nginx -g "daemon off;"
+    entrypoint: !load scripts/entrypoint.sh       # string | list | !load
+    hostnames:                    # extra network aliases + cert SANs
+      - vibes.rising
+    # app-mount: how the app root gets into the container.
+    #   /path                     bind ./ to /path
+    #   false|disabled|off        no app mount; build.app is skipped
+    #   object: destination|target, type: bind|copy, excludes (bind→named
+    #   volumes) or includes (copy→bind these back in)
+    app-mount:
+      destination: /usr/share/nginx/html
+      type: bind
+      excludes:
+        - node_modules
+        - "!node_modules/keep"
+    # mounts: additional bind/copy mounts, richer than volumes. All forms seen:
+    mounts:
+      - ./default-ssl.conf:/etc/nginx/conf.d/default.conf   # bind a file
+      - source: ./default-ssl.conf                          # object bind
+        target: /etc/lando/config/default-ssl-2.conf
+      - target: /etc/lando/config/obiwan                    # literal contents
+        contents: |
+          hello there!
+      - source: ./deps/dep1                                 # copy into image
+        target: /deps/dep1
+        type: copy
+      - source: ./                                          # copy w/ include list
+        destination: /serve/me
+        type: copy
+        includes: [routes, routes/example]
+      - target: /etc/lando/config/anakin                    # copy at a build
+        type: copy                                          # group (config
+        group: config                                       # runs as root)
+        content: |
+          this is where the fun begins
+    # storage (alias persistent-storage): persistent data. Scope decides the
+    # volume name and who shares it:
+    #   service (default)  <project>-<service>-<kebab(target)>
+    #   app|project        <project>-<kebab(target)>
+    #   global             lando-<kebab(target)>
+    storage:
+      - /var/lib/mysql                          # short: service-scoped volume
+      - destination: /some/other/dir            # long form of the above
+        scope: service
+        type: volume
+      - destination: /stuff
+        scope: app
+      - destination: /everywhere
+        scope: global
+      - ./shared:/shared                        # bind-mount storage
+      - source: ./shared
+        target: /shared-again
+        type: bind
+      - destination: /var/run/mysqld            # "image": just chown/chmod a
+        type: image                             # dir that already exists
+        owner: mysql
+        permissions: 777
+      - source: lando-everywhere                # remount a known storage
+        target: /universal                      # volume by name
+    persistent-storage: []        # same thing, older key
+    # build: image-time and app-time steps (contrast api 3's exec model).
+    build:
+      image: |                    # RUN steps appended to the image build, as
+        apt-get update -y         # the image user. Also accepts a list, and
+        npm install -g gulp       # list items may be {root: ..., user: ...}
+      app: |                      # runs after the image exists with the app
+        set -e                    # mounted, as `user`. Skipped when
+        npm install               # app-mount is false.
+        touch /app/initfile
+    # certs: true (default) | false | "/path/to/cert.crt" | {cert, key}
+    certs:
+      cert: /frank/cert.crt
+      key: /bob/key.key
+    # security: extra CAs to trust inside the container. ca | cas |
+    # certificate-authority | certificate-authorities are all aliases.
+    security:
+      ca:
+        - SoloCA.crt              # path relative to root
+        - !load OtherCA.crt       # inline file
+        - |                       # inline PEM
+          -----BEGIN CERTIFICATE-----
+          MIIF...
+          -----END CERTIFICATE-----
+    # packages: built-in convenience layers; false to omit one.
+    packages:
+      git: true
+      ssh-agent: true
+      sudo: false
+    # healthcheck: false (default) | "cmd" | !load script | object
+    healthcheck:
+      command: stat /app/initfile
+      retry: 100
+      delay: 1000
+      user: nginx
+    ports:
+      - 8080/http
+      - 8443/https
+    environment:
+      SERVICE: web4
+    volumes:
+      - my-data:/my-data
+    labels:
+      dev.lando.example: "true"
+    scanner: false
+    overrides:                    # raw Compose applied last, same as api 3
+      working_dir: /app
+
+  # Minimal api 4 service: `type` omitted means `lando`.
+  curl:
+    api: 4
+    image: curlimages/curl:8.10.1
+    command: sleep infinity
+    app-mount: false
+    certs: false
+
+  # A service can be disabled by a later layer by setting it to null/false
+  # (seen in .lando.local.yml files turning off recipe services).
+  # unused: false
+
+# -----------------------------------------------------------------------------
+# Proxy (seen 120x). Map of service → routes handled by the global Traefik
+# on *.lndo.site (domain from ~/.lando/config.yml). Recipes inject
+# <name>.lndo.site for the appserver; users add the rest.
+# -----------------------------------------------------------------------------
+proxy:
+  appserver:
+    - kitchen-sink.lndo.site                    # host → port 80, path /
+    - sub.kitchen-sink.lndo.site
+    - bob.frank.kbox.com                        # non-lndo domains are fine
+                                                # (you manage DNS)
+    - kitchen-sink.lndo.site/subdir             # host/path → PathPrefix +
+                                                # stripprefix middleware
+    - another-way-to-eighty.lndo.site:80        # host:port
+    - "*-kitchen-sink.lndo.site"                # wildcards anywhere in host
+    - "wild.*.kitchen-sink.lndo.site"
+    - "lets.combine.*.lndo.site:8080/everything/for-real"
+  node:
+    - hostname: node.kitchen-sink.lndo.site     # object form
+      port: 3000
+    - hostname: "*.wild.node.lndo.site:8888"    # port may ride in hostname
+    - hostname: node.kitchen-sink.lndo.site
+      port: 3000
+      pathname: /api                            # PathPrefix
+      middlewares:                              # Traefik middleware k/v pairs.
+        - name: test                            # A name ending in -secured
+          key: headers.customrequestheaders.X-Lando-Test   # applies to the
+          value: "on"                           # https router only.
+        - name: test-secured
+          key: headers.customrequestheaders.X-Lando-Test-SSL
+          value: "on"
+  mailpit:
+    - mailpit.kitchen-sink.lndo.site
+    - kitchen-sink.lndo.site/mailpit
+  # Middleware lists merge by `name` across layers: an upstream file's
+  # {name: test, value: kirk} and a local {name: test, value: picard} yield
+  # picard.
+
+# -----------------------------------------------------------------------------
+# Events (seen 45x). Hook → list of commands. A bare string runs in the
+# default service (first api 4 `primary`, else first api 3 service, else first
+# compose service, else `appserver`); `service: cmd` targets one service.
+# Commands run via `docker exec` as the service's meUser/user, cwd = the
+# app mount. Hooks: pre-/post- start, stop, rebuild, destroy, uninstall,
+# and pre-/post-<tooling-command> for every tooling entry (post-db-import is
+# the classic Drupal one).
+# -----------------------------------------------------------------------------
+events:
+  pre-start:
+    - mkdir -p /app/private /app/web/sites/default/files
+    - database: mysql -uroot --silent --execute "SHOW DATABASES;"
+  post-start:
+    - appserver: drush cr
+    - node: !import scripts/paperback-writer.sh    # inline a script
+    - web4: |
+        set -e
+        echo "multi-line events are fine"
+  pre-stop:
+    - appserver: drush sset system.maintenance_mode 1
+  post-stop: []
+  pre-rebuild:
+    - appserver: echo "rebuilding"
+  post-rebuild:
+    - appserver: composer install
+  pre-destroy:
+    - appserver: drush sql:dump > /app/pre-destroy.sql
+  post-destroy: []
+  post-db-import:                 # after `lando db-import` (a tooling command)
+    - appserver: cd /app/web && drush -y updatedb && drush -y cib && drush -y cr
+  pre-pull:                       # hoster recipes add pull/push tooling
+    - appserver: echo "about to pull"
+  post-install:                   # user-defined tooling "install" below
+    - appserver: echo "installed"
+
+# -----------------------------------------------------------------------------
+# Tooling (seen 180x, 563 commands). `lando <name>` runs `cmd` in `service`.
+# Recipes inject composer, drush, wp, artisan, db-import, db-export, php,
+# mysql, etc.; users add project commands and override injected ones.
+# -----------------------------------------------------------------------------
+tooling:
+  # --- shortest form: `lando <name>` runs <name> in service ---
+  git:
+    service: appserver
+  npm:
+    service: node
+  # --- description shows in `lando` help ---
+  drush:
+    service: appserver
+    description: Run drush with the correct root
+    cmd: drush --root=/app/web
+  # --- cmd as list = run sequentially in the same service ---
+  test:
+    service: appserver
+    description: Run all the tests
+    cmd:
+      - php -v
+      - php -m
+  # --- cmd as list of {service: cmd} = multi-service command ---
+  install:
+    description: Install everything
+    cmd:
+      - appserver: cd /app && composer install --no-interaction
+      - node: |
+          pnpm install --frozen-lockfile
+          turbo typecheck
+      - appserver: rsync -av /app/build/ /app/web/themes/custom/x/assets/
+  # --- user, dir (cwd in container), env ---
+  iamroot:
+    service: appserver
+    cmd: echo "$(id)"
+    user: root
+    dir: /tmp
+    env:
+      COMPOSER_PROCESS_TIMEOUT: 600
+      DEBUG: "@lando/*"
+  # --- multi-line cmd: wrapped in a script; "$@" gets the CLI args ---
+  word-wrapped:
+    service: appserver
+    cmd: |
+      #!/bin/bash
+      /app/word.sh "$@"
+  # --- !import a script file as the command ---
+  word-imported:
+    service: appserver
+    cmd: !import scripts/word.sh
+  # --- dynamic service: `service: :<option>` reads the service from an
+  #     option (`lando whoami -s node`). `:host` / `:container` are the same
+  #     mechanism with a different option name. ---
+  whoami:
+    cmd: whoami
+    service: :service
+    options:
+      service:
+        default: appserver
+        alias: [s]
+        describe: Run in this service
+  what-host:
+    cmd: env
+    service: :host
+    options:
+      host:
+        default: node
+        alias: [h]
+        describe: Run in a different service
+  # --- options: yargs-style. passthrough: true forwards the flag to cmd as
+  #     an env/argv; interactive: prompt when the flag is omitted. ---
+  word:
+    service: appserver
+    cmd: /app/word.sh
+    level: app                    # app (default) | engine. engine = the
+                                  # command does not need the app running/
+                                  # loaded; used by recipe/plugin helpers.
+    options:
+      word:
+        passthrough: true
+        alias: [w]
+        describe: Print what the word is
+        interactive:
+          type: input             # input | list | confirm | password ...
+          message: What is the word?
+          default: bird
+          weight: 600
+      environment:                # hoster tooling uses list prompts like this
+        describe: Which environment
+        alias: [e]
+        interactive:
+          type: list
+          message: Choose an environment
+          choices: [dev, test, live]
+      no-wipe:
+        describe: Do not wipe the database first
+        boolean: true
+  # --- positional args: the command name carries a usage hint, and
+  #     positionals/usage/examples document them. $1 is the tooling name,
+  #     so the first positional is $2 in cmd. ---
+  "drupal-update [module]":
+    description: Update a module, or core when no module is given
+    service: appserver
+    dir: /app
+    env:
+      DRUPAL_PROJECT: core-recommended
+    cmd: |
+      MODULE=${2:-$DRUPAL_PROJECT}
+      composer update drupal/$MODULE --with-dependencies
+      drush deploy
+  "drupal-recipe <recipe>":
+    service: appserver
+    cmd: composer require $2 && drush recipe /app/web/recipes/contrib/$(basename $2)
+  everything:
+    cmd: /app/args.sh
+    service: node
+    user: root
+    usage: $0 everything [arg1] [arg2] MORETHINGS
+    examples:
+      - $0 everything thing
+      - $0 everything stuff morestuff
+    positionals:
+      arg1:
+        describe: Uses arg1
+        type: string
+        choices: [thing, stuff]
+      arg2:
+        describe: Uses arg2
+        type: string
+  # --- backgrounding: trailing & is honored ---
+  backgrounder:
+    service: node
+    cmd: sleep infinity &
+  # --- disabling an injected command (recipe gives you `lando xdebug-on`,
+  #     you do not want it): any falsy value or the literal "disabled" ---
+  xdebug-off: disabled
+  php: false
+  # --- overriding an injected command entirely ---
+  db-import:
+    service: appserver
+    description: Import a dump the project way
+    cmd: /app/.lando/db-import.sh
+  # --- keys seen once, probably typos, kept so a translator knows to warn:
+  #     cwd: (meant dir:), recipe:, xdebug: on a tooling entry ---
