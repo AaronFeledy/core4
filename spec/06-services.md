@@ -49,6 +49,12 @@ Lando aliases such as `workingDirectory`, `envFile`, `appMount`, `mounts`, `stor
 Effect Schema definition (illustrative; final schema lives in `@lando/sdk`):
 
 ```ts
+export const BuildScriptStep = Schema.Union(
+  Schema.String,
+  Schema.Struct({ run: Schema.String, user: Schema.optional(UserInput) }),
+);
+export const BuildScript = Schema.Union(BuildScriptStep, Schema.Array(BuildScriptStep));
+
 export const ServiceConfigInput = Schema.extend(ComposeServiceConfig, Schema.Struct({
   api: Schema.optional(Schema.Literal(4)),
   type: Schema.optional(Schema.String),         // defaults to "lando"
@@ -65,6 +71,10 @@ export const ServiceConfigInput = Schema.extend(ComposeServiceConfig, Schema.Str
   appMount: Schema.optional(AppMountInput),
   mounts: Schema.optional(Schema.Array(MountInput)),
   storage: Schema.optional(Schema.Array(StorageInput)),
+  home: Schema.optional(Schema.Union(
+    Schema.Literal(false),
+    Schema.Struct({ path: Schema.optional(AbsoluteContainerPath) }),
+  )),
 
   endpoints: Schema.optional(Schema.Array(EndpointInput)),
   routes: Schema.optional(Schema.Array(RouteInput)),
@@ -129,8 +139,8 @@ services:
       - app.lndo.site
       - hostname: admin.lndo.site
         endpoint: 8080/http
-        pathname: /admin
-        tls: true
+        pathPrefix: /admin
+        scheme: https
 
     healthcheck:
       command: curl -fsS http://localhost:8080/health
@@ -152,10 +162,11 @@ services:
         - "{{ load('other-ca.pem') }}"
 
     build:
-      artifact: |
-        RUN apt-get update -y && apt-get install -y curl
-      app: |
-        npm ci
+      artifact:
+        - run: apt-get update -y && apt-get install -y curl
+          user: root
+      app:
+        - npm ci
 
     packages:
       git: true
@@ -169,6 +180,8 @@ services:
 ```
 
 ### 6.3 Artifact build (provider-neutral)
+
+`build.artifact:` and `build.app:` accept a single step or an ordered array of `string | { run, user? }` steps. Planning MUST resolve omitted users per service to the service's planned user; artifact groups retain their declared `user:` as the default for steps in that group, with an explicit step user taking precedence. Every resolved user MUST be carried through `BuildPlan`, provider execution, and ordered `buildKey` hashing (§6.13.3, §6.13.5). Interleaved root/non-root steps are valid. Container artifact generation MUST switch `USER` only when a step's resolved user differs from the active user and MUST restore the final service `USER` after the steps. App-build steps MUST pass explicit resolved users to `execStream`.
 
 `artifact:` describes how to obtain or produce the runnable asset for a service. Container providers translate it to image build/pull. VM providers translate it to template selection or disk creation. Remote providers may translate it to a deployment manifest reference.
 
@@ -206,9 +219,9 @@ artifact:
     - { name: tooling, weight: 400, user: root }
     - { name: user, weight: 2000 }
   steps:
-    - { instructions: "RUN apt-get update -y", group: system }
-    - { instructions: "RUN apt-get install -y curl jq", group: system, weight: 1 }
-    - { instructions: "USER node\nRUN npm i -g pm2", group: user }
+    - { run: "apt-get update -y", group: system }
+    - { run: "apt-get install -y curl jq", group: system, weight: 1 }
+    - { run: "npm i -g pm2", group: user, user: node }
 ```
 
 **Group-weighted instruction model.** Adopted from SPEC2's L337 builder. A v4 artifact is assembled from groups (named, weighted, user-scoped) and steps (instructions assigned to a group). Final ordering is by group weight + step weight. Service types, features, fragments (§7.7), and the user's Landofile contribute steps into named groups; users override or extend. (Recipes do not contribute steps at runtime — they are init-time scaffolds that produce a Landofile, which then contributes through the normal mechanisms.)
@@ -317,6 +330,8 @@ The user's Landofile is unchanged across all three cases — the realization sha
 
 Storage is a list of persistent data declarations, scoped by lifetime.
 
+**Planned-user home.** The service key is `home: false | { path?: AbsoluteContainerPath }`, enabled by default when omitted. Known catalog user/home metadata MUST create exactly one idempotent service-scoped store at the planned user's home; an explicit `path` selects the destination. Custom/compose images lacking known `USER`/`HOME` MUST fail with tagged `HomePathCapabilityError` before provider action unless `home: false` or an explicit `path` is supplied. The error MUST identify the service and remediate with those choices. Equivalent authored storage entries MUST be deduplicated with ownership preserved, not shadowed by a second generated store. Changing home contents MUST NOT enter build keys (§6.13.5). Persistence follows the service storage lifetime and artifact ownership rules (§12.4). Core MUST NOT restore legacy `/lando`, `/helpers`, or user-config-dir mounts.
+
 ```yaml
 storage:
   # Short form: destination only → service-scoped volume
@@ -367,6 +382,8 @@ Cache-kind rules: a `kind: cache` store auto-names `lando-cache-<key>` (the `key
 - `scope: service` → `<project>-<service>-<kebab(destination)>`.
 
 **Provider labels.** Providers that implement labeled volume metadata MUST tag created volumes:
+
+The `dev.lando.*` label namespace is reserved for core-generated labels. Authored service labels and global `appLabels` (§7.5) MUST reject that namespace before provider action.
 
 ```text
 dev.lando.storage-volume: "TRUE"
@@ -423,6 +440,8 @@ The planner always adds the canonical alias `<service>.<app>.internal` when the 
 
 Every planned `RoutePlan` includes a resolved `backend: { service, protocol: "http" | "https", port }`. Core resolves an authored endpoint name or port against the target service during planning. A proxy consumes this backend directly and MUST NOT guess a service port. Route authority ports are proxy-layer materialization and are not part of `RoutePlan`.
 
+Host, port, path, wildcard, and combined shorthand MUST normalize to explicit provider-neutral route objects with `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters` before backend resolution. Invalid shorthand MUST fail with a tagged source-aware error naming the source file/key and remediation. Filters MUST merge by `name`, then type identity when unnamed, across layers and MUST render in authored order. Prefix stripping MUST NOT be implicit: a path route without `stripPrefix` forwards the full path (§10.2).
+
 ```yaml
 proxy:
   app:
@@ -432,8 +451,8 @@ proxy:
     - "*.app.lndo.site"            # wildcard hostname
     - hostname: admin.lndo.site
       endpoint: 8080/http
-      pathname: /admin
-      tls: true
+      pathPrefix: /admin
+      scheme: https
       filters:
         - type: requestHeader
           name: X-Lando
@@ -525,12 +544,14 @@ Each `security.ca:` entry is mounted into the service at a CA-distro-appropriate
 4. **Install mechanism** is the same intent path as `security.ca:`: the `lando.security` feature materializes mounts + trust-store registration through boot scaffolding. Core does not splice host-global Dockerfile fragments into the image; open-ended host Dockerfile directories (a per-user `~/.<tool>/*-build/` drop-in convention) are a non-goal.
 5. **Phase.** Trust-store install runs in boot scaffolding before any `build.app:` / tooling / exec that needs outbound HTTPS inside the container. Lando-initiated artifact pulls and image builds already honor `network.ca` / `network.proxy` on the host side via providers and `HttpClient` (§10.3.1); they do not require in-image CA install. When only global CA inject material changes, the affected services' artifact `buildKey` inputs (§6.13.5) MUST include a stable digest of the resolved injected CA set so rebuilds are not skipped stale.
 6. **Runtime-specific trust.** After system trust-store install, `type: lando` services MUST also export a concatenated PEM bundle path for runtimes that ignore the OS store. At minimum set `SSL_CERT_FILE` / `SSL_CERT_DIR` (OpenSSL family) and `NODE_EXTRA_CA_CERTS` (Node) to that bundle when any injected CA is present; language service types MAY add further equivalents. The bundle path is also published as `LANDO_CA_BUNDLE` / `LANDO_CA_DIR` (§6.9).
-7. **Proxy inject.** When proxy inject is on for a service, the resolved `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` (from global config then standard env, §10.3.1) are written into the service env layer. Proxy credentials are secrets: redacted from logs, telemetry, caches, `LANDO_INFO`, and rendered config; never written into build transcripts in cleartext.
+7. **Proxy inject.** When proxy inject is on for a service, the resolved `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` (from global config then standard env, §10.3.1) are written into the service env layer. Proxy credentials are secrets: redacted from logs, telemetry, caches, and rendered config; never written into build transcripts in cleartext.
 8. **Providers** MUST use the resolved proxy/CA settings for every Lando-initiated artifact pull and build regardless of service inject flags.
 
 ### 6.9 Service environment variables
 
-The standard env var set is published by core; providers and `lando` services inject. `LANDO_*` is reserved for core; plugins use `LANDO_PLUGIN_<NAME>_*`.
+The standard env var set is published by core; providers and `lando` services inject. The generated catalog of core-owned `LANDO` and `LANDO_*` keys MUST be the reservation consulted by `appEnv` validation (§7.5), not an ad hoc wildcard. Plugins use `LANDO_PLUGIN_<NAME>_*`.
+
+Credentials MUST be exposed only through typed per-service keys such as the `LANDO_DB_*` family below or other service-typed variables, never an aggregate JSON blob. `lando info` and the `ServiceInfo` schema (§6.10, §8.2) are the inspection surface. `LANDO_PROJECT_MOUNT` is the app-mount variable; no aggregate or mount alias variable is provided. `LANDO_HOST_IP` MUST be omitted unless declared provider capability and known gateway data permit host reachability (§5.5).
 
 **Always-injected (when applicable):**
 
@@ -552,7 +573,6 @@ LANDO_SERVICE_API=4
 LANDO_SERVICE_NAME=<service id>
 LANDO_SERVICE_TYPE=<resolved type>
 LANDO_DOMAIN=<configured domain>
-LANDO_INFO=<JSON-encoded service info>
 ```
 
 **Conditional:**
@@ -592,7 +612,7 @@ Raw `l337` services do not include the env layer; they receive only the compose-
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
 
-The **Agent-native** tenet (§1.2) requires context continuity: when an AI coding agent's work crosses the host→container boundary, the identity markers the agent's tooling depends on travel with it instead of being silently dropped. Lando therefore forwards a small, name-allowlisted set of host environment variables into **per-invocation exec surfaces** — `app:exec`, `app:ssh`, `app:shell --service`, and tooling tasks run through the `providerExec` engine (§8.6). Forwarding is per-exec: the values ride the exec request's env, are never baked into the service's planned environment, never written to the app plan cache, and never appear in `LANDO_INFO`.
+The **Agent-native** tenet (§1.2) requires context continuity: when an AI coding agent's work crosses the host→container boundary, the identity markers the agent's tooling depends on travel with it instead of being silently dropped. Lando therefore forwards a small, name-allowlisted set of host environment variables into **per-invocation exec surfaces**: `app:exec`, `app:ssh`, `app:shell --service`, and tooling tasks run through the `providerExec` engine (§8.6). Forwarding is per-exec: the values ride the exec request's env, are never baked into the service's planned environment, and are never written to the app plan cache.
 
 Default forwarded names (the **agent-context allowlist**):
 
@@ -720,7 +740,7 @@ A `ServiceType` MAY declare `extends: <parent-id>` to inherit the parent's resol
 The `artifacts:` field is a `{ "<version>": "<image-tag>" }` map consulted at plan-compile time to resolve a user's `type: mariadb:10.11` into a concrete image tag. The map is data — adding a new pin is a YAML edit, not a code change. Resolution rules:
 
 - Exact match wins. Wildcard / range matching is **not** supported in v4.0; authors who need range resolution write a custom `resolve()`.
-- A `versions:` entry without a corresponding `artifacts:` entry resolves to `<name>:<version>` by convention (the user is using upstream tags directly).
+- `ServiceType` version metadata MUST be the single shipped matrix consumed by planner validation, generated docs, and tests. A version unknown to or absent from that matrix MUST fail before provider action with a tagged error naming the service type, requested version, and supported versions as remediation. A declared version without an available artifact MUST NOT fall back to a guessed upstream tag. This includes unavailable PHP 5.6 through 8.0 images; core MUST NOT manufacture images for retired versions.
 - The resolved tag is recorded in the app-plan cache key (§12.1) so a pin change invalidates plans.
 - Plugin-contributed `artifacts:` may be merged from a sibling YAML file via `artifacts: ./artifacts.yml` to keep manifests readable.
 
@@ -835,6 +855,8 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 
 #### 6.12.1 Catalog
 
+The version column is a projection of the shipped `ServiceType` version metadata (§6.11.2), not a second independently maintained matrix. Planner validation, generated docs, and tests MUST consume that same metadata; unknown or absent versions MUST fail before provider action with tagged remediation naming the supported versions.
+
 | `type:` | Versions | Default base | What you get out of the box |
 |---|---|---|---|
 | `php:<version>` | 8.1, 8.2, 8.3, 8.4, 8.5 | `lando` | PHP with selectable serving mode (`via: apache` default, `fpm`, `cli` — §6.12.5), Composer with version selection (§6.12.5), common extensions (gd, intl, opcache, pdo_*, mbstring, zip), opt-in Xdebug (§6.12.5), database-client auto-detection (`db_client:` — §6.12.5), explicit absolute-container `webroot:` selection, and opt-in Apache `allowOverride:` policy |
@@ -851,7 +873,7 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 | `redis[:<version>]` | 6, 7 | `lando` | Redis + persistent flag, redis-cli tooling |
 | `memcached[:<version>]` | 1.6 | `lando` | Memcached |
 | `valkey[:<version>]` | 7, 8 | `lando` | Valkey (Redis-compatible) + persistent flag |
-| `solr[:<version>]` | 8, 9 | `lando` | Solr + `core:` config, schema mount, persistent volume |
+| `solr[:<version>]` | 8, 9 | `lando` | Solr + `cores:` config, `config.dir` source, persistent volume |
 | `elasticsearch[:<version>]` | 7, 8 | `lando` | Elasticsearch + index init, persistent volume |
 | `opensearch[:<version>]` | 2 | `lando` | OpenSearch + index init, persistent volume |
 | `meilisearch[:<version>]` | 1 | `lando` | Meilisearch + master key, persistent volume |
@@ -869,6 +891,23 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 | `compose` | n/a | `l337` | Raw Compose-spec passthrough; the escape hatch for anything not in the catalog. Validates the `image:` / `build:` block and routes everything else through provider-specific extensions. |
 
 Each type's configuration schema is published from `@lando/sdk` under `@lando/sdk/schema/services/<type>` (§13.2) and surfaces in editor completion and the docs site. Version aliases (`lts`, `latest`) resolve at plan compile time and are recorded in the app-plan cache (§12).
+
+**Per-type options (normative).** Dotted names below identify fields on the named service type, not additional top-level Landofile keys.
+
+| Type / option | Required plan and execution behavior |
+|---|---|
+| `solr.config.dir` | An app-relative directory MUST be mounted read-only as the config source and copied into each declared core's `/var/solr/data/<core>/conf` at startup. |
+| PostgreSQL `config.server` | An app-relative regular file MUST be mounted at `/etc/lando/postgresql.conf` and selected with `-c config_file=/etc/lando/postgresql.conf`. |
+| MySQL/MariaDB `config.server` | An app-relative regular file MUST be mounted at `/etc/mysql/conf.d/99-lando.cnf`. |
+| MongoDB `config.server` | An app-relative regular file MUST be mounted at `/etc/lando/mongod.conf` and selected with `--config /etc/lando/mongod.conf`. |
+| `node.globals` | Global package installs MUST be normalized into deterministic ordered build steps with validated package versions and stable package ordering. |
+| `node.port` | The authored port MUST drive endpoints, healthchecks, and generated commands; a fixed default MUST NOT override it. |
+| Redis `password` | The resolved password MUST be applied consistently to startup, healthcheck, `creds`, tooling, and redaction. |
+| Redis `persist` | The resolved boolean MUST select durable versus ephemeral data intent; ephemeral intent MUST NOT silently create a durable data store. |
+| Mailpit `mailFrom` | `mailFrom?: false \| ServiceName[]`: omitted MUST target every resolved PHP service; `false` MUST target none. Arrays MUST deduplicate in authored order and reject unknown or non-PHP names with a tagged error before provider action. Sendmail wiring MUST be applied only to targets. |
+| Apache `webroot` | Generated configuration and routes MUST use the authored `webroot`, not a hardcoded app root. |
+
+File-backed catalog config sources MUST be app-relative regular files or directories of the declared kind. Planning MUST validate containment and symlink safety before provider action and fail unsafe sources with a tagged source-aware error and remediation. Source identity MUST enter plan/build keys (§6.13.5); config file sources MUST be mounted read-only. Commands, resolved users, versions, packages, and config sources MUST be hashed deterministically with secrets redacted.
 
 **Per-service-type implementation checklist (normative).** Every catalog entry above — and every plugin-contributed service type — MUST land with all of the following, in the same change. A reviewer who cannot tick every box rejects the service type. This checklist exists because the base/feature machinery is easy to skip while an individual service type still "works" in isolation:
 
@@ -905,7 +944,7 @@ Framework presets are pure config — they emit the same fields a user would wri
 #### 6.12.3 Catalog membership rules
 
 - The catalog is fixed at v4.0. Adding a new canonical type or removing one requires a spec amendment.
-- Versions inside a catalog entry (e.g., adding PHP 8.5) follow upstream releases and may be added in v4.x without a spec amendment.
+- Versions inside a catalog entry (e.g., adding PHP 8.5) follow upstream releases and may be added in v4.x without a spec amendment, but MUST enter the single shipped `ServiceType` matrix (§6.11.2) with available artifacts and matching generated docs/tests. Unknown or absent versions, including unavailable PHP 5.6 through 8.0, MUST fail before provider action with tagged remediation naming supported versions; no retired images are manufactured.
 - Plugins MAY contribute service types with the same shape; a name collision with a canonical type is rejected at plugin load with `ServiceTypeCollisionError`.
 - Plugins MAY contribute features that compose with canonical types (e.g., a `php-newrelic` feature that adds the New Relic extension). The feature priority list (§6.11) is the integration point.
 - Library consumers do **not** receive the canonical catalog by default — they must opt into bundled discovery (§16.4) or contribute their own service-type Layers, the same as for any other contribution surface.
@@ -965,9 +1004,15 @@ The serving mode selects the base image variant (`-apache-bookworm`, `-fpm-bookw
     composer: "2"          # major channel (default; tracks the pinned bundled release)
     composer: "2.7.7"      # exact version
     composer: false        # skip Composer install entirely
+    composer:              # additive version-and-packages form
+      version: "2"
+      packages:
+        drush/drush: "13.0.0"
 ```
 
 The bundled default remains a checksum-pinned Composer 2 release; `composer:` selects a different pinned version (fetched with checksum verification through the standard build-step downloader path) or disables the install. Version selection participates in `buildKey` so changing it rebuilds the artifact layer.
+
+The accepted contract is `composer: "<version>" | false | { version, packages }`. The object form is additive and MUST preserve the string and false forms. Package versions MUST be validated before provider action; packages MUST normalize in stable order into global install steps. Commands, resolved users, Composer/package versions, and package identities MUST participate in ordered `buildKey` hashing with secrets redacted (§6.13.5).
 
 **Xdebug (`xdebug:`).**
 
@@ -1051,6 +1096,8 @@ Execution:
 
 #### 6.13.3 What runs where
 
+Every runnable step MUST retain its plan-resolved user through `BuildPlan` to provider execution. An artifact `BuildCommand` MUST retain the ordered command/user pairs rather than flattening away per-step users. Artifact generation MUST emit `USER` changes only when needed and restore the final service `USER` (§6.3). Each app-build `execStream` request MUST pass the step's explicit resolved `user`, including interleaved root/non-root execution; providers MUST NOT re-resolve omitted users at execution time.
+
 The orchestrator dispatches each step kind to the right provider primitive:
 
 | Step kind | Provider call | Notes |
@@ -1076,6 +1123,8 @@ Every `BuildStep` carries a `buildKey` — a SHA-256 hash over the canonicalized
 
 `buildKey` inputs:
 
+Both phases MUST hash ordered commands and their resolved users, resolved runtime/tool versions, normalized package lists, and config source identities with secrets redacted (§3.7). Reordering steps or changing a resolved user MUST change the key. Changing persisted home contents MUST NOT change it. Catalog config source identity is an explicit input even when the source is realized as a read-only bind mount.
+
 | Phase | Hashed inputs |
 |---|---|
 | `artifact` | The resolved group-weighted instruction list (after §6.3 group/weight resolution), the resolved `args:` and `secrets:` *names* (not values), the resolved `platform:`, the realized `context:` directory tree's content hash, the parent artifact reference (e.g., `nginxinc/nginx-unprivileged:1.27`), the provider id, and the active `lando` and `@lando/service-*` versions that contributed steps. |
@@ -1083,7 +1132,7 @@ Every `BuildStep` carries a `buildKey` — a SHA-256 hash over the canonicalized
 
 Inputs that are deliberately NOT in `buildKey`:
 
-- The resolved value of any `${secret:…}` reference (changing a secret value MUST NOT silently re-run a build step the user did not change; if a user wants to force a rerun, `lando rebuild <service>` or `lando app cache refresh --rebuild` does it).
+- The resolved value of any `${secret:…}` reference (changing a secret value MUST NOT silently re-run a build step the user did not change; `lando rebuild --service <service>` or `lando app cache refresh --rebuild` forces a rerun, per §8.2).
 - The host system clock or timezone.
 - The values inside `mounts:` of `type: bind` (they are content-addressed by `mountKey` already; the file contents inside the bind mount are tracked by the build script itself, not the orchestrator).
 - Any environment variable that wasn't declared on the build script's `env:` map.

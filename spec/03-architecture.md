@@ -404,10 +404,12 @@ The "lazy" column lists services that the codegen wraps in `Layer.suspend` so th
 
 Events are typed and validated. Subscribers register through plugin manifests.
 
+`pre-restart` and `post-restart` MUST bracket the stop/start pair; the inner stop/start events MUST still fire. Both restart bracket names MUST be valid Landofile `events:` targets. The valid event-name set MUST be extended with `pre-<tool>` / `post-<tool>` from fully resolved layered/included tooling before semantic validation. Nested command-event recursion MUST be bounded by a visited stack and depth limit, with cycle/depth rejection and the complete valid-name set in validation diagnostics (§8.5.7).
+
 | Scope | Standard events |
 |---|---|
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
-| App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
+| App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
 | Process / Shell / Network | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-http-call`, `post-http-call`, `pre-download`, `download-progress`, `post-download` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
@@ -587,7 +589,25 @@ export const PreStartEvent = Schema.TaggedStruct("pre-start", {
   timestamp: Schema.DateTimeUtc,
 });
 export type PreStartEvent = Schema.Schema.Type<typeof PreStartEvent>;
+
+export const PreRestartEvent = Schema.TaggedStruct("pre-restart", {
+  app: AppRef,
+  plan: AppPlan,
+  triggeredBy: Schema.String,
+  timestamp: Schema.DateTimeUtc,
+});
+export type PreRestartEvent = Schema.Schema.Type<typeof PreRestartEvent>;
+
+export const PostRestartEvent = Schema.TaggedStruct("post-restart", {
+  app: AppRef,
+  plan: AppPlan,
+  triggeredBy: Schema.String,
+  timestamp: Schema.DateTimeUtc,
+});
+export type PostRestartEvent = Schema.Schema.Type<typeof PostRestartEvent>;
 ```
+
+Restart payloads MUST use the same app/plan/trigger/timestamp shape as start/stop payloads, differing only in their event tags.
 
 `PreScratchStartEvent` illustrates the Scratch-scope payload shape (§21.6.2 is canonical; remaining Scratch-scope events follow the same pattern):
 
@@ -948,6 +968,8 @@ The `pre-global-start` … `post-global-start` block ALWAYS fires inside `pre-st
 The `Build` scope replaces the v1 of this section's "(priority 100) artifact build / (priority 110) per-service app build" prose. The two phases remain ordered (artifact → app, per service) — the priority numbers survive as the *phase boundaries* the event sequence renders — but siblings inside a phase run concurrently per the §6.13 DAG semantics. Within a service the orchestrator still serializes `artifact` → `app` (the `lando.boot` scaffolding lives inside the built artifact). Compose `depends_on:` flows through into app-build ordering so an `npm run seed` step that needs the db waits for `db` to come up before it runs.
 
 `lando stop`, `rebuild`, and `destroy` follow analogous sequences with their own `pre-*`/`post-*` pairs and their own `cli-<canonical-id>-init`/`-run`/`-error` triplet at the same positions relative to bootstrap.
+
+For `lando restart` (§8.2), the app sequence MUST be `pre-restart` → `pre-stop` → stop body → `post-stop` → `pre-start` → start body → `post-start` → `post-restart`. The start body retains the build and readiness sequence above. Brackets follow command failure semantics (§8.5.7); `post-restart` MUST NOT report success after a failed stop/start pair.
 
 ### 11.5 Hot-path events
 
