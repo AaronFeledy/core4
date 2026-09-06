@@ -326,6 +326,52 @@ describe("socket HTTP transport", () => {
     expect(connection.destroyed).toBe(true);
   });
 
+  test("drains the error body of a non-2xx stream response into the transport error", async () => {
+    const connection = new FakeConnection([
+      bytes("HTTP/1.1 401 Unauthorized\r\nTransfer-Encoding: chunked\r\n\r\n"),
+      bytes('1f\r\n{"message":"unauthorized: bad"}\r\n0\r\n\r\n'),
+    ]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    let caught: unknown;
+    try {
+      await Array.fromAsync(client.stream({ method: "POST", path: "/images/create?fromImage=x" }));
+    } catch (cause) {
+      caught = cause;
+    }
+
+    expect(caught).toBeInstanceOf(ContainerTransportError);
+    const error = caught as ContainerTransportError;
+    expect(error.kind).toBe("http");
+    expect(error.details).toEqual({
+      method: "POST",
+      path: "/images/create?fromImage=x",
+      status: 401,
+      body: '{"message":"unauthorized: bad"}',
+    });
+    expect(connection.destroyed).toBe(true);
+  });
+
+  test("never opens a socket when the buffered request body rejects", async () => {
+    let connected = 0;
+    const client = makeSocketHttpClient({
+      apiPrefix: "/v1.43",
+      connect: async () => {
+        connected += 1;
+        return new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n{}")]);
+      },
+    });
+    async function* failingStdin(): AsyncGenerator<Bytes> {
+      yield bytes("partial");
+      throw new Error("tar stream broke");
+    }
+
+    await expect(
+      client.request({ method: "POST", path: "/images/load", stdin: failingStdin() }),
+    ).rejects.toThrow("tar stream broke");
+    expect(connected).toBe(0);
+  });
+
   test("throws a neutral transport error for malformed status lines", async () => {
     const connection = new FakeConnection([bytes("HTTP/1.1 OK\r\n\r\n{}")]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
