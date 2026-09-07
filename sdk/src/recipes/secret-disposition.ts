@@ -6,7 +6,7 @@ import {
 } from "../errors/recipe.ts";
 import { ConfigTranslateSecretReference } from "../schema/config-translate.ts";
 import type { RecipeDecomposeInput } from "../schema/recipe-decompose.ts";
-import { type RecipeManifest, RecipeSecretDisposition } from "../schema/recipe.ts";
+import type { RecipeManifest, RecipeSecretDisposition } from "../schema/recipe.ts";
 
 type InitBinding = { readonly kind: "stdin" } | { readonly kind: "secretEnv"; readonly name: string };
 
@@ -67,11 +67,7 @@ export const validateRecipeSecretPrompts = (
         }),
       );
     if (prompt.disposition === undefined) return fail("missing");
-    if (
-      prompts.filter((candidate) => candidate.name === prompt.name).length > 1 ||
-      Array.isArray(prompt.disposition)
-    )
-      return fail("multiple");
+    if (prompts.filter((candidate) => candidate.name === prompt.name).length > 1) return fail("multiple");
     if (Object.hasOwn(prompt, "default")) return fail("default-value");
     const disposition = prompt.disposition;
     const bindings = collectInitBindings(manifest, prompt.name);
@@ -90,12 +86,6 @@ export const validateRecipeSecretPrompts = (
       default:
         disposition satisfies never;
     }
-    if (
-      Either.isLeft(
-        Schema.decodeUnknownEither(RecipeSecretDisposition)(disposition, { onExcessProperty: "error" }),
-      )
-    )
-      return fail("multiple");
     result.push({ promptName: prompt.name, disposition });
   }
   return Either.right(result);
