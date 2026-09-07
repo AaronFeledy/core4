@@ -49,17 +49,17 @@ const translatorLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string
   return new Map();
 };
 
-/**
- * Collect translator candidates in plugin order. Loader ids must match the
- * plugin's manifest `configTranslators:` ids. The first duplicate id fails
- * with both producing plugin names; neither contribution is kept.
- */
 const sameTranslatorIds = (declared: ReadonlyArray<string>, provided: ReadonlyArray<string>): boolean => {
   const left = [...declared].sort();
   const right = [...provided].sort();
   return left.length === right.length && left.every((id, index) => id === right[index]);
 };
 
+/**
+ * Collect translator candidates in plugin order. Loader ids must match the
+ * plugin's manifest `configTranslators:` ids. The first duplicate id fails
+ * with both producing plugin names; neither contribution is kept.
+ */
 const configTranslatorCandidates = (
   plugins: ReadonlyArray<LoadedPluginContribution>,
 ): Effect.Effect<
