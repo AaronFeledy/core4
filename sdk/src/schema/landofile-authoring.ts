@@ -170,20 +170,26 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
 };
 
 // ==== Public schemas retain expression source on their encoded side
-type LandofileEncoded = Schema.Schema.Encoded<typeof LandofileShape>;
+interface LandofileEncoded extends Schema.Schema.Encoded<typeof LandofileShape> {}
 const slotFor = (kind: AuthoringExpressionExpectedType): AST.AST => authoringExpressionSlot(kind).ast;
 
-export const LandofileAuthoringShape = Schema.make<
+// Explicit schema types keep declaration emit from expanding the entire Landofile tree.
+export const LandofileAuthoringShape: Schema.Schema<
   AuthoringValue<LandofileEncoded>,
   AuthoringEncoded<LandofileEncoded>
->(deriveAuthoringAst(LandofileShape.ast, { partial: false, slotFor })).annotations({
+> = Schema.make<AuthoringValue<LandofileEncoded>, AuthoringEncoded<LandofileEncoded>>(
+  deriveAuthoringAst(LandofileShape.ast, { partial: false, slotFor }),
+).annotations({
   identifier: "LandofileAuthoringShape",
   title: "Landofile authoring shape",
   description:
     "Complete Landofile authoring values with parsed, unresolved expressions at typed value sites.",
 });
 
-export const LandofileAuthoringFragment = Schema.make<
+export const LandofileAuthoringFragment: Schema.Schema<
+  AuthoringDeepPartial<AuthoringValue<LandofileEncoded>>,
+  AuthoringDeepPartial<AuthoringEncoded<LandofileEncoded>>
+> = Schema.make<
   AuthoringDeepPartial<AuthoringValue<LandofileEncoded>>,
   AuthoringDeepPartial<AuthoringEncoded<LandofileEncoded>>
 >(deriveAuthoringAst(LandofileShape.ast, { partial: true, slotFor })).annotations({
@@ -193,13 +199,16 @@ export const LandofileAuthoringFragment = Schema.make<
     "Recursively partial Landofile authoring values with parsed, unresolved expressions at typed value sites.",
 });
 
-export const LandofileAuthoringShapeWire = Schema.encodedSchema(LandofileAuthoringShape).annotations({
-  identifier: "LandofileAuthoringShapeWire",
-  title: "Landofile authoring shape wire form",
-  description: "Complete Landofile authoring wire tree retaining expressions as source strings.",
-});
+export const LandofileAuthoringShapeWire: Schema.Schema<AuthoringEncoded<LandofileEncoded>> =
+  Schema.encodedSchema(LandofileAuthoringShape).annotations({
+    identifier: "LandofileAuthoringShapeWire",
+    title: "Landofile authoring shape wire form",
+    description: "Complete Landofile authoring wire tree retaining expressions as source strings.",
+  });
 
-export const LandofileAuthoringFragmentWire = Schema.encodedSchema(LandofileAuthoringFragment).annotations({
+export const LandofileAuthoringFragmentWire: Schema.Schema<
+  AuthoringDeepPartial<AuthoringEncoded<LandofileEncoded>>
+> = Schema.encodedSchema(LandofileAuthoringFragment).annotations({
   identifier: "LandofileAuthoringFragmentWire",
   title: "Landofile authoring fragment wire form",
   description: "Recursively partial Landofile authoring wire tree retaining expressions as source strings.",

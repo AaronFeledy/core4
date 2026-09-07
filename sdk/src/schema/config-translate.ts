@@ -9,6 +9,15 @@ const metadata = (identifier: string, description: string) => ({
   title: identifier,
   description,
 });
+interface AuthoringFragmentSchema
+  extends Schema.Schema<Schema.Schema.Type<typeof LandofileAuthoringFragmentWire>> {}
+interface AuthoringContextSchema
+  extends Schema.Schema<Schema.Schema.Type<typeof LandofileAuthoringShapeWire>> {}
+const authoringFragment = (description: string): AuthoringFragmentSchema =>
+  LandofileAuthoringFragmentWire.annotations({ description });
+const authoringContext: AuthoringContextSchema = LandofileAuthoringShapeWire.annotations({
+  description: "Complete validated authoring wire context.",
+});
 export const ConfigTranslateSourceId = Schema.String.pipe(
   Schema.minLength(1),
   Schema.brand("ConfigTranslateSourceId"),
@@ -38,9 +47,7 @@ export const ConfigTranslateDocument = Schema.Struct({
 }).annotations(metadata("ConfigTranslateDocument", "Core-read immutable source snapshot."));
 export const ConfigTranslateLayerFragment = Schema.Struct({
   layerId: LandofileLayer.annotations({ description: "Existing lower v4 layer." }),
-  fragment: LandofileAuthoringFragmentWire.annotations({
-    description: "Lower-layer authoring wire fragment.",
-  }),
+  fragment: authoringFragment("Lower-layer authoring wire fragment."),
 }).annotations(metadata("ConfigTranslateLayerFragment", "Authoring context for a lower layer."));
 export const ConfigTranslateDocumentSetInput = Schema.Struct({
   _tag: Schema.Literal("landofile-document-set").annotations({
@@ -153,9 +160,7 @@ export const ConfigTranslateDiagnostic = Schema.Struct({
 }).annotations(metadata("ConfigTranslateDiagnostic", "Source-attributed translation diagnostic."));
 export const ConfigTranslateOutput = Schema.Struct({
   targetLayer: LandofileLayer.annotations({ description: "Unique allowlisted destination layer." }),
-  fragment: LandofileAuthoringFragmentWire.annotations({
-    description: "Authoring wire fragment for this output only.",
-  }),
+  fragment: authoringFragment("Authoring wire fragment for this output only."),
   sourceIds: Schema.Array(ConfigTranslateSourceId).annotations({
     description: "Input sources folded into this output.",
   }),
@@ -180,14 +185,8 @@ export const ConfigTranslateResult = Schema.Struct({
   metadata("ConfigTranslateResult", "Translation outputs with diagnostics and deletion intents."),
 );
 export const ConfigTranslateEncodeInput = Schema.Struct({
-  context: LandofileAuthoringShapeWire.annotations({
-    description: "Complete validated authoring wire context.",
-  }),
-  fragment: Schema.optional(
-    LandofileAuthoringFragmentWire.annotations({
-      description: "Exact fragment to emit instead of the complete context.",
-    }),
-  ),
+  context: authoringContext,
+  fragment: Schema.optional(authoringFragment("Exact fragment to emit instead of the complete context.")),
 }).annotations(
   metadata("ConfigTranslateEncodeInput", "Complete context and optional exact fragment for text encoding."),
 );
