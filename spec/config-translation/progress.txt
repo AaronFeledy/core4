@@ -171,3 +171,15 @@
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck pass, lint pass, 127 spot-check tests pass
 ---
+
+## 2026-09-07 09:40 - US-608C
+- Verified the committed managed-file transaction coordinator against both acceptance criteria; no implementation work remained. The private module in `@lando/managed-file` locks the realpath'd app root through the state-store advisory lock, rejects symlinked targets/parents and any parent outside that root, stages `<target>.lando-stage.<id>` beside each target, and reuses only hash-verified `<file>.bak.<full-before-sha256>` backups created exclusively at `0o600`.
+- Confirmed the durability order first-hand: backups, then stages, then an owner-only fsynced `prepared` journal carrying the complete ordered before/after plan (presence, full digests, modes, backup identity, stage dev/ino), and only afterwards `committing`, per-file renames with digest rechecks, fsynced `committed`, stage cleanup, and a removal that fails unless the journal is already `committed`. Journals, tagged errors, and commit receipts carry digests, modes, and paths only, so no user bytes reach an output channel. No CLI, renderer, or prompt surface was added.
+- Documented the coordinator in the root `AGENTS.md` package-ownership bullet so later stories consume the `@lando/managed-file/transaction` seam instead of hand-rolling staging.
+- Verification: typecheck, lint, check:boundaries, coordinated-plan passed; 57 focused transaction tests (including crash-injection at every checkpoint, lock contention, symlink/hardlink attacks, and backup corruption) and 24 adjacent state-store lock/atomic tests passed. No CLI surface changed, so no CLI run applied.
+- **Learnings for future iterations:**
+  - The transaction journal is the one artifact allowed outside app-root containment: `journalDirectory` derives it from `makeLandoPaths({ userDataRoot }).managedFileLedger(...)`, keyed by app-root basename plus root digest, so two apps with the same basename never collide.
+  - Journal writes are a state machine, not a blind set: `write` re-reads, requires the exact next state in `prepared -> committing -> committed`, and rejects any payload whose non-state fields drift from what was journaled. Recovery work in the next story must transition through it rather than writing terminal states directly.
+  - `prepare` hands back an opaque handle and keeps the journal/store in a `WeakMap` lease, so `commit` cannot be replayed or driven from a foreign journal; the scoped finalizer deletes only stages whose recorded dev/ino still match, never foreign or unjournaled ones.
+  - Cross-package consumers must import through the `@lando/managed-file/transaction` subpath (package-dag rule); the package stays `private: true`, and the module is deliberately absent from the package root export.
+---
