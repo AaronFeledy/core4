@@ -15,6 +15,7 @@ import type {
   ServiceConfig,
 } from "../schema/index.ts";
 import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
+import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
@@ -31,7 +32,6 @@ import type {
   ServiceType,
   SshService,
 } from "../services/index.ts";
-import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";

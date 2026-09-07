@@ -98,7 +98,9 @@ const loadCandidate = (
     ),
   );
 
-const bundledContributions = (modules: ReadonlyArray<LandoPluginModule>): ReadonlyArray<LoadedPluginContribution> =>
+const bundledContributions = (
+  modules: ReadonlyArray<LandoPluginModule>,
+): ReadonlyArray<LoadedPluginContribution> =>
   systemPluginsFromModules(modules).map((plugin, index) => {
     const entry = modules[index];
     return entry === undefined ? plugin : { ...plugin, entry };

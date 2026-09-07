@@ -200,8 +200,7 @@ describe("makePluginCapabilityIndex config translators", () => {
     configTranslators: new Map([
       [
         translatorId,
-        () =>
-          Promise.reject(new Error(`Translator ${translatorId} must not load while indexing.`)),
+        () => Promise.reject(new Error(`Translator ${translatorId} must not load while indexing.`)),
       ],
     ]),
   });

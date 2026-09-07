@@ -329,7 +329,9 @@ describe("appConfigTranslate", () => {
     const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.fail(conflict) });
 
     // When: the operation lists.
-    const exit = await Effect.runPromiseExit(appConfigTranslate({ list: true }).pipe(Effect.provide(registry)));
+    const exit = await Effect.runPromiseExit(
+      appConfigTranslate({ list: true }).pipe(Effect.provide(registry)),
+    );
 
     // Then: the collision propagates untouched.
     expect(Exit.isFailure(exit)).toBe(true);

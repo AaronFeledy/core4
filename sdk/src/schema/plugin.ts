@@ -184,7 +184,8 @@ export const ConfigTranslatorContribution = Schema.Struct({
     description: "Input kinds the translator decodes, for listings and explicit selection.",
   }),
   detects: Schema.optional(Schema.Array(Schema.String)).annotations({
-    description: "Advisory glob patterns for help and explicit conversion matching; detect() stays authoritative.",
+    description:
+      "Advisory glob patterns for help and explicit conversion matching; detect() stays authoritative.",
   }),
   optionsSchema: Schema.optional(Schema.String).annotations({
     description: "Optional contained module path exporting the translator-specific options schema.",
@@ -232,7 +233,8 @@ export const PluginContribution = Schema.Struct({
   }),
   commands: Schema.optional(Schema.Array(ContributionRef)),
   configTranslators: Schema.optional(Schema.Array(ConfigTranslatorContribution)).annotations({
-    description: "ConfigTranslator implementations registered by this plugin; loaded only on explicit conversion.",
+    description:
+      "ConfigTranslator implementations registered by this plugin; loaded only on explicit conversion.",
   }),
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
   downloaders: Schema.optional(Schema.Array(DownloaderContribution)),

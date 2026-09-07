@@ -6,8 +6,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 
-import { PluginContributionGraph } from "../../src/plugins/contribution-graph.ts";
 import { makeConfigTranslatorRegistryLive } from "../../src/plugins/config-translator-registry.ts";
+import { PluginContributionGraph } from "../../src/plugins/contribution-graph.ts";
 
 const fakeTranslator = (id: string): ConfigTranslatorShape => ({
   id,
@@ -42,7 +42,12 @@ const makeModule = (
   ),
 });
 
-const graphLayer = (plugins: ReadonlyArray<{ readonly source: "bundled" | "user" | "explicit"; readonly entry: LandoPluginModule }>) =>
+const graphLayer = (
+  plugins: ReadonlyArray<{
+    readonly source: "bundled" | "user" | "explicit";
+    readonly entry: LandoPluginModule;
+  }>,
+) =>
   Layer.succeed(PluginContributionGraph, {
     plugins: plugins.map(({ source, entry }) => ({ source, manifest: entry.manifest, entry, module: entry })),
     certificateAuthorities: [],
