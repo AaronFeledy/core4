@@ -7,8 +7,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import * as kit from "@lando/sdk/test";
-import { Effect, Either } from "effect";
-import { Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 const producer: RecipeProducer = {
   sourceKind: "plugin",

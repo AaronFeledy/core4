@@ -31,7 +31,7 @@ const projectPrompt = (prompt: RecipePrompt) => ({
 });
 
 /**
- * Project the §3 digest inputs from a manifest. Migrations, snapshot identity,
+ * Project the content digest inputs from a manifest. Migrations, snapshot identity,
  * and prompt defaults are dropped so the hash cannot observe history or answers.
  */
 export const recipeContentDigestProjection = (manifest: RecipeManifest): RecipeContentDigestProjection => ({
