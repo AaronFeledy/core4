@@ -77,6 +77,24 @@ describe("authoring expression slots", () => {
     expect(plain).toBe(false);
   });
 
+  test("treats and/or operand agreement like default rather than as boolean", () => {
+    // Given
+    const stringSlot = authoring.authoringExpressionSlot("string");
+    const booleanSlot = authoring.authoringExpressionSlot("boolean");
+    // When / Then
+    expect(Either.isRight(Schema.decodeUnknownEither(stringSlot)('{{ and(true, "x") }}'))).toBe(true);
+    expect(Either.isRight(Schema.decodeUnknownEither(booleanSlot)("{{ and(true, true) }}"))).toBe(true);
+    expect(Either.isLeft(Schema.decodeUnknownEither(stringSlot)("{{ not(false) }}"))).toBe(true);
+  });
+
+  test("does not classify regexMatch as a boolean helper", () => {
+    // Given
+    const stringSlot = authoring.authoringExpressionSlot("string");
+    // When
+    const result = Schema.decodeUnknownEither(stringSlot)('{{ regexMatch("abc", "a") }}');
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+  });
   test("accepts a composite when shell parameter syntax occupies a string site", () => {
     // Given
     const slot = authoring.authoringExpressionSlot("string");

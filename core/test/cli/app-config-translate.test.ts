@@ -315,7 +315,21 @@ describe("appConfigTranslate", () => {
     expect(renderConfigTranslateResult(result, "table")).toContain("v3\tlikely");
   });
 
-  test("autodetection discovers symlinked source files, not just regular files", async () => {
+  test("autodetection discovers in-root symlinked source files", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await mkdir(join(cwd, "compose"), { recursive: true });
+    await Bun.write(join(cwd, "compose", "docker-compose.yml"), "services: {}\n");
+    await symlink(join(cwd, "compose", "docker-compose.yml"), join(cwd, "docker-compose.yml"));
+
+    const translators = [makeTranslator("compose", {})];
+    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
+
+    expect(result.mode).toBe("detect");
+    if (result.mode !== "detect") throw new Error("expected detect mode");
+    expect(result.files).toContain("docker-compose.yml");
+  });
+
+  test("autodetection skips source files whose real path escapes the app root", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const targetDir = await mkdtemp(join(tmpdir(), "lando-translate-symlink-target-"));
     dirs.push(targetDir);
@@ -328,7 +342,7 @@ describe("appConfigTranslate", () => {
 
     expect(result.mode).toBe("detect");
     if (result.mode !== "detect") throw new Error("expected detect mode");
-    expect(result.files).toContain("docker-compose.yml");
+    expect(result.files).not.toContain("docker-compose.yml");
   });
 
   test("autodetection prunes node_modules, .git, vendor and tmp trees", async () => {
@@ -401,6 +415,28 @@ describe("appConfigTranslate", () => {
     expect(Exit.isFailure(traversalExit)).toBe(true);
     expect(failureTag(traversalExit)).toBe("ConfigTranslateError");
     expect(failureValue(traversalExit)?.message ?? "").toContain("inside the app root");
+
+    const targetDir = await mkdtemp(join(tmpdir(), "lando-translate-symlink-file-"));
+    dirs.push(targetDir);
+    const targetFile = join(targetDir, "docker-compose.yml");
+    await Bun.write(targetFile, "services: {}\n");
+    await symlink(targetFile, join(cwd, "docker-compose.yml"));
+    const symlinkExit = await runExit(
+      appConfigTranslate({ cwd, files: ["docker-compose.yml"], translators }),
+    );
+    expect(Exit.isFailure(symlinkExit)).toBe(true);
+    expect(failureTag(symlinkExit)).toBe("ConfigTranslateError");
+    expect(failureValue(symlinkExit)?.message ?? "").toContain("inside the app root");
+
+    await mkdir(join(targetDir, "nested"), { recursive: true });
+    await Bun.write(join(targetDir, "nested", "compose.yml"), "services: {}\n");
+    await symlink(targetDir, join(cwd, "linked"));
+    const parentExit = await runExit(
+      appConfigTranslate({ cwd, files: ["linked/nested/compose.yml"], translators }),
+    );
+    expect(Exit.isFailure(parentExit)).toBe(true);
+    expect(failureTag(parentExit)).toBe("ConfigTranslateError");
+    expect(failureValue(parentExit)?.message ?? "").toContain("inside the app root");
   });
 
   test("ambiguous autodetection fails with remediation listing --from choices", async () => {

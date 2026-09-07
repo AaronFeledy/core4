@@ -1,4 +1,4 @@
-import { dirname, extname, join } from "node:path";
+import { dirname, extname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -32,7 +32,11 @@ import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsup
 
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 import { selectTranslator } from "./app-config-translate-selection.ts";
-import { discoverSourceFiles, parseSourceFilePath } from "./app-config-translate-sources.ts";
+import {
+  discoverSourceFiles,
+  parseSourceFilePath,
+  resolveContainedSourcePath,
+} from "./app-config-translate-sources.ts";
 export {
   AppConfigTranslateResultSchema,
   renderConfigTranslateResult,
@@ -79,9 +83,19 @@ const readTranslateDocuments = (
   Effect.gen(function* () {
     const documents: ConfigTranslateDocument[] = [];
     for (const path of files) {
+      const contained = resolveContainedSourcePath(appRoot, path);
+      const resolved = options.explicit
+        ? yield* contained
+        : yield* contained.pipe(
+            Effect.match({
+              onFailure: () => undefined,
+              onSuccess: (value) => value,
+            }),
+          );
+      if (resolved === undefined) continue;
       const bytes = yield* Effect.tryPromise({
         try: () =>
-          Bun.file(join(appRoot, path))
+          Bun.file(resolved)
             .slice(0, CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES + 1)
             .bytes(),
         catch: (cause) =>
