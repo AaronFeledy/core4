@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
 import { plugin as mkcertPlugin } from "@lando/ca-mkcert";
-import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
+import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { plugin as mustachePlugin } from "@lando/template-mustache";
@@ -56,7 +56,8 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then: the duplicate is a typed descriptor mismatch.
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.pluginName).toBe("@lando/second");
       expect(result.left.kind).toBe("subscribers");
@@ -86,7 +87,8 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then: the declared and provided ids are reported with remediation.
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.pluginName).toBe("@lando/mismatch");
       expect(result.left.kind).toBe("templateEngines");
@@ -126,7 +128,8 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([module]);
 
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.kind).toBe("certificateAuthorities");
       expect(result.left.declared).toEqual(["declared-ca"]);
@@ -151,7 +154,8 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([makeModule("@lando/ca-first"), makeModule("@lando/ca-second")]);
 
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.kind).toBe("certificateAuthorities");
       expect(result.left.pluginName).toBe("@lando/ca-second");
@@ -173,10 +177,92 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left.kind).toBe("commands");
       expect(result.left.declared).toEqual(["meta:declared"]);
       expect(result.left.provided).toEqual([]);
+    }
+  });
+});
+
+describe("makePluginCapabilityIndex config translators", () => {
+  const makeTranslatorModule = (name: string, translatorId: string): LandoPluginModule => ({
+    name,
+    manifest: Schema.decodeSync(PluginManifest)({
+      name,
+      version: "1.0.0",
+      api: 4,
+      contributes: {
+        configTranslators: [{ id: translatorId, module: "./translator.ts", inputKinds: [translatorId] }],
+      },
+    }),
+    configTranslators: new Map([
+      [
+        translatorId,
+        () => Promise.reject(new Error(`Translator ${translatorId} must not load while indexing.`)),
+      ],
+    ]),
+  });
+
+  test("indexes translator loaders in module order without invoking them", () => {
+    // Given: two modules each contributing one lazy translator loader.
+    const modules = [
+      makeTranslatorModule("@lando/first", "first-translator"),
+      makeTranslatorModule("@lando/second", "second-translator"),
+    ];
+
+    // When: the capability index is built.
+    const result = makePluginCapabilityIndex(modules);
+
+    // Then: the loaders are indexed by id in module order and never called.
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect([...result.right.configTranslators.keys()]).toEqual(["first-translator", "second-translator"]);
+    }
+  });
+
+  test("rejects duplicate translator ids naming both producers with no winner", () => {
+    // Given: two modules contributing the same translator id.
+    const modules = [
+      makeTranslatorModule("@lando/first", "lando3"),
+      makeTranslatorModule("@lando/second", "lando3"),
+    ];
+
+    // When: the capability index is built.
+    const result = makePluginCapabilityIndex(modules);
+
+    // Then: the collision is tagged and names both producing plugins.
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(ConfigTranslatorConflictError);
+      if (result.left instanceof ConfigTranslatorConflictError) {
+        expect(result.left.id).toBe("lando3");
+        expect(result.left.translators).toEqual(["@lando/first", "@lando/second"]);
+      }
+    }
+  });
+
+  test("rejects manifest translator ids that do not match descriptor loaders", () => {
+    // Given: a manifest declaring one translator while the descriptor provides another.
+    const declared = makeTranslatorModule("@lando/mismatch", "declared");
+    const module: LandoPluginModule = {
+      ...declared,
+      configTranslators: new Map([["provided", () => Promise.reject(new Error("unused"))]]),
+    };
+
+    // When: the capability index is built.
+    const result = makePluginCapabilityIndex([module]);
+
+    // Then: the mismatch is a typed descriptor error for configTranslators.
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
+      if (result.left instanceof PluginDescriptorMismatchError) {
+        expect(result.left.kind).toBe("configTranslators");
+        expect(result.left.declared).toEqual(["declared"]);
+        expect(result.left.provided).toEqual(["provided"]);
+      }
     }
   });
 });

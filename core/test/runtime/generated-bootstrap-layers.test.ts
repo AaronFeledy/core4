@@ -72,6 +72,20 @@ describe("generated bootstrap layers", () => {
     }
   });
 
+  test("plugins bootstrap installs the config translator registry over the contribution graph", async () => {
+    // Given: the minimal and plugins generated tiers.
+    const minimal = await readFile(resolve(generatedLayersDir, "minimal.ts"), "utf8");
+    const plugins = await readFile(resolve(generatedLayersDir, "plugins.ts"), "utf8");
+
+    // Then: only the plugins tier constructs the registry, fed by the same graph the plugin registry sees.
+    expect(minimal).not.toContain("makeConfigTranslatorRegistryLive");
+    expect(countOccurrences(plugins, "makeConfigTranslatorRegistryLive(bundledPluginModules())")).toBe(1);
+    expect(plugins).toContain(
+      "const configTranslatorRegistryLive = makeConfigTranslatorRegistryLive(bundledPluginModules()).pipe(\n    Layer.provide(Layer.merge(minimalRuntimeLive, contributionGraphLive)),",
+    );
+    expect(plugins).toContain("configTranslatorRegistryLive,");
+  });
+
   test("provider bootstrap wires the default UrlScanner", async () => {
     const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
 

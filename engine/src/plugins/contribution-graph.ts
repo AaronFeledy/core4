@@ -11,7 +11,7 @@ import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services"
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import { bundledPluginModules } from "../composition.ts";
-import { makePluginCapabilityIndex } from "./module-set.ts";
+import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
 import {
   type DiscoveredPlugin,
   discoverInstalledPlugins,
@@ -85,7 +85,7 @@ export const mergeLoadedPluginSources = (
 
 const validateResolvedPlugin = (
   input: ResolvedPluginInput,
-): Either.Either<LoadedPluginContribution, PluginDescriptorMismatchError> => {
+): Either.Either<LoadedPluginContribution, PluginCapabilityIndexError> => {
   if (input.manifest.name !== input.entry.name || input.entry.manifest.name !== input.manifest.name) {
     return Either.left(
       new PluginDescriptorMismatchError({

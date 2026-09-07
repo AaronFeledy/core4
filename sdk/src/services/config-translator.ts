@@ -1,5 +1,6 @@
 import { Context, type Effect } from "effect";
-import type { ConfigTranslateError } from "../errors/config.ts";
+import type { ConfigTranslateError, ConfigTranslatorConflictError } from "../errors/config.ts";
+import type { PluginDescriptorMismatchError, PluginLoadError } from "../errors/plugin.ts";
 import type {
   ConfigTranslateDetectInput,
   ConfigTranslateEncodeInput,
@@ -29,4 +30,27 @@ export interface ConfigTranslatorShape {
 export class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
   ConfigTranslator,
   ConfigTranslatorShape
+>() {}
+
+/**
+ * Registry of plugin-contributed config translators. `list` resolves every
+ * `configTranslators:` contribution across the loaded plugin graph in plugin
+ * order, invoking each lazy loader at most once. Duplicate ids fail with a
+ * `ConfigTranslatorConflictError` naming both producing plugins; there is no
+ * precedence winner. Manifest and descriptor id sets must agree or `list`
+ * fails with `PluginDescriptorMismatchError` before any factory runs. Nothing
+ * loads until `list` runs, so help, version, ordinary loading, and tooling
+ * paths never construct translator factories.
+ */
+export interface ConfigTranslatorRegistryShape {
+  readonly list: Effect.Effect<
+    ReadonlyArray<ConfigTranslatorShape>,
+    ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError,
+    never
+  >;
+}
+
+export class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+  ConfigTranslatorRegistry,
+  ConfigTranslatorRegistryShape
 >() {}
