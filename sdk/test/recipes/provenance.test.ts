@@ -4,6 +4,8 @@ import {
   deriveRecipeProducer,
   isBareRecipeReference,
   recipeFamilyKey,
+  recipeVersionedKey,
+  sameRecipeVersion,
   validateLandofileRecipeProvenance,
 } from "../../src/recipes/provenance.ts";
 
@@ -19,6 +21,13 @@ test("bundled-vs-local family separation", () => {
   expect(recipeFamilyKey(deriveRecipeProducer(producer))).not.toBe(
     recipeFamilyKey({ ...producer, sourceKind: "local" }),
   );
+});
+test("versioned identity includes digest and rejects digest drift", () => {
+  const left = deriveRecipeProducer(producer);
+  const drifted = { ...producer, contentDigest: `sha256:${"b".repeat(64)}` };
+  expect(recipeVersionedKey(left)).not.toBe(recipeVersionedKey(drifted));
+  expect(sameRecipeVersion(left, drifted)).toBe(false);
+  expect(sameRecipeVersion(left, deriveRecipeProducer(producer))).toBe(true);
 });
 test("bare-string provenance stays valid", () => {
   expect(Either.getOrThrow(validateLandofileRecipeProvenance("php"))).toBe("php");
