@@ -1193,6 +1193,12 @@ const renderSecretRef = (name: string, state: EvaluationState): string => {
   return asString("secret", value, state);
 };
 
+export const EXPRESSION_HELPER_NAMES: ReadonlySet<string> = new Set([
+  ...Object.keys(HELPERS),
+  ...FORBIDDEN_HELPERS,
+  ...UNSUPPORTED_DECODERS,
+]);
+
 export const evaluateExpressionEither = (
   node: ExpressionNode,
   context: ExpressionContext,

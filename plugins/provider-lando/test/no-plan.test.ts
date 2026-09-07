@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { runScopedExit } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");
@@ -77,8 +81,8 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
   return {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
-    request: (request: PodmanHttpRequest) =>
-      Effect.sync((): PodmanHttpResponse => {
+    request: (request: EngineHttpRequest) =>
+      Effect.sync((): EngineHttpResponse => {
         if (request.method === "POST" && request.path.includes("/exec")) {
           return { status: 201, body: JSON.stringify({ Id: "exec-fake-1" }) };
         }
@@ -87,7 +91,7 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
-    stream: (_request: PodmanHttpRequest) => Stream.make(frame("ok\n")),
+    stream: (_request: EngineHttpRequest) => Stream.make(frame("ok\n")),
   };
 };
 

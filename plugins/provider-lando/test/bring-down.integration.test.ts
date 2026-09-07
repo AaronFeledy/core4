@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime, Effect } from "effect";
 
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -14,7 +19,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const providerId = ProviderId.make("lando");
@@ -119,12 +123,12 @@ const makeFakeApi = () => {
       },
     ]),
   );
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -213,9 +217,9 @@ describe("provider-lando bringDown", () => {
       publish: (event: LandoEvent) => Effect.sync(() => events.push(event)).pipe(Effect.asVoid),
     };
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    const first = await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, eventService }));
-    const second = await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, eventService }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    const first = await Effect.runPromise(bringDown(plan, { api: fake.api, eventService }));
+    const second = await Effect.runPromise(bringDown(plan, { api: fake.api, eventService }));
 
     expect(first.changed).toBe(true);
     expect(second.changed).toBe(false);
@@ -241,8 +245,8 @@ describe("provider-lando bringDown", () => {
   test("purgeCaches removes cache volumes without removing app data volumes", async () => {
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: false, purgeCaches: true }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: false, purgeCaches: true }));
 
     expect(fake.volumes.has("bringdownapp_database_data")).toBe(true);
     expect(fake.volumes.has("lando-cache-npm")).toBe(false);
@@ -254,7 +258,7 @@ describe("provider-lando bringDown", () => {
       services: {},
       stores: [{ name: "foreign-data", scope: "app", kind: "data" }],
     };
-    const calls: PodmanHttpRequest[] = [];
+    const calls: EngineHttpRequest[] = [];
     const api: PodmanApiClient = {
       info: Effect.succeed({}),
       ping: Effect.succeed(undefined),
@@ -280,7 +284,7 @@ describe("provider-lando bringDown", () => {
         }),
     };
 
-    await Effect.runPromise(bringDown(foreignPlan, { podmanApi: api, volumes: true }));
+    await Effect.runPromise(bringDown(foreignPlan, { api, volumes: true }));
 
     expect(calls).toContainEqual({ method: "GET", path: "/volumes/foreign-data" });
     expect(calls).not.toContainEqual({ method: "DELETE", path: "/volumes/foreign-data" });
@@ -289,8 +293,8 @@ describe("provider-lando bringDown", () => {
   test("purgeCaches-only prune is cache-label positive and cannot match ordinary app volumes", async () => {
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, purgeCaches: true }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringDown(plan, { api: fake.api, purgeCaches: true }));
 
     const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
     expect(prune).toBeDefined();
@@ -305,8 +309,8 @@ describe("provider-lando bringDown", () => {
   test("volumes cleanup prunes only current app/provider-scoped volumes with named-volume intent", async () => {
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: true }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true }));
 
     const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
     expect(prune).toBeDefined();
@@ -323,8 +327,8 @@ describe("provider-lando bringDown", () => {
   test("volumes cleanup with purgeCaches ORs only fully ownership-scoped cache and data selectors", async () => {
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: true, purgeCaches: true }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true, purgeCaches: true }));
 
     const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
     expect(prune).toBeDefined();
@@ -344,8 +348,8 @@ describe("provider-lando bringDown", () => {
   test("default cleanup does not prune named volumes without explicit destructive intent", async () => {
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
-    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringDown(plan, { api: fake.api }));
 
     expect(fake.calls.some((call) => call.path.startsWith("/libpod/volumes/prune"))).toBe(false);
   });
@@ -372,8 +376,8 @@ describe("provider-lando bringDown", () => {
       );
 
       try {
-        await Effect.runPromise(bringUp(plan, { podmanApi: api }));
-        const result = await Effect.runPromise(bringDown(plan, { podmanApi: api }));
+        await Effect.runPromise(bringUp(plan, { api }));
+        const result = await Effect.runPromise(bringDown(plan, { api }));
 
         expect(result.changed).toBe(true);
         for (const service of Object.values(plan.services)) {
@@ -459,7 +463,7 @@ describe("provider-lando bringDown", () => {
           }),
         );
 
-        await Effect.runPromise(bringDown(plan, { podmanApi: api, volumes: true }));
+        await Effect.runPromise(bringDown(plan, { api, volumes: true }));
 
         const ownedAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${owned}` }));
         const otherAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${other}` }));

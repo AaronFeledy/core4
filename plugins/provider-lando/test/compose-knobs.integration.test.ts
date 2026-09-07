@@ -80,7 +80,7 @@ describe("provider-lando Compose runtime knobs (live)", () => {
       if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
 
       try {
-        await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+        await Effect.runPromise(bringUp(plan, { api }));
 
         const response = await Effect.runPromise(
           liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),

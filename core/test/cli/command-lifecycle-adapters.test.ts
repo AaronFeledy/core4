@@ -126,6 +126,7 @@ describe("CLI lifecycle adapters", () => {
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:update"]?.spec.bootstrap).toBe("plugins");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:mcp"]?.spec.bootstrap).toBe("plugins");
     expect(COMMAND_REGISTRY_MANIFEST.commands["apps:list"]?.spec.bootstrap).toBe("minimal");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["app:config:translate"]?.spec.bootstrap).toBe("plugins");
   });
 
   test("notification policy promotes configured lower tiers without changing cold declarations", () => {

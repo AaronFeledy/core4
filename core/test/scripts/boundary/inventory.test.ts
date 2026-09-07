@@ -150,14 +150,7 @@ describe("boundary rule inventory", () => {
 
   test("marks behavioral survivors and documents the aggregate package script surface", async () => {
     // Given: the survivor classes named by the boundary inventory contract.
-    const behavioralIds = [
-      "renderer",
-      "probe",
-      "redaction",
-      "managed-file",
-      "libpod-prefix",
-      "network",
-    ] as const;
+    const behavioralIds = ["renderer", "probe", "redaction", "managed-file", "network"] as const;
     const rows = await inventoryRows();
     const byId = new Map(rows.map((row) => [row.id, row]));
 

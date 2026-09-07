@@ -30,8 +30,8 @@ lando plugin:add <translator-plugin>
 
 ## Know how translators resolve
 
-Plugin authors contribute a translator through the `ConfigTranslator` SDK service tag. Every translator declares a stable `id`, a user-facing `summary`, supported input kinds, and `detect`/`translate` hooks. `detect` receives the app root plus optional candidate file paths and returns matches with confidence.
+Plugin authors contribute a translator through the `ConfigTranslator` SDK service tag. Each declares a stable `id`, a user-facing `summary`, supported input kinds, and `detect`/`translate` hooks. Core reads bounded document snapshots once. Detection receives those snapshots and returns matches with source identities and confidence, not instructions to read files again.
 
-Core runs resolved translators in declared order. Distinct translator ids keep that order. Partial Landofile fragments merge in execution order while diagnostics append. Later fragment keys override earlier ones. Duplicate translator ids fail with `ConfigTranslatorConflictError` before any translator runs.
+Core invokes one selected translator for the whole ordered document set. The translator returns outputs by target layer, with an authoring wire fragment and source identities for each output. Core validates the fragments before merging them, including expression syntax and expected value types. Diagnostics stay ordered by input document, source span, then key path. Duplicate translator ids fail with `ConfigTranslatorConflictError` before any translator runs.
 
 Library and embedding consumers can use the same parse/emit helpers through `@lando/core/landofile` when they need this serializer without invoking the CLI.

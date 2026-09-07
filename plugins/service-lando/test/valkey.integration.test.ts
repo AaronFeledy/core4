@@ -144,7 +144,7 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
 
         const api = makePodmanApiClient(socketPath);
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           await waitForValkey(VALKEY_PORT, 60_000);
@@ -158,7 +158,7 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
           const getOutput = await sendValkeyCommand(VALKEY_PORT, "GET foo\r\n");
           expect(getOutput).toBe("$3\r\nbar\r\n");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

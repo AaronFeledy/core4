@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
+import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
   makeRuntimeProvider,
+  persistAppliedPlan,
 } from "@lando/provider-docker";
 import {
   AbsolutePath,
@@ -88,8 +90,15 @@ const oneChunkStdin = async function* (): AsyncIterable<Uint8Array> {
 };
 
 const runExec = async (api: DockerApiClient, command: CommandSpec) => {
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
-  return Effect.runPromise(provider.exec({ app: appId, service: serviceName, plan }, command));
+  const appliedPlanState = makePluginStateStore(
+    makeTestStateStore().service,
+    AbsolutePath.make("/tmp/provider-docker-exec-stdin-state"),
+  );
+  await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
+  );
+  return Effect.runPromise(provider.exec({ app: appId, service: serviceName }, command));
 };
 
 const createBody = (calls: ReadonlyArray<DockerHttpRequest>) =>

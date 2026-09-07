@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("landofile entry point exports translation validation", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+    expect(landofile.validateConfigTranslateResult).toBeDefined();
+  });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
 
@@ -42,6 +46,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
     expect(schema.ConfigLintResult).toBeDefined();
+    expect(schema.ConfigTranslateInput).toBeDefined();
+    expect(schema.ConfigTranslateResult).toBeDefined();
     expect(schema.ArtifactManifestEntry).toBeDefined();
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
@@ -474,6 +480,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
+    expect(services.ConfigTranslatorRegistry).toBeDefined();
     expect(services.Downloader).toBeDefined();
     expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();

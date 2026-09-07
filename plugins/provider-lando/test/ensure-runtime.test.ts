@@ -5,9 +5,9 @@ import { delimiter, join } from "node:path";
 
 import { Cause, Duration, Effect, Exit } from "effect";
 
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
-import type { PodmanApiClient } from "../src/capabilities.ts";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import {
   type PodmanServiceRunner,

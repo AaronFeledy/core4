@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Cause, Effect, Exit, Stream } from "effect";
 
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
@@ -13,7 +18,6 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
 
 const textEncoder = new TextEncoder();
@@ -123,13 +127,13 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") {
@@ -245,7 +249,7 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 };
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
   const volumes = new Map<string, Uint8Array>();
   const snapshots = new Map<string, Uint8Array>();
@@ -258,7 +262,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.promise(async (): Promise<PodmanHttpResponse> => {
+      Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));

@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
+import { EventEmitter } from "node:events";
+
 import {
+  type ConnectableSocket,
   ContainerTransportError,
   type SocketHttpConnection,
+  connectSocket,
+  decodeChunkedBody,
+  flushChunkedBufferAtEnd,
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
@@ -53,8 +59,15 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 };
 
 class WaitingConnection extends FakeConnection {
+  constructor(
+    chunks: ReadonlyArray<Bytes> = [],
+    private readonly head = "HTTP/1.1 200 OK\r\n\r\n",
+  ) {
+    super(chunks);
+  }
+
   override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
-    yield bytes("HTTP/1.1 200 OK\r\n\r\n");
+    yield bytes(this.head);
     while (!this.destroyed) await sleep(1);
   }
 }
@@ -320,6 +333,51 @@ describe("socket HTTP transport", () => {
     expect(connection.destroyed).toBe(true);
   });
 
+  test("fails a non-2xx stream response immediately with its status, without draining the body", async () => {
+    // A hijacked request declares no body end, so waiting for one would hang the caller.
+    const connection = new WaitingConnection([], "HTTP/1.1 404 Not Found\r\n\r\n");
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    let caught: unknown;
+    try {
+      await Array.fromAsync(
+        client.stream({
+          method: "POST",
+          path: "/exec/abc/start",
+          headers: { Connection: "Upgrade", Upgrade: "tcp" },
+        }),
+      );
+    } catch (cause) {
+      caught = cause;
+    }
+
+    expect(caught).toBeInstanceOf(ContainerTransportError);
+    const error = caught as ContainerTransportError;
+    expect(error.kind).toBe("http");
+    expect(error.details).toEqual({ method: "POST", path: "/exec/abc/start", status: 404 });
+    expect(connection.destroyed).toBe(true);
+  });
+
+  test("never opens a socket when the buffered request body rejects", async () => {
+    let connected = 0;
+    const client = makeSocketHttpClient({
+      apiPrefix: "/v1.43",
+      connect: async () => {
+        connected += 1;
+        return new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n{}")]);
+      },
+    });
+    async function* failingStdin(): AsyncGenerator<Bytes> {
+      yield bytes("partial");
+      throw new Error("tar stream broke");
+    }
+
+    await expect(
+      client.request({ method: "POST", path: "/images/load", stdin: failingStdin() }),
+    ).rejects.toThrow("tar stream broke");
+    expect(connected).toBe(0);
+  });
+
   test("throws a neutral transport error for malformed status lines", async () => {
     const connection = new FakeConnection([bytes("HTTP/1.1 OK\r\n\r\n{}")]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
@@ -340,5 +398,49 @@ describe("socket HTTP transport", () => {
       "\\\\.\\pipe\\podman-machine-default",
     );
     expect(normalizeNamedPipePath("/tmp/podman.sock")).toBe("/tmp/podman.sock");
+  });
+});
+
+describe("chunked body end-of-stream handling", () => {
+  test("keeps the final chunk even when the trailing CRLF is missing at end-of-stream", () => {
+    const chunks = flushChunkedBufferAtEnd(bytes("5\r\nhello"));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+
+  test("keeps complete chunked frames unchanged", () => {
+    const chunks = flushChunkedBufferAtEnd(bytes("5\r\nhello\r\n0\r\n\r\n"));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+
+  test("decodes the final chunk when the trailing CRLF is missing at end-of-stream", async () => {
+    const chunks = await Array.fromAsync(decodeChunkedBody(stdinBytes("5\r\nhello")));
+
+    expect(chunks).toHaveLength(1);
+    expect(decoder.decode(chunks[0])).toBe("hello");
+  });
+});
+
+describe("socket connection handshake", () => {
+  test("destroys the socket when the connection fails before connect", async () => {
+    class FailingSocket extends EventEmitter implements ConnectableSocket {
+      destroyedByClient = false;
+
+      destroy(): this {
+        this.destroyedByClient = true;
+        return this;
+      }
+    }
+    const socket = new FailingSocket();
+    const failure = new Error("connect ENOENT");
+
+    const connected = connectSocket(socket);
+    socket.emit("error", failure);
+
+    await expect(connected).rejects.toBe(failure);
+    expect(socket.destroyedByClient).toBe(true);
   });
 });

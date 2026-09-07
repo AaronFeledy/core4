@@ -142,6 +142,7 @@ import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
+import * as ConfigTranslateSchemas from "./config-translate.ts";
 import {
   AgentEnvConfig,
   GlobalConfig,
@@ -205,6 +206,13 @@ import {
   RendererKeyChord,
   RendererKeyName,
 } from "./keymap.ts";
+import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShape,
+  LandofileAuthoringShapeWire,
+} from "./landofile-authoring.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   CommandAliasesShape,
@@ -399,7 +407,7 @@ export type PublicSchemaReferencePage = {
   readonly content: string;
 };
 
-const rawPublicSchemaRegistry = {
+const basePublicSchemaRegistry = {
   DeprecationNotice,
   DeprecationUse,
   LandofileExpressionParseError,
@@ -724,7 +732,53 @@ const rawPublicSchemaRegistry = {
   PostHttpCallEvent,
 } as const;
 
+const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
+  typeof ConfigTranslateSchemas & {
+    readonly AuthoringExpression: typeof AuthoringExpression;
+    readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
+    readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
+    readonly LandofileAuthoringFragment: typeof LandofileAuthoringFragment;
+    readonly LandofileAuthoringShapeWire: typeof LandofileAuthoringShapeWire;
+    readonly LandofileAuthoringFragmentWire: typeof LandofileAuthoringFragmentWire;
+  } = {
+  AuthoringExpression,
+  AuthoringExpressionExpectedType,
+  LandofileAuthoringShape,
+  LandofileAuthoringFragment,
+  LandofileAuthoringShapeWire,
+  LandofileAuthoringFragmentWire,
+  ...ConfigTranslateSchemas,
+  ...basePublicSchemaRegistry,
+};
+
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
+  AuthoringExpression: "Parsed expression at a typed Landofile authoring site, without value resolution.",
+  AuthoringExpressionExpectedType: "Value kind required by a Landofile authoring expression site.",
+  LandofileAuthoringShape: "Complete Landofile authoring tree with unresolved typed expressions.",
+  LandofileAuthoringFragment: "Recursively partial Landofile authoring tree with unresolved expressions.",
+  LandofileAuthoringShapeWire: "Complete Landofile authoring wire tree preserving expression source.",
+  LandofileAuthoringFragmentWire: "Partial Landofile authoring wire tree preserving expression source.",
+  ConfigTranslateAnswerValue: "Nonsecret scalar or scalar-array recipe answer.",
+  ConfigTranslateConfidence: "Translator detection confidence.",
+  ConfigTranslateDeletion: "Source-attributed deletion intent for core to apply.",
+  ConfigTranslateDetectInput: "Bounded source snapshots available for translator detection.",
+  ConfigTranslateDiagnostic: "Translation diagnostic attributed to a source and key path.",
+  ConfigTranslateDiagnosticKind: "Translation diagnostic classification.",
+  ConfigTranslateDocument: "Immutable source snapshot read by core before translation.",
+  ConfigTranslateDocumentBytes: "Bounded raw source bytes encoded as base64 on the wire.",
+  ConfigTranslateDocumentSetInput: "Ordered source document set with selection and writable layers.",
+  ConfigTranslateEncodeInput: "Complete authoring context and optional exact fragment to encode.",
+  ConfigTranslateEncodeResult: "Encoded target text with ordered diagnostics.",
+  ConfigTranslateInput: "Tagged document-set or recipe translation request.",
+  ConfigTranslateLayerFragment: "Existing lower-layer authoring wire fragment.",
+  ConfigTranslateMatch: "Translator detection match with source identities and confidence.",
+  ConfigTranslateMode: "Full document-set or selected-layer translation scope.",
+  ConfigTranslateOutput: "Validated authoring wire fragment attributed to one target layer.",
+  ConfigTranslateRecipeRequestInput: "Recipe identity and answers without filesystem discovery.",
+  ConfigTranslateResult: "Target-layer outputs, ordered diagnostics, and deletion intents.",
+  ConfigTranslateSecretReference: "Approved secret reference or init-only sink without raw secret data.",
+  ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
+  ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
   DeprecationNotice: "Public Lando schema contract for Deprecation Notice.",
   DeprecationUse: "Public Lando schema contract for Deprecation Use.",
   LandofileExpressionParseError: "Public Lando schema contract for Landofile Expression Parse Error.",
@@ -2451,7 +2505,9 @@ const hasSchemaUsefulDescription = (ast: AST.AST): boolean => {
 const fieldName = (name: PropertyKey): string => (typeof name === "symbol" ? name.toString() : String(name));
 
 const isSelfExplanatoryPublicField = (schemaName: string, name: string): boolean =>
-  PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS.has(`${schemaName}.${name}`) || name.startsWith("x-");
+  PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS.has(
+    `${schemaName.replace(/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/, "LandofileShape")}.${name}`,
+  ) || name.startsWith("x-");
 
 const schemaFromAst = (ast: AST.AST): Schema.Schema.AnyNoContext =>
   Schema.make(ast) as Schema.Schema.AnyNoContext;
@@ -2512,6 +2568,18 @@ export const validatePublicSchemaAnnotations = (
         !hasOwnUsefulDescription(property.annotations) &&
         !hasOwnUsefulDescription(property.type.annotations) &&
         !hasOptionalMemberUsefulDescription(property.type) &&
+        !(
+          AST.isUnion(schema.ast) &&
+          schema.ast.types.every((member) => {
+            const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
+            return (
+              field !== undefined &&
+              (hasOwnUsefulDescription(field.annotations) ||
+                hasOwnUsefulDescription(field.type.annotations) ||
+                hasOptionalMemberUsefulDescription(field.type))
+            );
+          })
+        ) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
         !isSelfExplanatoryPublicField(schemaName, name)
       ) {
@@ -2609,8 +2677,10 @@ const expressionNodeDefinitions = () => {
   } satisfies Parameters<typeof JSONSchema.fromAST>[1]["definitions"];
 };
 
-const expressionJsonSchema = (schemaName: "ExpressionNode" | "ExpressionTemplate") => {
-  const schema = schemaName === "ExpressionNode" ? ExpressionNode : ExpressionTemplate;
+const expressionJsonSchema = (
+  schemaName: "ExpressionNode" | "ExpressionTemplate" | "AuthoringExpression",
+) => {
+  const schema = { ExpressionNode, ExpressionTemplate, AuthoringExpression }[schemaName];
   const definitions = expressionNodeDefinitions();
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -2629,12 +2699,23 @@ const schemaForPublicName = (schemaName: JsonSchemaName) => {
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
-  if (schemaName === "ServiceConfig" || schemaName === "ServiceConfigInput") {
+  if (
+    schemaName === "ServiceConfig" ||
+    schemaName === "ServiceConfigInput" ||
+    schemaName === "LandofileAuthoringShape" ||
+    schemaName === "LandofileAuthoringFragment" ||
+    schemaName === "LandofileAuthoringShapeWire" ||
+    schemaName === "LandofileAuthoringFragmentWire"
+  ) {
     const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
     repairTemplateLiteralExtensionRecords(schema);
     return schema;
   }
-  if (schemaName === "ExpressionNode" || schemaName === "ExpressionTemplate")
+  if (
+    schemaName === "ExpressionNode" ||
+    schemaName === "ExpressionTemplate" ||
+    schemaName === "AuthoringExpression"
+  )
     return expressionJsonSchema(schemaName);
   return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
 };

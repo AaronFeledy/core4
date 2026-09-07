@@ -267,7 +267,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
         initializerContainers.delete(initializerName);
       }
     }
-    await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+    await Effect.runPromise(bringUp(plan, { api }));
 
     const containerName = `lando-${plan.slug}-${fixture.service}`;
     const response = await Effect.runPromise(
@@ -292,7 +292,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     } finally {
       try {
         if (plan !== undefined) {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api, volumes: true })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api, volumes: true })));
         }
       } finally {
         await rm(appRoot, { recursive: true, force: true });
@@ -326,7 +326,7 @@ const rejectFixtureBeforeProviderCall = async (fixture: RejectedFixtureCase): Pr
     const exit = await Effect.runPromiseExit(
       AppPlanner.pipe(
         Effect.flatMap((planner) => planner.plan(landofile, providerLandoCapabilitiesForPlatform("linux"))),
-        Effect.flatMap((plan) => bringUp(plan, { podmanApi: guardedApi })),
+        Effect.flatMap((plan) => bringUp(plan, { api: guardedApi })),
         Effect.provide(plannerLayer),
       ),
     );

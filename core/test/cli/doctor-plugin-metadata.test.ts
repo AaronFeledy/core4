@@ -57,6 +57,7 @@ describe("doctor installed-plugin metadata health", () => {
       const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then valid metadata produces no metadata-health failure
+      expect(report.provider.checks.length).toBeGreaterThan(0);
       expect((report.self?.checks ?? []).some((check) => check.section === "plugin-metadata")).toBe(false);
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {

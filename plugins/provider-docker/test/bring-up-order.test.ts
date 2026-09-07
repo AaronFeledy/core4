@@ -117,6 +117,9 @@ const makeFakeApi = (
     },
     stream: ({ method, path }) => {
       requests.push(`${method} ${path}`);
+      if (method === "POST" && path.startsWith("/images/create?")) {
+        responseFor(method, path);
+      }
       return Stream.empty;
     },
   };

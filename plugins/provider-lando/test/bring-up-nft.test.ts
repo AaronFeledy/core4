@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { isManagedNftMissingMessage, startFailureRemediation } from "../src/bring-up.ts";
 import {
   LEFTOVER_PROXY_PORT_REMEDIATION,
   isLeftoverProxyPortBindMessage,
   leftoverProxyPortRemediation,
   pairFromAcquisition,
 } from "../src/leftover-proxy-port.ts";
+import { isManagedNftMissingMessage, startFailureRemediation } from "../src/start-remediation.ts";
 
 const chosenPair = { httpPort: 8080, httpsPort: 8443 } as const;
 

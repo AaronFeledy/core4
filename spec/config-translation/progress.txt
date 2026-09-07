@@ -1,0 +1,162 @@
+# Config translation progress
+
+## Codebase Patterns
+- Spec-class stories edit `spec/01..19-*.md` + `spec/README.md`; cross-refs use `§N.N` numbers (README topic lookup maps `§N` to file). Core spec text must state durable detail itself and never cite story ids or the PRD subdirectories.
+- Gates for spec-only work: `bun run spec/config-translation/check-coordinated-plan.mjs` (omit `--initial` once any story passes), `bun run check:boundaries`, `bun run lint`, plus a grep scan for forbidden tokens (`ConfigFormat`, `LANDO_MOUNT`, `!lando3`, `LANDO_INFO`, `US-6xx`) and no new em-dashes in added lines.
+- The plan checker only scans the three PRD directories for stale story refs and forbidden strings; the core spec files are covered by the grep scan, not the script.
+- Parallel spec editing works well when partitioned by file (no two editors on one file); README topic rows go last because they cite final headings.
+- Frozen naming contract for later stories: translators `lando4` / `recipe` / `lando3` (decode-only); inputs `landofile-document-set` / `recipe-request`; diagnostics `generated | dropped | rewritten | unsupported | non-portable | needs-review`; transaction states `prepared | committing | committed | blocked`; artifacts `<file>.bak.<full-before-sha256>` and `<target>.lando-stage.<transaction-id>`; secret dispositions `secret-store` or one `postInit.stdin` / `postInit.secretEnv.<name>` sink; commands `app:config:translate --to`, `app:config:explain`, `app:config:migrate`; events `pre-restart` / `post-restart`; doctor checks `lando3-leftovers` / `lando3-shadow`; binary `lando4` / `lando4.exe` during Alpha/Beta.
+
+## 2026-09-06 14:55 - US-607
+- Amended the durable core spec so it owns the config-translation, IR-gap, and Lando 3 coexistence contracts: two-way `ConfigTranslator` with the authoring IR (`LandofileAuthoringShape` / `LandofileAuthoringFragment`), set-based inputs, encode round-trip law, six diagnostic kinds, lazy registration with collision failure, and target/write policy (§4.2, §7.4.1, §9.5, §13.1).
+- Un-forbade `recipe:` and defined the inert object provenance form with mandatory producer agreement, the `recipe.<option>` expression scope, expression-aware tag-free `emitLandofileYaml` with a provenance comment block, and the recipe-as-decomposer model with declarative `migrations:` snapshots, the pure helper allowlist, secret dispositions, and post-commit-only auxiliary actions (§7.3.1, §7.4, §7.8.1, §8.8.x).
+- Cataloged the managed-file transaction lifecycle and guard under §12.4.1 and the loader failure path (`Lando3LandofileDetected`, `LandofileDialectMixError`) under §7.1; seven-layer set conversion and recipe-layer folding under §7.2.
+- Froze IR-gap semantics in their owning sections: restart brackets (§3.5/§11.4/§8.2), normalized tooling metadata and dynamic events (§8.5.1/§8.5.7), route shorthand and filters (§6.6/§10.2), planned build users (§6.2/§6.3/§6.13), default `home:` storage (§6.5), scanner union and router disablement (§7.5/§10.5), catalog options and the single shipped version matrix (§6.11.2/§6.12), scoped `rebuild`/`info --service` (§8.2), bounded `appEnv`/`appLabels` with reserved generated `LANDO_*` keys and `dev.lando.*` (§7.5/§6.9/§6.5); removed every `LANDO_INFO` mention and added no mount alias.
+- Softened the v3 boundary (core runs nothing v3; the bundled `@lando/lando3` plugin translates on explicit request), added the bundle row, `lando4` side-by-side install/update/uninstall/shellenv ownership, bounded `DoctorCheckContext` ports, and the `lando3-leftovers` / `lando3-shadow` checks with `LegacyProxyContainerDetected` as single legacy-proxy owner (§1.x, §14.1, §10.9, §17.6.2, §17.7, §20.10.3); exclusions for upgrade/adoption, legacy state import, image manufacture, and emulation recorded as non-goals.
+- Verification: plan checker PASS (42 stories), check:boundaries and lint passed; forbidden-token scan empty; no dangling `§` references; no new em-dashes. Typecheck ran as a no-code sanity gate.
+- **Learnings for future iterations:**
+  - Later implementation stories should cite the core sections above rather than the PRD directory; the core spec now states every contract they need.
+  - The §6.3 artifact example now uses `run:` steps with optional `user:`; `instructions:` is gone from the spec and implementation should follow the `string | { run, user? }` union.
+  - §20.10.3 no longer describes a `meta:setup --migrate-proxy` upgrade path; legacy proxy handling is diagnostic plus conflict error only.
+---
+
+## 2026-09-06 15:20 - US-607 Review
+- Review-work failed on durable-contract contradictions; Bugbot found no bugs. Fixed: secret argv/file/default wording now rejects raw secrets and treats secret-store as resolve-only references; `meta:uninstall` matches side-by-side §17.7 ownership; `non-portable` keeps the lossless target-policy exception; conversion/init commands request BootstrapLevel `plugins`; include-level `dir:` no longer claims task-level `dir` is rejected; README added-line em-dashes removed; `node-ts` is not claimed as a current bundle member.
+- Review notes (deferred/rejected): SecretWriter / owner-only backup creation / debug-argv full-value logging — not required by US-607 ACs and not newly introduced. 24-recipe catalog expansion — owned by US-609E staged growth. Appendix §15.C / §16.2 SDK export inventory — out of this story's amendment table (US-608A).
+- Verification: coordinated-plan, check:boundaries, lint, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; forbidden-token and added-line em-dash scans empty. Typecheck not rerun (markdown-only). Guide-Coverage-Skip: specification-only durable core amendment with no runtime CLI or guide-covered source surface change.
+- **Learnings for future iterations:** Command-table `minimal` is not translator-capable; `ConfigTranslatorRegistry` lives at `plugins`. When freezing IR-gap task/step `dir` precedence, do not leave include-level `dir:` claiming the task-level field is rejected.
+---
+
+## 2026-09-06 15:35 - US-607 Review
+- Post-commit Bugbot: moved `LANDO_HOST_IP` into the conditional env catalog so the host-reachability omission rule is the one implementers follow.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up; previous gates unchanged.
+---
+
+## 2026-09-06 15:45 - US-607 Review
+- Post-commit Bugbot: restart payloads match start (not stop) payload shape.
+- Review notes (deferred/rejected): none new.
+- Verification: markdown-only follow-up.
+---
+
+## 2026-09-06 16:10 - US-607 Drift Audit
+- Trigger: 4 cycles, 538 changed lines, 6 commits
+- Findings by category (only categories with findings; one line each, outcome-focused)
+- Contract drift: §3.2 still listed `apps:init` at `minimal` after conversion/init moved to BootstrapLevel `plugins`; §1.2 called the lando3 path two-way; §1.3 still described fragment application instead of authoring/transaction writes
+- Fixed: conversion/init now appear on the `plugins` used-by list; lando3 conversion is named decode-only; the core-owns pipeline bullet names authoring validation, encoding, and managed-file writes
+- Split/excise decisions: none
+- Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
+---
+
+## 2026-09-06 17:30 - US-608A
+- Added expression-aware authoring schemas to `@lando/sdk/schema`: `LandofileAuthoringShape` (complete) and `LandofileAuthoringFragment` (recursively partial) are derived at runtime by walking `LandofileShape.ast` with `SchemaAST` (`deriveAuthoringAst`), unioning a typed expression slot at every value site; `Wire` twins publish the encoded string-bearing form. Types come from generic mappers over the runtime Encoded type, not handwritten trees.
+- Expression slots (`authoringExpressionSlot`, `AuthoringExpression`) parse with the SDK expression parser and check whole-vs-composite form (composite only at string sites), the closed scope list, known helper names (`EXPRESSION_HELPER_NAMES` now exported from `@lando/sdk/expressions`), and a static return-type inference; they never evaluate.
+- Replaced the one-way `ConfigTranslator` port: schema-backed `ConfigTranslateInput` (`landofile-document-set` | `recipe-request`), bounded `ConfigTranslateDocument` snapshots, `ConfigTranslateDetectInput { documents }`, set outputs by target layer with wire fragments, six diagnostic kinds, deletion intents, optional `encode`, and explicit `never` requirements. `validateConfigTranslateInput` / `validateConfigTranslateResult` (`@lando/sdk/landofile`) enforce source ids by variant, unique allowlisted target layers, no deletions for recipe requests, diagnostic ordering, and full authoring-fragment decoding.
+- Contract suite rewritten around the new harness with the encoder round-trip law (expression AST preserved) and cumulative-prefix/final-complete validation; coverage row stays `none-bundled`. `app:config:translate` now builds bounded document sets in core, validates merges with the authoring shape, reports deletions, and fails closed on `--write` with deletions.
+- Verification: typecheck, lint, check:boundaries, codegen:schema-snapshot, check:schema-compatibility (one accepted pre-release finding for the translate command result), lint:guides passed; 216 spot-check tests across 13 files passed; CLI `app:config:translate --list` and the no-translator failure path verified.
+- **Learnings for future iterations:**
+  - Document roots currently derive as `Union(object, expression-slot)` like every other object site; making the root object-only breaks the public-field-description gate path (it resolves descriptions through the union branch) and the `Wire` schemas lose field descriptions under `encodedSchema`. Fixing that needs the annotation gate to follow the derived root TypeLiteral first; do it together with the `lando4` codec story.
+  - Registering a schema also requires a fixture entry in `sdk/test/schema/public-schema-contracts.ts`; `AuthoringExpression` must publish through the expression-definition emission path or JSON Schema generation overflows the stack.
+  - `expect<unknown>(...)` is the repo idiom when `toEqual` compares branded/readonly schema values against literals.
+  - Deprecated helper aliases (`pathJoin`, ...) are not registered in the evaluator, so `EXPRESSION_HELPER_NAMES` does not include them yet.
+---
+
+## 2026-09-06 17:05 - Babysit
+- PR: none — branch us-608a-authoring-translation-contracts not pushed to origin, no PR exists
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:15 - US-608A
+- Story verified complete on branch (no new code): both acceptance criteria hold against the committed authoring schemas, set-based `ConfigTranslator` port, validators, and rewritten contract suite.
+- Verification: typecheck, lint, check:boundaries, check:schema-compatibility (27 compatible, 0 breaking, 1 accepted) passed; 1,095 spot-check tests across story and adjacent SDK schema, landofile, contract, and CLI files passed, including the `app:config:translate` command harness.
+---
+
+## 2026-09-06 17:20 - US-608A
+- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch awaits the Push step (no PR yet).
+- Verification: typecheck, lint, check:boundaries passed; 165 spot-check tests across 10 SDK schema, landofile, contract, exports, and CLI harness files passed.
+---
+
+## 2026-09-06 17:15 - Babysit
+- PR: none (branch `us-608a-authoring-translation-contracts` not pushed to origin)
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:25 - US-608A
+- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch still awaits the Push step (no PR yet).
+- Verification: typecheck, lint passed; 160 spot-check tests across 9 SDK schema, landofile, contract, exports, and CLI harness files passed.
+---
+
+## 2026-09-06 17:18 - Babysit
+- PR: none (branch us-608a-authoring-translation-contracts not pushed to origin)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge)
+---
+
+## 2026-09-06 19:25 - US-608A Review
+- Review-work failed on path containment and helper typing; Bugbot found no bugs. Fixed: translation sources now realpath-check against the app root (autodetect skips escapes; `--file` fails closed), and `and`/`or`/`regexMatch` no longer pretend to be booleans.
+- Review notes (deferred/rejected): Authoring derivation dropping object refinements/transforms — unioning expression slots makes naive predicate wrap reject expressions; recorded for the codec story. Document `layerId` as `LandofileLayer` — foreign source layers are not v4 layers. Required diagnostic remediation — optional matches tagged-error convention. Recipe writable-layer field — §1.1 recipe-request has none; outputs already use `LandofileLayer`. Fail-closed `{{ null }}` / `and(true,"x")` at boolean sites — conservative `unknown` is the documented static policy. Schema-level 1 MiB cap — core already bounds reads.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 120 spot-check tests across 7 authoring/translate files passed.
+- **Learnings for future iterations:** Autodetect may skip escaped symlinks, but `--file` must fail on the same realpath check or explicit paths can still leak.
+---
+
+## 2026-09-06 19:35 - US-608A Review
+- Post-commit Bugbot: annotated translate output comments deletion intents so preview YAML stays valid.
+- Review notes (deferred/rejected): none new.
+- Verification: lint passed; CLI translate harness passed.
+---
+
+## 2026-09-06 19:53 - US-608A Drift Audit
+- Trigger: 6 cycles, 3490 changed lines, 8 commits
+- Weakened proofs: detect/translate fixtures attributed no source ids; contract harness could skip the complete-shape law
+- Ceremony: CLI helper splits kept — inlining would push the command past 250 LOC
+- Scope absorption: CLI rewrite is required port wiring; US-609C already owns preview/write/encode orchestration
+- Fixed: empty source identities now fail closed; fixtures attribute real snapshot ids; unused completeMerge escape removed
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck pass, lint pass, 80 spot-check tests pass
+---
+
+## 2026-09-06 20:00 - US-608A Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: `app:config:translate --list` reports no translators; translate/detect/write fail closed with `ConfigTranslateNoTranslatorsError` and no file writes; start/info/curl/exec succeeded (HTTP 200 `us608a-ok`, PHP 8.3.33); adjacent `app:config` and `app:config:lint` stayed green. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando setup`/`lando start` warn that port 80 is in use (fallback 8080) and port 443 is held by leftover `lando-proxy-https` systemd-socket-proxyd (fallback 8443). Story AC not blocked; suspected prior-verify host-integration remnant plus host `rootlessport` on 8080/8443 via WSL mirrored networking.
+---
+
+## 2026-09-06 22:19 - Babysit
+- PR: #916 https://github.com/AaronFeledy/core4/pull/916
+- CI outcome: pass (after unit-test shards, test-isolation, and guide-scenarios-darwin failures on the earlier pushed SHA)
+- Review feedback: fixed (verified and pushed the pending typecheck-split, deprecation-decode, and serializer-inventory commits; Bugbot clean)
+- Merge: merged (squash)
+---
+
+## 2026-09-06 22:55 - US-608B
+- Added `configTranslators` to both plugin seams: the manifest `PluginContribution` (new `ConfigTranslatorContribution` with required `id`/`module`/`inputKinds` and advisory `detects`/`optionsSchema`/`summary`/`deprecated`) and `LandoPluginModule` (a `ConfigTranslatorLoader` map of lazy `() => Promise<ConfigTranslatorShape>` factories, the same shape bundled plugins already use for commands, so generated bundling stays static-import-of-descriptors with lazy implementations).
+- The module set now validates translator ids against the manifest, indexes loaders, and rejects duplicates with `ConfigTranslatorConflictError` naming both producing plugins (`makePluginCapabilityIndex` now fails with `PluginCapabilityIndexError`); no first-or-last wins.
+- New `ConfigTranslatorRegistry` SDK tag with an engine Live installed in the `plugins` bootstrap tier over the contribution graph, so bundled, system, user, app, and host-injected plugins all flow through one candidate list. Candidates are read and loaders invoked only inside `list` (memoized), cross-source duplicates fail `list` with both producer names, and a loader returning a foreign id is a `PluginLoadError` attributed to its plugin.
+- `app:config:translate` (native spec and legacy adapter) bootstraps at `plugins`, resolves translators from the registry when none are injected, and is exported from `@lando/core/cli/operations` so library callers share the same operation and tier.
+- Verification: typecheck, lint, check:boundaries, codegen:check, check:schema-compatibility (2 compatible additive fields), check:public-transcripts passed; spot checks across SDK schema/compat, engine module-set/registry, core translate/lifecycle/manifest, cold-start (fast-path, opentui canary, import boundary), generated-layer, and contract-coverage files passed. Compiled `core/dist/lando` in lando4-dev: `app:config:translate --list` reports no installed translators (exit 0, JSON `{"mode":"list","translators":[]}`), translate/detect fail closed with `ConfigTranslateNoTranslatorsError`, and `--version` stays on the 12 ms cold path.
+- **Learnings for future iterations:**
+  - A plugins-tier Live that reads `PluginContributionGraph` through `Effect.serviceOption` must be `Layer.provide`d with the graph inside `renderPlugins()`; a bare `Layer.mergeAll` sibling sees `None`.
+  - Widening `makePluginCapabilityIndex`'s error type only touched `validateResolvedPlugin`'s annotation; every other caller already treats the Left generically. Pre-existing module-set tests that read `PluginDescriptorMismatchError` fields need an `instanceof` narrow.
+  - `/tmp` is not shared with the lando4-dev distro; put throwaway CLI apps under the gitignored `.local/` tree.
+  - Bundled translators (`lando4`, `recipe`) should ship as `configTranslators` map entries wrapping `import()` in their plugin descriptor; the registry verifies the loaded `id` matches the contribution id.
+---
+
+## 2026-09-06 23:26 - US-608B Review
+- Review-work failed on graph-level manifest/descriptor agreement; Bugbot found no bugs. Fixed: registry `list` now fail-closes with `PluginDescriptorMismatchError` when a plugin's `configTranslators` loader ids disagree with its manifest, before any factory runs.
+- Review notes (deferred/rejected): Manifest-only dynamic import of `configTranslators[].module` — command-shaped lazy Maps are the AC loading path; undeclared or missing loaders now fail closed instead of inventing a CA-style module import. Full-suite uninstall timeouts — loop forbids `bun test` with no path and those failures are unrelated. Loading every factory on first `list` / structural runtime-shape checks — MINOR, not AC-blocking.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 74 spot-check tests across registry, module-set, translate, schema, and generated-layer files passed.
+- **Learnings for future iterations:** Graph-level translator collection must apply the same exact-id check as the module set. Copying `commandLoaders` without declared-vs-provided validation lets undeclared loaders activate and declared ones vanish.
+---
+
+## 2026-09-06 23:42 - US-608B Drift Audit
+- Trigger: 2 cycles, 799 changed lines, 8 commits
+- Ceremony: candidate collector and its type were exported with no production importer
+- Weakened proofs: new `ConfigTranslatorRegistry` tag and library `appConfigTranslate` export were not pinned on the existing public-export tests
+- Fixed: unexported the unused collector; pinned both public seams on the sibling export tests
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck pass, lint pass, 127 spot-check tests pass
+---
