@@ -225,3 +225,6 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 29 focused tests passed (7 landofile guard, 21 recovery, 1 start guard).
 - Guide-Coverage-Skip: internal transaction load guard with no new CLI or guide-covered public contract.
 ---
+## 2026-09-07 12:10 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---

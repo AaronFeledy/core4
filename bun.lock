@@ -168,6 +168,14 @@
         "effect": "^3.21.2",
       },
     },
+    "plugins/lando4": {
+      "name": "@lando/lando4",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "plugins/notify-lando": {
       "name": "@lando/notify-lando",
       "version": "0.0.0",
@@ -588,6 +596,8 @@
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
 
     "@lando/http-client": ["@lando/http-client@workspace:http-client"],
+
+    "@lando/lando4": ["@lando/lando4@workspace:plugins/lando4"],
 
     "@lando/landofile": ["@lando/landofile@workspace:landofile"],
 
