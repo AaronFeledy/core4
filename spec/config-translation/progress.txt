@@ -6,6 +6,17 @@
 - The plan checker only scans the three PRD directories for stale story refs and forbidden strings; the core spec files are covered by the grep scan, not the script.
 - Parallel spec editing works well when partitioned by file (no two editors on one file); README topic rows go last because they cite final headings.
 - Frozen naming contract for later stories: translators `lando4` / `recipe` / `lando3` (decode-only); inputs `landofile-document-set` / `recipe-request`; diagnostics `generated | dropped | rewritten | unsupported | non-portable | needs-review`; transaction states `prepared | committing | committed | blocked`; artifacts `<file>.bak.<full-before-sha256>` and `<target>.lando-stage.<transaction-id>`; secret dispositions `secret-store` or one `postInit.stdin` / `postInit.secretEnv.<name>` sink; commands `app:config:translate --to`, `app:config:explain`, `app:config:migrate`; events `pre-restart` / `post-restart`; doctor checks `lando3-leftovers` / `lando3-shadow`; binary `lando4` / `lando4.exe` during Alpha/Beta.
+- Managed-file transactions keep the StateStore journal bucket unlocked (`lock: "none"`) while one scoped canonical-root lock covers every journal transition and filesystem mutation; transaction locks must not expire a valid live owner, but old malformed owner-owned locks remain reclaimable.
+
+## 2026-09-07 01:22 - US-608C
+- Added the private managed-file transaction coordinator with canonical-root locking, complete ordered journals, symlink and containment checks, raw-byte digests, immutable full-digest backups, exclusive owner-only stages, exact output modes, and write/removal commits through durable `prepared` → `committing` → `committed` transitions.
+- Strengthened StateStore durability with parent-directory fsync after atomic rename and hardened advisory locks so transaction locks preserve live owners while reclaiming old malformed owner-owned records safely.
+- Verification: typecheck, lint, and all boundary gates passed; 67 focused transaction/StateStore tests passed with one root-only ownership test skipped, 11 adjacent managed-file tests passed, LSP diagnostics were clean, and a real-disk driver confirmed written targets, mode `0600`, immutable backup retention, stage cleanup, and journal removal.
+- **Learnings for future iterations:**
+  - Hold one external lock around a `lock: "none"` transaction journal bucket; nesting the bucket's advisory lock with the same coarse lock self-contends.
+  - Revalidate every backup globally before entering `committing` and again immediately before its target mutation; preparation alone does not protect immutable artifacts from noncooperative edits.
+  - Physical stage files remain owner-only while the journal records the intended final target mode; target and parent-directory fsyncs establish the durable ordering recovery relies on.
+---
 
 ## 2026-09-06 14:55 - US-607
 - Amended the durable core spec so it owns the config-translation, IR-gap, and Lando 3 coexistence contracts: two-way `ConfigTranslator` with the authoring IR (`LandofileAuthoringShape` / `LandofileAuthoringFragment`), set-based inputs, encode round-trip law, six diagnostic kinds, lazy registration with collision failure, and target/write policy (§4.2, §7.4.1, §9.5, §13.1).
@@ -159,4 +170,31 @@
 - Fixed: unexported the unused collector; pinned both public seams on the sibling export tests
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck pass, lint pass, 127 spot-check tests pass
+---
+
+## 2026-09-07 09:40 - US-608C
+- Verified the committed managed-file transaction coordinator against both acceptance criteria; no implementation work remained. The private module in `@lando/managed-file` locks the realpath'd app root through the state-store advisory lock, rejects symlinked targets/parents and any parent outside that root, stages `<target>.lando-stage.<id>` beside each target, and reuses only hash-verified `<file>.bak.<full-before-sha256>` backups created exclusively at `0o600`.
+- Confirmed the durability order first-hand: backups, then stages, then an owner-only fsynced `prepared` journal carrying the complete ordered before/after plan (presence, full digests, modes, backup identity, stage dev/ino), and only afterwards `committing`, per-file renames with digest rechecks, fsynced `committed`, stage cleanup, and a removal that fails unless the journal is already `committed`. Journals, tagged errors, and commit receipts carry digests, modes, and paths only, so no user bytes reach an output channel. No CLI, renderer, or prompt surface was added.
+- Documented the coordinator in the root `AGENTS.md` package-ownership bullet so later stories consume the `@lando/managed-file/transaction` seam instead of hand-rolling staging.
+- Verification: typecheck, lint, check:boundaries, coordinated-plan passed; 57 focused transaction tests (including crash-injection at every checkpoint, lock contention, symlink/hardlink attacks, and backup corruption) and 24 adjacent state-store lock/atomic tests passed. No CLI surface changed, so no CLI run applied.
+- **Learnings for future iterations:**
+  - The transaction journal is the one artifact allowed outside app-root containment: `journalDirectory` derives it from `makeLandoPaths({ userDataRoot }).managedFileLedger(...)`, keyed by app-root basename plus root digest, so two apps with the same basename never collide.
+  - Journal writes are a state machine, not a blind set: `write` re-reads, requires the exact next state in `prepared -> committing -> committed`, and rejects any payload whose non-state fields drift from what was journaled. Recovery work in the next story must transition through it rather than writing terminal states directly.
+  - `prepare` hands back an opaque handle and keeps the journal/store in a `WeakMap` lease, so `commit` cannot be replayed or driven from a foreign journal; the scoped finalizer deletes only stages whose recorded dev/ino still match, never foreign or unjournaled ones.
+  - Cross-package consumers must import through the `@lando/managed-file/transaction` subpath (package-dag rule); the package stays `private: true`, and the module is deliberately absent from the package root export.
+---
+
+## 2026-09-07 09:49 - US-608C Review
+- Reviewed the managed-file transaction coordinator against both US-608C ACs and in-scope §12.4.1 coordinator sentences. Bugbot found no bugs. No in-scope defects required a code change; prepare/commit durability, locking, containment, backups/stages, and committed-only cleanup already match the story.
+- Review notes (deferred/rejected): FileSystem/`ManagedFileService` wrapping of coordinator IO — AC text does not require it; §12.4.1 forbids commands/translators bypassing the coordinator, and exclusive-open/fsync/O_NOFOLLOW primitives are not a FileSystem surface this story owns. Pathname TOCTOU / fd-relative mutation — §12.4.1 states cooperative locking is not CAS against noncooperative editors; recovery preflight is US-608D. Split-scope commit-without-lock — scope finalizer drops the lease, so commit fail-closes. Unreadable-lock EACCES takeover after stale mtime — intentional reclaim of crashed exclusive-create leftovers; live readable owners stay protected with `expireLiveOwner: false`. Windows owner-only DACL — matches existing state-store/managed-file 0o600 skip; not a new 608C contract. QA standard-invocation FAIL — empty worktree missing generated preload; main-tree focused tests passed.
+- Verification: typecheck, lint, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 78 focused tests passed (1 root-only skip) across 12 transaction/lock/atomic/adjacent managed-file files.
+- Guide-Coverage-Skip: private transaction coordinator adds no user-facing CLI or guide-covered public contract.
+---
+
+## 2026-09-07 09:56 - US-608C Drift Audit
+- Trigger: 3 cycles, 1942 changed lines, 3 commits
+- Weakened proofs: path-policy test claimed own-stage cleanup but failed in planning before stages existed; restored the claim to unjournaled foreign-stage preservation, which is the path it actually runs
+- Ceremony: unexported unused PlannedEntry and file-local verifyPrivateFile
+- Split/excise decisions: none; FileSystem wrapping re-examined and left deferred; package export stays unwired for US-609C; passes remains true
+- Verification: typecheck pass, lint pass, 67 focused tests pass (1 root-only skip)
 ---
