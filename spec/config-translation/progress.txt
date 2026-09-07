@@ -292,3 +292,9 @@
 - Split/excise decisions: none; classifyHunk stays in-module for US-611B; no passes flip
 - Verification: typecheck, lint, 89 spot checks — pass
 ---
+
+## 2026-09-07 17:10 - US-609B Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Object-form `recipe:` is inert: lint/translate round-trip provenance and `{{ recipe.php }}` sites, identity mismatch fail-closes, secret prompts without disposition fail `recipes:validate`, start/info/curl/exec succeeded (HTTPS 200 `us609b-ok`, PHP 8.3.33). Adjacent recipes:list/describe/validate and `lando4` detect stayed green. Destroyed the scenario app.
+- Blocker: default `lando app:config` table render FiberFailed on object-form `recipe:` (`TypeError: No default value`). Fixed to print the provenance id; table render now shows the recipe id.
+- **Learnings for future iterations:** Template-string interpolation of a Landofile union field can throw via ToPrimitive after redaction; format a scalar id (or JSON) instead of coercing the object.
+---
