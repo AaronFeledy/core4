@@ -37,6 +37,7 @@ import { ConfigServiceLive } from "../../src/testing/engine-layers";
 import { FileSystemLive } from "../../src/testing/engine-layers";
 import { makeShellRunnerLive } from "../../src/testing/engine-layers";
 import "../../src/runtime/engine-composition.ts";
+import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -176,6 +177,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 };
 
 const requiredStartServicesLayer = Layer.mergeAll(
+  NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),

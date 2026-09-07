@@ -11,8 +11,8 @@ import { initApp } from "../../src/cli/commands/init.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
 import { nodeTsRenderer } from "../../src/recipes/builtin/node-ts/render.ts";
 import { PluginRegistryLive } from "../../src/testing/engine-layers";
-import { LandofileServiceLive } from "../../src/testing/engine-layers";
 import { AppPlannerLive } from "../../src/testing/engine-layers";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const FORBIDDEN_RUNTIME_BUILTINS = [
   "fs",

@@ -198,3 +198,8 @@
 - Split/excise decisions: none; FileSystem wrapping re-examined and left deferred; package export stays unwired for US-609C; passes remains true
 - Verification: typecheck pass, lint pass, 67 focused tests pass (1 root-only skip)
 ---
+
+## 2026-09-07 10:07 - US-608C Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: start/info/curl/exec succeeded (HTTP 200 `us608c-ok`, PHP 8.3.33); `app:config` and `app:config:lint` stayed green; `app:config:translate --list` reports no translators and translate fails closed; help `--all` exposes no transaction or migrate UI. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando config:lint --format json` exits unknown-command (`cli:unknown-command`) while `lando help --all` lists `config:lint` and canonical `lando app:config:lint` succeeds. Story AC not blocked; suspected compiled-binary short-name dispatch, untouched by this diff.
+---

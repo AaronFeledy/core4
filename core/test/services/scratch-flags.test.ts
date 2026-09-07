@@ -36,8 +36,8 @@ import { makeScratchAppServiceLive } from "../../src/testing/engine-layers.ts";
 import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
 import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 

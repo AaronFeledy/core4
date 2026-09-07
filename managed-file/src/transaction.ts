@@ -8,7 +8,7 @@ import {
   createStage,
   ensureBackup,
   mutateEntry,
-  removeOwnedStage,
+  removeRecordedStage,
   verifyBackup,
   verifyState,
 } from "./transaction-fs.ts";
@@ -20,8 +20,14 @@ import {
   openJournal,
 } from "./transaction-journal.ts";
 import { TransactionRequest, planTransaction } from "./transaction-plan.ts";
+import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
 export { ManagedFileTransactionError, TransactionRequest };
+export {
+  ManagedFileTransactionGuardLive,
+  makeManagedFileTransactionGuard,
+} from "./transaction-guard.ts";
+export type { RecoveryOutcome } from "./transaction-recovery.ts";
 export type { Journal } from "./transaction-journal.ts";
 export interface PreparedTransaction {
   readonly id: string;
@@ -32,13 +38,27 @@ export type TransactionCheckpoint =
   | "prepared"
   | "committing"
   | "after-mutation"
-  | "committed";
+  | "committed"
+  | "recovering"
+  | "after-recovery-mutation"
+  | "recovered";
 export interface TransactionOptions {
   readonly journalRoot: () => string;
   readonly checkpoint?: (point: TransactionCheckpoint, index: number) => Effect.Effect<void, unknown>;
 }
 
 export const makeManagedFileTransactions = (options: TransactionOptions) => {
+  const recovery = makeTransactionRecovery({
+    journalRoot: options.journalRoot,
+    ...(options.checkpoint === undefined
+      ? {}
+      : {
+          checkpoint: (point: string, index: number) =>
+            Effect.suspend(
+              () => options.checkpoint?.(point as TransactionCheckpoint, index) ?? Effect.void,
+            ).pipe(Effect.catchAllCause(() => Effect.fail(transactionError("checkpoint", "recover")))),
+        }),
+  });
   const leases = new WeakMap<
     PreparedTransaction,
     { readonly journal: Journal; readonly store: Effect.Effect.Success<ReturnType<typeof openJournal>> }
@@ -72,7 +92,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       if ((yield* store.read) !== null) return yield* Effect.fail(transactionError("journal", "prepare"));
       const id = randomUUID();
       const plans = yield* transactionIO("prepare", () => planTransaction(root, request, id));
-      const stages: Stage[] = [];
+      const stages: { readonly stage: Stage; readonly digest: string }[] = [];
       let retained = false;
       const prepared: PreparedTransaction = Object.freeze({ id, journalPath: store.path });
       yield* Effect.addFinalizer(() =>
@@ -82,7 +102,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
           const journal = yield* store.read;
           if (journal?.id === id) return;
           yield* transactionIO("cleanup", async () => {
-            for (const stage of stages) await removeOwnedStage(stage);
+            for (const owned of stages) await removeRecordedStage(owned.stage, owned.digest);
           });
         }).pipe(Effect.orDie),
       );
@@ -104,7 +124,10 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
                   `${resolve(root, plan.entry.path)}.lando-stage.${id}`,
                   plan.afterBytes,
                   (stage) => {
-                    stages.push(stage);
+                    stages.push({
+                      stage,
+                      digest: plan.entry.after.present ? plan.entry.after.digest : "",
+                    });
                     created = stage;
                   },
                 ),
@@ -146,7 +169,8 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       yield* checkpoint("committed");
       yield* transactionIO("cleanup", async () => {
         for (const entry of journal.entries)
-          if (entry.stage !== undefined) await removeOwnedStage(entry.stage);
+          if (entry.stage !== undefined && entry.after.present)
+            await removeRecordedStage(entry.stage, entry.after.digest);
       }).pipe(Effect.uninterruptible);
       yield* store.removeCommitted;
       return {
@@ -172,6 +196,9 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
     prepare,
     commit,
     readJournal,
+    recover: recovery.recover,
+    pending: recovery.pending,
+    ensureConsistent: recovery.ensureConsistent,
     run: (request: TransactionRequest) => Effect.scoped(prepare(request).pipe(Effect.flatMap(commit))),
   };
 };

@@ -18,6 +18,7 @@ import {
   type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
+  type ManagedFileTransactionError,
   type NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
@@ -41,6 +42,7 @@ export interface ResolvedAppTarget {
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export type UserLandofileError =
+  | ManagedFileTransactionError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError

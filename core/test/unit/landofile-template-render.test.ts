@@ -11,10 +11,10 @@ import { LandofileService } from "@lando/core/services";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { landofileRuntimeInputs } from "../../src/testing/engine-layers.ts";
 import {
-  LandofileServiceLive,
   makeBundledTemplateEngineRegistry,
   renderLandofileTemplate,
 } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
   bootstrapLevel: "minimal",

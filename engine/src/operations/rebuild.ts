@@ -10,6 +10,7 @@ import type {
   BuildOrchestrator,
   FileSystem,
   GlobalAppService,
+  ManagedFileTransactionGuard,
   PathsService,
   PluginRegistry,
   ShellRunner,
@@ -47,6 +48,7 @@ type RebuildAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | ManagedFileTransactionGuard
   | PathsService
   | PluginRegistry
   | RouterService

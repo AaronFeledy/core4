@@ -14,6 +14,7 @@ import type {
   LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
+  ManagedFileTransactionError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
@@ -99,6 +100,7 @@ export const AppConfigResultSchema = Schema.Struct({
 });
 
 type AppConfigError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileNotFoundError
   | LandofileFormConflictError

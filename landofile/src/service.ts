@@ -13,12 +13,13 @@ import {
   type LandofileTimeoutError,
   LandofileUnknownEventError,
   LandofileValidationError,
+  type ManagedFileTransactionError,
   NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { expressionTouchesOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
-import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
+import { ConfigService, LandofileService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/services";
 
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
@@ -255,6 +256,7 @@ const scanContentForUnsupportedExpressions = (
 };
 
 type LandofileLoadError =
+  | ManagedFileTransactionError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileParseError
@@ -411,6 +413,9 @@ export const loadLandofileLayers = (
   inputs?: LandofileRuntimeInputs,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   Effect.gen(function* () {
+    if (inputs?.transactionGuard !== undefined) {
+      yield* inputs.transactionGuard.ensureConsistent(appRoot);
+    }
     const runtime = yield* loadContext(appRoot);
     const logger = runtime.logger;
     const onRelaxedRead =
@@ -541,4 +546,10 @@ const makeDiscoverLandofile = (
   );
 
 export const makeLandofileServiceLive = (inputs: LandofileRuntimeInputs) =>
-  Layer.succeed(LandofileService, { discover: makeDiscoverLandofile(inputs) });
+  Layer.effect(
+    LandofileService,
+    Effect.gen(function* () {
+      const transactionGuard = yield* ManagedFileTransactionGuard;
+      return { discover: makeDiscoverLandofile({ ...inputs, transactionGuard }) };
+    }),
+  );
