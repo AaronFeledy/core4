@@ -151,3 +151,12 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 74 spot-check tests across registry, module-set, translate, schema, and generated-layer files passed.
 - **Learnings for future iterations:** Graph-level translator collection must apply the same exact-id check as the module set. Copying `commandLoaders` without declared-vs-provided validation lets undeclared loaders activate and declared ones vanish.
 ---
+
+## 2026-09-06 23:42 - US-608B Drift Audit
+- Trigger: 2 cycles, 799 changed lines, 8 commits
+- Ceremony: candidate collector and its type were exported with no production importer
+- Weakened proofs: new `ConfigTranslatorRegistry` tag and library `appConfigTranslate` export were not pinned on the existing public-export tests
+- Fixed: unexported the unused collector; pinned both public seams on the sibling export tests
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck pass, lint pass, 127 spot-check tests pass
+---

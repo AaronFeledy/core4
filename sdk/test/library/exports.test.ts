@@ -480,6 +480,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
+    expect(services.ConfigTranslatorRegistry).toBeDefined();
     expect(services.Downloader).toBeDefined();
     expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();
