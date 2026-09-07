@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 
 import { Effect, Queue, Stream } from "effect";
 
-import { BuildOrchestrator, EventService } from "@lando/core/services";
 import { AppId, ServiceName } from "@lando/sdk/schema";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";

@@ -11,7 +11,7 @@ import {
   NotImplementedError,
   PluginLoadError,
   PublicationUnsupportedError,
-} from "@lando/core/errors";
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -25,22 +25,22 @@ import {
   ProviderId,
   ServiceName,
   ServicePlan,
-} from "@lando/core/schema";
-import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/core/services";
-import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
+} from "@lando/sdk/schema";
 import { GlobalConfig } from "@lando/sdk/schema";
+import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
+import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/testing/engine-layers.ts";
-import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/testing/engine-layers.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
+import { appPlanCachePath } from "../../src/cache/paths.ts";
+import { CacheServiceLive } from "../../src/cache/service.ts";
+import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
+import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
   artifactBuild: true,

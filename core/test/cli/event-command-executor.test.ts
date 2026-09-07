@@ -20,6 +20,14 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { runAppEvent } from "@lando/engine/operations/events";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
+import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
@@ -32,16 +40,6 @@ import { validateEventCommandInput } from "../../src/cli/event-command-input.ts"
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
-import {
-  EventCommandExecutor,
-  PluginContributionGraph,
-  RuntimeCwd,
-  StreamFrameSink,
-  attachEffectiveEvents,
-  attachEffectiveTooling,
-  makeShellRunnerService,
-  runAppEvent,
-} from "../../src/testing/engine-layers.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
   message: Schema.String,

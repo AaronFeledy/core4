@@ -5,18 +5,9 @@ import { join } from "node:path";
 
 import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
-import { ProviderInternalError, StateStoreError } from "@lando/core/errors";
-import {
-  type ArtifactBuildSpec,
-  BuildOrchestrator,
-  EventService,
-  PathsService,
-  RuntimeProviderRegistry,
-  type RuntimeProviderShape,
-  StateStore,
-} from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -27,12 +18,21 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import {
+  type ArtifactBuildSpec,
+  BuildOrchestrator,
+  EventService,
+  PathsService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  StateStore,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
-import { buildKeyForService } from "../../src/testing/engine-layers.ts";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
-import { openScratchBuildResults, recordBuildResult } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { buildKeyForService } from "../../src/services/build-key.ts";
+import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
+import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("test");

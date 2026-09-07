@@ -10,11 +10,11 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
 

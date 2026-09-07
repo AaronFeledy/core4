@@ -28,14 +28,15 @@ import {
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { StateStoreLive } from "@lando/state-store/service";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers";
-import { ConfigServiceLive } from "../../src/testing/engine-layers";
-import { FileSystemLive } from "../../src/testing/engine-layers";
-import { makeShellRunnerLive } from "../../src/testing/engine-layers";
+
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 

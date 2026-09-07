@@ -11,6 +11,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
+import { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
+import { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";
+import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
+import { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
+import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   DefaultSubsystemDoctorLayer,
@@ -21,13 +26,6 @@ import {
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
-import {
-  CertificateAuthorityUnavailableLive,
-  HealthcheckRunnerUnavailableLive,
-  RouterServiceUnavailableLive,
-  SshServiceUnavailableLive,
-  UrlScannerUnavailableLive,
-} from "../../src/testing/engine-layers.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;

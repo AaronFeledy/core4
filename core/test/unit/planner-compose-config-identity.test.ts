@@ -10,12 +10,10 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  AppPlannerLive,
-  CacheServiceLive,
-  FileSystemLive,
-  PluginRegistryLive,
-} from "../../src/testing/engine-layers.ts";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const configCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,

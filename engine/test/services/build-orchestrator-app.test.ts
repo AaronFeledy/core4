@@ -5,7 +5,18 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
-import { ProviderInternalError } from "@lando/core/errors";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { ProviderInternalError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import {
   type ArtifactBuildSpec,
   BuildOrchestrator,
@@ -13,15 +24,11 @@ import {
   PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-} from "@lando/core/services";
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { StateStoreLive } from "@lando/state-store/service";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
+import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const providerId = ProviderId.make("test");
 const metadata = {
@@ -30,7 +37,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (name: string, milliseconds: number) => ({
+const service = (name: string, milliseconds: number): ServicePlan => ({
   name: ServiceName.make(name),
   type: "test",
   provider: providerId,

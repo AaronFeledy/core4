@@ -25,15 +25,15 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { runTooling } from "../../src/testing/engine-layers.ts";
-import { effectiveToolingForPlan } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { CommandRegistryLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { emptyConfigServiceLayer } from "../cli/agent-env-test-config.ts";
+import { CacheServiceLive } from "../../src/cache/service.ts";
+import { runTooling } from "../../src/operations/tooling.ts";
+import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
+import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { CommandRegistryLive } from "../../src/services/command-registry.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
+import { AppPlannerLive } from "../../src/services/planner.ts";
+import { emptyConfigServiceLayer } from "../_support/agent-env-test-config.ts";
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: true,

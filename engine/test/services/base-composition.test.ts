@@ -5,9 +5,9 @@ import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/
 import type { ServiceFeatureDefinition, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { serviceFeatures } from "@lando/service-lando";
 
-import { L337_BASE_DEFAULT_FEATURE_IDS } from "../../src/testing/engine-layers.ts";
-import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/testing/engine-layers.ts";
-import { type BaseSeed, type ComposeServiceInput, composeService } from "../../src/testing/engine-layers.ts";
+import { L337_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/l337.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
+import { type BaseSeed, type ComposeServiceInput, composeService } from "../../src/services/feature.ts";
 
 const DIGEST = "a".repeat(64);
 
