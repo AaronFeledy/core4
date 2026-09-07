@@ -31,6 +31,7 @@ import type {
   ServiceType,
   SshService,
 } from "../services/index.ts";
+import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
@@ -90,6 +91,13 @@ export interface PluginDoctorCheckContribution {
 
 export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 
+/**
+ * Lazy `ConfigTranslator` factory. Plugins wrap a dynamic import so the
+ * translator implementation loads only for an explicit conversion request;
+ * the loader closes over any injected SDK ports such as `RecipeDecomposer`.
+ */
+export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
+
 export type FileSyncEngineContribution = Layer.Layer<FileSyncEngine, unknown, unknown>;
 export type CertificateAuthorityContributionLayer = Layer.Layer<
   CertificateAuthority,
@@ -116,6 +124,7 @@ export interface LandoPluginModule {
   readonly runtimeProviders?: ReadonlyMap<ProviderId, RuntimeProviderContribution>;
   readonly renderers?: ReadonlyMap<string, RendererContribution>;
   readonly commands?: ReadonlyMap<string, ExecutableCommandLoader>;
+  readonly configTranslators?: ReadonlyMap<string, ConfigTranslatorLoader>;
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;

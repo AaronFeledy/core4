@@ -77,6 +77,7 @@ import type {
   ComposeKeyRejectedError,
   ConfigError,
   ConfigExpressionError,
+  ConfigTranslatorConflictError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
   EventError,
@@ -955,4 +956,15 @@ export declare class TunnelService extends Context.Tag("@lando/core/TunnelServic
 export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
   ConfigTranslator,
   ConfigTranslatorShape
+>() {}
+
+export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+  ConfigTranslatorRegistry,
+  {
+    readonly list: Effect.Effect<
+      ReadonlyArray<ConfigTranslatorShape>,
+      ConfigTranslatorConflictError | PluginLoadError,
+      never
+    >;
+  }
 >() {}
