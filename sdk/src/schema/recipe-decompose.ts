@@ -5,8 +5,6 @@ import { LandofileAuthoringFragmentWire } from "./landofile-authoring.ts";
 import { RecipeOptionValue, RecipeProducer, RecipeServiceMap } from "./recipe-identity.ts";
 import { LandofileRecipeProvenance } from "./recipe-provenance.ts";
 
-// ==== Recipe decomposition — merged options in, authoring data plus provenance out.
-
 const metadata = (identifier: string, description: string) => ({
   identifier,
   title: identifier,

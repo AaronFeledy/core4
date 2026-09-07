@@ -1,7 +1,5 @@
 import { Schema } from "effect";
 
-// ==== Recipe identity: the coordinates every provenance, snapshot, and migration edge agrees on.
-
 const metadata = (identifier: string, description: string) => ({
   identifier,
   title: identifier,

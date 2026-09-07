@@ -50,17 +50,16 @@ export const runRecipeDecomposerContractSuite = (
       });
     const requireContract = (condition: boolean, assertion: string) =>
       condition ? Effect.void : Effect.fail(failure(assertion));
-    const passthrough: Redactor = { redactString: (text) => text, redactValue: (value) => value };
     let stringCalls = 0;
     let valueCalls = 0;
     const redactor: Redactor = {
       redactString: (text) => {
         stringCalls += 1;
-        return passthrough.redactString(text);
+        return text;
       },
       redactValue: (value) => {
         valueCalls += 1;
-        return passthrough.redactValue(value);
+        return value;
       },
     };
     const decomposer = yield* Effect.try({

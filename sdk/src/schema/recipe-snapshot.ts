@@ -4,8 +4,6 @@ import { ExpressionNode } from "../expressions/ast.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { RecipeContentDigest, RecipeOptionValue, RecipeProducer } from "./recipe-identity.ts";
 
-// ==== Declarative recipe snapshots and migration edges — inert data, never code.
-
 const metadata = (identifier: string, description: string) => ({
   identifier,
   title: identifier,

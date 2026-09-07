@@ -21,24 +21,24 @@ export const validateLandofileRecipeProvenance = (
   Schema.decodeUnknownEither(LandofileRecipeField)(value).pipe(
     Either.mapLeft((error) => {
       const message = error.message;
-      const reason = /injectiv/i.test(message)
-        ? "service-map-not-injective"
-        : /disagrees with producer\.recipeId/.test(message)
-          ? "identity-mismatch"
-          : /disagrees with producer\.manifestVersion/.test(message)
-            ? "version-mismatch"
-            : "malformed";
-      const path =
-        reason === "service-map-not-injective"
-          ? "services"
-          : reason === "identity-mismatch"
-            ? "producer.recipeId"
-            : reason === "version-mismatch"
-              ? "producer.manifestVersion"
-              : ParseResult.ArrayFormatter.formatErrorSync(error)
-                  .find((issue) => issue.path.length > 0)
-                  ?.path.map(String)
-                  .join(".");
+      let reason: RecipeProvenanceError["reason"];
+      let path: string | undefined;
+      if (/injectiv/i.test(message)) {
+        reason = "service-map-not-injective";
+        path = "services";
+      } else if (/disagrees with producer\.recipeId/.test(message)) {
+        reason = "identity-mismatch";
+        path = "producer.recipeId";
+      } else if (/disagrees with producer\.manifestVersion/.test(message)) {
+        reason = "version-mismatch";
+        path = "producer.manifestVersion";
+      } else {
+        reason = "malformed";
+        path = ParseResult.ArrayFormatter.formatErrorSync(error)
+          .find((issue) => issue.path.length > 0)
+          ?.path.map(String)
+          .join(".");
+      }
       return new RecipeProvenanceError({
         reason,
         message: `Invalid recipe provenance (${reason}).`,

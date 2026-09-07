@@ -187,27 +187,17 @@ export const classifyHunk = (
 ): RecipeHunkClassification => {
   switch (hunk.kind) {
     case "add":
-      return isDeepStrictEqual(site.current, hunk.new)
-        ? "already-satisfied"
-        : site.current === undefined
-          ? "selected"
-          : "blocking";
+      if (isDeepStrictEqual(site.current, hunk.new)) return "already-satisfied";
+      return site.current === undefined ? "selected" : "blocking";
     case "remove":
-      return site.current === undefined
-        ? "already-satisfied"
-        : isDeepStrictEqual(site.current, hunk.old)
-          ? "selected"
-          : "blocking";
+      if (site.current === undefined) return "already-satisfied";
+      return isDeepStrictEqual(site.current, hunk.old) ? "selected" : "blocking";
     case "rename":
     case "replace":
     case "option-default":
-      return isDeepStrictEqual(site.current, hunk.new)
-        ? "already-satisfied"
-        : isDeepStrictEqual(site.current, hunk.old)
-          ? "selected"
-          : hunk.kind === "option-default"
-            ? "retained-option"
-            : "blocking";
+      if (isDeepStrictEqual(site.current, hunk.new)) return "already-satisfied";
+      if (isDeepStrictEqual(site.current, hunk.old)) return "selected";
+      return hunk.kind === "option-default" ? "retained-option" : "blocking";
     default:
       return hunk satisfies never;
   }

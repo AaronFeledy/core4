@@ -5,8 +5,6 @@ import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.
 import { RecipeId, RecipeVersion } from "./recipe-identity.ts";
 import { RecipeMigration, RecipeSnapshot } from "./recipe-snapshot.ts";
 
-// ==== Recipe manifest: PromptSpec fields plus recipe-only when:/deprecated:
-
 export { RecipeId, RecipeVersion } from "./recipe-identity.ts";
 
 /** Recipe-prompt type — the generalized {@link PromptType} vocabulary. */

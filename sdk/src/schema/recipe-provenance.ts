@@ -8,8 +8,6 @@ import {
   RecipeVersion,
 } from "./recipe-identity.ts";
 
-// ==== Landofile `recipe:` provenance — ordinary inert file data, never runtime state.
-
 const metadata = (identifier: string, description: string) => ({
   identifier,
   title: identifier,
