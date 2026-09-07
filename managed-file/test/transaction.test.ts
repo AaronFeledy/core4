@@ -287,13 +287,13 @@ describe("managed-file transaction coordinator", () => {
     expect(JSON.stringify(error)).not.toContain("super-secret-value");
   });
 
-  test("cleans up only its own stages when prepare fails", async () => {
+  test("does not delete unjournaled foreign stages when prepare fails on path policy", async () => {
     // Given a foreign stage left by another transaction
     const { appRoot, transactions } = await makeFixture();
     const foreign = join(appRoot, ".lando.yml.lando-stage.00000000-foreign");
     await writeFile(foreign, "name: foreign\n", "utf8");
 
-    // When a prepare fails after resolving its first operation
+    // When prepare rejects the whole path graph before creating artifacts
     const error = await failure(
       transactions.prepare({
         appRoot,
@@ -304,7 +304,7 @@ describe("managed-file transaction coordinator", () => {
       }),
     );
 
-    // Then it removes only its own stage and never guesses ownership of the foreign one
+    // Then it never guesses ownership of the unjournaled foreign stage
     expect(error.reason).toBe("path");
     expect(await readFile(foreign, "utf8")).toBe("name: foreign\n");
     expect(await stageNames(appRoot)).toEqual([".lando.yml.lando-stage.00000000-foreign"]);
