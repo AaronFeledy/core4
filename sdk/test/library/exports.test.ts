@@ -679,7 +679,7 @@ describe("@lando/sdk package exports", () => {
     expect(recipes.renderRecipeSnapshot).toBeDefined();
     expect(recipes.validateMigrationChain).toBeDefined();
     expect(recipes.deriveHunkId).toBeDefined();
-    expect(recipes.classifyHunk).toBeDefined();
+    expect(recipes.selectMigrationPath).toBeDefined();
     expect(recipes.validateOptionValues).toBeDefined();
     expect(recipes.validateRecipeSecretPrompts).toBeDefined();
     expect(recipes.secretSinkFailure).toBeDefined();

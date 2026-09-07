@@ -8,7 +8,12 @@ import { recipeMigratability } from "./option-types.ts";
 export * from "./content-digest.ts";
 export * from "./provenance.ts";
 export * from "./snapshot-template.ts";
-export * from "./migration-chain.ts";
+export {
+  canonicalJson,
+  deriveHunkId,
+  selectMigrationPath,
+  validateMigrationChain,
+} from "./migration-chain.ts";
 export * from "./option-types.ts";
 export * from "./secret-disposition.ts";
 

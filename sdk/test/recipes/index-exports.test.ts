@@ -9,7 +9,6 @@ test("recipes exports every public helper", () => {
       "approvedSecretReferencesOnly",
       "canonicalJson",
       "computeRecipeContentDigest",
-      "classifyHunk",
       "collectSnapshotTemplateViolations",
       "deriveHunkId",
       "deriveRecipeProducer",
