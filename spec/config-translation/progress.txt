@@ -284,3 +284,11 @@
 - Guide-Coverage-Skip: SDK recipe contract helpers add no user-facing CLI or guide-covered public command surface.
 - **Learnings for future iterations:** Digest projections must omit `identity.contentDigest` and migrations; `exactOptionalPropertyTypes` forbids assigning `undefined` into optional keys.
 ---
+
+## 2026-09-07 21:56 - US-609B Drift Audit
+- Trigger: 2 cycles, 3637 changed lines, 3 commits
+- Findings: provenance-header test used a fake option map instead of object-form provenance and `{{ recipe.* }}` sites; versioned identity had no behavioral test; secret disposition re-decoded an already-typed union; classifyHunk (US-611B analysis) was on the public recipes barrel
+- Fixed: restored object-form header plus intact expression-site round-trip; added digest-keyed identity agreement; removed dead secret re-validation; unexported classifyHunk from the public recipes barrel
+- Split/excise decisions: none; classifyHunk stays in-module for US-611B; no passes flip
+- Verification: typecheck, lint, 89 spot checks — pass
+---
