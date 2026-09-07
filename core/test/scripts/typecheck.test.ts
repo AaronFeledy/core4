@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import config from "../tsconfig.json";
-import { typecheck } from "./typecheck.ts";
+import { typecheck } from "../../../scripts/typecheck.ts";
+import config from "../../../tsconfig.json";
 
 test("checks every root reference while separating package and test compiler lifetimes", async () => {
   // Given
