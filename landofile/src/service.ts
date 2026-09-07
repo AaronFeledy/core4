@@ -163,6 +163,19 @@ const extractFailure = <E>(cause: Cause.Cause<E>): E | undefined => {
   return failure._tag === "Some" ? failure.value : undefined;
 };
 
+const optionalTransactionGuard = (inputs?: LandofileRuntimeInputs) =>
+  Effect.gen(function* () {
+    if (inputs?.transactionGuard !== undefined) return inputs.transactionGuard;
+    const option = yield* Effect.serviceOption(ManagedFileTransactionGuard);
+    return option._tag === "Some" ? option.value : undefined;
+  });
+
+const ensureConsistentRoot = (appRoot: string, inputs?: LandofileRuntimeInputs) =>
+  Effect.gen(function* () {
+    const guard = yield* optionalTransactionGuard(inputs);
+    if (guard !== undefined) yield* guard.ensureConsistent(appRoot);
+  });
+
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
     return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
@@ -319,6 +332,7 @@ export const loadLandofileFile = (
       layer: "canonical" as const,
       policy: DEFAULT_LANDOFILE_LOAD_POLICY,
     };
+    yield* ensureConsistentRoot(resolvedContext.appRoot, inputs);
     const parsed = yield* filePath.endsWith(".ts")
       ? loadTsLandofile(filePath)
       : loadYamlLandofile(filePath, inputs);
@@ -413,9 +427,7 @@ export const loadLandofileLayers = (
   inputs?: LandofileRuntimeInputs,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   Effect.gen(function* () {
-    if (inputs?.transactionGuard !== undefined) {
-      yield* inputs.transactionGuard.ensureConsistent(appRoot);
-    }
+    yield* ensureConsistentRoot(appRoot, inputs);
     const runtime = yield* loadContext(appRoot);
     const logger = runtime.logger;
     const onRelaxedRead =
@@ -514,22 +526,42 @@ export const loadLandofileLayers = (
 const makeDiscoverLandofile = (
   inputs: LandofileRuntimeInputs,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
-  Effect.tryPromise({
-    try: async () => findLandofile(process.cwd()),
-    catch: (cause) => {
-      if (cause instanceof LandofileNotFoundError) return cause;
-      if (cause instanceof LandofileFormConflictError) return cause;
-      if (cause instanceof LandofileParseError) return cause;
-      return new LandofileParseError({
-        message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-        filePath: join(process.cwd(), LANDOFILE_NAME),
-        line: undefined,
-        column: undefined,
-        cause,
+  Effect.gen(function* () {
+    const searched: string[] = [];
+    let current = process.cwd();
+    for (;;) {
+      yield* ensureConsistentRoot(current, inputs);
+      const candidates = landofileLayerPaths(current);
+      searched.push(...candidates.flatMap(({ yamlPath, typescriptPath }) => [yamlPath, typescriptPath]));
+      const layer = yield* Effect.tryPromise({
+        try: async () => representativeLandofileLayer(await presentLandofileLayers(current)),
+        catch: (cause) => {
+          if (cause instanceof LandofileNotFoundError) return cause;
+          if (cause instanceof LandofileFormConflictError) return cause;
+          if (cause instanceof LandofileParseError) return cause;
+          return new LandofileParseError({
+            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
+            filePath: join(process.cwd(), LANDOFILE_NAME),
+            line: undefined,
+            column: undefined,
+            cause,
+          });
+        },
       });
-    },
+      if (layer !== undefined) {
+        return yield* loadLandofileLayers(dirname(layer.filePath), layer.filePath, inputs);
+      }
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: `No .lando.yml or .lando.ts found. Searched: ${searched.join(", ")}`,
+        cwd: process.cwd(),
+      }),
+    );
   }).pipe(
-    Effect.flatMap(({ filePath }) => loadLandofileLayers(dirname(filePath), filePath, inputs)),
     Effect.catchAllCause((cause) => {
       const failure = extractFailure(cause);
       if (failure !== undefined) return Effect.fail(failure);

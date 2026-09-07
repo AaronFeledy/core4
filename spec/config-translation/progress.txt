@@ -218,3 +218,10 @@
   - The guard must peek with `openJournal(..., { createDirectory: false })` before locking. Creating the ledger directory on every native load would write to disk on the §12.5 hot path for every app that never ran a transaction.
   - An Effect layer only sees what is provided *to it*: the Landofile service layer takes the guard through `Layer.provide`, and `discover` stays `R = never` by closing over the resolved guard at layer construction.
 ---
+
+## 2026-09-07 12:06 - US-608D Review
+- Guarded production native loads: context-provided `ManagedFileTransactionGuard` is consulted when composition inputs omit it, single-file reads consult it before parse, and discovery recovers the cwd before walking to a parent Landofile. Windows recovery no longer treats POSIX-only `0o600` stage bits as a conflict.
+- Review notes (deferred/rejected): Hold the canonical-root lock through layer parse — AC cooperative-lock/no-CAS and §12.4.1 do not require CAS across the read. Windows owner-only DACL — deferred in US-608C, not introduced here. Pathname TOCTOU on rename/chmod — spec says the cooperative lock is not CAS.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 29 focused tests passed (7 landofile guard, 21 recovery, 1 start guard).
+- Guide-Coverage-Skip: internal transaction load guard with no new CLI or guide-covered public contract.
+---

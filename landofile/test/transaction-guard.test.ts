@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { ConfigService, LandofileService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Context, Effect, Either, Layer } from "effect";
 import { withResolvedCwd } from "../src/app-resolution.ts";
-import { loadLandofileLayers, makeLandofileServiceLive } from "../src/service.ts";
+import { loadLandofileFile, loadLandofileLayers, makeLandofileServiceLive } from "../src/service.ts";
 import { makeTestLandofilePorts } from "./support.ts";
 
 const withApp = async (run: (root: string) => Promise<void>) => {
@@ -54,7 +54,8 @@ test("loads repaired layers when the guard changes the file set before enumerati
 
     // Then: the new local layer participates, and the partial YAML was not parsed.
     expect(result.name).toBe("repaired-local");
-    expect(roots).toEqual([root]);
+    expect(roots[0]).toBe(root);
+    expect(new Set(roots)).toEqual(new Set([root]));
   });
 });
 
@@ -129,5 +130,92 @@ test("allows direct unit callers to omit the guard", async () => {
 
     // Then
     expect(result.name).toBe("unit-caller");
+  });
+});
+
+test("consults a context guard when callers omit transactionGuard inputs", async () => {
+  await withApp(async (root) => {
+    // Given: a readable Landofile and a blocked journal represented only in context.
+    const canonical = join(root, ".lando.yml");
+    await writeFile(canonical, "name: unguarded\n");
+    const failure = blocked(root);
+
+    // When: production wrappers pass composition inputs with no transactionGuard field.
+    const result = await Effect.runPromise(
+      loadLandofileLayers(root, canonical, {
+        ports: makeTestLandofilePorts(root),
+        templates: { modules: [] },
+      }).pipe(
+        Effect.provideService(ManagedFileTransactionGuard, {
+          ensureConsistent: () => Effect.fail(failure),
+          pending: () => Effect.succeed(null),
+        }),
+        Effect.either,
+      ),
+    );
+
+    // Then
+    expect(Either.isLeft(result) && result.left).toBe(failure);
+  });
+});
+
+test("consults a context guard before reading a single Landofile file", async () => {
+  await withApp(async (root) => {
+    // Given
+    const canonical = join(root, ".lando.yml");
+    await writeFile(canonical, "name: unguarded\n");
+    const failure = blocked(root);
+
+    // When
+    const result = await Effect.runPromise(
+      loadLandofileFile(canonical).pipe(
+        Effect.provideService(ManagedFileTransactionGuard, {
+          ensureConsistent: () => Effect.fail(failure),
+          pending: () => Effect.succeed(null),
+        }),
+        Effect.either,
+      ),
+    );
+
+    // Then
+    expect(Either.isLeft(result) && result.left).toBe(failure);
+  });
+});
+
+test("recovers the cwd file set before walking to a parent Landofile", async () => {
+  await withApp(async (root) => {
+    // Given: cwd has no Landofile yet, but a parent does, and recovery would create cwd's file.
+    const child = join(root, "app");
+    await mkdir(child);
+    await writeFile(join(root, ".lando.yml"), "name: parent\n");
+    const roots: string[] = [];
+    const live = makeLandofileServiceLive({
+      ports: makeTestLandofilePorts(child),
+      templates: { modules: [] },
+    }).pipe(
+      Layer.provide(
+        Layer.succeed(ManagedFileTransactionGuard, {
+          ensureConsistent: (appRoot: string) =>
+            Effect.promise(async () => {
+              roots.push(appRoot);
+              if (appRoot === child) await writeFile(join(child, ".lando.yml"), "name: child\n");
+            }),
+          pending: () => Effect.succeed(null),
+        }),
+      ),
+    );
+    const service = await Effect.runPromise(
+      Layer.build(live).pipe(
+        Effect.map((context) => Context.get(context, LandofileService)),
+        Effect.scoped,
+      ),
+    );
+
+    // When
+    const result = await Effect.runPromise(withResolvedCwd(child, service.discover));
+
+    // Then: recovery at cwd is consulted first and the parent file is not consumed.
+    expect(result.name).toBe("child");
+    expect(roots[0]).toBe(child);
   });
 });

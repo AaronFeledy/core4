@@ -178,7 +178,11 @@ export const finishAppliedMode = async (root: string, entry: Entry): Promise<voi
   if (!entry.after.present || stage === undefined) throw transactionError("journal", "recover");
   const path = await targetPath(root, entry.path);
   const stats = await lstat(path);
-  if (String(stats.dev) !== stage.dev || String(stats.ino) !== stage.ino || (stats.mode & 0o7777) !== 0o600) {
+  if (
+    String(stats.dev) !== stage.dev ||
+    String(stats.ino) !== stage.ino ||
+    (process.platform !== "win32" && (stats.mode & 0o7777) !== 0o600)
+  ) {
     throw transactionError("conflict", "recover", entry.path);
   }
   const read = await snapshot(path);

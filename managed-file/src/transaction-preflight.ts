@@ -65,7 +65,7 @@ const requirePending = async (root: string, entry: Entry): Promise<void> => {
     stats.isSymbolicLink() ||
     stats.nlink !== 1 ||
     !ownedFile(stats) ||
-    (stats.mode & 0o7777) !== STAGE_MODE ||
+    (process.platform !== "win32" && (stats.mode & 0o7777) !== STAGE_MODE) ||
     String(stats.dev) !== stage.dev ||
     String(stats.ino) !== stage.ino
   ) {
@@ -91,11 +91,11 @@ const classifyEntry = async (root: string, entry: Entry): Promise<Disposition> =
   const stage = entry.stage;
   if (
     entry.after.present &&
-    entry.after.mode !== STAGE_MODE &&
     stage !== undefined &&
     current.present &&
     current.digest === entry.after.digest &&
-    current.mode === STAGE_MODE &&
+    current.mode !== entry.after.mode &&
+    (process.platform === "win32" || (entry.after.mode !== STAGE_MODE && current.mode === STAGE_MODE)) &&
     (await statMaybe(await stagePath(root, entry))) === null
   ) {
     const target = await lstat(path);
