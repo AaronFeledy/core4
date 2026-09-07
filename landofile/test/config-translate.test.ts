@@ -136,21 +136,25 @@ test("rejects foreign output source identities with producing translator attribu
   if (result._tag === "Left") expect(result.left.translator).toBe("foreign");
 });
 
-test.each(["source", "translator"])("rejects a detection match with foreign %s identity", async (kind) => {
-  const translator = makeTranslator("a", {
-    detect: () =>
-      Effect.succeed([
-        {
-          translator: kind === "translator" ? "other" : "a",
-          sourceIds: [kind === "source" ? ConfigTranslateSourceId.make("other") : sourceId],
-          confidence: "exact",
-        },
-      ]),
-  });
-  const result = await Effect.runPromise(
-    Effect.either(detectConfigTranslators([translator], { documents: baseInput.documents })),
-  );
-  expect(result._tag).toBe("Left");
-  if (result._tag === "Left")
-    expect(result.left).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
-});
+test.each(["source", "translator", "empty"])(
+  "rejects a detection match with foreign %s identity",
+  async (kind) => {
+    const translator = makeTranslator("a", {
+      detect: () =>
+        Effect.succeed([
+          {
+            translator: kind === "translator" ? "other" : "a",
+            sourceIds:
+              kind === "empty" ? [] : [kind === "source" ? ConfigTranslateSourceId.make("other") : sourceId],
+            confidence: "exact",
+          },
+        ]),
+    });
+    const result = await Effect.runPromise(
+      Effect.either(detectConfigTranslators([translator], { documents: baseInput.documents })),
+    );
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
+  },
+);

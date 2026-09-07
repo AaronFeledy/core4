@@ -51,7 +51,10 @@ export const detectConfigTranslators = (
       const detected = yield* translator.detect(input);
       if (
         detected.some(
-          (match) => match.translator !== translator.id || match.sourceIds.some((id) => !sourceIds.has(id)),
+          (match) =>
+            match.translator !== translator.id ||
+            match.sourceIds.length === 0 ||
+            match.sourceIds.some((id) => !sourceIds.has(id)),
         )
       ) {
         return yield* Effect.fail(
@@ -59,7 +62,7 @@ export const detectConfigTranslators = (
             translator: translator.id,
             message: "Detection returned a foreign translator or source identity.",
             remediation:
-              "Attribute matches to the producing translator and only sources in the input documents.",
+              "Attribute matches to the producing translator and at least one source in the input documents.",
           }),
         );
       }

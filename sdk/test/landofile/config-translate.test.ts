@@ -62,6 +62,14 @@ describe("config translation validators", () => {
   });
   test.each([
     ["foreign output", { outputs: [output("foreign")], diagnostics: [], deletions: [] }],
+    [
+      "empty output sources",
+      {
+        outputs: [{ targetLayer: "canonical" as const, fragment: {}, sourceIds: [] }],
+        diagnostics: [],
+        deletions: [],
+      },
+    ],
     ["duplicate target", { outputs: [output("a"), output("b")], diagnostics: [], deletions: [] }],
     ["unwritable target", { outputs: [output("a", "user")], diagnostics: [], deletions: [] }],
     ["foreign diagnostic", { outputs: [], diagnostics: [diagnostic("foreign")], deletions: [] }],

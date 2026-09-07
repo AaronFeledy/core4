@@ -144,6 +144,11 @@ export const validateConfigTranslateResult = (
       "Order deletion intents by input document order.",
     );
   for (const output of result.outputs) {
+    if (output.sourceIds.length === 0)
+      return invalid(
+        "Translation output is missing source identities.",
+        "Attribute every output to at least one input sourceId.",
+      );
     const fragment = Schema.decodeUnknownEither(LandofileAuthoringFragment)(output.fragment, {
       onExcessProperty: "error",
     });

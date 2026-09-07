@@ -109,3 +109,13 @@
 - Review notes (deferred/rejected): none new.
 - Verification: lint passed; CLI translate harness passed.
 ---
+
+## 2026-09-06 19:53 - US-608A Drift Audit
+- Trigger: 6 cycles, 3490 changed lines, 8 commits
+- Weakened proofs: detect/translate fixtures attributed no source ids; contract harness could skip the complete-shape law
+- Ceremony: CLI helper splits kept — inlining would push the command past 250 LOC
+- Scope absorption: CLI rewrite is required port wiring; US-609C already owns preview/write/encode orchestration
+- Fixed: empty source identities now fail closed; fixtures attribute real snapshot ids; unused completeMerge escape removed
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck pass, lint pass, 80 spot-check tests pass
+---

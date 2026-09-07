@@ -48,28 +48,36 @@ const makeTranslator = (
   id,
   summary: `${id} translator`,
   inputKinds: ["lando-v3"],
-  detect: () =>
+  detect: (input: ConfigTranslateDetectInput) =>
     Effect.succeed(
-      options.detects === false
+      options.detects === false || input.documents.length === 0
         ? []
-        : [{ translator: id, sourceIds: [], confidence: options.confidence ?? ("likely" as const) }],
+        : [
+            {
+              translator: id,
+              sourceIds: input.documents.map((document) => document.sourceId),
+              confidence: options.confidence ?? ("likely" as const),
+            },
+          ],
     ),
-  translate: (input) =>
-    Effect.succeed({
-      outputs: [{ targetLayer: "canonical", fragment, sourceIds: [] }],
+  translate: (input) => {
+    const sourceIds =
+      input._tag === "recipe-request"
+        ? [input.sourceId]
+        : input.documents.map((document) => document.sourceId);
+    return Effect.succeed({
+      outputs: [{ targetLayer: "canonical", fragment, sourceIds }],
       diagnostics: [
         {
           kind: "generated" as const,
           message: `${id} added keys`,
-          sourceId:
-            input._tag === "recipe-request"
-              ? input.sourceId
-              : (input.documents[0]?.sourceId ?? ConfigTranslateSourceId.make("missing")),
+          sourceId: sourceIds[0] ?? ConfigTranslateSourceId.make("missing"),
           keyPath: [],
         },
       ],
       deletions: [],
-    }),
+    });
+  },
 });
 
 const runExit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseExit(effect);
@@ -194,7 +202,13 @@ describe("appConfigTranslate", () => {
       ...makeTranslator("v3", {}),
       translate: () =>
         Effect.succeed({
-          outputs: [{ targetLayer: "local" as const, fragment: {}, sourceIds: [] }],
+          outputs: [
+            {
+              targetLayer: "local" as const,
+              fragment: {},
+              sourceIds: [ConfigTranslateSourceId.make(".lando.yml")],
+            },
+          ],
           diagnostics: [],
           deletions: [],
         }),
@@ -310,7 +324,9 @@ describe("appConfigTranslate", () => {
 
     expect(result.mode).toBe("detect");
     if (result.mode !== "detect") throw new Error("expected detect mode");
-    expect(result.matches).toEqual([{ translator: "v3", sourceIds: [], confidence: "likely" }]);
+    expect(result.matches).toEqual([
+      { translator: "v3", sourceIds: [ConfigTranslateSourceId.make(".lando.yml")], confidence: "likely" },
+    ]);
     expect(translated).toBe(false);
     expect(renderConfigTranslateResult(result, "table")).toContain("v3\tlikely");
   });

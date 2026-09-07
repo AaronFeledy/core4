@@ -50,7 +50,6 @@ export interface ConfigTranslatorContractHarness {
   readonly nonMatchingDetectInput?: ConfigTranslateDetectInput;
   readonly encodeSamples?: ReadonlyArray<ConfigTranslatorEncodeSample>;
   readonly decodeAuthoring?: (text: string) => Effect.Effect<unknown, unknown>;
-  readonly completeMerge?: boolean;
   readonly mutationProbe?: {
     readonly snapshot: Effect.Effect<unknown>;
     readonly assertUnchanged: (before: unknown) => Effect.Effect<boolean>;
