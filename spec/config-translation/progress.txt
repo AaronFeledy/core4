@@ -198,3 +198,30 @@
 - Split/excise decisions: none; FileSystem wrapping re-examined and left deferred; package export stays unwired for US-609C; passes remains true
 - Verification: typecheck pass, lint pass, 67 focused tests pass (1 root-only skip)
 ---
+
+## 2026-09-07 10:07 - US-608C Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: start/info/curl/exec succeeded (HTTP 200 `us608c-ok`, PHP 8.3.33); `app:config` and `app:config:lint` stayed green; `app:config:translate --list` reports no translators and translate fails closed; help `--all` exposes no transaction or migrate UI. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando config:lint --format json` exits unknown-command (`cli:unknown-command`) while `lando help --all` lists `config:lint` and canonical `lando app:config:lint` succeeds. Story AC not blocked; suspected compiled-binary short-name dispatch, untouched by this diff.
+---
+
+## 2026-09-07 11:35 - US-608D
+- Added journal recovery to `@lando/managed-file`: a new `blocked` terminal journal state, a preflight that classifies every entry against the complete recorded before/after plan (containment, symlink, link count, absence, digest, mode, immutable backup, and exclusive owner-only stage), and a roll-forward recovery that mutates only unapplied entries. A conflict marks the journal `blocked`, preserves every user file byte for byte, and demands manual resolution instead of overwriting forward or rolling back over an edit.
+- Handled the crash window between a stage rename and its chmod as its own `applied-needs-mode` disposition, so a target that already carries the recorded after digest at the stage's owner-only mode gets its intended output mode completed rather than being misread as a conflict. Applied writes must additionally still be the renamed stage inode with no stage left behind; originally absent creations and removals classify from presence.
+- Recovery of a `committed` journal performs cleanup only: it never inspects or restores targets or backups, removes stages only when identity *and* digest still prove ownership (`removeRecordedStage` replaces the identity-only removal used everywhere), and then removes the journal. Immutable backups stay until the user deletes them.
+- Added the read-only dry run: it opens the journal without creating its directory, takes no lock, mutates nothing, and reports id, state, `recover | cleanup | manual-resolution`, and target paths only.
+- Published the thin non-translator guard as an SDK tag (`ManagedFileTransactionGuard`) implemented in `@lando/managed-file`, consulted first by native multi-layer Landofile loading and as the first effect of the bound start path. `ManagedFileTransactionError` moved to the SDK so the tagged failure survives into the Landofile discover, user-load, and start error unions instead of being disguised as a parse failure; its TSDoc carries the durable cooperative-lock/not-CAS statement. The guard peeks before it locks, so an app with no journal costs two stats.
+- Verification: typecheck, lint (incl. deprecations), and check:boundaries passed; 391 managed-file + landofile tests and 206 engine-operation + core managed-file tests passed, including a new 21-case recovery suite that went 0/21 red before the implementation. CLI verified end-to-end: with a real blocked journal planted for an app root, `lando app:config` exits 1 with `ManagedFileTransactionError` and its manual-resolution remediation while the concurrent edit survives untouched; the same command succeeds normally once no journal is pending.
+- **Learnings for future iterations:**
+  - Recovery emits its own checkpoint names (`recovering`, `after-recovery-mutation`, `recovered`). Reusing the commit-phase names makes a crash-injection fixture fire again during recovery and hides real behavior behind a fake second crash.
+  - Roll forward, never back. The journal state machine is forward-only, backups plus stages make forward completion safe, and a rollback path would be a second mutation strategy with its own overwrite risk.
+  - `verifyPrivateFile` must treat a missing artifact as a `conflict`, not let `ENOENT` escape as `io`; a deleted backup is a recovery decision, not a filesystem surprise.
+  - The guard must peek with `openJournal(..., { createDirectory: false })` before locking. Creating the ledger directory on every native load would write to disk on the §12.5 hot path for every app that never ran a transaction.
+  - An Effect layer only sees what is provided *to it*: the Landofile service layer takes the guard through `Layer.provide`, and `discover` stays `R = never` by closing over the resolved guard at layer construction.
+---
+
+## 2026-09-07 12:06 - US-608D Review
+- Guarded production native loads: context-provided `ManagedFileTransactionGuard` is consulted when composition inputs omit it, single-file reads consult it before parse, and discovery recovers the cwd before walking to a parent Landofile. Windows recovery no longer treats POSIX-only `0o600` stage bits as a conflict.
+- Review notes (deferred/rejected): Hold the canonical-root lock through layer parse — AC cooperative-lock/no-CAS and §12.4.1 do not require CAS across the read. Windows owner-only DACL — deferred in US-608C, not introduced here. Pathname TOCTOU on rename/chmod — spec says the cooperative lock is not CAS.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 29 focused tests passed (7 landofile guard, 21 recovery, 1 start guard).
+- Guide-Coverage-Skip: internal transaction load guard with no new CLI or guide-covered public contract.
+---

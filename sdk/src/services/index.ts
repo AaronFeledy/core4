@@ -102,6 +102,7 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginDescriptorMismatchError,
@@ -151,7 +152,11 @@ import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
-import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
+import type {
+  ManagedFileApplyOptions,
+  ManagedFileSelector,
+  ManagedFileTransactionPendingReport,
+} from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
 import type {
   CertificateAuthorityShape,
@@ -342,7 +347,20 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
+      | ManagedFileTransactionError
     >;
+  }
+>() {}
+
+export declare class ManagedFileTransactionGuard extends Context.Tag(
+  "@lando/core/ManagedFileTransactionGuard",
+)<
+  ManagedFileTransactionGuard,
+  {
+    readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
+    readonly pending: (
+      appRoot: string,
+    ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
   }
 >() {}
 

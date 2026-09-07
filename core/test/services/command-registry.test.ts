@@ -30,7 +30,7 @@ import {
   pluginCommandCachePath,
 } from "../../src/testing/engine-layers.ts";
 import { CommandRegistryLive } from "../../src/testing/engine-layers.ts";
-import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const writeScript = async (appRoot: string, relativePath: string, contents: string): Promise<void> => {
   const target = join(appRoot, ".lando", "scripts", relativePath);

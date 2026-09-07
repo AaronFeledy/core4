@@ -1,3 +1,4 @@
+import type { LandofileService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Layer } from "effect";
 
 import {
@@ -55,7 +56,8 @@ export const loadLandofileFile = (
 export const loadLandofileLayers = (appRoot: string, canonicalPath: string) =>
   loadLandofileLayersPackage(appRoot, canonicalPath, landofileRuntimeInputs());
 
-export const makeEngineLandofileServiceLive = (inputs: LandofileRuntimeInputs) =>
-  makeLandofileServiceLive(inputs);
+export const makeEngineLandofileServiceLive = (
+  inputs: LandofileRuntimeInputs,
+): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard> => makeLandofileServiceLive(inputs);
 
 export const LandofileServiceLive = Layer.suspend(() => makeLandofileServiceLive(landofileRuntimeInputs()));

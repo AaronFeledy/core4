@@ -12,6 +12,7 @@ import type {
   EventService,
   FileSystem,
   GlobalAppService,
+  ManagedFileTransactionGuard,
   PathsService,
   PluginRegistry,
   ShellRunner,
@@ -40,6 +41,7 @@ type RestartAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | ManagedFileTransactionGuard
   | PathsService
   | PluginRegistry
   | RouterService

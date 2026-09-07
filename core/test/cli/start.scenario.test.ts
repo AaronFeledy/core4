@@ -48,6 +48,7 @@ import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { makeLandoPaths } from "@lando/paths";
@@ -281,6 +282,7 @@ const emptyPluginRegistry = {
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
+  NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
@@ -721,6 +723,7 @@ const makeAutoStartLayer = async (options: {
   };
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(
+    NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),

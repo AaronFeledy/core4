@@ -42,6 +42,7 @@ import type {
   LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   ProviderConfigError,
@@ -100,6 +101,7 @@ import type {
   LandofileService,
   Logger,
   ManagedFileService,
+  ManagedFileTransactionGuard,
   PathsService,
   PluginRegistry,
   PluginTrustStore,
@@ -130,6 +132,7 @@ export type LandoRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | ManagedFileTransactionGuard
   | PathsService
   | PluginTrustStore
   | PrivilegeService
@@ -189,6 +192,7 @@ export interface StartAppResult {
 }
 
 export type StartAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | BuildPhaseFailedError
   | ComposeKeyRejectedError
@@ -238,6 +242,7 @@ export interface StopAppResult {
 }
 
 export type StopAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | EventError
   | LandofileEventLifecycleReentryError
@@ -356,6 +361,7 @@ export interface InfoAppResult {
 }
 
 export type InfoAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
   | ConfigError
@@ -402,6 +408,7 @@ export interface ExecAppResult {
 }
 
 export type ExecAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
   | CapabilityError
@@ -450,6 +457,7 @@ export interface ToolingResult {
 }
 
 export type ToolingError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
@@ -490,6 +498,7 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileNotFoundError
   | LandofileParseError

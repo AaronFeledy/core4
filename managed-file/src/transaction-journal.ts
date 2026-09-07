@@ -40,11 +40,17 @@ export type Entry = typeof Entry.Type;
 export const Journal = Schema.Struct({
   id: Schema.String,
   root: Schema.String,
-  state: Schema.Literal("prepared", "committing", "committed"),
+  state: Schema.Literal("prepared", "committing", "committed", "blocked"),
   entries: Schema.Array(Entry),
 });
 export type Journal = typeof Journal.Type;
-const transitions = { prepared: "committing", committing: "committed", committed: null } as const;
+const transitions = {
+  prepared: "committing",
+  committing: "committed",
+  committed: null,
+  blocked: null,
+} as const;
+const blockable = new Set<Journal["state"]>(["prepared", "committing"]);
 
 export const journalDirectory = (root: string, userDataRoot: string): string =>
   dirname(
@@ -53,9 +59,13 @@ export const journalDirectory = (root: string, userDataRoot: string): string =>
     ),
   );
 
-export const openJournal = (root: string, dir: string) =>
+export const openJournal = (
+  root: string,
+  dir: string,
+  options: { readonly createDirectory?: boolean } = {},
+) =>
   Effect.gen(function* () {
-    yield* transactionIO("inspect", () => ensureDirectory(dir));
+    if (options.createDirectory !== false) yield* transactionIO("inspect", () => ensureDirectory(dir));
     const bucket = yield* makeStateStore()
       .open({
         root: { path: Schema.decodeUnknownSync(AbsolutePath)(dir) },
@@ -100,11 +110,19 @@ export const openJournal = (root: string, dir: string) =>
         }
         yield* bucket.set(journal).pipe(Effect.mapError(() => transactionError("journal", "commit")));
       }).pipe(Effect.uninterruptible);
+    const block = Effect.gen(function* () {
+      const previous = yield* read;
+      if (previous === null || !blockable.has(previous.state))
+        return yield* Effect.fail(transactionError("journal", "recover"));
+      yield* bucket
+        .set({ ...previous, state: "blocked" })
+        .pipe(Effect.mapError(() => transactionError("journal", "recover")));
+    }).pipe(Effect.uninterruptible);
     const removeCommitted = Effect.gen(function* () {
       const journal = yield* read;
       if (journal?.state !== "committed") return yield* Effect.fail(transactionError("journal", "cleanup"));
       yield* bucket.remove.pipe(Effect.mapError(() => transactionError("journal", "cleanup")));
       yield* transactionIO("cleanup", () => syncDirectory(dir));
     }).pipe(Effect.uninterruptible);
-    return { path: bucket.path, read, write, removeCommitted };
+    return { path: bucket.path, read, write, block, removeCommitted };
   });

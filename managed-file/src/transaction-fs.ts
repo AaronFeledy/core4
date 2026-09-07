@@ -91,8 +91,9 @@ export const verifyState = async (root: string, entry: Entry, state: FileState):
 };
 
 const verifyPrivateFile = async (path: string, digest: string): Promise<void> => {
-  const stats = await lstat(path);
+  const stats = await statMaybe(path);
   if (
+    stats === null ||
     !stats.isFile() ||
     stats.isSymbolicLink() ||
     stats.nlink !== 1 ||
@@ -144,7 +145,12 @@ export const ensureBackup = async (path: string, bytes: Uint8Array): Promise<voi
   await verifyPrivateFile(path, digestOf(bytes));
 };
 
-export const removeOwnedStage = async (stage: Stage): Promise<void> => {
+/**
+ * Removes a stage only when it still proves this transaction's ownership: same
+ * inode, same owner, and the exact bytes the journal recorded. A stage whose
+ * identity or content drifted belongs to someone else and is preserved.
+ */
+export const removeRecordedStage = async (stage: Stage, digest: string): Promise<void> => {
   const stats = await statMaybe(stage.path);
   if (
     stats === null ||
@@ -156,8 +162,41 @@ export const removeOwnedStage = async (stage: Stage): Promise<void> => {
     String(stats.ino) !== stage.ino
   )
     return;
+  const read = await snapshot(stage.path);
+  if (!read.state.present || read.state.digest !== digest) return;
   await unlink(stage.path);
   await syncDirectory(dirname(stage.path));
+};
+
+/**
+ * Completes a write whose stage rename landed but whose final mode never did.
+ * The target must still be the renamed stage inode carrying the recorded after
+ * digest at the stage's owner-only mode before the intended mode is applied.
+ */
+export const finishAppliedMode = async (root: string, entry: Entry): Promise<void> => {
+  const stage = entry.stage;
+  if (!entry.after.present || stage === undefined) throw transactionError("journal", "recover");
+  const path = await targetPath(root, entry.path);
+  const stats = await lstat(path);
+  if (
+    String(stats.dev) !== stage.dev ||
+    String(stats.ino) !== stage.ino ||
+    (process.platform !== "win32" && (stats.mode & 0o7777) !== 0o600)
+  ) {
+    throw transactionError("conflict", "recover", entry.path);
+  }
+  const read = await snapshot(path);
+  if (!read.state.present || read.state.digest !== entry.after.digest)
+    throw transactionError("conflict", "recover", entry.path);
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    await handle.chmod(entry.after.mode);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await syncDirectory(dirname(path));
+  await verifyState(root, entry, entry.after);
 };
 
 export const mutateEntry = async (root: string, entry: Entry): Promise<void> => {

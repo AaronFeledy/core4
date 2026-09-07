@@ -11,7 +11,8 @@ import { initApp } from "../../src/cli/commands/init.ts";
 import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
-import { AppPlannerLive, LandofileServiceLive, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { AppPlannerLive, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 interface CanonicalAnswers {
   readonly name: string;

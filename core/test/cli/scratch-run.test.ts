@@ -54,9 +54,9 @@ import { BuildOrchestratorLive } from "../../src/testing/engine-layers.ts";
 import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
 import { EventServiceLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
 import { SecretStoreLive } from "../../src/testing/engine-layers.ts";
+import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

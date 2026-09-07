@@ -14,6 +14,7 @@ import type {
   LandofileTimeoutError,
   LandofileUnknownEventError,
   LandofileValidationError,
+  ManagedFileTransactionError,
   NotImplementedError,
   ToolingIncludeCycleError,
 } from "../errors/index.ts";
@@ -39,6 +40,7 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
+      | ManagedFileTransactionError
     >;
   }
 >() {}

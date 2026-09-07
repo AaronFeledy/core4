@@ -9,7 +9,7 @@
       "description": "As a maintainer, I have one durable core contract before implementation begins.",
       "acceptanceCriteria": [
         "Amend the owning core sections for authoring schemas, set-based translation, expression-preserving encoding, registration, producer provenance, declarative snapshots, secret dispositions, and the managed-file transaction and guard; add no `ConfigFormat`, bootstrap sniffing, YAML provenance tag, compatibility delete operator, or runtime emulation.",
-        "Remove recipe wording that permits raw secrets in templates, argv, files, or provenance; add the §12.4 transaction-artifact lifecycle and exact topic/command/plugin/testing/release registry entries; the specification-only standard gates pass.",
+        "Remove recipe wording that permits raw secrets in templates, argv, files, or provenance; add the \u00a712.4 transaction-artifact lifecycle and exact topic/command/plugin/testing/release registry entries; the specification-only standard gates pass.",
         "Amend owning core specs for restart brackets, planned build users, default home storage, normalized tooling metadata, dynamic events, routes, catalog options, scoped rebuild/info, bounded global maps, and the service-version catalog; remove `LANDO_INFO`, add no `LANDO_MOUNT`, and import no legacy global state.",
         "Freeze the exact semantics in US-613 through US-618E, including generated reserved-env ownership, `dev.lando.*` label reservation, unknown-home failure, and catalog-derived supported versions; specification standard gates pass.",
         "Amend owning core sections for `@lando/lando3`, set-based conversion, authoring fragments, safe loader remediation, side-by-side operation ownership, path-only doctor ports, and removal of aggregate `LANDO_INFO`; add no `LANDO_MOUNT`.",
@@ -26,7 +26,7 @@
       "description": "As a plugin author, I can translate one ordered foreign document set without pretending its documents are valid v4.",
       "acceptanceCriteria": [
         "Derive complete `LandofileAuthoringShape` and recursive partial `LandofileAuthoringFragment` Effect Schemas from shared runtime field definitions, including typed whole expressions and string-only composite interpolation, with no handwritten parallel public types or value resolution during parse/check/encode.",
-        "Extend `ConfigTranslator` with tagged `landofile-document-set` and `recipe-request` inputs and set outputs exactly as §1.1 defines; validate document or synthetic source ids by variant, methods require `never`, factories close over injected SDK ports, detection consumes bounded snapshots only, and the SDK/schema standard gates pass."
+        "Extend `ConfigTranslator` with tagged `landofile-document-set` and `recipe-request` inputs and set outputs exactly as \u00a71.1 defines; validate document or synthetic source ids by variant, methods require `never`, factories close over injected SDK ports, detection consumes bounded snapshots only, and the SDK/schema standard gates pass."
       ],
       "dependsOn": ["US-607"],
       "priority": 2,
@@ -69,7 +69,7 @@
       ],
       "dependsOn": ["US-608C"],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -92,7 +92,7 @@
       "acceptanceCriteria": [
         "Add the schema-backed SDK `RecipeDecomposer` port over recipe identity, merged nonsecret options/references, and authoring-fragment output; its implementation performs no app-root detection, provider action, write, or arbitrary programmatic recipe execution.",
         "Contract tests cover typed option failure, missing recipe, stable identity, side-effect absence, and injected-port closure with `R = never`; applicable standard gates pass.",
-        "Add mandatory object producer provenance, identity agreement, collision-safe family/version identity, noncircular transitive content digest, injective service map, and expression-aware option sites exactly as §3 defines; place provenance-header tests here.",
+        "Add mandatory object producer provenance, identity agreement, collision-safe family/version identity, noncircular transitive content digest, injective service map, and expression-aware option sites exactly as \u00a73 defines; place provenance-header tests here.",
         "Require each secret prompt to choose `secret-store` reference or one named init-only stdin/secret-env sink; decompose receives no raw secret, central redaction covers sink failures, and schema/redaction/applicable standard gates pass.",
         "Add exact producer identities, `fromSnapshot`/`toSnapshot`, option types/defaults/templates/assets, the closed pure expression/helper allowlist, and declarative hunk schemas; reject IO helpers, arbitrary JS, callbacks, gaps, forks, cycles, overlap, identity drift, and missing old snapshots.",
         "Make bundled current snapshots safe to render without arbitrary recipe code; local programmatic recipes remain normal-init-only absent snapshots; SDK compatibility/schema/contract and applicable standard gates pass."

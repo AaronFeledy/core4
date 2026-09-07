@@ -12,8 +12,8 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";
 export const IMPORTED_PEM = "-----BEGIN CERTIFICATE-----\nimported\n-----END CERTIFICATE-----\n";

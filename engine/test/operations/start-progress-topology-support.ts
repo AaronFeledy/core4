@@ -34,6 +34,7 @@ import { startApp } from "../../src/operations/start.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import { NoopTransactionGuardLive } from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -134,6 +135,7 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    NoopTransactionGuardLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),

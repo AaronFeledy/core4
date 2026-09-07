@@ -39,8 +39,8 @@ import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
 import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/testing/engine-layers.ts";
 import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
   artifactBuild: true,
