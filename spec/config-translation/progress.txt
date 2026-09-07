@@ -103,3 +103,9 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 120 spot-check tests across 7 authoring/translate files passed.
 - **Learnings for future iterations:** Autodetect may skip escaped symlinks, but `--file` must fail on the same realpath check or explicit paths can still leak.
 ---
+
+## 2026-09-06 19:35 - US-608A Review
+- Post-commit Bugbot: annotated translate output comments deletion intents so preview YAML stays valid.
+- Review notes (deferred/rejected): none new.
+- Verification: lint passed; CLI translate harness passed.
+---

@@ -69,7 +69,7 @@ const renderAnnotated = (
   [
     header,
     ...diagnostics.map(diagnosticComment),
-    ...(deletions.length > 0 ? [`deletions: ${deletions.map((item) => item.sourceId).join(", ")}`] : []),
+    ...(deletions.length > 0 ? [`# deletions: ${deletions.map((item) => item.sourceId).join(", ")}`] : []),
   ].join("\n");
 
 export const renderConfigTranslateResult = (

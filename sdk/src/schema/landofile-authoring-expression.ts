@@ -115,7 +115,7 @@ export const isPlainAuthoringString = (source: string): boolean =>
 
 // ==== Static helper return kinds deliberately leave runtime-dependent values unknown.
 const helperTypes: ReadonlyMap<string, AuthoringExpressionExpectedType> = new Map([
-  ..."eq ne lt gt le ge not contains startsWith endsWith semver.satisfies"
+  ..."eq ne lt gt le ge and or not contains startsWith endsWith regexMatch semver.satisfies"
     .split(" ")
     .map((name) => [name, "boolean"] as const),
   ..."lower upper trim join replace url.build shellQuote shellJoin json b64encode b64decode"
@@ -151,7 +151,6 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
   const visit = (node: ExpressionNode): AuthoringExpressionExpectedType => {
     switch (node.kind) {
       case "Literal": {
-        if (node.value === null) return "unknown";
         const kind = typeof node.value;
         return kind === "string" || kind === "number" || kind === "boolean" ? kind : "object";
       }
@@ -172,8 +171,7 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
       case "Call": {
         callees.add(node.callee);
         const args = node.args.map(visit);
-        if (node.callee === "default" || node.callee === "and" || node.callee === "or")
-          return agree(args[0], args[1]);
+        if (node.callee === "default") return agree(args[0], args[1]);
         return node.callee.startsWith("path.") ? "string" : (helperTypes.get(node.callee) ?? "unknown");
       }
       case "Conditional":

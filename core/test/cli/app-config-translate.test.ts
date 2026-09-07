@@ -129,7 +129,7 @@ describe("appConfigTranslate", () => {
         if (result.mode === "preview" || result.mode === "write") {
           const text = renderConfigTranslateResult(result);
           expect(text).toContain(`# ${glyphs[kind]} Changed (compose.yml:services.web.0)`);
-          expect(text).toContain("deletions: compose.yml");
+          expect(text).toContain("# deletions: compose.yml");
         }
       }
     },
