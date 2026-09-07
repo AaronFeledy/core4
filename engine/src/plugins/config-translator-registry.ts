@@ -8,12 +8,18 @@
  * once, so help, version, ordinary loading, and tooling paths never construct
  * translator factories. Duplicate ids across sources fail `list` with a
  * `ConfigTranslatorConflictError` naming both producers; no source wins.
+ * Manifest and descriptor id sets must agree or `list` fails with
+ * `PluginDescriptorMismatchError` before any factory runs.
  * Duplicates inside the bundled set are already rejected by the module-set
  * index at plugin bootstrap.
  */
 import { Effect, Layer, Option } from "effect";
 
-import { ConfigTranslatorConflictError, PluginLoadError } from "@lando/sdk/errors";
+import {
+  ConfigTranslatorConflictError,
+  PluginDescriptorMismatchError,
+  PluginLoadError,
+} from "@lando/sdk/errors";
 import type { ConfigTranslatorLoader, LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 
@@ -44,17 +50,44 @@ const translatorLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string
 };
 
 /**
- * Collect translator candidates in plugin order. The first duplicate id fails
+ * Collect translator candidates in plugin order. Loader ids must match the
+ * plugin's manifest `configTranslators:` ids. The first duplicate id fails
  * with both producing plugin names; neither contribution is kept.
  */
+const sameTranslatorIds = (declared: ReadonlyArray<string>, provided: ReadonlyArray<string>): boolean => {
+  const left = [...declared].sort();
+  const right = [...provided].sort();
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+};
+
 export const configTranslatorCandidates = (
   plugins: ReadonlyArray<LoadedPluginContribution>,
-): Effect.Effect<ReadonlyArray<ConfigTranslatorCandidate>, ConfigTranslatorConflictError> => {
+): Effect.Effect<
+  ReadonlyArray<ConfigTranslatorCandidate>,
+  ConfigTranslatorConflictError | PluginDescriptorMismatchError
+> => {
   const candidates: Array<ConfigTranslatorCandidate> = [];
   const owners = new Map<string, ConfigTranslatorCandidate>();
   for (const plugin of plugins) {
     const pluginName = String(plugin.manifest.name);
-    for (const [id, load] of translatorLoaders(plugin)) {
+    const loaders = translatorLoaders(plugin);
+    const declared = (plugin.manifest.contributes?.configTranslators ?? []).map(
+      (contribution) => contribution.id,
+    );
+    const provided = [...loaders.keys()];
+    if (!sameTranslatorIds(declared, provided)) {
+      return Effect.fail(
+        new PluginDescriptorMismatchError({
+          pluginName,
+          kind: "configTranslators",
+          declared,
+          provided,
+          message: `Plugin ${pluginName} manifest and descriptor disagree for configTranslators.`,
+          remediation: `Align ${pluginName}'s manifest configTranslators ids with its descriptor configTranslators ids.`,
+        }),
+      );
+    }
+    for (const [id, load] of loaders) {
       const owner = owners.get(id);
       if (owner !== undefined) {
         return Effect.fail(

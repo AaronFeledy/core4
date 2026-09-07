@@ -144,3 +144,10 @@
   - `/tmp` is not shared with the lando4-dev distro; put throwaway CLI apps under the gitignored `.local/` tree.
   - Bundled translators (`lando4`, `recipe`) should ship as `configTranslators` map entries wrapping `import()` in their plugin descriptor; the registry verifies the loaded `id` matches the contribution id.
 ---
+
+## 2026-09-06 23:26 - US-608B Review
+- Review-work failed on graph-level manifest/descriptor agreement; Bugbot found no bugs. Fixed: registry `list` now fail-closes with `PluginDescriptorMismatchError` when a plugin's `configTranslators` loader ids disagree with its manifest, before any factory runs.
+- Review notes (deferred/rejected): Manifest-only dynamic import of `configTranslators[].module` — command-shaped lazy Maps are the AC loading path; undeclared or missing loaders now fail closed instead of inventing a CA-style module import. Full-suite uninstall timeouts — loop forbids `bun test` with no path and those failures are unrelated. Loading every factory on first `list` / structural runtime-shape checks — MINOR, not AC-blocking.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 74 spot-check tests across registry, module-set, translate, schema, and generated-layer files passed.
+- **Learnings for future iterations:** Graph-level translator collection must apply the same exact-id check as the module set. Copying `commandLoaders` without declared-vs-provided validation lets undeclared loaders activate and declared ones vanish.
+---

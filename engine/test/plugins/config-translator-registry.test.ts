@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Schema } from "effect";
 
-import { ConfigTranslatorConflictError, PluginLoadError } from "@lando/sdk/errors";
+import {
+  ConfigTranslatorConflictError,
+  PluginDescriptorMismatchError,
+  PluginLoadError,
+} from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
@@ -150,6 +154,76 @@ describe("ConfigTranslatorRegistry", () => {
       const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
       expect(error).toBeInstanceOf(PluginLoadError);
       if (error instanceof PluginLoadError) expect(error.pluginName).toBe("@lando/bundled");
+    }
+  });
+
+  test("fails when loader ids disagree with the manifest before loading anything", async () => {
+    // Given: a plugin whose descriptor exports a different translator id than the manifest.
+    const calls: Array<string> = [];
+    const module: LandoPluginModule = {
+      name: "@lando/bundled",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/bundled",
+        version: "1.0.0",
+        api: 4,
+        contributes: {
+          configTranslators: [{ id: "declared", module: "./translator.ts", inputKinds: ["declared"] }],
+        },
+      }),
+      configTranslators: new Map([
+        [
+          "provided",
+          async () => {
+            calls.push("loaded");
+            return fakeTranslator("provided");
+          },
+        ],
+      ]),
+    };
+
+    // When: the registry lists.
+    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+
+    // Then: the disagreement is a descriptor mismatch and no loader ran.
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
+      if (error instanceof PluginDescriptorMismatchError) {
+        expect(error.kind).toBe("configTranslators");
+        expect(error.declared).toEqual(["declared"]);
+        expect(error.provided).toEqual(["provided"]);
+      }
+    }
+    expect(calls).toEqual([]);
+  });
+
+  test("fails when the manifest declares a translator with no loader", async () => {
+    // Given: a plugin that lists a translator in the manifest but exports none.
+    const module: LandoPluginModule = {
+      name: "@acme/host",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@acme/host",
+        version: "1.0.0",
+        api: 4,
+        contributes: {
+          configTranslators: [{ id: "terraform", module: "./translator.ts", inputKinds: ["terraform"] }],
+        },
+      }),
+    };
+
+    // When: the registry lists.
+    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+
+    // Then: the missing loader is a descriptor mismatch, not a silent empty list.
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
+      if (error instanceof PluginDescriptorMismatchError) {
+        expect(error.declared).toEqual(["terraform"]);
+        expect(error.provided).toEqual([]);
+      }
     }
   });
 });

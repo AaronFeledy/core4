@@ -104,6 +104,7 @@ import type {
   ManagedFileError,
   NoProviderInstalledError,
   NotImplementedError,
+  PluginDescriptorMismatchError,
   PluginLoadError,
   PluginManifestError,
   ProcessExecError,
@@ -963,7 +964,7 @@ export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/C
   {
     readonly list: Effect.Effect<
       ReadonlyArray<ConfigTranslatorShape>,
-      ConfigTranslatorConflictError | PluginLoadError,
+      ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError,
       never
     >;
   }

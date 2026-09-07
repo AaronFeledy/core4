@@ -9,6 +9,7 @@ import {
   LandofileNotFoundError,
   LandofileParseError,
   type NotImplementedError,
+  type PluginDescriptorMismatchError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
@@ -66,6 +67,7 @@ export type AppConfigTranslateError =
   | ConfigTranslateNoTranslatorsError
   | ConfigTranslateError
   | ConfigTranslatorConflictError
+  | PluginDescriptorMismatchError
   | PluginLoadError;
 
 /**
@@ -75,7 +77,7 @@ export type AppConfigTranslateError =
  */
 const registeredTranslators: Effect.Effect<
   ReadonlyArray<ConfigTranslatorShape>,
-  ConfigTranslatorConflictError | PluginLoadError
+  ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError
 > = Effect.serviceOption(ConfigTranslatorRegistry).pipe(
   Effect.flatMap((registry) => (Option.isSome(registry) ? registry.value.list : Effect.succeed([]))),
 );
