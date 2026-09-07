@@ -190,3 +190,11 @@
 - Verification: typecheck, lint, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 78 focused tests passed (1 root-only skip) across 12 transaction/lock/atomic/adjacent managed-file files.
 - Guide-Coverage-Skip: private transaction coordinator adds no user-facing CLI or guide-covered public contract.
 ---
+
+## 2026-09-07 09:56 - US-608C Drift Audit
+- Trigger: 3 cycles, 1942 changed lines, 3 commits
+- Weakened proofs: path-policy test claimed own-stage cleanup but failed in planning before stages existed; restored the claim to unjournaled foreign-stage preservation, which is the path it actually runs
+- Ceremony: unexported unused PlannedEntry and file-local verifyPrivateFile
+- Split/excise decisions: none; FileSystem wrapping re-examined and left deferred; package export stays unwired for US-609C; passes remains true
+- Verification: typecheck pass, lint pass, 67 focused tests pass (1 root-only skip)
+---
