@@ -87,6 +87,7 @@ export * from "./commands/meta/global-install";
 export * from "./commands/app-config";
 export * from "@lando/engine/operations/app-config-lint";
 export * from "./commands/app-config-lint";
+export * from "./commands/app-config-translate";
 export * from "./commands/app-includes-update";
 export * from "./commands/app-includes-verify";
 export * from "./commands/app-cache-refresh";

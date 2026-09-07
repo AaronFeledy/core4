@@ -4,14 +4,20 @@ import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
+
+import { ConfigTranslatorConflictError } from "@lando/sdk/errors";
 
 import {
   type ConfigTranslateInput,
   ConfigTranslateSourceId,
   type LandofileAuthoringFragmentWire,
 } from "@lando/sdk/schema";
-import type { ConfigTranslateDetectInput, ConfigTranslatorShape } from "@lando/sdk/services";
+import {
+  type ConfigTranslateDetectInput,
+  ConfigTranslatorRegistry,
+  type ConfigTranslatorShape,
+} from "@lando/sdk/services";
 import { runConfigTranslatorContractSuite } from "@lando/sdk/test";
 
 import { parseLandofile } from "@lando/landofile/parser";
@@ -294,6 +300,44 @@ describe("appConfigTranslate", () => {
     expect(result.translators.map((t) => t.id)).toEqual(["v3", "compose"]);
     expect(result.translators[0]?.inputKinds).toEqual(["lando-v3"]);
     expect(result.translators[0]?.summary).toBe("v3 translator");
+  });
+
+  test("resolves translators from ConfigTranslatorRegistry when none are injected", async () => {
+    // Given: a runtime whose registry lists two translators in plugin order.
+    const translators = [
+      makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } }),
+      makeTranslator("compose", {}),
+    ];
+    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.succeed(translators) });
+
+    // When: the operation lists without an explicit translators option.
+    const result = await Effect.runPromise(appConfigTranslate({ list: true }).pipe(Effect.provide(registry)));
+
+    // Then: the registry supplies the translators.
+    expect(result.mode).toBe("list");
+    if (result.mode !== "list") throw new Error("expected list mode");
+    expect(result.translators.map((t) => t.id)).toEqual(["v3", "compose"]);
+  });
+
+  test("surfaces a registry collision as the tagged conflict error", async () => {
+    // Given: a registry whose listing fails on duplicate ids.
+    const conflict = new ConfigTranslatorConflictError({
+      message: "duplicate",
+      id: "lando3",
+      translators: ["@lando/lando3", "@acme/lando3-fork"],
+    });
+    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.fail(conflict) });
+
+    // When: the operation lists.
+    const exit = await Effect.runPromiseExit(appConfigTranslate({ list: true }).pipe(Effect.provide(registry)));
+
+    // Then: the collision propagates untouched.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const error = Cause.failureOption(exit.cause);
+      expect(error._tag).toBe("Some");
+      if (error._tag === "Some") expect(error.value).toBe(conflict);
+    }
   });
 
   test("--list with no registered translators returns an empty list, not an error", async () => {

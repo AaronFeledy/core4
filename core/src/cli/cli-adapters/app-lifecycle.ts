@@ -459,7 +459,7 @@ export const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void
       ...(from === undefined ? {} : { from }),
       ...(files.length === 0 ? {} : { files }),
     }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigTranslateResult(value),
   );
 };

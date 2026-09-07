@@ -15,7 +15,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   topLevelAlias: false,
-  bootstrap: "minimal",
+  bootstrap: "plugins",
   flags: {
     list: Flags.boolean({
       description: "List installed config translators and their input kinds.",

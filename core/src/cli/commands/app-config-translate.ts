@@ -1,6 +1,6 @@
 import { dirname, extname } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import {
   ConfigTranslateError,
@@ -9,6 +9,7 @@ import {
   LandofileNotFoundError,
   LandofileParseError,
   type NotImplementedError,
+  type PluginLoadError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import {
@@ -17,7 +18,7 @@ import {
   LandofileAuthoringShape,
   type PortablePath,
 } from "@lando/sdk/schema";
-import type { ConfigTranslatorShape } from "@lando/sdk/services";
+import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import {
@@ -50,6 +51,11 @@ export interface AppConfigTranslateOptions {
   readonly detect?: boolean;
   readonly from?: string;
   readonly files?: ReadonlyArray<string>;
+  /**
+   * Explicit translator set. When omitted, translators come from the
+   * `ConfigTranslatorRegistry` of the surrounding `plugins` bootstrap tier;
+   * without either, the operation reports no registered translators.
+   */
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
 }
 
@@ -59,7 +65,20 @@ export type AppConfigTranslateError =
   | NotImplementedError
   | ConfigTranslateNoTranslatorsError
   | ConfigTranslateError
-  | ConfigTranslatorConflictError;
+  | ConfigTranslatorConflictError
+  | PluginLoadError;
+
+/**
+ * Registered translators, loaded lazily by the registry only for this explicit
+ * conversion request. An absent registry (a host running below the `plugins`
+ * tier) yields no translators rather than a bootstrap failure.
+ */
+const registeredTranslators: Effect.Effect<
+  ReadonlyArray<ConfigTranslatorShape>,
+  ConfigTranslatorConflictError | PluginLoadError
+> = Effect.serviceOption(ConfigTranslatorRegistry).pipe(
+  Effect.flatMap((registry) => (Option.isSome(registry) ? registry.value.list : Effect.succeed([]))),
+);
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileAuthoringShape);
 
@@ -137,7 +156,7 @@ export const appConfigTranslate = (
   options: AppConfigTranslateOptions = {},
 ): Effect.Effect<AppConfigTranslateResult, AppConfigTranslateError, never> =>
   Effect.gen(function* () {
-    const resolved = yield* resolveConfigTranslators(options.translators ?? []);
+    const resolved = yield* resolveConfigTranslators(options.translators ?? (yield* registeredTranslators));
 
     if (options.list === true) {
       return {
