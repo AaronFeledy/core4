@@ -19,10 +19,8 @@ import { PluginManifest } from "@lando/sdk/schema";
 
 export const PLUGIN_NAME = "@lando/lando4" as const;
 
-/** Translator id contributed by this plugin. */
 export const LANDO4_TRANSLATOR_ID = "lando4";
 
-/** Lazy translator factories, keyed by translator id. */
 export const configTranslators: ReadonlyMap<string, ConfigTranslatorLoader> = new Map([
   [LANDO4_TRANSLATOR_ID, () => import("./translator.ts").then((module) => module.lando4ConfigTranslator)],
 ]);

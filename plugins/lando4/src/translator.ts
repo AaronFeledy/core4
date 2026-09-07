@@ -126,7 +126,6 @@ const detect = (
   Effect.gen(function* () {
     const candidates = input.documents.filter((document) => YAML_MEDIA_TYPES.has(document.mediaType));
     if (candidates.length === 0) return [];
-    const matched: ConfigTranslateDocument[] = [];
     let marked = false;
     for (const document of candidates) {
       const parsed = yield* parseDocument(document);
@@ -135,12 +134,11 @@ const detect = (
       // the sole basis for `exact`. Anything else that survives strict v4
       // authoring decoding is only `likely`.
       marked ||= typeof parsed.right === "object" && Reflect.get(parsed.right, "runtime") === 4;
-      matched.push(document);
     }
     return [
       {
         translator: LANDO4_TRANSLATOR_ID,
-        sourceIds: matched.map((document) => document.sourceId),
+        sourceIds: candidates.map((document) => document.sourceId),
         confidence: marked ? "exact" : "likely",
         summary: SUMMARY,
       },
@@ -267,7 +265,6 @@ const encode = (
     return { text: emitted.right, diagnostics: [] };
   });
 
-/** The bundled `lando4` translator. */
 export const lando4ConfigTranslator: ConfigTranslatorShape = {
   id: LANDO4_TRANSLATOR_ID,
   summary: SUMMARY,
