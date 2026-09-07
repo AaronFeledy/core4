@@ -27,7 +27,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { type LoadedPluginContribution, PluginContributionGraph } from "./contribution-graph.ts";
 import { systemPluginsFromModules } from "./plugin-discovery.ts";
 
-export interface ConfigTranslatorCandidate {
+interface ConfigTranslatorCandidate {
   readonly id: string;
   readonly pluginName: string;
   readonly source: LoadedPluginContribution["source"];
@@ -60,7 +60,7 @@ const sameTranslatorIds = (declared: ReadonlyArray<string>, provided: ReadonlyAr
   return left.length === right.length && left.every((id, index) => id === right[index]);
 };
 
-export const configTranslatorCandidates = (
+const configTranslatorCandidates = (
   plugins: ReadonlyArray<LoadedPluginContribution>,
 ): Effect.Effect<
   ReadonlyArray<ConfigTranslatorCandidate>,
