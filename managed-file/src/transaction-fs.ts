@@ -90,7 +90,7 @@ export const verifyState = async (root: string, entry: Entry, state: FileState):
     throw transactionError("conflict", "commit", entry.path);
 };
 
-export const verifyPrivateFile = async (path: string, digest: string): Promise<void> => {
+const verifyPrivateFile = async (path: string, digest: string): Promise<void> => {
   const stats = await lstat(path);
   if (
     !stats.isFile() ||

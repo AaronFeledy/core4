@@ -19,7 +19,7 @@ export const TransactionRequest = Schema.Struct({
   ),
 });
 export type TransactionRequest = typeof TransactionRequest.Type;
-export interface PlannedEntry {
+interface PlannedEntry {
   readonly entry: Entry;
   readonly beforeBytes: Uint8Array;
   readonly afterBytes: Uint8Array;
