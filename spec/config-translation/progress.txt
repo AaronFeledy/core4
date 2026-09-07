@@ -183,3 +183,10 @@
   - `prepare` hands back an opaque handle and keeps the journal/store in a `WeakMap` lease, so `commit` cannot be replayed or driven from a foreign journal; the scoped finalizer deletes only stages whose recorded dev/ino still match, never foreign or unjournaled ones.
   - Cross-package consumers must import through the `@lando/managed-file/transaction` subpath (package-dag rule); the package stays `private: true`, and the module is deliberately absent from the package root export.
 ---
+
+## 2026-09-07 09:49 - US-608C Review
+- Reviewed the managed-file transaction coordinator against both US-608C ACs and in-scope §12.4.1 coordinator sentences. Bugbot found no bugs. No in-scope defects required a code change; prepare/commit durability, locking, containment, backups/stages, and committed-only cleanup already match the story.
+- Review notes (deferred/rejected): FileSystem/`ManagedFileService` wrapping of coordinator IO — AC text does not require it; §12.4.1 forbids commands/translators bypassing the coordinator, and exclusive-open/fsync/O_NOFOLLOW primitives are not a FileSystem surface this story owns. Pathname TOCTOU / fd-relative mutation — §12.4.1 states cooperative locking is not CAS against noncooperative editors; recovery preflight is US-608D. Split-scope commit-without-lock — scope finalizer drops the lease, so commit fail-closes. Unreadable-lock EACCES takeover after stale mtime — intentional reclaim of crashed exclusive-create leftovers; live readable owners stay protected with `expireLiveOwner: false`. Windows owner-only DACL — matches existing state-store/managed-file 0o600 skip; not a new 608C contract. QA standard-invocation FAIL — empty worktree missing generated preload; main-tree focused tests passed.
+- Verification: typecheck, lint, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 78 focused tests passed (1 root-only skip) across 12 transaction/lock/atomic/adjacent managed-file files.
+- Guide-Coverage-Skip: private transaction coordinator adds no user-facing CLI or guide-covered public contract.
+---
