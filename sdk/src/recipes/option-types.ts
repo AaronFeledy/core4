@@ -103,14 +103,22 @@ export const recipeMigratability = (
         | "missing-snapshot"
         | "local-programmatic-without-snapshot"
         | "unsupported-option-type"
-        | "invalid-template";
+        | "invalid-template"
+        | "identity-mismatch";
     } => {
   if (manifest.snapshot === undefined)
     return {
       status: "nonmigratable",
       reason: sourceKind === "local" ? "local-programmatic-without-snapshot" : "missing-snapshot",
     };
+  if (
+    manifest.snapshot.identity.recipeId !== manifest.id ||
+    manifest.snapshot.identity.manifestVersion !== manifest.version
+  )
+    return { status: "nonmigratable", reason: "identity-mismatch" };
   if (manifest.prompts?.some((prompt) => prompt.choicesFrom !== undefined))
+    return { status: "nonmigratable", reason: "unsupported-option-type" };
+  if (Either.isLeft(validateOptionValues(manifest.snapshot.optionTypes, {}, manifest.snapshot.defaults)))
     return { status: "nonmigratable", reason: "unsupported-option-type" };
   if (Either.isLeft(validateSnapshotTemplate(manifest.id, manifest.snapshot.template)))
     return { status: "nonmigratable", reason: "invalid-template" };

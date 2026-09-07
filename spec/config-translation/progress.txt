@@ -276,3 +276,11 @@
   - `Schema.TaggedError.fields` includes `_tag`; assert it when pinning an exact field set.
   - Adding an export to `@lando/sdk/landofile` also needs the core seam list in `core/test/build/landofile-package-seam.test.ts` updated.
 ---
+
+## 2026-09-07 17:25 - US-609B Review
+- Review-work failed on digest derivation, exclusive secret sinks, and nested callbacks; Bugbot found no bugs. Fixed: canonical content-digest projection and hash, exclusive secret-store versus init-only sink ownership, recursive callable rejection, and migratability identity plus default-type checks.
+- Review notes (deferred/rejected): ConfigTranslateSecretReference as an unrestricted string — pre-existing US-608A envelope with a trusted-caller precondition. Evaluator join/replace allocation and regexMatch CPU — general evaluator hardening, not this story's ACs. Optional contract mutationProbe — the side-effect law exists and is self-tested. classifyHunk rename path comparison — owned by US-611B analysis. Secret defaults in Effect ParseError trees — filter diagnostics are value-free and sink-failure redaction already holds. node:crypto hashing — existing SDK pattern.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 97 focused tests passed across digest, secret, migration, option, and export files.
+- Guide-Coverage-Skip: SDK recipe contract helpers add no user-facing CLI or guide-covered public command surface.
+- **Learnings for future iterations:** Digest projections must omit `identity.contentDigest` and migrations; `exactOptionalPropertyTypes` forbids assigning `undefined` into optional keys.
+---

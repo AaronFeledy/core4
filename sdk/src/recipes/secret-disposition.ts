@@ -8,6 +8,38 @@ import { ConfigTranslateSecretReference } from "../schema/config-translate.ts";
 import type { RecipeDecomposeInput } from "../schema/recipe-decompose.ts";
 import { type RecipeManifest, RecipeSecretDisposition } from "../schema/recipe.ts";
 
+type InitBinding = { readonly kind: "stdin" } | { readonly kind: "secretEnv"; readonly name: string };
+
+const collectInitBindings = (manifest: RecipeManifest, promptName: string): InitBinding[] => {
+  const bindings: InitBinding[] = [];
+  for (const action of manifest.postInit ?? []) {
+    switch (action.type) {
+      case "gitInit":
+      case "message":
+        break;
+      case "command":
+      case "bun":
+        if (action.stdin?.prompt === promptName) bindings.push({ kind: "stdin" });
+        if (action.secretEnv !== undefined) {
+          for (const [name, bound] of Object.entries(action.secretEnv)) {
+            if (bound === promptName) bindings.push({ kind: "secretEnv", name });
+          }
+        }
+        break;
+      default:
+        action satisfies never;
+    }
+  }
+  return bindings;
+};
+
+const matchesDeclaredSink = (binding: InitBinding, disposition: RecipeSecretDisposition): boolean => {
+  if (disposition.kind !== "init-only") return false;
+  return disposition.sink.kind === "stdin"
+    ? binding.kind === "stdin"
+    : binding.kind === "secretEnv" && binding.name === disposition.sink.name;
+};
+
 /**
  * Validate every secret prompt's unique disposition and declared post-init sink.
  * Duplicate secret prompt names are multiple dispositions, defaults are forbidden,
@@ -42,42 +74,17 @@ export const validateRecipeSecretPrompts = (
       return fail("multiple");
     if (Object.hasOwn(prompt, "default")) return fail("default-value");
     const disposition = prompt.disposition;
+    const bindings = collectInitBindings(manifest, prompt.name);
     switch (disposition.kind) {
       case "secret-store":
         if (disposition.field.trim().length === 0) return fail("sink-unresolved");
+        if (bindings.length > 0) return fail("multiple");
         break;
       case "init-only": {
-        const sink = disposition.sink;
-        let count = 0;
-        for (const action of manifest.postInit ?? []) {
-          switch (action.type) {
-            case "gitInit":
-            case "message":
-              break;
-            case "command":
-            case "bun":
-              switch (sink.kind) {
-                case "stdin":
-                  if (action.stdin?.prompt === prompt.name) count++;
-                  break;
-                case "secretEnv":
-                  if (
-                    action.secretEnv !== undefined &&
-                    Object.hasOwn(action.secretEnv, sink.name) &&
-                    action.secretEnv[sink.name] === prompt.name
-                  )
-                    count++;
-                  break;
-                default:
-                  sink satisfies never;
-              }
-              break;
-            default:
-              action satisfies never;
-          }
-        }
-        if (count === 0) return fail("sink-unresolved");
-        if (count > 1) return fail("sink-ambiguous");
+        const matching = bindings.filter((binding) => matchesDeclaredSink(binding, disposition));
+        if (matching.length === 0) return fail("sink-unresolved");
+        if (matching.length > 1) return fail("sink-ambiguous");
+        if (bindings.length !== matching.length) return fail("multiple");
         break;
       }
       default:

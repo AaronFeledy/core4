@@ -51,6 +51,31 @@ test("secret-store requires a non-empty field", () => {
   );
   expect(Either.isLeft(result) && result.left.reason).toBe("sink-unresolved");
 });
+test("secret-store plus an init sink is multiple", () => {
+  const result = validateRecipeSecretPrompts(
+    manifest(
+      [
+        {
+          name: "token",
+          type: "secret",
+          message: "Token",
+          disposition: { kind: "secret-store", field: "token" },
+        },
+      ],
+      [{ type: "command", cmd: "init", stdin: { prompt: "token" } }],
+    ),
+  );
+  expect(Either.isLeft(result) && result.left.reason).toBe("multiple");
+});
+test("init-only stdin plus secretEnv is multiple", () => {
+  const result = validateRecipeSecretPrompts(
+    manifest(
+      [prompt],
+      [{ type: "command", cmd: "init", stdin: { prompt: "token" }, secretEnv: { TOKEN: "token" } }],
+    ),
+  );
+  expect(Either.isLeft(result) && result.left.reason).toBe("multiple");
+});
 test("approved references reject extra raw value fields", () => {
   const result = approvedSecretReferencesOnly({
     producer: {

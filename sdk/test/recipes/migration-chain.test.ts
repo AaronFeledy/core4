@@ -75,6 +75,20 @@ test("hunk id stability and layer sensitivity", () => {
 });
 test("callable-apply precedes all chain checks", () =>
   expect(reason([], producer(3), [{ apply() {} }])).toBe("callable-apply"));
+test("nested callable hunk payload is callable-apply", () =>
+  expect(
+    reason([], producer(3), [
+      {
+        hunks: [
+          {
+            old() {
+              return "ran";
+            },
+          },
+        ],
+      },
+    ]),
+  ).toBe("callable-apply"));
 test("family-mismatch", () =>
   expect(reason([{ ...edge(1, 3), from: { ...producer(1), sourceKind: "local" } }])).toBe("family-mismatch"));
 test("reverse", () => expect(reason([edge(3, 1)])).toBe("reverse"));

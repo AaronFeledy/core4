@@ -48,3 +48,55 @@ test.each(["bundled", "plugin", "local"] as const)("missing snapshot for %s", (s
     reason: sourceKind === "local" ? "local-programmatic-without-snapshot" : "missing-snapshot",
   });
 });
+test("snapshot identity must match the manifest", () => {
+  expect(
+    recipeMigratability(
+      {
+        id: "php",
+        version: "1.0.0",
+        title: "PHP",
+        description: "PHP",
+        snapshot: {
+          identity: {
+            sourceKind: "bundled",
+            packageName: "recipes",
+            recipeId: "other",
+            manifestVersion: "1.0.0",
+            contentDigest: `sha256:${"a".repeat(64)}`,
+          },
+          optionTypes: {},
+          defaults: {},
+          template: { expression: { kind: "Literal", value: "ok" } },
+          assets: [],
+        },
+      },
+      "bundled",
+    ),
+  ).toEqual({ status: "nonmigratable", reason: "identity-mismatch" });
+});
+test("mistyped snapshot defaults are unsupported-option-type", () => {
+  expect(
+    recipeMigratability(
+      {
+        id: "php",
+        version: "1.0.0",
+        title: "PHP",
+        description: "PHP",
+        snapshot: {
+          identity: {
+            sourceKind: "bundled",
+            packageName: "recipes",
+            recipeId: "php",
+            manifestVersion: "1.0.0",
+            contentDigest: `sha256:${"a".repeat(64)}`,
+          },
+          optionTypes: { php: { kind: "number" } },
+          defaults: { php: "not-a-number" },
+          template: { expression: { kind: "Literal", value: "ok" } },
+          assets: [],
+        },
+      },
+      "bundled",
+    ),
+  ).toEqual({ status: "nonmigratable", reason: "unsupported-option-type" });
+});

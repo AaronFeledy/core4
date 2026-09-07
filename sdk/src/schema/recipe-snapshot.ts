@@ -234,12 +234,18 @@ export const RecipeMigration = Schema.Struct({
 export type RecipeMigration = typeof RecipeMigration.Type;
 
 /**
- * True when a serialized migration edge carries a callable `apply`. Serialized
- * manifests describe edits as data; a function smuggled through a runtime object
- * literal is rejected before any snapshot renders.
+ * True when serialized migration data carries a callable value. Manifests
+ * describe edits as data; a function smuggled through a runtime object is
+ * rejected before any snapshot renders.
  */
 export const hasCallableApply = (raw: unknown): boolean => {
-  if (raw === null || typeof raw !== "object") return false;
-  const candidate = (raw as { readonly apply?: unknown }).apply;
-  return typeof candidate === "function";
+  const seen = new Set<object>();
+  const visit = (value: unknown): boolean => {
+    if (typeof value === "function") return true;
+    if (value === null || typeof value !== "object") return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return Object.values(value).some(visit);
+  };
+  return visit(raw);
 };

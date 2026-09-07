@@ -673,6 +673,7 @@ describe("@lando/sdk package exports", () => {
   test("recipes entry point exports the pure recipe contract surface", async () => {
     const recipes = await import("@lando/sdk/recipes");
 
+    expect(recipes.computeRecipeContentDigest).toBeDefined();
     expect(recipes.validateLandofileRecipeProvenance).toBeDefined();
     expect(recipes.validateSnapshotTemplate).toBeDefined();
     expect(recipes.renderRecipeSnapshot).toBeDefined();

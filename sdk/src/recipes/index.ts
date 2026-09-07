@@ -5,6 +5,7 @@ import type { RecipeManifest } from "../schema/recipe.ts";
 import { validateMigrationChain } from "./migration-chain.ts";
 import { recipeMigratability } from "./option-types.ts";
 
+export * from "./content-digest.ts";
 export * from "./provenance.ts";
 export * from "./snapshot-template.ts";
 export * from "./migration-chain.ts";
