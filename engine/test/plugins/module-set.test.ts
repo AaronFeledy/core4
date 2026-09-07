@@ -56,7 +56,8 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then: the duplicate is a typed descriptor mismatch.
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.pluginName).toBe("@lando/second");
       expect(result.left.kind).toBe("subscribers");
@@ -86,7 +87,8 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then: the declared and provided ids are reported with remediation.
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.pluginName).toBe("@lando/mismatch");
       expect(result.left.kind).toBe("templateEngines");
@@ -126,7 +128,8 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([module]);
 
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.kind).toBe("certificateAuthorities");
       expect(result.left.declared).toEqual(["declared-ca"]);
@@ -151,7 +154,8 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([makeModule("@lando/ca-first"), makeModule("@lando/ca-second")]);
 
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
       expect(result.left.kind).toBe("certificateAuthorities");
       expect(result.left.pluginName).toBe("@lando/ca-second");
@@ -173,7 +177,8 @@ describe("makePluginCapabilityIndex", () => {
 
     // Then
     expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
+    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
       expect(result.left.kind).toBe("commands");
       expect(result.left.declared).toEqual(["meta:declared"]);
       expect(result.left.provided).toEqual([]);

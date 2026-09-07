@@ -12,6 +12,7 @@ import type {
   CacheService,
   CommandRegistry,
   ConfigService,
+  ConfigTranslatorRegistry,
   DataMover,
   Downloader,
   EventService,
@@ -119,6 +120,7 @@ type MinimalRuntimeServices =
 type PluginRuntimeServices =
   | MinimalRuntimeServices
   | PluginRegistry
+  | ConfigTranslatorRegistry
   | PluginContributionGraph
   | BuiltInCommandCatalog;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
