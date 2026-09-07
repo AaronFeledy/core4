@@ -772,5 +772,11 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "Optional ProxyConfig.router and routerPin are additive; $defs gained RouterConfig and RouterPin definitions while previously accepted forms remain accepted (US-602)."
+  },
+  {
+    "surface": "command:app:config:translate",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Config translation is pre-release; results now carry source ids, key paths, and deletion intents for document-set translation."
   }
 ]

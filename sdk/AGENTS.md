@@ -18,6 +18,9 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 
 ## Gotchas
 
+- Authoring schemas are derived by a `SchemaAST` walk from `LandofileShape`; expression slots live in `landofile-authoring-expression.ts`. Never hand-write parallel authoring types.
+- Translator results carry WIRE fragments. Core validators decode them through `LandofileAuthoringFragment` before accepting outputs.
+- Authoring Shape/Fragment schemas and their Wire twins inherit field-description exemptions from `LandofileShape.<field>` through a gate rule, not new exemption rows.
 - `.Encoded` is wire/input shape and `.Type` is decoded output. `Schema.DateTimeUtc` encodes as an ISO string but decodes to `DateTime.Utc`; build fixtures on `.Encoded` and date strings via `DateTime.formatIso(dt)`.
 - Do not `Schema.decodeUnknown` an already-decoded runtime value. Use `Schema.is(MySchema)` for runtime-shape assertions, or `Schema.encodeUnknownEither(MySchema)` when a test needs an encoded round trip.
 - Additive public exports must be documented in `sdk/API_COMPATIBILITY.md` or `sdk/test/library/sdk-backward-compatibility.test.ts` fails. The compat test reads the "Additive Alpha schema exports" and "Additive Alpha service tags" headings even for Beta-era additions; new `@lando/sdk/test` helpers belong under "Additive Beta test helper exports".

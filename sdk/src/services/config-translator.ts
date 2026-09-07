@@ -1,43 +1,15 @@
 import { Context, type Effect } from "effect";
+import type { ConfigTranslateError } from "../errors/config.ts";
+import type {
+  ConfigTranslateDetectInput,
+  ConfigTranslateEncodeInput,
+  ConfigTranslateEncodeResult,
+  ConfigTranslateInput,
+  ConfigTranslateMatch,
+  ConfigTranslateResult,
+} from "../schema/config-translate.ts";
 
-import type { ConfigTranslateError } from "../errors/index.ts";
-import type { AbsolutePath, LandofileShape, PortablePath } from "../schema/index.ts";
-
-export type LandofileFragment = Partial<LandofileShape>;
-
-export type ConfigTranslateConfidence = "exact" | "likely" | "possible";
-
-export type ConfigTranslateDiagnosticKind = "generated" | "unsupported" | "non-portable" | "needs-review";
-
-export interface ConfigTranslateDiagnostic {
-  readonly kind: ConfigTranslateDiagnosticKind;
-  readonly message: string;
-  readonly path?: string;
-}
-
-export interface ConfigTranslateDetectInput {
-  readonly appRoot: AbsolutePath;
-  readonly files?: ReadonlyArray<PortablePath>;
-}
-
-export interface ConfigTranslateMatch {
-  readonly translator: string;
-  readonly files: ReadonlyArray<PortablePath>;
-  readonly confidence: ConfigTranslateConfidence;
-  readonly summary?: string;
-}
-
-export interface ConfigTranslateInput {
-  readonly appRoot: AbsolutePath;
-  readonly files: ReadonlyArray<PortablePath>;
-  readonly current: LandofileShape;
-  readonly options: Record<string, unknown>;
-}
-
-export interface ConfigTranslateResult {
-  readonly fragment: LandofileFragment;
-  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
-}
+export type * from "../schema/config-translate.ts";
 
 export interface ConfigTranslatorShape {
   readonly id: string;
@@ -45,10 +17,13 @@ export interface ConfigTranslatorShape {
   readonly inputKinds: ReadonlyArray<string>;
   readonly detect: (
     input: ConfigTranslateDetectInput,
-  ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError>;
+  ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never>;
   readonly translate: (
     input: ConfigTranslateInput,
-  ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError>;
+  ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never>;
+  readonly encode?: (
+    input: ConfigTranslateEncodeInput,
+  ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
 }
 
 export class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<

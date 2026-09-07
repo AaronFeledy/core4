@@ -47,3 +47,75 @@
 - Split/excise decisions: none
 - Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
 ---
+
+## 2026-09-06 17:30 - US-608A
+- Added expression-aware authoring schemas to `@lando/sdk/schema`: `LandofileAuthoringShape` (complete) and `LandofileAuthoringFragment` (recursively partial) are derived at runtime by walking `LandofileShape.ast` with `SchemaAST` (`deriveAuthoringAst`), unioning a typed expression slot at every value site; `Wire` twins publish the encoded string-bearing form. Types come from generic mappers over the runtime Encoded type, not handwritten trees.
+- Expression slots (`authoringExpressionSlot`, `AuthoringExpression`) parse with the SDK expression parser and check whole-vs-composite form (composite only at string sites), the closed scope list, known helper names (`EXPRESSION_HELPER_NAMES` now exported from `@lando/sdk/expressions`), and a static return-type inference; they never evaluate.
+- Replaced the one-way `ConfigTranslator` port: schema-backed `ConfigTranslateInput` (`landofile-document-set` | `recipe-request`), bounded `ConfigTranslateDocument` snapshots, `ConfigTranslateDetectInput { documents }`, set outputs by target layer with wire fragments, six diagnostic kinds, deletion intents, optional `encode`, and explicit `never` requirements. `validateConfigTranslateInput` / `validateConfigTranslateResult` (`@lando/sdk/landofile`) enforce source ids by variant, unique allowlisted target layers, no deletions for recipe requests, diagnostic ordering, and full authoring-fragment decoding.
+- Contract suite rewritten around the new harness with the encoder round-trip law (expression AST preserved) and cumulative-prefix/final-complete validation; coverage row stays `none-bundled`. `app:config:translate` now builds bounded document sets in core, validates merges with the authoring shape, reports deletions, and fails closed on `--write` with deletions.
+- Verification: typecheck, lint, check:boundaries, codegen:schema-snapshot, check:schema-compatibility (one accepted pre-release finding for the translate command result), lint:guides passed; 216 spot-check tests across 13 files passed; CLI `app:config:translate --list` and the no-translator failure path verified.
+- **Learnings for future iterations:**
+  - Document roots currently derive as `Union(object, expression-slot)` like every other object site; making the root object-only breaks the public-field-description gate path (it resolves descriptions through the union branch) and the `Wire` schemas lose field descriptions under `encodedSchema`. Fixing that needs the annotation gate to follow the derived root TypeLiteral first; do it together with the `lando4` codec story.
+  - Registering a schema also requires a fixture entry in `sdk/test/schema/public-schema-contracts.ts`; `AuthoringExpression` must publish through the expression-definition emission path or JSON Schema generation overflows the stack.
+  - `expect<unknown>(...)` is the repo idiom when `toEqual` compares branded/readonly schema values against literals.
+  - Deprecated helper aliases (`pathJoin`, ...) are not registered in the evaluator, so `EXPRESSION_HELPER_NAMES` does not include them yet.
+---
+
+## 2026-09-06 17:05 - Babysit
+- PR: none — branch us-608a-authoring-translation-contracts not pushed to origin, no PR exists
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:15 - US-608A
+- Story verified complete on branch (no new code): both acceptance criteria hold against the committed authoring schemas, set-based `ConfigTranslator` port, validators, and rewritten contract suite.
+- Verification: typecheck, lint, check:boundaries, check:schema-compatibility (27 compatible, 0 breaking, 1 accepted) passed; 1,095 spot-check tests across story and adjacent SDK schema, landofile, contract, and CLI files passed, including the `app:config:translate` command harness.
+---
+
+## 2026-09-06 17:20 - US-608A
+- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch awaits the Push step (no PR yet).
+- Verification: typecheck, lint, check:boundaries passed; 165 spot-check tests across 10 SDK schema, landofile, contract, exports, and CLI harness files passed.
+---
+
+## 2026-09-06 17:15 - Babysit
+- PR: none (branch `us-608a-authoring-translation-contracts` not pushed to origin)
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge; push step must create it)
+---
+
+## 2026-09-06 17:25 - US-608A
+- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch still awaits the Push step (no PR yet).
+- Verification: typecheck, lint passed; 160 spot-check tests across 9 SDK schema, landofile, contract, exports, and CLI harness files passed.
+---
+
+## 2026-09-06 17:18 - Babysit
+- PR: none (branch us-608a-authoring-translation-contracts not pushed to origin)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge)
+---
+
+## 2026-09-06 19:25 - US-608A Review
+- Review-work failed on path containment and helper typing; Bugbot found no bugs. Fixed: translation sources now realpath-check against the app root (autodetect skips escapes; `--file` fails closed), and `and`/`or`/`regexMatch` no longer pretend to be booleans.
+- Review notes (deferred/rejected): Authoring derivation dropping object refinements/transforms — unioning expression slots makes naive predicate wrap reject expressions; recorded for the codec story. Document `layerId` as `LandofileLayer` — foreign source layers are not v4 layers. Required diagnostic remediation — optional matches tagged-error convention. Recipe writable-layer field — §1.1 recipe-request has none; outputs already use `LandofileLayer`. Fail-closed `{{ null }}` / `and(true,"x")` at boolean sites — conservative `unknown` is the documented static policy. Schema-level 1 MiB cap — core already bounds reads.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 120 spot-check tests across 7 authoring/translate files passed.
+- **Learnings for future iterations:** Autodetect may skip escaped symlinks, but `--file` must fail on the same realpath check or explicit paths can still leak.
+---
+
+## 2026-09-06 19:35 - US-608A Review
+- Post-commit Bugbot: annotated translate output comments deletion intents so preview YAML stays valid.
+- Review notes (deferred/rejected): none new.
+- Verification: lint passed; CLI translate harness passed.
+---
+
+## 2026-09-06 19:53 - US-608A Drift Audit
+- Trigger: 6 cycles, 3490 changed lines, 8 commits
+- Weakened proofs: detect/translate fixtures attributed no source ids; contract harness could skip the complete-shape law
+- Ceremony: CLI helper splits kept — inlining would push the command past 250 LOC
+- Scope absorption: CLI rewrite is required port wiring; US-609C already owns preview/write/encode orchestration
+- Fixed: empty source identities now fail closed; fixtures attribute real snapshot ids; unused completeMerge escape removed
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck pass, lint pass, 80 spot-check tests pass
+---
