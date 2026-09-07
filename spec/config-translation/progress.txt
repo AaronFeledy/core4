@@ -251,3 +251,50 @@
 - Guide-Coverage-Skip: codec plugin has no owned guide; US-609C owns config-translate.mdx and CLI preview/write.
 - **Learnings for future iterations:** Adding a bundled plugin requires updating every hardcoded ship-list inventory (`bundled.test.ts`, `generated-table.test.ts`, `plugin-registry.test.ts`, `bundled-plugin-loading.test.ts`, `entry-points-export.test.ts`), not only `build.config.ts` and codegen fixtures. `validateConfigTranslateResult` orders diagnostics by the full input document list, so two-pass translate must re-sort before return.
 ---
+## 2026-09-07 14:14 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-07 14:21 - US-609A Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: `app:config:translate --list` reports bundled `lando4`; `--detect` is `exact` with `runtime: 4`; `--from lando4` round-trips YAML with `{{ env.PORT }}` intact and no provenance header; non-YAML `index.php` is `unsupported` and never executed. Start/info/curl/exec succeeded (HTTPS 200 `us609a-ok`, PHP 8.3.33); adjacent `app:config` and `app:config:lint` stayed green. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando app:config` on a Landofile with `{{ env.PORT }}` exits 1 (`NotImplementedError`: template expressions not supported) while `app:config:lint` reports valid and `app:config:translate --from lando4` preserves the expression. Story AC not blocked; suspected unimplemented expression evaluation on the config load path.
+- **Out-of-scope finding:** `app:config:translate` autodetect includes `index.php` from the app root and emits `unsupported`; `--file .lando.yml` is clean. Story AC not blocked; suspected CLI source discovery (US-609C orchestration).
+---
+
+## 2026-09-07 16:55 - US-609B
+- Published the SDK recipe-decomposition contract: a schema-backed `RecipeDecomposer` port whose `decompose` takes already-merged nonsecret options plus approved secret references and returns an authoring fragment with inert provenance, with `R = never` and no app-root detection, provider action, write, post-init work, planning, or programmatic recipe execution. Factories close over an injected `Redactor` so a sink failure reports through central redaction without the SDK reaching for an ambient service.
+- Split recipe identity into its own module: `RecipeSourceKind`/`RecipePackageName`/`RecipeContentDigest`/`RecipeProducer` plus family and versioned key helpers, so bundled and local producers sharing a package and recipe name can never collide. Added the object-form `recipe:` Landofile value (`LandofileRecipeProvenance`, `LandofileRecipeField`) with schema-enforced id/version agreement and an injective service map; `LandofileShape.recipe` widened from a bare id to that id-or-provenance union and the bare string stays valid and inert.
+- Added declarative migration data: `RecipeSnapshot` (identity, serializable option descriptors, defaults, one serialized expression tree, asset digests), `RecipeMigration` edges, and the five hunk kinds with stable ids and the four classifications. `RecipeManifest` gained optional `snapshot`/`migrations`; secret prompts now must declare exactly one disposition (stored-secret reference field, or one named `postInit.stdin` / `postInit.secretEnv.<name>` sink) and may not default a raw value, and post-init actions gained those named sink bindings.
+- Implemented the pure logic behind `@lando/sdk/recipes`: provenance validation, an options-only snapshot template walker over a closed 47-name pure-helper allowlist that rejects every IO helper and decoder, budgeted snapshot rendering that treats quoted authoring expressions in its output as data, chain validation covering twelve named failure reasons, option-descriptor checking, migratability verdicts, and secret-disposition/sink validation whose failure type carries structural identifiers only.
+- Gave the canonical emitter one fixed named leading comment block for the provenance header, gave the expression evaluator an opt-in step/depth/output/collection budget and an `options` scope, and published `runRecipeDecomposerContractSuite` with a `none-bundled` coverage row (no bundled decomposer ships until recipe init integration).
+- Verification: typecheck, lint, boundaries, codegen:check, and schema compatibility (0 breaking) passed; 2,376 focused tests across SDK schema/recipes/contract/library/errors/landofile/expressions and core contract/recipes files passed, plus core library and build suites. A real driver confirmed the emitted header text, an intact `{{ recipe.php }}` site, byte-exact parse round-trip, and fail-closed identity mismatch, forbidden `load()` helper, and chain gap.
+- **Learnings for future iterations:**
+  - Public JSON-schema fixture keys in `sdk/test/schema/public-schema-contracts.ts` must appear in the SAME ORDER as the registry keys; the coverage assertion compares arrays, not sets.
+  - Embedding the recursive expression AST directly in a registered schema overflowed the deprecation-annotation traversal. That traversal now carries a visited guard, and a snapshot template is wrapped in a named carrier so the recursive grammar is referenced once instead of inlined.
+  - The annotation gate resolves a union's shared discriminator only through direct struct members; nesting a sub-union as the first member hides the field. Flatten the union rather than adding an exemption.
+  - Widening a `LandofileShape` field changes `anyOf` in every schema and command result that embeds it, so expect a batch of `unsupported-construct` findings needing recorded justifications in `sdk/compatibility-exceptions.json`.
+  - `Schema.TaggedError.fields` includes `_tag`; assert it when pinning an exact field set.
+  - Adding an export to `@lando/sdk/landofile` also needs the core seam list in `core/test/build/landofile-package-seam.test.ts` updated.
+---
+
+## 2026-09-07 17:25 - US-609B Review
+- Review-work failed on digest derivation, exclusive secret sinks, and nested callbacks; Bugbot found no bugs. Fixed: canonical content-digest projection and hash, exclusive secret-store versus init-only sink ownership, recursive callable rejection, and migratability identity plus default-type checks.
+- Review notes (deferred/rejected): ConfigTranslateSecretReference as an unrestricted string — pre-existing US-608A envelope with a trusted-caller precondition. Evaluator join/replace allocation and regexMatch CPU — general evaluator hardening, not this story's ACs. Optional contract mutationProbe — the side-effect law exists and is self-tested. classifyHunk rename path comparison — owned by US-611B analysis. Secret defaults in Effect ParseError trees — filter diagnostics are value-free and sink-failure redaction already holds. node:crypto hashing — existing SDK pattern.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 97 focused tests passed across digest, secret, migration, option, and export files.
+- Guide-Coverage-Skip: SDK recipe contract helpers add no user-facing CLI or guide-covered public command surface.
+- **Learnings for future iterations:** Digest projections must omit `identity.contentDigest` and migrations; `exactOptionalPropertyTypes` forbids assigning `undefined` into optional keys.
+---
+
+## 2026-09-07 21:56 - US-609B Drift Audit
+- Trigger: 2 cycles, 3637 changed lines, 3 commits
+- Findings: provenance-header test used a fake option map instead of object-form provenance and `{{ recipe.* }}` sites; versioned identity had no behavioral test; secret disposition re-decoded an already-typed union; classifyHunk (US-611B analysis) was on the public recipes barrel
+- Fixed: restored object-form header plus intact expression-site round-trip; added digest-keyed identity agreement; removed dead secret re-validation; unexported classifyHunk from the public recipes barrel
+- Split/excise decisions: none; classifyHunk stays in-module for US-611B; no passes flip
+- Verification: typecheck, lint, 89 spot checks — pass
+---
+
+## 2026-09-07 17:10 - US-609B Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Object-form `recipe:` is inert: lint/translate round-trip provenance and `{{ recipe.php }}` sites, identity mismatch fail-closes, secret prompts without disposition fail `recipes:validate`, start/info/curl/exec succeeded (HTTPS 200 `us609b-ok`, PHP 8.3.33). Adjacent recipes:list/describe/validate and `lando4` detect stayed green. Destroyed the scenario app.
+- Blocker: default `lando app:config` table render FiberFailed on object-form `recipe:` (`TypeError: No default value`). Fixed to print the provenance id; table render now shows the recipe id.
+- **Learnings for future iterations:** Template-string interpolation of a Landofile union field can throw via ToPrimitive after redaction; format a scalar id (or JSON) instead of coercing the object.
+---

@@ -283,7 +283,14 @@ describe("collectPrompts — secret", () => {
     const secret = "hunter2!s3cret";
     const io = createBufferedPromptIO({ inputs: [secret] });
     const answers = await collectPrompts({
-      prompts: [prompt({ name: "db_password", type: "secret", message: "Database password" })],
+      prompts: [
+        prompt({
+          name: "db_password",
+          type: "secret",
+          message: "Database password",
+          disposition: { kind: "init-only", sink: { kind: "stdin" } },
+        }),
+      ],
       io,
     });
     expect(answers.db_password).toBe(secret);
@@ -301,6 +308,7 @@ describe("collectPrompts — secret", () => {
           name: "db_password",
           type: "secret",
           message: "Database password",
+          disposition: { kind: "init-only", sink: { kind: "stdin" } },
           validate: { pattern: "^.{8,}$", message: "must be at least 8 characters" },
         }),
       ],
@@ -316,7 +324,14 @@ describe("collectPrompts — secret", () => {
 
   test("non-interactive: missing answer raises RecipeMissingAnswerError without echoing values", async () => {
     const promise = collectPrompts({
-      prompts: [prompt({ name: "db_password", type: "secret", message: "Database password" })],
+      prompts: [
+        prompt({
+          name: "db_password",
+          type: "secret",
+          message: "Database password",
+          disposition: { kind: "init-only", sink: { kind: "stdin" } },
+        }),
+      ],
       nonInteractive: true,
     });
     await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);

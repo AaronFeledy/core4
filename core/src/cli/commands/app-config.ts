@@ -407,7 +407,11 @@ const tableRender = (result: AppConfigResult): string => {
   const services = Object.keys(result.landofile?.services ?? {});
   if (services.length === 0) lines.push("services\t(none)");
   else lines.push(`services\t${services.join(", ")}`);
-  if (result.landofile?.recipe !== undefined) lines.push(`recipe\t${result.landofile.recipe}`);
+  if (result.landofile?.recipe !== undefined) {
+    const recipe = result.landofile.recipe;
+    const recipeLabel = typeof recipe === "string" ? recipe : recipe.id;
+    lines.push(`recipe\t${recipeLabel}`);
+  }
   return lines.join("\n");
 };
 

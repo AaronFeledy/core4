@@ -202,6 +202,7 @@ import type {
   ServiceSelector,
   WaitForExitOptions,
 } from "./provider.ts";
+import type { RecipeDecomposerShape } from "./recipe-decomposer.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
@@ -243,6 +244,7 @@ export * from "./plugins.ts";
 export * from "./plugin-trust.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
+export * from "./recipe-decomposer.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
@@ -986,4 +988,9 @@ export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/C
       never
     >;
   }
+>() {}
+
+export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
+  RecipeDecomposer,
+  RecipeDecomposerShape
 >() {}

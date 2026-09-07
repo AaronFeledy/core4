@@ -26,6 +26,22 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   LandofileAuthoringFragment: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileAuthoringShapeWire: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileAuthoringFragmentWire: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeSourceKind: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeContentDigest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeProducer: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeOptionValue: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeServiceMap: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileRecipeProvenance: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LandofileRecipeField: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeOptionType: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeSnapshotAsset: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeSnapshot: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeHunkKind: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeHunkClassification: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeMigrationHunk: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeMigration: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeDecomposeInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeDecomposeResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateAnswerValue: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateConfidence: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateDeletion: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -498,7 +514,62 @@ const documentSetFixture = {
   writableLayerIds: ["canonical"],
 } as const;
 
+const recipeProducerFixture = {
+  sourceKind: "bundled",
+  packageName: "@lando/recipe-demo",
+  recipeId: "demo",
+  manifestVersion: "1.0.0",
+  contentDigest: `sha256:${"a".repeat(64)}`,
+} as const;
+
+const recipeSnapshotFixture = {
+  identity: recipeProducerFixture,
+  optionTypes: { php: { kind: "string" } },
+  defaults: { php: "8.3" },
+  template: { expression: { kind: "Literal", value: "8.3" } },
+  assets: [],
+} as const;
+
+const recipeProvenanceFixture = {
+  id: "demo",
+  version: "1.0.0",
+  producer: recipeProducerFixture,
+  options: { php: "8.3" },
+} as const;
+
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  RecipeSourceKind: "bundled",
+  RecipeContentDigest: `sha256:${"a".repeat(64)}`,
+  RecipeOptionValue: "8.3",
+  RecipeServiceMap: { appserver: "web" },
+  RecipeProducer: recipeProducerFixture,
+  LandofileRecipeProvenance: recipeProvenanceFixture,
+  LandofileRecipeField: "demo",
+  RecipeOptionType: { kind: "boolean" },
+  RecipeSnapshotAsset: { dest: ".lando.yml", digest: `sha256:${"b".repeat(64)}` },
+  RecipeSnapshot: recipeSnapshotFixture,
+  RecipeHunkKind: "add",
+  RecipeHunkClassification: "selected",
+  RecipeMigrationHunk: {
+    id: `hunk-${"0".repeat(24)}`,
+    kind: "add",
+    layer: "canonical",
+    path: "services.web",
+    new: {},
+  },
+  RecipeMigration: {
+    from: recipeProducerFixture,
+    to: { ...recipeProducerFixture, manifestVersion: "1.1.0" },
+    fromSnapshot: recipeSnapshotFixture,
+    toSnapshot: {
+      ...recipeSnapshotFixture,
+      identity: { ...recipeProducerFixture, manifestVersion: "1.1.0" },
+    },
+    hunks: [],
+  },
+  RecipeDecomposeInput: { producer: recipeProducerFixture, options: { php: "8.3" }, secrets: {} },
+  RecipeDecomposeResult: { fragment: {}, provenance: recipeProvenanceFixture },
+
   AuthoringExpression: Schema.decodeUnknownSync(authoringExpressionSlot("string"))("{{ env.NAME }}"),
   ConfigTranslateDocumentBytes: "bmFtZTogZGVtbwo=",
   ConfigTranslateDocument: {

@@ -151,8 +151,35 @@
 - `RecipeManifest` additively accepts optional `extends` (a parent recipe id or path). Flatten-before-validate merges the parent into the child and strips `extends` and authoring-only `drop` before `RecipeManifest` decode. `@lando/sdk/schema` additively exports `RecipePromptDrop`. `@lando/sdk/errors` additively exports `RecipeExtendsError` (`kind`: `cycle` | `depth` | `parent-not-found`). `RecipeManifestService.parse` additively includes `RecipeExtendsError` and `RecipeSourceError` in its error channel.
 
 
+- Recipe provenance and migration contracts additively export the recipe producer identity split (`RecipeSourceKind`, `RecipePackageName`, `RecipeContentDigest`, `RecipeProducer` and the `recipeFamilyKey` / `recipeVersionedKey` / `sameRecipeFamily` / `sameRecipeVersion` helpers), the inert Landofile `recipe:` object form (`LandofileRecipeProvenance`, `LandofileRecipeField`, `RecipeOptionValue`, `RecipeServiceMap`), declarative snapshot and migration data (`RecipeOptionType`, `RecipeSnapshotAsset`, `RecipeSnapshotTemplate`, `RecipeSnapshot`, `RecipeHunkKind`, `RecipeHunkClassification`, `RecipeMigrationHunk`, `RecipeMigration`, `hasCallableApply`), and the decomposition port payloads (`RecipeDecomposeInput`, `RecipeDecomposeResult`). `LandofileShape.recipe` widens from a bare id string to that id-or-provenance union, and the bare string stays valid. `RecipeManifest` additively accepts optional `snapshot` and `migrations`; `RecipePrompt` additively accepts `disposition`, required on a secret prompt and rejected elsewhere; post-init `command` and `bun` actions additively accept the named `stdin` and `secretEnv` init-only sink bindings. `@lando/sdk/errors` additively exports `RecipeDecomposeError`, `RecipeProvenanceError`, `RecipeSnapshotError`, `RecipeMigrationChainError`, `RecipeSecretDispositionError`, and `RecipeSecretSinkError`. `@lando/sdk/landofile` additively exports `LANDOFILE_LEADING_COMMENT_BLOCKS` and the `leadingCommentBlock` emit option. `@lando/sdk/expressions` additively exposes an `options` context scope and an opt-in `EvaluationBudget`. `@lando/sdk/recipes` is a new additive subpath carrying the pure provenance, snapshot, migration-chain, option-descriptor, secret-disposition, and content-digest logic (`computeRecipeContentDigest`, `recipeContentDigestProjection`).
+
+
 ## Additive schema exports
 
+- `LandofileRecipeField`
+- `LandofileRecipeProvenance`
+- `RecipeContentDigest`
+- `RecipeDecomposeInput`
+- `RecipeDecomposeResult`
+- `RecipeHunkClassification`
+- `RecipeHunkKind`
+- `RecipeMigration`
+- `RecipeMigrationHunk`
+- `RecipeOptionType`
+- `RecipeOptionValue`
+- `RecipePackageName`
+- `RecipeProducer`
+- `RecipeSecretDisposition`
+- `RecipeServiceMap`
+- `RecipeSnapshot`
+- `RecipeSnapshotAsset`
+- `RecipeSnapshotTemplate`
+- `RecipeSourceKind`
+- `hasCallableApply`
+- `recipeFamilyKey`
+- `recipeVersionedKey`
+- `sameRecipeFamily`
+- `sameRecipeVersion`
 - `AUTHORING_EXPRESSION_SCOPES`
 - `AuthoringExpression`
 - `AuthoringExpressionExpectedType`
@@ -804,6 +831,7 @@
 
 ## Additive service tags
 
+- `RecipeDecomposer`
 - `AppPlanSanitizer`
 - `CertificateAuthority`
 - `CommandFramework`
