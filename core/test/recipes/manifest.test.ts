@@ -149,6 +149,10 @@ prompts:
   - name: dbPassword
     type: secret
     message: Database password?
+    disposition:
+      kind: init-only
+      sink:
+        kind: stdin
   - name: docroot
     type: path
     message: Docroot?

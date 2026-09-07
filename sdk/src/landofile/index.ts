@@ -1,7 +1,12 @@
 // `@lando/sdk/landofile` — canonical pure Landofile emit/parse (no Effect layers,
 // filesystem, or CLI). `@lando/core/landofile` re-exports for in-tree writers.
 
-export { emitLandofileYaml, emitLandofileYamlEither } from "./emit.ts";
+export {
+  emitLandofileYaml,
+  emitLandofileYamlEither,
+  LANDOFILE_LEADING_COMMENT_BLOCKS,
+  type LandofileLeadingCommentBlock,
+} from "./emit.ts";
 export {
   declaredConfigTranslateSourceIds,
   validateConfigTranslateInput,

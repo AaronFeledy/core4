@@ -48,6 +48,15 @@ describe("@lando/sdk package exports", () => {
     expect(schema.ConfigLintResult).toBeDefined();
     expect(schema.ConfigTranslateInput).toBeDefined();
     expect(schema.ConfigTranslateResult).toBeDefined();
+    expect(schema.RecipeProducer).toBeDefined();
+    expect(schema.LandofileRecipeField).toBeDefined();
+    expect(schema.LandofileRecipeProvenance).toBeDefined();
+    expect(schema.RecipeSnapshot).toBeDefined();
+    expect(schema.RecipeMigration).toBeDefined();
+    expect(schema.RecipeMigrationHunk).toBeDefined();
+    expect(schema.RecipeSecretDisposition).toBeDefined();
+    expect(schema.RecipeDecomposeInput).toBeDefined();
+    expect(schema.RecipeDecomposeResult).toBeDefined();
     expect(schema.ArtifactManifestEntry).toBeDefined();
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
@@ -652,6 +661,28 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runConfigTranslatorContractSuite).toBeDefined();
     expect(sdkTest.makeConfigTranslatorContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the recipe decomposer contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRecipeDecomposerContractSuite).toBeDefined();
+    expect(sdkTest.makeRecipeDecomposerContractSuite).toBeDefined();
+  });
+
+  test("recipes entry point exports the pure recipe contract surface", async () => {
+    const recipes = await import("@lando/sdk/recipes");
+
+    expect(recipes.validateLandofileRecipeProvenance).toBeDefined();
+    expect(recipes.validateSnapshotTemplate).toBeDefined();
+    expect(recipes.renderRecipeSnapshot).toBeDefined();
+    expect(recipes.validateMigrationChain).toBeDefined();
+    expect(recipes.deriveHunkId).toBeDefined();
+    expect(recipes.classifyHunk).toBeDefined();
+    expect(recipes.validateOptionValues).toBeDefined();
+    expect(recipes.validateRecipeSecretPrompts).toBeDefined();
+    expect(recipes.secretSinkFailure).toBeDefined();
+    expect(recipes.SNAPSHOT_HELPER_ALLOWLIST).toBeDefined();
   });
 
   test("test entry point exports the route filter contract suite", async () => {

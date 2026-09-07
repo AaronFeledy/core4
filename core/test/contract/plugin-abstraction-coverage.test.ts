@@ -98,6 +98,14 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     defaultPolicy: "built-in",
     invocationFiles: ["core/test/contract/lando4-config-translator-contract.test.ts"],
   },
+  // No bundled RecipeDecomposer implementation ships today.
+  {
+    abstraction: "RecipeDecomposer",
+    makeExport: "makeRecipeDecomposerContractSuite",
+    runExport: "runRecipeDecomposerContractSuite",
+    defaultPolicy: "none-bundled",
+    invocationFiles: [],
+  },
   {
     abstraction: "PluginSource",
     makeExport: "makePluginSourceContractSuite",

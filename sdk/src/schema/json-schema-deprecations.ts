@@ -12,7 +12,27 @@ type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Schema.All;
 type JsonSchemaInput = Parameters<typeof JSONSchema.make>[0];
 type TupleElement = AST.OptionalType | AST.Type;
-type TraversalContext = { readonly root: JsonObject };
+type TraversalContext = {
+  readonly root: JsonObject;
+  /**
+   * Guard against recursive schemas. A `Suspend` unrolls to the same AST node
+   * every time, so a self-referential grammar would otherwise re-enter the same
+   * target forever instead of terminating at its emitted reference.
+   */
+  readonly visited: WeakMap<object, WeakSet<object>>;
+};
+
+const alreadyVisited = (target: unknown, ast: AST.AST, context: TraversalContext): boolean => {
+  if (target === null || typeof target !== "object") return false;
+  const seen = context.visited.get(target as object);
+  if (seen === undefined) {
+    context.visited.set(target as object, new WeakSet([ast as unknown as object]));
+    return false;
+  }
+  if (seen.has(ast as unknown as object)) return true;
+  seen.add(ast as unknown as object);
+  return false;
+};
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -91,7 +111,7 @@ const decodeJsonPointerSegment = (segment: string): string => {
   return decoded.replace(/~1/g, "/").replace(/~0/g, "~");
 };
 
-const localRefTarget = (target: unknown, context: TraversalContext): unknown => {
+const localRefTarget = (target: unknown, context: Pick<TraversalContext, "root">): unknown => {
   const ref = jsonObject(target)?.$ref;
   if (typeof ref !== "string" || !ref.startsWith("#/")) return undefined;
 
@@ -205,6 +225,7 @@ const applyIndexSignatureDeprecations = (
 
 const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: TraversalContext): void => {
   const targetSchema = jsonSchemaTarget(target, context);
+  if (alreadyVisited(targetSchema, ast, context)) return;
 
   if (AST.isUnion(ast)) {
     setDeprecation(targetSchema, getSchemaDeprecation(ast));
@@ -252,7 +273,7 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
 export const withSchemaDeprecations = <S extends SchemaLike>(schema: S, jsonSchema: unknown): unknown => {
   const copy = cloneJson(jsonSchema);
   const root = jsonObject(copy);
-  if (root !== undefined) applyDeprecationsFromAst(root, schema.ast, { root });
+  if (root !== undefined) applyDeprecationsFromAst(root, schema.ast, { root, visited: new WeakMap() });
   return copy;
 };
 

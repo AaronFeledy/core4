@@ -4,6 +4,15 @@ import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
 
+export const LANDOFILE_LEADING_COMMENT_BLOCKS = {
+  "recipe-provenance": [
+    "# Recipe knobs. Change a value here to change every `{{ recipe.<option> }}` site below.",
+    "# Replace a `{{ recipe.<option> }}` reference with a literal to take that site over.",
+  ],
+} as const;
+
+export type LandofileLeadingCommentBlock = keyof typeof LANDOFILE_LEADING_COMMENT_BLOCKS;
+
 /**
  * Options for {@link emitLandofileYaml} / {@link emitLandofileYamlEither}.
  */
@@ -15,6 +24,11 @@ export interface EmitLandofileOptions {
    * into sorted output for stabler diffs.
    */
   readonly sortKeys?: boolean;
+  /**
+   * Prepend exactly one fixed, named comment block, emitted but never parsed as
+   * state. Free-form comments are deliberately not supported.
+   */
+  readonly leadingCommentBlock?: LandofileLeadingCommentBlock;
 }
 
 interface EmitState {
@@ -238,7 +252,9 @@ const emitArrayItems = (
  * @param options - optional emit controls; see {@link EmitLandofileOptions}.
  */
 export const emitLandofileYaml = (value: Record<string, unknown>, options?: EmitLandofileOptions): string => {
-  const lines: Array<string> = [];
+  const lines: Array<string> = options?.leadingCommentBlock
+    ? [...LANDOFILE_LEADING_COMMENT_BLOCKS[options.leadingCommentBlock]]
+    : [];
   const state: EmitState = { sortKeys: options?.sortKeys ?? false, seen: new WeakSet() };
   if (!isPlainObject(value)) {
     throw new LandofileEmitError({
