@@ -228,8 +228,10 @@ const translate = (
       });
     }
 
-    // Input order drives both arrays and every diagnostic is root-scoped, so the
-    // document walk above already satisfies the canonical ordering contract.
+    const sourceOrder = new Map(input.documents.map((document, index) => [document.sourceId, index]));
+    diagnostics.sort(
+      (left, right) => (sourceOrder.get(left.sourceId) ?? 0) - (sourceOrder.get(right.sourceId) ?? 0),
+    );
     return { outputs, diagnostics, deletions: [] };
   });
 
@@ -237,15 +239,22 @@ const encode = (
   input: ConfigTranslateEncodeInput,
 ): Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never> =>
   Effect.gen(function* () {
-    // The context is the already-merged complete authoring tree. Validating it
-    // is the contextual validation a fragment write requires; only the fragment
-    // wire tree reaches the emitter, so lower layers are never flattened.
+    // The context is the already-merged complete authoring tree. It must be a
+    // concrete mapping even when only a fragment is emitted; a root expression
+    // is not a Landofile. Only the fragment wire tree reaches the emitter, so
+    // lower layers are never flattened.
     const context = yield* decodeShape(input.context, { onExcessProperty: "error" }).pipe(
       Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
     );
+    const contextWire = yield* encodeShape(context).pipe(
+      Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
+    );
+    yield* decodeRecord(contextWire).pipe(
+      Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
+    );
     const wire = yield* (
       input.fragment === undefined
-        ? encodeShape(context)
+        ? Effect.succeed(contextWire)
         : decodeFragment(input.fragment, { onExcessProperty: "error" }).pipe(Effect.flatMap(encodeFragment))
     ).pipe(Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")));
     const record = yield* decodeRecord(wire).pipe(

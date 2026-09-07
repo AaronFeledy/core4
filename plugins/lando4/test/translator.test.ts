@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { emitLandofileYamlEither, parseLandofile } from "@lando/sdk/landofile";
+import { emitLandofileYamlEither, parseLandofile, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import {
   ConfigTranslateDetectInput,
   ConfigTranslateDocumentSetInput,
@@ -181,6 +181,19 @@ describe("lando4 translator omissions", () => {
     expect(result.outputs.map((output) => output.targetLayer)).toEqual(["local"]);
   });
 
+  test("orders mixed dropped and unsupported diagnostics by source", async () => {
+    const input = makeInput({
+      documents: [...canonicalOnly, { path: ".lando.local.yml", layerId: "local", content: LEGACY }],
+      writable: ["local"],
+    });
+    const result = await translate(input);
+    expect(result.diagnostics.map(({ kind, sourceId }) => [kind, String(sourceId)])).toEqual([
+      ["dropped", ".lando.yml"],
+      ["unsupported", ".lando.local.yml"],
+    ]);
+    expect(validateConfigTranslateResult(input, result)._tag).toBe("Right");
+  });
+
   test("fails a recipe request rather than inventing recipe output", async () => {
     const exit = await Effect.runPromiseExit(
       lando4ConfigTranslator.translate({
@@ -289,6 +302,16 @@ describe("lando4 encoding", () => {
 
   test("rejects an incomplete authoring context", async () => {
     const exit = await Effect.runPromiseExit(encodeOf({ context: { name: 4 } as never }));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  test("rejects an expression-only context even when a fragment is provided", async () => {
+    const exit = await Effect.runPromiseExit(
+      encodeOf({
+        context: "{{ env.CONFIG }}",
+        fragment: { services: { web: { port: "{{ env.LOCAL_PORT }}" } } },
+      }),
+    );
     expect(exit._tag).toBe("Failure");
   });
 
