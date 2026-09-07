@@ -140,7 +140,6 @@ export const runConfigTranslatorContractSuite = (
     }
     yield* resolve(checkAuthoringLaws(harness, result, stableJson));
 
-    // --- optional: translate performed no external mutation ---
     if (harness.mutationProbe) {
       yield* resolve(translator.translate(harness.translateInput));
       yield* requireConfigTranslatorContract(
@@ -159,9 +158,9 @@ export const makeConfigTranslatorContractSuite = runConfigTranslatorContractSuit
 
 /**
  * Raised by a route-filter `apply` when its options fail schema decode (or the
- * transform cannot run). SDK-test-local: route filters are a placeholder
- * production surface, so this tagged error lives with the contract suite rather
- * than `@lando/sdk/errors` until the route-filter feature story lands.
+ * transform cannot run). Route filters have no production service contract,
+ * so this tagged error lives with the contract suite rather than
+ * `@lando/sdk/errors`.
  */
 export class RouteFilterError extends Schema.TaggedError<RouteFilterError>()("RouteFilterError", {
   message: Schema.String,

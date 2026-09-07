@@ -5,6 +5,7 @@ import {
   ConfigTranslateDocumentSetInput,
   ConfigTranslateSourceId,
   LandofileAuthoringFragment,
+  type LandofileAuthoringFragmentWire,
 } from "@lando/sdk/schema";
 import type { ConfigTranslateInput, ConfigTranslateResult, ConfigTranslatorShape } from "@lando/sdk/services";
 import {
@@ -92,7 +93,6 @@ const makeComposeTranslator = ({
       ),
     ),
 });
-import type { LandofileAuthoringFragmentWire } from "@lando/sdk/schema";
 const translator = makeComposeTranslator({
   decoder: (snapshot) => Effect.succeed(new TextDecoder().decode(snapshot).includes("nginx") ? fragment : {}),
 });

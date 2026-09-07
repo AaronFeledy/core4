@@ -2,10 +2,10 @@ import { dirname, extname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import type { ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import {
   ConfigTranslateError,
   ConfigTranslateNoTranslatorsError,
+  type ConfigTranslatorConflictError,
   LandofileNotFoundError,
   LandofileParseError,
   type NotImplementedError,

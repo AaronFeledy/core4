@@ -9,10 +9,8 @@ import type {
   ConfigTranslateResult,
 } from "../schema/config-translate.ts";
 
-// ==== Canonical schema-inferred data contracts
 export type * from "../schema/config-translate.ts";
 
-// ==== Pure translation port
 export interface ConfigTranslatorShape {
   readonly id: string;
   readonly summary: string;

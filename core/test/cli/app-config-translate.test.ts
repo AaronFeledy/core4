@@ -268,10 +268,8 @@ describe("appConfigTranslate", () => {
     expect(result.content).toContain("db");
     expect(result.diagnostics.length).toBe(1);
 
-    // Preview must NOT write a `.canonical` file next to the input.
     expect(existsSync(join(cwd, ".lando.yml.canonical"))).toBe(false);
 
-    // The previewed content round-trips through the canonical parser.
     const parsed = (await Effect.runPromise(
       parseLandofile({ file: join(cwd, ".lando.yml"), content: result.content, cwd }),
     )) as Record<string, unknown>;
@@ -281,7 +279,6 @@ describe("appConfigTranslate", () => {
       services: { db: { type: "mysql:8.0" } },
     });
 
-    // The input file is left untouched.
     const input = await readFile(join(cwd, ".lando.yml"), "utf8");
     expect(input).toBe("name: demo\nruntime: 4\n");
   });
