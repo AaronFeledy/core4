@@ -39,6 +39,31 @@ describe("app config yaml", () => {
     expect(table).toBe("app\ttest-app-config\nservices\tweb\nrecipe\tnode");
   });
 
+  test("renderAppConfigResult table output uses object-form recipe id", () => {
+    const provenanceLandofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "test-app-config",
+      recipe: {
+        id: "lamp",
+        version: "1.0.0",
+        producer: {
+          sourceKind: "bundled",
+          packageName: "@lando/core",
+          recipeId: "lamp",
+          manifestVersion: "1.0.0",
+          contentDigest: `sha256:${"a".repeat(64)}`,
+        },
+        options: { php: "8.3" },
+      },
+      services: { web: { api: 4, type: "php:8.3" } },
+    });
+    const table = renderAppConfigResult(
+      { app: "test-app-config", source: "resolved", landofile: provenanceLandofile },
+      "table",
+    );
+
+    expect(table).toBe("app\ttest-app-config\nservices\tweb\nrecipe\tlamp");
+  });
+
   test("renderAppConfigResult get output ignores yaml", () => {
     const result: AppConfigResult = { subcommand: "get", value: "node" };
 
