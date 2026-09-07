@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { ConfigError } from "@lando/core/errors";
-import { ProviderId } from "@lando/core/schema";
-import { ConfigService } from "@lando/core/services";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
+import { ConfigError } from "@lando/sdk/errors";
+import { ProviderId } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { ConfigServiceLive } from "../../src/services/config.ts";
 
 const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-config-service-"));

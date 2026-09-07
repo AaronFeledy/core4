@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { writeAppCommandCacheStrict } from "../../src/testing/engine-layers";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, DateTime, Effect, Exit, Option, Queue, Schema, Scope } from "effect";
 
-import { EventError } from "@lando/core/errors";
-import { EventService } from "@lando/core/services";
+import { EventError } from "@lando/sdk/errors";
 import { PreAppStartEvent } from "@lando/sdk/events";
+import { EventService } from "@lando/sdk/services";
 
 import {
   EventDispatchControl,
   EventRuntimeLive,
   EventServiceLive,
   makeEventServiceLive,
-} from "../../src/testing/engine-layers.ts";
+} from "../../src/services/event-service.ts";
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)({
   _tag: "pre-app-start",

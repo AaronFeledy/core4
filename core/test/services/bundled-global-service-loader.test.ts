@@ -11,11 +11,11 @@ import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import {
   bundledFirstGlobalServiceLoader,
   makeBundledFirstGlobalServiceLoader,
-} from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/services/bundled-global-service-loader";
 import type {
   GlobalServiceModuleLoader,
   PendingGlobalServiceContribution,
-} from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/services/global-services";
 
 const entry = (plugin: string, id: string, module?: string): PendingGlobalServiceContribution => ({
   plugin,

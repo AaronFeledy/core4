@@ -23,19 +23,19 @@ import { resolveCompiledBinaryVersion } from "../../../../scripts/compiled-binar
 import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
-} from "../../../src/testing/engine-layers.ts";
+} from "../../../src/subsystems/host-proxy/dispatch.ts";
+import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
+import {
+  defaultHostProxyShimArtifactPath,
+  resolveHostProxyShimArtifactPath,
+} from "../../../src/subsystems/host-proxy/transport-shim.ts";
 import {
   HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
   hostProxyRunLandoStateDir,
   scopedHostProxyRunLandoSession,
   sendHostProxyRunLando,
-} from "../../../src/testing/engine-layers.ts";
-import { requestPathname } from "../../../src/testing/engine-layers.ts";
-import {
-  defaultHostProxyShimArtifactPath,
-  resolveHostProxyShimArtifactPath,
-} from "../../../src/testing/engine-layers.ts";
+} from "../../../src/subsystems/host-proxy/transport.ts";
 
 const tempDirs: string[] = [];
 const repoRoot = resolve(import.meta.dirname, "../../../..");
@@ -57,7 +57,9 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const coreBuildHostProxyShimScript = async (): Promise<string> => {
-  const packageJson: unknown = await Bun.file(join(import.meta.dirname, "../../../package.json")).json();
+  const packageJson: unknown = await Bun.file(
+    join(import.meta.dirname, "../../../../core/package.json"),
+  ).json();
   if (!isRecord(packageJson) || !isRecord(packageJson.scripts)) throw new Error("Invalid core package.json");
   const script = packageJson.scripts["build:host-proxy-shim"];
   if (typeof script !== "string") throw new Error("Missing build:host-proxy-shim script");

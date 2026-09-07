@@ -7,7 +7,7 @@ import { deserialize, serialize } from "node:v8";
 
 import { Cause, DateTime, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
 
-import { CacheError } from "@lando/core/errors";
+import { CacheError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -19,8 +19,8 @@ import {
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
-} from "@lando/core/schema";
-import { CacheService } from "@lando/core/services";
+} from "@lando/sdk/schema";
+import { CacheService } from "@lando/sdk/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   type AppPlanCacheKeyInput,
@@ -28,17 +28,17 @@ import {
   readAppPlanSourceFingerprint,
   readCachedAppPlan,
   writeCachedAppPlan,
-} from "../../src/testing/engine-layers.ts";
-import { writeFileAtomicViaRename } from "../../src/testing/engine-layers.ts";
+} from "../../src/cache/app-plan.ts";
+import { writeFileAtomicViaRename } from "../../src/cache/atomic.ts";
 import {
   CWD_APP_MAP_CACHE_FILE,
   deleteCwdAppMapEntry,
   listCwdAppMapEntries,
   readCwdAppMapEntry,
   writeCwdAppMapEntry,
-} from "../../src/testing/engine-layers.ts";
-import { appPlanCachePath } from "../../src/testing/engine-layers.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
+} from "../../src/cache/cwd-app-map.ts";
+import { appPlanCachePath } from "../../src/cache/paths.ts";
+import { CacheServiceLive } from "../../src/cache/service.ts";
 
 const CachedValue = Schema.Struct({
   name: Schema.String,

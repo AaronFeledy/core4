@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/core/errors";
-import { AbsolutePath, LandofileShape } from "@lando/core/schema";
-import { GlobalAppService } from "@lando/core/services";
+import { GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/sdk/errors";
+import { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
+import { GlobalAppService } from "@lando/sdk/services";
 
 import { parseLandofile } from "@lando/landofile/parser";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers.ts";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+import { ConfigServiceLive } from "../../src/services/config.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
 
 const globalAppLayer = GlobalAppServiceLive.pipe(
   Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),

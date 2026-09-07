@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -14,7 +15,6 @@ import {
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "../../src/cli/run-plugin-owned-command.ts";
-import { PluginContributionGraph } from "../../src/testing/engine-layers.ts";
 
 const DbImportResult = Schema.Struct({
   imported: Schema.Boolean,

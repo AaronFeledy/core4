@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 
-import { EventError } from "@lando/core/errors";
-import { EventService } from "@lando/core/services";
+import { EventError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
-import { EventDispatchControl, EventRuntimeLive } from "../../src/testing/engine-layers.ts";
+import { EventService } from "@lando/sdk/services";
+import { EventServiceLive } from "../../src/services/event-service.ts";
+import { EventDispatchControl, EventRuntimeLive } from "../../src/services/event-service.ts";
 
 const appRefFixture = {
   kind: "user",

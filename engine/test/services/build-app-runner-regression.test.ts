@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 
 import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
 
-import { ProviderInternalError } from "@lando/core/errors";
-import { BuildOrchestrator, EventService } from "@lando/core/services";
+import { ProviderInternalError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";

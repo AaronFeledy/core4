@@ -33,17 +33,17 @@ import type {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import {
-  ConfigServiceLive,
-  FileSystemLive,
-  GlobalAppServiceLive,
   attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
-  makeShellRunnerLive,
-} from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/planner/effective-events";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
