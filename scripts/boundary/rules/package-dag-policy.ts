@@ -98,6 +98,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: ["@lando/core"],
   },
+  "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

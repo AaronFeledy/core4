@@ -49,6 +49,32 @@
     "manifest": {
       "api": 4,
       "bootstrap": "app",
+      "contributes": {
+        "configTranslators": [
+          {
+            "detects": ["**/.lando.yml", "**/.lando.*.yml"],
+            "id": "lando4",
+            "inputKinds": ["lando4"],
+            "module": "./src/translator.ts",
+            "summary": "Canonical v4 Landofile YAML decoder and expression-aware encoder."
+          }
+        ]
+      },
+      "description": "Expression-aware canonical v4 Landofile config translator for Lando v4.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/lando4",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/lando4"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
       "description": "Bundled Lando desktop-notification policy plugin.",
       "enabled": true,
       "entry": "./src/index.ts",

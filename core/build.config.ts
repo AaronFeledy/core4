@@ -109,6 +109,7 @@ export const buildConfig: BuildConfig = {
       contributes: { templateEngines: ["mustache"] },
     },
     { name: "@lando/sql", path: "plugins/sql" },
+    { name: "@lando/lando4", path: "plugins/lando4" },
   ],
   bundledRecipes: [
     { id: "node-postgres" },
