@@ -4,6 +4,17 @@ import { dirname } from "node:path";
 
 import { Effect, Ref } from "effect";
 
+export const syncDirectory = async (path: string): Promise<void> => {
+  // Windows does not support opening directories for fsync through this adapter.
+  if (process.platform === "win32") return;
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+};
+
 const removeIfPresent = (path: string): Promise<void> =>
   unlink(path)
     .then(() => undefined)
@@ -23,6 +34,7 @@ export const writeFileAtomicScoped = (
     readonly randomId?: () => string;
     readonly mode?: number;
     readonly syncFile?: (handle: FileHandle) => Promise<void>;
+    readonly syncDirectory?: (path: string) => Promise<void>;
   } = {},
 ): Effect.Effect<void, unknown, never> =>
   Effect.scoped(
@@ -52,6 +64,7 @@ export const writeFileAtomicScoped = (
             await handle.close();
           }
           await rename(tempPath, path);
+          await (options.syncDirectory ?? syncDirectory)(dirname(path));
         }),
       );
 
