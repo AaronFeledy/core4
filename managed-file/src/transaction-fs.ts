@@ -188,7 +188,7 @@ export const finishAppliedMode = async (root: string, entry: Entry): Promise<voi
   const read = await snapshot(path);
   if (!read.state.present || read.state.digest !== entry.after.digest)
     throw transactionError("conflict", "recover", entry.path);
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open(path, constants.O_RDWR | constants.O_NOFOLLOW);
   try {
     await handle.chmod(entry.after.mode);
     await handle.sync();
@@ -214,7 +214,7 @@ export const mutateEntry = async (root: string, entry: Entry): Promise<void> => 
     await verifyState(root, entry, entry.before);
     await verifyBackup(root, entry);
     await rename(stage.path, path);
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await open(path, constants.O_RDWR | constants.O_NOFOLLOW);
     try {
       await handle.chmod(entry.after.mode);
       await handle.sync();
