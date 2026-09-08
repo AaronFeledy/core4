@@ -1,0 +1,62 @@
+---
+id: nextjs
+provider: test
+timeout: 60000
+tags: [recipe, nextjs, node]
+---
+
+# Next.js
+
+`lando init --recipe nextjs` scaffolds Node, optional Postgres or MariaDB, next and npm tooling, and an Auth env hint.
+
+```sh
+lando init --recipe nextjs --name=my-nextjs-app --yes
+lando start
+lando info
+```
+
+`--yes` uses Node lts, Postgres, and `NEXTAUTH_PROVIDER: none`. Pass `--answer` to change those.
+
+```sh
+lando init --recipe nextjs --name=my-nextjs-app --yes \
+  --answer=node=22 \
+  --answer=database=none \
+  --answer=auth=nextauth
+```
+
+`lando start` prints the app URL. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="nextjs" display="my-nextjs-app" />
+      <Run command="lando init --recipe nextjs --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="non-default-options" render>
+    <Step name="init">
+      <Variable name="appName" value="nextjs-alt" display="my-nextjs-alt" />
+      <Run command="lando init --recipe nextjs --name={{appName}} --yes --answer=node=22 --answer=database=none --answer=auth=nextauth" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "NEXTAUTH_PROVIDER" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "nextauth" } }} />
+    </Step>
+  </Scenario>
+</Guide>

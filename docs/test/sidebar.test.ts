@@ -17,6 +17,7 @@ const RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "nextjs",
   "rails",
   "symfony",
   "wordpress",
@@ -120,6 +121,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/nextjs-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
     expect(slugs).toContain("guides/recipes/programmatic-recipe");

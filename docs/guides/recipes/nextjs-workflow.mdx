@@ -1,0 +1,136 @@
+---
+id: nextjs-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, nextjs, node, postgres, mariadb]
+---
+
+# Run the Next.js recipe
+
+```sh
+lando init --recipe nextjs --name=nextjs-demo --yes
+lando start
+```
+
+`--yes` skips prompts. Defaults are Node lts, Postgres, and `NEXTAUTH_PROVIDER: none`. First start builds `web` and `database`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Put a Next.js app in after start.
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `NEXTAUTH_PROVIDER` set from the auth answer |
+| `database` | `type: postgres` by default; `mariadb` with `--answer=database=mariadb`; omitted with `--answer=database=none` |
+| Tooling | `lando next` (`npx next`) and `lando npm` on `web` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth answers (`none`, `nextauth`, `clerk`) only set the `NEXTAUTH_PROVIDER` env hint. Install and configure the helper yourself.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="nextjs-workflow" display="nextjs-demo" />
+      <Run command="lando init --recipe nextjs --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"next\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "NEXTAUTH_PROVIDER" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="node22-no-db-nextauth" render>
+    <Step name="init">
+      <Variable name="appName" value="nextjs-workflow-alt" display="nextjs-alt" />
+      <Run command="lando init --recipe nextjs --name={{appName}} --yes --answer=node=22 --answer=database=none --answer=auth=nextauth" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "NEXTAUTH_PROVIDER" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "nextauth" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold Next.js, then run it
+
+`create-next-app` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`:
+
+```sh
+lando exec web -- npx --yes create-next-app@15.5.2 webapp
+```
+
+Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. Then confirm tooling:
+
+```sh
+lando next --version
+lando next --help
+lando npm --version
+```
+
+Serve through the proxy with an all-interfaces bind:
+
+```sh
+lando next dev --hostname 0.0.0.0 --port 3000
+```
+
+Open the URL `lando info` prints. Prefer Node 22, no database, or NextAuth at init?
+
+```sh
+lando init --recipe nextjs --name=nextjs-alt --yes \
+  --answer=node=22 \
+  --answer=database=none \
+  --answer=auth=nextauth
+```
+
+## Talk to Postgres
+
+Default recipe Postgres uses the app network hostname `database`:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Port | `5432` |
+| Database | app name (here `nextjs-demo`) |
+| User | `lando` |
+| Password | generated when omitted; read it from `lando info` |
+
+Ping from the database service:
+
+```sh
+lando exec database -- psql -U lando -d nextjs-demo -c 'SELECT version();'
+```
+
+Swap `nextjs-demo` for your app name. Point your Next.js DB URL at host `database`. Do not hardcode the password in committed app code.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Next.js recipe](/recipes/nextjs/)
+- [Add Node](../services/node.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
