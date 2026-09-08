@@ -425,3 +425,12 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 13 pipeline tests plus 18 adjacent translator/contract/fixture tests passed.
 - Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
 ---
+
+## 2026-09-08 07:22 - US-609E0 Drift Audit
+- Trigger: 4 cycles, 1413 changed lines, 6 commits
+- Weakened proofs: relative auxiliary src failed after Landofile commit as postInit; the write seam let ordering tests skip the default writer
+- Ceremony: dead RECIPE_PLUGIN_NAME export; test-only writeAuxiliaryFile injectable
+- Fixed: unexported the unused plugin name; deleted the write seam; relative src now blocks before commit with a no-write proof
+- Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
+- Verification: typecheck, lint, 36 spot checks — pass
+---
