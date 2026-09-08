@@ -101,13 +101,18 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/contract/recipe-config-translator-contract.test.ts",
     ],
   },
-  // No bundled RecipeDecomposer implementation ships today.
   {
     abstraction: "RecipeDecomposer",
     makeExport: "makeRecipeDecomposerContractSuite",
     runExport: "runRecipeDecomposerContractSuite",
-    defaultPolicy: "none-bundled",
-    invocationFiles: [],
+    defaultPolicy: "built-in",
+    invocationFiles: [
+      "core/test/recipes/lamp.decomposer.test.ts",
+      "core/test/recipes/lemp.decomposer.test.ts",
+      "core/test/recipes/wordpress.decomposer.test.ts",
+      "core/test/recipes/laravel.decomposer.test.ts",
+      "core/test/recipes/symfony.decomposer.test.ts",
+    ],
   },
   {
     abstraction: "PluginSource",
