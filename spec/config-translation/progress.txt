@@ -358,3 +358,33 @@
   - Registering a translator through an in-process `LandoPluginModule` needs the manifest contribution ids and the loader map keys to match exactly or `list` fails with `PluginDescriptorMismatchError` before any factory runs.
   - Asserting on branded schema values (`ConfigTranslateSourceId`) against plain literals needs the `expect<unknown>(...)` idiom; and an intentionally invalid authoring value is better expressed as an out-of-scope expression string than as a wrongly typed literal, which the compiler rejects first.
 ---
+## 2026-09-07 23:20 - Review
+- [looper] gate skipped Review: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Verify
+- [looper] gate skipped Verify: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Push
+- [looper] gate skipped Push: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:22 - Babysit
+- PR: none — no PR exists for branch `us-609e0-recipe-init-integration` and the branch is not on origin. Push and the preceding gates were skipped because the branch name does not match the loop's story-branch pattern `^([a-z]+-[0-9]+[a-z]?)-` (the `609e0` suffix has a digit after the letter).
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to merge; the branch needs pushing under a loop-recognizable name before babysit can act)
+---
+
+## 2026-09-07 23:39 - US-609E0
+- Story verified complete on branch (no new code). Re-drove the private recipe init pipeline against a real temp app root and a real journal: the managed-file commit landed first, the auxiliary file after it, and the declared postInit actions last; the committed Landofile kept `{{ recipe.php }}` verbatim under object-form `recipe:` provenance with its producer block; a raw secret answer reached only its declared `postInit.secretEnv` sink and appeared in no committed file, diagnostic, or result. A blocked run left the app root completely empty, and a failing postInit action reported the committed Landofile, the committed auxiliary file, the named failed action, and an explicit no-rollback statement while leaving the scaffold in place.
+- Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-coverage, and check:guide-drift passed; 308 spot-check tests across 23 files passed, covering the story's own suites plus the shared decomposer secret probe, secret dispositions, redaction, post-init runtime, recipe manifest and bundled/shipped registries, init CLI scenario/adapter/prompts/write-plan, the translate command and document set, the lando4 translator contract, plugin registry, and the managed-file transaction coordinator.
+- **Learnings for future iterations:**
+  - Story ids that place a digit after the letter (`US-609E0` through `US-609E6`) do not match the loop's default story-branch pattern `^([a-z]+-[0-9]+[a-z]?)-`, so every gated step skips and the story can never reach Push no matter how complete it is. The harness config now sets a widened `storyIdPattern` that derives the correct id for all eighteen stories and every historic branch name; because looper reads that pattern once at startup, the run was asked to stop after this iteration so a restart picks it up.
+  - `postInit` `gitInit` still raises `NotImplementedError`; drive the pipeline with `message`, `bun`, or `command` actions when you need a real post-commit side effect.
+  - The pipeline is reachable from no CLI command by design, so its real surface is the bytes in an app root. Drive `runRecipeInitPipeline` directly from a gitignored scratch script with real temp roots rather than looking for a command to run.
+---
