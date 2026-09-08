@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PortablePath } from "@lando/sdk/schema";
+import type { ConfigTranslateDocument } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId, PortablePath } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
   LANDOFILE_LAYER_ORDER,
@@ -27,6 +28,18 @@ const makeAppDir = async (files: Readonly<Record<string, string>>) => {
 
 const failureValue = <A, E>(exit: Exit.Exit<A, E>): E | undefined =>
   Exit.isFailure(exit) ? Option.getOrUndefined(Cause.failureOption(exit.cause)) : undefined;
+
+const yamlDocument = (path: string, content: string): ConfigTranslateDocument => {
+  const bytes = new TextEncoder().encode(content);
+  return {
+    sourceId: ConfigTranslateSourceId.make(path),
+    layerId: layerForSourcePath(path),
+    path: PortablePath.make(path),
+    mediaType: "application/yaml",
+    contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`,
+    bytes,
+  };
+};
 
 describe("translate document set", () => {
   test("assigns declared layers by basename and canonical to foreign files", () => {
@@ -108,7 +121,14 @@ describe("translate document set", () => {
     const appRoot = await makeAppDir({ ".lando.base.yml": "name: demo\n", ".lando.yml": "runtime: 4\n" });
     // When
     const fragments = await Effect.runPromise(
-      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"] }),
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.local.yml"],
+        documents: [
+          yamlDocument(".lando.base.yml", "name: demo\n"),
+          yamlDocument(".lando.yml", "runtime: 4\n"),
+        ],
+      }),
     );
     // Then
     expect(fragments).toEqual([
@@ -125,7 +145,14 @@ describe("translate document set", () => {
     });
     // When
     const fragments = await Effect.runPromise(
-      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"] }),
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.local.yml"],
+        documents: [
+          yamlDocument(".lando.local.yml", "recipe: lamp\n"),
+          yamlDocument(".lando.user.yml", "recipe: lamp\n"),
+        ],
+      }),
     );
     // Then
     expect(fragments).toEqual([]);
@@ -138,7 +165,11 @@ describe("translate document set", () => {
       const appRoot = await makeAppDir({ ".lando.yml": content });
       // When
       const exit = await Effect.runPromiseExit(
-        lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"] }),
+        lowerV4LayerFragments({
+          appRoot,
+          selectedSourceIds: [".lando.local.yml"],
+          documents: [yamlDocument(".lando.yml", content)],
+        }),
       );
       // Then
       const failure = failureValue(exit);
@@ -153,7 +184,11 @@ describe("translate document set", () => {
     const appRoot = await makeAppDir({ ".lando.yml": "runtime: 4\n", ".lando.ts": "export default {};" });
     // When
     const exit = await Effect.runPromiseExit(
-      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"] }),
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.local.yml"],
+        documents: [yamlDocument(".lando.yml", "runtime: 4\n")],
+      }),
     );
     // Then
     expect(failureValue(exit)).toMatchObject({
@@ -172,7 +207,7 @@ describe("translate document set", () => {
     });
     // When
     const exit = await Effect.runPromiseExit(
-      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"] }),
+      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"], documents: [] }),
     );
     // Then
     expect(failureValue(exit)?._tag).toBe("ConfigTranslateError");
@@ -186,7 +221,14 @@ describe("translate document set", () => {
     const appRoot = await makeAppDir({ ".lando.base.yml": "name: demo\n", ".lando.yml": "recipe: lamp\n" });
     // When
     const fragments = await Effect.runPromise(
-      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.yml", ".lando.local.yml"] }),
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.yml", ".lando.local.yml"],
+        documents: [
+          yamlDocument(".lando.base.yml", "name: demo\n"),
+          yamlDocument(".lando.yml", "recipe: lamp\n"),
+        ],
+      }),
     );
     // Then
     expect(fragments).toEqual([{ layerId: "base", fragment: { name: "demo" } }]);
@@ -196,8 +238,41 @@ describe("translate document set", () => {
     // Given
     const appRoot = await makeAppDir({ ".lando.yml": "recipe: lamp\n" });
     // When
-    const fragments = await Effect.runPromise(lowerV4LayerFragments({ appRoot, selectedSourceIds: [] }));
+    const fragments = await Effect.runPromise(
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [],
+        documents: [yamlDocument(".lando.yml", "recipe: lamp\n")],
+      }),
+    );
     // Then
     expect(fragments).toEqual([]);
+  });
+
+  test("uses bounded snapshots instead of rereading lower YAML", async () => {
+    // Given: disk bytes are not valid v4, but the snapshot is.
+    const appRoot = await makeAppDir({ ".lando.yml": "recipe: lamp\n" });
+    // When
+    const fragments = await Effect.runPromise(
+      lowerV4LayerFragments({
+        appRoot,
+        selectedSourceIds: [".lando.local.yml"],
+        documents: [yamlDocument(".lando.yml", "name: demo\nruntime: 4\n")],
+      }),
+    );
+    // Then
+    expect(fragments).toEqual([{ layerId: "canonical", fragment: { name: "demo", runtime: 4 } }]);
+  });
+
+  test("fails closed when a present lower YAML has no snapshot", async () => {
+    // Given
+    const appRoot = await makeAppDir({ ".lando.yml": "name: demo\nruntime: 4\n" });
+    // When
+    const exit = await Effect.runPromiseExit(
+      lowerV4LayerFragments({ appRoot, selectedSourceIds: [".lando.local.yml"], documents: [] }),
+    );
+    // Then
+    expect(failureValue(exit)?._tag).toBe("ConfigTranslateError");
+    expect(failureValue(exit)?.message).toContain(".lando.yml");
   });
 });

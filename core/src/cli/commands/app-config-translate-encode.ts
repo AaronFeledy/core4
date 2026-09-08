@@ -49,14 +49,21 @@ export const encodeTranslateOutputs = (
     const layers = landofileLayerPaths(location.appRoot);
     return yield* Effect.forEach(outputs, (output) =>
       Effect.gen(function* () {
-        const path = layers.find((layer) => layer.layer === output.targetLayer)?.yamlPath;
-        if (path === undefined)
+        const layer = layers.find((item) => item.layer === output.targetLayer);
+        if (layer === undefined)
           return yield* Effect.fail(
             new ConfigTranslateError({ message: `No declared target for ${output.targetLayer}.` }),
           );
+        if (yield* Effect.promise(() => Bun.file(layer.typescriptPath).exists()))
+          return yield* Effect.fail(
+            new ConfigTranslateError({
+              message: `${layer.typescriptPath} is a TypeScript Landofile, so this layer is read-only for translation.`,
+              remediation: `Remove ${layer.typescriptPath} or convert it manually before writing YAML with --to lando4.`,
+            }),
+          );
         const result = yield* encode({ context: merged, fragment: output.fragment });
         return {
-          target: { layer: output.targetLayer, path, content: result.text },
+          target: { layer: output.targetLayer, path: layer.yamlPath, content: result.text },
           diagnostics: result.diagnostics,
         };
       }),

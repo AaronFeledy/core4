@@ -315,3 +315,11 @@
   - Writing command output into the app root under test poisons the next run: discovery picks the artifact up, the translator marks it `unsupported`, and the write correctly fails closed. Keep manual-QA artifacts outside the app root.
   - The transaction reports only files whose bytes actually changed, so a re-encode that is byte-identical yields no write and no backup. That is the byte-deterministic repeat the spec asks for, not a missing write.
 ---
+
+## 2026-09-07 20:06 - US-609C Review
+- Review-work failed on once-read snapshots, `--file` discovery membership, and YAML-beside-TypeScript writes. Fixed: lower v4 context now uses the bounded document snapshots; `--file` selects inside discovery (with the existing realpath fail-closed for escapes); encoding refuses a layer whose TypeScript form already exists.
+- Review notes (deferred/rejected): QA coverage-gap FAIL — existing tests already prove frontend-once, write transaction, and fail-closed unselected edits; extra planner/provider assertions are not AC blockers. Expected-before digest / transaction CAS — §12.4.1 cooperative lock is not CAS; expanding the coordinator is US-608C/D, previously deferred. Diagnostic `sourceId`/`keyPath` redaction — structural identities required for writes. Discovering every in-root YAML/JSON/TOML — intentional extension policy.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 70 focused translate/document-set tests passed.
+- Guide-Coverage-Skip: review only tightened fail-closed `--file` membership and TypeScript counterpart writes; the owned config-translate guide already covers selection and write.
+- **Learnings for future iterations:** `--file` membership is not a substitute for the realpath containment error; check containment first on undiscovered explicit paths so escaped symlinks still fail as outside-root.
+---

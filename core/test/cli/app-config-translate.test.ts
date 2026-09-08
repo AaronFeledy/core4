@@ -1193,4 +1193,41 @@ describe("appConfigTranslate contract-suite fixtures", () => {
     expect(forced.mode).toBe("preview");
     if (forced.mode === "preview") expect(forced.translator).toBe("compose");
   });
+
+  test("--file rejects application sources that discovery excludes", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await Bun.write(join(cwd, "application.ts"), "export default 1;\n");
+    let calls = 0;
+    const base = makeTranslator("v3", { name: "demo" });
+    const translator: ConfigTranslatorShape = {
+      ...base,
+      translate: (input) => {
+        calls++;
+        return base.translate(input);
+      },
+    };
+    const exit = await runExit(
+      appConfigTranslate({ cwd, files: ["application.ts"], translators: withEncoder([translator]) }),
+    );
+    expect(failureTag(exit)).toBe("ConfigTranslateError");
+    expect(failureValue(exit)?.message).toContain("application.ts");
+    expect(calls).toBe(0);
+  });
+
+  test("--write fails closed when a target layer already has a TypeScript Landofile", async () => {
+    const cwd = await makeAppDir("name: unused\n");
+    await rm(join(cwd, ".lando.yml"));
+    await Bun.write(join(cwd, ".lando.ts"), "export default {};\n");
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
+    const exit = await runExit(
+      appConfigTranslate({
+        cwd,
+        write: true,
+        translators: withEncoder([makeTranslator("v3", { name: "demo", runtime: 4 })]),
+      }),
+    );
+    expect(failureTag(exit)).toBe("ConfigTranslateError");
+    expect(existsSync(join(cwd, ".lando.yml"))).toBe(false);
+    expect(await Bun.file(join(cwd, ".lando.ts")).text()).toBe("export default {};\n");
+  });
 });

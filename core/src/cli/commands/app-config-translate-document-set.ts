@@ -2,7 +2,12 @@ import { basename, relative } from "node:path";
 import { LANDOFILE_LAYER_POSITIONS, presentLandofileLayers } from "@lando/landofile/layers";
 import { parseLandofile } from "@lando/landofile/parser";
 import { ConfigTranslateError, LandofileFormConflictError } from "@lando/sdk/errors";
-import type { ConfigTranslateLayerFragment, LandofileLayer, PortablePath } from "@lando/sdk/schema";
+import type {
+  ConfigTranslateDocument,
+  ConfigTranslateLayerFragment,
+  LandofileLayer,
+  PortablePath,
+} from "@lando/sdk/schema";
 import { LandofileAuthoringFragment } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
@@ -60,6 +65,7 @@ export const buildDocumentSetShape = (args: {
 export const lowerV4LayerFragments = (args: {
   readonly appRoot: string;
   readonly selectedSourceIds: ReadonlyArray<string>;
+  readonly documents: ReadonlyArray<ConfigTranslateDocument>;
 }): Effect.Effect<
   ReadonlyArray<ConfigTranslateLayerFragment>,
   ConfigTranslateError | LandofileFormConflictError
@@ -94,16 +100,21 @@ export const lowerV4LayerFragments = (args: {
           cause,
         });
       if (filePath.endsWith(".ts")) return Effect.fail(invalidFragment("TypeScript Landofiles are opaque."));
-      return Effect.tryPromise({ try: () => Bun.file(filePath).text(), catch: invalidFragment }).pipe(
-        Effect.flatMap((content) =>
-          parseLandofile({ file: filePath, content, cwd: args.appRoot }).pipe(
-            Effect.flatMap((value) =>
-              Schema.decodeUnknown(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
-            ),
-            Effect.flatMap(Schema.encode(LandofileAuthoringFragment)),
-            Effect.mapError(invalidFragment),
-          ),
+      const document = args.documents.find((item) => String(item.path ?? item.sourceId) === relativePath);
+      if (document === undefined)
+        return Effect.fail(
+          new ConfigTranslateError({
+            message: `${relativePath} has no bounded translation snapshot, so it cannot supply single-layer validation context.`,
+            remediation: `Convert ${relativePath} first with --file ${relativePath}, or run a full conversion without --file.`,
+          }),
+        );
+      const content = new TextDecoder().decode(document.bytes);
+      return parseLandofile({ file: filePath, content, cwd: args.appRoot }).pipe(
+        Effect.flatMap((value) =>
+          Schema.decodeUnknown(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
         ),
+        Effect.flatMap(Schema.encode(LandofileAuthoringFragment)),
+        Effect.mapError(invalidFragment),
         Effect.map((fragment): ConfigTranslateLayerFragment => ({ layerId: layer, fragment })),
       );
     });

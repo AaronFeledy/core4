@@ -38,6 +38,7 @@ import {
   discoverSourceFiles,
   mediaTypeForSourcePath,
   parseSourceFilePath,
+  rejectUndiscoveredSources,
   resolveContainedSourcePath,
 } from "./app-config-translate-sources.ts";
 import { writeTranslateTargets } from "./app-config-translate-write.ts";
@@ -193,7 +194,8 @@ export const appConfigTranslate = (
       );
     const discovered = yield* discoverSourceFiles(appRoot);
     const explicit = yield* Effect.all((options.files ?? []).map(parseSourceFilePath));
-    const paths = orderSourcePaths([...new Set([...discovered, ...explicit])]);
+    yield* rejectUndiscoveredSources(appRoot, discovered, explicit);
+    const paths = orderSourcePaths(discovered);
     const documents = yield* readTranslateDocuments(appRoot, paths, explicit);
     const files = documents.map((document) => String(document.sourceId));
 
@@ -217,7 +219,11 @@ export const appConfigTranslate = (
     });
     const currentLowerV4Fragments =
       shape.mode === "single-layer"
-        ? yield* lowerV4LayerFragments({ appRoot, selectedSourceIds: shape.selectedSourceIds })
+        ? yield* lowerV4LayerFragments({
+            appRoot,
+            selectedSourceIds: shape.selectedSourceIds,
+            documents,
+          })
         : [];
     const {
       outputs,
