@@ -434,3 +434,10 @@
 - Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
 - Verification: typecheck, lint, 36 spot checks — pass
 ---
+
+## 2026-09-08 08:35 - Babysit
+- PR: #926 https://github.com/AaronFeledy/core4/pull/926
+- CI outcome: fail (runtime-bundle-linux-x64, platform-readiness-linux-{x64,arm64}, drupal-journey-linux-{x64,arm64}, rails-journey-linux-{x64,arm64}, provider-integration-linux-x64, guide-scenarios-linux-x64) — all one root cause: the `Install Linux Podman source-build prerequisites` step cannot reach the pinned `snapshot.ubuntu.com` mirror (500/502), so the podman build dies and every downstream linux job fails or skips. Confirmed environmental: a direct probe of that snapshot URL still returns 502, and all non-linux/unit/static/schema/recipe checks pass.
+- Review feedback: none actionable — Bugbot could not run (Cursor usage limit), leaving no findings; no `cursor[bot]` inline review comments and no CHANGES_REQUESTED.
+- Merge: deferred (upstream apt-mirror outage; two `--failed` rerun rounds hit the identical step, and no in-scope code change can fix it — retry once snapshot.ubuntu.com recovers)
+---
