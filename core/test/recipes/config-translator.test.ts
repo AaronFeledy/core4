@@ -37,6 +37,15 @@ const request = (id = "example", version = "1.0.0") =>
     answers: { name: "option-value-must-not-leak" },
     secretAnswers: { password: { disposition: "secret-store", reference: "vault:example" } },
   });
+const authoredFragment = (options: Record<string, string>) => ({
+  ...fragment,
+  recipe: {
+    id: producer.recipeId,
+    version: producer.manifestVersion,
+    producer,
+    options,
+  },
+});
 
 describe("recipe config translator", () => {
   test("never detects an app when source documents are present", async () => {
@@ -122,7 +131,11 @@ describe("recipe config translator", () => {
     const translator = makeRecipeConfigTranslator({ ...ports, decomposers: new Map([["example", stub]]) });
     const result = await Effect.runPromise(translator.translate(input));
     expect<unknown>(result.outputs).toEqual([
-      { targetLayer: "canonical", fragment, sourceIds: ["recipe:example:init"] },
+      {
+        targetLayer: "canonical",
+        fragment: authoredFragment({ name: "option-value-must-not-leak" }),
+        sourceIds: ["recipe:example:init"],
+      },
     ]);
     expect(result.deletions).toHaveLength(0);
     expect<unknown>(result.diagnostics).toEqual([
@@ -184,5 +197,14 @@ describe("recipe config translator", () => {
     expect(translator.encode).toBeUndefined();
     expect("encode" in translator).toBe(false);
     expect(await loader()).toBe(translator);
+  });
+
+  test("writes decomposer provenance onto a fragment that omitted recipe", async () => {
+    const input = request();
+    const translator = makeRecipeConfigTranslator(ports);
+    const result = await Effect.runPromise(translator.translate(input));
+    expect<unknown>(result.outputs[0]?.fragment).toEqual(
+      authoredFragment({ name: "option-value-must-not-leak" }),
+    );
   });
 });
