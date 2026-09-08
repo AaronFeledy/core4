@@ -388,3 +388,33 @@
   - `postInit` `gitInit` still raises `NotImplementedError`; drive the pipeline with `message`, `bun`, or `command` actions when you need a real post-commit side effect.
   - The pipeline is reachable from no CLI command by design, so its real surface is the bytes in an app root. Drive `runRecipeInitPipeline` directly from a gitignored scratch script with real temp roots rather than looking for a command to run.
 ---
+## 2026-09-07 23:41 - Review
+- [looper] gate skipped Review: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Verify
+- [looper] gate skipped Verify: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Cleanup
+- [looper] gate skipped Cleanup: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Push
+- [looper] gate skipped Push: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+
+## 2026-09-07 23:41 - Babysit
+- PR: none — branch us-609e0-recipe-init-integration has no remote branch or PR
+- CI outcome: n/a (no PR to watch)
+- Review feedback: none
+- Merge: deferred (push step did not create/refresh the PR)
+---
+
+## 2026-09-08 06:45 - US-609E0
+- Story verified complete on branch (no new code). The bundled `recipe` translator, its plugin-module registration, and the private init pipeline all remain in place with the contract ordering intact: translate, validate, encode, commit the Landofile through one managed-file transaction, then auxiliary `files:`, then declared `postInit:` actions. Blocked and commit failures still write nothing beyond their stated boundary, and post-init failure still names the committed scaffold and failed action without claiming rollback.
+- Verification: typecheck, lint, and check:boundaries passed; 252 spot-check tests across 17 files passed, covering the recipe translator, init pipeline, isolated init fixture, translator contract, plugin-abstraction coverage, post-init runtime, recipe manifest and bundled/shipped registries, the recipe prompt suites, and the adjacent managed-file transaction journal/backup/checkpoint files.
+- **Learnings for future iterations:**
+  - The widened `storyIdPattern` now resolves `us-609e0-*`, so the gated steps that skipped on the two previous iterations can finally run against this branch; a story can sit fully implemented and still never publish when the harness pattern cannot derive its id.
+  - When a Build invocation lands on an already-complete story, the honest work is re-running the gates and adjacent blast radius, not manufacturing changes — the branch here needed publication, not code.
+---
