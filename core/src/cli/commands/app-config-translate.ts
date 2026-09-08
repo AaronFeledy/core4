@@ -180,18 +180,6 @@ export const appConfigTranslate = (
     }
 
     const appRoot = dirname(inputPath);
-    const targetId = options.to ?? "lando4";
-    const target = resolved.find((translator) => translator.id === targetId);
-    if (target?.encode === undefined)
-      return yield* Effect.fail(
-        new ConfigTranslateError({
-          message: `Invalid --to target "${targetId}": an encoder is required.`,
-          remediation: `Choose --to from: ${resolved
-            .filter((translator) => translator.encode !== undefined)
-            .map((translator) => translator.id)
-            .join(", ")}.`,
-        }),
-      );
     const discovered = yield* discoverSourceFiles(appRoot);
     const explicit = yield* Effect.all((options.files ?? []).map(parseSourceFilePath));
     yield* rejectUndiscoveredSources(appRoot, discovered, explicit);
@@ -210,6 +198,19 @@ export const appConfigTranslate = (
         matches,
       };
     }
+
+    const targetId = options.to ?? "lando4";
+    const target = resolved.find((translator) => translator.id === targetId);
+    if (target?.encode === undefined)
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          message: `Invalid --to target "${targetId}": an encoder is required.`,
+          remediation: `Choose --to from: ${resolved
+            .filter((translator) => translator.encode !== undefined)
+            .map((translator) => translator.id)
+            .join(", ")}.`,
+        }),
+      );
 
     const selected = yield* selectTranslator(resolved, options.from, documents);
 

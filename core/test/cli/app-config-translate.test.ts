@@ -393,7 +393,6 @@ describe("appConfigTranslate", () => {
       appConfigTranslate({
         cwd,
         to,
-        detect: true,
         translators: withEncoder([makeTranslator("v3", { name: "demo" })]),
       }),
     );
@@ -838,9 +837,7 @@ describe("appConfigTranslate", () => {
       },
     ];
 
-    const result = await Effect.runPromise(
-      appConfigTranslate({ cwd, detect: true, translators: withEncoder(translators) }),
-    );
+    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
 
     expect(result.mode).toBe("detect");
     if (result.mode !== "detect") throw new Error("expected detect mode");
