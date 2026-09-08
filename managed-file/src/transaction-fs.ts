@@ -207,11 +207,7 @@ export const mutateEntry = async (root: string, entry: Entry): Promise<void> => 
     if (stage === undefined) throw transactionError("journal", "commit");
     await targetPath(root, relative(root, stage.path));
     const stats = await lstat(stage.path);
-    if (
-      String(stats.dev) !== stage.dev ||
-      String(stats.ino) !== stage.ino ||
-      (stats.mode & 0o777) !== 0o600
-    ) {
+    if (String(stats.dev) !== stage.dev || String(stats.ino) !== stage.ino) {
       throw transactionError("conflict", "commit", entry.path);
     }
     await verifyPrivateFile(stage.path, entry.after.digest);
