@@ -26,7 +26,6 @@ const DetectResultSchema = Schema.Struct({
   matches: Schema.Array(ConfigTranslateMatch),
 });
 
-/** One declared target layer, its declared file path, and its encoded text. */
 const TranslateTargetSchema = Schema.Struct({
   layer: LandofileLayer,
   path: Schema.String,

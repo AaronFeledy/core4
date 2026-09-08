@@ -85,7 +85,6 @@ const CONFIG_SOURCE_MEDIA_TYPES: Readonly<Record<string, string>> = {
   ".toml": "application/toml",
 };
 
-/** Media type for a discovered or explicitly selected source path. */
 export const mediaTypeForSourcePath = (path: string): string =>
   CONFIG_SOURCE_MEDIA_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 

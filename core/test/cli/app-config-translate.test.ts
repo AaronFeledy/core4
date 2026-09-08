@@ -528,7 +528,6 @@ describe("appConfigTranslate", () => {
     expect(input.writableLayerIds).toEqual(["base", "dist", "upstream", "canonical", "local", "user"]);
     expect(input.currentLowerV4Fragments).toEqual([]);
   });
-  // Result literals now describe per-layer targets and transaction receipts.
   test.each(["generated", "dropped", "rewritten", "unsupported", "non-portable", "needs-review"] as const)(
     "renders source-attributed %s diagnostics in preview and write results",
     (kind) => {
@@ -676,7 +675,6 @@ describe("appConfigTranslate", () => {
     ).toBe("ConfigTranslateError");
   });
 
-  // Deletion intents now execute atomically with writes instead of being rejected.
   test("deletions are removed in the same transaction", async () => {
     const original = "name: demo\n";
     const cwd = await makeAppDir(original);
@@ -1035,7 +1033,6 @@ describe("appConfigTranslate", () => {
     expect(failureValue(exit)?.remediation ?? "").toContain("plugin");
   });
 
-  // Transactions preserve original bytes under a full digest-named backup.
   test("--write overwrites the input and keeps a digest-named backup of the original", async () => {
     const original = "name: demo\nruntime: 4\n";
     const cwd = await makeAppDir(original);
