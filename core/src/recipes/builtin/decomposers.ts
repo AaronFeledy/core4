@@ -2,10 +2,10 @@
  * Bundled recipe decomposers.
  *
  * Each entry converts one bundled recipe's merged nonsecret options into
- * Landofile authoring data through the SDK `RecipeDecomposer` port. The map is
- * the single place the bundled `recipe` config translator and the recipe init
- * pipeline look up a decomposer by recipe id, so a recipe is either fully
- * decomposed here or not decomposable at all.
+ * Landofile authoring data through the SDK `RecipeDecomposer` port. This is
+ * the staged replacement catalog: public init still binds `render.ts` until
+ * the decomposer catalog becomes the single registry, and the private recipe
+ * translator still uses the isolated test recipe until that cutover.
  */
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
