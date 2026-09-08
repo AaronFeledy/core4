@@ -14,7 +14,6 @@ import { symfonyProducer, symfonySnapshot } from "../../src/recipes/builtin/symf
 
 const defaults = { php: "8.3", database: "postgres:16", composer: "2", webroot: "/app/public" };
 const alternate = { php: "8.4", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
-const composerFalse = { ...defaults, composer: "false" };
 const validInput: RecipeDecomposeInput = { producer: symfonyProducer, options: defaults, secrets: {} };
 const decomposer = symfonyDecomposer({
   redactor: { redactString: (text) => text, redactValue: (value) => value },
@@ -91,17 +90,16 @@ describe("symfony decomposition", () => {
     expect<unknown>(result).toEqual({ fragment: { ...expected, recipe: provenance }, provenance });
   });
 
-  test("disables Composer and omits its tooling when composer is false", () => {
-    // Given the renderer-supported false string.
-    const options = composerFalse;
-    // When decomposed.
-    const { fragment, provenance } = Effect.runSync(decomposer.decompose({ ...validInput, options }));
-    // Then appserver.composer is boolean false and tooling.composer is absent.
-    expect<unknown>(fragment).toEqual({
-      ...expected,
-      recipe: provenance,
-      services: { ...expected.services, appserver: { ...expected.services.appserver, composer: false } },
-      tooling: { console: expected.tooling.console },
+  test("rejects composer=false because the published snapshot does not declare it", () => {
+    // Given a Composer value the Symfony prompts never offer.
+    const error = Effect.runSync(
+      Effect.flip(decomposer.decompose({ ...validInput, options: { ...defaults, composer: "false" } })),
+    );
+    // Then the typed option path is reported without echoing the value.
+    expect(error).toMatchObject({
+      _tag: "RecipeDecomposeError",
+      reason: "option-type",
+      path: "options.composer",
     });
   });
 
@@ -133,17 +131,14 @@ describe("symfony decomposition", () => {
     expect(manifest.snapshot).toEqual(symfonySnapshot);
   });
 
-  test.each([defaults, alternate, composerFalse])(
-    "agrees with the snapshot when options are %j",
-    (options) => {
-      // Given the decomposed authoring data without provenance or app name.
-      const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
-      if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
-      const { recipe: _recipe, ...fragment } = result.fragment;
-      // When the declarative snapshot renders once.
-      const rendered = Either.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
-      // Then expression-shaped strings remain inert authoring data.
-      expect<unknown>(rendered).toEqual(fragment);
-    },
-  );
+  test.each([defaults, alternate])("agrees with the snapshot when options are %j", (options) => {
+    // Given the decomposed authoring data without provenance or app name.
+    const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
+    if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
+    const { recipe: _recipe, ...fragment } = result.fragment;
+    // When the declarative snapshot renders once.
+    const rendered = Either.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
+    // Then expression-shaped strings remain inert authoring data.
+    expect<unknown>(rendered).toEqual(fragment);
+  });
 });

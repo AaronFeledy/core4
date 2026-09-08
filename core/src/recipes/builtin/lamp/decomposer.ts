@@ -42,7 +42,6 @@ export const lampDecomposer = ((ports) => ({
       const composerEnabled = input.options.composer !== "false";
       return {
         fragment: {
-          name: "lamp",
           runtime: 4,
           recipe: provenance,
           services: {

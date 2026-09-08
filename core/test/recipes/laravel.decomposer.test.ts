@@ -27,7 +27,6 @@ const alternate = {
   webroot: "/app/web",
   worker: true,
 };
-const composerFalse = { ...defaults, composer: "false" };
 const validInput: RecipeDecomposeInput = { producer: laravelProducer, options: defaults, secrets: {} };
 const decomposer = laravelDecomposer({ redactor: createStandaloneRedactor("secrets") });
 const expected = {
@@ -105,19 +104,6 @@ describe("Laravel deterministic decomposition", () => {
     expect(provenance.options).toEqual(alternate);
   });
 
-  test("disables Composer and omits its tooling when composer is false", () => {
-    // Given the renderer-supported false string; when decomposed; then neither Composer path stays enabled.
-    const { fragment, provenance } = Effect.runSync(
-      decomposer.decompose({ ...validInput, options: composerFalse }),
-    );
-    expect<unknown>(fragment).toEqual({
-      ...expected,
-      recipe: provenance,
-      services: { ...expected.services, appserver: { ...expected.services.appserver, composer: false } },
-      tooling: { artisan: expected.tooling.artisan, npm: expected.tooling.npm },
-    });
-  });
-
   test.each([
     ["php", 83],
     ["php", "9.0"],
@@ -125,6 +111,7 @@ describe("Laravel deterministic decomposition", () => {
     ["database", "mysql:8.0"],
     ["composer", 2],
     ["composer", "3"],
+    ["composer", "false"],
     ["webroot", false],
     ["webroot", "relative"],
     ["webroot", "/app/unsafe path"],
@@ -168,7 +155,7 @@ describe("Laravel deterministic decomposition", () => {
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 
-  test.each([defaults, alternate, composerFalse])("snapshot agrees with decomposition for %j", (options) => {
+  test.each([defaults, alternate])("snapshot agrees with decomposition for %j", (options) => {
     // Given each structural selection; when the inert snapshot renders; then it matches decomposition.
     const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");

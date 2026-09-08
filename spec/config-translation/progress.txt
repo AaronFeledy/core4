@@ -504,3 +504,11 @@
   - The authoring fragment root is a union with an expression slot, so `result.fragment` needs an explicit `typeof === "string"` narrowing before property access; the same applies one level down to `services` and to each service.
   - When an acceptance criterion names a file that a later milestone story is explicitly assigned to rewire, prefer publishing the replacement over activating it, and record the adjudication so Review and Drift Audit do not re-litigate it.
 ---
+
+## 2026-09-08 14:37 - US-609E1 Review
+- Aligned Laravel and Symfony decomposition with their published snapshot option domains: `composer: "false"` is now a typed option failure, not a structural toggle. Dropped the hardcoded LAMP `name: "lamp"` so the authoring fragment matches the snapshot.
+- Review notes (deferred/rejected): Private `runRecipeInitPipeline` wiring with current manifests — staged cutover keeps public template `files:` until US-609E; provider-free coverage is the shared decomposer contract. Rejecting undeclared option keys — translator passes all answers including the app-name prompt, so closed-key reject would fail init. Exact producer identity beyond `recipeId` — same as the US-609E0 fixture; contract suite already covers missing-recipe. Dead snapshot `composerEnabled` branches for Laravel/Symfony — valid options never take them; digest churn not required.
+- Verification: typecheck, lint passed; 66 focused decomposer tests passed. GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed before the review fix (no guide-covered source change).
+- Guide-Coverage-Skip: PHP web decomposers stay private replacements; public init, renderers, and existing recipe README.mdx journeys are unchanged until US-609E.
+- **Learnings for future iterations:** Snapshot `optionTypes` are the closed public domain even when a still-bound `render.ts` accepts a wider composer enum. Pin nondefault coverage to values the snapshot actually declares.
+---

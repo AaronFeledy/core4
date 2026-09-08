@@ -21,9 +21,7 @@ export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
         );
       }
       for (const [name, descriptor] of Object.entries(symfonySnapshot.optionTypes)) {
-        const value = input.options[name];
-        if (name === "composer" && value === "false") continue;
-        if (!optionValueMatchesDescriptor(descriptor, value)) {
+        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
           return yield* Effect.fail(
             new RecipeDecomposeError({
               recipeId: "symfony",
@@ -41,7 +39,6 @@ export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
         producer: symfonyProducer,
         options: input.options,
       };
-      const composerEnabled = input.options.composer !== "false";
       return {
         fragment: {
           runtime: 4,
@@ -51,7 +48,7 @@ export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
               type: "php:{{ recipe.php }}",
               framework: "symfony",
               webroot: "{{ recipe.webroot }}",
-              composer: composerEnabled ? "{{ recipe.composer }}" : false,
+              composer: "{{ recipe.composer }}",
               allowOverride: true,
               port: 80,
               dependsOn: ["database", "cache"],
@@ -66,15 +63,11 @@ export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
               description: "Run the Symfony console inside the appserver service.",
               cmds: ["php bin/console"],
             },
-            ...(composerEnabled
-              ? {
-                  composer: {
-                    service: "appserver",
-                    description: "Run Composer inside the appserver service.",
-                    cmds: ["composer"],
-                  },
-                }
-              : {}),
+            composer: {
+              service: "appserver",
+              description: "Run Composer inside the appserver service.",
+              cmds: ["composer"],
+            },
           },
         },
         provenance,

@@ -61,7 +61,6 @@ describe("lamp decomposition", () => {
     expect<unknown>(result).toEqual({
       provenance,
       fragment: {
-        name: "lamp",
         runtime: 4,
         recipe: provenance,
         services: expectedServices,
@@ -84,7 +83,6 @@ describe("lamp decomposition", () => {
     const { fragment, provenance } = Effect.runSync(decomposer.decompose(input));
     // Then
     expect<unknown>(fragment).toEqual({
-      name: "lamp",
       runtime: 4,
       recipe: provenance,
       services: { ...expectedServices, appserver: { ...expectedServices.appserver, composer: false } },
@@ -144,7 +142,7 @@ describe("lamp decomposition", () => {
   test.each([defaults, alternatives])("agrees with the snapshot when options are %j", (options) => {
     // Given
     const { fragment } = Effect.runSync(decomposer.decompose({ ...validInput, options }));
-    const { recipe: _recipe, name: _name, ...authoring } = fragment;
+    const { recipe: _recipe, ...authoring } = fragment;
     // When
     const rendered = Either.getOrThrow(renderRecipeSnapshot(lampSnapshot, options));
     // Then

@@ -2,7 +2,7 @@ import { RecipeDecomposeError } from "@lando/sdk/errors";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { COMPOSER_OPTIONS, LARAVEL_DATABASES, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack";
+import { DRUPAL_COMPOSER_OPTIONS, LARAVEL_DATABASES, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack";
 import { LARAVEL_RECIPE_VERSION, laravelProducer } from "./snapshot.ts";
 
 export const laravelDecomposer: RecipeDecomposerFactory = (ports) => ({
@@ -22,7 +22,7 @@ export const laravelDecomposer: RecipeDecomposerFactory = (ports) => ({
       const choices: Readonly<Record<string, readonly string[]>> = {
         php: PHP_VERSIONS,
         database: LARAVEL_DATABASES,
-        composer: COMPOSER_OPTIONS,
+        composer: DRUPAL_COMPOSER_OPTIONS,
       };
       for (const [name, values] of Object.entries(choices)) {
         const value = input.options[name];
@@ -77,7 +77,7 @@ export const laravelDecomposer: RecipeDecomposerFactory = (ports) => ({
               type: "php:{{ recipe.php }}",
               framework: "laravel",
               webroot: "{{ recipe.webroot }}",
-              composer: input.options.composer === "false" ? false : "{{ recipe.composer }}",
+              composer: "{{ recipe.composer }}",
               allowOverride: true,
               port: 80,
               dependsOn: ["database", "cache"],
@@ -103,15 +103,11 @@ export const laravelDecomposer: RecipeDecomposerFactory = (ports) => ({
               description: "Run a Laravel Artisan command inside the appserver service.",
               cmds: ["php artisan"],
             },
-            ...(input.options.composer === "false"
-              ? {}
-              : {
-                  composer: {
-                    service: "appserver",
-                    description: "Run Composer inside the appserver service.",
-                    cmds: ["composer"],
-                  },
-                }),
+            composer: {
+              service: "appserver",
+              description: "Run Composer inside the appserver service.",
+              cmds: ["composer"],
+            },
             npm: {
               service: "appserver",
               description: "Run npm inside the appserver service.",
