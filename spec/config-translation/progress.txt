@@ -338,3 +338,156 @@
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck, lint, 71 spot-check tests — pass
 ---
+
+## 2026-09-07 20:32 - US-609C Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Two-layer v4 app: preview labels each target path and keeps `{{ env.PHPV }}` verbatim; detect files are only `.lando.yml`/`.lando.local.yml` (index.php never enters); unknown `--to` fails closed listing `lando4`; `--write` rewrote only the unsorted canonical layer with a digest-named `0o600` backup and no `.lando.yml.bak`; repeat write is a no-op; `--from lando4 --file .lando.local.yml` fails closed when the lower layer is not v4; unsupported `--write` is blocked. Live php:8.3 app: start/info/curl/exec succeeded (HTTPS 200 `us609c-ok`, PHP 8.3.33); adjacent `app:config` and `app:config:lint` stayed green. Destroyed the scenario apps.
+- **Out-of-scope finding:** `lando start` and `lando app:config` on a Landofile with `{{ env.PHPV }}` in `services.web.environment` exit 1 (`NotImplementedError`: template expressions not supported). Translate preview/write preserve the expression. Story AC not blocked; suspected unimplemented expression evaluation on the native load/start path (same area as US-609A config finding).
+---
+
+## 2026-09-07 23:45 - US-609E0
+- Added the bundled `recipe` config translator: decode-only (no `encode`), `detect` never matches an app root, rejects a Landofile document set, and delegates a `recipe-request` to an injected `RecipeDecomposer` after checking producer identity agreement. It emits exactly one canonical output plus a `generated` diagnostic, no deletions, and self-validates through `validateConfigTranslateResult` before returning.
+- Registered it through the real plugin seam rather than a new workspace package: `makeRecipeTranslatorModule` builds a `LandoPluginModule` whose manifest `contributes.configTranslators` ids match its lazy loader map, and consumers resolve it through `makeConfigTranslatorRegistryLive([module])`. Decomposers stay in core, where the per-recipe conversions land next, so the leaf-plugin rule is never violated.
+- Implemented the private init pipeline. It validates secret prompt dispositions, converts each declared secret into a reference (never raw bytes) before building the request, translates through the registry, merges and validates the authoring result, encodes through the injected `lando4` encoder, and redacts every diagnostic through `RedactionService` with a standalone fallback. An `unsupported` or `non-portable` diagnostic blocks before anything is written.
+- Ordered the write path exactly as the contract requires: the encoded Landofile commits through one managed-file transaction; auxiliary `files:` are written only after that commit; declared `postInit:` actions run only after the auxiliary files. Raw secrets reach only the prompt's declared init-only sink (`postInit.secretEnv.<name>` env binding or the `stdin` binding) and are additionally rejected if they ever appear in answers, the merged authoring context, the encoded text, diagnostics, or auxiliary content.
+- Made failure semantics explicit with three tagged errors: blocked (nothing written), commit (nothing beyond the transaction), and post-init, which names the committed Landofile, the committed auxiliary files, and the failed action while stating that external side effects were not rolled back.
+- Left the public init path untouched: `initApp`, the builtin renderer registry, the bundled ship list, and the expander are unchanged, and the pipeline is wired into no CLI command.
+- Verification: typecheck, lint, check:boundaries, and codegen:check passed; 502 spot-check tests across the recipe pipeline, translator, fixture, contract, plugin-abstraction coverage, init scenario, and translate command files passed. A real driver against a temp app root confirmed the committed Landofile keeps `{{ recipe.php }}` verbatim, carries object-form `recipe:` provenance with its producer block, writes the auxiliary file after commit, runs postInit last, and leaks the secret marker into neither the file nor the result.
+- **Learnings for future iterations:**
+  - Auxiliary `files:` entries have no source-root port on this pipeline, so a relative `src` would resolve against the process working directory. The writer now fails closed on a non-absolute `src`; whoever adds recipe-root resolution should give the request an explicit source root rather than restoring implicit cwd behavior.
+  - The `recipe` translator has no `encode` on purpose. Any consumer selecting a target must check `encode !== undefined` and fail closed, the way the translate command already does.
+  - Registering a translator through an in-process `LandoPluginModule` needs the manifest contribution ids and the loader map keys to match exactly or `list` fails with `PluginDescriptorMismatchError` before any factory runs.
+  - Asserting on branded schema values (`ConfigTranslateSourceId`) against plain literals needs the `expect<unknown>(...)` idiom; and an intentionally invalid authoring value is better expressed as an out-of-scope expression string than as a wrongly typed literal, which the compiler rejects first.
+---
+## 2026-09-07 23:20 - Review
+- [looper] gate skipped Review: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Verify
+- [looper] gate skipped Verify: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:20 - Push
+- [looper] gate skipped Push: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:22 - Babysit
+- PR: none — no PR exists for branch `us-609e0-recipe-init-integration` and the branch is not on origin. Push and the preceding gates were skipped because the branch name does not match the loop's story-branch pattern `^([a-z]+-[0-9]+[a-z]?)-` (the `609e0` suffix has a digit after the letter).
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to merge; the branch needs pushing under a loop-recognizable name before babysit can act)
+---
+
+## 2026-09-07 23:39 - US-609E0
+- Story verified complete on branch (no new code). Re-drove the private recipe init pipeline against a real temp app root and a real journal: the managed-file commit landed first, the auxiliary file after it, and the declared postInit actions last; the committed Landofile kept `{{ recipe.php }}` verbatim under object-form `recipe:` provenance with its producer block; a raw secret answer reached only its declared `postInit.secretEnv` sink and appeared in no committed file, diagnostic, or result. A blocked run left the app root completely empty, and a failing postInit action reported the committed Landofile, the committed auxiliary file, the named failed action, and an explicit no-rollback statement while leaving the scaffold in place.
+- Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-coverage, and check:guide-drift passed; 308 spot-check tests across 23 files passed, covering the story's own suites plus the shared decomposer secret probe, secret dispositions, redaction, post-init runtime, recipe manifest and bundled/shipped registries, init CLI scenario/adapter/prompts/write-plan, the translate command and document set, the lando4 translator contract, plugin registry, and the managed-file transaction coordinator.
+- **Learnings for future iterations:**
+  - Story ids that place a digit after the letter (`US-609E0` through `US-609E6`) do not match the loop's default story-branch pattern `^([a-z]+-[0-9]+[a-z]?)-`, so every gated step skips and the story can never reach Push no matter how complete it is. The harness config now sets a widened `storyIdPattern` that derives the correct id for all eighteen stories and every historic branch name; because looper reads that pattern once at startup, the run was asked to stop after this iteration so a restart picks it up.
+  - `postInit` `gitInit` still raises `NotImplementedError`; drive the pipeline with `message`, `bun`, or `command` actions when you need a real post-commit side effect.
+  - The pipeline is reachable from no CLI command by design, so its real surface is the bytes in an app root. Drive `runRecipeInitPipeline` directly from a gitignored scratch script with real temp roots rather than looking for a command to run.
+---
+## 2026-09-07 23:41 - Review
+- [looper] gate skipped Review: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Verify
+- [looper] gate skipped Verify: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Cleanup
+- [looper] gate skipped Cleanup: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+## 2026-09-07 23:41 - Push
+- [looper] gate skipped Push: gate: branch is not a story branch (current 'us-609e0-recipe-init-integration'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)-)
+---
+
+## 2026-09-07 23:41 - Babysit
+- PR: none — branch us-609e0-recipe-init-integration has no remote branch or PR
+- CI outcome: n/a (no PR to watch)
+- Review feedback: none
+- Merge: deferred (push step did not create/refresh the PR)
+---
+
+## 2026-09-08 06:45 - US-609E0
+- Story verified complete on branch (no new code). The bundled `recipe` translator, its plugin-module registration, and the private init pipeline all remain in place with the contract ordering intact: translate, validate, encode, commit the Landofile through one managed-file transaction, then auxiliary `files:`, then declared `postInit:` actions. Blocked and commit failures still write nothing beyond their stated boundary, and post-init failure still names the committed scaffold and failed action without claiming rollback.
+- Verification: typecheck, lint, and check:boundaries passed; 252 spot-check tests across 17 files passed, covering the recipe translator, init pipeline, isolated init fixture, translator contract, plugin-abstraction coverage, post-init runtime, recipe manifest and bundled/shipped registries, the recipe prompt suites, and the adjacent managed-file transaction journal/backup/checkpoint files.
+- **Learnings for future iterations:**
+  - The widened `storyIdPattern` now resolves `us-609e0-*`, so the gated steps that skipped on the two previous iterations can finally run against this branch; a story can sit fully implemented and still never publish when the harness pattern cannot derive its id.
+  - When a Build invocation lands on an already-complete story, the honest work is re-running the gates and adjacent blast radius, not manufacturing changes — the branch here needed publication, not code.
+---
+
+## 2026-09-08 07:11 - US-609E0 Review
+- Review-work failed on app-name precedence; Bugbot confirmed the same merge order. Fixed: user `appName` now overlays the translated fragment, overlapping secrets redact longest-first, translator/encoder interruption is no longer swallowed as a blocked failure, and resolved auxiliary destinations that `relative()` reports as absolute are rejected.
+- Review notes (deferred/rejected): Auxiliary TOCTOU symlink swap — same cooperative-lock/not-CAS class previously deferred for managed-file writes; not an AC. recipeRoot / no-follow src reads — intentional fail-closed on relative src, already recorded for the caller that adds a source root. secret-store answers ignored in favor of `disposition.field` — isolated recipe is init-only only; AC requires raw secrets only at declared init-only sinks, not secret-store write-through.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 13 pipeline tests plus 18 adjacent translator/contract/fixture tests passed.
+- Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
+---
+
+## 2026-09-08 07:22 - US-609E0 Drift Audit
+- Trigger: 4 cycles, 1413 changed lines, 6 commits
+- Weakened proofs: relative auxiliary src failed after Landofile commit as postInit; the write seam let ordering tests skip the default writer
+- Ceremony: dead RECIPE_PLUGIN_NAME export; test-only writeAuxiliaryFile injectable
+- Fixed: unexported the unused plugin name; deleted the write seam; relative src now blocks before commit with a no-write proof
+- Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
+- Verification: typecheck, lint, 36 spot checks — pass
+---
+
+## 2026-09-08 08:35 - Babysit
+- PR: #926 https://github.com/AaronFeledy/core4/pull/926
+- CI outcome: fail (runtime-bundle-linux-x64, platform-readiness-linux-{x64,arm64}, drupal-journey-linux-{x64,arm64}, rails-journey-linux-{x64,arm64}, provider-integration-linux-x64, guide-scenarios-linux-x64) — all one root cause: the `Install Linux Podman source-build prerequisites` step cannot reach the pinned `snapshot.ubuntu.com` mirror (500/502), so the podman build dies and every downstream linux job fails or skips. Confirmed environmental: a direct probe of that snapshot URL still returns 502, and all non-linux/unit/static/schema/recipe checks pass.
+- Review feedback: none actionable — Bugbot could not run (Cursor usage limit), leaving no findings; no `cursor[bot]` inline review comments and no CHANGES_REQUESTED.
+- Merge: deferred (upstream apt-mirror outage; two `--failed` rerun rounds hit the identical step, and no in-scope code change can fix it — retry once snapshot.ubuntu.com recovers)
+---
+
+## 2026-09-08 09:12 - US-609E0
+- Story verified complete on branch (no new code). An independent clause-by-clause audit against both acceptance criteria found no gap: the bundled `recipe` translator is registered through a real `definePlugin` module whose manifest contribution and lazy loader map agree, and it is contract-tested through the shared translator suite that the abstraction-coverage gate verifies by AST. The private pipeline still orders translate, authoring validation, expression-aware encode, managed-file commit, auxiliary `files:`, then `postInit:`, and that ordering is proven behaviorally rather than by prose: the injected commit failure leaves the auxiliary file absent, and the postInit callback observes both committed files already on disk.
+- Raw secrets still reach only a prompt's declared init-only sink, gated on the individual action naming the matching `stdin` or `secretEnv` binding, and are rejected from answers, merged authoring, encoded text, diagnostics, and auxiliary content. Blocked and commit failures write nothing and run no auxiliary action; postInit failure names the committed Landofile, the committed auxiliary files, and the failed action while stating explicitly that external side effects were not rolled back. The public init path (`initApp`, the builtin renderer registry, the ship list, the expander) is byte-identical to origin/main.
+- Verification: typecheck, lint, check:boundaries, and check:guide-drift passed; 451 spot-check tests across 29 files passed, covering the story suites, the adjacent recipe registries/post-init/prompts, the managed-file transaction journal/backup/recovery files, the translate command and public init surfaces, and the shared recipe-decomposer and redactor secret fixtures.
+- **Learnings for future iterations:**
+  - This story has been build-verified three iterations running because publication, not implementation, was the blocker: first the story-branch pattern could not derive `us-609e0`, and now PR #926 is red purely from an upstream `snapshot.ubuntu.com` mirror outage in the Linux Podman source-build step. When a Build step lands on a story whose only obstacle is downstream, re-run the gates and stop; adding code to look productive would be the actual defect.
+  - An unfiltered repository-wide `bun test` is not green on this host: two unchanged uninstall-runtime tests fail and the live Podman start scenario times out. Both sit outside this branch's diff, which is exactly why the loop restricts local runs to path-scoped spot checks.
+---
+
+## 2026-09-08 09:49 - US-609E0 Review
+- Review-work failed on provenance merge, postInit command allowlisting, and auxiliary write-plan expansion; Bugbot found no bugs. Fixed: the recipe translator now writes the decomposer's provenance as object-form `recipe:` on the canonical fragment, including when the fragment omitted it.
+- Review notes (deferred/rejected): postInit `runs:`/`command` host allowlist — existing postInit runtime contract, not an US-609E0 AC; public init already uses recipe-controlled `runs:`. Auxiliary source-root containment — prior Review deferred; relative src still fail-closes until a source-root port exists. Auxiliary `when`/`template`/`engine`/`mode` and managed-file file writes — isolated recipe is a plain copy; post-commit auxiliary failure is the AC no-rollback path; full file-manifest semantics belong to US-609E1+. Reuse of `planInitWrites` / fail-closed existing Landofile / reserved `.lando.ts` — public init planner stays unchanged until US-609E. Complete-shape encoder pin — MINOR; authoring completeness is the known US-609C schema gap.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 32 focused translator/pipeline/contract/fixture tests passed. Post-commit Bugbot found no bugs.
+- Guide-Coverage-Skip: private recipe translator provenance merge adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
+- **Learnings for future iterations:** `RecipeDecomposeResult.provenance` is recorded alongside the fragment, not inside it. The recipe translator is the decomposing frontend that must write object-form `recipe:`; do not rely on each decomposer to duplicate provenance into `fragment.recipe`.
+---
+## 2026-09-08 09:50 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-08 11:35 - Babysit
+- PR: #926 https://github.com/AaronFeledy/core4/pull/926
+- CI outcome: fail (platform-readiness-linux-x64/arm64, rails-journey-linux-x64, drupal-journey-linux-arm64 — all "Install Linux Podman source-build prerequisites" apt step, snapshot.ubuntu.com returning 500/502/503; no code failures, no Bugbot findings)
+- Review feedback: none
+- Merge: deferred (external Ubuntu snapshot-mirror outage; three rerun rounds all failed at the same apt step — retry next iteration)
+---
+
+## 2026-09-08 11:52 - US-609E0
+- Story verified complete on branch (no new code). An independent clause-by-clause audit of both acceptance criteria returned no gap. The bundled `recipe` translator is contributed by a real `definePlugin` module whose manifest ids and lazy loader map agree, resolves through `makeConfigTranslatorRegistryLive`, and is exercised by the shared SDK translator contract suite that the plugin-abstraction coverage gate verifies. The private pipeline still enforces its ordering in code rather than prose: translate through the registry, validate authoring, encode expression-aware, commit the Landofile in one managed-file transaction, then auxiliary `files:`, then declared `postInit:` last — proven behaviorally by a fixture whose postInit callback observes both committed files already on disk and by an injected commit failure that leaves the auxiliary file absent.
+- Raw secrets still reach only a prompt's declared init-only sink and stay out of answers, merged authoring, encoded text, diagnostics, and auxiliary content; blocked and commit failures run no auxiliary action; postInit failure names the committed Landofile, the committed auxiliary files, and the failed action while stating external side effects were not rolled back. The public init path is byte-identical to origin/main.
+- Verification: typecheck, lint, and check:boundaries passed; 314 spot-check tests across 23 files passed, covering the story suites plus the adjacent recipe manifest/bundled/shipped registries, post-init runtime, recipe prompt suites, the managed-file transaction/journal/backup/recovery files, and the public init CLI scenario, adapter, prompts, write-plan, and app-name suites.
+- **Learnings for future iterations:**
+  - Four Build iterations have now landed on this story with nothing to build; the obstacle has never been the code. Confirm the blocker's owner before touching anything: a red PR whose only failures are an upstream `snapshot.ubuntu.com` apt step belongs to Babysit, and a Build step that manufactures a change to look busy is introducing risk into an already-verified branch.
+  - The cheapest honest completeness check on a finished branch is `git diff origin/main -- <public surface paths>` returning empty. For this story that one command settles the "leave the public init registry unchanged" clause outright, with no reading required.
+---
+
+## 2026-09-08 12:02 - US-609E0 Review
+- Reviewed the private recipe translator and init pipeline against both US-609E0 ACs. Bugbot found no bugs. No in-scope defect required a code change: registration, contract tests, encode-then-commit-then-auxiliary-then-postInit, secret sinks, and unchanged public init already hold.
+- Review notes (deferred/rejected): Goal-verifier FAIL to wrap auxiliary `Bun.file`/`lstat`/`mkdir` in an Effect FileSystem service — not an AC; same class as the US-608C FileSystem-wrapping deferral; auxiliary post-commit copies are the no-rollback path, not Landofile transaction IO. Auxiliary TOCTOU symlink swap — previously deferred cooperative-lock/not-CAS. Absolute src without a source-root port — already recorded for the caller that adds recipe-root resolution.
+- Verification: GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused translator/pipeline/contract/fixture tests passed. Typecheck/lint not rerun (no source change since Build).
+- Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
+---
+
+## 2026-09-08 12:09 - US-609E0 Drift Audit
+- Trigger: 8 cycles, 1506 changed lines, 14 commits
+- Fixed: none; second audit found no compounding drift against the original ACs
+- Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
+- Verification: typecheck, lint, 37 spot checks — pass
+---
