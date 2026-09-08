@@ -15,7 +15,7 @@ import {
   makeRecipeConfigTranslator,
 } from "./config-translator.ts";
 
-export const RECIPE_PLUGIN_NAME = "@lando/recipe" as const;
+const RECIPE_PLUGIN_NAME = "@lando/recipe" as const;
 
 const SUMMARY = "Decode a recipe request into a canonical Landofile authoring fragment.";
 

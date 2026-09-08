@@ -21,7 +21,6 @@ export const writeAuxiliaryScaffold = async (options: {
   readonly appRoot: string;
   readonly file: RecipeFile;
   readonly containsSecret: (value: unknown) => boolean;
-  readonly write?: (path: string, content: string) => Promise<void>;
 }): Promise<string | undefined> => {
   const path = auxiliaryDestination(options.appRoot, options.file.dest);
   // Never follow an auxiliary parent symlink, including one pointing inside the app.
@@ -52,7 +51,6 @@ export const writeAuxiliaryScaffold = async (options: {
   }
   const content = await Bun.file(options.file.src).text();
   if (options.containsSecret(content)) throw new RangeError("Auxiliary content contains a secret.");
-  if (options.write === undefined) await Bun.write(path, content);
-  else await options.write(path, content);
+  await Bun.write(path, content);
   return path;
 };

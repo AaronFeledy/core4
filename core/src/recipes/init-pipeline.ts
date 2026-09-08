@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { mergeLandofiles } from "@lando/landofile/merge";
@@ -66,7 +66,6 @@ export interface RecipeInitPipelineRequest {
   readonly journalRoot: () => string;
   readonly checkpoint?: NonNullable<TransactionOptions["checkpoint"]>;
   readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
-  readonly writeAuxiliaryFile?: (path: string, content: string) => Promise<void>;
 }
 export interface RecipeInitPipelineResult {
   readonly landofilePath: string;
@@ -175,7 +174,12 @@ export const runRecipeInitPipeline = (
     const landofilePath = join(request.appRoot, basename);
     yield* Effect.try({
       try: () => {
-        for (const file of request.manifest.files ?? []) auxiliaryDestination(request.appRoot, file.dest);
+        for (const file of request.manifest.files ?? []) {
+          auxiliaryDestination(request.appRoot, file.dest);
+          if (!isAbsolute(file.src)) {
+            throw new RangeError("Auxiliary source must be an absolute path resolved by the caller.");
+          }
+        }
       },
       catch: () => blocked("validate"),
     });
@@ -216,7 +220,6 @@ export const runRecipeInitPipeline = (
             appRoot: request.appRoot,
             file,
             containsSecret,
-            ...(request.writeAuxiliaryFile === undefined ? {} : { write: request.writeAuxiliaryFile }),
           }),
         catch: () => postFailure(`files[${index}]`),
       });

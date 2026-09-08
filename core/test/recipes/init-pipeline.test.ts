@@ -42,6 +42,8 @@ const fixture = async () => {
   const loader = plugin.configTranslators?.get("lando4");
   if (loader === undefined) throw new Error("Missing lando4 lazy loader");
   const calls: string[] = [];
+  const landofile = join(appRoot, ".lando.yml");
+  const auxiliary = join(appRoot, "config/isolated.conf");
   const request: RecipeInitPipelineRequest = {
     appRoot,
     journalRoot: () => journalRoot,
@@ -57,17 +59,13 @@ const fixture = async () => {
       Effect.sync(() => {
         if (point === "committed") calls.push("commit");
       }),
-    writeAuxiliaryFile: async (path, content) => {
-      calls.push("auxiliary");
-      await Bun.write(path, content);
-    },
     runPostInit: async () => {
+      expect(await Bun.file(landofile).exists()).toBe(true);
+      expect(await Bun.file(auxiliary).exists()).toBe(true);
       calls.push("postInit");
       return { executed: [{ index: 0, type: "command" }] };
     },
   };
-  const landofile = join(appRoot, ".lando.yml");
-  const auxiliary = join(appRoot, "config/isolated.conf");
   return { request, calls, landofile, auxiliary };
 };
 const failure = async (request: RecipeInitPipelineRequest) => {
@@ -79,7 +77,7 @@ const failure = async (request: RecipeInitPipelineRequest) => {
 test("S1 commits expression-bearing provenance before auxiliary files and postInit", async () => {
   const { request, calls, landofile, auxiliary } = await fixture();
   const result = await Effect.runPromise(runRecipeInitPipeline(request));
-  expect(calls).toEqual(["commit", "auxiliary", "postInit"]);
+  expect(calls).toEqual(["commit", "postInit"]);
   const text = await Bun.file(landofile).text();
   expect(text).toContain("{{ recipe.php }}");
   expect(text).toMatch(/recipe:\n\s+id: isolated-init/);
@@ -216,7 +214,7 @@ test("overlapping secrets redact longest-first so suffixes do not leak", async (
   }
   expect(JSON.stringify(result)).not.toContain("abcdef");
 });
-test("S6 the real recipe plugin registry lists recipe", async () => {
+test("S6 the in-process recipe module lists through ConfigTranslatorRegistry", async () => {
   const module = makeRecipeTranslatorModule({
     decomposers: new Map([[isolatedInitManifest.id, isolatedInitDecomposer]]),
     redactor: createStandaloneRedactor("secrets"),
@@ -280,7 +278,7 @@ test("stdin is bound through the action runner, never answers, env, or argv", as
 });
 
 test("fails closed on a relative auxiliary source instead of resolving it against the working directory", async () => {
-  const { request, auxiliary } = await fixture();
+  const { request, calls, landofile, auxiliary } = await fixture();
   const error = await failure({
     ...request,
     manifest: {
@@ -288,6 +286,9 @@ test("fails closed on a relative auxiliary source instead of resolving it agains
       files: [{ src: "templates/isolated.conf", dest: "config/isolated.conf", template: false }],
     },
   });
-  expect(error).toBeInstanceOf(RecipeInitPostInitError);
+  expect(error).toBeInstanceOf(RecipeInitBlockedError);
+  expect(error).toMatchObject({ stage: "validate" });
+  expect(await Bun.file(landofile).exists()).toBe(false);
   expect(await Bun.file(auxiliary).exists()).toBe(false);
+  expect(calls).toEqual([]);
 });
