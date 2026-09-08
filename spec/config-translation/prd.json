@@ -147,7 +147,7 @@
       "recipeIds": ["lamp", "lemp", "wordpress", "laravel", "symfony"],
       "dependsOn": ["US-609E0"],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

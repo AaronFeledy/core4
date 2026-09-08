@@ -49,8 +49,8 @@ interface CoverageEntry {
   /** How the built-in coverage is provided. */
   readonly defaultPolicy: DefaultPolicy;
   /**
-   * The `core/test/**` files (repo-relative) that invoke the suite against the
-   * built-in(s). Empty only for `none-bundled`.
+   * Repo-relative files in `core/test/**` or `engine/test/**` that invoke the
+   * suite against the built-in(s). Empty only for `none-bundled`.
    */
   readonly invocationFiles: ReadonlyArray<string>;
 }
@@ -101,13 +101,18 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/contract/recipe-config-translator-contract.test.ts",
     ],
   },
-  // No bundled RecipeDecomposer implementation ships today.
   {
     abstraction: "RecipeDecomposer",
     makeExport: "makeRecipeDecomposerContractSuite",
     runExport: "runRecipeDecomposerContractSuite",
-    defaultPolicy: "none-bundled",
-    invocationFiles: [],
+    defaultPolicy: "built-in",
+    invocationFiles: [
+      "core/test/recipes/lamp.decomposer.test.ts",
+      "core/test/recipes/lemp.decomposer.test.ts",
+      "core/test/recipes/wordpress.decomposer.test.ts",
+      "core/test/recipes/laravel.decomposer.test.ts",
+      "core/test/recipes/symfony.decomposer.test.ts",
+    ],
   },
   {
     abstraction: "PluginSource",
@@ -147,8 +152,8 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
 ];
 
 /**
- * Standalone contract suites that ship from `@lando/sdk/test` but are not part of
- * the six-abstraction plugin-abstraction kit (or its freeze-surface siblings).
+ * Standalone contract suites that ship from `@lando/sdk/test` but are outside
+ * the plugin-abstraction contract kit.
  * They must remain published without requiring a core built-in kit invocation.
  */
 const STANDALONE_MAKE_SUITE_EXPORTS = new Set(["makeRendererPanelContractSuite"]);

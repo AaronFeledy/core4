@@ -491,3 +491,47 @@
 - Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
 - Verification: typecheck, lint, 37 spot checks — pass
 ---
+
+## 2026-09-08 15:40 - US-609E1
+- Converted the PHP web recipe family (lamp, lemp, wordpress, laravel, symfony) to deterministic decomposition. Each recipe now ships a `RecipeDecomposer` implementation that turns merged nonsecret options into a complete authoring fragment whose option-derived value sites are `{{ recipe.<option> }}` expressions, with structure (composer tooling, the WordPress redis cache, the Laravel queue worker) decided at decomposition time rather than gated by an expression. Typed-option and missing-recipe failures carry the option path and route their messages through the injected redactor.
+- Published each recipe's declarative current snapshot on its manifest: a versioned `bundled` producer, serializable option descriptors, defaults, one options-scoped expression tree, and an explicit empty auxiliary asset inventory. Snapshot rendering and decomposition are pinned to each other for default, non-default, and composer-disabled selections, so the inert snapshot provably reproduces what the decomposer emits.
+- Added `builtin/snapshot-yaml.ts` because core's recipe manifest reader is a restricted YAML parser that rejects inline mappings; snapshots serialize to block YAML with every string quoted. Added the bundled decomposer lookup map and flipped the RecipeDecomposer plugin-abstraction coverage row from `none-bundled` to built-in with its five contract invocations.
+- Scope adjudication: US-609E1 publishes and verifies the five snapshot/decomposer replacements, while the existing `render.ts` bindings stay active and byte-compatible until US-609E performs its explicitly assigned registry switch; Landofile expression evaluation remains separately scoped. Rewiring the bundled renderers onto decomposition was implemented, then reverted after it proved that scaffolded apps become unplannable: the native load path still raises `NotImplementedError: Template expressions ({{ ... }}) are not supported`, the same gap already recorded under US-609A and US-609C. Shipping expression-bearing Landofiles through public init today would regress `lando start` for all five recipes.
+- Verification: typecheck, lint, check:boundaries (all twelve rules), codegen:check, and check:guide-drift passed; 232 spot-check tests across 18 files passed, covering the five decomposer suites, the bundled decomposer map, the snapshot YAML round trip, the plugin-abstraction coverage gate, and the adjacent init option-parity, canonical-recipe, canonical matrix, php-stack, shipped-recipe, extends, recipes-command, init-pipeline, and recipe-translator suites. `render.ts`, `registry.ts`, `php-stack.ts`, and `cli/commands/init.ts` are byte-identical to origin/main.
+- **Learnings for future iterations:**
+  - The recipe manifest reader at `core/src/recipes/manifest/parser.ts` is not a general YAML parser. It rejects inline `{...}` mappings outright, restricts keys to `^[A-Za-z0-9_-]+$`, treats ` #` as a comment anywhere in a line, and strips quotes with a naive slice that has no escape handling. Serializing anything into a recipe manifest means emitting block YAML with quoted strings, and a `\/` escape that survives `Bun.YAML.parse` will not survive this parser, so serialized regex patterns should avoid needless escapes.
+  - `withinInputBudget` treats any repeated object reference as a cycle, so a snapshot template that aliases one node object in two places fails with `budget-exceeded` rather than a structural error. Build shared subtrees from factory functions.
+  - The authoring fragment root is a union with an expression slot, so `result.fragment` needs an explicit `typeof === "string"` narrowing before property access; the same applies one level down to `services` and to each service.
+  - When an acceptance criterion names a file that a later milestone story is explicitly assigned to rewire, prefer publishing the replacement over activating it, and record the adjudication so Review and Drift Audit do not re-litigate it.
+---
+
+## 2026-09-08 14:37 - US-609E1 Review
+- Aligned Laravel and Symfony decomposition with their published snapshot option domains: `composer: "false"` is now a typed option failure, not a structural toggle. Dropped the hardcoded LAMP `name: "lamp"` so the authoring fragment matches the snapshot.
+- Review notes (deferred/rejected): Private `runRecipeInitPipeline` wiring with current manifests — staged cutover keeps public template `files:` until US-609E; provider-free coverage is the shared decomposer contract. Rejecting undeclared option keys — translator passes all answers including the app-name prompt, so closed-key reject would fail init. Exact producer identity beyond `recipeId` — same as the US-609E0 fixture; contract suite already covers missing-recipe. Dead snapshot `composerEnabled` branches for Laravel/Symfony — valid options never take them; digest churn not required.
+- Verification: typecheck, lint passed; 66 focused decomposer tests passed. GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed before the review fix (no guide-covered source change).
+- Guide-Coverage-Skip: PHP web decomposers stay private replacements; public init, renderers, and existing recipe README.mdx journeys are unchanged until US-609E.
+- **Learnings for future iterations:** Snapshot `optionTypes` are the closed public domain even when a still-bound `render.ts` accepts a wider composer enum. Pin nondefault coverage to values the snapshot actually declares.
+---
+## 2026-09-08 14:55 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-08 15:27 - Push
+- PR: none — skipped; uncommitted product changes remain in laravel/lemp/symfony/wordpress decomposer and snapshot files
+---
+## 2026-09-08 15:30 - Babysit
+- PR: none — no PR exists for `us-609e1-php-web-recipes`; Push skipped it because uncommitted decomposer/snapshot changes remain on the branch
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to merge; Build must commit the outstanding changes and Push must open the PR)
+---
+## 2026-09-08 15:55 - US-609E1
+- Finished the in-flight PHP web recipe branch: every bundled decomposer (lamp, lemp, wordpress, laravel, symfony) now validates options by walking its published snapshot `optionTypes` through `optionValueMatchesDescriptor`, replacing the hand-written per-option type chains that had drifted between recipes. Missing, mistyped, and out-of-domain values all still fail closed as `option-type` at `options.<name>`.
+- Added `recipeOptionRemediation`, a shared descriptor-to-remediation helper, so a rejected option is told the shape it actually accepts: booleans get "Supply true or false.", enums list their declared choices, and patterned strings quote their pattern. Previously a boolean option was told to match "choices or path pattern". This also improves the recipe translator boundary, which forwards only `reason` and `remediation`.
+- Simplified the Laravel and Symfony snapshot templates by dropping the `composer == "false"` conditionals and republishing their content digests. Both recipes declare `composer` as the closed enum `["2", "2.7.7"]`, so those branches were unreachable; LAMP declares the wider domain that includes `"false"` and correctly keeps its conditional. This supersedes the 2026-09-08 14:37 review note that deferred the removal as unnecessary digest churn: once the dead AST goes, the digest must move with it, and a private pre-cutover catalog is the right time.
+- Verification: typecheck, lint, and check:boundaries passed; 520 tests across the recipes tree plus the plugin-abstraction coverage contract passed with one pre-existing skip. A driver over all five decomposers confirmed valid defaults and nondefaults emit the expected fragments while every declared option rejects a mistyped value with the right path and shape-accurate remediation. Isolated provider-free `lando init --recipe=laravel|symfony --full` still renders `.lando.yml` matching the decomposer fragments, so the still-bound renderer path is unregressed.
+- Guide-Coverage-Skip: the decomposer catalog stays a private staged replacement; public init, renderers, and the recipe README.mdx journeys are unchanged until US-609E.
+- **Learnings for future iterations:**
+  - Snapshot templates may only read the `options` scope (`validateSnapshotTemplate` rejects any other head); `recipe.<option>` is the separate Landofile authoring scope. Do not "fix" an `options.` head in a snapshot into `recipe.`.
+  - Derive an option's remediation from its descriptor rather than writing one sentence per recipe. A per-recipe blanket string silently goes wrong the moment that recipe gains an option of a different kind.
+  - Deferring a dead-code removal to avoid digest churn only holds while the code stays; removing the branch and republishing the digest must land in the same change or the snapshot test fails.
+---

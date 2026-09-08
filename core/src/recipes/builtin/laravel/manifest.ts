@@ -6,6 +6,7 @@ import {
   phpPromptYaml,
   webrootPromptYaml,
 } from "../php-stack";
+import { laravelSnapshotYaml } from "./snapshot.ts";
 
 export const LARAVEL_RECIPE_ID = "laravel";
 
@@ -42,4 +43,4 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Laravel up.
-`;
+\n${laravelSnapshotYaml}`;

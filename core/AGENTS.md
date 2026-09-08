@@ -22,6 +22,14 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - `meta recipes describe/validate .` is not a local path; use `./` or a `recipe.yml` path.
 - A bundled child that `extends:` a parent still needs its own `render.ts` registered under the child id. Flatten merges the manifest only; `initApp` looks up `lookupRecipeRenderer(manifest.id)` and never calls the parent renderer.
 
+## Recipe decomposition and snapshots
+
+- `core/src/recipes/manifest/parser.ts` is a deliberately restricted YAML reader, not a general one: keys must match `^[A-Za-z0-9_-]+$`, tabs are rejected, ` #` starts a comment inside any line, and an inline `{...}` mapping is a hard error. Anything serialized into a recipe manifest must go through `builtin/snapshot-yaml.ts`, which emits block YAML with every string double-quoted so `"8.3"` and `"{{ recipe.php }}"` survive the round trip.
+- `builtin/<id>/snapshot.ts` and the manifest modules are reachable from the CLI cold path (`cli/cold-path-output.ts` -> `recipes/catalog` -> `bundled.ts` -> `builtin/<id>/manifest.ts`), so they take type-only imports. Publish `contentDigest` as a literal and pin it with a test that recomputes `computeRecipeContentDigest(recipeContentDigestProjection(manifest))`; `recipeContentDigestProjection` drops `snapshot.identity`, so there is no circularity.
+- `withinInputBudget` in `sdk/src/recipes/snapshot-template.ts` treats a repeated object reference as a cycle, so a snapshot template that aliases one node object twice fails with `budget-exceeded`. Build shared subtrees from factory functions.
+- A snapshot template is mostly `Literal` nodes: option-derived value sites are literal strings containing `{{ recipe.<option> }}`, which are inert authoring data rather than snapshot expressions. Only structural toggles need `Conditional`/`Call`, and their scope head is always `options`.
+- A decomposer validates by walking its own `snapshot.optionTypes` through `optionValueMatchesDescriptor` and phrasing failure with `builtin/option-remediation.ts`; do not hand-write per-option type chains or one remediation sentence per recipe. `optionTypes` is the closed domain even when the still-bound `render.ts` accepts a wider enum, so a structural `Conditional` is only correct when the toggle value is actually declared there.
+
 ## Programmatic `recipe.ts`
 
 - A local recipe directory may contain `recipe.ts` or `recipe.yml`, never both (`resolveLocal` rejects both). `recipe.ts` default-exports a `Recipe` object or async factory, loads through `loadRecipeTs`, reuses Landofile sandbox scanning, imports via Bun's TS loader, and times out via `LANDO_RECIPE_TS_TIMEOUT_MS`.
