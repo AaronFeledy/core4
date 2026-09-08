@@ -458,3 +458,22 @@
 - Guide-Coverage-Skip: private recipe translator provenance merge adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
 - **Learnings for future iterations:** `RecipeDecomposeResult.provenance` is recorded alongside the fragment, not inside it. The recipe translator is the decomposing frontend that must write object-form `recipe:`; do not rely on each decomposer to duplicate provenance into `fragment.recipe`.
 ---
+## 2026-09-08 09:50 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-08 11:35 - Babysit
+- PR: #926 https://github.com/AaronFeledy/core4/pull/926
+- CI outcome: fail (platform-readiness-linux-x64/arm64, rails-journey-linux-x64, drupal-journey-linux-arm64 — all "Install Linux Podman source-build prerequisites" apt step, snapshot.ubuntu.com returning 500/502/503; no code failures, no Bugbot findings)
+- Review feedback: none
+- Merge: deferred (external Ubuntu snapshot-mirror outage; three rerun rounds all failed at the same apt step — retry next iteration)
+---
+
+## 2026-09-08 11:52 - US-609E0
+- Story verified complete on branch (no new code). An independent clause-by-clause audit of both acceptance criteria returned no gap. The bundled `recipe` translator is contributed by a real `definePlugin` module whose manifest ids and lazy loader map agree, resolves through `makeConfigTranslatorRegistryLive`, and is exercised by the shared SDK translator contract suite that the plugin-abstraction coverage gate verifies. The private pipeline still enforces its ordering in code rather than prose: translate through the registry, validate authoring, encode expression-aware, commit the Landofile in one managed-file transaction, then auxiliary `files:`, then declared `postInit:` last — proven behaviorally by a fixture whose postInit callback observes both committed files already on disk and by an injected commit failure that leaves the auxiliary file absent.
+- Raw secrets still reach only a prompt's declared init-only sink and stay out of answers, merged authoring, encoded text, diagnostics, and auxiliary content; blocked and commit failures run no auxiliary action; postInit failure names the committed Landofile, the committed auxiliary files, and the failed action while stating external side effects were not rolled back. The public init path is byte-identical to origin/main.
+- Verification: typecheck, lint, and check:boundaries passed; 314 spot-check tests across 23 files passed, covering the story suites plus the adjacent recipe manifest/bundled/shipped registries, post-init runtime, recipe prompt suites, the managed-file transaction/journal/backup/recovery files, and the public init CLI scenario, adapter, prompts, write-plan, and app-name suites.
+- **Learnings for future iterations:**
+  - Four Build iterations have now landed on this story with nothing to build; the obstacle has never been the code. Confirm the blocker's owner before touching anything: a red PR whose only failures are an upstream `snapshot.ubuntu.com` apt step belongs to Babysit, and a Build step that manufactures a change to look busy is introducing risk into an already-verified branch.
+  - The cheapest honest completeness check on a finished branch is `git diff origin/main -- <public surface paths>` returning empty. For this story that one command settles the "leave the public init registry unchanged" clause outright, with no reading required.
+---
