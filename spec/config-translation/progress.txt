@@ -484,3 +484,10 @@
 - Verification: GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused translator/pipeline/contract/fixture tests passed. Typecheck/lint not rerun (no source change since Build).
 - Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
 ---
+
+## 2026-09-08 12:09 - US-609E0 Drift Audit
+- Trigger: 8 cycles, 1506 changed lines, 14 commits
+- Fixed: none; second audit found no compounding drift against the original ACs
+- Split/excise decisions: none; in-process recipe registration stays private until US-609E; passes remains true
+- Verification: typecheck, lint, 37 spot checks — pass
+---
