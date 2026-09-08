@@ -1,34 +1,38 @@
 import { RecipeDecomposeError } from "@lando/sdk/errors";
+import { optionValueMatchesDescriptor } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { LEMP_RECIPE_VERSION, lempProducer } from "./snapshot.ts";
+import { recipeOptionRemediation } from "../option-remediation.ts";
+import { LEMP_RECIPE_VERSION, lempProducer, lempSnapshot } from "./snapshot.ts";
 
 export const lempDecomposer: RecipeDecomposerFactory = (ports) => ({
   producer: lempProducer,
   decompose: (input) =>
     Effect.gen(function* () {
+      const message = ports.redactor.redactString("LEMP recipe input is invalid.");
       if (input.producer.recipeId !== "lemp") {
         return yield* Effect.fail(
           new RecipeDecomposeError({
             recipeId: "lemp",
             reason: "missing-recipe",
-            message: ports.redactor.redactString("LEMP recipe input has a different recipe id."),
-            remediation: ports.redactor.redactString("Select the lemp recipe."),
+            message,
+            remediation: "Select the lemp recipe.",
           }),
         );
       }
-      const php = input.options.php;
-      if (typeof php !== "string" || (php !== "8.2" && php !== "8.3")) {
-        return yield* Effect.fail(
-          new RecipeDecomposeError({
-            recipeId: "lemp",
-            reason: "option-type",
-            path: "options.php",
-            message: ports.redactor.redactString("LEMP PHP option is invalid."),
-            remediation: ports.redactor.redactString("Supply PHP version 8.2 or 8.3 as a string."),
-          }),
-        );
+      for (const [name, descriptor] of Object.entries(lempSnapshot.optionTypes)) {
+        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
+          return yield* Effect.fail(
+            new RecipeDecomposeError({
+              recipeId: "lemp",
+              reason: "option-type",
+              path: `options.${name}`,
+              message,
+              remediation: recipeOptionRemediation(descriptor),
+            }),
+          );
+        }
       }
       const provenance: LandofileRecipeProvenance = {
         id: "lemp",

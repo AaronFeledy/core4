@@ -3,6 +3,7 @@ import { optionValueMatchesDescriptor } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { recipeOptionRemediation } from "../option-remediation.ts";
 import { SYMFONY_RECIPE_VERSION, symfonyProducer, symfonySnapshot } from "./snapshot.ts";
 
 export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
@@ -28,7 +29,7 @@ export const symfonyDecomposer: RecipeDecomposerFactory = (ports) => ({
               reason: "option-type",
               path: `options.${name}`,
               message,
-              remediation: "Supply a string matching the Symfony option's declared choices or path pattern.",
+              remediation: recipeOptionRemediation(descriptor),
             }),
           );
         }

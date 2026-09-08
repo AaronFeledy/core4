@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:85fc8f91417837ddab0cb59974f70d37932ca090842eb7bfd170e0644647ce52";
+  "sha256:3c5383b45686360dee84e0f2d8a177efeb059a752b64b95bad32c55a67e973b1";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -13,6 +13,34 @@ export const laravelProducer: RecipeProducer = {
   manifestVersion: LARAVEL_RECIPE_VERSION,
   contentDigest: LARAVEL_CONTENT_DIGEST,
 };
+
+const artisanTool = (): ExpressionNode => ({
+  kind: "ObjectLiteral",
+  entries: [
+    { key: "service", value: { kind: "Literal", value: "appserver" } },
+    {
+      key: "description",
+      value: { kind: "Literal", value: "Run a Laravel Artisan command inside the appserver service." },
+    },
+    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "php artisan" }] } },
+  ],
+});
+const composerTool = (): ExpressionNode => ({
+  kind: "ObjectLiteral",
+  entries: [
+    { key: "service", value: { kind: "Literal", value: "appserver" } },
+    { key: "description", value: { kind: "Literal", value: "Run Composer inside the appserver service." } },
+    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "composer" }] } },
+  ],
+});
+const npmTool = (): ExpressionNode => ({
+  kind: "ObjectLiteral",
+  entries: [
+    { key: "service", value: { kind: "Literal", value: "appserver" } },
+    { key: "description", value: { kind: "Literal", value: "Run npm inside the appserver service." } },
+    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "npm" }] } },
+  ],
+});
 
 const expression: ExpressionNode = {
   kind: "ObjectLiteral",
@@ -35,22 +63,7 @@ const expression: ExpressionNode = {
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
                     { key: "framework", value: { kind: "Literal", value: "laravel" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-                    {
-                      key: "composer",
-                      value: {
-                        kind: "Conditional",
-                        test: {
-                          kind: "Call",
-                          callee: "eq",
-                          args: [
-                            { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] },
-                            { kind: "Literal", value: "false" },
-                          ],
-                        },
-                        consequent: { kind: "Literal", value: false },
-                        alternate: { kind: "Literal", value: "{{ recipe.composer }}" },
-                      },
-                    },
+                    { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
                     { key: "allowOverride", value: { kind: "Literal", value: true } },
                     { key: "port", value: { kind: "Literal", value: 80 } },
                     {
@@ -145,90 +158,11 @@ const expression: ExpressionNode = {
     {
       key: "tooling",
       value: {
-        kind: "Call",
-        callee: "merge",
-        args: [
-          {
-            kind: "ObjectLiteral",
-            entries: [
-              {
-                key: "artisan",
-                value: {
-                  kind: "ObjectLiteral",
-                  entries: [
-                    { key: "service", value: { kind: "Literal", value: "appserver" } },
-                    {
-                      key: "description",
-                      value: {
-                        kind: "Literal",
-                        value: "Run a Laravel Artisan command inside the appserver service.",
-                      },
-                    },
-                    {
-                      key: "cmds",
-                      value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "php artisan" }] },
-                    },
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            kind: "Conditional",
-            test: {
-              kind: "Call",
-              callee: "ne",
-              args: [
-                { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] },
-                { kind: "Literal", value: "false" },
-              ],
-            },
-            consequent: {
-              kind: "ObjectLiteral",
-              entries: [
-                {
-                  key: "composer",
-                  value: {
-                    kind: "ObjectLiteral",
-                    entries: [
-                      { key: "service", value: { kind: "Literal", value: "appserver" } },
-                      {
-                        key: "description",
-                        value: { kind: "Literal", value: "Run Composer inside the appserver service." },
-                      },
-                      {
-                        key: "cmds",
-                        value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "composer" }] },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-            alternate: { kind: "ObjectLiteral", entries: [] },
-          },
-          {
-            kind: "ObjectLiteral",
-            entries: [
-              {
-                key: "npm",
-                value: {
-                  kind: "ObjectLiteral",
-                  entries: [
-                    { key: "service", value: { kind: "Literal", value: "appserver" } },
-                    {
-                      key: "description",
-                      value: { kind: "Literal", value: "Run npm inside the appserver service." },
-                    },
-                    {
-                      key: "cmds",
-                      value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "npm" }] },
-                    },
-                  ],
-                },
-              },
-            ],
-          },
+        kind: "ObjectLiteral",
+        entries: [
+          { key: "artisan", value: artisanTool() },
+          { key: "composer", value: composerTool() },
+          { key: "npm", value: npmTool() },
         ],
       },
     },

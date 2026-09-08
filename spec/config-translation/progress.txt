@@ -512,3 +512,26 @@
 - Guide-Coverage-Skip: PHP web decomposers stay private replacements; public init, renderers, and existing recipe README.mdx journeys are unchanged until US-609E.
 - **Learnings for future iterations:** Snapshot `optionTypes` are the closed public domain even when a still-bound `render.ts` accepts a wider composer enum. Pin nondefault coverage to values the snapshot actually declares.
 ---
+## 2026-09-08 14:55 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-08 15:27 - Push
+- PR: none — skipped; uncommitted product changes remain in laravel/lemp/symfony/wordpress decomposer and snapshot files
+---
+## 2026-09-08 15:30 - Babysit
+- PR: none — no PR exists for `us-609e1-php-web-recipes`; Push skipped it because uncommitted decomposer/snapshot changes remain on the branch
+- CI outcome: not run (no PR)
+- Review feedback: none
+- Merge: deferred (no PR to merge; Build must commit the outstanding changes and Push must open the PR)
+---
+## 2026-09-08 15:55 - US-609E1
+- Finished the in-flight PHP web recipe branch: every bundled decomposer (lamp, lemp, wordpress, laravel, symfony) now validates options by walking its published snapshot `optionTypes` through `optionValueMatchesDescriptor`, replacing the hand-written per-option type chains that had drifted between recipes. Missing, mistyped, and out-of-domain values all still fail closed as `option-type` at `options.<name>`.
+- Added `recipeOptionRemediation`, a shared descriptor-to-remediation helper, so a rejected option is told the shape it actually accepts: booleans get "Supply true or false.", enums list their declared choices, and patterned strings quote their pattern. Previously a boolean option was told to match "choices or path pattern". This also improves the recipe translator boundary, which forwards only `reason` and `remediation`.
+- Simplified the Laravel and Symfony snapshot templates by dropping the `composer == "false"` conditionals and republishing their content digests. Both recipes declare `composer` as the closed enum `["2", "2.7.7"]`, so those branches were unreachable; LAMP declares the wider domain that includes `"false"` and correctly keeps its conditional. This supersedes the 2026-09-08 14:37 review note that deferred the removal as unnecessary digest churn: once the dead AST goes, the digest must move with it, and a private pre-cutover catalog is the right time.
+- Verification: typecheck, lint, and check:boundaries passed; 520 tests across the recipes tree plus the plugin-abstraction coverage contract passed with one pre-existing skip. A driver over all five decomposers confirmed valid defaults and nondefaults emit the expected fragments while every declared option rejects a mistyped value with the right path and shape-accurate remediation. Isolated provider-free `lando init --recipe=laravel|symfony --full` still renders `.lando.yml` matching the decomposer fragments, so the still-bound renderer path is unregressed.
+- Guide-Coverage-Skip: the decomposer catalog stays a private staged replacement; public init, renderers, and the recipe README.mdx journeys are unchanged until US-609E.
+- **Learnings for future iterations:**
+  - Snapshot templates may only read the `options` scope (`validateSnapshotTemplate` rejects any other head); `recipe.<option>` is the separate Landofile authoring scope. Do not "fix" an `options.` head in a snapshot into `recipe.`.
+  - Derive an option's remediation from its descriptor rather than writing one sentence per recipe. A per-recipe blanket string silently goes wrong the moment that recipe gains an option of a different kind.
+  - Deferring a dead-code removal to avoid digest churn only holds while the code stays; removing the branch and republishing the digest must land in the same change or the snapshot test fails.
+---

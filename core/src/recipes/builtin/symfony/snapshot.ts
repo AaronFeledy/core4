@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:0785960e2af23b26a21686c55e449bc050663e4e9901b375eaf8e94830beb4f8";
+  "sha256:33e8ad026b3af1796cd2add9570befe9c6b36c8903354f2b34fd64d9b3d95ec0";
 
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -22,16 +22,6 @@ export const symfonyDefaults = {
   webroot: "/app/public",
 } as const;
 
-// Snapshot input budgeting rejects a repeated object reference as a cycle, so
-// every shared subtree is rebuilt per use rather than aliased.
-const composerEnabled = (): ExpressionNode => ({
-  kind: "Call",
-  callee: "ne",
-  args: [
-    { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] },
-    { kind: "Literal", value: "false" },
-  ],
-});
 const consoleTool = (): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
@@ -82,15 +72,7 @@ export const symfonySnapshot: RecipeSnapshot = {
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
                     { key: "framework", value: { kind: "Literal", value: "symfony" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-                    {
-                      key: "composer",
-                      value: {
-                        kind: "Conditional",
-                        test: composerEnabled(),
-                        consequent: { kind: "Literal", value: "{{ recipe.composer }}" },
-                        alternate: { kind: "Literal", value: false },
-                      },
-                    },
+                    { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
                     { key: "allowOverride", value: { kind: "Literal", value: true } },
                     { key: "port", value: { kind: "Literal", value: 80 } },
                     {
@@ -144,16 +126,11 @@ export const symfonySnapshot: RecipeSnapshot = {
         {
           key: "tooling",
           value: {
-            kind: "Conditional",
-            test: composerEnabled(),
-            consequent: {
-              kind: "ObjectLiteral",
-              entries: [
-                { key: "console", value: consoleTool() },
-                { key: "composer", value: composerTool() },
-              ],
-            },
-            alternate: { kind: "ObjectLiteral", entries: [{ key: "console", value: consoleTool() }] },
+            kind: "ObjectLiteral",
+            entries: [
+              { key: "console", value: consoleTool() },
+              { key: "composer", value: composerTool() },
+            ],
           },
         },
       ],

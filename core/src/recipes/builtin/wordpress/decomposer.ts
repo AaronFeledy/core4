@@ -1,44 +1,38 @@
 import { RecipeDecomposeError } from "@lando/sdk/errors";
+import { optionValueMatchesDescriptor } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { WORDPRESS_RECIPE_VERSION, wordpressProducer } from "./snapshot.ts";
+import { recipeOptionRemediation } from "../option-remediation.ts";
+import { WORDPRESS_RECIPE_VERSION, wordpressProducer, wordpressSnapshot } from "./snapshot.ts";
 
 export const wordpressDecomposer: RecipeDecomposerFactory = (ports) => ({
   producer: wordpressProducer,
   decompose: (input) =>
     Effect.gen(function* () {
+      const message = ports.redactor.redactString("WordPress recipe input is invalid.");
       if (input.producer.recipeId !== "wordpress") {
         return yield* Effect.fail(
           new RecipeDecomposeError({
             recipeId: "wordpress",
             reason: "missing-recipe",
-            message: ports.redactor.redactString("The requested recipe is not WordPress."),
+            message,
             remediation: "Select the wordpress recipe.",
           }),
         );
       }
-      if (input.options.php !== "8.2" && input.options.php !== "8.3") {
-        return yield* Effect.fail(
-          new RecipeDecomposeError({
-            recipeId: "wordpress",
-            reason: "option-type",
-            path: "options.php",
-            message: ports.redactor.redactString("The WordPress PHP option is invalid."),
-            remediation: "Supply PHP as the string 8.2 or 8.3.",
-          }),
-        );
-      }
-      if (typeof input.options.redis !== "boolean") {
-        return yield* Effect.fail(
-          new RecipeDecomposeError({
-            recipeId: "wordpress",
-            reason: "option-type",
-            path: "options.redis",
-            message: ports.redactor.redactString("The WordPress Redis option is invalid."),
-            remediation: "Supply redis as a boolean.",
-          }),
-        );
+      for (const [name, descriptor] of Object.entries(wordpressSnapshot.optionTypes)) {
+        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
+          return yield* Effect.fail(
+            new RecipeDecomposeError({
+              recipeId: "wordpress",
+              reason: "option-type",
+              path: `options.${name}`,
+              message,
+              remediation: recipeOptionRemediation(descriptor),
+            }),
+          );
+        }
       }
       const provenance: LandofileRecipeProvenance = {
         id: "wordpress",

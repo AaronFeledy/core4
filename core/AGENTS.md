@@ -28,6 +28,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - `builtin/<id>/snapshot.ts` and the manifest modules are reachable from the CLI cold path (`cli/cold-path-output.ts` -> `recipes/catalog` -> `bundled.ts` -> `builtin/<id>/manifest.ts`), so they take type-only imports. Publish `contentDigest` as a literal and pin it with a test that recomputes `computeRecipeContentDigest(recipeContentDigestProjection(manifest))`; `recipeContentDigestProjection` drops `snapshot.identity`, so there is no circularity.
 - `withinInputBudget` in `sdk/src/recipes/snapshot-template.ts` treats a repeated object reference as a cycle, so a snapshot template that aliases one node object twice fails with `budget-exceeded`. Build shared subtrees from factory functions.
 - A snapshot template is mostly `Literal` nodes: option-derived value sites are literal strings containing `{{ recipe.<option> }}`, which are inert authoring data rather than snapshot expressions. Only structural toggles need `Conditional`/`Call`, and their scope head is always `options`.
+- A decomposer validates by walking its own `snapshot.optionTypes` through `optionValueMatchesDescriptor` and phrasing failure with `builtin/option-remediation.ts`; do not hand-write per-option type chains or one remediation sentence per recipe. `optionTypes` is the closed domain even when the still-bound `render.ts` accepts a wider enum, so a structural `Conditional` is only correct when the toggle value is actually declared there.
 
 ## Programmatic `recipe.ts`
 
