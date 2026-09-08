@@ -329,3 +329,12 @@
 - Review notes (deferred/rejected): none new.
 - Verification: 71 focused translate/document-set tests passed.
 ---
+
+## 2026-09-07 20:24 - US-609C Drift Audit
+- Trigger: 3 cycles, 1534 changed lines, 3 commits
+- Weakened proofs: encoder fail-closed was asserted on `--detect`, so detect required an encoder
+- Ceremony: unused helper exports and a tautological layer-order assertion
+- Fixed: detect no longer requires an encoder; encoder fail-closed proved on preview; unused exports and the tautology removed
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 71 spot-check tests — pass
+---

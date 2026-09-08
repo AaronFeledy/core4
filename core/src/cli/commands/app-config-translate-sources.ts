@@ -78,7 +78,7 @@ const DISCOVERY_PRUNED_DIRECTORIES: ReadonlySet<string> = new Set(["node_modules
  * core's, not a translator's: application code and assets never enter the
  * document set, so no translator has to reject them as unsupported input.
  */
-export const CONFIG_SOURCE_MEDIA_TYPES: Readonly<Record<string, string>> = {
+const CONFIG_SOURCE_MEDIA_TYPES: Readonly<Record<string, string>> = {
   ".yml": "application/yaml",
   ".yaml": "application/yaml",
   ".json": "application/json",

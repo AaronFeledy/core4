@@ -64,7 +64,7 @@ export const AppConfigTranslateResultSchema = Schema.Union(
 );
 
 export type AppConfigTranslateResult = Schema.Schema.Type<typeof AppConfigTranslateResultSchema>;
-export type AppConfigTranslateTarget = Schema.Schema.Type<typeof TranslateTargetSchema>;
+type AppConfigTranslateTarget = Schema.Schema.Type<typeof TranslateTargetSchema>;
 
 const DIAGNOSTIC_GLYPH = {
   generated: "+",

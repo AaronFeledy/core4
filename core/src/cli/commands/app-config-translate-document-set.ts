@@ -24,7 +24,7 @@ export const layerForSourcePath = (path: PortablePath | string): LandofileLayer 
   );
 };
 
-export const LANDOFILE_LAYER_ORDER: ReadonlyArray<LandofileLayer> = LANDOFILE_LAYER_POSITIONS.toSorted(
+const LANDOFILE_LAYER_ORDER: ReadonlyArray<LandofileLayer> = LANDOFILE_LAYER_POSITIONS.toSorted(
   (left, right) => left.order - right.order,
 ).map(({ layer }) => layer);
 

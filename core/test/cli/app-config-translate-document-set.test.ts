@@ -6,10 +6,8 @@ import type { ConfigTranslateDocument } from "@lando/sdk/schema";
 import { ConfigTranslateSourceId, PortablePath } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
-  LANDOFILE_LAYER_ORDER,
   buildDocumentSetShape,
   layerForSourcePath,
-  layerOrder,
   lowerV4LayerFragments,
   orderSourcePaths,
 } from "../../src/cli/commands/app-config-translate-document-set.ts";
@@ -74,7 +72,6 @@ describe("translate document set", () => {
       ),
     );
     expect(paths).toEqual(original);
-    expect(LANDOFILE_LAYER_ORDER.map(layerOrder)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   test.each([{ selected: undefined }, { selected: [] }])(
