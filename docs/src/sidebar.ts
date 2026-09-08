@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
@@ -149,6 +150,7 @@ export const sidebar = [
       { label: "Laravel", slug: "recipes/laravel" },
       { label: "LEMP", slug: "recipes/lemp" },
       { label: "MEAN", slug: "recipes/mean" },
+      { label: "Next.js", slug: "recipes/nextjs" },
       { label: "Rails", slug: "recipes/rails" },
       { label: "Symfony", slug: "recipes/symfony" },
       { label: "WordPress", slug: "recipes/wordpress" },

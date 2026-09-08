@@ -173,6 +173,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
 | `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
+| `nextjs` | Next.js frontend with optional database | `recipes/nextjs/README.mdx` | Shipped |
 | `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis, rails and bundle tooling) | `recipes/rails/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
@@ -211,6 +212,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
+| — | — | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
