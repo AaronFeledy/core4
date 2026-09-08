@@ -20,16 +20,18 @@ const outsideRootError = (file: string): ConfigTranslateError =>
 
 export const parseSourceFilePath = (file: string): Effect.Effect<PortablePath, ConfigTranslateError> => {
   const portable = file.replace(/\\/gu, "/");
+  const segments = portable.split("/").filter((part) => part !== ".");
   if (
     portable.length === 0 ||
     portable.startsWith("/") ||
     file.startsWith("\\") ||
     WINDOWS_ABSOLUTE_PATH.test(file) ||
-    portable.split("/").includes("..")
+    segments.includes("..") ||
+    segments.length === 0
   ) {
     return Effect.fail(outsideRootError(file));
   }
-  return Effect.succeed(PortablePath.make(portable));
+  return Effect.succeed(PortablePath.make(segments.join("/")));
 };
 
 export const resolveContainedSourcePath = (

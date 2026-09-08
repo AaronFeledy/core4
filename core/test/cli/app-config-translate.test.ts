@@ -940,6 +940,36 @@ describe("appConfigTranslate", () => {
     expect(result.files).toContain("docker-compose.yml");
   });
 
+  test("--file accepts ./prefixed discovered paths", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await Bun.write(join(cwd, ".lando.local.yml"), "services: {}\n");
+    const inputs: ConfigTranslateInput[] = [];
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", {}),
+      translate: (input) => {
+        inputs.push(input);
+        return Effect.succeed({
+          outputs: [
+            {
+              targetLayer: "local",
+              fragment: {},
+              sourceIds: [ConfigTranslateSourceId.make(".lando.local.yml")],
+            },
+          ],
+          diagnostics: [],
+          deletions: [],
+        });
+      },
+    };
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, files: ["./.lando.local.yml"], translators: withEncoder([translator]) }),
+    );
+    expect(result.mode).toBe("preview");
+    const input = inputs[0];
+    if (input?._tag !== "landofile-document-set") throw new Error("expected document set");
+    expect(input.selectedSourceIds.map(String)).toEqual([".lando.local.yml"]);
+  });
+
   test("--file rejects paths outside the app root", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const translators = withEncoder([makeTranslator("v3", {})]);

@@ -323,3 +323,9 @@
 - Guide-Coverage-Skip: review only tightened fail-closed `--file` membership and TypeScript counterpart writes; the owned config-translate guide already covers selection and write.
 - **Learnings for future iterations:** `--file` membership is not a substitute for the realpath containment error; check containment first on undiscovered explicit paths so escaped symlinks still fail as outside-root.
 ---
+
+## 2026-09-07 20:15 - US-609C Review
+- Post-commit Bugbot: `--file ./path` now normalizes `.` segments so it still matches discovery.
+- Review notes (deferred/rejected): none new.
+- Verification: 71 focused translate/document-set tests passed.
+---
