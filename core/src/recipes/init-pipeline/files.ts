@@ -5,7 +5,13 @@ import type { RecipeFile } from "@lando/sdk/schema";
 export const auxiliaryDestination = (root: string, destination: string): string => {
   const path = resolve(root, destination);
   const local = relative(root, path);
-  if (isAbsolute(destination) || local === "" || local === ".." || local.startsWith(`..${sep}`)) {
+  if (
+    isAbsolute(destination) ||
+    isAbsolute(local) ||
+    local === "" ||
+    local === ".." ||
+    local.startsWith(`..${sep}`)
+  ) {
     throw new RangeError("Auxiliary destination must be inside the app root.");
   }
   return path;
