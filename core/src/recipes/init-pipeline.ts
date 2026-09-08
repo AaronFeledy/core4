@@ -123,8 +123,9 @@ export const runRecipeInitPipeline = (
       ? yield* service.value.forProfile("secrets", options)
       : createStandaloneRedactor("secrets", options);
     // Exact masking also covers short values intentionally excluded by profile heuristics.
+    const tokens = [...new Set(raw)].sort((left, right) => right.length - left.length);
     const redact = (text: string) =>
-      base.redactString(raw.reduce((text, secret) => text.replaceAll(secret, REDACTED), text));
+      base.redactString(tokens.reduce((text, secret) => text.replaceAll(secret, REDACTED), text));
     const redactor = { ...base, redactString: redact };
     const module = yield* Effect.try({
       try: () =>
@@ -141,7 +142,7 @@ export const runRecipeInitPipeline = (
     const translator = translators.find(({ id }) => id === RECIPE_TRANSLATOR_ID);
     if (translator === undefined) return yield* Effect.fail(blocked("translate"));
     const translated = yield* Effect.suspend(() => runConfigTranslator(translator, input)).pipe(
-      Effect.catchAllCause(() => Effect.fail(blocked("translate"))),
+      Effect.catchAll(() => Effect.fail(blocked("translate"))),
     );
     const output = translated.outputs[0];
     if (translated.outputs.length !== 1 || output?.targetLayer !== "canonical")
@@ -149,7 +150,7 @@ export const runRecipeInitPipeline = (
     const mapping = yield* Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
       output.fragment,
     ).pipe(Effect.mapError(() => blocked("validate")));
-    const context = mergeLandofiles([{ name: request.appName }, mapping]);
+    const context = mergeLandofiles([mapping, { name: request.appName }]);
     yield* Schema.decodeUnknown(LandofileAuthoringFragment)(context, { onExcessProperty: "error" }).pipe(
       Effect.mapError(() => blocked("validate")),
     );
@@ -157,7 +158,7 @@ export const runRecipeInitPipeline = (
     const encode = request.encoder.encode;
     if (encode === undefined) return yield* Effect.fail(blocked("encode"));
     const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
-      Effect.catchAllCause(() => Effect.fail(blocked("encode"))),
+      Effect.catchAll(() => Effect.fail(blocked("encode"))),
     );
     const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
       ...diagnostic,

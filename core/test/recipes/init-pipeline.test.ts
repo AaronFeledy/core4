@@ -88,6 +88,11 @@ test("S1 commits expression-bearing provenance before auxiliary files and postIn
   expect(result.landofilePath).toBe(landofile);
   expect(result.auxiliaryFiles).toEqual([auxiliary]);
 });
+test("user appName wins over the translated fragment name", async () => {
+  const { request, landofile } = await fixture();
+  await Effect.runPromise(runRecipeInitPipeline({ ...request, appName: "user-chosen-name" }));
+  expect(await Bun.file(landofile).text()).toMatch(/^name: user-chosen-name$/m);
+});
 test("S2 invalid secret disposition blocks all writes and postInit", async () => {
   const { request, calls, landofile, auxiliary } = await fixture();
   const error = await failure({ ...request, manifest: { ...request.manifest, postInit: [] } });
@@ -183,6 +188,33 @@ test("S5 raw secrets reach only the declared env sink and not persisted or retur
     expect(diagnostic.remediation ?? "").not.toContain(marker);
   }
   expect(JSON.stringify(result)).not.toContain(marker);
+});
+test("overlapping secrets redact longest-first so suffixes do not leak", async () => {
+  const { request } = await fixture();
+  const encode = request.encoder.encode;
+  if (encode === undefined) throw new Error("Missing encoder");
+  const result = await Effect.runPromise(
+    runRecipeInitPipeline({
+      ...request,
+      secretAnswers: { apiToken: "abcdef", other: "abc" },
+      encoder: {
+        ...request.encoder,
+        encode: (input) =>
+          encode(input).pipe(
+            Effect.map((encoded) => ({
+              ...encoded,
+              diagnostics: [diagnostic("needs-review", "token=abcdef")],
+            })),
+          ),
+      },
+      runPostInit: async () => ({ executed: [] }),
+    }),
+  );
+  for (const item of result.diagnostics) {
+    expect(item.message).not.toContain("abc");
+    expect(item.remediation ?? "").not.toContain("abc");
+  }
+  expect(JSON.stringify(result)).not.toContain("abcdef");
 });
 test("S6 the real recipe plugin registry lists recipe", async () => {
   const module = makeRecipeTranslatorModule({
