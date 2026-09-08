@@ -418,3 +418,10 @@
   - The widened `storyIdPattern` now resolves `us-609e0-*`, so the gated steps that skipped on the two previous iterations can finally run against this branch; a story can sit fully implemented and still never publish when the harness pattern cannot derive its id.
   - When a Build invocation lands on an already-complete story, the honest work is re-running the gates and adjacent blast radius, not manufacturing changes — the branch here needed publication, not code.
 ---
+
+## 2026-09-08 07:11 - US-609E0 Review
+- Review-work failed on app-name precedence; Bugbot confirmed the same merge order. Fixed: user `appName` now overlays the translated fragment, overlapping secrets redact longest-first, translator/encoder interruption is no longer swallowed as a blocked failure, and resolved auxiliary destinations that `relative()` reports as absolute are rejected.
+- Review notes (deferred/rejected): Auxiliary TOCTOU symlink swap — same cooperative-lock/not-CAS class previously deferred for managed-file writes; not an AC. recipeRoot / no-follow src reads — intentional fail-closed on relative src, already recorded for the caller that adds a source root. secret-store answers ignored in favor of `disposition.field` — isolated recipe is init-only only; AC requires raw secrets only at declared init-only sinks, not secret-store write-through.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 13 pipeline tests plus 18 adjacent translator/contract/fixture tests passed.
+- Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
+---
