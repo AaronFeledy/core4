@@ -477,3 +477,10 @@
   - Four Build iterations have now landed on this story with nothing to build; the obstacle has never been the code. Confirm the blocker's owner before touching anything: a red PR whose only failures are an upstream `snapshot.ubuntu.com` apt step belongs to Babysit, and a Build step that manufactures a change to look busy is introducing risk into an already-verified branch.
   - The cheapest honest completeness check on a finished branch is `git diff origin/main -- <public surface paths>` returning empty. For this story that one command settles the "leave the public init registry unchanged" clause outright, with no reading required.
 ---
+
+## 2026-09-08 12:02 - US-609E0 Review
+- Reviewed the private recipe translator and init pipeline against both US-609E0 ACs. Bugbot found no bugs. No in-scope defect required a code change: registration, contract tests, encode-then-commit-then-auxiliary-then-postInit, secret sinks, and unchanged public init already hold.
+- Review notes (deferred/rejected): Goal-verifier FAIL to wrap auxiliary `Bun.file`/`lstat`/`mkdir` in an Effect FileSystem service — not an AC; same class as the US-608C FileSystem-wrapping deferral; auxiliary post-commit copies are the no-rollback path, not Landofile transaction IO. Auxiliary TOCTOU symlink swap — previously deferred cooperative-lock/not-CAS. Absolute src without a source-root port — already recorded for the caller that adds recipe-root resolution.
+- Verification: GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused translator/pipeline/contract/fixture tests passed. Typecheck/lint not rerun (no source change since Build).
+- Guide-Coverage-Skip: private recipe init pipeline adds no public CLI or guide-covered contract; US-609E owns the public init cutover.
+---
