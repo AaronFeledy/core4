@@ -21,12 +21,14 @@ const scalarYaml = (value: unknown): string => {
       const digits = unsigned.replace(".", "");
       const point =
         (unsigned.indexOf(".") === -1 ? unsigned.length : unsigned.indexOf(".")) + Number(exponent);
-      const decimal =
-        point <= 0
-          ? `0.${"0".repeat(-point)}${digits}`
-          : point >= digits.length
-            ? digits + "0".repeat(point - digits.length)
-            : `${digits.slice(0, point)}.${digits.slice(point)}`;
+      let decimal: string;
+      if (point <= 0) {
+        decimal = `0.${"0".repeat(-point)}${digits}`;
+      } else if (point >= digits.length) {
+        decimal = digits + "0".repeat(point - digits.length);
+      } else {
+        decimal = `${digits.slice(0, point)}.${digits.slice(point)}`;
+      }
       return (value < 0 ? "-" : "") + decimal;
     }
     default:
