@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { setActiveLogLevel, setActiveRendererMode } from "../../src/cli/renderer-mode-state.ts";
-import { cliRuntimeOptions } from "../../src/testing/engine-layers";
 
 describe("cliRuntimeOptions logLevel", () => {
   afterEach(() => {

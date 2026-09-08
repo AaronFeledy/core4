@@ -3,16 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { decodeAppCommandIndex, encodeAppCommandIndex } from "@lando/engine/cache/command-index";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { Effect } from "effect";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
-import {
-  appCommandCachePath,
-  appToolingCompilationCachePath,
-  decodeAppCommandIndex,
-  encodeAppCommandIndex,
-  writeAppCommandCacheStrict,
-} from "../../src/testing/engine-layers.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

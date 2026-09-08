@@ -1,4 +1,9 @@
-import { ConfigTranslateDeletion, ConfigTranslateDiagnostic, ConfigTranslateMatch } from "@lando/sdk/schema";
+import {
+  ConfigTranslateDeletion,
+  ConfigTranslateDiagnostic,
+  ConfigTranslateMatch,
+  LandofileLayer,
+} from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 export type AppConfigTranslateFormat = "yaml" | "table" | "json";
@@ -21,12 +26,20 @@ const DetectResultSchema = Schema.Struct({
   matches: Schema.Array(ConfigTranslateMatch),
 });
 
+const TranslateTargetSchema = Schema.Struct({
+  layer: LandofileLayer,
+  path: Schema.String,
+  content: Schema.String,
+});
+
 const PreviewResultSchema = Schema.Struct({
   mode: Schema.Literal("preview"),
   inputPath: Schema.String,
   translator: Schema.String,
+  target: Schema.String,
   files: Schema.Array(Schema.String),
   content: Schema.String,
+  targets: Schema.Array(TranslateTargetSchema),
   diagnostics: Schema.Array(ConfigTranslateDiagnostic),
   deletions: Schema.Array(ConfigTranslateDeletion),
 });
@@ -34,8 +47,10 @@ const PreviewResultSchema = Schema.Struct({
 const WriteResultSchema = Schema.Struct({
   mode: Schema.Literal("write"),
   inputPath: Schema.String,
-  outputPath: Schema.String,
-  backupPath: Schema.optional(Schema.String),
+  target: Schema.String,
+  written: Schema.Array(Schema.String),
+  backups: Schema.Array(Schema.String),
+  removed: Schema.Array(Schema.String),
   diagnostics: Schema.Array(ConfigTranslateDiagnostic),
   deletions: Schema.Array(ConfigTranslateDeletion),
 });
@@ -48,6 +63,7 @@ export const AppConfigTranslateResultSchema = Schema.Union(
 );
 
 export type AppConfigTranslateResult = Schema.Schema.Type<typeof AppConfigTranslateResultSchema>;
+type AppConfigTranslateTarget = Schema.Schema.Type<typeof TranslateTargetSchema>;
 
 const DIAGNOSTIC_GLYPH = {
   generated: "+",
@@ -71,6 +87,18 @@ const renderAnnotated = (
     ...diagnostics.map(diagnosticComment),
     ...(deletions.length > 0 ? [`# deletions: ${deletions.map((item) => item.sourceId).join(", ")}`] : []),
   ].join("\n");
+
+/**
+ * A single target reads as the bare Landofile; several targets are labeled with
+ * the declared path each block belongs to, because writing one layer never
+ * flattens the others into one document.
+ */
+export const renderTranslateTargets = (targets: ReadonlyArray<AppConfigTranslateTarget>): string => {
+  const first = targets[0];
+  if (targets.length === 0) return "";
+  if (targets.length === 1 && first !== undefined) return first.content;
+  return targets.map((target) => `# ${target.path}\n${target.content.replace(/\n$/u, "")}`).join("\n\n");
+};
 
 export const renderConfigTranslateResult = (
   result: AppConfigTranslateResult,
@@ -96,10 +124,11 @@ export const renderConfigTranslateResult = (
         ? result.content
         : renderAnnotated(result.content.replace(/\n$/u, ""), result.diagnostics, result.deletions);
     case "write": {
-      const header =
-        result.backupPath === undefined
-          ? `${result.outputPath}: wrote canonical Landofile.`
-          : `${result.outputPath}: wrote canonical Landofile (backup at ${result.backupPath}).`;
+      const header = [
+        ...result.written.map((path) => `${path}: wrote ${result.target} Landofile layer.`),
+        ...result.removed.map((path) => `${path}: removed translated source.`),
+        ...result.backups.map((path) => `# backup: ${path}`),
+      ].join("\n");
       return renderAnnotated(header, result.diagnostics, result.deletions);
     }
     default: {

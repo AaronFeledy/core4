@@ -9,10 +9,11 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService, Renderer } from "@lando/sdk/services";
 
+import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
+import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/testing/engine-layers.ts";
-import { LandofileServiceLive, resolveLandofileIncludes } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 

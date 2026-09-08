@@ -1,7 +1,7 @@
-import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 
@@ -25,35 +25,42 @@ const guardFor = (file: string): Effect.Effect<Effect.Semaphore> =>
     return created;
   });
 
-interface LockRecord {
-  readonly pid: number;
-  readonly token: string;
-  readonly createdAt: number;
-}
+const LockRecord = Schema.Struct({
+  pid: Schema.Number.pipe(Schema.int(), Schema.between(1, 2_147_483_647)),
+  token: Schema.NonEmptyString.pipe(Schema.maxLength(256)),
+  createdAt: Schema.Number.pipe(Schema.int(), Schema.between(0, Number.MAX_SAFE_INTEGER)),
+});
+type LockRecord = typeof LockRecord.Type;
+const parseLockRecord = Schema.decodeUnknownOption(Schema.parseJson(LockRecord), {
+  onExcessProperty: "error",
+});
+const hasCode = (cause: unknown, code: string): boolean =>
+  cause instanceof Error && "code" in cause && cause.code === code;
 
 const processIsDead = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
     return false;
   } catch (cause) {
-    return (cause as { readonly code?: unknown }).code === "ESRCH";
+    return hasCode(cause, "ESRCH");
   }
 };
 
 const readLockRecord = async (lockPath: string): Promise<LockRecord | null> => {
   try {
-    return JSON.parse(await readFile(lockPath, "utf8")) as LockRecord;
-  } catch {
-    return null;
+    return Option.getOrNull(parseLockRecord(await readFile(lockPath, "utf8")));
+  } catch (cause) {
+    if (hasCode(cause, "ENOENT")) return null;
+    throw cause;
   }
 };
 
-const lockFileIsStaleByMtime = async (lockPath: string): Promise<boolean> => {
+const lockIdentity = async (lockPath: string) => {
   try {
-    const stats = await stat(lockPath);
-    return Date.now() - stats.mtimeMs > LOCK_STALE_MS;
-  } catch {
-    return true;
+    return await lstat(lockPath);
+  } catch (cause) {
+    if (hasCode(cause, "ENOENT")) return null;
+    throw cause;
   }
 };
 
@@ -69,50 +76,95 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
 export const makeLockToken = (): string =>
   `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const acquire = (lockPath: string, token: string, operation: string): Effect.Effect<void, StateStoreError> =>
+const acquire = (
+  lockPath: string,
+  token: string,
+  options: { readonly operation: string; readonly expireLiveOwner?: boolean },
+): Effect.Effect<void, StateStoreError> =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
       const acquired = yield* Effect.tryPromise({
         try: async () => {
           try {
             await mkdir(dirname(lockPath), { recursive: true });
-            const handle = await open(lockPath, "wx");
-            await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }));
-            await handle.close();
+            const handle = await open(lockPath, "wx", 0o600);
+            try {
+              const identity = await handle.stat();
+              try {
+                await handle.chmod(0o600);
+                await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }));
+                await handle.sync();
+              } catch (cause) {
+                const current = await lockIdentity(lockPath);
+                if (
+                  current?.dev === identity.dev &&
+                  current.ino === identity.ino &&
+                  !current.isSymbolicLink()
+                ) {
+                  await unlink(lockPath);
+                }
+                throw cause;
+              }
+            } finally {
+              await handle.close();
+            }
             return true;
           } catch (cause) {
-            if ((cause as { code?: string }).code !== "EEXIST") throw cause;
-            // A new holder may not have flushed its JSON yet, so use the file's
-            // mtime before treating an unparseable record as stale.
-            const current = await readLockRecord(lockPath);
+            if (!hasCode(cause, "EEXIST")) throw cause;
+            const identity = await lockIdentity(lockPath);
+            if (identity === null) return false;
+            if (
+              !identity.isFile() ||
+              identity.isSymbolicLink() ||
+              identity.nlink !== 1 ||
+              (process.getuid !== undefined && identity.uid !== process.getuid())
+            )
+              return false;
+            const staleByMtime = Date.now() - identity.mtimeMs > LOCK_STALE_MS;
+            const current = await readLockRecord(lockPath).catch((error: unknown) => {
+              // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
+              if (hasCode(error, "EACCES")) return null;
+              throw error;
+            });
             const takeover =
               current === null
-                ? await lockFileIsStaleByMtime(lockPath)
-                : Date.now() - current.createdAt > LOCK_STALE_MS || processIsDead(current.pid);
+                ? staleByMtime
+                : (options.expireLiveOwner !== false && Date.now() - current.createdAt > LOCK_STALE_MS) ||
+                  processIsDead(current.pid);
             if (takeover) {
-              await unlink(lockPath).catch(() => undefined);
+              const latest = await lockIdentity(lockPath);
+              if (
+                latest?.dev === identity.dev &&
+                latest.ino === identity.ino &&
+                latest.uid === identity.uid &&
+                latest.mode === identity.mode &&
+                latest.nlink === 1 &&
+                latest.mtimeMs === identity.mtimeMs &&
+                latest.ctimeMs === identity.ctimeMs
+              ) {
+                await unlink(lockPath).catch((error: unknown) => {
+                  if (!hasCode(error, "ENOENT")) throw error;
+                });
+              }
             }
             return false;
           }
         },
-        catch: (cause) => lockError(operation, lockPath, cause),
+        catch: (cause) => lockError(options.operation, lockPath, cause),
       });
       if (acquired) return;
       yield* Effect.sleep(`${LOCK_RETRY_MS} millis`);
     }
-    return yield* Effect.fail(lockError(operation, lockPath));
+    return yield* Effect.fail(lockError(options.operation, lockPath));
   });
 
 const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
   Effect.promise(async () => {
-    const current = await readFile(lockPath, "utf8").catch(() => null);
-    if (current === null) return;
-    try {
-      if ((JSON.parse(current) as { token?: string }).token === token) {
-        await unlink(lockPath).catch(() => undefined);
-      }
-    } catch {
-      // Do not delete a lock that cannot be proven to belong to this holder.
+    const current = await readLockRecord(lockPath);
+    if (current?.token === token) {
+      await unlink(lockPath).catch((cause: unknown) => {
+        if (!hasCode(cause, "ENOENT")) throw cause;
+      });
     }
   });
 
@@ -127,9 +179,12 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
 export const acquireAdvisoryLockAt = (
   lockPath: string,
   operation: string,
+  options: { readonly expireLiveOwner?: boolean } = {},
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
   const token = makeLockToken();
-  return acquire(lockPath, token, operation).pipe(Effect.as({ token, release: release(lockPath, token) }));
+  return acquire(lockPath, token, { operation, ...options }).pipe(
+    Effect.as({ token, release: release(lockPath, token) }),
+  );
 };
 
 /**
@@ -148,7 +203,7 @@ export const withAdvisoryLock = <A, E>(
       const lockPath = `${canonicalFile}.lock`;
       const token = makeLockToken();
       const fileLocked = Effect.acquireUseRelease(
-        acquire(lockPath, token, operation),
+        acquire(lockPath, token, { operation }),
         () => body,
         () => release(lockPath, token),
       );

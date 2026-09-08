@@ -9,7 +9,7 @@ import { PromptValidationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

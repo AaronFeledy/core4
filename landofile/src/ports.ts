@@ -1,5 +1,7 @@
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
+import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
+import type { Context } from "effect";
 
 export interface GitAcquisitionPort {
   readonly clone: (input: {
@@ -48,6 +50,7 @@ export interface TemplateEngineInputs {
 }
 
 export interface LandofileRuntimeInputs {
+  readonly transactionGuard?: Context.Tag.Service<typeof ManagedFileTransactionGuard>;
   readonly ports: LandofileRuntimePorts;
   readonly templates: TemplateEngineInputs;
 }

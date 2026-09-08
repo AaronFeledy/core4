@@ -8,7 +8,8 @@ import { Effect } from "effect";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 
-import { decodePluginCommandIndex, writePluginCommandCacheStrict } from "../../src/testing/engine-layers.ts";
+import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
+import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixtureFiles = [

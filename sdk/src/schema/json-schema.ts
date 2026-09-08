@@ -289,6 +289,24 @@ import {
   ProxyStatus,
   RouterConfig,
 } from "./proxy.ts";
+import { RecipeDecomposeInput, RecipeDecomposeResult } from "./recipe-decompose.ts";
+import {
+  RecipeContentDigest,
+  RecipeOptionValue,
+  RecipeProducer,
+  RecipeServiceMap,
+  RecipeSourceKind,
+} from "./recipe-identity.ts";
+import { LandofileRecipeField, LandofileRecipeProvenance } from "./recipe-provenance.ts";
+import {
+  RecipeHunkClassification,
+  RecipeHunkKind,
+  RecipeMigration,
+  RecipeMigrationHunk,
+  RecipeOptionType,
+  RecipeSnapshot,
+  RecipeSnapshotAsset,
+} from "./recipe-snapshot.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -740,6 +758,22 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly LandofileAuthoringFragment: typeof LandofileAuthoringFragment;
     readonly LandofileAuthoringShapeWire: typeof LandofileAuthoringShapeWire;
     readonly LandofileAuthoringFragmentWire: typeof LandofileAuthoringFragmentWire;
+    readonly RecipeSourceKind: typeof RecipeSourceKind;
+    readonly RecipeContentDigest: typeof RecipeContentDigest;
+    readonly RecipeProducer: typeof RecipeProducer;
+    readonly RecipeOptionValue: typeof RecipeOptionValue;
+    readonly RecipeServiceMap: typeof RecipeServiceMap;
+    readonly LandofileRecipeProvenance: typeof LandofileRecipeProvenance;
+    readonly LandofileRecipeField: typeof LandofileRecipeField;
+    readonly RecipeOptionType: typeof RecipeOptionType;
+    readonly RecipeSnapshotAsset: typeof RecipeSnapshotAsset;
+    readonly RecipeSnapshot: typeof RecipeSnapshot;
+    readonly RecipeHunkKind: typeof RecipeHunkKind;
+    readonly RecipeHunkClassification: typeof RecipeHunkClassification;
+    readonly RecipeMigrationHunk: typeof RecipeMigrationHunk;
+    readonly RecipeMigration: typeof RecipeMigration;
+    readonly RecipeDecomposeInput: typeof RecipeDecomposeInput;
+    readonly RecipeDecomposeResult: typeof RecipeDecomposeResult;
   } = {
   AuthoringExpression,
   AuthoringExpressionExpectedType,
@@ -747,11 +781,43 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   LandofileAuthoringFragment,
   LandofileAuthoringShapeWire,
   LandofileAuthoringFragmentWire,
+  RecipeSourceKind,
+  RecipeContentDigest,
+  RecipeProducer,
+  RecipeOptionValue,
+  RecipeServiceMap,
+  LandofileRecipeProvenance,
+  LandofileRecipeField,
+  RecipeOptionType,
+  RecipeSnapshotAsset,
+  RecipeSnapshot,
+  RecipeHunkKind,
+  RecipeHunkClassification,
+  RecipeMigrationHunk,
+  RecipeMigration,
+  RecipeDecomposeInput,
+  RecipeDecomposeResult,
   ...ConfigTranslateSchemas,
   ...basePublicSchemaRegistry,
 };
 
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
+  RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
+  RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
+  RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",
+  RecipeOptionValue: "Nonsecret scalar or scalar-array recipe option value.",
+  RecipeServiceMap: "Injective map from generated service name to current service name.",
+  LandofileRecipeProvenance: "Inert object-form recipe provenance recorded in a generated Landofile.",
+  LandofileRecipeField: "Bare recipe id or full object-form recipe provenance.",
+  RecipeOptionType: "Serializable descriptor for one persistable recipe option.",
+  RecipeSnapshotAsset: "Metadata and digest for one recipe-authored auxiliary file.",
+  RecipeSnapshot: "Inert declarative data that renders one recipe version's authoring output.",
+  RecipeHunkKind: "Declarative migration operation kind.",
+  RecipeHunkClassification: "Resolution class assigned to one migration hunk.",
+  RecipeMigrationHunk: "One declarative edit inside a recipe migration edge.",
+  RecipeMigration: "One declarative migration edge between two recipe versions.",
+  RecipeDecomposeInput: "Merged recipe identity and nonsecret options handed to a decomposer.",
+  RecipeDecomposeResult: "Authoring fragment and provenance produced by one decomposition.",
   AuthoringExpression: "Parsed expression at a typed Landofile authoring site, without value resolution.",
   AuthoringExpressionExpectedType: "Value kind required by a Landofile authoring expression site.",
   LandofileAuthoringShape: "Complete Landofile authoring tree with unresolved typed expressions.",

@@ -14,6 +14,7 @@ import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
+import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
@@ -1306,7 +1307,12 @@ const LandofileShapeBase = Schema.Struct({
     description:
       'Semver range the running Lando core version must satisfy before the app is planned or started (e.g. ">=4.1 <5"). Prereleases are included; unsatisfied constraints fail closed with remediation.',
   }),
-  recipe: Schema.optional(Schema.String),
+  recipe: Schema.optional(
+    LandofileRecipeField.annotations({
+      description:
+        "Recipe id, or inert object-form provenance recording the producing recipe and its merged options.",
+    }),
+  ),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
   commandAliases: Schema.optional(CommandAliasesShape).annotations({

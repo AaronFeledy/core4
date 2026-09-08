@@ -4,8 +4,8 @@ import { Effect, Queue } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { publishTaskStart } from "../../src/testing/engine-layers";
-import { EventServiceLive } from "../../src/testing/engine-layers";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { publishTaskStart } from "@lando/sdk/task-progress";
 
 test("publishTaskStart threads the optional transcript path", async () => {
   const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");

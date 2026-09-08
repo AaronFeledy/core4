@@ -778,5 +778,155 @@
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
     "justification": "Config translation is pre-release; results now carry source ids, key paths, and deletion intents for document-set translation."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateDocumentSetInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateLayerFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateOutput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragmentWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringFragmentWire.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.postInit.items.anyOf",
+    "justification": "Post-init actions intentionally add the named init-only secret sink bindings while preserving every previously accepted form."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.recipe.anyOf",
+    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
   }
 ]

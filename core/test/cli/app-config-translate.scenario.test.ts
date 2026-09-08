@@ -70,4 +70,25 @@ describe("lando app:config:translate CLI argv parsing", () => {
       expect(envelope.ok).toBe(true);
     });
   });
+
+  test("accepts --to with a value", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(["app:config:translate", "--to", "lando4", "--list", "--format=json"], dir);
+
+      expect(result.exitCode).toBe(0);
+      const envelope = JSON.parse(result.stdout) as { readonly ok?: boolean };
+      expect(envelope.ok).toBe(true);
+    });
+  });
+
+  test("rejects a bare --to with no value", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: demo\nruntime: 4\n");
+      const result = await runCli(["app:config:translate", "--to"], dir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("--to has a malformed value.");
+      expect(result.stderr).toContain("code: MalformedCliFlagValueError");
+    });
+  });
 });

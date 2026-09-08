@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
+
 - The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
 - `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `RouterService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
 - Replaces the unreleased PluginContribution.proxyServices key with the normative typed routerServices manifest entries, replaces the unreleased ProxyService tag (@lando/core/ProxyService) with RouterService (@lando/core/RouterService), replaces the unreleased ProxyServiceContribution public schema with RouterServiceContribution, and replaces GlobalConfig.defaultProxyService (and TemplateRenderContext.global.defaultProxyService) with defaultRouterService. The removed tag, contribution key, public schema, and config spelling have no alias or compatibility path.
@@ -149,8 +151,35 @@
 - `RecipeManifest` additively accepts optional `extends` (a parent recipe id or path). Flatten-before-validate merges the parent into the child and strips `extends` and authoring-only `drop` before `RecipeManifest` decode. `@lando/sdk/schema` additively exports `RecipePromptDrop`. `@lando/sdk/errors` additively exports `RecipeExtendsError` (`kind`: `cycle` | `depth` | `parent-not-found`). `RecipeManifestService.parse` additively includes `RecipeExtendsError` and `RecipeSourceError` in its error channel.
 
 
+- Recipe provenance and migration contracts additively export the recipe producer identity split (`RecipeSourceKind`, `RecipePackageName`, `RecipeContentDigest`, `RecipeProducer` and the `recipeFamilyKey` / `recipeVersionedKey` / `sameRecipeFamily` / `sameRecipeVersion` helpers), the inert Landofile `recipe:` object form (`LandofileRecipeProvenance`, `LandofileRecipeField`, `RecipeOptionValue`, `RecipeServiceMap`), declarative snapshot and migration data (`RecipeOptionType`, `RecipeSnapshotAsset`, `RecipeSnapshotTemplate`, `RecipeSnapshot`, `RecipeHunkKind`, `RecipeHunkClassification`, `RecipeMigrationHunk`, `RecipeMigration`, `hasCallableApply`), and the decomposition port payloads (`RecipeDecomposeInput`, `RecipeDecomposeResult`). `LandofileShape.recipe` widens from a bare id string to that id-or-provenance union, and the bare string stays valid. `RecipeManifest` additively accepts optional `snapshot` and `migrations`; `RecipePrompt` additively accepts `disposition`, required on a secret prompt and rejected elsewhere; post-init `command` and `bun` actions additively accept the named `stdin` and `secretEnv` init-only sink bindings. `@lando/sdk/errors` additively exports `RecipeDecomposeError`, `RecipeProvenanceError`, `RecipeSnapshotError`, `RecipeMigrationChainError`, `RecipeSecretDispositionError`, and `RecipeSecretSinkError`. `@lando/sdk/landofile` additively exports `LANDOFILE_LEADING_COMMENT_BLOCKS` and the `leadingCommentBlock` emit option. `@lando/sdk/expressions` additively exposes an `options` context scope and an opt-in `EvaluationBudget`. `@lando/sdk/recipes` is a new additive subpath carrying the pure provenance, snapshot, migration-chain, option-descriptor, secret-disposition, and content-digest logic (`computeRecipeContentDigest`, `recipeContentDigestProjection`).
+
+
 ## Additive schema exports
 
+- `LandofileRecipeField`
+- `LandofileRecipeProvenance`
+- `RecipeContentDigest`
+- `RecipeDecomposeInput`
+- `RecipeDecomposeResult`
+- `RecipeHunkClassification`
+- `RecipeHunkKind`
+- `RecipeMigration`
+- `RecipeMigrationHunk`
+- `RecipeOptionType`
+- `RecipeOptionValue`
+- `RecipePackageName`
+- `RecipeProducer`
+- `RecipeSecretDisposition`
+- `RecipeServiceMap`
+- `RecipeSnapshot`
+- `RecipeSnapshotAsset`
+- `RecipeSnapshotTemplate`
+- `RecipeSourceKind`
+- `hasCallableApply`
+- `recipeFamilyKey`
+- `recipeVersionedKey`
+- `sameRecipeFamily`
+- `sameRecipeVersion`
 - `AUTHORING_EXPRESSION_SCOPES`
 - `AuthoringExpression`
 - `AuthoringExpressionExpectedType`
@@ -746,6 +775,7 @@
 - `LandofileVersionConstraintError`
 - `LogLevelSelectionError`
 - `ManagedFileError`
+- `ManagedFileTransactionError`
 - `RemoteError`
 - `RemoteUnreachableError`
 - `RemoteAuthError`
@@ -801,6 +831,7 @@
 
 ## Additive service tags
 
+- `RecipeDecomposer`
 - `AppPlanSanitizer`
 - `CertificateAuthority`
 - `CommandFramework`
@@ -817,6 +848,7 @@
 - `InteractionService`
 - `LogFileHelperAssets`
 - `ManagedFileService`
+- `ManagedFileTransactionGuard`
 - `RemoteSource`
 - `Dataset`
 - `PathsService`

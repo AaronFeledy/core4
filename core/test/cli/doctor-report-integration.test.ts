@@ -15,6 +15,7 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -24,7 +25,6 @@ import {
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
-import { CertificateAuthorityResolver } from "../../src/testing/engine-layers.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);

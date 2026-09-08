@@ -22,8 +22,8 @@ import * as sdkTest from "@lando/sdk/test";
  *     of a real built-in invocation.
  *
  * `defaultPolicy: "none-bundled"` is a principled exception, not a loophole:
- * core ships no bundled implementation for that abstraction (e.g. `ConfigTranslator`),
- * so the SDK self-test is the only coverage that can exist until a plugin ships one.
+ * core ships no bundled implementation for that abstraction, so the SDK
+ * self-test is the only coverage that can exist until a plugin ships one.
  * The gate still requires its suite exports.
  */
 
@@ -95,6 +95,14 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "ConfigTranslator",
     makeExport: "makeConfigTranslatorContractSuite",
     runExport: "runConfigTranslatorContractSuite",
+    defaultPolicy: "built-in",
+    invocationFiles: ["core/test/contract/lando4-config-translator-contract.test.ts"],
+  },
+  // No bundled RecipeDecomposer implementation ships today.
+  {
+    abstraction: "RecipeDecomposer",
+    makeExport: "makeRecipeDecomposerContractSuite",
+    runExport: "runRecipeDecomposerContractSuite",
     defaultPolicy: "none-bundled",
     invocationFiles: [],
   },

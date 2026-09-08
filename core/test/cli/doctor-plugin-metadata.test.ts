@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import { Effect, Layer, Schema } from "effect";
 
+import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { RuntimeLayerFactory } from "../../src/testing/engine-layers.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 const runtimeLayerFactoryLive = Layer.succeed(RuntimeLayerFactory, { make: makeLandoRuntime });

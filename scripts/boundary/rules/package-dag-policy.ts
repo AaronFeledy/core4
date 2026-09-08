@@ -80,7 +80,8 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/http-client",
       "@lando/telemetry",
     ],
-    devDependencies: [],
+    // Engine base-composition tests exercise the bundled service feature definitions.
+    devDependencies: ["@lando/service-lando"],
   },
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
@@ -98,6 +99,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: ["@lando/core"],
   },
+  "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

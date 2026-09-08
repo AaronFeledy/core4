@@ -21,6 +21,7 @@ import type {
   LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
@@ -69,6 +70,7 @@ export const AppCacheRefreshResultSchema = Schema.Struct({
 });
 
 type AppCacheRefreshError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
   | LandofileNotFoundError

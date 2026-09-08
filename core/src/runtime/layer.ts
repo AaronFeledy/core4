@@ -25,6 +25,7 @@ import type {
   LogFileHelperAssets,
   Logger,
   ManagedFileService,
+  ManagedFileTransactionGuard,
   PathsService,
   PluginRegistry,
   PluginTrustStore,
@@ -107,6 +108,7 @@ type MinimalRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | ManagedFileTransactionGuard
   | InteractionService
   | PluginTrustStore
   | PrivilegeService

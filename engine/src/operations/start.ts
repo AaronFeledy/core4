@@ -15,6 +15,7 @@ import {
   type FileSystem,
   type GlobalAppService,
   LandofileService,
+  ManagedFileTransactionGuard,
   type PathsService,
   type PluginRegistry,
   RouterService,
@@ -66,6 +67,7 @@ type StartAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | ManagedFileTransactionGuard
   | PathsService
   | PluginRegistry
   | RouterService
@@ -86,6 +88,8 @@ export const startAppForTarget = (
   execution: { readonly forceAppBuild?: boolean } = {},
 ): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
   Effect.gen(function* () {
+    const guard = yield* ManagedFileTransactionGuard;
+    yield* guard.ensureConsistent(String(target.root));
     const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;

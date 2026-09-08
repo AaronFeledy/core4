@@ -622,7 +622,26 @@ describe("build-guide-scenarios MDX walker", () => {
       const generated = await Bun.file(
         join(root, "test/scenarios/generated/guides/exit-case/nonzero-exit.test.ts"),
       ).text();
-      expect(generated).toContain("expect(runAttempt.right.exitCode).toBe(1);");
+      expect(generated).toContain(".toBe(1);");
+      await linkNodeModules(root);
+      const testPath = join(root, "test/scenarios/generated/guides/exit-case/nonzero-exit.test.ts");
+      await Bun.write(
+        testPath,
+        generated.replace(
+          'guideId: "exit-case",',
+          'guideId: "exit-case", runCli: async () => ({ command: ["version"], exitCode: 0, stdout: "stdout-diagnostic-token", stderr: "stderr-diagnostic-token", events: [] }),',
+        ),
+      );
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", testPath],
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode).toBe(1);
+      const output = `${proc.stdout.toString()}\n${proc.stderr.toString()}`;
+      expect(output).toContain("stdout-diagnostic-token");
+      expect(output).toContain("stderr-diagnostic-token");
     } finally {
       await rm(root, { force: true, recursive: true });
     }

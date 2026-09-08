@@ -9,9 +9,9 @@ import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/c
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const composeServiceFieldCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,

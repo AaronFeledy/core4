@@ -28,12 +28,17 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
     from: Flags.string({
       description: "Force a specific translator by id instead of autodetecting.",
     }),
+    to: Flags.string({
+      description: "Target encoder id. Only `lando4` may write; other targets are preview-only.",
+      default: "lando4",
+    }),
     file: Flags.string({
       description: "Translate an explicit source file (repeatable). Scopes translator input.",
       multiple: true,
     }),
     write: Flags.boolean({
-      description: "Overwrite the input Landofile in place (a .bak backup is kept).",
+      description:
+        "Write the declared v4 Landofile layers through the managed-file transaction; an immutable digest-named backup is kept beside each replaced file.",
       default: false,
     }),
     format: Flags.string({
@@ -52,6 +57,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       list: flags.list === true,
       detect: flags.detect === true,
       ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+      ...(typeof flags.to === "string" ? { to: flags.to } : {}),
       ...(files === undefined ? {} : { files }),
     });
   },

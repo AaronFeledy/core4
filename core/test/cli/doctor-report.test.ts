@@ -19,6 +19,8 @@ import {
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
@@ -37,7 +39,6 @@ import {
 import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
-import { DeprecationServiceLive, FileSystemLive } from "../../src/testing/engine-layers.ts";
 
 const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
 

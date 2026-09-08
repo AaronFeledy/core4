@@ -102,6 +102,7 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginDescriptorMismatchError,
@@ -151,7 +152,11 @@ import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
-import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
+import type {
+  ManagedFileApplyOptions,
+  ManagedFileSelector,
+  ManagedFileTransactionPendingReport,
+} from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
 import type {
   CertificateAuthorityShape,
@@ -197,6 +202,7 @@ import type {
   ServiceSelector,
   WaitForExitOptions,
 } from "./provider.ts";
+import type { RecipeDecomposerShape } from "./recipe-decomposer.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
@@ -238,6 +244,7 @@ export * from "./plugins.ts";
 export * from "./plugin-trust.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
+export * from "./recipe-decomposer.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
@@ -342,7 +349,20 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
+      | ManagedFileTransactionError
     >;
+  }
+>() {}
+
+export declare class ManagedFileTransactionGuard extends Context.Tag(
+  "@lando/core/ManagedFileTransactionGuard",
+)<
+  ManagedFileTransactionGuard,
+  {
+    readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
+    readonly pending: (
+      appRoot: string,
+    ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
   }
 >() {}
 
@@ -968,4 +988,9 @@ export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/C
       never
     >;
   }
+>() {}
+
+export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
+  RecipeDecomposer,
+  RecipeDecomposerShape
 >() {}

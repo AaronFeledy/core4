@@ -10,6 +10,27 @@ import { writeFileAtomicScoped } from "../../src/atomic.ts";
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
 describe("writeFileAtomicScoped", () => {
+  test("syncs the parent after publishing the complete target", async () => {
+    // Given a real destination and a directory durability observer
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "durable.txt");
+    const observed: string[] = [];
+    try {
+      // When an atomic replacement is published
+      await run(
+        writeFileAtomicScoped(target, "complete", {
+          syncDirectory: async (parent) => {
+            observed.push(parent);
+            expect(await Bun.file(target).text()).toBe("complete");
+          },
+        }),
+      );
+      // Then its containing directory was flushed
+      expect(observed).toEqual([dir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   test("writes content atomically with the default mode", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
     try {

@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect";
 
 import * as caMkcert from "@lando/ca-mkcert";
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
+import * as lando4 from "@lando/lando4";
 import * as notifyLando from "@lando/notify-lando";
 import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
@@ -21,9 +22,9 @@ import * as templateMustache from "@lando/template-mustache";
 
 import { ConfigService, Logger } from "@lando/sdk/services";
 
+import { PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
-import { PluginRegistry, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   providerLando.plugin,
@@ -39,6 +40,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   templateHandlebars.plugin,
   templateMustache.plugin,
   sqlPlugin.plugin,
+  lando4.plugin,
 ];
 
 const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");
@@ -48,7 +50,7 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(13);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(14);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );

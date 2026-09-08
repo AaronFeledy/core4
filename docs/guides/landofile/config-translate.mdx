@@ -6,32 +6,129 @@ timeout: 60000
 tags: [beta, docs, landofile, config, translate]
 ---
 
-# Translate a config into a Landofile
+# Translate a config into a v4 Landofile
 
 ```sh
 lando app:config:translate
 ```
 
-Run that from an app directory. Registered translators turn the discovered `.lando.yml` into a canonical v4 Landofile.
+Run that from an app directory. Lando detects the source files, picks a translator, and prints the canonical v4 Landofile it would produce. Nothing is written. No `.lando.yml.canonical` appears next to your file.
 
-By default the canonical Landofile is written next to the input as `.lando.yml.canonical`, leaving the original untouched. `--format json` prints the structured result (paths plus diagnostics). `text` is the default human-readable summary.
+The bundled `lando4` translator ships with Lando, so a v4 Landofile round-trips out of the box. Other translators come from plugins.
 
-Overwrite the input in place with `--write`. Lando keeps the original as `.lando.yml.bak` first:
+## Preview the result
+
+```sh
+lando app:config:translate
+lando app:config:translate --format=json
+```
+
+The default output is the translated YAML. When a single layer is produced, you get the bare Landofile. When several layers are produced, each block is labeled with a `# <path>` comment for the file it belongs to.
+
+`--format=json` prints the structured preview: `inputPath`, `translator`, `target`, `files`, `content`, `targets` (one `layer`, `path`, `content` per declared layer), `diagnostics`, and `deletions`.
+
+## Write the files
 
 ```sh
 lando app:config:translate --write
 ```
 
-With zero translators registered, the command exits non-zero before touching any file, with `ConfigTranslateNoTranslatorsError`. Concrete translators ship as plugins:
+`--write` replaces the declared v4 Landofile layer files through the managed-file transaction. Before any file changes, Lando keeps an immutable backup beside each replaced file, named `<file>.bak.<sha256>` after the digest of the bytes it replaces. There is no plain `.lando.yml.bak`.
+
+The write summary lists each written path, each removed source, and each backup path as a `# backup:` line. Preview and `--write` emit the same diagnostics, so what you saw in the preview is what lands on disk.
+
+Only the `lando4` target may write. Any other `--to` target is preview-only, and pairing it with `--write` fails with `Target <id> is preview-only.`
+
+## Read the diagnostics
+
+Diagnostics are ordered (translator frontend first, then encoder), redacted, and identical between preview and `--write`. In YAML output they appear as comment lines with a glyph:
+
+| Glyph | Kind | Effect |
+| --- | --- | --- |
+| `+` | generated | Informational |
+| `-` | dropped | Informational |
+| `~` | rewritten | Informational |
+| `~` | non-portable | Blocks `--write` |
+| `!` | unsupported | Blocks encoding and `--write` |
+| `?` | needs-review | Informational |
+
+An `unsupported` diagnostic empties the preview content and refuses to write. A `non-portable` diagnostic still previews but refuses to write. The failure reads `Cannot write translation: <kind>: <message>` and tells you to resolve the diagnostics first.
+
+## Translate one layer
 
 ```sh
-lando plugin:add <translator-plugin>
+lando app:config:translate --file .lando.local.yml
+lando app:config:translate --file .lando.local.yml --write
 ```
 
-## Know how translators resolve
+`--file <path>` scopes the conversion to one layer. Lando reads the lower layers as context, but writes only the selected layer's dependency closure. It fails closed in two cases:
 
-Plugin authors contribute a translator through the `ConfigTranslator` SDK service tag. Each declares a stable `id`, a user-facing `summary`, supported input kinds, and `detect`/`translate` hooks. Core reads bounded document snapshots once. Detection receives those snapshots and returns matches with source identities and confidence, not instructions to read files again.
+- A lower layer is not already valid v4. Convert the base first.
+- A target file already exists and was not selected. The error names it: `Cannot modify unselected source <path>.` Add `--file <path>` to include it.
 
-Core invokes one selected translator for the whole ordered document set. The translator returns outputs by target layer, with an authoring wire fragment and source identities for each output. Core validates the fragments before merging them, including expression syntax and expected value types. Diagnostics stay ordered by input document, source span, then key path. Duplicate translator ids fail with `ConfigTranslatorConflictError` before any translator runs.
+`--file` is repeatable. Paths must sit inside the app root and stay under 1 MiB.
 
-Library and embedding consumers can use the same parse/emit helpers through `@lando/core/landofile` when they need this serializer without invoking the CLI.
+## Pick a translator or target
+
+```sh
+lando app:config:translate --list
+lando app:config:translate --detect
+lando app:config:translate --from lando4
+lando app:config:translate --to lando4
+```
+
+| Flag | Does |
+| --- | --- |
+| `--list` | Prints registered translators: id, input kinds, summary |
+| `--detect` | Reports which translators match the discovered files, with confidence, without translating |
+| `--from <id>` | Forces a translator instead of autodetecting |
+| `--to <id>` | Picks the target encoder. Default `lando4`, the only one that may write |
+| `--format` | `yaml` (default), `table`, or `json` |
+
+A `--to` target without an encoder fails with `Invalid --to target "<id>": an encoder is required.` and lists the ids you can choose from.
+
+<Guide>
+  <Scenario id="preview" render>
+    <Step name="preview-yaml">
+      <UseFixture name="v4-app" />
+      <Run command="lando app:config:translate" />
+      <Verify command="lando app:config:translate --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"lando4\"" } }} />
+      <Verify command="lando app:config:translate --format=json" expect={{ stdout: { regex: "\"mode\":\\s*\"preview\"" } }} />
+    </Step>
+    <Step name="preview-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="write" render>
+    <Step name="write-lando4">
+      <UseFixture name="v4-app" />
+      <Run command="lando app:config:translate --write" />
+      <Verify file="v4-app/.lando.yml" expect={{ regex: "name: translate-demo" }} />
+      <Verify file="v4-app/.lando.yml" expect={{ regex: "runtime: 4" }} />
+    </Step>
+    <Step name="write-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="single-layer" render>
+    <Step name="translate-local-layer">
+      <UseFixture name="layered-app" />
+      <Run command="lando app:config:translate --file .lando.local.yml --format=json" />
+      <Verify command="lando app:config:translate --file .lando.local.yml --format=json" expect={{ stdout: { regex: "\"mode\":\\s*\"preview\"" } }} />
+      <Verify command="lando app:config:translate --file .lando.local.yml --format=json" expect={{ stdout: { regex: "\\.lando\\.local\\.yml" } }} />
+    </Step>
+    <Step name="single-layer-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Write your own translator
+
+Plugin authors register a translator through the `ConfigTranslator` SDK service tag. Each declares a stable `id`, a `summary`, supported input kinds, and `detect`/`translate` hooks. Optionally it declares `encode`, which is what makes an id a valid `--to` target. Core reads bounded document snapshots once; detection returns matches with source ids and confidence instead of re-reading files.
+
+The selected translator sees the whole ordered document set and returns outputs by target layer. Core validates each fragment against the authoring schema before merging, then hands the merged context and each fragment to the encoder. Duplicate translator ids fail with `ConfigTranslatorConflictError` before any translator runs.
+
+Library consumers get the same parse and emit helpers through `@lando/core/landofile` without going through the CLI.

@@ -25,6 +25,7 @@ import {
   type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
+  type ManagedFileTransactionError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
@@ -124,6 +125,7 @@ export interface ShellAppResult {
 }
 
 export type ShellAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | CapabilityError
   | CommandAliasConflictError

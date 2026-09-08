@@ -9,9 +9,22 @@ import {
 import type { ExpressionNode, ExpressionTemplate, PathSegment, ShellParamSegment } from "./ast.ts";
 import type { ExpressionContext } from "./context.ts";
 
+/** Opt-in limits for one evaluation, shared across all template interpolations. */
+export interface EvaluationBudget {
+  /** Maximum evaluated AST nodes plus collection elements processed by helpers. */
+  readonly maxSteps: number;
+  /** Maximum active AST node evaluations, with the root at depth one. */
+  readonly maxDepth: number;
+  /** Maximum UTF-8 bytes in the JSON-serialized final result. */
+  readonly maxOutputBytes: number;
+  /** Maximum array length or record key count produced by a literal or helper. */
+  readonly maxCollectionSize: number;
+}
+
 export interface EvaluateExpressionOptions {
   readonly filePath?: string | undefined;
   readonly helperOverrides?: Readonly<Record<string, ExpressionHelperOverride>> | undefined;
+  readonly budget?: EvaluationBudget;
 }
 
 export type ExpressionHelperOverride = (
@@ -32,7 +45,61 @@ type Helper = (args: ReadonlyArray<ResolvedValue>, state: EvaluationState) => Re
 interface EvaluationState {
   readonly context: ExpressionContext;
   readonly options: EvaluateExpressionOptions;
+  readonly budget?: BudgetState;
 }
+
+/** Mutable counters belong to a single synchronous evaluation, never a reusable Effect. */
+interface BudgetState {
+  readonly limits: EvaluationBudget;
+  steps: number;
+  depth: number;
+}
+
+const evaluationState = (context: ExpressionContext, options: EvaluateExpressionOptions): EvaluationState =>
+  options.budget === undefined
+    ? { context, options }
+    : { context, options, budget: { limits: options.budget, steps: 0, depth: 0 } };
+
+const checkBudget = (name: keyof EvaluationBudget, amount: number, state: EvaluationState): void => {
+  if (state.budget !== undefined && amount > state.budget.limits[name]) {
+    throw evalError(`Expression budget exceeded (${name}).`, state.options);
+  }
+};
+
+const countSteps = (state: EvaluationState, amount = 1): void => {
+  if (state.budget === undefined) return;
+  state.budget.steps += amount;
+  checkBudget("maxSteps", state.budget.steps, state);
+};
+
+const checkCollections = (value: unknown, state: EvaluationState): unknown => {
+  if (state.budget === undefined) return value;
+  const pending = [value];
+  const seen = new Set<object>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!isRecordLike(current) || seen.has(current)) continue;
+    seen.add(current);
+    checkBudget(
+      "maxCollectionSize",
+      Array.isArray(current) ? current.length : Object.keys(current).length,
+      state,
+    );
+    for (const key of Object.keys(current)) {
+      const child = current[key];
+      if (isRecordLike(child)) pending.push(child);
+    }
+  }
+  return value;
+};
+
+const checkOutput = (value: unknown, state: EvaluationState): unknown => {
+  if (state.budget !== undefined) {
+    const encoded = encodeJson(value, state);
+    checkBudget("maxOutputBytes", new TextEncoder().encode(encoded).length, state);
+  }
+  return value;
+};
 
 interface SemverVersion {
   readonly major: number;
@@ -263,6 +330,22 @@ const resolveObjectLiteral = (
 };
 
 const resolveNode = (node: ExpressionNode, state: EvaluationState): ResolvedValue => {
+  if (state.budget === undefined) return resolveNodeValue(node, state);
+  countSteps(state);
+  state.budget.depth += 1;
+  try {
+    checkBudget("maxDepth", state.budget.depth, state);
+    if (node.kind === "ArrayLiteral") checkBudget("maxCollectionSize", node.elements.length, state);
+    const value = resolveNodeValue(node, state);
+    return node.kind === "Call" || node.kind === "ArrayLiteral" || node.kind === "ObjectLiteral"
+      ? checkCollections(value, state)
+      : value;
+  } finally {
+    state.budget.depth -= 1;
+  }
+};
+
+const resolveNodeValue = (node: ExpressionNode, state: EvaluationState): ResolvedValue => {
   switch (node.kind) {
     case "Literal":
       return node.value;
@@ -344,6 +427,15 @@ const evaluateCall = (
 };
 
 const callHelperByName = (
+  helperName: string,
+  args: ReadonlyArray<ResolvedValue>,
+  state: EvaluationState,
+): ResolvedValue => {
+  if (state.budget !== undefined) return checkCollections(callHelperValue(helperName, args, state), state);
+  return callHelperValue(helperName, args, state);
+};
+
+const callHelperValue = (
   helperName: string,
   args: ReadonlyArray<ResolvedValue>,
   state: EvaluationState,
@@ -512,7 +604,11 @@ const getPathSegmentFromValue = (value: unknown, state: EvaluationState): PathSe
 const getPathSegments = (value: unknown, state: EvaluationState): ReadonlyArray<PathSegment> => {
   if (typeof value === "number") return [getPathSegmentFromValue(value, state)];
   if (typeof value === "string") return parseGetPathString(value, state);
-  if (Array.isArray(value)) return value.map((segment) => getPathSegmentFromValue(segment, state));
+  if (Array.isArray(value))
+    return value.map((segment) => {
+      if (state.budget !== undefined) countSteps(state);
+      return getPathSegmentFromValue(segment, state);
+    });
   throw getPathParseError(state);
 };
 
@@ -522,25 +618,35 @@ const safeObjectEntries = (
   state: EvaluationState,
 ): ReadonlyArray<readonly [string, unknown]> =>
   Object.keys(value).map((key) => {
+    if (state.budget !== undefined) countSteps(state);
     ensureAllowedKey(key, state);
     const entryValue = value[key];
     rejectUnsafeValue(entryValue, state);
     return [key, entryValue] as const;
   });
 
-const deepEqual = (left: unknown, right: unknown): boolean => {
+const deepEqual = (left: unknown, right: unknown, state: EvaluationState): boolean => {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {
-    return left.length === right.length && left.every((value, index) => deepEqual(value, right[index]));
+    return (
+      left.length === right.length &&
+      left.every((value, index) => {
+        if (state.budget !== undefined) countSteps(state);
+        return deepEqual(value, right[index], state);
+      })
+    );
   }
   if (isRecordLike(left) && isRecordLike(right) && !Array.isArray(left) && !Array.isArray(right)) {
     const leftKeys = Object.keys(left);
     const rightKeys = Object.keys(right);
     return (
       leftKeys.length === rightKeys.length &&
-      leftKeys.every(
-        (key) => Object.prototype.propertyIsEnumerable.call(right, key) && deepEqual(left[key], right[key]),
-      )
+      leftKeys.every((key) => {
+        if (state.budget !== undefined) countSteps(state);
+        return (
+          Object.prototype.propertyIsEnumerable.call(right, key) && deepEqual(left[key], right[key], state)
+        );
+      })
     );
   }
   return false;
@@ -857,7 +963,10 @@ const semverSatisfies = (versionSource: string, rangeSource: string, state: Eval
   if (comparators.length === 0) {
     throw evalError("Semver range must not be empty.", state.options);
   }
-  return comparators.every((comparator) => satisfiesComparator(version, comparator, state));
+  return comparators.every((comparator) => {
+    if (state.budget !== undefined) countSteps(state);
+    return satisfiesComparator(version, comparator, state);
+  });
 };
 
 const HELPERS: Record<string, Helper> = {
@@ -877,11 +986,11 @@ const HELPERS: Record<string, Helper> = {
   },
   eq: (args, state) => {
     assertArgCount("eq", args, state, 2);
-    return deepEqual(requireResolved(args[0], state), requireResolved(args[1], state));
+    return deepEqual(requireResolved(args[0], state), requireResolved(args[1], state), state);
   },
   ne: (args, state) => {
     assertArgCount("ne", args, state, 2);
-    return !deepEqual(requireResolved(args[0], state), requireResolved(args[1], state));
+    return !deepEqual(requireResolved(args[0], state), requireResolved(args[1], state), state);
   },
   lt: (args, state) => {
     assertArgCount("lt", args, state, 2);
@@ -916,7 +1025,11 @@ const HELPERS: Record<string, Helper> = {
     const haystack = requireResolved(args[0], state, 'Helper "contains" received a missing value.');
     const needle = requireResolved(args[1], state, 'Helper "contains" received a missing value.');
     if (typeof haystack === "string" && typeof needle === "string") return haystack.includes(needle);
-    if (Array.isArray(haystack)) return haystack.some((value) => deepEqual(value, needle));
+    if (Array.isArray(haystack))
+      return haystack.some((value) => {
+        if (state.budget !== undefined) countSteps(state);
+        return deepEqual(value, needle, state);
+      });
     if (isRecordLike(haystack) && typeof needle === "string")
       return Object.prototype.propertyIsEnumerable.call(haystack, needle);
     throw evalError('Helper "contains" expected a string, array, or object collection.', state.options);
@@ -944,12 +1057,17 @@ const HELPERS: Record<string, Helper> = {
   split: (args, state) => {
     assertArgCount("split", args, state, 2, 3);
     const limit = args.length === 3 ? asInteger("split", args[2], state) : undefined;
-    return asString("split", args[0], state).split(asString("split", args[1], state), limit);
+    const output = asString("split", args[0], state).split(asString("split", args[1], state), limit);
+    if (state.budget !== undefined) countSteps(state, output.length);
+    return output;
   },
   join: (args, state) => {
     assertArgCount("join", args, state, 2);
     return asArray("join", args[0], state)
-      .map((value) => stringifyForTemplate(value, state))
+      .map((value) => {
+        if (state.budget !== undefined) countSteps(state);
+        return stringifyForTemplate(value, state);
+      })
       .join(asString("join", args[1], state));
   },
   replace: (args, state) => {
@@ -966,8 +1084,14 @@ const HELPERS: Record<string, Helper> = {
         asString("regexMatch", args[1], state),
         optionalString(args[2], state, "regexMatch"),
       ).exec(asString("regexMatch", args[0], state));
-      return match === null ? null : match.map((value) => value ?? null);
-    } catch {
+      return match === null
+        ? null
+        : match.map((value) => {
+            if (state.budget !== undefined) countSteps(state);
+            return value ?? null;
+          });
+    } catch (cause) {
+      if (isEvaluationError(cause)) throw cause;
       throw evalError('Helper "regexMatch" received an invalid regular expression.', state.options);
     }
   },
@@ -984,7 +1108,11 @@ const HELPERS: Record<string, Helper> = {
     const start = asInteger("slice", args[1], state);
     const end = args.length === 3 ? asInteger("slice", args[2], state) : undefined;
     if (typeof value === "string") return value.slice(start, end);
-    if (Array.isArray(value)) return value.slice(start, end);
+    if (Array.isArray(value)) {
+      const output = value.slice(start, end);
+      if (state.budget !== undefined) countSteps(state, output.length);
+      return output;
+    }
     throw evalError('Helper "slice" expected a string or array value.', state.options);
   },
   keys: (args, state) => {
@@ -1027,6 +1155,17 @@ const HELPERS: Record<string, Helper> = {
     const end = args.length === 1 ? asInteger("range", args[0], state) : asInteger("range", args[1], state);
     const step = args.length === 3 ? asInteger("range", args[2], state) : start <= end ? 1 : -1;
     if (step === 0) throw evalError('Helper "range" step must not be zero.', state.options);
+    if (state.budget !== undefined) {
+      const size = Math.max(0, Math.ceil((end - start) / step));
+      checkBudget("maxCollectionSize", size, state);
+      const output: number[] = [];
+      for (let value = start; step > 0 ? value < end : value > end; value += step) {
+        countSteps(state);
+        checkBudget("maxCollectionSize", output.length + 1, state);
+        output.push(value);
+      }
+      return output;
+    }
     const output: number[] = [];
     if (step > 0) {
       for (let value = start; value < end; value += step) output.push(value);
@@ -1040,15 +1179,19 @@ const HELPERS: Record<string, Helper> = {
     const values = asArray("map", args[0], state);
     const helperName = asString("map", args[1], state);
     // Expressions have no lambda node, so map/filter accept a helper-name string.
-    return values.map((value) => requireResolved(callHelperByName(helperName, [value], state), state));
+    return values.map((value) => {
+      if (state.budget !== undefined) countSteps(state);
+      return requireResolved(callHelperByName(helperName, [value], state), state);
+    });
   },
   filter: (args, state) => {
     assertArgCount("filter", args, state, 2);
     const values = asArray("filter", args[0], state);
     const helperName = asString("filter", args[1], state);
-    return values.filter((value) =>
-      isTruthy(requireResolved(callHelperByName(helperName, [value], state), state)),
-    );
+    return values.filter((value) => {
+      if (state.budget !== undefined) countSteps(state);
+      return isTruthy(requireResolved(callHelperByName(helperName, [value], state), state));
+    });
   },
   json: (args, state) => {
     assertArgCount("json", args, state, 1);
@@ -1073,10 +1216,19 @@ const HELPERS: Record<string, Helper> = {
   shellJoin: (args, state) => {
     assertArgCount("shellJoin", args, state, 1);
     return asArray("shellJoin", args[0], state)
-      .map((value) => shellQuoteValue(stringifyForTemplate(value, state)))
+      .map((value) => {
+        if (state.budget !== undefined) countSteps(state);
+        return shellQuoteValue(stringifyForTemplate(value, state));
+      })
       .join(" ");
   },
-  "path.join": (args, state) => pathJoin(args.map((value) => asString("path.join", value, state))),
+  "path.join": (args, state) =>
+    pathJoin(
+      args.map((value) => {
+        if (state.budget !== undefined) countSteps(state);
+        return asString("path.join", value, state);
+      }),
+    ),
   "path.dirname": (args, state) => {
     assertArgCount("path.dirname", args, state, 1);
     return pathDirname(asString("path.dirname", args[0], state));
@@ -1093,7 +1245,13 @@ const HELPERS: Record<string, Helper> = {
     assertArgCount("path.relative", args, state, 2);
     return pathRelative(asString("path.relative", args[0], state), asString("path.relative", args[1], state));
   },
-  "path.resolve": (args, state) => pathResolve(args.map((value) => asString("path.resolve", value, state))),
+  "path.resolve": (args, state) =>
+    pathResolve(
+      args.map((value) => {
+        if (state.budget !== undefined) countSteps(state);
+        return asString("path.resolve", value, state);
+      }),
+    ),
   "url.build": (args, state) => {
     assertArgCount("url.build", args, state, 1);
     return buildUrl(asObject("url.build", args[0], state), state);
@@ -1123,17 +1281,20 @@ const evaluateExpressionSync = (
   node: ExpressionNode,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
-): unknown => requireResolved(resolveNode(node, { context, options }), { context, options });
+): unknown => {
+  const state = evaluationState(context, options);
+  return checkOutput(requireResolved(resolveNode(node, state), state), state);
+};
 
 const evaluateTemplateSync = (
   template: ExpressionTemplate,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
 ): unknown => {
-  const state = { context, options };
+  const state = evaluationState(context, options);
   const onlySegment = template.segments[0];
   if (template.whole && template.segments.length === 1 && onlySegment?.kind === "InterpolationSegment") {
-    return requireResolved(resolveNode(onlySegment.expression, state), state);
+    return checkOutput(requireResolved(resolveNode(onlySegment.expression, state), state), state);
   }
 
   let output = "";
@@ -1165,7 +1326,7 @@ const evaluateTemplateSync = (
       output += renderSecretRef(segment.name, state);
     }
   }
-  return output;
+  return checkOutput(output, state);
 };
 
 const renderShellParam = (segment: ShellParamSegment, state: EvaluationState): string => {

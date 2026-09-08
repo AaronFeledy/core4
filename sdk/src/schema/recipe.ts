@@ -2,28 +2,10 @@ import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
+import { RecipeId, RecipeVersion } from "./recipe-identity.ts";
+import { RecipeMigration, RecipeSnapshot } from "./recipe-snapshot.ts";
 
-// ==== Recipe manifest: PromptSpec fields plus recipe-only when:/deprecated:
-
-const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const SEMVER_PATTERN =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-
-/** Recipe id — kebab-case identifier; matches directory basename. */
-export const RecipeId = Schema.String.pipe(
-  Schema.pattern(KEBAB_CASE_PATTERN, {
-    message: () => "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
-  }),
-);
-export type RecipeId = typeof RecipeId.Type;
-
-/** Recipe semver string. */
-export const RecipeVersion = Schema.String.pipe(
-  Schema.pattern(SEMVER_PATTERN, {
-    message: () => "Recipe version must be a semver string (e.g. 1.0.0).",
-  }),
-);
-export type RecipeVersion = typeof RecipeVersion.Type;
+export { RecipeId, RecipeVersion } from "./recipe-identity.ts";
 
 /** Recipe-prompt type — the generalized {@link PromptType} vocabulary. */
 export const RecipePromptType = PromptType;
@@ -41,6 +23,45 @@ export type RecipePromptChoice = PromptChoice;
 export const RecipePromptValidate = PromptValidate;
 export type RecipePromptValidate = PromptValidate;
 
+/**
+ * Where a secret answer is allowed to go. A prompt declares exactly one:
+ * either the answer is an existing stored-secret reference recorded into the
+ * named field, or it is delivered once at init time to a single named sink.
+ * There is no third option, and neither form lets a raw value reach a
+ * template, argv, an emitted file, provenance, or a diagnostic.
+ */
+export const RecipeSecretDisposition = Schema.Union(
+  Schema.Struct({
+    kind: Schema.Literal("secret-store").annotations({
+      description: "Record an existing stored-secret reference instead of a value.",
+    }),
+    field: Schema.String.pipe(Schema.minLength(1)).annotations({
+      description: "Field that receives the approved stored-secret reference.",
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("init-only").annotations({
+      description: "Deliver the answer once to a named init-only sink and never persist it.",
+    }),
+    sink: Schema.Union(
+      Schema.Struct({
+        kind: Schema.Literal("stdin").annotations({
+          description: "Deliver on the post-init action's standard input.",
+        }),
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("secretEnv").annotations({
+          description: "Deliver as one named post-init secret environment variable.",
+        }),
+        name: Schema.String.pipe(Schema.minLength(1)).annotations({
+          description: "Secret environment variable name receiving the answer.",
+        }),
+      }),
+    ).annotations({ description: "The single init-only sink this answer may reach." }),
+  }),
+);
+export type RecipeSecretDisposition = typeof RecipeSecretDisposition.Type;
+
 /** Recipe prompt — {@link PromptSpec} fields plus the recipe-only `when:`/`deprecated:` keys. */
 export const RecipePrompt = Schema.Struct({
   name: Schema.String,
@@ -52,8 +73,58 @@ export const RecipePrompt = Schema.Struct({
   choices: Schema.optional(Schema.Array(PromptChoice)),
   choicesFrom: Schema.optional(ChoicesFrom),
   deprecated: Schema.optional(DeprecationNotice),
-});
+  disposition: Schema.optional(
+    RecipeSecretDisposition.annotations({
+      description: "Required on a secret prompt; forbidden elsewhere. Names the single allowed destination.",
+    }),
+  ),
+}).pipe(
+  Schema.filter((value) => {
+    if (value.type === "secret") {
+      if (value.disposition === undefined) {
+        return {
+          path: ["disposition"],
+          message: `Secret prompt "${value.name}" must declare exactly one disposition.`,
+        };
+      }
+      if (value.default !== undefined) {
+        return {
+          path: ["default"],
+          message: `Secret prompt "${value.name}" must not declare a default value.`,
+        };
+      }
+      return true;
+    }
+    if (value.disposition !== undefined) {
+      return {
+        path: ["disposition"],
+        message: `Prompt "${value.name}" is not a secret prompt and must not declare a disposition.`,
+      };
+    }
+    return true;
+  }),
+);
 export type RecipePrompt = typeof RecipePrompt.Type;
+
+/** Binding that names which secret prompt feeds an init-only sink. Values never appear. */
+const RecipeSecretSinkBinding = Schema.Struct({
+  prompt: Schema.String.pipe(Schema.minLength(1)).annotations({
+    description: "Secret prompt whose answer the resolver delivers to this sink.",
+  }),
+});
+
+const secretSinkFields = {
+  stdin: Schema.optional(
+    RecipeSecretSinkBinding.annotations({
+      description: "Secret prompt delivered on this action's standard input.",
+    }),
+  ),
+  secretEnv: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.String }).annotations({
+      description: "Secret environment variable name to the prompt whose answer fills it.",
+    }),
+  ),
+} as const;
 
 /** Authoring-only prompt drop — consumed by flatten on raw objects before RecipeManifest decode. */
 export const RecipePromptDrop = Schema.Struct({
@@ -96,6 +167,7 @@ export const RecipePostInitCommand = Schema.Struct({
   cmd: Schema.String,
   args: Schema.optional(Schema.Array(Schema.String)),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun install` — resolve `package.json` and write `node_modules/` in `cwd:`. */
@@ -104,6 +176,7 @@ const RecipePostInitBunInstall = Schema.Struct({
   verb: Schema.Literal("install"),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun script` — run a recipe-bundled `.bun.sh` script resolved under the recipe source tree. */
@@ -114,6 +187,7 @@ const RecipePostInitBunScript = Schema.Struct({
   args: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun add` — add explicit packages across dependency categories. */
@@ -126,6 +200,7 @@ const RecipePostInitBunAdd = Schema.Struct({
   optionalDependencies: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun create` — run `bun create <template> <dest>` into a path under the recipe destination. */
@@ -136,6 +211,7 @@ const RecipePostInitBunCreate = Schema.Struct({
   dest: Schema.optional(Schema.String),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun run` — run a `package.json#scripts` entry from `cwd:`. */
@@ -146,6 +222,7 @@ const RecipePostInitBunRun = Schema.Struct({
   args: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** `bun x` — run a one-shot package via `bun x <spec> [argv...]` (bunx-equivalent). */
@@ -156,6 +233,7 @@ const RecipePostInitBunX = Schema.Struct({
   argv: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
+  ...secretSinkFields,
 });
 
 /** Recipe post-init `bun` action — one of the supported verbs. */
@@ -205,6 +283,17 @@ export const RecipeManifest = Schema.Struct({
   prompts: Schema.optional(Schema.Array(RecipePrompt)),
   files: Schema.optional(Schema.Array(RecipeFile)),
   postInit: Schema.optional(Schema.Array(RecipePostInitAction)),
+  snapshot: Schema.optional(
+    RecipeSnapshot.annotations({
+      description:
+        "Declarative data that renders this version's authoring output without running recipe code.",
+    }),
+  ),
+  migrations: Schema.optional(
+    Schema.Array(RecipeMigration).annotations({
+      description: "Ordered declarative edges from earlier versioned identities to this one.",
+    }),
+  ),
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 

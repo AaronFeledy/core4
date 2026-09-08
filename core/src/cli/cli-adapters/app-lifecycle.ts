@@ -397,12 +397,14 @@ export const parseAppConfigTranslateArgv = (
   readonly list: boolean;
   readonly detect: boolean;
   readonly from: string | undefined;
+  readonly to: string | undefined;
   readonly files: ReadonlyArray<string>;
 } => {
   let write = false;
   let list = false;
   let detect = false;
   let from: string | undefined;
+  let to: string | undefined;
   const files: Array<string> = [];
   let i = 0;
   while (i < argv.length) {
@@ -432,6 +434,12 @@ export const parseAppConfigTranslateArgv = (
       i += fromMatch.consumed;
       continue;
     }
+    const toMatch = parseStringFlag(argv, i, "to");
+    if (toMatch !== undefined) {
+      to = toMatch.value;
+      i += toMatch.consumed;
+      continue;
+    }
     const fileMatch = parseStringFlag(argv, i, "file");
     if (fileMatch !== undefined) {
       files.push(fileMatch.value);
@@ -445,18 +453,19 @@ export const parseAppConfigTranslateArgv = (
     }
     i += 1;
   }
-  return { write, list, detect, from, files };
+  return { write, list, detect, from, to, files };
 };
 
 export const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:config:translate", argv)) return Promise.resolve();
-  const { write, list, detect, from, files } = parseAppConfigTranslateArgv(argv);
+  const { write, list, detect, from, to, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
     appConfigTranslate({
       write,
       list,
       detect,
       ...(from === undefined ? {} : { from }),
+      ...(to === undefined ? {} : { to }),
       ...(files.length === 0 ? {} : { files }),
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),

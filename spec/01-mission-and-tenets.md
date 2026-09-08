@@ -87,6 +87,7 @@ Reference bundle (subject to change in §14):
 | Default runtime | `@lando/provider-lando` | Optional (bundled by default) |
 | System Docker provider | `@lando/provider-docker` | Optional |
 | System Podman provider | `@lando/provider-podman` | Optional |
+| Canonical v4 config translation | `@lando/lando4` | Optional (bundled by default; contributes `configTranslators: [lando4]`, the two-way canonical v4 Landofile codec; MUST depend only on `@lando/sdk`; MUST NOT participate in normal bootstrap) |
 | Lando 3 conversion | `@lando/lando3` | Optional (bundled by default; contributes `configTranslators: [lando3]` decode-only and the read-only `lando3-leftovers` / `lando3-shadow` doctor checks (§10.9); MUST depend only on `@lando/sdk` and `@lando/paths`; MUST NOT participate in normal bootstrap) |
 | Proxy | `@lando/proxy-traefik` | Optional |
 | CA / certs | `@lando/ca-mkcert` | Optional |
