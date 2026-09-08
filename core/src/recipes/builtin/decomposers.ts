@@ -9,6 +9,10 @@
  */
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
+import { backdropDecomposer } from "./backdrop/decomposer.ts";
+import { drupalCmsDecomposer } from "./drupal-cms/decomposer.ts";
+import { drupalDecomposer } from "./drupal/decomposer.ts";
+import { joomlaDecomposer } from "./joomla/decomposer.ts";
 import { lampDecomposer } from "./lamp/decomposer.ts";
 import { laravelDecomposer } from "./laravel/decomposer.ts";
 import { lempDecomposer } from "./lemp/decomposer.ts";
@@ -21,6 +25,10 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["wordpress", wordpressDecomposer],
   ["laravel", laravelDecomposer],
   ["symfony", symfonyDecomposer],
+  ["drupal", drupalDecomposer],
+  ["drupal-cms", drupalCmsDecomposer],
+  ["backdrop", backdropDecomposer],
+  ["joomla", joomlaDecomposer],
 ];
 
 /** Every bundled recipe id that ships a decomposer, keyed by recipe id. */

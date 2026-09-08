@@ -6,6 +6,7 @@ import {
 } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { BACKDROP_RECIPE_ID } from "./manifest";
+import { backdropSettings } from "./settings.ts";
 
 const BACKDROP_DEFAULTS = {
   php: "8.3",
@@ -13,22 +14,6 @@ const BACKDROP_DEFAULTS = {
   webroot: "/app",
   composer: "2",
 } as const;
-
-const backdropSettings = (database: string): string =>
-  JSON.stringify({
-    databases: {
-      default: {
-        default: {
-          driver: "mysql",
-          database,
-          username: "lando",
-          password: "lando",
-          host: "database",
-          port: 3306,
-        },
-      },
-    },
-  });
 
 const renderLandofile = (
   appName: string,

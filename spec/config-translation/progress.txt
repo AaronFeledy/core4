@@ -535,3 +535,17 @@
   - Derive an option's remediation from its descriptor rather than writing one sentence per recipe. A per-recipe blanket string silently goes wrong the moment that recipe gains an option of a different kind.
   - Deferring a dead-code removal to avoid digest churn only holds while the code stays; removing the branch and republishing the digest must land in the same change or the snapshot test fails.
 ---
+## 2026-09-08 16:25 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-08 16:35 - US-609E1 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Provider-free init of lamp/lemp/wordpress/laravel/symfony all wrote `.lando.yml` (LEMP honored `--answer php=8.2`); lamp start/info/curl succeeded (HTTP/HTTPS 200 `us609e1-ok`, PHP 8.3.33). Adjacent lint of the other four Landofiles, `app:config`, `app:config:translate --list`, and `recipes:describe drupal` stayed green. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando exec appserver -- php -v` printed PHP 8.3.33 then hung until Ctrl-C. Story AC not blocked; suspected exec not closing after a one-shot command.
+- **Learnings for future iterations:** `lando start` does not accept `--yes` (`UnknownCliFlagError`); `lando destroy` does.
+---
+## 2026-09-08 17:35 - Babysit
+- PR: #932 https://github.com/AaronFeledy/core4/pull/932
+- CI outcome: pass (after fix; initial failures in static-checks/static-checks-platform, plus one flaky `bun pack` 5s timeout in unit-tests shard 3 that passed on rerun)
+- Review feedback: fixed (docs deps bumped to clear new audit advisories: astro 7.2.8, @astrojs/markdown-remark 7.2.4, js-yaml 4.3.2, sharp 0.35.4, svgo 4.1.0)
+- Merge: merged (squash)
+---
