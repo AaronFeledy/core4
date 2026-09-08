@@ -1,14 +1,18 @@
+// allow: SIZE_OK — this task's ownership fence requires all translation regressions in this existing test file.
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { ConfigTranslatorConflictError } from "@lando/sdk/errors";
+import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 
 import {
+  type ConfigTranslateDiagnostic,
+  type ConfigTranslateEncodeInput,
   type ConfigTranslateInput,
   ConfigTranslateSourceId,
   type LandofileAuthoringFragmentWire,
@@ -29,14 +33,18 @@ import {
 } from "../../src/cli/commands/app-config-translate.ts";
 
 const dirs: Array<string> = [];
+const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;
 
 afterEach(async () => {
+  if (originalDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+  else process.env.LANDO_USER_DATA_ROOT = originalDataRoot;
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
 const makeAppDir = async (landofile: string): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-translate-"));
   dirs.push(dir);
+  process.env.LANDO_USER_DATA_ROOT = join(dir, "journal");
   await Bun.write(join(dir, ".lando.yml"), landofile);
   return dir;
 };
@@ -86,6 +94,27 @@ const makeTranslator = (
   },
 });
 
+const makeLando4Encoder = (
+  diagnostics: readonly ConfigTranslateDiagnostic[] = [],
+): ConfigTranslatorShape => ({
+  id: "lando4",
+  summary: "Encode Landofile",
+  inputKinds: ["lando-v4"],
+  detect: () => Effect.succeed([]),
+  translate: () => Effect.fail(new ConfigTranslateError({ message: "encoder-only" })),
+  encode: ({ context, fragment }) =>
+    Effect.succeed({
+      text: emitLandofileYaml(
+        Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+          fragment ?? context,
+        ),
+        { sortKeys: true },
+      ),
+      diagnostics,
+    }),
+});
+const withEncoder = (list: readonly ConfigTranslatorShape[]) => [...list, makeLando4Encoder()];
+
 const runExit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseExit(effect);
 
 const failureTag = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
@@ -105,6 +134,402 @@ const failureValue = (
 };
 
 describe("appConfigTranslate", () => {
+  test("validates each cumulative merge prefix", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    const sourceIds = [ConfigTranslateSourceId.make(".lando.yml")];
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", {}),
+      translate: () =>
+        Effect.succeed({
+          outputs: [
+            {
+              targetLayer: "canonical",
+              fragment: { name: "demo", tooling: { echo: { vars: { VALUE: { sh: "echo hi" } } } } },
+              sourceIds,
+            },
+            {
+              targetLayer: "local",
+              fragment: { tooling: { echo: { vars: { VALUE: { prompt: "Value" } } } } },
+              sourceIds,
+            },
+            { targetLayer: "user", fragment: { tooling: { echo: { vars: { VALUE: "fixed" } } } }, sourceIds },
+          ],
+          diagnostics: [],
+          deletions: [],
+        }),
+    };
+    const exit = await runExit(appConfigTranslate({ cwd, translators: withEncoder([translator]) }));
+    expect(failureValue(exit)?.message).toContain("merge prefix");
+    expect(failureValue(exit)?.message).toContain("local");
+  });
+  test.each(["unsupported", "non-portable"] as const)(
+    "a %s diagnostic previews but fails --write closed",
+    async (kind) => {
+      const cwd = await makeAppDir("name: demo\n");
+      let calls = 0;
+      const base = makeTranslator("v3", { name: "demo" });
+      const translator: ConfigTranslatorShape = {
+        ...base,
+        translate: (input) =>
+          base.translate(input).pipe(
+            Effect.map((result) => ({
+              ...result,
+              diagnostics: [
+                {
+                  kind,
+                  sourceId: ConfigTranslateSourceId.make(".lando.yml"),
+                  keyPath: [],
+                  message: "token=SECRET123",
+                },
+              ],
+            })),
+          ),
+      };
+      const encoder: ConfigTranslatorShape = {
+        ...makeLando4Encoder(),
+        encode: () => {
+          calls++;
+          return Effect.succeed({ text: "name: demo\n", diagnostics: [] });
+        },
+      };
+      const result = await Effect.runPromise(appConfigTranslate({ cwd, translators: [translator, encoder] }));
+      if (result.mode !== "preview") throw new Error("expected preview");
+      expect(calls).toBe(kind === "unsupported" ? 0 : 1);
+      expect(result.targets.length).toBe(kind === "unsupported" ? 0 : 1);
+      expect(result.content).toBe(kind === "unsupported" ? "" : "name: demo\n");
+      const exit = await runExit(
+        appConfigTranslate({ cwd, write: true, translators: [translator, encoder] }),
+      );
+      expect(failureValue(exit)?.message).toContain(kind);
+      expect(failureValue(exit)?.message).not.toContain("SECRET123");
+      expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe("name: demo\n");
+    },
+  );
+  test("preview and --write report identical diagnostics", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    const translators = [
+      makeTranslator("v3", { name: "demo" }),
+      makeLando4Encoder([
+        {
+          kind: "needs-review",
+          sourceId: ConfigTranslateSourceId.make(".lando.yml"),
+          keyPath: [],
+          message: "password=hunter2",
+        },
+      ]),
+    ];
+    const preview = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
+    const written = await Effect.runPromise(appConfigTranslate({ cwd, write: true, translators }));
+    if (preview.mode !== "preview" || written.mode !== "write") throw new Error("expected results");
+    expect(written.diagnostics).toEqual(preview.diagnostics);
+  });
+  test("--write --to non-lando4 fails closed as preview-only", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    const exit = await runExit(
+      appConfigTranslate({
+        cwd,
+        write: true,
+        to: "custom",
+        translators: [makeTranslator("v3", { name: "demo" }), { ...makeLando4Encoder(), id: "custom" }],
+      }),
+    );
+    expect(failureValue(exit)?.message).toContain("preview-only");
+  });
+  test("single-layer fails closed when a lower layer is not v4", async () => {
+    const cwd = await makeAppDir('recipe: lamp\nconfig:\n  php: "7.4"\n');
+    await Bun.write(join(cwd, ".lando.local.yml"), "services: {}\n");
+    const exit = await runExit(
+      appConfigTranslate({
+        cwd,
+        files: [".lando.local.yml"],
+        translators: withEncoder([makeTranslator("v3", { name: "demo" })]),
+      }),
+    );
+    expect(failureValue(exit)?.message).toContain(".lando.yml is not a v4 Landofile fragment");
+  });
+  test("single-layer --write fails closed when the target file exists and is not selected", async () => {
+    const original = "name: original\n";
+    const cwd = await makeAppDir(original);
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
+    const exit = await runExit(
+      appConfigTranslate({
+        cwd,
+        write: true,
+        files: ["docker-compose.yml"],
+        translators: withEncoder([makeTranslator("v3", { name: "demo" })]),
+      }),
+    );
+    expect(failureValue(exit)?.remediation).toContain("--file .lando.yml");
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(original);
+  });
+  test("single-layer deletion naming a non-selected source fails closed", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
+    const base = makeTranslator("v3", { name: "demo" });
+    const translator: ConfigTranslatorShape = {
+      ...base,
+      translate: (input) =>
+        base.translate(input).pipe(
+          Effect.map((result) => ({
+            ...result,
+            deletions: [{ sourceId: ConfigTranslateSourceId.make("docker-compose.yml") }],
+          })),
+        ),
+    };
+    const exit = await runExit(
+      appConfigTranslate({ cwd, write: true, files: [".lando.yml"], translators: withEncoder([translator]) }),
+    );
+    expect(failureValue(exit)?.remediation).toContain("--file docker-compose.yml");
+    expect(existsSync(join(cwd, "docker-compose.yml"))).toBe(true);
+  });
+  test("a failed transaction leaves every target at its original bytes", async () => {
+    const original = "name: original\n";
+    const cwd = await makeAppDir(original);
+    await mkdir(join(cwd, ".lando.local.yml"));
+    const sourceIds = [ConfigTranslateSourceId.make(".lando.yml")];
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", {}),
+      translate: () =>
+        Effect.succeed({
+          outputs: [
+            { targetLayer: "canonical", fragment: { name: "demo" }, sourceIds },
+            { targetLayer: "local", fragment: { runtime: 4 }, sourceIds },
+          ],
+          diagnostics: [],
+          deletions: [],
+        }),
+    };
+    const exit = await runExit(
+      appConfigTranslate({ cwd, write: true, translators: withEncoder([translator]) }),
+    );
+    expect(failureTag(exit)).toBe("ConfigTranslateError");
+    expect(failureValue(exit)?.message).toContain("prepare");
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(original);
+    expect((await readdir(cwd)).filter((path) => path.includes(".lando-stage."))).toEqual([]);
+  });
+  test("--write writes each declared layer through the managed-file transaction", async () => {
+    const cwd = await makeAppDir("name: original\n");
+    const sourceIds = [ConfigTranslateSourceId.make(".lando.yml")];
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", {}),
+      translate: () =>
+        Effect.succeed({
+          outputs: [
+            { targetLayer: "canonical", fragment: { name: "demo" }, sourceIds },
+            { targetLayer: "local", fragment: { runtime: 4 }, sourceIds },
+          ],
+          diagnostics: [],
+          deletions: [],
+        }),
+    };
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, write: true, translators: withEncoder([translator]) }),
+    );
+    if (result.mode !== "write") throw new Error("expected write");
+    expect([...result.written].sort()).toEqual([join(cwd, ".lando.local.yml"), join(cwd, ".lando.yml")]);
+    expect(result.backups).toHaveLength(1);
+    expect(result.backups[0]).toMatch(/\.lando\.yml\.bak\.[0-9a-f]{64}$/);
+    expect(existsSync(join(cwd, ".lando.yml.bak"))).toBe(false);
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe("name: demo\n");
+    expect(await Bun.file(join(cwd, ".lando.local.yml")).text()).toBe("runtime: 4\n");
+  });
+  test("orders frontend diagnostics before encoder diagnostics and redacts both", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    const sourceId = ConfigTranslateSourceId.make(".lando.yml");
+    const front = {
+      kind: "generated",
+      sourceId,
+      keyPath: [],
+      message: "token=SECRET123",
+      remediation: "password=hunter2",
+    } as const;
+    const back = {
+      kind: "rewritten",
+      sourceId,
+      keyPath: [],
+      message: "password=hunter2",
+      remediation: "token=SECRET123",
+    } as const;
+    const base = makeTranslator("v3", { name: "demo" });
+    const translator: ConfigTranslatorShape = {
+      ...base,
+      translate: (input) =>
+        base.translate(input).pipe(Effect.map((result) => ({ ...result, diagnostics: [front] }))),
+    };
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, translators: [translator, makeLando4Encoder([back])] }),
+    );
+    if (result.mode !== "preview") throw new Error("expected preview");
+    expect(result.diagnostics.map((d) => d.message)).toEqual(["token=[redacted]", "password=[redacted]"]);
+    expect(result.diagnostics.map((d) => d.remediation)).toEqual(["password=[redacted]", "token=[redacted]"]);
+  });
+  test("fails closed before encoding when an output is not valid authoring data", async () => {
+    const invalidAuthoringFragment = (): typeof LandofileAuthoringFragmentWire.Type => {
+      const fragment: typeof LandofileAuthoringFragmentWire.Type = {};
+      Reflect.set(fragment, "notALandofileKey", true);
+      return fragment;
+    };
+    // Authoring validation runs ahead of the target encoder, so a bad output
+    // never reaches an encoder and never reaches a file.
+    const cwd = await makeAppDir("name: demo\n");
+    let encoded = 0;
+    const encoder = makeLando4Encoder();
+    const counting = {
+      ...encoder,
+      encode: (input: Parameters<NonNullable<typeof encoder.encode>>[0]) => {
+        encoded += 1;
+        return encoder.encode?.(input) ?? Effect.die("missing encoder");
+      },
+    };
+    const exit = await runExit(
+      appConfigTranslate({ cwd, translators: [makeTranslator("v3", invalidAuthoringFragment()), counting] }),
+    );
+    expect(failureValue(exit)?._tag).toBe("ConfigTranslateError");
+    expect(encoded).toBe(0);
+  });
+  test.each(["missing", "v3"])("--to %s without an encoder fails closed", async (to) => {
+    const cwd = await makeAppDir("name: demo\n");
+    const exit = await runExit(
+      appConfigTranslate({
+        cwd,
+        to,
+        detect: true,
+        translators: withEncoder([makeTranslator("v3", { name: "demo" })]),
+      }),
+    );
+    expect(failureValue(exit)?.message).toContain("--to");
+    expect(failureValue(exit)?.remediation).toContain("lando4");
+  });
+  test("encodes every output through the --to target encoder", async () => {
+    const cwd = await makeAppDir("name: old\n");
+    const inputs: ConfigTranslateEncodeInput[] = [];
+    const canonical = { name: "demo", runtime: 4 } as const;
+    const local = { services: { web: { port: "{{ env.PORT }}" } } };
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", canonical),
+      translate: () =>
+        Effect.succeed({
+          outputs: [
+            {
+              targetLayer: "local",
+              fragment: local,
+              sourceIds: [ConfigTranslateSourceId.make(".lando.yml")],
+            },
+            {
+              targetLayer: "canonical",
+              fragment: canonical,
+              sourceIds: [ConfigTranslateSourceId.make(".lando.yml")],
+            },
+          ],
+          diagnostics: [],
+          deletions: [],
+        }),
+    };
+    const encoder: ConfigTranslatorShape = {
+      ...makeLando4Encoder(),
+      id: "custom",
+      encode: (input) => {
+        inputs.push(input);
+        return Effect.succeed({ text: "encoded\n", diagnostics: [] });
+      },
+    };
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, to: "custom", translators: [translator, encoder] }),
+    );
+    expect(inputs).toEqual([
+      { context: { ...canonical, ...local }, fragment: canonical },
+      { context: { ...canonical, ...local }, fragment: local },
+    ]);
+    expect(inputs[0]?.context).toBe(inputs[1]?.context);
+    if (result.mode !== "preview") throw new Error("expected preview");
+    expect(result.targets).toEqual([
+      { layer: "canonical", path: join(cwd, ".lando.yml"), content: "encoded\n" },
+      { layer: "local", path: join(cwd, ".lando.local.yml"), content: "encoded\n" },
+    ]);
+  });
+  test("translates a non-v4 canonical Landofile without predecoding it", async () => {
+    const cwd = await makeAppDir('recipe: lamp\nconfig:\n  php: "7.4"\n');
+    const result = await Effect.runPromise(
+      appConfigTranslate({
+        cwd,
+        translators: withEncoder([makeTranslator("v3", { name: "demo", runtime: 4 })]),
+      }),
+    );
+    if (result.mode !== "preview") throw new Error("expected preview");
+    expect(result.content).toContain("name: demo");
+    expect(result.content).not.toContain("config");
+  });
+  test("--file switches to single-layer mode with lower v4 layers as context", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await Bun.write(join(cwd, ".lando.local.yml"), "services: {}\n");
+    const inputs: ConfigTranslateInput[] = [];
+    const translator: ConfigTranslatorShape = {
+      ...makeTranslator("v3", {}),
+      translate: (input) => {
+        inputs.push(input);
+        return Effect.succeed({
+          outputs: [
+            {
+              targetLayer: "local",
+              fragment: {},
+              sourceIds: [ConfigTranslateSourceId.make(".lando.local.yml")],
+            },
+          ],
+          diagnostics: [],
+          deletions: [],
+        });
+      },
+    };
+    await Effect.runPromise(
+      appConfigTranslate({ cwd, files: [".lando.local.yml"], translators: withEncoder([translator]) }),
+    );
+    const input = inputs[0];
+    if (input?._tag !== "landofile-document-set") throw new Error("expected document set");
+    expect(input.mode).toBe("single-layer");
+    expect(input.selectedSourceIds.map(String)).toEqual([".lando.local.yml"]);
+    expect(input.writableLayerIds).toEqual(["local"]);
+    expect(input.currentLowerV4Fragments).toEqual([
+      { layerId: "canonical", fragment: { name: "demo", runtime: 4 } },
+    ]);
+    expect(input.documents.map((d) => String(d.sourceId))).toEqual([".lando.yml", ".lando.local.yml"]);
+  });
+  test("invokes the frontend once with the canonically ordered full document set", async () => {
+    // Given: canonical, foreign and local source documents.
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await Bun.write(join(cwd, ".lando.local.yml"), "services: {}\n");
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
+    const inputs: ConfigTranslateInput[] = [];
+    const base = makeTranslator("v3", { name: "demo", runtime: 4 });
+    // When: translating the full set.
+    await Effect.runPromise(
+      appConfigTranslate({
+        cwd,
+        translators: withEncoder([
+          {
+            ...base,
+            translate: (input) => {
+              inputs.push(input);
+              return base.translate(input);
+            },
+          },
+        ]),
+      }),
+    );
+    // Then: one canonically ordered request owns all layers.
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    if (input?._tag !== "landofile-document-set") throw new Error("expected document set");
+    expect(input.documents.map((d) => String(d.sourceId))).toEqual([
+      ".lando.yml",
+      "docker-compose.yml",
+      ".lando.local.yml",
+    ]);
+    expect(input.documents.map((d) => d.layerId)).toEqual(["canonical", "canonical", "local"]);
+    expect(input.mode).toBe("full");
+    expect(input.writableLayerIds).toEqual(["base", "dist", "upstream", "canonical", "local", "user"]);
+    expect(input.currentLowerV4Fragments).toEqual([]);
+  });
+  // Result literals now describe per-layer targets and transaction receipts.
   test.each(["generated", "dropped", "rewritten", "unsupported", "non-portable", "needs-review"] as const)(
     "renders source-attributed %s diagnostics in preview and write results",
     (kind) => {
@@ -124,11 +549,22 @@ describe("appConfigTranslate", () => {
           inputPath: ".lando.yml",
           files: [sourceId],
           translator: "compose",
+          target: "lando4",
+          targets: [{ layer: "canonical", path: ".lando.yml", content: "name: demo\n" }],
           content: "name: demo\n",
           diagnostics,
           deletions,
         },
-        { mode: "write", inputPath: ".lando.yml", outputPath: ".lando.yml", diagnostics, deletions },
+        {
+          mode: "write",
+          inputPath: ".lando.yml",
+          target: "lando4",
+          written: [".lando.yml"],
+          backups: [],
+          removed: [],
+          diagnostics,
+          deletions,
+        },
       ];
       const glyphs = {
         generated: "+",
@@ -148,17 +584,18 @@ describe("appConfigTranslate", () => {
       }
     },
   );
-  test("passes bounded byte snapshots and full document-set ownership when previewing", async () => {
+  // Selection narrows write ownership, not the immutable document snapshots.
+  test("passes bounded byte snapshots and single-layer ownership when previewing", async () => {
     const cwd = await makeAppDir("name: demo\n");
     const bytes = new TextEncoder().encode("services: {}\n");
     await Bun.write(join(cwd, "docker-compose.yml"), bytes);
     const inputs: ConfigTranslateInput[] = [];
-    const base = makeTranslator("compose", {});
+    const base = makeTranslator("compose", { name: "demo" });
     await Effect.runPromise(
       appConfigTranslate({
         cwd,
         files: ["docker-compose.yml"],
-        translators: [
+        translators: withEncoder([
           {
             ...base,
             translate: (input) => {
@@ -166,13 +603,21 @@ describe("appConfigTranslate", () => {
               return base.translate(input);
             },
           },
-        ],
+        ]),
       }),
     );
     expect<unknown>(inputs).toEqual([
       {
         _tag: "landofile-document-set",
         documents: [
+          {
+            sourceId: ".lando.yml",
+            path: ".lando.yml",
+            layerId: "canonical",
+            mediaType: "application/yaml",
+            contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update("name: demo\n").digest("hex")}`,
+            bytes: new TextEncoder().encode("name: demo\n"),
+          },
           {
             sourceId: "docker-compose.yml",
             path: "docker-compose.yml",
@@ -182,7 +627,7 @@ describe("appConfigTranslate", () => {
             bytes,
           },
         ],
-        mode: "full",
+        mode: "single-layer",
         selectedSourceIds: ["docker-compose.yml"],
         currentLowerV4Fragments: [],
         writableLayerIds: ["canonical"],
@@ -190,18 +635,22 @@ describe("appConfigTranslate", () => {
     ]);
   });
 
+  // Frontends supply complete authoring values; core never merges raw input.
   test("preserves unresolved typed expressions when merging authoring fragments", async () => {
     const cwd = await makeAppDir('name: demo\nrouter:\n  enabled: "{{ env.ENABLED }}"\n');
     const result = await Effect.runPromise(
       appConfigTranslate({
         cwd,
-        translators: [makeTranslator("v3", { services: { web: { port: "{{ env.PORT }}" } } })],
+        translators: withEncoder([
+          makeTranslator("v3", { name: "demo", services: { web: { port: "{{ env.PORT }}" } } }),
+        ]),
       }),
     );
     expect(result.mode).toBe("preview");
     if (result.mode === "preview") expect(result.content).toContain('port: "{{ env.PORT }}"');
   });
 
+  // Explicit canonical selection makes local output genuinely unowned.
   test("rejects output to an unwritable layer", async () => {
     const cwd = await makeAppDir("name: demo\n");
     const translator = {
@@ -219,26 +668,47 @@ describe("appConfigTranslate", () => {
           deletions: [],
         }),
     };
-    expect(failureTag(await runExit(appConfigTranslate({ cwd, translators: [translator] })))).toBe(
-      "ConfigTranslateError",
-    );
+    expect(
+      failureTag(
+        await runExit(
+          appConfigTranslate({ cwd, files: [".lando.yml"], translators: withEncoder([translator]) }),
+        ),
+      ),
+    ).toBe("ConfigTranslateError");
   });
 
-  test("fails closed without writing when deletion intents are returned", async () => {
+  // Deletion intents now execute atomically with writes instead of being rejected.
+  test("deletions are removed in the same transaction", async () => {
     const original = "name: demo\n";
     const cwd = await makeAppDir(original);
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
     const translator = {
       ...makeTranslator("v3", {}),
       translate: () =>
         Effect.succeed({
-          outputs: [],
+          outputs: [
+            {
+              targetLayer: "canonical" as const,
+              fragment: { name: "demo" },
+              sourceIds: [ConfigTranslateSourceId.make(".lando.yml")],
+            },
+          ],
           diagnostics: [],
-          deletions: [{ sourceId: ConfigTranslateSourceId.make(".lando.yml") }],
+          deletions: [{ sourceId: ConfigTranslateSourceId.make("docker-compose.yml") }],
         }),
     };
-    const exit = await runExit(appConfigTranslate({ cwd, write: true, translators: [translator] }));
-    expect(failureTag(exit)).toBe("ConfigTranslateError");
-    expect(failureValue(exit)?.remediation).toContain("managed-file transaction");
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, write: true, translators: withEncoder([translator]) }),
+    );
+    if (result.mode !== "write") throw new Error("expected write");
+    expect(result.removed).toEqual([join(cwd, "docker-compose.yml")]);
+    expect(existsSync(join(cwd, "docker-compose.yml"))).toBe(false);
+    const backup = join(
+      cwd,
+      `docker-compose.yml.bak.${new Bun.CryptoHasher("sha256").update("services: {}\n").digest("hex")}`,
+    );
+    expect(result.backups).toContain(backup);
+    expect(await Bun.file(backup).text()).toBe("services: {}\n");
     expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(original);
     expect(existsSync(join(cwd, ".lando.yml.bak"))).toBe(false);
   });
@@ -250,7 +720,7 @@ describe("appConfigTranslate", () => {
       appConfigTranslate({
         cwd,
         detect: true,
-        translators: [makeTranslator("v3", {})],
+        translators: withEncoder([makeTranslator("v3", {})]),
         ...(explicit ? { files: ["large.json"] } : {}),
       }),
     );
@@ -263,13 +733,18 @@ describe("appConfigTranslate", () => {
         expect(exit.value.files).toEqual([".lando.yml"]);
     }
   });
+  // Preview is the target encoder's complete frontend output, not raw-input merging.
   test("previews the canonical Landofile without writing by default", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
+    const translators = withEncoder([
+      makeTranslator("v3", { name: "demo", runtime: 4, services: { db: { type: "mysql:8.0" } } }),
+    ]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
     expect(result.mode).toBe("preview");
     if (result.mode !== "preview") throw new Error("expected preview mode");
     expect(result.translator).toBe("v3");
+    expect(result.target).toBe("lando4");
+    expect(result.targets[0]?.path).toBe(join(cwd, ".lando.yml"));
     expect(result.content).toContain("name: demo");
     expect(result.content).toContain("db");
     expect(result.diagnostics.length).toBe(1);
@@ -363,7 +838,9 @@ describe("appConfigTranslate", () => {
       },
     ];
 
-    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
+    const result = await Effect.runPromise(
+      appConfigTranslate({ cwd, detect: true, translators: withEncoder(translators) }),
+    );
 
     expect(result.mode).toBe("detect");
     if (result.mode !== "detect") throw new Error("expected detect mode");
@@ -380,7 +857,7 @@ describe("appConfigTranslate", () => {
     await Bun.write(join(cwd, "compose", "docker-compose.yml"), "services: {}\n");
     await symlink(join(cwd, "compose", "docker-compose.yml"), join(cwd, "docker-compose.yml"));
 
-    const translators = [makeTranslator("compose", {})];
+    const translators = withEncoder([makeTranslator("compose", {})]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
 
     expect(result.mode).toBe("detect");
@@ -396,7 +873,7 @@ describe("appConfigTranslate", () => {
     await Bun.write(targetFile, "services: {}\n");
     await symlink(targetFile, join(cwd, "docker-compose.yml"));
 
-    const translators = [makeTranslator("compose", {})];
+    const translators = withEncoder([makeTranslator("compose", {})]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
 
     expect(result.mode).toBe("detect");
@@ -416,7 +893,7 @@ describe("appConfigTranslate", () => {
     await Bun.write(join(cwd, "tmp", "docker-compose.yml"), "services: {}\n");
     await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
 
-    const translators = [makeTranslator("compose", {})];
+    const translators = withEncoder([makeTranslator("compose", {})]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
 
     expect(result.mode).toBe("detect");
@@ -426,10 +903,10 @@ describe("appConfigTranslate", () => {
 
   test("--from forces a specific translator", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [
-      makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } }),
-      makeTranslator("compose", { services: { cache: { type: "redis:7" } } }),
-    ];
+    const translators = withEncoder([
+      makeTranslator("v3", { name: "demo", services: { db: { type: "mysql:8.0" } } }),
+      makeTranslator("compose", { name: "demo", services: { cache: { type: "redis:7" } } }),
+    ]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, from: "v3", translators }));
     expect(result.mode).toBe("preview");
     if (result.mode !== "preview") throw new Error("expected preview mode");
@@ -440,7 +917,7 @@ describe("appConfigTranslate", () => {
 
   test("--from with an unknown id fails with remediation listing available translators", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [makeTranslator("v3", {}), makeTranslator("compose", {})];
+    const translators = withEncoder([makeTranslator("v3", {}), makeTranslator("compose", {})]);
     const exit = await runExit(appConfigTranslate({ cwd, from: "nope", translators }));
     expect(Exit.isFailure(exit)).toBe(true);
     expect(failureTag(exit)).toBe("ConfigTranslateError");
@@ -452,7 +929,9 @@ describe("appConfigTranslate", () => {
   test("--file scopes translator input", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
-    const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
+    const translators = withEncoder([
+      makeTranslator("v3", { name: "demo", services: { db: { type: "mysql:8.0" } } }),
+    ]);
     const result = await Effect.runPromise(
       appConfigTranslate({ cwd, files: ["docker-compose.yml"], translators }),
     );
@@ -463,7 +942,7 @@ describe("appConfigTranslate", () => {
 
   test("--file rejects paths outside the app root", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [makeTranslator("v3", {})];
+    const translators = withEncoder([makeTranslator("v3", {})]);
 
     const absoluteExit = await runExit(appConfigTranslate({ cwd, files: ["/tmp/compose.yml"], translators }));
     expect(Exit.isFailure(absoluteExit)).toBe(true);
@@ -500,10 +979,10 @@ describe("appConfigTranslate", () => {
 
   test("ambiguous autodetection fails with remediation listing --from choices", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [
+    const translators = withEncoder([
       makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } }),
       makeTranslator("compose", { services: { cache: { type: "redis:7" } } }),
-    ];
+    ]);
     const exit = await runExit(appConfigTranslate({ cwd, translators }));
     expect(Exit.isFailure(exit)).toBe(true);
     expect(failureTag(exit)).toBe("ConfigTranslateError");
@@ -514,7 +993,7 @@ describe("appConfigTranslate", () => {
 
   test("autodetection with no matching translator fails with remediation", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [makeTranslator("v3", {}, { detects: false })];
+    const translators = withEncoder([makeTranslator("v3", {}, { detects: false })]);
     const exit = await runExit(appConfigTranslate({ cwd, translators }));
     expect(Exit.isFailure(exit)).toBe(true);
     expect(failureTag(exit)).toBe("ConfigTranslateError");
@@ -529,22 +1008,29 @@ describe("appConfigTranslate", () => {
     expect(failureValue(exit)?.remediation ?? "").toContain("plugin");
   });
 
-  test("--write overwrites the input and keeps a .bak backup of the original", async () => {
+  // Transactions preserve original bytes under a full digest-named backup.
+  test("--write overwrites the input and keeps a digest-named backup of the original", async () => {
     const original = "name: demo\nruntime: 4\n";
     const cwd = await makeAppDir(original);
-    const translators = [makeTranslator("v3", { services: { cache: { type: "redis:7" } } })];
+    const translators = withEncoder([
+      makeTranslator("v3", { name: "demo", runtime: 4, services: { cache: { type: "redis:7" } } }),
+    ]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, write: true, translators }));
     expect(result.mode).toBe("write");
     if (result.mode !== "write") throw new Error("expected write mode");
-    expect(result.outputPath).toBe(join(cwd, ".lando.yml"));
-    expect(result.backupPath).toBe(join(cwd, ".lando.yml.bak"));
+    expect(result.written).toEqual([join(cwd, ".lando.yml")]);
+    const backupPath = join(
+      cwd,
+      `.lando.yml.bak.${new Bun.CryptoHasher("sha256").update(original).digest("hex")}`,
+    );
+    expect(result.backups[0]).toBe(backupPath);
 
-    const backup = await readFile(join(cwd, ".lando.yml.bak"), "utf8");
+    const backup = await readFile(backupPath, "utf8");
     expect(backup).toBe(original);
 
     const written = await readFile(join(cwd, ".lando.yml"), "utf8");
     const parsed = (await Effect.runPromise(
-      parseLandofile({ file: result.outputPath, content: written, cwd }),
+      parseLandofile({ file: join(cwd, ".lando.yml"), content: written, cwd }),
     )) as Record<string, unknown>;
     expect(parsed).toEqual({
       name: "demo",
@@ -553,21 +1039,16 @@ describe("appConfigTranslate", () => {
     });
   });
 
-  test("rejects unsupported tooling flag metadata before translation", async () => {
-    const cwd = await makeAppDir(
-      [
-        "name: demo",
-        "runtime: 4",
-        "tooling:",
-        "  echo:",
-        "    cmd: echo hi",
-        "    flags:",
-        "      verbose:",
-        "        type: boolean",
-        "",
-      ].join("\n"),
-    );
-    const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
+  // Unsupported tooling is checked on merged frontend output, never foreign input.
+  test("rejects unsupported tooling flag metadata after translation", async () => {
+    const cwd = await makeAppDir("name: demo\n");
+    const translators = withEncoder([
+      makeTranslator("v3", {
+        name: "demo",
+        runtime: 4,
+        tooling: { echo: { cmd: "echo hi", flags: { verbose: { type: "boolean" } } } },
+      }),
+    ]);
 
     const exit = await runExit(appConfigTranslate({ cwd, translators }));
 
@@ -584,9 +1065,12 @@ describe("appConfigTranslate", () => {
     expect(failureTag(exit)).toBe("LandofileNotFoundError");
   });
 
+  // Rendering consumes encoder output from a complete frontend fragment.
   test("renderConfigTranslateResult prints the Landofile and the schema encodes each mode", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
-    const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
+    const translators = withEncoder([
+      makeTranslator("v3", { name: "demo", services: { db: { type: "mysql:8.0" } } }),
+    ]);
     const result = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
     const text = renderConfigTranslateResult(result, "yaml");
     expect(text).toContain("name: demo");
@@ -668,14 +1152,15 @@ describe("appConfigTranslate contract-suite fixtures", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
   });
 
+  // The command resolves a target encoder even for detect; listing includes that target.
   test("the translate command drives the contract-valid fixture through list/detect/from/file", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
-    const translators = [composeTranslator];
+    const translators = withEncoder([composeTranslator]);
 
     const listed = await Effect.runPromise(appConfigTranslate({ list: true, translators }));
     expect(listed.mode).toBe("list");
-    if (listed.mode === "list") expect(listed.translators.map((t) => t.id)).toEqual(["compose"]);
+    if (listed.mode === "list") expect(listed.translators.map((t) => t.id)).toEqual(["compose", "lando4"]);
 
     const detectedMatches = await Effect.runPromise(
       appConfigTranslate({ cwd, detect: true, files: ["docker-compose.yml"], translators }),

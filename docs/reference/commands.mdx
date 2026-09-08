@@ -98,7 +98,8 @@ Flags:
 | `--file` | Translate an explicit source file (repeatable). Scopes translator input. |
 | `--from` | Force a specific translator by id instead of autodetecting. |
 | `--list` | List installed config translators and their input kinds. |
-| `--write` | Overwrite the input Landofile in place (a .bak backup is kept). |
+| `--to` | Target encoder id. Only `lando4` may write; other targets are preview-only. |
+| `--write` | Write the declared v4 Landofile layers through the managed-file transaction; an immutable digest-named backup is kept beside each replaced file. |
 
 ## `lando app:config:unset`
 

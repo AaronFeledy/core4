@@ -112,7 +112,7 @@
       ],
       "dependsOn": ["US-608B", "US-608D", "US-609A"],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

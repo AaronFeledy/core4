@@ -1,5 +1,5 @@
 import { readdir, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -71,6 +71,25 @@ const containedRegularFile = async (rootReal: string, absolute: string): Promise
 // Dependency, VCS, and temporary trees are not application config sources.
 const DISCOVERY_PRUNED_DIRECTORIES: ReadonlySet<string> = new Set(["node_modules", ".git", "vendor", "tmp"]);
 
+/**
+ * Extensions core treats as candidate configuration documents. Path policy is
+ * core's, not a translator's: application code and assets never enter the
+ * document set, so no translator has to reject them as unsupported input.
+ */
+export const CONFIG_SOURCE_MEDIA_TYPES: Readonly<Record<string, string>> = {
+  ".yml": "application/yaml",
+  ".yaml": "application/yaml",
+  ".json": "application/json",
+  ".toml": "application/toml",
+};
+
+/** Media type for a discovered or explicitly selected source path. */
+export const mediaTypeForSourcePath = (path: string): string =>
+  CONFIG_SOURCE_MEDIA_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
+
+const isConfigSourceExtension = (name: string): boolean =>
+  Object.hasOwn(CONFIG_SOURCE_MEDIA_TYPES, extname(name).toLowerCase());
+
 export const discoverSourceFiles = (
   appRoot: string,
 ): Effect.Effect<ReadonlyArray<PortablePath>, ConfigTranslateError> =>
@@ -87,6 +106,7 @@ export const discoverSourceFiles = (
           }
           if (
             (entry.isFile() || entry.isSymbolicLink()) &&
+            isConfigSourceExtension(entry.name) &&
             (await containedRegularFile(rootReal, absolute))
           ) {
             files.push(PortablePath.make(relative(appRoot, absolute).replace(/\\/gu, "/")));

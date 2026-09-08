@@ -1,44 +1,46 @@
-import { dirname, extname } from "node:path";
+import { dirname } from "node:path";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option } from "effect";
 
 import {
   ConfigTranslateError,
   ConfigTranslateNoTranslatorsError,
   type ConfigTranslatorConflictError,
+  type LandofileFormConflictError,
   LandofileNotFoundError,
-  LandofileParseError,
+  type LandofileParseError,
   type NotImplementedError,
   type PluginDescriptorMismatchError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
-import {
-  type ConfigTranslateDocument,
-  ConfigTranslateSourceId,
-  LandofileAuthoringShape,
-  type PortablePath,
-} from "@lando/sdk/schema";
+import { type ConfigTranslateDocument, ConfigTranslateSourceId, type PortablePath } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 
-import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import {
   detectConfigTranslators,
   resolveConfigTranslators,
   runConfigTranslator,
 } from "@lando/landofile/config-translate";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { mergeLandofiles } from "@lando/landofile/merge";
-import { parseLandofile } from "@lando/landofile/parser";
-import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 
+import {
+  buildDocumentSetShape,
+  layerForSourcePath,
+  lowerV4LayerFragments,
+  orderSourcePaths,
+} from "./app-config-translate-document-set.ts";
+import { encodeTranslateOutputs } from "./app-config-translate-encode.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
+import { renderTranslateTargets } from "./app-config-translate-output.ts";
 import { selectTranslator } from "./app-config-translate-selection.ts";
 import {
   discoverSourceFiles,
+  mediaTypeForSourcePath,
   parseSourceFilePath,
   resolveContainedSourcePath,
 } from "./app-config-translate-sources.ts";
+import { writeTranslateTargets } from "./app-config-translate-write.ts";
 export {
   AppConfigTranslateResultSchema,
   renderConfigTranslateResult,
@@ -51,6 +53,7 @@ export interface AppConfigTranslateOptions {
   readonly list?: boolean;
   readonly detect?: boolean;
   readonly from?: string;
+  readonly to?: string;
   readonly files?: ReadonlyArray<string>;
   /**
    * Explicit translator set. When omitted, translators come from the
@@ -62,6 +65,7 @@ export interface AppConfigTranslateOptions {
 
 export type AppConfigTranslateError =
   | LandofileNotFoundError
+  | LandofileFormConflictError
   | LandofileParseError
   | NotImplementedError
   | ConfigTranslateNoTranslatorsError
@@ -82,30 +86,18 @@ const registeredTranslators: Effect.Effect<
   Effect.flatMap((registry) => (Option.isSome(registry) ? registry.value.list : Effect.succeed([]))),
 );
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileAuthoringShape);
-
-const writeFile = (path: string, content: string): Effect.Effect<void, ConfigTranslateError> =>
-  Effect.tryPromise({
-    try: () => writeFileAtomicViaRename(path, content),
-    catch: (cause) =>
-      new ConfigTranslateError({
-        message: `Could not write ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
-        cause,
-      }),
-  });
-
 export const CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES = 1_048_576;
 
 const readTranslateDocuments = (
   appRoot: string,
   files: ReadonlyArray<PortablePath>,
-  options: { readonly explicit: boolean },
+  explicit: ReadonlyArray<PortablePath>,
 ): Effect.Effect<ReadonlyArray<ConfigTranslateDocument>, ConfigTranslateError> =>
   Effect.gen(function* () {
     const documents: ConfigTranslateDocument[] = [];
     for (const path of files) {
       const contained = resolveContainedSourcePath(appRoot, path);
-      const resolved = options.explicit
+      const resolved = explicit.includes(path)
         ? yield* contained
         : yield* contained.pipe(
             Effect.match({
@@ -127,7 +119,7 @@ const readTranslateDocuments = (
           }),
       });
       if (bytes.byteLength > CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES) {
-        if (options.explicit)
+        if (explicit.includes(path))
           return yield* Effect.fail(
             new ConfigTranslateError({
               message: `Translation source ${path} exceeds ${CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES} bytes.`,
@@ -136,17 +128,11 @@ const readTranslateDocuments = (
           );
         continue;
       }
-      const mediaTypes: Readonly<Record<string, string>> = {
-        ".yml": "application/yaml",
-        ".yaml": "application/yaml",
-        ".json": "application/json",
-        ".toml": "application/toml",
-      };
       documents.push({
         sourceId: ConfigTranslateSourceId.make(path),
-        layerId: "canonical",
+        layerId: layerForSourcePath(path),
         path,
-        mediaType: mediaTypes[extname(path).toLowerCase()] ?? "application/octet-stream",
+        mediaType: mediaTypeForSourcePath(path),
         contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`,
         bytes,
       });
@@ -193,13 +179,22 @@ export const appConfigTranslate = (
     }
 
     const appRoot = dirname(inputPath);
-    const detectFiles: ReadonlyArray<PortablePath> =
-      options.files !== undefined && options.files.length > 0
-        ? yield* Effect.all(options.files.map(parseSourceFilePath))
-        : yield* discoverSourceFiles(appRoot);
-    const documents = yield* readTranslateDocuments(appRoot, detectFiles, {
-      explicit: (options.files?.length ?? 0) > 0,
-    });
+    const targetId = options.to ?? "lando4";
+    const target = resolved.find((translator) => translator.id === targetId);
+    if (target?.encode === undefined)
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          message: `Invalid --to target "${targetId}": an encoder is required.`,
+          remediation: `Choose --to from: ${resolved
+            .filter((translator) => translator.encode !== undefined)
+            .map((translator) => translator.id)
+            .join(", ")}.`,
+        }),
+      );
+    const discovered = yield* discoverSourceFiles(appRoot);
+    const explicit = yield* Effect.all((options.files ?? []).map(parseSourceFilePath));
+    const paths = orderSourcePaths([...new Set([...discovered, ...explicit])]);
+    const documents = yield* readTranslateDocuments(appRoot, paths, explicit);
     const files = documents.map((document) => String(document.sourceId));
 
     if (options.detect === true) {
@@ -216,93 +211,62 @@ export const appConfigTranslate = (
 
     const selected = yield* selectTranslator(resolved, options.from, documents);
 
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(inputPath).text(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: `Could not read ${inputPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          filePath: inputPath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
+    const shape = buildDocumentSetShape({
+      sourceIds: files,
+      selected: explicit.length === 0 ? undefined : explicit.map(String),
     });
-    const parsed = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
-    yield* rejectUnsupportedToolingFeatures(inputPath, parsed);
-    const currentDecoded = decodeLandofile(parsed, { onExcessProperty: "error" });
-    if (currentDecoded._tag === "Left") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile ${inputPath} is not valid: ${String(currentDecoded.left)}`,
-          filePath: inputPath,
-          line: undefined,
-          column: undefined,
-          cause: currentDecoded.left,
-        }),
-      );
-    }
-
-    const { outputs, diagnostics, deletions } = yield* runConfigTranslator(selected, {
+    const currentLowerV4Fragments =
+      shape.mode === "single-layer"
+        ? yield* lowerV4LayerFragments({ appRoot, selectedSourceIds: shape.selectedSourceIds })
+        : [];
+    const {
+      outputs,
+      diagnostics: frontendDiagnostics,
+      deletions,
+    } = yield* runConfigTranslator(selected, {
       _tag: "landofile-document-set",
       documents,
-      mode: "full",
-      selectedSourceIds: documents.map((document) => document.sourceId),
-      currentLowerV4Fragments: [],
-      writableLayerIds: ["canonical"],
+      mode: shape.mode,
+      selectedSourceIds: shape.selectedSourceIds.map((sourceId) => ConfigTranslateSourceId.make(sourceId)),
+      currentLowerV4Fragments,
+      writableLayerIds: shape.writableLayerIds,
     });
 
-    const fragments = yield* Schema.decodeUnknown(
-      Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-    )([parsed, ...outputs.map((output) => output.fragment)]).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigTranslateError({
-            message: "The canonical Landofile and translation fragments must be objects to merge.",
-            translator: selected.id,
-            cause,
-            remediation: "Use a mapping at the Landofile root.",
-          }),
-      ),
-    );
-    const merged = mergeLandofiles(fragments);
-    yield* rejectUnsupportedToolingFeatures(inputPath, merged);
-    const mergedDecoded = decodeLandofile(merged, { onExcessProperty: "error" });
-    if (mergedDecoded._tag === "Left") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Translated Landofile is not valid: ${String(mergedDecoded.left)}`,
-          filePath: inputPath,
-          line: undefined,
-          column: undefined,
-          cause: mergedDecoded.left,
-        }),
-      );
-    }
-
-    const canonicalYaml = emitLandofileYaml(merged);
-
-    if (options.write === true) {
-      if (deletions.length > 0)
-        return yield* Effect.fail(
-          new ConfigTranslateError({
-            translator: selected.id,
-            message: "Cannot write translation with deletion intents.",
-            remediation: "Deletions land with the managed-file transaction.",
-          }),
+    const encoded = frontendDiagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
+      ? []
+      : yield* encodeTranslateOutputs(
+          { appRoot, inputPath },
+          { outputs, currentLowerV4Fragments },
+          target.encode,
         );
-      const backupPath = `${inputPath}.bak`;
-      yield* writeFile(backupPath, content);
-      yield* writeFile(inputPath, canonicalYaml);
-      return { mode: "write", inputPath, outputPath: inputPath, backupPath, diagnostics, deletions };
-    }
+    const service = yield* Effect.serviceOption(RedactionService);
+    const redactor = Option.isSome(service)
+      ? yield* service.value.forProfile("secrets")
+      : createStandaloneRedactor("secrets");
+    const diagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)].map(
+      (diagnostic) => ({
+        ...diagnostic,
+        message: redactor.redactString(diagnostic.message),
+        ...(diagnostic.remediation === undefined
+          ? {}
+          : { remediation: redactor.redactString(diagnostic.remediation) }),
+      }),
+    );
+    const targets = diagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
+      ? []
+      : encoded.map((result) => result.target);
+    const canonicalYaml = renderTranslateTargets(targets);
 
-    return {
-      mode: "preview",
+    const preview = {
+      mode: "preview" as const,
       inputPath,
       translator: selected.id,
+      target: targetId,
+      targets,
       files,
       content: canonicalYaml,
       diagnostics,
       deletions,
     };
+    return options.write === true ? yield* writeTranslateTargets(appRoot, preview, shape) : preview;
   });
