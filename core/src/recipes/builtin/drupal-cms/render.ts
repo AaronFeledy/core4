@@ -16,8 +16,6 @@ const DRUPAL_CMS_DEFAULTS = {
   composer: "2",
 } as const;
 
-export { DRUPAL_CMS_SCAFFOLD_COMMAND };
-
 const renderLandofile = (
   appName: string,
   answers: Parameters<RecipeRenderer["render"]>[0]["answers"],

@@ -7,7 +7,7 @@ import {
 } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { DRUPAL_RECIPE_ID } from "./manifest";
-import { DRUPAL_SCAFFOLD_COMMAND, drupalScaffoldCommand } from "./scaffold-command.ts";
+import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 const DRUPAL_DEFAULTS = {
   php: "8.3",
@@ -15,8 +15,6 @@ const DRUPAL_DEFAULTS = {
   webroot: "/app/web",
   composer: "2",
 } as const;
-
-export { DRUPAL_SCAFFOLD_COMMAND, drupalScaffoldCommand };
 
 const renderLandofile = (
   appName: string,
