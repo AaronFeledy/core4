@@ -564,3 +564,10 @@
   - Recipes that `extends:` a parent carry no prompts of their own, so their snapshot `optionTypes` must mirror the parent's declared domain. Backdrop and joomla inherit lamp's composer enum including `"false"`, which is why their composer toggle is live while drupal's is dead.
   - Extracting a value builder out of `render.ts` into a neutral module is the cheap way to let a snapshot and a still-bound renderer share one source of truth; confirm the extraction with a provider-free init diff against the pre-change output rather than by reading the diff.
 ---
+## 2026-09-08 19:03 - US-609E2 Review
+- Review-work failed on extends flatten dropping child snapshots; Bugbot flagged the same. Fixed: `mergeRecipeManifests` now keeps child `snapshot` and `migrations` as whole-value replacements with no parent fallback, and parseRecipe coverage asserts Backdrop and Joomla retain their published snapshots.
+- Review notes (deferred/rejected): Drupal/Drupal CMS module-level `primaryRoutes` array reuse — MINOR isolation nit, not AC-blocking. Public init/renderer cutover — already adjudicated to US-609E. Goal/context FAIL applied to the pre-fix commits and is resolved by this merge change.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 49 focused extends/decomposer tests passed. Post-commit Bugbot found no bugs.
+- Guide-Coverage-Skip: extends merge keeps private snapshot data on inheriting recipes; public init, renderers, and recipe README.mdx journeys are unchanged until the cutover story.
+- **Learnings for future iterations:** Snapshot publication for an `extends:` child is not proven by `Bun.YAML.parse` of the raw YAML. The production path is flatten-then-validate; add `snapshot` (and `migrations`) to the merge whole-value key list and assert through `parseRecipe`.
+---
