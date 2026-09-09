@@ -8,6 +8,13 @@ import { joomlaSnapshot, joomlaSnapshotYaml } from "../../src/recipes/builtin/jo
 import { lampSnapshot, lampSnapshotYaml } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot, laravelSnapshotYaml } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot, lempSnapshotYaml } from "../../src/recipes/builtin/lemp/snapshot.ts";
+import { meanSnapshot, meanSnapshotYaml } from "../../src/recipes/builtin/mean/snapshot.ts";
+import { nodeApiSnapshot, nodeApiSnapshotYaml } from "../../src/recipes/builtin/node-api/snapshot.ts";
+import {
+  nodePostgresSnapshot,
+  nodePostgresSnapshotYaml,
+} from "../../src/recipes/builtin/node-postgres/snapshot.ts";
+import { nodeTsSnapshot, nodeTsSnapshotYaml } from "../../src/recipes/builtin/node-ts/snapshot.ts";
 import { recipeSnapshotYaml } from "../../src/recipes/builtin/snapshot-yaml.ts";
 import { symfonySnapshot, symfonySnapshotYaml } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { wordpressSnapshot, wordpressSnapshotYaml } from "../../src/recipes/builtin/wordpress/snapshot.ts";
@@ -24,6 +31,10 @@ describe("recipe snapshot YAML", () => {
     ["drupal-cms", drupalCmsSnapshot, drupalCmsSnapshotYaml],
     ["backdrop", backdropSnapshot, backdropSnapshotYaml],
     ["joomla", joomlaSnapshot, joomlaSnapshotYaml],
+    ["node-postgres", nodePostgresSnapshot, nodePostgresSnapshotYaml],
+    ["node-api", nodeApiSnapshot, nodeApiSnapshotYaml],
+    ["mean", meanSnapshot, meanSnapshotYaml],
+    ["node-ts", nodeTsSnapshot, nodeTsSnapshotYaml],
   ] as const)(
     "round-trips the published %s snapshot through the restricted parser",
     (_, snapshot, content) => {

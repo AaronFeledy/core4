@@ -13,6 +13,10 @@ import { joomlaDecomposer } from "./joomla/decomposer.ts";
 import { lampDecomposer } from "./lamp/decomposer.ts";
 import { laravelDecomposer } from "./laravel/decomposer.ts";
 import { lempDecomposer } from "./lemp/decomposer.ts";
+import { meanDecomposer } from "./mean/decomposer.ts";
+import { nodeApiDecomposer } from "./node-api/decomposer.ts";
+import { nodePostgresDecomposer } from "./node-postgres/decomposer.ts";
+import { nodeTsDecomposer } from "./node-ts/decomposer.ts";
 import { symfonyDecomposer } from "./symfony/decomposer.ts";
 import { wordpressDecomposer } from "./wordpress/decomposer.ts";
 
@@ -26,6 +30,10 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["drupal-cms", drupalCmsDecomposer],
   ["backdrop", backdropDecomposer],
   ["joomla", joomlaDecomposer],
+  ["node-postgres", nodePostgresDecomposer],
+  ["node-api", nodeApiDecomposer],
+  ["mean", meanDecomposer],
+  ["node-ts", nodeTsDecomposer],
 ];
 
 export const BUILTIN_RECIPE_DECOMPOSERS: ReadonlyMap<string, RecipeDecomposerFactory> = new Map(DECOMPOSERS);

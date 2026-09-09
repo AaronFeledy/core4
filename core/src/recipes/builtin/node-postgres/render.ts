@@ -1,6 +1,7 @@
 import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { NODE_POSTGRES_RECIPE_ID } from "./manifest";
+import { NODE_POSTGRES_PACKAGE_JSON_TEMPLATE, NODE_POSTGRES_SERVER_JS } from "./scaffold.ts";
 
 const landofile = (name: string): string =>
   [
@@ -25,30 +26,7 @@ const landofile = (name: string): string =>
   ].join("\n");
 
 const packageJson = (name: string): string =>
-  `${JSON.stringify(
-    {
-      name,
-      scripts: {
-        start: "node server.js",
-      },
-    },
-    null,
-    2,
-  )}\n`;
-
-const serverJs = `"use strict";
-const http = require("http");
-
-const server = http.createServer(function (_req, res) {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Hello from Lando\\n");
-});
-
-const port = Number(process.env.PORT || 3000);
-server.listen(port, function () {
-  console.log("Listening on port " + port);
-});
-`;
+  NODE_POSTGRES_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", name);
 
 export const nodePostgresRenderer: RecipeRenderer = {
   id: NODE_POSTGRES_RECIPE_ID,
@@ -56,6 +34,6 @@ export const nodePostgresRenderer: RecipeRenderer = {
     new Map([
       [".lando.yml", landofile(appName)],
       ["package.json", packageJson(appName)],
-      ["server.js", serverJs],
+      ["server.js", NODE_POSTGRES_SERVER_JS],
     ]),
 };

@@ -1,3 +1,5 @@
+import { nodeTsSnapshotYaml } from "./snapshot.ts";
+
 /**
  * Bundled `recipe.yml` for the built-in `node-ts` programmatic-Landofile
  * demonstration recipe.
@@ -40,5 +42,7 @@ files:
     template: true
 postInit:
   - type: message
-    text: Open .lando.ts to customize the programmatic Landofile before running 'lando start'.
+    text: Open the generated Landofile to customize it before running 'lando start'.
+
+${nodeTsSnapshotYaml}
 `;

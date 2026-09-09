@@ -116,6 +116,10 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/recipes/drupal-cms.decomposer.test.ts",
       "core/test/recipes/backdrop.decomposer.test.ts",
       "core/test/recipes/joomla.decomposer.test.ts",
+      "core/test/recipes/node-postgres.decomposer.test.ts",
+      "core/test/recipes/node-api.decomposer.test.ts",
+      "core/test/recipes/mean.decomposer.test.ts",
+      "core/test/recipes/node-ts.decomposer.test.ts",
     ],
   },
   {

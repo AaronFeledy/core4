@@ -1,6 +1,7 @@
 import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { MEAN_RECIPE_ID } from "./manifest";
+import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./scaffold.ts";
 
 const renderLandofile = (appName: string, node: string, redis: boolean): string => {
   const lines = [
@@ -40,35 +41,7 @@ const renderLandofile = (appName: string, node: string, redis: boolean): string 
 };
 
 const renderPackageJson = (appName: string): string =>
-  `${JSON.stringify(
-    {
-      name: appName,
-      private: true,
-      scripts: {
-        start: "node server.js",
-      },
-      dependencies: {
-        express: "^4.21.2",
-      },
-    },
-    null,
-    2,
-  )}\n`;
-
-const serverJs = `"use strict";
-const express = require("express");
-
-const app = express();
-const port = Number(process.env.PORT || 3000);
-
-app.get("/", function (_req, res) {
-  res.type("text/plain").send("Hello from Lando\\n");
-});
-
-app.listen(port, function () {
-  console.log("Listening on port " + port);
-});
-`;
+  MEAN_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", appName);
 
 export const meanRenderer: RecipeRenderer = {
   id: MEAN_RECIPE_ID,
@@ -78,7 +51,7 @@ export const meanRenderer: RecipeRenderer = {
     return new Map([
       [".lando.yml", renderLandofile(appName, node, redis)],
       ["package.json", renderPackageJson(appName)],
-      ["server.js", serverJs],
+      ["server.js", MEAN_SERVER_JS],
     ]);
   },
 };
