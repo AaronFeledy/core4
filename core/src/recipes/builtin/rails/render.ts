@@ -1,8 +1,7 @@
 import { renderPrimaryRouteLines } from "../php-stack";
 import type { RecipeRenderer } from "../registry";
 import { RAILS_RECIPE_ID } from "./manifest";
-
-const GEMFILE = 'source "https://rubygems.org"\n';
+import { RAILS_GEMFILE } from "./scaffold";
 
 const renderLandofile = (appName: string): string =>
   [
@@ -45,6 +44,6 @@ export const railsRenderer: RecipeRenderer = {
   render: ({ appName }) =>
     new Map([
       [".lando.yml", renderLandofile(appName)],
-      ["Gemfile", GEMFILE],
+      ["Gemfile", RAILS_GEMFILE],
     ]),
 };

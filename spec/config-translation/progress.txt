@@ -643,3 +643,49 @@
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck, lint, 89 spot checks — pass
 ---
+
+## 2026-09-08 23:37 - US-609E4 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Provider-free init of astro/sveltekit/nextjs (defaults plus nondefaults) wrote only `.lando.yml`; nondefault answers matched `app:config` (`node:22`+postgres, `SVELTEKIT_ADAPTER=auto`+postgres, `NEXTAUTH_PROVIDER=nextauth` with no database). Astro start/info/exec succeeded (`web` running, Node v24.20.0, in-container HTTP 200 `us609e4-ok` on 4321). Adjacent lint, `recipes:describe` (astro/sveltekit/nextjs/node-api/lamp), and `app:config:translate --list` stayed green. Destroyed the scenario apps.
+- **Out-of-scope finding:** `curl http://us609e4-astro.lndo.site:8080` returned 502 while `lando exec web --` fetch to `127.0.0.1:4321` returned `us609e4-ok`. Story AC not blocked; suspected node service type always publishes port 3000, ignoring Landofile `port: 4321`.
+---
+
+## 2026-09-09 07:35 - US-609E5
+- Converted the Python and Ruby recipe family (django, fastapi, rails) to deterministic decomposition. Each recipe now ships a `RecipeDecomposer` plus a declarative current snapshot on its manifest with a versioned `bundled` producer, serializable option descriptors, defaults, one options-scoped expression tree, and an explicit auxiliary inventory.
+- Django is the only one of the three with a declared option. Its `celery` confirm is a purely structural toggle decided at decomposition time: answer true and the fragment gains a `worker` service running the Celery command against the same database and cache; answer false and there is no `worker` key at all. Nothing in the Django fragment varies by option text, so the snapshot needs exactly one `Conditional` over `options.celery` and no `{{ recipe.<option> }}` token anywhere.
+- fastapi and rails declare no options, so they take the zero-option shape: any supplied key other than the translator-forwarded `name` fails closed as `option-type` at `options.<key>`, `name` is accepted and dropped from provenance, and their snapshots publish empty `optionTypes`/`defaults`. That also gives the shared SDK contract suite the typed-option failure it requires without inventing a fake descriptor.
+- Rails is the first recipe in this family with a real auxiliary asset. Its Gemfile source moved into a neutral `rails/scaffold.ts` that both the still-bound renderer and the snapshot consume, and the snapshot publishes `assets: [{ dest: "Gemfile", digest, template: false }]` hashing that unrendered source. Appending the snapshot to the embedded manifest changes the recipe YAML bytes, so `recipes/rails/recipe.yml` was regenerated from `railsRecipeYaml` to keep the canonical-sync assertion true.
+- Authored the two missing executable recipe guides (`recipes/django/README.mdx`, `recipes/fastapi/README.mdx`), generated their scaffold Markdown, and added both to the shipped-recipe directory list and the guide index. The FastAPI guide states plainly that the recipe declares no options and that passing one fails rather than being ignored, which is what the decomposer now enforces.
+- Registered all three decomposers in the bundled catalog and extended the shared gates: the catalog test covers nineteen converted recipes, the snapshot YAML round trip covers the three new snapshots through the restricted parser, and the RecipeDecomposer coverage row lists the three new contract invocations.
+- Verification: typecheck, lint, check:boundaries, codegen:check, lint:guides, check:guide-coverage, and check:guide-drift passed; 708 spot-check tests across the recipes tree plus the plugin-abstraction coverage contract, recipe README codegen, recipes commands, canonical/option-parity/adapter init suites, and the SDK recipes tree passed with one pre-existing skip. Both new guides executed green on the test provider through `dev:guides ... --once`, as did the existing rails guide. Provider-free init driven in-process through `initApp` for django (default and `celery=true`), fastapi, and rails is byte-identical to the pre-change output, and the CLI run from source confirmed the same four Landofiles plus the rails Gemfile on disk, with `app:config --format=json` showing the `worker` service only in the celery run. A driver encoded every decomposed fragment through the real v4 emitter and re-read it with `parseLandofile`: all four round-trip exactly, including rails' nested `build.artifact` array.
+- Scope adjudication: as in the previous four batches, this story publishes and verifies the three replacements while the existing `render.ts` bindings stay active and byte-compatible until the milestone story performs its assigned public-init registry switch.
+- Guide-Coverage-Skip: the decomposer catalog stays a private staged replacement; public init, renderers, and the recipe README journeys document today's unchanged behavior until the cutover story.
+- **Learnings for future iterations:**
+  - Appending a snapshot to a recipe whose manifest also lives on disk under `recipes/<id>/recipe.yml` breaks the canonical-sync test, because that file must stay byte-identical to the embedded `<id>RecipeYaml`. Rewrite it from the embedded constant after the digest settles, not before, or you will sync it twice.
+  - The recipe content digest is stable under its own `contentDigest` edit: `recipeContentDigestProjection` reads `optionTypes`, `defaults`, `template`, `assets`, `files`, `postInit`, and `prompts`, never `snapshot.identity`. Publishing with a placeholder digest, reading the real one out of the first failing assertion, and pasting it back is a one-pass loop, not a fixpoint iteration.
+  - A boolean option that changes only which services exist needs no expression token in the fragment. Reach for `{{ recipe.<option> }}` only when the option's text lands inside a value; a structural toggle belongs in the decomposer's branch and in one snapshot `Conditional`.
+  - `lando4ConfigTranslator.encode` returns `{ text, diagnostics }`, not `{ content }`. A round-trip driver that reads `.content` fails inside `parseLandofile` with a confusing "argument must be of type string" error rather than at the encode call.
+---
+
+## 2026-09-09 08:20 - US-609E5 Verify
+- Story verified complete on branch; no new code. A prior interrupted attempt had left the index staged as a full revert against `origin/main` while the working tree still matched HEAD; restoring the index recovered a clean tree with all three story commits intact and no content change.
+- Verification: typecheck, lint, check:boundaries (all twelve rules), codegen:check, lint:guides, check:guide-coverage, and check:guide-drift passed; 713 recipe and plugin-abstraction spot-check tests passed with one pre-existing skip. All three recipe guides executed green on the test provider through `dev:guides ... --once`.
+- Real-surface check: driving the three registered decomposers directly confirmed django defaults emit `web`/`database`/`cache` while `celery=true` adds the `worker` service, fastapi and rails accept the translator-forwarded `name` answer and publish empty provenance options, and an undeclared option on a zero-option recipe fails closed as `option-type` at `options.<key>`.
+- **Learnings for future iterations:**
+  - A branch whose `git status` shows `MM` on tracked files alongside `D ` deletions that also appear as untracked copies is not corrupted work: the index has been reset to another ref while the worktree still matches HEAD. Compare `git ls-files -s <path>` against `git rev-parse origin/main:<path>` to confirm, then plain `git reset` restores the index without touching a single byte of the worktree. Do not re-add, re-commit, or re-implement anything in that state.
+  - `git diff --cached --stat` can print nothing while `git diff --cached --name-only` lists files; trust `--raw`, which shows the real blob pairs.
+  - A decomposer driver must be run from the repo root, not `/tmp`: workspace specifiers like `@lando/sdk/secrets` only resolve inside the monorepo. `RecipeDecomposeInput` is `{ producer, options, secrets }` with the recipe's own producer object — there is no `app` field, and mutating `producer.recipeId` is what the missing-recipe branch checks.
+---
+## 2026-09-09 10:15 - US-609E5 Verify
+- Re-confirmed the Python and Ruby conversion complete on branch with no code change: the three decomposers, snapshots, guides, and catalog registrations are all present and the working tree was already clean.
+- Verification: typecheck, lint, check:boundaries (all rules), codegen:check, lint:guides, check:guide-coverage, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 708 recipe spot-check tests plus the plugin-abstraction coverage contract passed with one pre-existing skip; the django recipe guide executed green on the test provider.
+- Real-surface check: driving the registered decomposers showed django emitting web/database/cache by default and adding worker on celery=true, fastapi and rails accepting the forwarded name answer with empty provenance options, and an undeclared option on a zero-option recipe failing closed as option-type at options.<key>. Provider-free CLI init from source still writes the unchanged django Landofile and the two-line rails Gemfile, confirming the scaffold extraction moved no bytes.
+---
+
+## 2026-09-09 11:41 - US-609E5 Drift Audit
+- Trigger: 3 cycles, 1509 changed lines, 5 commits
+- Dual paths: still-bound renderers re-examined and left; US-609E owns the public-init cutover
+- Ceremony: rails Gemfile helper kept so renderer and snapshot hash one source
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 78 spot checks — pass
+---

@@ -8,8 +8,10 @@ import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts"
 const SHIPPED_RECIPE_IDS = [
   "astro",
   "backdrop",
+  "django",
   "drupal",
   "drupal-cms",
+  "fastapi",
   "joomla",
   "lamp",
   "laravel",

@@ -1,3 +1,5 @@
+import { railsSnapshotYaml } from "./snapshot.ts";
+
 export const RAILS_RECIPE_ID = "rails";
 
 export const railsRecipeSource = `${RAILS_RECIPE_ID}/recipe.yml`;
@@ -29,4 +31,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Rails up.
+
+${railsSnapshotYaml}
 `;

@@ -223,7 +223,7 @@
       "recipeIds": ["django", "fastapi", "rails"],
       "dependsOn": ["US-609E0"],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
