@@ -21,7 +21,10 @@ export const nodeTsDecomposer = ((ports) => ({
           }),
         );
       }
-      for (const name of Object.keys(input.options)) {
+      const recipeOptions = Object.fromEntries(
+        Object.entries(input.options).filter(([key]) => key !== "name"),
+      );
+      for (const name of Object.keys(recipeOptions)) {
         if (!Object.hasOwn(nodeTsSnapshot.optionTypes, name)) {
           return yield* Effect.fail(
             new RecipeDecomposeError({
@@ -37,7 +40,7 @@ export const nodeTsDecomposer = ((ports) => ({
         }
       }
       for (const [name, descriptor] of Object.entries(nodeTsSnapshot.optionTypes)) {
-        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
+        if (!optionValueMatchesDescriptor(descriptor, recipeOptions[name])) {
           return yield* Effect.fail(
             new RecipeDecomposeError({
               recipeId: "node-ts",
@@ -53,7 +56,7 @@ export const nodeTsDecomposer = ((ports) => ({
         id: "node-ts",
         version: NODE_TS_RECIPE_VERSION,
         producer: nodeTsProducer,
-        options: input.options,
+        options: recipeOptions,
       };
       return {
         fragment: {

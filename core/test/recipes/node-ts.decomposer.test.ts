@@ -74,6 +74,12 @@ describe("node-ts decomposition", () => {
     expect(nodeTsSnapshot.defaults).toEqual({});
   });
 
+  test("accepts the app-name prompt without recording it as a recipe option", () => {
+    const result = decompose({ name: "probe" });
+    expect(result.provenance.options).toEqual({});
+    expect(result.fragment).toEqual(decompose({}).fragment);
+  });
+
   test("never generates programmatic Landofile assets or source in the replacement path", () => {
     const fragment = decompose(defaults).fragment;
     expect(nodeTsSnapshot.assets).toEqual([]);
