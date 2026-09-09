@@ -182,6 +182,11 @@ outside `docs/guides/` so they are not gate-validated here.
 | `astro` | Astro (Node; optional Postgres or MariaDB content source) | `recipes/astro/README.mdx` | Shipped |
 | `sveltekit` | SvelteKit (Node, adapter picker; optional Postgres or MariaDB) | `recipes/sveltekit/README.mdx` | Shipped |
 | `nextjs` | Next.js (Node + Postgres by default; optional auth helper) | `recipes/nextjs/README.mdx` | Shipped |
+| `jekyll` | Jekyll (Ruby build service + nginx static frontend) | `recipes/jekyll/README.mdx` | Shipped |
+| `hugo` | Hugo (Node build service + nginx static frontend) | `recipes/hugo/README.mdx` | Shipped |
+| `eleventy` | Eleventy (Node build service + nginx static frontend) | `recipes/eleventy/README.mdx` | Shipped |
+| `empty` | Blank Landofile starter with no services | `recipes/empty/README.mdx` | Shipped |
+| `toolbox` | Disposable CLI tool runner on a pinned Debian image | `recipes/toolbox/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 

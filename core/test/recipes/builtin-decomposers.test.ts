@@ -13,7 +13,11 @@ import {
 import { djangoSnapshot } from "../../src/recipes/builtin/django/snapshot.ts";
 import { drupalCmsSnapshot } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
 import { drupalSnapshot } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { eleventySnapshot } from "../../src/recipes/builtin/eleventy/snapshot.ts";
+import { emptySnapshot } from "../../src/recipes/builtin/empty/snapshot.ts";
 import { fastapiSnapshot } from "../../src/recipes/builtin/fastapi/snapshot.ts";
+import { hugoSnapshot } from "../../src/recipes/builtin/hugo/snapshot.ts";
+import { jekyllSnapshot } from "../../src/recipes/builtin/jekyll/snapshot.ts";
 import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import { lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
@@ -24,8 +28,10 @@ import { nodeApiSnapshot } from "../../src/recipes/builtin/node-api/snapshot.ts"
 import { nodePostgresSnapshot } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
 import { nodeTsSnapshot } from "../../src/recipes/builtin/node-ts/snapshot.ts";
 import { railsSnapshot } from "../../src/recipes/builtin/rails/snapshot.ts";
+import { builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
 import { sveltekitSnapshot } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
 import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
+import { toolboxSnapshot } from "../../src/recipes/builtin/toolbox/snapshot.ts";
 import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 
 const CONVERTED_RECIPE_IDS = [
@@ -48,6 +54,11 @@ const CONVERTED_RECIPE_IDS = [
   "django",
   "fastapi",
   "rails",
+  "jekyll",
+  "hugo",
+  "eleventy",
+  "empty",
+  "toolbox",
 ] as const;
 
 const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSnapshot>> = {
@@ -70,6 +81,11 @@ const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSn
   django: djangoSnapshot,
   fastapi: fastapiSnapshot,
   rails: railsSnapshot,
+  jekyll: jekyllSnapshot,
+  hugo: hugoSnapshot,
+  eleventy: eleventySnapshot,
+  empty: emptySnapshot,
+  toolbox: toolboxSnapshot,
 };
 
 /** A value of the wrong shape for the descriptor, so every declared constraint rejects it. */
@@ -102,8 +118,13 @@ describe("bundled recipe decomposers", () => {
     for (const digest of digests) expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
-  it("returns undefined for a recipe that ships no decomposer", () => {
-    expect(lookupRecipeDecomposer("jekyll")).toBeUndefined();
+  it("ships a decomposer for every bundled renderer and none for an unshipped id", () => {
+    // Bundled renderer ids equal decomposer ids; looking up an id absent from
+    // the bundled registry returns undefined.
+    expect<unknown>([...builtinRecipeIds()].sort()).toEqual([...CONVERTED_RECIPE_IDS].sort());
+    const unshipped = "unshipped-recipe";
+    expect(builtinRecipeIds()).not.toContain(unshipped);
+    expect(lookupRecipeDecomposer(unshipped)).toBeUndefined();
   });
 
   it("remediates a rejected option in the shape its descriptor declares", () => {

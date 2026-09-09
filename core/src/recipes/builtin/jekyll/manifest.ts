@@ -1,3 +1,5 @@
+import { jekyllSnapshotYaml } from "./snapshot.ts";
+
 export const JEKYLL_RECIPE_ID = "jekyll";
 
 export const jekyllRecipeSource = `${JEKYLL_RECIPE_ID}/recipe.yml`;
@@ -26,4 +28,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to serve the Jekyll site.
+
+${jekyllSnapshotYaml}
 `;

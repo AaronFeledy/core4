@@ -245,7 +245,7 @@
       "recipeIds": ["jekyll", "hugo", "eleventy", "empty", "toolbox"],
       "dependsOn": ["US-609E0"],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
