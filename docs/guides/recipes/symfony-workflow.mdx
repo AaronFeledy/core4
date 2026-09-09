@@ -14,7 +14,7 @@ lando start
 
 `--yes` keeps PHP 8.3, PostgreSQL 16, Composer 2, and webroot `/app/public`. Init writes `.lando.yml` only. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
 
-Default PHP is 8.3. Match the skeleton to that, or bump PHP with `--answer=php=8.4`.
+Default PHP is 8.3, so `symfony new` / `symfony/skeleton` lands on Symfony 7.4.x. Symfony 8 needs PHP 8.4 or newer; set `--answer=php=8.4` (or newer) on init.
 
 ## See what the recipe writes
 
