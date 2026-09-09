@@ -3,6 +3,7 @@ import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { Effect, Either } from "effect";
 
+import { astroSnapshot } from "../../src/recipes/builtin/astro/snapshot.ts";
 import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import {
   BUILTIN_RECIPE_DECOMPOSERS,
@@ -16,9 +17,11 @@ import { lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
 import { meanSnapshot } from "../../src/recipes/builtin/mean/snapshot.ts";
+import { nextjsSnapshot } from "../../src/recipes/builtin/nextjs/snapshot.ts";
 import { nodeApiSnapshot } from "../../src/recipes/builtin/node-api/snapshot.ts";
 import { nodePostgresSnapshot } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
 import { nodeTsSnapshot } from "../../src/recipes/builtin/node-ts/snapshot.ts";
+import { sveltekitSnapshot } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
 import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 
@@ -36,6 +39,9 @@ const CONVERTED_RECIPE_IDS = [
   "node-api",
   "mean",
   "node-ts",
+  "astro",
+  "sveltekit",
+  "nextjs",
 ] as const;
 
 const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSnapshot>> = {
@@ -52,6 +58,9 @@ const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSn
   "node-api": nodeApiSnapshot,
   mean: meanSnapshot,
   "node-ts": nodeTsSnapshot,
+  astro: astroSnapshot,
+  sveltekit: sveltekitSnapshot,
+  nextjs: nextjsSnapshot,
 };
 
 /** A value of the wrong shape for the descriptor, so every declared constraint rejects it. */
@@ -85,7 +94,7 @@ describe("bundled recipe decomposers", () => {
   });
 
   it("returns undefined for a recipe that ships no decomposer", () => {
-    expect(lookupRecipeDecomposer("astro")).toBeUndefined();
+    expect(lookupRecipeDecomposer("jekyll")).toBeUndefined();
   });
 
   it("remediates a rejected option in the shape its descriptor declares", () => {

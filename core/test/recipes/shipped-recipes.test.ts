@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
 
 const SHIPPED_RECIPE_IDS = [
+  "astro",
   "backdrop",
   "drupal",
   "drupal-cms",
@@ -14,10 +15,12 @@ const SHIPPED_RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "nextjs",
   "node-api",
   "node-postgres",
   "node-ts",
   "rails",
+  "sveltekit",
   "symfony",
   "toolbox",
   "wordpress",

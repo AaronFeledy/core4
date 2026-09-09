@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { astroSnapshot, astroSnapshotYaml } from "../../src/recipes/builtin/astro/snapshot.ts";
 import { backdropSnapshot, backdropSnapshotYaml } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import { drupalCmsSnapshot, drupalCmsSnapshotYaml } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
 import { drupalSnapshot, drupalSnapshotYaml } from "../../src/recipes/builtin/drupal/snapshot.ts";
@@ -9,6 +10,7 @@ import { lampSnapshot, lampSnapshotYaml } from "../../src/recipes/builtin/lamp/s
 import { laravelSnapshot, laravelSnapshotYaml } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot, lempSnapshotYaml } from "../../src/recipes/builtin/lemp/snapshot.ts";
 import { meanSnapshot, meanSnapshotYaml } from "../../src/recipes/builtin/mean/snapshot.ts";
+import { nextjsSnapshot, nextjsSnapshotYaml } from "../../src/recipes/builtin/nextjs/snapshot.ts";
 import { nodeApiSnapshot, nodeApiSnapshotYaml } from "../../src/recipes/builtin/node-api/snapshot.ts";
 import {
   nodePostgresSnapshot,
@@ -16,6 +18,7 @@ import {
 } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
 import { nodeTsSnapshot, nodeTsSnapshotYaml } from "../../src/recipes/builtin/node-ts/snapshot.ts";
 import { recipeSnapshotYaml } from "../../src/recipes/builtin/snapshot-yaml.ts";
+import { sveltekitSnapshot, sveltekitSnapshotYaml } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
 import { symfonySnapshot, symfonySnapshotYaml } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { wordpressSnapshot, wordpressSnapshotYaml } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
@@ -35,6 +38,9 @@ describe("recipe snapshot YAML", () => {
     ["node-api", nodeApiSnapshot, nodeApiSnapshotYaml],
     ["mean", meanSnapshot, meanSnapshotYaml],
     ["node-ts", nodeTsSnapshot, nodeTsSnapshotYaml],
+    ["astro", astroSnapshot, astroSnapshotYaml],
+    ["sveltekit", sveltekitSnapshot, sveltekitSnapshotYaml],
+    ["nextjs", nextjsSnapshot, nextjsSnapshotYaml],
   ] as const)(
     "round-trips the published %s snapshot through the restricted parser",
     (_, snapshot, content) => {
