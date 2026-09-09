@@ -27,11 +27,12 @@ ANSI SGR tokens from `csi` in `task-tree-frame.ts`. Terminal default background
 and default foreground. Status colors are the standard 16-color palette only:
 red 31, green 32, yellow 33, cyan 36, dim 2. No RGB or custom status palette.
 `csi.amber` is the local name for standard yellow (33). Bright magenta 95 is
-rail chrome and the active moving spinner glyph only, never a status color.
+rail chrome, the active moving spinner glyph, and the opt-in brand icon, never a status color.
 
 | Role | Token | SGR | Usage |
 | --- | --- | --- | --- |
 | Rail chrome | `--rail-pink` | `95` | `╭─` / `│` / `╰─` left rail, plus the active braille spinner glyph |
+| Brand icon | `--rail-pink` | `95` | Opt-in Lando logo, using native terminal palette slot 13 |
 | Title text | `--text-bold` | `1` | Bold identity text in default foreground |
 | Success | `--status-success` | `32` | `✓` rows |
 | Failure | `--status-error` | `31` | `✗` rows |
@@ -45,7 +46,7 @@ Rules:
 - Never introduce a color outside this table.
 - Never communicate state by color alone. Glyph or compact word first.
 - Title text is bold default, not pink. Footer copy is dim default, not pink.
-- Pink is rail chrome plus the active moving spinner glyph. It is not a status
+- Pink is rail chrome, the active moving spinner glyph, and the opt-in brand icon. It is not a status
   color and must not paint labels, static `·`, wrap continuations, durations,
   or footers.
 - Completed-row duration is `--text-dim` after the semantic glyph+label (and `cached` / `skipped` / exit). Duration does not inherit the row's status color, including on a duration-only wrap continuation.
@@ -126,6 +127,34 @@ Full-tail expand uses the alternate screen; leaving it returns to inline paint.
 
 plain, JSON, verbose, non-TTY, and CI stay undecorated. They do not use this
 rail, these glyphs, or these colors.
+
+### Lando logo
+
+- **Structure**: a solid planet, outer circle, and orbit rising 20 degrees from left to right, drawn with Unicode braille cells.
+- **Sizes**: 8x4, 10x5, 12x6, 16x8, 20x10, 24x12, 32x16, 48x24, and 64x32 columns by rows. The 2:1 cell grid assumes a terminal cell roughly twice as tall as it is wide.
+- **Layout**: choose the largest complete icon fitting both content dimensions, then center it. Padding and borders reduce the available space. Below 8x4, paint nothing. Resize from the component's layout, not the whole terminal's dimensions.
+- **Color**: existing Lando pink, native indexed palette slot 13. No embedded ANSI escapes or fixed RGB color.
+- **Placement**: opt-in identity artwork for welcome and empty-state screens. It is not automatically added to task trees, prompts, logs, or machine output.
+- **Lifecycle**: the caller provides an already acquired OpenTUI module and renderer. The component owns no terminal, timers, or global resize listeners; destroy it with its parent renderable tree.
+- **Source**: `src/logo.ts` owns the pure rasterizer and supported sizes. Approved text fixtures live in `test/__frames__/logo-*.txt`; do not stretch or wrap a smaller frame to make a larger one.
+
+Create the component inside an existing TTY OpenTUI surface:
+
+```ts
+import { createLandoLogo } from "@lando/renderer-lando/opentui/lando-logo";
+
+// openTui and renderer are the host's already acquired module and renderer.
+const logo = createLandoLogo(openTui, renderer, {
+  id: "welcome-logo",
+  width: "100%",
+  height: "100%",
+});
+welcomePanel.add(logo);
+```
+
+Give `welcomePanel` a bounded height. For plain text assets, import
+`renderLandoLogo` and `pickLandoLogoWidth` from `@lando/renderer-lando/logo`.
+`renderLandoLogo(48)` returns `{ width, height, lines, content }` without loading OpenTUI.
 
 ## 6. Motion & Interaction
 
