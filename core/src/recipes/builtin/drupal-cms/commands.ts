@@ -45,7 +45,6 @@ export const DRUPAL_CMS_SCAFFOLD_COMMAND = [
   'rm -f "$manifest"',
 ].join("\n");
 
-/** Drupal CMS site-install command for one database driver and app name token. */
 export const drupalCmsInstallCommand = (driver: "mysql" | "pgsql", appName: string): string => {
   const password =
     driver === "pgsql" ? `$(printf '%s' '${appName}' | sha256sum | cut -c1-16 | sed 's/^/lando-/')` : "lando";

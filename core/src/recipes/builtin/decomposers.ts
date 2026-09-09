@@ -2,10 +2,7 @@
  * Bundled recipe decomposers.
  *
  * Each entry converts one bundled recipe's merged nonsecret options into
- * Landofile authoring data through the SDK `RecipeDecomposer` port. This is
- * the staged replacement catalog: public init still binds `render.ts` until
- * the decomposer catalog becomes the single registry, and the private recipe
- * translator still uses the isolated test recipe until that cutover.
+ * Landofile authoring data through the SDK `RecipeDecomposer` port.
  */
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
@@ -31,10 +28,8 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["joomla", joomlaDecomposer],
 ];
 
-/** Every bundled recipe id that ships a decomposer, keyed by recipe id. */
 export const BUILTIN_RECIPE_DECOMPOSERS: ReadonlyMap<string, RecipeDecomposerFactory> = new Map(DECOMPOSERS);
 
-/** Resolve a bundled decomposer factory, or `undefined` when the recipe ships none. */
 export const lookupRecipeDecomposer = (recipeId: string): RecipeDecomposerFactory | undefined =>
   BUILTIN_RECIPE_DECOMPOSERS.get(recipeId);
 
