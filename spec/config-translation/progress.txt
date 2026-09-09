@@ -680,3 +680,12 @@
 - Verification: typecheck, lint, check:boundaries (all rules), codegen:check, lint:guides, check:guide-coverage, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 708 recipe spot-check tests plus the plugin-abstraction coverage contract passed with one pre-existing skip; the django recipe guide executed green on the test provider.
 - Real-surface check: driving the registered decomposers showed django emitting web/database/cache by default and adding worker on celery=true, fastapi and rails accepting the forwarded name answer with empty provenance options, and an undeclared option on a zero-option recipe failing closed as option-type at options.<key>. Provider-free CLI init from source still writes the unchanged django Landofile and the two-line rails Gemfile, confirming the scaffold extraction moved no bytes.
 ---
+
+## 2026-09-09 11:41 - US-609E5 Drift Audit
+- Trigger: 3 cycles, 1509 changed lines, 5 commits
+- Dual paths: still-bound renderers re-examined and left; US-609E owns the public-init cutover
+- Ceremony: rails Gemfile helper kept so renderer and snapshot hash one source
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 78 spot checks — pass
+---
