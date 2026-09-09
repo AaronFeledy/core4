@@ -1,3 +1,5 @@
+import { djangoSnapshotYaml } from "./snapshot.ts";
+
 export const DJANGO_RECIPE_ID = "django";
 
 export const djangoRecipeSource = `${DJANGO_RECIPE_ID}/recipe.yml`;
@@ -29,4 +31,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Django up.
+
+${djangoSnapshotYaml}
 `;

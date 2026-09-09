@@ -8,8 +8,10 @@ import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
 import { astroDecomposer } from "./astro/decomposer.ts";
 import { backdropDecomposer } from "./backdrop/decomposer.ts";
+import { djangoDecomposer } from "./django/decomposer.ts";
 import { drupalCmsDecomposer } from "./drupal-cms/decomposer.ts";
 import { drupalDecomposer } from "./drupal/decomposer.ts";
+import { fastapiDecomposer } from "./fastapi/decomposer.ts";
 import { joomlaDecomposer } from "./joomla/decomposer.ts";
 import { lampDecomposer } from "./lamp/decomposer.ts";
 import { laravelDecomposer } from "./laravel/decomposer.ts";
@@ -19,6 +21,7 @@ import { nextjsDecomposer } from "./nextjs/decomposer.ts";
 import { nodeApiDecomposer } from "./node-api/decomposer.ts";
 import { nodePostgresDecomposer } from "./node-postgres/decomposer.ts";
 import { nodeTsDecomposer } from "./node-ts/decomposer.ts";
+import { railsDecomposer } from "./rails/decomposer.ts";
 import { sveltekitDecomposer } from "./sveltekit/decomposer.ts";
 import { symfonyDecomposer } from "./symfony/decomposer.ts";
 import { wordpressDecomposer } from "./wordpress/decomposer.ts";
@@ -40,6 +43,9 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["astro", astroDecomposer],
   ["sveltekit", sveltekitDecomposer],
   ["nextjs", nextjsDecomposer],
+  ["django", djangoDecomposer],
+  ["fastapi", fastapiDecomposer],
+  ["rails", railsDecomposer],
 ];
 
 export const BUILTIN_RECIPE_DECOMPOSERS: ReadonlyMap<string, RecipeDecomposerFactory> = new Map(DECOMPOSERS);

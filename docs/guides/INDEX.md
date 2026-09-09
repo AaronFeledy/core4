@@ -172,6 +172,8 @@ outside `docs/guides/` so they are not gate-validated here.
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
+| `django` | Django (Python + PostgreSQL + Redis; optional Celery worker) | `recipes/django/README.mdx` | Shipped |
+| `fastapi` | FastAPI (Python + PostgreSQL + Redis) | `recipes/fastapi/README.mdx` | Shipped |
 | `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
 | `node-postgres` | Node + Postgres walking skeleton | `recipes/node-postgres/README.mdx` | Shipped |
 | `node-api` | Node API (Express, Fastify, or Hono; optional Postgres) | `recipes/node-api/README.mdx` | Shipped |

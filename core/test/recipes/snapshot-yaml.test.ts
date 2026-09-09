@@ -3,8 +3,10 @@ import { Effect } from "effect";
 
 import { astroSnapshot, astroSnapshotYaml } from "../../src/recipes/builtin/astro/snapshot.ts";
 import { backdropSnapshot, backdropSnapshotYaml } from "../../src/recipes/builtin/backdrop/snapshot.ts";
+import { djangoSnapshot, djangoSnapshotYaml } from "../../src/recipes/builtin/django/snapshot.ts";
 import { drupalCmsSnapshot, drupalCmsSnapshotYaml } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
 import { drupalSnapshot, drupalSnapshotYaml } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { fastapiSnapshot, fastapiSnapshotYaml } from "../../src/recipes/builtin/fastapi/snapshot.ts";
 import { joomlaSnapshot, joomlaSnapshotYaml } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import { lampSnapshot, lampSnapshotYaml } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot, laravelSnapshotYaml } from "../../src/recipes/builtin/laravel/snapshot.ts";
@@ -17,6 +19,7 @@ import {
   nodePostgresSnapshotYaml,
 } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
 import { nodeTsSnapshot, nodeTsSnapshotYaml } from "../../src/recipes/builtin/node-ts/snapshot.ts";
+import { railsSnapshot, railsSnapshotYaml } from "../../src/recipes/builtin/rails/snapshot.ts";
 import { recipeSnapshotYaml } from "../../src/recipes/builtin/snapshot-yaml.ts";
 import { sveltekitSnapshot, sveltekitSnapshotYaml } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
 import { symfonySnapshot, symfonySnapshotYaml } from "../../src/recipes/builtin/symfony/snapshot.ts";
@@ -41,6 +44,9 @@ describe("recipe snapshot YAML", () => {
     ["astro", astroSnapshot, astroSnapshotYaml],
     ["sveltekit", sveltekitSnapshot, sveltekitSnapshotYaml],
     ["nextjs", nextjsSnapshot, nextjsSnapshotYaml],
+    ["django", djangoSnapshot, djangoSnapshotYaml],
+    ["fastapi", fastapiSnapshot, fastapiSnapshotYaml],
+    ["rails", railsSnapshot, railsSnapshotYaml],
   ] as const)(
     "round-trips the published %s snapshot through the restricted parser",
     (_, snapshot, content) => {
