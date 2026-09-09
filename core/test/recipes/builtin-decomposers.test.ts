@@ -119,8 +119,8 @@ describe("bundled recipe decomposers", () => {
   });
 
   it("ships a decomposer for every bundled renderer and none for an unshipped id", () => {
-    // Every bundled recipe now ships a decomposer, so the completeness ratchet
-    // replaces the old \"pick an unconverted id\" negative.
+    // Bundled renderer ids equal decomposer ids; looking up an id absent from
+    // the bundled registry returns undefined.
     expect<unknown>([...builtinRecipeIds()].sort()).toEqual([...CONVERTED_RECIPE_IDS].sort());
     const unshipped = "unshipped-recipe";
     expect(builtinRecipeIds()).not.toContain(unshipped);
