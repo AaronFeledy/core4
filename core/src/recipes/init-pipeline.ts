@@ -89,13 +89,33 @@ const blocked = (stage: RecipeInitBlockedError["stage"]) =>
     remediation: "Correct the recipe inputs, translator, or encoder before retrying initialization.",
   });
 
-export const runRecipeInitPipeline = (
-  request: RecipeInitPipelineRequest,
-): Effect.Effect<
-  RecipeInitPipelineResult,
-  RecipeInitBlockedError | RecipeInitCommitError | RecipeInitPostInitError,
-  never
-> =>
+export interface RecipeLandofilePreviewRequest {
+  readonly manifest: RecipeManifest;
+  readonly decomposer: RecipeDecomposerFactory;
+  readonly answers: Readonly<Record<string, unknown>>;
+  readonly secretAnswers?: Readonly<Record<string, string>>;
+  readonly appName: string;
+  readonly encoder: ConfigTranslatorShape;
+}
+
+export interface RecipeLandofilePreview {
+  readonly text: string;
+  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+}
+
+interface EncodedRecipeLandofile extends RecipeLandofilePreview {
+  readonly redact: (text: string) => string;
+  readonly containsSecret: (value: unknown) => boolean;
+}
+
+// Decompose, validate and encode without touching disk. The write path and the
+// pre-write preview share this, so a previewed Landofile is the committed one.
+const encodeRecipeLandofile = (
+  request: RecipeLandofilePreviewRequest & {
+    readonly appRoot?: string;
+    readonly landofileBasename?: string;
+  },
+): Effect.Effect<EncodedRecipeLandofile, RecipeInitBlockedError, never> =>
   Effect.gen(function* () {
     const validated = validateRecipeSecretPrompts(request.manifest);
     if (Either.isLeft(validated)) return yield* Effect.fail(blocked("secret-prompts"));
@@ -177,6 +197,27 @@ export const runRecipeInitPipeline = (
     )
       return yield* Effect.fail(blocked("diagnostics"));
     if (containsSecret(encoded.text)) return yield* Effect.fail(blocked("encode"));
+    return { text: encoded.text, diagnostics, redact, containsSecret };
+  });
+
+/**
+ * Encode the Landofile a recipe would write, without creating or mutating any
+ * file. Used for pre-write preview surfaces such as the init name prompt.
+ */
+export const previewRecipeLandofile = (
+  request: RecipeLandofilePreviewRequest,
+): Effect.Effect<RecipeLandofilePreview, RecipeInitBlockedError, never> =>
+  Effect.map(encodeRecipeLandofile(request), ({ text, diagnostics }) => ({ text, diagnostics }));
+
+export const runRecipeInitPipeline = (
+  request: RecipeInitPipelineRequest,
+): Effect.Effect<
+  RecipeInitPipelineResult,
+  RecipeInitBlockedError | RecipeInitCommitError | RecipeInitPostInitError,
+  never
+> =>
+  Effect.gen(function* () {
+    const { text, diagnostics, redact, containsSecret } = yield* encodeRecipeLandofile(request);
     const basename = request.landofileBasename ?? ".lando.yml";
     const landofilePath = join(request.appRoot, basename);
     // The pipeline owns the Landofile itself, so a manifest entry that targets a
@@ -206,7 +247,7 @@ export const runRecipeInitPipeline = (
     })
       .run({
         appRoot: request.appRoot,
-        operations: [{ kind: "write", path: basename, content: encoded.text }],
+        operations: [{ kind: "write", path: basename, content: text }],
       })
       .pipe(
         Effect.mapError(

@@ -13,6 +13,7 @@ import {
   RecipeInitCommitError,
   type RecipeInitPipelineRequest,
   RecipeInitPostInitError,
+  previewRecipeLandofile,
   runRecipeInitPipeline,
 } from "../../src/recipes/init-pipeline.ts";
 import { makeRecipeTranslatorModule } from "../../src/recipes/translator-module.ts";
@@ -85,6 +86,41 @@ test("S1 commits expression-bearing provenance before auxiliary files and postIn
   expect(await Bun.file(auxiliary).text()).toBe("isolated = true\n");
   expect(result.landofilePath).toBe(landofile);
   expect(result.auxiliaryFiles).toEqual([auxiliary]);
+});
+test("preview encodes the committed Landofile without writing anything", async () => {
+  const { request, calls, landofile, auxiliary } = await fixture();
+  const preview = await Effect.runPromise(previewRecipeLandofile(request));
+  expect(preview.text).toContain("{{ recipe.php }}");
+  expect(preview.text).toMatch(/^name: isolated-init$/m);
+  expect(calls).toEqual([]);
+  expect(await Bun.file(landofile).exists()).toBe(false);
+  expect(await Bun.file(auxiliary).exists()).toBe(false);
+  await Effect.runPromise(runRecipeInitPipeline(request));
+  expect(await Bun.file(landofile).text()).toBe(preview.text);
+});
+test("preview fails closed on the same blocking diagnostics as the write path", async () => {
+  const { request, landofile } = await fixture();
+  const encode = request.encoder.encode;
+  if (encode === undefined) throw new Error("Missing encoder");
+  const result = await Effect.runPromise(
+    Effect.either(
+      previewRecipeLandofile({
+        ...request,
+        encoder: {
+          ...request.encoder,
+          encode: (input) =>
+            Effect.map(encode(input), (encoded) => ({
+              ...encoded,
+              diagnostics: [...encoded.diagnostics, diagnostic("unsupported", "blocked preview")],
+            })),
+        },
+      }),
+    ),
+  );
+  if (Either.isRight(result)) throw new Error("Expected preview failure");
+  expect(result.left).toBeInstanceOf(RecipeInitBlockedError);
+  expect(result.left).toMatchObject({ stage: "diagnostics" });
+  expect(await Bun.file(landofile).exists()).toBe(false);
 });
 test("user appName wins over the translated fragment name", async () => {
   const { request, landofile } = await fixture();
