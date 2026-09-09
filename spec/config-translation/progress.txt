@@ -607,3 +607,13 @@
 - Guide-Coverage-Skip: private decomposer accepts the app-name prompt already documented in recipe READMEs; public init, renderers, and README journeys are unchanged until the cutover story.
 - **Learnings for future iterations:** Empty `optionTypes` still need an unknown-key `option-type` failure for the contract suite, but must ignore the init `name` prompt. The translator currently forwards all answers, including app identity.
 ---
+
+## 2026-09-08 21:54 - US-609E3 Drift Audit
+- Trigger: 2 cycles, 1868 changed lines, 5 commits
+- Dual path: render vs decomposer remains the US-609E staged cutover; not excised
+- Weakened proofs: none restored; README and provider-free init stay on the existing cutover adjudication
+- Collateral: none; only this story's passes flip
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 90 spot checks — pass
+---
