@@ -86,6 +86,12 @@ describe("node-postgres decomposition", () => {
     expect(nodePostgresDefaults).toEqual({});
   });
 
+  test("accepts the app-name prompt without recording it as a recipe option", () => {
+    const result = decompose({ name: "probe" });
+    expect(result.provenance.options).toEqual({});
+    expect(result.fragment).toEqual(decompose({}).fragment);
+  });
+
   test.each([
     { options: { node: "22" }, path: "options.node" },
     { options: { extra: true }, path: "options.extra" },

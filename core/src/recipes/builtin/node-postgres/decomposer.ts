@@ -21,7 +21,10 @@ export const nodePostgresDecomposer = ((ports) => ({
           }),
         );
       }
-      for (const name of Object.keys(input.options)) {
+      const recipeOptions = Object.fromEntries(
+        Object.entries(input.options).filter(([key]) => key !== "name"),
+      );
+      for (const name of Object.keys(recipeOptions)) {
         if (!Object.hasOwn(nodePostgresSnapshot.optionTypes, name)) {
           return yield* Effect.fail(
             new RecipeDecomposeError({
@@ -37,7 +40,7 @@ export const nodePostgresDecomposer = ((ports) => ({
         }
       }
       for (const [name, descriptor] of Object.entries(nodePostgresSnapshot.optionTypes)) {
-        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
+        if (!optionValueMatchesDescriptor(descriptor, recipeOptions[name])) {
           return yield* Effect.fail(
             new RecipeDecomposeError({
               recipeId: "node-postgres",
@@ -53,7 +56,7 @@ export const nodePostgresDecomposer = ((ports) => ({
         id: "node-postgres",
         version: NODE_POSTGRES_RECIPE_VERSION,
         producer: nodePostgresProducer,
-        options: input.options,
+        options: recipeOptions,
       };
       return {
         fragment: {
