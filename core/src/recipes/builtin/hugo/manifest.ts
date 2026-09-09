@@ -1,3 +1,5 @@
+import { hugoSnapshotYaml } from "./snapshot.ts";
+
 export const HUGO_RECIPE_ID = "hugo";
 
 export const hugoRecipeSource = `${HUGO_RECIPE_ID}/recipe.yml`;
@@ -25,4 +27,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to serve the Hugo site.
+
+${hugoSnapshotYaml}
 `;
