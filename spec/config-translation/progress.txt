@@ -771,3 +771,10 @@
   - Auxiliary `template: true` rendering stays a literal `{{ app.name }}` replacement, matching the renderers exactly. Running scaffold bytes through the expression evaluator would risk reinterpreting shell or JS syntax in a user-owned file, and byte parity with the renderer path is what makes the later registry switch safe.
   - A manifest `src` on a bundled recipe is a label (`templates/package.json.tmpl`), not a path. Key any content source by `dest`, which is what both the renderers and the snapshot asset inventory already use.
 ---
+
+## 2026-09-09 16:54 - US-609E7 Review
+- Review-work failed on unverified gates and several majors; Bugbot found no bugs. QA ran 106 focused tests green. Fixed: load-time recipe/env evaluation now carries a bounded EvaluationBudget, provenance-skip and budget failures are tested, and the expressions guide names load-time recipe/env instead of claiming those sites are still blocked.
+- Review notes (deferred/rejected): mixed app/proxy+env sites left whole for the planner is the AC, not a planning bug. Auxiliary writes outside the Landofile transaction, RecipeFile when/mode/engine, and absolute-src confinement are pre-existing pipeline shape, not this story. needsOptions pre-check for bare recipe ids is the required fail-closed path; default() over a missing options object is not in the 24 snapshots. Env values appearing in later schema validation is inherent to resolving into the document; rewriting every validator to be value-free is out of scope. A 24-snapshot load/plan matrix is US-609E aggregate evidence, not AC2 (mixed recipe+env loader tests already exist).
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; lint:guides passed; 49 focused tests passed across landofile, sdk scopes, engine discovery, and init-pipeline files.
+- **Learnings for future iterations:** Once Call nodes can defer at load, pass an EvaluationBudget or a typo'd `range()` allocates before schema validation. Guide-drift can stay green while expressions.mdx still claims a now-working scope is blocked; check that page when load-time expression behavior changes.
+---
