@@ -24,7 +24,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 | `database` | `type: mariadb:11.4` |
 | `cache` | `type: redis` |
 | `worker` (optional) | `php:8.3`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan`, `lando composer`, and `lando npm` on `appserver` |
+| Tooling | `lando artisan` and `lando composer` on `appserver` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
@@ -71,7 +71,6 @@ Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
 ```sh
 lando artisan --version
 lando composer --version
-lando npm --version
 lando redis-cli ping
 lando mariadb
 ```
@@ -94,7 +93,7 @@ That service runs `php artisan queue:work`.
 | Password | `lando` | n/a |
 | Port | `3306` | `6379` |
 
-Put host `database` in your DB config and host `cache` in Redis. Root password is generated; you do not need it for Eloquent.
+Put host `database` in your DB config and host `cache` in Redis. Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for Eloquent.
 
 ## Destroy the app
 
