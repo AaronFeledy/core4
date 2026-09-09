@@ -292,3 +292,49 @@ test("fails closed on a relative auxiliary source instead of resolving it agains
   expect(await Bun.file(auxiliary).exists()).toBe(false);
   expect(calls).toEqual([]);
 });
+
+test("S7 writes a bundled in-memory auxiliary asset with no on-disk source", async () => {
+  const { request, landofile } = await fixture();
+  const appRoot = request.appRoot;
+  const result = await Effect.runPromise(
+    runRecipeInitPipeline({
+      ...request,
+      manifest: {
+        ...request.manifest,
+        files: [
+          { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
+          { src: "templates/package.json.tmpl", dest: "package.json", template: true },
+          { src: "assets/notes.txt", dest: "notes.txt", template: false },
+        ],
+      },
+      runPostInit: async () => ({ executed: [] }),
+      contentSource: (file) =>
+        Promise.resolve(
+          file.dest === "package.json"
+            ? '{ "name": "{{ app.name }}" }\n'
+            : file.dest === "notes.txt"
+              ? "verbatim {{ app.name }}\n"
+              : undefined,
+        ),
+    }),
+  );
+  // The manifest Landofile entry belongs to the transaction, never the aux loop.
+  expect(result.auxiliaryFiles).toEqual([join(appRoot, "package.json"), join(appRoot, "notes.txt")]);
+  expect(await Bun.file(join(appRoot, "package.json")).text()).toBe('{ "name": "isolated-init" }\n');
+  expect(await Bun.file(join(appRoot, "notes.txt")).text()).toBe("verbatim {{ app.name }}\n");
+  expect(await Bun.file(landofile).exists()).toBe(true);
+});
+
+test("S7 blocks when the content source declines an entry with no absolute source", async () => {
+  const { request } = await fixture();
+  const error = await failure({
+    ...request,
+    manifest: {
+      ...request.manifest,
+      files: [{ src: "templates/missing.tmpl", dest: "missing.txt", template: false }],
+    },
+    contentSource: () => Promise.resolve(undefined),
+  });
+  expect(error).toBeInstanceOf(RecipeInitBlockedError);
+  expect((error as RecipeInitBlockedError).stage).toBe("validate");
+});

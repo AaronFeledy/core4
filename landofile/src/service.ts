@@ -41,7 +41,11 @@ import {
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { LOAD_DEFERRED_EXPRESSION_SCOPES, materializeRecipeOptionExpressions } from "./recipe-expressions.ts";
+import {
+  LOAD_DEFERRED_EXPRESSION_SCOPES,
+  hostExpressionEnvironment,
+  materializeLoadScopeExpressions,
+} from "./recipe-expressions.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { composeToolingIncludeEntries } from "./tooling-include-entries.ts";
 import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
@@ -482,12 +486,16 @@ export const loadLandofileLayers = (
           ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
           ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
         };
-        const materialized = materializeRecipeOptionExpressions(merged, canonicalPath);
+        const materialized = materializeLoadScopeExpressions(
+          merged,
+          canonicalPath,
+          inputs?.templates.context?.env ?? hostExpressionEnvironment(),
+        );
         if (materialized.unresolved.length > 0) {
           const issues = materialized.unresolved.map(({ path, reason }) => `${path} (${reason})`);
           return Effect.fail(
             new LandofileValidationError({
-              message: `Landofile cannot resolve recipe option expressions: ${issues.join(", ")}. Add the option under "recipe.options" or replace the expression with a literal value.`,
+              message: `Landofile cannot resolve configuration expressions: ${issues.join(", ")}. Set the missing recipe option or environment variable, add a default(), or replace the expression with a literal value.`,
               file: canonicalPath,
               issues,
             }),

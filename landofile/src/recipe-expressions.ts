@@ -9,27 +9,47 @@ import { Either } from "effect";
  * Expression scopes a loaded Landofile may still carry after the load walk.
  *
  * `app` and `proxy` stay unevaluated until the planner knows the app identity
- * and proxy domain. `recipe` is resolvable from the file itself, but only after
- * every layer has merged, so the load walk defers it too and
- * {@link materializeRecipeOptionExpressions} resolves it against the merged
+ * and proxy domain. `recipe` and `env` are resolvable from the file and the
+ * host, but only once every layer has merged, so the load walk defers them too
+ * and {@link materializeLoadScopeExpressions} resolves them against the merged
  * document.
  */
-export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "proxy", "recipe"];
+export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "proxy", "recipe", "env"];
 
-/** A recipe option site that could not be resolved from the merged document. */
-export interface UnresolvedRecipeOptionExpression {
+/**
+ * The subset of the deferred scopes the loader itself can resolve. Everything
+ * else in {@link LOAD_DEFERRED_EXPRESSION_SCOPES} belongs to the planner.
+ */
+export const LOAD_RESOLVABLE_EXPRESSION_SCOPES: ReadonlyArray<string> = ["recipe", "env"];
+
+/** A value site that could not be resolved from the merged document. */
+export interface UnresolvedLoadScopeExpression {
   /** Dotted path of the value site holding the expression. */
   readonly path: string;
   /** Why the site could not be resolved. */
   readonly reason: string;
 }
 
-export interface MaterializedRecipeOptionExpressions {
-  /** The document with every resolvable recipe option reference replaced by its value. */
+export interface MaterializedLoadScopeExpressions {
+  /** The document with every resolvable expression replaced by its value. */
   readonly value: Record<string, unknown>;
-  /** Sites that reference recipe options the merged document does not provide. */
-  readonly unresolved: ReadonlyArray<UnresolvedRecipeOptionExpression>;
+  /** Sites referencing data the merged document and host environment do not provide. */
+  readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression>;
 }
+
+/**
+ * The host environment as the expression language sees it.
+ *
+ * `process.env` may hold undefined entries; the `env` scope is a plain string
+ * map, so those are dropped rather than surfaced as empty values.
+ */
+export const hostExpressionEnvironment = (): Record<string, string> => {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") env[key] = value;
+  }
+  return env;
+};
 
 /**
  * Reads the recipe option scope out of a merged Landofile.
@@ -48,42 +68,47 @@ const recipeOptionScope = (
   return options as Readonly<Record<string, unknown>>;
 };
 
-const touchesRecipeScope = (value: string): boolean => value.includes("recipe.");
-
 /**
- * Resolves `{{ recipe.<option> }}` sites against the merged document's own
- * `recipe.options`.
+ * Resolves the load-owned expression scopes against the merged document and the
+ * host environment.
  *
  * This performs no recipe lookup, loads no plugin, and runs no recipe code: the
- * only data it reads is already in the file the user owns. Sites referencing
- * any other scope are left exactly as they are, so the planner still owns
- * `app` and `proxy` resolution.
+ * only data it reads is the file the user owns plus the process environment.
+ * A site that also references a planner-owned scope is left exactly as it is,
+ * whole: resolving half of one string would strand the rest and would change
+ * how the planner sees its own interpolation.
  */
-export const materializeRecipeOptionExpressions = (
+export const materializeLoadScopeExpressions = (
   merged: Record<string, unknown>,
   filePath: string,
-): MaterializedRecipeOptionExpressions => {
-  const scope = recipeOptionScope(merged);
-  const unresolved: UnresolvedRecipeOptionExpression[] = [];
+  env: Readonly<Record<string, string>>,
+): MaterializedLoadScopeExpressions => {
+  const options = recipeOptionScope(merged);
+  const unresolved: UnresolvedLoadScopeExpression[] = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
     if (typeof value === "string") {
-      if (!value.includes("{{") || !touchesRecipeScope(value)) return value;
+      if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath });
       if (Either.isLeft(parsed)) return value;
-      // A site mixing recipe with a planner-owned scope belongs to whoever
-      // resolves that scope; resolving half of it here would strand the rest.
-      if (!expressionTouchesOnlyScopes(parsed.right, ["recipe"])) return value;
-      if (scope === undefined) {
-        unresolved.push({
-          path: path.join("."),
-          reason: "the Landofile records no recipe options",
-        });
+      if (!expressionTouchesOnlyScopes(parsed.right, LOAD_RESOLVABLE_EXPRESSION_SCOPES)) return value;
+      const needsOptions = !expressionTouchesOnlyScopes(parsed.right, ["env"]);
+      if (needsOptions && options === undefined) {
+        unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
         return value;
       }
-      const evaluated = evaluateTemplateEither(parsed.right, { recipe: scope }, { filePath });
+      const evaluated = evaluateTemplateEither(
+        parsed.right,
+        options === undefined ? { env } : { env, recipe: options },
+        { filePath },
+      );
       if (Either.isLeft(evaluated)) {
-        unresolved.push({ path: path.join("."), reason: "it references an option the recipe block omits" });
+        unresolved.push({
+          path: path.join("."),
+          reason: needsOptions
+            ? "it references a recipe option the Landofile does not set"
+            : "it references an environment variable that is not set and declares no default",
+        });
         return value;
       }
       return evaluated.right;

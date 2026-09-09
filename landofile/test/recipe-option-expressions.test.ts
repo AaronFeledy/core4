@@ -25,6 +25,22 @@ const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
 
 const load = (appRoot: string) => loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"));
 
+const withEnv = async <A>(entries: Readonly<Record<string, string | undefined>>, run: () => Promise<A>) => {
+  const previous = Object.fromEntries(Object.keys(entries).map((key) => [key, process.env[key]]));
+  try {
+    for (const [key, value] of Object.entries(entries)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await run();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+};
+
 const provenance = (options: string) =>
   [
     "recipe:",
@@ -140,7 +156,8 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("cannot resolve recipe option expressions");
+        expect(failureMessage(exit)).toContain("services.appserver.type");
+        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
       },
     );
   });
@@ -164,8 +181,160 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("cannot resolve recipe option expressions");
+        expect(failureMessage(exit)).toContain("services.appserver.type");
+        expect(failureMessage(exit)).toContain("records no recipe options");
       },
     );
+  });
+});
+
+describe("env expressions in a loaded Landofile", () => {
+  test("resolves a helper call over the host environment", async () => {
+    await withEnv({ LANDO_NODE_VERSION: "22" }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: envapp",
+            "runtime: 4",
+            "services:",
+            "  web:",
+            "    image: \"node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}\"",
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const landofile = await Effect.runPromise(load(appRoot));
+
+          // Then
+          const services = landofile.services as Record<string, Record<string, unknown>>;
+          expect(services.web?.image).toBe("node:22");
+        },
+      );
+    });
+  });
+
+  test("falls back to the declared default when the variable is unset", async () => {
+    await withEnv({ LANDO_NODE_VERSION: undefined, NODE_ENV: undefined }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: envapp",
+            "runtime: 4",
+            "services:",
+            "  web:",
+            "    image: \"node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}\"",
+            "    environment:",
+            "      NODE_ENV: \"{{ default(env.NODE_ENV, 'development') }}\"",
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const landofile = await Effect.runPromise(load(appRoot));
+
+          // Then
+          const services = landofile.services as Record<string, Record<string, unknown>>;
+          const environment = services.web?.environment as Record<string, unknown>;
+          expect(services.web?.image).toBe("node:lts");
+          expect(environment?.NODE_ENV).toBe("development");
+        },
+      );
+    });
+  });
+
+  test("fails closed when a bare variable reference is unset", async () => {
+    await withEnv({ LANDO_MISSING_FIXTURE: undefined }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: envapp",
+            "runtime: 4",
+            "services:",
+            "  web:",
+            '    image: "node:{{ env.LANDO_MISSING_FIXTURE }}"',
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const exit = await Effect.runPromiseExit(load(appRoot));
+
+          // Then
+          expect(Exit.isFailure(exit)).toBe(true);
+          expect(failureMessage(exit)).toContain("services.web.image");
+        },
+      );
+    });
+  });
+});
+
+describe("mixed recipe and env expressions in one Landofile", () => {
+  test("resolves both scopes and leaves planner-owned sites alone", async () => {
+    await withEnv({ LANDO_NODE_VERSION: "20" }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: recipeapp",
+            "runtime: 4",
+            provenance(['    node: "22"', '    framework: "express"'].join("\n")),
+            "services:",
+            "  web:",
+            "    image: \"node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}\"",
+            "    environment:",
+            '      API_FRAMEWORK: "{{ recipe.framework }}"',
+            "    routes:",
+            '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
+            "        scheme: both",
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const landofile = await Effect.runPromise(load(appRoot));
+
+          // Then
+          const services = landofile.services as Record<string, Record<string, unknown>>;
+          const environment = services.web?.environment as Record<string, unknown>;
+          const routes = services.web?.routes as ReadonlyArray<Record<string, unknown>>;
+          expect(services.web?.image).toBe("node:20");
+          expect(environment?.API_FRAMEWORK).toBe("express");
+          expect(routes[0]?.hostname).toBe("{{ app.name }}.{{ proxy.defaultDomain }}");
+        },
+      );
+    });
+  });
+
+  test("leaves a site that mixes a resolvable scope with a planner scope untouched", async () => {
+    await withEnv({ LANDO_SUFFIX: "edge" }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: recipeapp",
+            "runtime: 4",
+            provenance('    php: "8.3"'),
+            "services:",
+            "  appserver:",
+            '    type: "php:{{ recipe.php }}"',
+            "    routes:",
+            "      - hostname: \"{{ app.name }}-{{ default(env.LANDO_SUFFIX, 'main') }}.{{ proxy.defaultDomain }}\"",
+            "        scheme: both",
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const landofile = await Effect.runPromise(load(appRoot));
+
+          // Then
+          const services = landofile.services as Record<string, Record<string, unknown>>;
+          const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
+          expect(services.appserver?.type).toBe("php:8.3");
+          expect(routes[0]?.hostname).toBe(
+            "{{ app.name }}-{{ default(env.LANDO_SUFFIX, 'main') }}.{{ proxy.defaultDomain }}",
+          );
+        },
+      );
+    });
   });
 });
