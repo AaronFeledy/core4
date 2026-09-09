@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
@@ -141,6 +142,7 @@ export const sidebar = [
   {
     label: "Recipes",
     items: [
+      { label: "Astro", slug: "recipes/astro" },
       { label: "Backdrop", slug: "recipes/backdrop" },
       { label: "Drupal", slug: "recipes/drupal" },
       { label: "Drupal CMS", slug: "recipes/drupal-cms" },
