@@ -675,3 +675,8 @@
   - `git diff --cached --stat` can print nothing while `git diff --cached --name-only` lists files; trust `--raw`, which shows the real blob pairs.
   - A decomposer driver must be run from the repo root, not `/tmp`: workspace specifiers like `@lando/sdk/secrets` only resolve inside the monorepo. `RecipeDecomposeInput` is `{ producer, options, secrets }` with the recipe's own producer object — there is no `app` field, and mutating `producer.recipeId` is what the missing-recipe branch checks.
 ---
+## 2026-09-09 10:15 - US-609E5 Verify
+- Re-confirmed the Python and Ruby conversion complete on branch with no code change: the three decomposers, snapshots, guides, and catalog registrations are all present and the working tree was already clean.
+- Verification: typecheck, lint, check:boundaries (all rules), codegen:check, lint:guides, check:guide-coverage, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 708 recipe spot-check tests plus the plugin-abstraction coverage contract passed with one pre-existing skip; the django recipe guide executed green on the test provider.
+- Real-surface check: driving the registered decomposers showed django emitting web/database/cache by default and adding worker on celery=true, fastapi and rails accepting the forwarded name answer with empty provenance options, and an undeclared option on a zero-option recipe failing closed as option-type at options.<key>. Provider-free CLI init from source still writes the unchanged django Landofile and the two-line rails Gemfile, confirming the scaffold extraction moved no bytes.
+---
