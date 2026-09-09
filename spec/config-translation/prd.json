@@ -125,7 +125,7 @@
       ],
       "dependsOn": ["US-608D", "US-609B", "US-609C"],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -147,7 +147,7 @@
       "recipeIds": ["lamp", "lemp", "wordpress", "laravel", "symfony"],
       "dependsOn": ["US-609E0"],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -167,7 +167,7 @@
       "recipeIds": ["drupal", "drupal-cms", "backdrop", "joomla"],
       "dependsOn": ["US-609E0"],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -187,7 +187,7 @@
       "recipeIds": ["node-postgres", "node-api", "mean", "node-ts"],
       "dependsOn": ["US-609E0"],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

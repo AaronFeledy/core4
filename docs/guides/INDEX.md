@@ -173,6 +173,9 @@ outside `docs/guides/` so they are not gate-validated here.
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
 | `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
+| `node-postgres` | Node + Postgres walking skeleton | `recipes/node-postgres/README.mdx` | Shipped |
+| `node-api` | Node API (Express, Fastify, or Hono; optional Postgres) | `recipes/node-api/README.mdx` | Shipped |
+| `node-ts` | Node with an environment-adaptive programmatic Landofile | `recipes/node-ts/README.mdx` | Shipped |
 | `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis, rails and bundle tooling) | `recipes/rails/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)

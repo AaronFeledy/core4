@@ -1,0 +1,44 @@
+---
+id: node-postgres
+provider: test
+timeout: 60000
+tags: [recipe, node-postgres, node, postgres]
+---
+
+# Node + Postgres
+
+`lando init --recipe node-postgres` scaffolds a minimal Node.js server next to a Postgres database. There are no options beyond the app name.
+
+```sh
+lando init --recipe node-postgres --name=my-node-pg --yes
+lando start
+lando info
+```
+
+The scaffold writes three files: `.lando.yml`, `package.json`, and `server.js`. The Landofile declares a `web` service on `node:lts` that bind-mounts the app directory at `/app`, publishes port `3000:3000`, sets `NODE_ENV=development`, and runs `node /app/server.js`. It also declares a `database` service of type `postgres` that `web` waits on.
+
+`server.js` is a plain `http` server that answers `Hello from Lando` on port 3000. Replace it with your own app once you have seen it boot.
+
+`lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
+
+`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="node-postgres" display="my-node-pg" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
