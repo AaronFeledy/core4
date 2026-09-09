@@ -7,6 +7,8 @@
 - Parallel spec editing works well when partitioned by file (no two editors on one file); README topic rows go last because they cite final headings.
 - Frozen naming contract for later stories: translators `lando4` / `recipe` / `lando3` (decode-only); inputs `landofile-document-set` / `recipe-request`; diagnostics `generated | dropped | rewritten | unsupported | non-portable | needs-review`; transaction states `prepared | committing | committed | blocked`; artifacts `<file>.bak.<full-before-sha256>` and `<target>.lando-stage.<transaction-id>`; secret dispositions `secret-store` or one `postInit.stdin` / `postInit.secretEnv.<name>` sink; commands `app:config:translate --to`, `app:config:explain`, `app:config:migrate`; events `pre-restart` / `post-restart`; doctor checks `lando3-leftovers` / `lando3-shadow`; binary `lando4` / `lando4.exe` during Alpha/Beta.
 - Managed-file transactions keep the StateStore journal bucket unlocked (`lock: "none"`) while one scoped canonical-root lock covers every journal transition and filesystem mutation; transaction locks must not expire a valid live owner, but old malformed owner-owned locks remain reclaimable.
+- A Landofile value site may legitimately hold an expression the loader cannot resolve yet. Scopes still deferred at load time are shared through `LOAD_DEFERRED_EXPRESSION_SCOPES` in `landofile/src/recipe-expressions.ts`; the raw content scanner and `resolveLandofileLoadExpressions` must agree on that one list or a value passes one gate and dies at the other.
+- Resolution that reads merged file data belongs after `mergeLandofiles` and before `rejectComposeKeys`/`validateLandofile` in `loadLandofileLayers`. Per-layer validation still runs first, so a deferred expression must sit at a site whose per-file schema accepts a plain string.
 
 ## 2026-09-07 01:22 - US-608C
 - Added the private managed-file transaction coordinator with canonical-root locking, complete ordered journals, symlink and containment checks, raw-byte digests, immutable full-digest backups, exclusive owner-only stages, exact output modes, and write/removal commits through durable `prepared` → `committing` → `committed` transitions.
@@ -723,4 +725,24 @@
 - Fixed: none
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck, lint, 98 spot checks — pass
+---
+
+## 2026-09-09 14:16 - US-609E6 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Provider-free init of jekyll/hugo/eleventy/empty/toolbox wrote only `.lando.yml`; `app:config` matched the declared stacks (`ruby:3.3`+`static:nginx`, `node:lts` port 1313, `node:lts` port 8080, three-key empty, `debian:12.11-slim`). Toolbox start/info/exec succeeded (`toolbox` running, Debian 12 bookworm, no endpoints). Empty start applied 0 services. Adjacent lint of all five Landofiles, `recipes:describe` (jekyll/hugo/eleventy/empty/toolbox/lamp/rails), and `app:config:translate --list` stayed green. Destroyed the scenario apps.
+- **Out-of-scope finding:** `lando init --recipe empty --yes --answer=php=8.3` still exits 0 on the compiled public init path. README prose says an undeclared option fails; that reject lives on the staged decomposer until the US-609E public-init cutover.
+---
+
+## 2026-09-09 15:55 - US-609E (in progress)
+- Landed the generic runtime enabler the public init cutover depends on: a loaded Landofile may now carry `{{ recipe.<option> }}` value sites, and they resolve against that same file's merged `recipe.options`. Resolution reads only file data, looks up no recipe, and runs no recipe code, matching the durable scope contract.
+- Added `recipe` to the SDK `ExpressionContext` so the evaluator has a slot for the scope the authoring language already accepted, introduced `landofile/src/recipe-expressions.ts` as the owner of both the shared deferred-scope list and the post-merge materializer, and taught the raw content scanner plus the post-parse load walk to defer `recipe` the way they already deferred `app` and `proxy`.
+- Materialization skips the inert `recipe:` provenance subtree, leaves planner-owned `app`/`proxy` route hostnames untouched, and fails closed with a Landofile validation error naming the exact unresolved paths when an option is missing or the file records only a bare recipe id.
+- Verification: typecheck, lint, and check:boundaries (all rules) passed; 5 new loader tests plus 149 adjacent landofile, engine landofile/planner, and SDK expression tests passed.
+- Real-surface check: the lamp decomposer's actual emitted Landofile previously failed `lando app:config` with `Template expressions ({{ ... }}) are not supported`; it now loads and reports `type: php:8.3`, `webroot: /app`, `composer: "2"`, and `database.type: mariadb:11.4` while the route hostname stays `{{ app.name }}.{{ proxy.defaultDomain }}` for the planner.
+- **Story is NOT complete; `passes` stays false.** The registry switch, renderer/expander deletion, and README publication remain. Two independent reviews sized the remaining work well beyond one build step.
+- **Learnings for future iterations:**
+  - Object-form `recipe:` provenance was never the blocker. A Landofile carrying the full `id`/`version`/`producer`/`options` block loads and validates today; only the template expressions were rejected. Verify which half of a suspected two-part gap is real before planning for both.
+  - The enabler is still scope-incomplete for the cutover: `node-ts`'s snapshot carries `env` expressions as well as recipe ones, so the same deferred-scope list and materializer must also resolve `env` before that recipe can ship through decomposition. Recipe-only support silently leaves one of the twenty-four unplannable.
+  - Do not implement the cutover as a generic decomposer-backed `RecipeRenderer`. `runRecipeInitPipeline` already exists as the prepared replacement with the secret, diagnostic, and commit invariants; a substitute renderer would duplicate it and leave it dead. Keep prompts, preview, write plan, progress tree, and conflict handling in `initApp` and delegate the post-prompt work to the pipeline.
+  - The pipeline cannot write bundled auxiliary assets yet: `writeAuxiliaryScaffold` demands an absolute on-disk `src`, while bundled bytes live in `builtin/<id>/scaffold.ts`. It needs a content-source port, and `template: true` assets must actually render, because the mean and node-postgres package templates embed `{{ app.name }}`.
+  - Only three recipes have auxiliary assets at all (mean and node-postgres ship package.json plus server.js, rails ships a Gemfile), and `node-ts` still declares a `.lando.ts` destination that decomposition replaces with `.lando.yml`.
 ---
