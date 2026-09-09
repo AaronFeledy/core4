@@ -70,7 +70,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
 
 ## Scaffold Astro, then run it
 
-`create-astro` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`:
+`create-astro` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`. Pin a `create-astro` release you trust (this guide used `4.13.2`); bump the version when you want a newer scaffold:
 
 ```sh
 lando exec web -- npx --yes create-astro@4.13.2 webapp -- \
@@ -97,7 +97,7 @@ lando astro --help
 lando npm --version
 ```
 
-Serve through the proxy with an all-interfaces bind. Pass your app hostname to Astro so Vite accepts the Traefik `Host` header:
+Serve through the proxy with an all-interfaces bind. Use `--port 3000` so the `lando info` proxy URLs reach the app; `4321` is what the recipe writes as Astro's default. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
 
 ```sh
 lando astro dev --host 0.0.0.0 --port 3000 --allowed-hosts astro-demo.lndo.site
