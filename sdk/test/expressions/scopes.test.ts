@@ -36,4 +36,20 @@ describe("expressionTouchesOnlyScopes", () => {
     // When / Then
     expect(expressionTouchesOnlyScopes(template, allowed)).toBe(false);
   });
+
+  test("allows a pure helper over the env scope", () => {
+    // Given
+    const template = parse("{{ default(env.LANDO_NODE_VERSION, 'lts') }}");
+
+    // When / Then
+    expect(expressionTouchesOnlyScopes(template, ["env", "recipe"])).toBe(true);
+  });
+
+  test("rejects a host-reaching helper even when env is allowed", () => {
+    // Given
+    const template = parse("{{ load('./ca.pem') }}");
+
+    // When / Then
+    expect(expressionTouchesOnlyScopes(template, ["env", "recipe"])).toBe(false);
+  });
 });

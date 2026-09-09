@@ -7,15 +7,25 @@ tags: [beta, docs, landofile]
 
 # Landofile expressions
 
-Route hostnames may use two plan-time `{{ ... }}` scopes. Every other `${...}` or `{{ ... }}` expression in a Landofile is still Alpha-blocked. Lando fails closed when it sees those.
+Load-time `{{ recipe.<option> }}` and `{{ env.* }}` sites resolve when Lando reads the Landofile. Route hostnames still use plan-time `app` and `proxy`. `${...}` shell params stay blocked.
 
-What works today besides those two route scopes is a whole-file template, includes, and env overlays.
+What also works besides those scopes is a whole-file template, includes, and env overlays.
 
 ```yaml
 template: handlebars
 ```
 
-If you came here for `${VARS}` magic in env, volumes, or tooling, Alpha says not yet.
+If you came here for `${VARS}` magic in volumes or tooling, that path is still not up.
+
+## Load-time recipe and env
+
+Recipe Landofiles keep values like `php:{{ recipe.php }}`. Lando fills those from that same file's merged `recipe.options`. It does not look up a recipe plugin or run recipe code.
+
+`{{ default(env.LANDO_NODE_VERSION, 'lts') }}` reads the host environment. A missing variable fails closed unless the expression supplies a `default()`.
+
+A missing recipe option, or an unset env var with no default, is a Landofile validation error that names the YAML path.
+
+The `recipe:` block itself is provenance. Lando does not rewrite expressions inside it.
 
 ## Route hostnames
 
@@ -35,6 +45,8 @@ Services with no authored `routes:` still get `<service>.<app>.lndo.site`.
 
 These two scopes work only in route hostnames today. Do not drop `{{ app.name }}` into `environment:`, `volumes:`, or tooling. That still fails at load.
 
+Keep `env` / `recipe` and `app` / `proxy` on separate value sites. A hostname that mixes them stays literal for the planner.
+
 ## What to do instead
 
 Use `template: handlebars` or `template: mustache`, then write ordinary YAML. See [Template engines](./template-engines.mdx).
@@ -43,4 +55,4 @@ Share fragments with `includes:`. See [Includes and the lockfile](./includes-and
 
 Override config from the environment with `LANDO_CONFIG__` or `env_file:`. See [Env overrides](./env-overrides.mdx).
 
-A general expression language for Landofile values is not up.
+`${VARS}` in volumes or tooling is still not up. `load()` and `import()` stay on their own file-IO path.

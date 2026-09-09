@@ -25,6 +25,7 @@ import {
   type LandofileLoadSource,
 } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
+import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 
 export interface ResolveLandofileLoadExpressionsOptions {
   readonly value: unknown;
@@ -145,7 +146,7 @@ export const resolveLandofileLoadExpressions = (
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
           if (Either.isLeft(parsed)) throw parsed.left;
-          if (expressionTouchesOnlyScopes(parsed.right, ["app", "proxy"])) {
+          if (expressionTouchesOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)) {
             return value;
           }
           const expression = templateExpression(parsed.right);

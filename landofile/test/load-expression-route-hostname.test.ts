@@ -52,10 +52,23 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
-  test("still rejects unsupported env expressions", async () => {
+  test("keeps an env expression unevaluated for the post-merge materializer", async () => {
     await withApp(async (appRoot) => {
       // Given
-      const value = { hostname: "{{ env.HOME }}" };
+      const value = { image: "node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}" };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
+  test("still rejects expressions that reach the host", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = { hostname: "{{ which('php') }}" };
 
       // When
       const exit = await Effect.runPromiseExit(resolveValue(appRoot, value));

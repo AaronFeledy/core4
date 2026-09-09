@@ -249,15 +249,29 @@
       "notes": ""
     },
     {
+      "id": "US-609E7",
+      "title": "Enable native-load expression resolution and auxiliary content sources",
+      "description": "As the recipe cutover enabler, the native load path resolves recipe and env expression scopes and the init pipeline can source bundled auxiliary assets, so decomposer-emitted Landofiles plan and scaffold without renderer fallback.",
+      "acceptanceCriteria": [
+        "Materialize `{{ recipe.<option> }}` on the native Landofile load path per spec \u00a77.3.1: defer the `recipe` scope through raw scan and post-parse validation, resolve post-merge from that same file's merged `recipe.options` with no recipe lookup and no recipe code, skip the inert `recipe:` provenance subtree, leave planner-owned `app`/`proxy` sites untouched, and fail closed with a Landofile validation error naming each unresolved path.",
+        "Resolve the `env` expression scope on the same deferred-scope path so every expression the 24 bundled decomposer snapshots emit (including node-ts) loads and plans, with loader tests covering recipe+env mixed files.",
+        "Give the private init pipeline a content-source port so `writeAuxiliaryScaffold` can write bundled in-memory assets (mean, node-postgres, rails) without an absolute on-disk `src`, rendering `template: true` assets before write; typecheck, test, lint, and boundary gates pass."
+      ],
+      "dependsOn": ["US-609E6"],
+      "priority": 16,
+      "passes": true,
+      "notes": "Split from US-609E by adjudication (iteration 25): US-609E AC2 forbids added implementation while its registry switch depends on these unowned enabler surfaces. The recipe-scope loader materializer already on branch us-609e-recipe-init-cutover belongs to this story; env resolution and the content-source port remain."
+    },
+    {
       "id": "US-609E",
       "title": "Verify the bundled recipe conversion milestone",
       "description": "As a maintainer, the complete 24-recipe registry has aggregate evidence across six cohesive implementation batches.",
       "acceptanceCriteria": [
         "Verify the exact `core/build.config.ts` 24-id registry has one passing batch story per recipe id, current declarative snapshot, generated or existing executable README, default/nondefault coverage, and explicit auxiliary inventory.",
-        "Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no recipe-specific implementation."
+        "Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no per-recipe implementation (decomposers, snapshots, manifests, scaffold assets) and no new loader or pipeline enabler surfaces \u2014 load-path expression resolution and the auxiliary content-source port are owned by US-609E7."
       ],
-      "dependsOn": ["US-609E1", "US-609E2", "US-609E3", "US-609E4", "US-609E5", "US-609E6"],
-      "priority": 16,
+      "dependsOn": ["US-609E1", "US-609E2", "US-609E3", "US-609E4", "US-609E5", "US-609E6", "US-609E7"],
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
@@ -270,7 +284,7 @@
         "Block `.lando.ts`, includes, missing/older producer snapshots, and invalid maps from semantic comparison while still reporting bounded current facts; planner/provider/write/app-code doubles stay unused, and guide plus applicable standard gates pass."
       ],
       "dependsOn": ["US-609B", "US-609E"],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": ""
     },
@@ -285,7 +299,7 @@
         "Repeats are byte-identical no-ops, lossy fallback is forbidden, pending/blocked recovery is honored, the migration guide ships, and failure-injection plus applicable standard gates pass."
       ],
       "dependsOn": ["US-608D", "US-609B", "US-610"],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": ""
     }
