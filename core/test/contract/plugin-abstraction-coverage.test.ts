@@ -120,6 +120,9 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/recipes/node-api.decomposer.test.ts",
       "core/test/recipes/mean.decomposer.test.ts",
       "core/test/recipes/node-ts.decomposer.test.ts",
+      "core/test/recipes/astro.decomposer.test.ts",
+      "core/test/recipes/sveltekit.decomposer.test.ts",
+      "core/test/recipes/nextjs.decomposer.test.ts",
     ],
   },
   {
