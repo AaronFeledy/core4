@@ -571,3 +571,13 @@
 - Guide-Coverage-Skip: extends merge keeps private snapshot data on inheriting recipes; public init, renderers, and recipe README.mdx journeys are unchanged until the cutover story.
 - **Learnings for future iterations:** Snapshot publication for an `extends:` child is not proven by `Bun.YAML.parse` of the raw YAML. The production path is flatten-then-validate; add `snapshot` (and `migrations`) to the merge whole-value key list and assert through `parseRecipe`.
 ---
+## 2026-09-08 19:13 - US-609E2 Drift Audit
+- Trigger: 2 cycles, 2070 changed lines, 4 commits
+- Ceremony: still-bound renderers re-exported extracted scaffold constants (one unused, one test-only forwarder)
+- Dual path: render vs decomposer remains the US-609E staged cutover; not excised
+- Weakened proofs: none restored; README and provider-free init stay on the existing cutover adjudication
+- Collateral: none; only this story's passes flip
+- Fixed: deleted the render re-exports and pointed the scaffold protocol test at the owning module
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 110 spot checks — pass
+---
