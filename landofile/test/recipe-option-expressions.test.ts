@@ -186,6 +186,34 @@ describe("recipe option expressions in a loaded Landofile", () => {
       },
     );
   });
+
+  test("does not rewrite expressions inside recipe provenance", async () => {
+    await withEnv({ LANDO_SHOULD_STAY: "secret" }, async () => {
+      await withApp(
+        {
+          ".lando.yml": [
+            "name: recipeapp",
+            "runtime: 4",
+            provenance(['    php: "8.3"', '    note: "{{ env.LANDO_SHOULD_STAY }}"'].join("\n")),
+            "services:",
+            "  appserver:",
+            '    type: "php:{{ recipe.php }}"',
+            "",
+          ].join("\n"),
+        },
+        async (appRoot) => {
+          // When
+          const landofile = await Effect.runPromise(load(appRoot));
+
+          // Then
+          const services = landofile.services as Record<string, Record<string, unknown>>;
+          const recipe = landofile.recipe as { readonly options?: Record<string, unknown> };
+          expect(services.appserver?.type).toBe("php:8.3");
+          expect(recipe.options?.note).toBe("{{ env.LANDO_SHOULD_STAY }}");
+        },
+      );
+    });
+  });
 });
 
 describe("env expressions in a loaded Landofile", () => {
@@ -266,6 +294,30 @@ describe("env expressions in a loaded Landofile", () => {
         },
       );
     });
+  });
+
+  test("fails closed when a pure helper exceeds the load-time budget", async () => {
+    await withApp(
+      {
+        ".lando.yml": [
+          "name: envapp",
+          "runtime: 4",
+          "services:",
+          "  web:",
+          '    image: "{{ range(0, 50000) }}"',
+          "",
+        ].join("\n"),
+      },
+      async (appRoot) => {
+        // When
+        const exit = await Effect.runPromiseExit(load(appRoot));
+
+        // Then
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(failureMessage(exit)).toContain("services.web.image");
+        expect(failureMessage(exit)).toContain("load-time expression budget");
+      },
+    );
   });
 });
 

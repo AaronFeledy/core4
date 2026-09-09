@@ -1,4 +1,5 @@
 import {
+  type EvaluationBudget,
   evaluateTemplateEither,
   expressionTouchesOnlyScopes,
   parseExpressionEither,
@@ -21,6 +22,18 @@ export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "p
  * else in {@link LOAD_DEFERRED_EXPRESSION_SCOPES} belongs to the planner.
  */
 export const LOAD_RESOLVABLE_EXPRESSION_SCOPES: ReadonlyArray<string> = ["recipe", "env"];
+
+/**
+ * Caps one load-time recipe/env evaluation so a hostile or typo'd helper cannot
+ * allocate without bound before schema validation. Bundled snapshot sites are
+ * scalar `default()` / path reads; this is far above that and far below a hang.
+ */
+const LOAD_EXPRESSION_BUDGET: EvaluationBudget = {
+  maxSteps: 1024,
+  maxDepth: 32,
+  maxOutputBytes: 65536,
+  maxCollectionSize: 256,
+};
 
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
@@ -100,14 +113,16 @@ export const materializeLoadScopeExpressions = (
       const evaluated = evaluateTemplateEither(
         parsed.right,
         options === undefined ? { env } : { env, recipe: options },
-        { filePath },
+        { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );
       if (Either.isLeft(evaluated)) {
         unresolved.push({
           path: path.join("."),
-          reason: needsOptions
-            ? "it references a recipe option the Landofile does not set"
-            : "it references an environment variable that is not set and declares no default",
+          reason: evaluated.left.message.startsWith("Expression budget exceeded")
+            ? "it exceeds the load-time expression budget"
+            : needsOptions
+              ? "it references a recipe option the Landofile does not set"
+              : "it references an environment variable that is not set and declares no default",
         });
         return value;
       }
