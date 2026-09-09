@@ -665,3 +665,13 @@
   - A boolean option that changes only which services exist needs no expression token in the fragment. Reach for `{{ recipe.<option> }}` only when the option's text lands inside a value; a structural toggle belongs in the decomposer's branch and in one snapshot `Conditional`.
   - `lando4ConfigTranslator.encode` returns `{ text, diagnostics }`, not `{ content }`. A round-trip driver that reads `.content` fails inside `parseLandofile` with a confusing "argument must be of type string" error rather than at the encode call.
 ---
+
+## 2026-09-09 08:20 - US-609E5 Verify
+- Story verified complete on branch; no new code. A prior interrupted attempt had left the index staged as a full revert against `origin/main` while the working tree still matched HEAD; restoring the index recovered a clean tree with all three story commits intact and no content change.
+- Verification: typecheck, lint, check:boundaries (all twelve rules), codegen:check, lint:guides, check:guide-coverage, and check:guide-drift passed; 713 recipe and plugin-abstraction spot-check tests passed with one pre-existing skip. All three recipe guides executed green on the test provider through `dev:guides ... --once`.
+- Real-surface check: driving the three registered decomposers directly confirmed django defaults emit `web`/`database`/`cache` while `celery=true` adds the `worker` service, fastapi and rails accept the translator-forwarded `name` answer and publish empty provenance options, and an undeclared option on a zero-option recipe fails closed as `option-type` at `options.<key>`.
+- **Learnings for future iterations:**
+  - A branch whose `git status` shows `MM` on tracked files alongside `D ` deletions that also appear as untracked copies is not corrupted work: the index has been reset to another ref while the worktree still matches HEAD. Compare `git ls-files -s <path>` against `git rev-parse origin/main:<path>` to confirm, then plain `git reset` restores the index without touching a single byte of the worktree. Do not re-add, re-commit, or re-implement anything in that state.
+  - `git diff --cached --stat` can print nothing while `git diff --cached --name-only` lists files; trust `--raw`, which shows the real blob pairs.
+  - A decomposer driver must be run from the repo root, not `/tmp`: workspace specifiers like `@lando/sdk/secrets` only resolve inside the monorepo. `RecipeDecomposeInput` is `{ producer, options, secrets }` with the recipe's own producer object — there is no `app` field, and mutating `producer.recipeId` is what the missing-recipe branch checks.
+---
