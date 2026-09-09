@@ -205,7 +205,7 @@
       "recipeIds": ["astro", "sveltekit", "nextjs"],
       "dependsOn": ["US-609E0"],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
