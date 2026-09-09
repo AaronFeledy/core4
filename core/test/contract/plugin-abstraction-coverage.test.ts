@@ -126,6 +126,11 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/recipes/django.decomposer.test.ts",
       "core/test/recipes/fastapi.decomposer.test.ts",
       "core/test/recipes/rails.decomposer.test.ts",
+      "core/test/recipes/jekyll.decomposer.test.ts",
+      "core/test/recipes/hugo.decomposer.test.ts",
+      "core/test/recipes/eleventy.decomposer.test.ts",
+      "core/test/recipes/empty.decomposer.test.ts",
+      "core/test/recipes/toolbox.decomposer.test.ts",
     ],
   },
   {
