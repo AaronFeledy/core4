@@ -41,6 +41,7 @@ import {
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
+import { LOAD_DEFERRED_EXPRESSION_SCOPES, materializeRecipeOptionExpressions } from "./recipe-expressions.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { composeToolingIncludeEntries } from "./tooling-include-entries.ts";
 import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
@@ -86,9 +87,9 @@ const TEMPLATE_EXPRESSION_PATTERN = /\{\{/;
 const quotedStrings = (content: string): ReadonlyArray<string> =>
   [...content.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g)].map((match) => match[0]);
 
-const isAppProxyOnlyTemplate = (value: string): boolean => {
+const isDeferredScopeTemplate = (value: string): boolean => {
   const parsed = parseExpressionEither(value, { filePath: "<landofile>" });
-  return Either.isRight(parsed) && expressionTouchesOnlyScopes(parsed.right, ["app", "proxy"]);
+  return Either.isRight(parsed) && expressionTouchesOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES);
 };
 
 const scanForConfigExpression = (content: string): { description: string } | undefined => {
@@ -104,7 +105,7 @@ const scanForConfigExpression = (content: string): { description: string } | und
   const quoted = quotedStrings(withoutComments);
   for (const token of quoted) {
     const inner = token.slice(1, -1);
-    if (inner.includes("{{") && !isAppProxyOnlyTemplate(inner)) {
+    if (inner.includes("{{") && !isDeferredScopeTemplate(inner)) {
       return { description: "Template expressions ({{ ... }})" };
     }
   }
@@ -481,7 +482,18 @@ export const loadLandofileLayers = (
           ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
           ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
         };
-        return rejectComposeKeys(canonicalPath, merged)
+        const materialized = materializeRecipeOptionExpressions(merged, canonicalPath);
+        if (materialized.unresolved.length > 0) {
+          const issues = materialized.unresolved.map(({ path, reason }) => `${path} (${reason})`);
+          return Effect.fail(
+            new LandofileValidationError({
+              message: `Landofile cannot resolve recipe option expressions: ${issues.join(", ")}. Add the option under "recipe.options" or replace the expression with a literal value.`,
+              file: canonicalPath,
+              issues,
+            }),
+          );
+        }
+        return rejectComposeKeys(canonicalPath, materialized.value)
           .pipe(
             Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
             Effect.map((landofile) =>
