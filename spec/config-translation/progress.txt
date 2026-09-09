@@ -599,3 +599,11 @@
   - Auxiliary asset digests belong to the version, not the run: hash the template source with its `{{ app.name }}` token still in place. Extracting that text into a neutral `scaffold.ts` keeps the snapshot and the still-bound renderer on one source of truth and lets a provider-free init diff prove the extraction changed no bytes.
   - `expect(fragment).toEqual({ ...spread })` fails typecheck when the spread comes from a decoded record; `expect<unknown>(...)` is the repo idiom.
 ---
+
+## 2026-09-08 21:42 - US-609E3 Review
+- Zero-option Node decomposers now accept the manifest `name` prompt and omit it from provenance, so translator-forwarded app-name answers no longer fail as `option-type`.
+- Review notes (deferred/rejected): Closed-key reject for undeclared keys other than `name` stays — it is the SDK option-type proof for empty optionTypes. Filtering every extra key at the translator is US-609E cutover work. Unknown-key reject on mean/node-api — E1 already rejected that because the translator forwards all answers. Public init/renderer cutover — already adjudicated to US-609E.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed before the review fix; 26 focused decomposer tests passed.
+- Guide-Coverage-Skip: private decomposer accepts the app-name prompt already documented in recipe READMEs; public init, renderers, and README journeys are unchanged until the cutover story.
+- **Learnings for future iterations:** Empty `optionTypes` still need an unknown-key `option-type` failure for the contract suite, but must ignore the init `name` prompt. The translator currently forwards all answers, including app identity.
+---
