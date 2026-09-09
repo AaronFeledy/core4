@@ -633,3 +633,13 @@
   - Byte-parity against `origin/main` does not need a compiled binary or the sandbox: `initApp` from `core/src/cli/commands/init.ts` runs provider-free in-process, so a temp-dir driver run in a `git worktree` of `origin/main` and diffed against the same driver on the branch is a cheap, host-safe parity proof.
   - Recipes whose only structural variation is one optional service should not grow a bespoke snapshot shape. The node-api conditional-services template transfers verbatim; only ports, one environment entry, tooling names, and the default of the toggling option change.
 ---
+
+## 2026-09-08 23:50 - US-609E4 Drift Audit
+- Trigger: 1 cycle, 1604 changed lines, 2 commits
+- Dual path: render vs decomposer remains the US-609E staged cutover; not excised
+- Weakened proofs: none restored; README and provider-free init stay on the existing cutover adjudication
+- Collateral: none; only this story's passes flip
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 89 spot checks — pass
+---
