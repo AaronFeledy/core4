@@ -714,3 +714,13 @@
   - `lando4ConfigTranslator.encode` takes `{ context, fragment }` where `context` must be a complete authoring tree including `name`; passing only a fragment fails with a wall of schema output that looks like a fragment problem.
   - A byte-parity proof against origin/main needs no compiled binary: render the five recipes in a detached `git worktree` of `origin/main` with the repo's `node_modules` symlinked in, and diff the JSON of the rendered file maps.
 ---
+
+## 2026-09-09 14:09 - US-609E6 Drift Audit
+- Trigger: 1 cycle, 2142 changed lines, 4 commits
+- Dual paths: leftover renderers re-examined and left; US-609E owns the public-init cutover
+- Weakened proofs: README undeclared-option fail claim is staged-decomposer behavior; re-examined and left for US-609E with the sibling family
+- Ceremony: toolbox image extraction kept as the required cycle break
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 98 spot checks — pass
+---
