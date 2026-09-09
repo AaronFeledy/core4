@@ -116,6 +116,10 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/recipes/drupal-cms.decomposer.test.ts",
       "core/test/recipes/backdrop.decomposer.test.ts",
       "core/test/recipes/joomla.decomposer.test.ts",
+      "core/test/recipes/node-postgres.decomposer.test.ts",
+      "core/test/recipes/node-api.decomposer.test.ts",
+      "core/test/recipes/mean.decomposer.test.ts",
+      "core/test/recipes/node-ts.decomposer.test.ts",
     ],
   },
   {
@@ -169,15 +173,9 @@ const publishedMakeSuiteExports = (): ReadonlyArray<string> =>
       name.startsWith("make") && name.endsWith("ContractSuite") && !STANDALONE_MAKE_SUITE_EXPORTS.has(name),
   );
 
-const kitMakeSuiteExports = (): ReadonlySet<string> =>
-  new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
-
-const readInvocationSource = (repoRelative: string): string =>
-  readFileSync(resolve(REPO_ROOT, repoRelative), "utf8");
-
 const fileCallsExport = (repoRelative: string, exportName: string): boolean => {
   const file = resolve(REPO_ROOT, repoRelative);
-  const source = ts.createSourceFile(file, readInvocationSource(repoRelative), ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) return;
@@ -206,12 +204,11 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
 
   test("every published make*ContractSuite export is enumerated in the manifest", () => {
     const manifestMakeExports = new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
-    const KIT_MAKE_EXPORTS = kitMakeSuiteExports();
     const published = publishedMakeSuiteExports();
     for (const exportName of published) {
       expect(manifestMakeExports.has(exportName)).toBe(true);
     }
-    for (const exportName of KIT_MAKE_EXPORTS) {
+    for (const exportName of manifestMakeExports) {
       expect(published.includes(exportName)).toBe(true);
     }
   });

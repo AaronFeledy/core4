@@ -581,3 +581,39 @@
 - Split/excise decisions: none; passes remains true
 - Verification: typecheck, lint, 110 spot checks — pass
 ---
+
+## 2026-09-08 20:55 - US-609E3
+- Converted the Node application recipe family (node-postgres, node-api, mean, node-ts) to deterministic decomposition. Each recipe now ships a `RecipeDecomposer` that validates merged nonsecret options against its published `optionTypes` and emits a complete authoring fragment whose option-derived value sites are `{{ recipe.<option> }}` expressions, plus a declarative current snapshot on its manifest with a versioned `bundled` producer, serializable option descriptors, defaults, one options-scoped expression tree, and an auxiliary asset inventory.
+- Structure is decided at decomposition time rather than gated by a Landofile expression: node-api drops both the `database` service and the `api.dependsOn` edge when `database` is `none`, and mean adds `REDIS_URL`, the `cache` dependency, and the `cache` service only when `redis` is true. Token-only variation (Node version, framework name, database type, the app name inside mean's `MONGO_URL`) stays a literal expression inside the fragment and needs no snapshot conditional.
+- node-postgres and node-ts declare no recipe options, so their decomposers reject any supplied option key as `option-type` at `options.<key>`; that also gives the shared SDK contract suite the typed-option failure it requires. Their snapshots publish empty `optionTypes`/`defaults`, which the restricted recipe parser reads back as empty maps.
+- node-ts now has a YAML replacement path and never auto-generates a programmatic Landofile from it: its fragment carries the two environment fallbacks as inert authoring expressions (`node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}` and `{{ default(env.NODE_ENV, 'development') }}`) and its snapshot inventory is empty. Its postInit message is now file-name neutral so the cutover story needs no recipe-specific wording.
+- Added `builtin/snapshot-asset.ts` so node-postgres and mean can publish real auxiliary inventories for `package.json` and `server.js`. Digests hash the unrendered template source, never a rendered app-specific file, and the template text moved into neutral `<recipe>/scaffold.ts` modules that both the still-bound renderer and the snapshot consume.
+- Authored the three missing executable recipe guides (`recipes/node-postgres/README.mdx`, `recipes/node-api/README.mdx`, `recipes/node-ts/README.mdx`) and generated their scaffold Markdown. The node-ts guide is deliberately file-name neutral so it stays true after the cutover. `recipes/mean/README.mdx` already existed and needed no change.
+- Registered all four decomposers in the bundled catalog and extended the shared gates: the catalog test now covers thirteen converted recipes, the snapshot YAML round trip covers the four new snapshots through the restricted parser, the RecipeDecomposer coverage row lists the four new contract invocations, and the shipped-recipe directory list gained the three new recipe guide directories.
+- Verification: typecheck, lint, check:boundaries (all rules), codegen:check, lint:guides, and check:guide-drift passed; 88 focused tests across the four decomposer suites plus the catalog, snapshot YAML, plugin-abstraction coverage, and shipped-recipe gates passed, alongside adjacent extends, canonical-recipe, canonical-matrix, and programmatic-Landofile init suites. Provider-free `lando init` for all four recipes, including `--answer` nondefaults for node-api and mean, is byte-identical to origin/main, and registry, php-stack, init, and SDK sources are untouched.
+- Scope adjudication: as in the previous two batches, this story publishes and verifies the four replacements while the existing `render.ts` bindings stay active and byte-compatible until the milestone story performs its assigned public-init registry switch.
+- Guide-Coverage-Skip: the decomposer catalog stays a private staged replacement; public init, renderers, and the recipe README journeys document today's unchanged behavior until the cutover story.
+- **Learnings for future iterations:**
+  - A guide id is global, not per-directory: `buildFixtureInventory` resolves fixtures from `docs/guides/<id>/fixtures` for every guide carrying that id, and the scenario generator writes `test/scenarios/generated/guides/<id>/<scenario>.test.ts`. A new `recipes/<id>/README.mdx` therefore collides with any `docs/guides/<id>.mdx` that already owns fixtures. The recipe README keeps the recipe id, because `build-recipe-readmes.ts` derives its `.scaffold/` output directory from the frontmatter id, not the source path; the docs-only guide is what gets re-ided.
+  - A snapshot with empty `optionTypes`/`defaults` serializes as bare YAML keys. `Bun.YAML.parse` reads those as `null`, Lando's restricted recipe parser reads them as `{}`, and only the restricted parser is on the production path. Assert zero-option manifests with `parseRecipeYaml`, not `Bun.YAML.parse`.
+  - Auxiliary asset digests belong to the version, not the run: hash the template source with its `{{ app.name }}` token still in place. Extracting that text into a neutral `scaffold.ts` keeps the snapshot and the still-bound renderer on one source of truth and lets a provider-free init diff prove the extraction changed no bytes.
+  - `expect(fragment).toEqual({ ...spread })` fails typecheck when the spread comes from a decoded record; `expect<unknown>(...)` is the repo idiom.
+---
+
+## 2026-09-08 21:42 - US-609E3 Review
+- Zero-option Node decomposers now accept the manifest `name` prompt and omit it from provenance, so translator-forwarded app-name answers no longer fail as `option-type`.
+- Review notes (deferred/rejected): Closed-key reject for undeclared keys other than `name` stays — it is the SDK option-type proof for empty optionTypes. Filtering every extra key at the translator is US-609E cutover work. Unknown-key reject on mean/node-api — E1 already rejected that because the translator forwards all answers. Public init/renderer cutover — already adjudicated to US-609E.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed before the review fix; 26 focused decomposer tests passed.
+- Guide-Coverage-Skip: private decomposer accepts the app-name prompt already documented in recipe READMEs; public init, renderers, and README journeys are unchanged until the cutover story.
+- **Learnings for future iterations:** Empty `optionTypes` still need an unknown-key `option-type` failure for the contract suite, but must ignore the init `name` prompt. The translator currently forwards all answers, including app identity.
+---
+
+## 2026-09-08 21:54 - US-609E3 Drift Audit
+- Trigger: 2 cycles, 1868 changed lines, 5 commits
+- Dual path: render vs decomposer remains the US-609E staged cutover; not excised
+- Weakened proofs: none restored; README and provider-free init stay on the existing cutover adjudication
+- Collateral: none; only this story's passes flip
+- Fixed: none
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 90 spot checks — pass
+---

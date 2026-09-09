@@ -15,6 +15,10 @@ import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import { lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
+import { meanSnapshot } from "../../src/recipes/builtin/mean/snapshot.ts";
+import { nodeApiSnapshot } from "../../src/recipes/builtin/node-api/snapshot.ts";
+import { nodePostgresSnapshot } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
+import { nodeTsSnapshot } from "../../src/recipes/builtin/node-ts/snapshot.ts";
 import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 
@@ -28,6 +32,10 @@ const CONVERTED_RECIPE_IDS = [
   "drupal-cms",
   "backdrop",
   "joomla",
+  "node-postgres",
+  "node-api",
+  "mean",
+  "node-ts",
 ] as const;
 
 const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSnapshot>> = {
@@ -40,6 +48,10 @@ const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSn
   "drupal-cms": drupalCmsSnapshot,
   backdrop: backdropSnapshot,
   joomla: joomlaSnapshot,
+  "node-postgres": nodePostgresSnapshot,
+  "node-api": nodeApiSnapshot,
+  mean: meanSnapshot,
+  "node-ts": nodeTsSnapshot,
 };
 
 /** A value of the wrong shape for the descriptor, so every declared constraint rejects it. */
