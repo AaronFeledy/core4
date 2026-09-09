@@ -3,25 +3,43 @@ import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { Effect, Either } from "effect";
 
+import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import {
   BUILTIN_RECIPE_DECOMPOSERS,
   builtinRecipeDecomposerIds,
   lookupRecipeDecomposer,
 } from "../../src/recipes/builtin/decomposers.ts";
+import { drupalCmsSnapshot } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
+import { drupalSnapshot } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import { lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
 import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 
-const PHP_WEB_RECIPE_IDS = ["lamp", "lemp", "wordpress", "laravel", "symfony"] as const;
+const CONVERTED_RECIPE_IDS = [
+  "lamp",
+  "lemp",
+  "wordpress",
+  "laravel",
+  "symfony",
+  "drupal",
+  "drupal-cms",
+  "backdrop",
+  "joomla",
+] as const;
 
-const SNAPSHOTS: Readonly<Record<(typeof PHP_WEB_RECIPE_IDS)[number], RecipeSnapshot>> = {
+const SNAPSHOTS: Readonly<Record<(typeof CONVERTED_RECIPE_IDS)[number], RecipeSnapshot>> = {
   lamp: lampSnapshot,
   lemp: lempSnapshot,
   wordpress: wordpressSnapshot,
   laravel: laravelSnapshot,
   symfony: symfonySnapshot,
+  drupal: drupalSnapshot,
+  "drupal-cms": drupalCmsSnapshot,
+  backdrop: backdropSnapshot,
+  joomla: joomlaSnapshot,
 };
 
 /** A value of the wrong shape for the descriptor, so every declared constraint rejects it. */
@@ -31,13 +49,13 @@ const mistypedValueFor = (descriptor: RecipeOptionType): RecipeOptionValue =>
 const redactor = createStandaloneRedactor("secrets", { redactionTokens: [] });
 
 describe("bundled recipe decomposers", () => {
-  it("ships one decomposer per converted PHP web recipe", () => {
-    expect(builtinRecipeDecomposerIds()).toEqual([...PHP_WEB_RECIPE_IDS]);
-    expect(BUILTIN_RECIPE_DECOMPOSERS.size).toBe(PHP_WEB_RECIPE_IDS.length);
+  it("ships one decomposer per converted recipe", () => {
+    expect(builtinRecipeDecomposerIds()).toEqual([...CONVERTED_RECIPE_IDS]);
+    expect(BUILTIN_RECIPE_DECOMPOSERS.size).toBe(CONVERTED_RECIPE_IDS.length);
   });
 
   it("keys every decomposer by the recipe id its producer records", () => {
-    for (const recipeId of PHP_WEB_RECIPE_IDS) {
+    for (const recipeId of CONVERTED_RECIPE_IDS) {
       const factory = lookupRecipeDecomposer(recipeId);
       expect(factory).toBeDefined();
       const decomposer = factory?.({ redactor });
@@ -47,21 +65,21 @@ describe("bundled recipe decomposers", () => {
   });
 
   it("records a distinct versioned content digest for every recipe", () => {
-    const digests = PHP_WEB_RECIPE_IDS.map(
+    const digests = CONVERTED_RECIPE_IDS.map(
       (recipeId) => lookupRecipeDecomposer(recipeId)?.({ redactor }).producer.contentDigest,
     );
-    expect(new Set(digests).size).toBe(PHP_WEB_RECIPE_IDS.length);
+    expect(new Set(digests).size).toBe(CONVERTED_RECIPE_IDS.length);
     for (const digest of digests) expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
   it("returns undefined for a recipe that ships no decomposer", () => {
-    expect(lookupRecipeDecomposer("drupal")).toBeUndefined();
+    expect(lookupRecipeDecomposer("astro")).toBeUndefined();
   });
 
   it("remediates a rejected option in the shape its descriptor declares", () => {
     // Given every declared option mistyped in turn; when decomposed; then the
     // remediation names that option's own shape instead of a family-wide guess.
-    for (const recipeId of PHP_WEB_RECIPE_IDS) {
+    for (const recipeId of CONVERTED_RECIPE_IDS) {
       const decomposer = lookupRecipeDecomposer(recipeId)?.({ redactor });
       expect(decomposer).toBeDefined();
       if (decomposer === undefined) continue;

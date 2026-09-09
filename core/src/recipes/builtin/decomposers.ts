@@ -2,13 +2,14 @@
  * Bundled recipe decomposers.
  *
  * Each entry converts one bundled recipe's merged nonsecret options into
- * Landofile authoring data through the SDK `RecipeDecomposer` port. This is
- * the staged replacement catalog: public init still binds `render.ts` until
- * the decomposer catalog becomes the single registry, and the private recipe
- * translator still uses the isolated test recipe until that cutover.
+ * Landofile authoring data through the SDK `RecipeDecomposer` port.
  */
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
+import { backdropDecomposer } from "./backdrop/decomposer.ts";
+import { drupalCmsDecomposer } from "./drupal-cms/decomposer.ts";
+import { drupalDecomposer } from "./drupal/decomposer.ts";
+import { joomlaDecomposer } from "./joomla/decomposer.ts";
 import { lampDecomposer } from "./lamp/decomposer.ts";
 import { laravelDecomposer } from "./laravel/decomposer.ts";
 import { lempDecomposer } from "./lemp/decomposer.ts";
@@ -21,12 +22,14 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["wordpress", wordpressDecomposer],
   ["laravel", laravelDecomposer],
   ["symfony", symfonyDecomposer],
+  ["drupal", drupalDecomposer],
+  ["drupal-cms", drupalCmsDecomposer],
+  ["backdrop", backdropDecomposer],
+  ["joomla", joomlaDecomposer],
 ];
 
-/** Every bundled recipe id that ships a decomposer, keyed by recipe id. */
 export const BUILTIN_RECIPE_DECOMPOSERS: ReadonlyMap<string, RecipeDecomposerFactory> = new Map(DECOMPOSERS);
 
-/** Resolve a bundled decomposer factory, or `undefined` when the recipe ships none. */
 export const lookupRecipeDecomposer = (recipeId: string): RecipeDecomposerFactory | undefined =>
   BUILTIN_RECIPE_DECOMPOSERS.get(recipeId);
 

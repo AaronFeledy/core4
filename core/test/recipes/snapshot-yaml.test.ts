@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { backdropSnapshot, backdropSnapshotYaml } from "../../src/recipes/builtin/backdrop/snapshot.ts";
+import { drupalCmsSnapshot, drupalCmsSnapshotYaml } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
+import { drupalSnapshot, drupalSnapshotYaml } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { joomlaSnapshot, joomlaSnapshotYaml } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import { lampSnapshot, lampSnapshotYaml } from "../../src/recipes/builtin/lamp/snapshot.ts";
 import { laravelSnapshot, laravelSnapshotYaml } from "../../src/recipes/builtin/laravel/snapshot.ts";
 import { lempSnapshot, lempSnapshotYaml } from "../../src/recipes/builtin/lemp/snapshot.ts";
@@ -16,6 +20,10 @@ describe("recipe snapshot YAML", () => {
     ["wordpress", wordpressSnapshot, wordpressSnapshotYaml],
     ["laravel", laravelSnapshot, laravelSnapshotYaml],
     ["symfony", symfonySnapshot, symfonySnapshotYaml],
+    ["drupal", drupalSnapshot, drupalSnapshotYaml],
+    ["drupal-cms", drupalCmsSnapshot, drupalCmsSnapshotYaml],
+    ["backdrop", backdropSnapshot, backdropSnapshotYaml],
+    ["joomla", joomlaSnapshot, joomlaSnapshotYaml],
   ] as const)(
     "round-trips the published %s snapshot through the restricted parser",
     (_, snapshot, content) => {

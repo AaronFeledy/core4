@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
 import { backdropRecipeSource, backdropRecipeYaml } from "../../src/recipes/builtin/backdrop/manifest.ts";
+import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import { joomlaRecipeSource, joomlaRecipeYaml } from "../../src/recipes/builtin/joomla/manifest.ts";
+import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
 import type { GitRecipeCloner } from "../../src/recipes/git-source.ts";
 import { flattenRecipe } from "../../src/recipes/manifest/flatten.ts";
+import { mergeRecipeManifests } from "../../src/recipes/manifest/merge.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 import { parseRecipe, validateRecipeManifestObject } from "../../src/recipes/manifest/service.ts";
 
@@ -200,6 +203,7 @@ extends: definitely-not-a-recipe
       expect.arrayContaining(["php", "database", "composer", "webroot"]),
     );
     expect("extends" in exit.value).toBe(false);
+    expect(exit.value.snapshot).toEqual(backdropSnapshot);
   });
 
   test("given joomla YAML extends lamp, when parseRecipe flattens it, then id prompts and extends match the lamp child contract", async () => {
@@ -212,6 +216,37 @@ extends: definitely-not-a-recipe
       expect.arrayContaining(["php", "database", "composer", "webroot"]),
     );
     expect("extends" in exit.value).toBe(false);
+    expect(exit.value.snapshot).toEqual(joomlaSnapshot);
+  });
+});
+
+describe("mergeRecipeManifests — snapshot ownership", () => {
+  test("keeps the child snapshot and drops the parent snapshot", () => {
+    const childSnapshot = { identity: { recipeId: "child" } };
+    const merged = mergeRecipeManifests(
+      { id: "parent", snapshot: { identity: { recipeId: "parent" } } },
+      { id: "child", snapshot: childSnapshot },
+    );
+    expect(merged.id).toBe("child");
+    expect(merged.snapshot).toEqual(childSnapshot);
+  });
+
+  test("does not inherit a parent snapshot when the child omits one", () => {
+    const merged = mergeRecipeManifests(
+      { id: "parent", snapshot: { identity: { recipeId: "parent" } } },
+      { id: "child" },
+    );
+    expect(merged.id).toBe("child");
+    expect(merged.snapshot).toBeUndefined();
+  });
+
+  test("keeps child migrations without inheriting parent migrations", () => {
+    const childMigrations = [{ id: "edge-1" }];
+    const merged = mergeRecipeManifests(
+      { id: "parent", migrations: [{ id: "parent-edge" }] },
+      { id: "child", migrations: childMigrations },
+    );
+    expect(merged.migrations).toEqual(childMigrations);
   });
 });
 

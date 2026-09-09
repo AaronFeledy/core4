@@ -535,3 +535,49 @@
   - Derive an option's remediation from its descriptor rather than writing one sentence per recipe. A per-recipe blanket string silently goes wrong the moment that recipe gains an option of a different kind.
   - Deferring a dead-code removal to avoid digest churn only holds while the code stays; removing the branch and republishing the digest must land in the same change or the snapshot test fails.
 ---
+## 2026-09-08 16:25 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-08 16:35 - US-609E1 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Provider-free init of lamp/lemp/wordpress/laravel/symfony all wrote `.lando.yml` (LEMP honored `--answer php=8.2`); lamp start/info/curl succeeded (HTTP/HTTPS 200 `us609e1-ok`, PHP 8.3.33). Adjacent lint of the other four Landofiles, `app:config`, `app:config:translate --list`, and `recipes:describe drupal` stayed green. Destroyed the scenario app.
+- **Out-of-scope finding:** `lando exec appserver -- php -v` printed PHP 8.3.33 then hung until Ctrl-C. Story AC not blocked; suspected exec not closing after a one-shot command.
+- **Learnings for future iterations:** `lando start` does not accept `--yes` (`UnknownCliFlagError`); `lando destroy` does.
+---
+## 2026-09-08 17:35 - Babysit
+- PR: #932 https://github.com/AaronFeledy/core4/pull/932
+- CI outcome: pass (after fix; initial failures in static-checks/static-checks-platform, plus one flaky `bun pack` 5s timeout in unit-tests shard 3 that passed on rerun)
+- Review feedback: fixed (docs deps bumped to clear new audit advisories: astro 7.2.8, @astrojs/markdown-remark 7.2.4, js-yaml 4.3.2, sharp 0.35.4, svgo 4.1.0)
+- Merge: merged (squash)
+---
+## 2026-09-08 18:55 - US-609E2
+- Converted the PHP CMS recipe family (drupal, drupal-cms, backdrop, joomla) to deterministic decomposition. Each recipe now ships a `RecipeDecomposer` that validates merged nonsecret options against its published `optionTypes` and emits a complete authoring fragment whose option-derived value sites are `{{ recipe.<option> }}` expressions, plus a declarative current snapshot on its manifest with a versioned `bundled` producer, serializable option descriptors, defaults, one options-scoped expression tree, and an explicit empty auxiliary inventory.
+- Structural choices are decided at decomposition time rather than gated by a Landofile expression: the drupal and drupal-cms `webserver` option selects either an Apache appserver with `allowOverride`/`port`/routes or an FPM appserver plus a separate nginx `edge` service; backdrop and joomla keep lamp's composer toggle because their inherited option domain actually declares `false`; drupal and drupal-cms declare the narrower composer enum, so their composer tooling is unconditional.
+- Added `builtin/snapshot-expression.ts`. The restricted recipe-manifest YAML cannot hold the multi-line Drupal and Drupal CMS scaffold scripts, the Drupal CMS install commands, or the Backdrop settings JSON, so those values publish as `b64decode("...")` calls, an existing member of the closed snapshot helper allowlist. Base64 contains none of the characters the emitter rejects, so no manifest-parser grammar change was needed and the existing emitter rejection tests stay untouched. The readable shell and JSON sources moved into neutral `drupal/scaffold-command.ts`, `drupal-cms/commands.ts`, and `backdrop/settings.ts` modules that both the still-bound renderer and the snapshot consume.
+- Option-derived text inside those encoded strings stays authoring data rather than a snapshot conditional: the scaffold command carries `{{ recipe.drupal }}` for its major version, and the Drupal CMS install command and Backdrop settings carry `{{ app.name }}`. Only the PostgreSQL vs MySQL install command needed a real snapshot `Conditional`, keyed on the single PostgreSQL member of the declared database domain.
+- Registered all four decomposers in the bundled catalog and extended the shared gates: the catalog test now covers nine converted recipes and moves its negative lookup to a genuinely unconverted id, the snapshot YAML round trip covers the four new snapshots through the restricted parser, and the RecipeDecomposer plugin-abstraction coverage row lists the four new contract invocations.
+- Verification: typecheck, lint, check:boundaries (all twelve rules), codegen:check, lint:guides, and check:guide-drift passed; 788 spot-check tests across the recipes tree, the plugin-abstraction and translator contracts, the drupal scaffold protocol, init recipe/canonical/selection suites, recipes commands, recipe README codegen, scratch recipes, the public alpha contract, schema snapshots, and the SDK recipes tree passed with one pre-existing skip. Provider-free `lando init` for all four recipes still writes `.lando.yml` byte-identical to origin/main, including nondefault `--answer webserver=nginx --answer drupal=10` and `--answer database=postgres:16` runs. A driver encoded every decomposed fragment through the real v4 emitter and re-read it with `parseLandofile`: all four round-trip exactly, with the 44-line scaffold script, its embedded double quotes, the `{{ recipe.drupal }}` token, the pgsql install command, and the Backdrop settings JSON all intact.
+- Scope adjudication: as in the previous batch, this story publishes and verifies the four replacements while the existing `render.ts` bindings stay active and byte-compatible until the milestone story performs its assigned registry switch. The public `recipes/<id>/README.mdx` guides already exist for all four and needed no change, since neither options, tooling names, nor commands moved.
+- Guide-Coverage-Skip: the decomposer catalog stays a private staged replacement; public init, renderers, and the recipe README.mdx journeys are unchanged until the cutover story.
+- **Learnings for future iterations:**
+  - `Bun.YAML.parse` is stricter than Lando's own Landofile reader: it rejects a plain scalar starting with `@`, so `packageName: @lando/recipe-<id>` in emitted `recipe:` provenance looks broken under it. `parseLandofile` accepts it and round-trips the value exactly. Verify emitted Landofiles with `parseLandofile`, not `Bun.YAML.parse`, or you will chase a defect that does not exist.
+  - A snapshot never needs a `Conditional` for a value that only varies by option text. Leave `{{ recipe.<option> }}` or `{{ app.name }}` inside the literal; `renderRecipeSnapshot` performs no second interpolation, so the token survives into the Landofile where it belongs.
+  - Recipes that `extends:` a parent carry no prompts of their own, so their snapshot `optionTypes` must mirror the parent's declared domain. Backdrop and joomla inherit lamp's composer enum including `"false"`, which is why their composer toggle is live while drupal's is dead.
+  - Extracting a value builder out of `render.ts` into a neutral module is the cheap way to let a snapshot and a still-bound renderer share one source of truth; confirm the extraction with a provider-free init diff against the pre-change output rather than by reading the diff.
+---
+## 2026-09-08 19:03 - US-609E2 Review
+- Review-work failed on extends flatten dropping child snapshots; Bugbot flagged the same. Fixed: `mergeRecipeManifests` now keeps child `snapshot` and `migrations` as whole-value replacements with no parent fallback, and parseRecipe coverage asserts Backdrop and Joomla retain their published snapshots.
+- Review notes (deferred/rejected): Drupal/Drupal CMS module-level `primaryRoutes` array reuse — MINOR isolation nit, not AC-blocking. Public init/renderer cutover — already adjudicated to US-609E. Goal/context FAIL applied to the pre-fix commits and is resolved by this merge change.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 49 focused extends/decomposer tests passed. Post-commit Bugbot found no bugs.
+- Guide-Coverage-Skip: extends merge keeps private snapshot data on inheriting recipes; public init, renderers, and recipe README.mdx journeys are unchanged until the cutover story.
+- **Learnings for future iterations:** Snapshot publication for an `extends:` child is not proven by `Bun.YAML.parse` of the raw YAML. The production path is flatten-then-validate; add `snapshot` (and `migrations`) to the merge whole-value key list and assert through `parseRecipe`.
+---
+## 2026-09-08 19:13 - US-609E2 Drift Audit
+- Trigger: 2 cycles, 2070 changed lines, 4 commits
+- Ceremony: still-bound renderers re-exported extracted scaffold constants (one unused, one test-only forwarder)
+- Dual path: render vs decomposer remains the US-609E staged cutover; not excised
+- Weakened proofs: none restored; README and provider-free init stay on the existing cutover adjudication
+- Collateral: none; only this story's passes flip
+- Fixed: deleted the render re-exports and pointed the scaffold protocol test at the owning module
+- Split/excise decisions: none; passes remains true
+- Verification: typecheck, lint, 110 spot checks — pass
+---
