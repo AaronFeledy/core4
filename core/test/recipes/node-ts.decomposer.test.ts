@@ -83,9 +83,10 @@ describe("node-ts decomposition", () => {
   test("never generates programmatic Landofile assets or source in the replacement path", () => {
     const fragment = decompose(defaults).fragment;
     expect(nodeTsSnapshot.assets).toEqual([]);
-    expect(JSON.stringify(fragment)).not.toContain(".lando.ts");
-    expect(JSON.stringify(fragment)).not.toContain("export default");
-    expect(JSON.stringify(fragment)).not.toContain("ctx.env");
+    const serializedFragment = JSON.stringify(fragment);
+    expect(serializedFragment).not.toContain(".lando.ts");
+    expect(serializedFragment).not.toContain("export default");
+    expect(serializedFragment).not.toContain("ctx.env");
     expect(Object.keys(fragment)).toEqual(["runtime", "recipe", "services"]);
   });
 

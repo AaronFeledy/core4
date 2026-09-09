@@ -40,9 +40,6 @@ const renderLandofile = (appName: string, node: string, redis: boolean): string 
   return lines.join("\n");
 };
 
-const renderPackageJson = (appName: string): string =>
-  MEAN_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", appName);
-
 export const meanRenderer: RecipeRenderer = {
   id: MEAN_RECIPE_ID,
   render: ({ appName, answers }) => {
@@ -50,7 +47,7 @@ export const meanRenderer: RecipeRenderer = {
     const redis = answers.redis === true || answers.redis === "true";
     return new Map([
       [".lando.yml", renderLandofile(appName, node, redis)],
-      ["package.json", renderPackageJson(appName)],
+      ["package.json", MEAN_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", appName)],
       ["server.js", MEAN_SERVER_JS],
     ]);
   },
