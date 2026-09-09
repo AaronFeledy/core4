@@ -806,3 +806,19 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 35 focused tests passed across landofile recipe-option, sdk scopes, and drupal load files.
 - Guide-Coverage-Skip: internal loader escape-aware braced-form guard; expressions.mdx already documents blocked `${...}` shell params; no user-facing CLI or guide-covered public contract change.
 ---
+## 2026-09-09 16:58 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-09 18:35 - US-609E (in progress)
+- Landed the one enabler the registry switch is missing on its own terms: recipe Landofile encoding is now shared between preview and write. `encodeRecipeLandofile` holds the secret gate, decomposition, fragment validation, encode and blocking-diagnostic checks that `runRecipeInitPipeline` used inline, and `previewRecipeLandofile` exposes the same result with no filesystem effect. A previewed Landofile is byte-identical to the one the pipeline commits, and preview fails closed on `unsupported`/`non-portable` exactly like the write path.
+- This is the replacement for the renderer-derived preview that `initApp` feeds to the name-prompt chrome (`chromeForInitNamePrompt({ landofileYaml })`). Deleting the renderers removes the only current source of that string, so the cutover needs it before the switch, not after.
+- **Story is NOT complete; `passes` stays false.** Remaining, in order: switch `initApp` to `lookupRecipeDecomposer` + `runRecipeInitPipeline` + `previewRecipeLandofile`; delete `builtin/registry.ts`, all 24 `builtin/<id>/render.ts`, and `recipes/expander.ts`; retarget the init and renderer-parity suites; republish the recipe READMEs and `.scaffold/` output; run the aggregate gates.
+- Verification: typecheck, lint, and check:boundaries (all rules) passed; 42 spot-check tests across the init pipeline, bundled scaffold assets, the decomposer catalog and the lamp decomposer passed. The two new preview tests fail on the pre-change source with `Export named 'previewRecipeLandofile' not found` and pass after it.
+- **Learnings for future iterations:**
+  - Sizing note for the next Build pass: the switch is not a one-line registry swap. The pipeline commits the Landofile through the managed-file transaction and writes auxiliary files with plain writes, so generated files lose the `lando-generated` ownership markers the current `ManagedFileService` path adds; `init.canonical-recipes` pins those markers today.
+  - `node-ts` is the shape change to plan for: the pipeline filters Landofile-layer manifest entries, so init writes `.lando.yml` where the manifest still declares `.lando.ts`. `planInitWrites` must run over the effective destinations (canonical Landofile plus non-Landofile manifest dests), not over `manifest.files` verbatim, or conflict detection watches the wrong path.
+  - `initApp` must split collected answers before calling the pipeline: the pipeline fails closed at `secret-prompts` when a secret prompt name is a key in `answers`, so secret-typed prompt values belong in `secretAnswers` only.
+  - The lando4 encoder is a bundled plugin, so core may not import `@lando/lando4` directly (package-dag). Reach it through the generated composition root `core/src/plugins/generated/bundled.ts`, and prefer a lazy literal `import()` so `lando init` does not statically pull all fourteen bundled plugins.
+  - `bun run spec/config-translation/check-coordinated-plan.mjs` is red on `main` and not from this branch: the US-609E7 adjudication added the story to `prd.json` without adding it to the two markdown files, and the checker also asserts `US-609E` depends on exactly the stories carrying `recipeIds`, which the new `US-609E7` dependency breaks. Markdown parity alone will not turn it green; that rule needs a decision too.
+---
