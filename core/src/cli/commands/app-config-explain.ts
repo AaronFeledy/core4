@@ -93,8 +93,6 @@ interface SemanticComparison {
 }
 
 /**
- * Compare the current authoring document against the recipe's generated data.
- *
  * A generated site stays managed only while the current value parses to the
  * exact same expression tree. Equality of the resolved value proves nothing:
  * replacing `{{ recipe.php }}` with the same PHP version is still a takeover,
@@ -249,8 +247,6 @@ const readProvenance = (
 };
 
 /**
- * Read-only recipe provenance report.
- *
  * The canonical Landofile is parsed raw and alone: merging layers would resolve
  * `{{ recipe.<option> }}` into its value and destroy the very sites this report
  * exists to show, and following includes is forbidden outright. Nothing here

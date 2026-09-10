@@ -131,8 +131,7 @@ export const renameAfterStateMatches = (
     if (path === hunk.old || path.startsWith(`${hunk.old}.`)) return;
     const isReference = segments.includes("dependsOn") || segments.at(-1) === "service";
     if (!isReference && !value.includes("{{")) return;
-    const nextSegments = segments;
-    const next = getBySegments(context.renderedNew, nextSegments);
+    const next = getBySegments(context.renderedNew, segments);
     const mappedSegments =
       segments[0] === "services" && typeof segments[1] === "string" && context.serviceMap.has(segments[1])
         ? [segments[0], context.serviceMap.get(segments[1]) ?? segments[1], ...segments.slice(2)]

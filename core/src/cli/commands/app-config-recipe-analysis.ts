@@ -11,7 +11,6 @@ import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-li
 export const CANONICAL_LANDOFILE = ".lando.yml";
 export const PROGRAMMATIC_LANDOFILE = ".lando.ts";
 
-/** One value site whose expression reads at least one `recipe.<option>`. */
 export interface RecipeSite {
   readonly path: string;
   readonly source: string;
@@ -80,8 +79,6 @@ export const recipeOptionsInTemplate = (template: ExpressionTemplate): ReadonlyS
 };
 
 /**
- * Every value site in `value` whose expression reads a recipe option.
- *
  * The walk is deliberately syntactic: it parses but never evaluates, so a site
  * is reported exactly as the file authored it.
  */
@@ -111,7 +108,6 @@ export const collectRecipeSites = (value: unknown, filePath: string): ReadonlyAr
   return sites;
 };
 
-/** Rewrite a generated `services.<generated>` path prefix to its current name. */
 export const applyServiceMap = (path: string, serviceMap: ReadonlyMap<string, string>): string => {
   const prefix = "services.";
   if (serviceMap.size === 0 || !path.startsWith(prefix)) return path;
