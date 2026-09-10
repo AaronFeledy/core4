@@ -3,6 +3,7 @@ import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { Effect, Either } from "effect";
 
+import { buildConfig } from "../../build.config.ts";
 import { astroSnapshot } from "../../src/recipes/builtin/astro/snapshot.ts";
 import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import {
@@ -28,7 +29,6 @@ import { nodeApiSnapshot } from "../../src/recipes/builtin/node-api/snapshot.ts"
 import { nodePostgresSnapshot } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
 import { nodeTsSnapshot } from "../../src/recipes/builtin/node-ts/snapshot.ts";
 import { railsSnapshot } from "../../src/recipes/builtin/rails/snapshot.ts";
-import { builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
 import { sveltekitSnapshot } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
 import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 import { toolboxSnapshot } from "../../src/recipes/builtin/toolbox/snapshot.ts";
@@ -118,12 +118,11 @@ describe("bundled recipe decomposers", () => {
     for (const digest of digests) expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
-  it("ships a decomposer for every bundled renderer and none for an unshipped id", () => {
-    // Bundled renderer ids equal decomposer ids; looking up an id absent from
-    // the bundled registry returns undefined.
-    expect<unknown>([...builtinRecipeIds()].sort()).toEqual([...CONVERTED_RECIPE_IDS].sort());
+  it("ships a decomposer for every build-config recipe and none for an unshipped id", () => {
+    const bundledIds = buildConfig.bundledRecipes.map((recipe) => recipe.id);
+    expect<unknown>([...bundledIds].sort()).toEqual([...CONVERTED_RECIPE_IDS].sort());
     const unshipped = "unshipped-recipe";
-    expect(builtinRecipeIds()).not.toContain(unshipped);
+    expect(bundledIds).not.toContain(unshipped);
     expect(lookupRecipeDecomposer(unshipped)).toBeUndefined();
   });
 

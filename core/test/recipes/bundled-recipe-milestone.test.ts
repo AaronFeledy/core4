@@ -6,15 +6,12 @@ import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando
 import { Effect, Either } from "effect";
 
 import { buildConfig } from "../../build.config.ts";
-import {
-  BUILTIN_RECIPE_DECOMPOSERS,
-  lookupRecipeDecomposer,
-} from "../../src/recipes/builtin/decomposers.ts";
 import { astroSnapshot } from "../../src/recipes/builtin/astro/snapshot.ts";
 import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
+import { BUILTIN_RECIPE_DECOMPOSERS, lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
 import { djangoSnapshot } from "../../src/recipes/builtin/django/snapshot.ts";
-import { drupalSnapshot } from "../../src/recipes/builtin/drupal/snapshot.ts";
 import { drupalCmsSnapshot } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
+import { drupalSnapshot } from "../../src/recipes/builtin/drupal/snapshot.ts";
 import { eleventySnapshot } from "../../src/recipes/builtin/eleventy/snapshot.ts";
 import { emptySnapshot } from "../../src/recipes/builtin/empty/snapshot.ts";
 import { fastapiSnapshot } from "../../src/recipes/builtin/fastapi/snapshot.ts";
@@ -54,7 +51,7 @@ const alternateValueFor = (
   descriptor: RecipeOptionType,
   current: RecipeOptionValue | undefined,
 ): RecipeOptionValue | undefined => {
-  if (descriptor.kind === "boolean") return current === true ? false : true;
+  if (descriptor.kind === "boolean") return current !== true;
   if (descriptor.kind === "enum") return descriptor.values.find((value) => value !== current);
   return undefined;
 };
@@ -67,29 +64,29 @@ const decomposerFor = (recipeId: string) => {
 
 const SNAPSHOTS: Readonly<Record<string, RecipeSnapshot>> = {
   "node-postgres": nodePostgresSnapshot,
-  "wordpress": wordpressSnapshot,
-  "laravel": laravelSnapshot,
-  "symfony": symfonySnapshot,
-  "lamp": lampSnapshot,
-  "backdrop": backdropSnapshot,
-  "joomla": joomlaSnapshot,
-  "lemp": lempSnapshot,
+  wordpress: wordpressSnapshot,
+  laravel: laravelSnapshot,
+  symfony: symfonySnapshot,
+  lamp: lampSnapshot,
+  backdrop: backdropSnapshot,
+  joomla: joomlaSnapshot,
+  lemp: lempSnapshot,
   "node-api": nodeApiSnapshot,
-  "mean": meanSnapshot,
-  "astro": astroSnapshot,
-  "sveltekit": sveltekitSnapshot,
-  "nextjs": nextjsSnapshot,
-  "django": djangoSnapshot,
-  "drupal": drupalSnapshot,
+  mean: meanSnapshot,
+  astro: astroSnapshot,
+  sveltekit: sveltekitSnapshot,
+  nextjs: nextjsSnapshot,
+  django: djangoSnapshot,
+  drupal: drupalSnapshot,
   "drupal-cms": drupalCmsSnapshot,
-  "fastapi": fastapiSnapshot,
-  "rails": railsSnapshot,
-  "jekyll": jekyllSnapshot,
-  "hugo": hugoSnapshot,
-  "eleventy": eleventySnapshot,
-  "empty": emptySnapshot,
+  fastapi: fastapiSnapshot,
+  rails: railsSnapshot,
+  jekyll: jekyllSnapshot,
+  hugo: hugoSnapshot,
+  eleventy: eleventySnapshot,
+  empty: emptySnapshot,
   "node-ts": nodeTsSnapshot,
-  "toolbox": toolboxSnapshot,
+  toolbox: toolboxSnapshot,
 };
 
 const snapshotFor = (recipeId: string): RecipeSnapshot => {

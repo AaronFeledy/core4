@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
+import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
+import { decomposeBuiltinRecipe } from "../_support/recipe-output.ts";
 
 const SHIPPED_RECIPE_IDS = [
   "astro",
@@ -34,18 +35,14 @@ const SHIPPED_RECIPE_IDS = [
 
 const NO_PRIMARY_ROUTE_RECIPE_IDS = new Set(["toolbox", "empty"]);
 
-const PRIMARY_HOSTNAME = 'hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"';
+const PRIMARY_HOSTNAME = '"hostname":"{{ app.name }}.{{ proxy.defaultDomain }}"';
 
 const recipesRoot = resolve(import.meta.dirname, "../../../recipes");
 
-const countRouteBlocks = (landofile: string): number => landofile.match(/\broutes:/g)?.length ?? 0;
+const countRouteBlocks = (landofile: string): number => landofile.match(/"routes":/g)?.length ?? 0;
 
 const renderedLandofile = (recipeId: string): string => {
-  const renderer = BUILTIN_RECIPE_RENDERERS.get(recipeId);
-  expect(renderer, `[${recipeId}] missing registered renderer`).toBeDefined();
-  if (renderer === undefined) return "";
-  const rendered = renderer.render({ appName: "route-app", answers: {} });
-  return [...rendered.values()].join("\n");
+  return JSON.stringify(decomposeBuiltinRecipe(recipeId).fragment);
 };
 
 describe("shipped recipe directories", () => {
@@ -62,7 +59,7 @@ describe("shipped recipe directories", () => {
 
 describe("shipped recipe primary routes", () => {
   test("every web-facing recipe emits exactly one routes block; toolbox and empty emit zero", () => {
-    for (const [recipeId] of BUILTIN_RECIPE_RENDERERS) {
+    for (const [recipeId] of BUILTIN_RECIPE_DECOMPOSERS) {
       const landofile = renderedLandofile(recipeId);
       const routeBlocks = countRouteBlocks(landofile);
       if (NO_PRIMARY_ROUTE_RECIPE_IDS.has(recipeId)) {
