@@ -80,9 +80,15 @@ export const snapshot = async (path: string) => {
     await handle.close();
   }
 };
-export const sameState = (left: FileState, right: FileState): boolean =>
-  left.present === right.present &&
-  (!left.present || (right.present && left.digest === right.digest && left.mode === right.mode));
+export const sameState = (left: FileState, right: FileState): boolean => {
+  // Windows chmod only controls writability; stat synthesizes the other permission bits.
+  const modeMask = process.platform === "win32" ? 0o200 : 0o7777;
+  return (
+    left.present === right.present &&
+    (!left.present ||
+      (right.present && left.digest === right.digest && (left.mode & modeMask) === (right.mode & modeMask)))
+  );
+};
 
 export const verifyState = async (root: string, entry: Entry, state: FileState): Promise<void> => {
   const path = await targetPath(root, entry.path);
