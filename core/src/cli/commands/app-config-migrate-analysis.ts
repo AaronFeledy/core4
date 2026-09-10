@@ -156,11 +156,18 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
               break;
             }
             case "remove":
-              if (analyzed.classification === "selected")
+              if (getAtPath(renderedNew.right, hunk.path) !== undefined)
+                hunks[index] = block(analyzed, "hunk-snapshot-mismatch");
+              else if (analyzed.classification === "selected")
                 candidate = unsetAtPath(candidate, analyzed.mappedPath).next;
               break;
             case "rename":
-              if (analyzed.classification === "selected") {
+              if (analyzed.classification === "already-satisfied") {
+                const expected = getAtPath(renderedNew.right, hunk.new);
+                const actual = getAtPath(candidate, applyServiceMap(hunk.new, serviceMap));
+                if (!matchesGenerated(actual, expected) && !isDeepStrictEqual(actual, expected))
+                  hunks[index] = block(analyzed, "rename-target-collision");
+              } else if (analyzed.classification === "selected") {
                 const renamed = renameMigrationService(hunk, {
                   document: candidate,
                   renderedOld: renderedOld.right,
@@ -179,8 +186,12 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
                 }
               }
               break;
-            case "option-default":
+            case "option-default": {
+              const name = hunk.path.slice("recipe.options.".length);
+              if (!isDeepStrictEqual(hunk.new, edge.toSnapshot.defaults[name]))
+                hunks[index] = block(analyzed, "hunk-snapshot-mismatch");
               break;
+            }
             default:
               hunk satisfies never;
           }

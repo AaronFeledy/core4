@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseLandofile } from "@lando/landofile/parser";
-import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { AppConfigMigrateResultSchema, appConfigMigrate } from "../../src/cli/commands/app-config-migrate.ts";
@@ -54,29 +53,63 @@ test("fails closed when selectable hunks lack non-interactive approval", async (
   });
 });
 
-test("checks recovery before reading even when dry-run input is invalid", async () => {
+test("inspects pending recovery without locking when dry-run input is invalid", async () => {
   // Given
   const input = await setup();
   await Bun.write(join(input.cwd, ".lando.yml"), "invalid: [");
-  const blocked = new ManagedFileTransactionError({
-    reason: "blocked",
-    phase: "inspect",
-    path: input.cwd,
-    cause: "invariant",
-    remediation: "Resolve the blocked transaction.",
-  });
+  let ensured = false;
+  const report = {
+    id: "journal-1",
+    state: "blocked" as const,
+    action: "manual-resolution" as const,
+    targets: [".lando.yml"],
+  };
   // When
   const result = await Effect.runPromise(
     appConfigMigrate({ ...input, dryRun: true }).pipe(
       Effect.provideService(ManagedFileTransactionGuard, {
-        ensureConsistent: () => Effect.fail(blocked),
-        pending: () => Effect.succeed(null),
+        ensureConsistent: () =>
+          Effect.sync(() => {
+            ensured = true;
+          }),
+        pending: () => Effect.succeed(report),
       }),
       Effect.either,
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: blocked });
+  expect(ensured).toBe(false);
+  expect(result).toMatchObject({
+    _tag: "Left",
+    left: { _tag: "ManagedFileTransactionError", reason: "blocked", phase: "inspect" },
+  });
+});
+
+test("does not call ensureConsistent on a clean dry-run", async () => {
+  // Given
+  const input = await setup();
+  let ensured = false;
+  let pendingCalls = 0;
+  // When
+  const result = await Effect.runPromise(
+    appConfigMigrate({ ...input, dryRun: true, nonInteractive: true }).pipe(
+      Effect.provideService(ManagedFileTransactionGuard, {
+        ensureConsistent: () =>
+          Effect.sync(() => {
+            ensured = true;
+          }),
+        pending: () =>
+          Effect.sync(() => {
+            pendingCalls += 1;
+            return null;
+          }),
+      }),
+    ),
+  );
+  // Then
+  expect(ensured).toBe(false);
+  expect(pendingCalls).toBe(1);
+  expect(result.mode).toBe("dry-run");
 });
 
 test("writes the final producer through the coordinator when all hunks are approved", async () => {

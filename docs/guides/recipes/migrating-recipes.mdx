@@ -131,8 +131,8 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
     <Step name="write-current">
       <Run command="lando app:config:migrate --yes" />
       <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"noMutation\":\\s*\"already-current\"" } }} />
-      <Verify file=".lando.yml" expect={{ regex: "name: migrate-demo" }} />
-      <Verify file=".lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
+      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
     </Step>
     <Step name="current-cleanup">
       <Cleanup />
@@ -144,7 +144,7 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
       <UseFixture name="bare-recipe" />
       <Run command="lando app:config:migrate --dry-run" />
       <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"bare-provenance\"" } }} />
-      <Verify file=".lando.yml" expect={{ regex: "recipe: lamp" }} />
+      <Verify file="bare-recipe/.lando.yml" expect={{ regex: "recipe: lamp" }} />
     </Step>
     <Step name="bare-cleanup">
       <Cleanup />
@@ -156,7 +156,7 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
       <UseFixture name="includes-app" />
       <Run command="lando app:config:migrate --yes" />
       <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"includes-present\"" } }} />
-      <Verify file=".lando.yml" expect={{ regex: "\\./fragments/extra\\.yml" }} />
+      <Verify file="includes-app/.lando.yml" expect={{ regex: "\\./fragments/extra\\.yml" }} />
     </Step>
     <Step name="includes-cleanup">
       <Cleanup />
@@ -168,7 +168,7 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
       <UseFixture name="programmatic-app" />
       <Run command="lando app:config:migrate --yes" />
       <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"programmatic-landofile\"" } }} />
-      <Verify file=".lando.ts" expect={{ regex: "must never execute" }} />
+      <Verify file="programmatic-app/.lando.ts" expect={{ regex: "must never execute" }} />
     </Step>
     <Step name="programmatic-cleanup">
       <Cleanup />

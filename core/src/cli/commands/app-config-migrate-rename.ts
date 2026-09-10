@@ -17,6 +17,38 @@ export const matchesGenerated = (current: unknown, generated: unknown): boolean 
   return isDeepStrictEqual(current, generated);
 };
 
+const getBySegments = (root: unknown, segments: readonly (string | number)[]): unknown => {
+  let cursor: unknown = root;
+  for (const segment of segments) {
+    if (cursor === null || typeof cursor !== "object") return undefined;
+    if (typeof segment === "number") {
+      if (!Array.isArray(cursor)) return undefined;
+      cursor = cursor[segment];
+    } else {
+      if (Array.isArray(cursor)) return undefined;
+      cursor = (cursor as Record<string, unknown>)[segment];
+    }
+  }
+  return cursor;
+};
+
+const setBySegments = (root: unknown, segments: readonly (string | number)[], value: unknown): unknown => {
+  if (segments.length === 0) return value;
+  const [head, ...rest] = segments;
+  if (head === undefined) return value;
+  if (typeof head === "number") {
+    const clone = Array.isArray(root) ? [...root] : [];
+    clone[head] = setBySegments(clone[head], rest, value);
+    return clone;
+  }
+  const clone =
+    root !== null && typeof root === "object" && !Array.isArray(root)
+      ? { ...(root as Record<string, unknown>) }
+      : {};
+  clone[head] = setBySegments(clone[head], rest, value);
+  return clone;
+};
+
 /** Stage a service move and snapshot-declared reference rewrites on a private tree. */
 export const renameMigrationService = (
   hunk: Extract<RecipeMigrationHunk, { readonly kind: "rename" }>,
@@ -42,18 +74,19 @@ export const renameMigrationService = (
     }
     if (typeof value !== "string") return;
     const path = dotPath(segments);
-    const isReference =
-      segments.includes("dependsOn") || (segments[0] === "tooling" && segments.at(-1) === "service");
+    const isReference = segments.includes("dependsOn") || segments.at(-1) === "service";
     if (!isReference && !value.includes("{{")) return;
-    // The new snapshot is the authoring authority, including expression syntax.
-    const nextPath =
+    const nextSegments =
       path === hunk.old || path.startsWith(`${hunk.old}.`)
-        ? `${hunk.new}${path.slice(hunk.old.length)}`
-        : path;
-    const next = getAtPath(context.renderedNew, nextPath);
+        ? [...hunk.new.split("."), ...segments.slice(2)]
+        : segments;
+    const next = getBySegments(context.renderedNew, nextSegments);
     if (matchesGenerated(value, next)) return;
-    const mapped = applyServiceMap(path, context.serviceMap);
-    const current = getAtPath(document, mapped);
+    const mappedSegments =
+      segments[0] === "services" && typeof segments[1] === "string" && context.serviceMap.has(segments[1])
+        ? [segments[0], context.serviceMap.get(segments[1]) ?? segments[1], ...segments.slice(2)]
+        : segments;
+    const current = getBySegments(document, mappedSegments);
     const expected = isReference ? (context.serviceMap.get(value) ?? value) : value;
     if (!matchesGenerated(current, expected) || next === undefined) {
       blocked = true;
@@ -61,7 +94,7 @@ export const renameMigrationService = (
     }
     const replacement =
       isReference && typeof next === "string" ? (context.serviceMap.get(next) ?? next) : next;
-    document = setAtPath(document, mapped, replacement);
+    document = setBySegments(document, mappedSegments, replacement);
   };
   visit(context.renderedOld, []);
   if (blocked) return { kind: "blocking" };

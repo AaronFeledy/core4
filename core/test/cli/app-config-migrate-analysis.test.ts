@@ -3,12 +3,14 @@ import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { selectMigrationPath } from "@lando/sdk/recipes";
 import type { RecipeHunkClassification, RecipeProducer } from "@lando/sdk/schema";
 import { analyzeRecipeMigration } from "../../src/cli/commands/app-config-migrate-analysis.ts";
+import { renameMigrationService } from "../../src/cli/commands/app-config-migrate-rename.ts";
 import {
   conflictingSecondEdgeFixture,
   customizedOptionLandofile,
   makeMigrationFixture,
   managedLandofile,
   parseMigrationLandofile,
+  partialRenameLandofile,
   renameCollisionFixture,
   renamedServiceLandofile,
   takenOverLandofile,
@@ -34,6 +36,45 @@ const requireEdge = (edge: AnalyzedEdge | undefined): AnalyzedEdge => {
 const statuses = (edge: AnalyzedEdge | undefined) => requireEdge(edge).status;
 const classifications = (edge: AnalyzedEdge | undefined) =>
   requireEdge(edge).hunks.map((hunk) => hunk.classification);
+
+describe("service rename reference rewrite", () => {
+  test("rewrites a managed route service field with the new name", () => {
+    // Given
+    const hunk = {
+      id: "rename-database",
+      kind: "rename" as const,
+      layer: "canonical" as const,
+      path: "services.database",
+      old: "services.database",
+      new: "services.db",
+    };
+    const database = { type: "{{ recipe.database }}" };
+    const document = {
+      services: { appserver: { dependsOn: ["database"] }, database },
+      routes: { "http://db.lndo.site": { service: "database" } },
+      events: { "post-start": [{ service: "database" }] },
+    };
+    // When
+    const renamed = renameMigrationService(hunk, {
+      document,
+      renderedOld: document,
+      renderedNew: {
+        services: { appserver: { dependsOn: ["db"] }, db: database },
+        routes: { "http://db.lndo.site": { service: "db" } },
+        events: { "post-start": [{ service: "db" }] },
+      },
+      serviceMap: new Map(),
+    });
+    // Then
+    expect(renamed.kind).toBe("applied");
+    if (renamed.kind !== "applied") throw new Error("Expected the rename to apply.");
+    expect(renamed.document).toMatchObject({
+      routes: { "http://db.lndo.site": { service: "db" } },
+      events: { "post-start": [{ service: "db" }] },
+      services: { appserver: { dependsOn: ["db"] } },
+    });
+  });
+});
 
 describe("pure recipe migration analysis", () => {
   test("commits both edges in order when the app is fully managed", () => {
@@ -218,6 +259,40 @@ describe("pure recipe migration analysis", () => {
       "already-satisfied",
     ]);
     expect(result.committed).toEqual(input.target.identity);
+  });
+
+  test("blocks a partial rename whose target exists with unrelated content", () => {
+    // Given
+    const input = inputFor(partialRenameLandofile());
+    // When
+    const result = analyzeRecipeMigration(input);
+    // Then
+    expect(result.edges.map(statuses)).toEqual(["satisfied", "blocking"]);
+    expect(result.committed).toEqual(input.migrations[0].to);
+    expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
+    expect(getAtPath(result.document, "services.db")).toEqual({ type: "redis:7" });
+    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+  });
+
+  test("blocks when an option-default hunk disagrees with the new snapshot defaults", () => {
+    // Given
+    const base = inputFor();
+    const [first, second] = base.migrations;
+    if (first === undefined || second === undefined) throw new Error("Expected two migration edges.");
+    const [phpDefault, ...rest] = first.hunks;
+    if (phpDefault === undefined || phpDefault.kind !== "option-default") {
+      throw new Error("Expected the first hunk to be an option-default.");
+    }
+    const input = {
+      ...base,
+      migrations: [{ ...first, hunks: [{ ...phpDefault, new: "9.9" }, ...rest] }, second],
+    };
+    // When
+    const result = analyzeRecipeMigration(input);
+    // Then
+    expect(result.edges.map(statuses)).toEqual(["blocking", "blocking"]);
+    expect(result.committed).toBeUndefined();
+    expect(getAtPath(result.document, "recipe.options.php")).toBe("8.2");
   });
 
   test.each(["already-current", "missing-old-snapshot"] as const)(

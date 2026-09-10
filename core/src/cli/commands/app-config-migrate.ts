@@ -20,7 +20,11 @@ import { Effect, Either, Option, Schema } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
-import { AppConfigMigrateError, writeRecipeMigration } from "./app-config-migrate-write.ts";
+import {
+  AppConfigMigrateError,
+  honorMigrationJournal,
+  writeRecipeMigration,
+} from "./app-config-migrate-write.ts";
 import {
   CANONICAL_LANDOFILE,
   PROGRAMMATIC_LANDOFILE,
@@ -73,7 +77,7 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
             : new LandofileNotFoundError({ message: "Cannot discover the app Landofile.", cwd }),
       });
       const guard = yield* Effect.serviceOption(ManagedFileTransactionGuard);
-      if (Option.isSome(guard)) yield* guard.value.ensureConsistent(appRoot);
+      if (Option.isSome(guard)) yield* honorMigrationJournal(guard.value, appRoot, options.dryRun === true);
       const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
       const programmaticPath = join(appRoot, PROGRAMMATIC_LANDOFILE);
       const recipes = options.recipes ?? bundledRecipes;

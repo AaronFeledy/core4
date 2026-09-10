@@ -934,3 +934,10 @@
   - `codegen:check` reads `git status`, so a freshly regenerated `docs/reference/commands.mdx` fails the gate while it is merely uncommitted. Commit the generator's output with the change that caused it.
   - Test trees are typechecked only by root `tsc -b`, not by `--filter='@lando/core' typecheck`. Under `noUncheckedIndexedAccess`, `result.edges[0]` is possibly undefined; narrow it through a helper that throws rather than loosening the assertion.
 ---
+
+## 2026-09-10 11:45 - US-611B Review
+- Review-work failed on dry-run recovery mutation, partial rename already-satisfied, incomplete service-reference rewrites, and a failing executable guide; Bugbot found no bugs. Fixed: dry-run now inspects `pending` without locking; rename already-satisfied requires the rendered after-state; route/event `service` fields rewrite via segment walks; hunk-snapshot mismatch blocks bad option-default/remove declarations; guide `<Verify file>` paths use the UseFixture subdirectory; `prd.json` formatted.
+- Review notes (deferred/rejected): Higher-layer file walking — AC higher-layer ownership is the `layer-not-owned` block on non-canonical hunks; reading `.lando.local.yml` would break the US-610 raw-canonical-only invariant. Equal-literal already-satisfied — spec table allows exact after presence/value to satisfy. TOCTOU during confirm / symlink follow on read — §12.4.1 cooperative lock is not CAS; write containment stays in the coordinator. Re-demanding coordinator crash-injection as a migrate-owned suite — owned by US-608D; migrate maps commit errors and honors the guard.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 45 migrate/analysis/command/fixture/output tests passed; `bun run dev:guides docs/guides/recipes/migrating-recipes.mdx --once` 4/4 passed.
+- **Learnings for future iterations:** `<UseFixture name="x">` copies to `<testDir>/x` and chdirs there; `<Verify file>` is resolved from `testDir`, so the path must be `x/.lando.yml`, not `.lando.yml`.
+---

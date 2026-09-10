@@ -1,7 +1,9 @@
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
+import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
 
@@ -23,6 +25,33 @@ export class AppConfigMigrateCommitError extends Schema.TaggedError<AppConfigMig
     remediation: Schema.String,
   },
 ) {}
+
+/** Dry-run inspects journals without locking; writes recover through ensureConsistent. */
+export const honorMigrationJournal = (
+  guard: (typeof ManagedFileTransactionGuard)["Service"],
+  appRoot: string,
+  dryRun: boolean,
+) => {
+  if (!dryRun) return guard.ensureConsistent(appRoot);
+  return guard.pending(appRoot).pipe(
+    Effect.flatMap((report) =>
+      report === null
+        ? Effect.void
+        : Effect.fail(
+            new ManagedFileTransactionError({
+              reason: report.state === "blocked" ? "blocked" : "checkpoint",
+              phase: "inspect",
+              path: appRoot,
+              cause: report.state === "blocked" ? "invariant" : "interrupted-checkpoint",
+              remediation:
+                report.action === "manual-resolution"
+                  ? "Resolve the blocked transaction."
+                  : "Re-run without --dry-run so recovery can complete.",
+            }),
+          ),
+    ),
+  );
+};
 
 export const writeRecipeMigration = (appRoot: string, document: Record<string, unknown>) =>
   Effect.gen(function* () {
