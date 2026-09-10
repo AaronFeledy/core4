@@ -1,0 +1,55 @@
+import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
+import { resolveLandoRoots } from "@lando/paths";
+import { createStandaloneRedactor } from "@lando/redaction/service";
+import { emitLandofileYamlEither } from "@lando/sdk/landofile";
+import { Effect, Schema } from "effect";
+import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
+
+export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateError>()(
+  "AppConfigMigrateError",
+  {
+    message: Schema.String,
+    reason: Schema.Literal("unknown-recipe", "identity-mismatch", "confirmation-required", "encode-failed"),
+    remediation: Schema.String,
+  },
+) {}
+
+export class AppConfigMigrateCommitError extends Schema.TaggedError<AppConfigMigrateCommitError>()(
+  "AppConfigMigrateCommitError",
+  {
+    message: Schema.String,
+    phase: Schema.String,
+    reason: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export const writeRecipeMigration = (appRoot: string, document: Record<string, unknown>) =>
+  Effect.gen(function* () {
+    const content = yield* emitLandofileYamlEither(document).pipe(
+      Effect.mapError(
+        () =>
+          new AppConfigMigrateError({
+            reason: "encode-failed",
+            message: "Cannot losslessly encode the migrated Landofile.",
+            remediation: "Correct unsupported authoring values before retrying.",
+          }),
+      ),
+    );
+    const redactor = createStandaloneRedactor("secrets");
+    yield* makeManagedFileTransactions({ journalRoot: () => resolveLandoRoots().userDataRoot })
+      .run({ appRoot, operations: [{ kind: "write", path: CANONICAL_LANDOFILE, content }] })
+      .pipe(
+        Effect.mapError(
+          (error) =>
+            new AppConfigMigrateCommitError({
+              phase: error.phase,
+              reason: error.reason,
+              message: redactor.redactString(
+                `Recipe migration transaction failed (${error.phase}/${error.reason}) at ${error.path}.`,
+              ),
+              remediation: redactor.redactString(error.remediation),
+            }),
+        ),
+      );
+  });
