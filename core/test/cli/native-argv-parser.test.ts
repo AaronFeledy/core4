@@ -264,6 +264,10 @@ describe("native argv parser seam", () => {
     expect(normalizeCompiledCommandArgv(["global", "config", "set", "services.proxy.type", "lando"])).toEqual(
       ["global:config:set", "services.proxy.type", "lando"],
     );
+    expect(normalizeCompiledCommandArgv(["app", "config", "explain", "--format=json"])).toEqual([
+      "app:config:explain",
+      "--format=json",
+    ]);
     expect(normalizeCompiledCommandArgv(["meta", "global", "restart"])).toEqual(["meta:global:restart"]);
     expect(normalizeCompiledCommandArgv(["global", "rebuild"])).toEqual(["global:rebuild"]);
     expect(normalizeCompiledCommandArgv(["meta", "global", "rebuild"])).toEqual(["meta:global:rebuild"]);
