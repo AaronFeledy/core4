@@ -162,6 +162,7 @@ test("S3 commit checkpoint failure prevents auxiliary files and postInit", async
   });
   expect(error).toBeInstanceOf(RecipeInitCommitError);
   expect(error).toMatchObject({ phase: "commit", reason: "checkpoint" });
+  expect(error.message).toContain("interrupted-checkpoint");
   expect(await Bun.file(landofile).exists()).toBe(false);
   expect(await Bun.file(auxiliary).exists()).toBe(false);
   expect(calls).toEqual([]);

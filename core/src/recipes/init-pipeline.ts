@@ -255,7 +255,9 @@ export const runRecipeInitPipeline = (
             new RecipeInitCommitError({
               phase: error.phase,
               reason: error.reason,
-              message: `Recipe scaffold transaction failed (${error.phase}/${error.reason}).`,
+              message: redact(
+                `Recipe scaffold transaction failed (${error.phase}/${error.reason}): ${error.cause}${error.path === "" ? "" : ` at ${error.path}`}.`,
+              ),
               remediation: redact(error.remediation),
             }),
         ),
