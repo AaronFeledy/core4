@@ -1,0 +1,183 @@
+---
+id: sveltekit-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, sveltekit, node, postgres, mariadb]
+---
+
+# Run the SvelteKit recipe
+
+```sh
+lando init --recipe sveltekit --name=sveltekit-demo --yes
+lando start
+```
+
+`--yes` skips prompts. Defaults are Node lts, the `node` adapter hint, and no database. First start builds `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Put a SvelteKit app in after start.
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `node:lts` (or `node:22` with `--answer=node=22`), port `5173`, `SVELTEKIT_ADAPTER` set from the adapter answer |
+| `database` | omitted by default; `postgres` with `--answer=database=postgres`; `mariadb` with `--answer=database=mariadb` |
+| Tooling | `lando svelte` (`npx svelte-kit`) and `lando npm` on `web` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a database and `web` waits on that service. `SVELTEKIT_ADAPTER` is an environment hint (`node` or `auto`); install and wire the matching `@sveltejs/adapter-*` package yourself.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="sveltekit-workflow" display="sveltekit-demo" />
+      <Run command="lando init --recipe sveltekit --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"svelte\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SVELTEKIT_ADAPTER" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SVELTEKIT_ADAPTER\":\\s*\"node\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="node22-auto-postgres" render>
+    <Step name="init">
+      <Variable name="appName" value="sveltekit-workflow-pg" display="sveltekit-pg" />
+      <Run command="lando init --recipe sveltekit --name={{appName}} --yes --answer=node=22 --answer=adapter=auto --answer=database=postgres" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SVELTEKIT_ADAPTER\":\\s*\"auto\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "dependsOn" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold SvelteKit, then run it
+
+`sv create` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`. Pin an `sv` release you trust (this guide used `0.17.0`); bump the version when you want a newer scaffold:
+
+```sh
+lando exec web -- npx --yes sv@0.17.0 create webapp \
+  --template minimal \
+  --types ts \
+  --no-add-ons \
+  --install npm
+```
+
+Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. If an empty `node_modules` already exists at the root, replace it with the scaffold's tree.
+
+Confirm tooling:
+
+```sh
+lando npm --version
+lando svelte --help
+lando svelte sync
+lando npm run check
+```
+
+`lando svelte` runs `npx svelte-kit` inside `web`. Day-to-day scripts stay on npm: `dev`, `build`, `preview`, and `check`.
+
+Serve through the proxy on port `3000` (that is what Traefik targets for Node today) and allow your app hostname. Vite 8 does not accept `--allowed-hosts` on the CLI, so put `server` settings in `vite.config.ts` (swap `sveltekit-demo` for your app name):
+
+```ts
+import { defineConfig } from 'vite';
+import { sveltekit } from '@sveltejs/kit/vite';
+
+export default defineConfig({
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    allowedHosts: ['sveltekit-demo.lndo.site'],
+  },
+  plugins: [sveltekit()],
+});
+```
+
+Then:
+
+```sh
+lando npm run dev
+```
+
+Open the URL `lando info` prints. Build when you are ready:
+
+```sh
+lando npm run build
+```
+
+Prefer Node 22, adapter `auto`, and Postgres at init?
+
+```sh
+lando init --recipe sveltekit --name=sveltekit-pg --yes \
+  --answer=node=22 \
+  --answer=adapter=auto \
+  --answer=database=postgres
+```
+
+MariaDB instead:
+
+```sh
+lando init --recipe sveltekit --name=sveltekit-maria --yes \
+  --answer=database=mariadb
+```
+
+When you want a Node production adapter to match `SVELTEKIT_ADAPTER=node`:
+
+```sh
+lando npm install -D @sveltejs/adapter-node
+```
+
+Wire that adapter in your Vite / SvelteKit config the way the current SvelteKit scaffold expects, then rebuild.
+
+## Talk to Postgres
+
+When you pick `database=postgres`, the app network hostname is `database`:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Port | `5432` |
+| Database | app name (here `sveltekit-pg`) |
+| User | `lando` |
+| Password | generated when omitted; read it from `lando info` |
+
+Ping from the database service:
+
+```sh
+lando exec database -- psql -U lando -d sveltekit-pg -c 'SELECT version();'
+```
+
+Swap `sveltekit-pg` for your app name. Point your SvelteKit data layer at host `database`. Do not hardcode the password in committed app code.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [SvelteKit recipe](/recipes/sveltekit/)
+- [Add Node](../services/node.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
