@@ -159,11 +159,10 @@ describe("node-ts recipe pipeline", () => {
 
   test("encoded node-ts Landofile contains no forbidden node builtin or URL-scheme import", async () => {
     const { text: tsSource } = await previewBuiltinRecipe("node-ts", "demo-app");
-    const source = tsSource;
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];
-    for (const match of source.matchAll(importPattern)) {
+    for (const match of tsSource.matchAll(importPattern)) {
       matchedSpecifiers.push(match[1] as string);
     }
     expect(matchedSpecifiers).toEqual([]);

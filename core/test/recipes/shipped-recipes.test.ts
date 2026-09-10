@@ -41,10 +41,6 @@ const recipesRoot = resolve(import.meta.dirname, "../../../recipes");
 
 const countRouteBlocks = (landofile: string): number => landofile.match(/"routes":/g)?.length ?? 0;
 
-const renderedLandofile = (recipeId: string): string => {
-  return JSON.stringify(decomposeBuiltinRecipe(recipeId).fragment);
-};
-
 describe("shipped recipe directories", () => {
   test("recipes/ contains exactly the shipped recipe ids", async () => {
     const entries = await readdir(recipesRoot, { withFileTypes: true });
@@ -60,7 +56,7 @@ describe("shipped recipe directories", () => {
 describe("shipped recipe primary routes", () => {
   test("every web-facing recipe emits exactly one routes block; toolbox and empty emit zero", () => {
     for (const [recipeId] of BUILTIN_RECIPE_DECOMPOSERS) {
-      const landofile = renderedLandofile(recipeId);
+      const landofile = JSON.stringify(decomposeBuiltinRecipe(recipeId).fragment);
       const routeBlocks = countRouteBlocks(landofile);
       if (NO_PRIMARY_ROUTE_RECIPE_IDS.has(recipeId)) {
         expect(routeBlocks, `[${recipeId}] expected zero routes blocks`).toBe(0);

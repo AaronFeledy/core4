@@ -33,13 +33,9 @@ import { toolboxSnapshot } from "../../src/recipes/builtin/toolbox/snapshot.ts";
 import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
 
 /**
- * Aggregate milestone evidence for the bundled recipe conversion.
- *
- * Every per-recipe suite proves its own decomposer. This suite proves the set:
- * the shipped id list, a current declarative snapshot behind each id, an
- * executable README plus its generated scaffold output, an explicit auxiliary
- * inventory, and default/nondefault (or explicit no-option) coverage driven
- * through the real decomposer rather than asserted by inspection.
+ * Per-recipe suites pin individual decomposers; this suite checks the complete
+ * shipping set for snapshots, READMEs, scaffold output, auxiliary inventories,
+ * and default/nondefault or no-option behavior through the real decomposers.
  */
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
@@ -116,7 +112,6 @@ describe("bundled recipe conversion milestone", () => {
       }).toEqual({ sourceKind: "bundled", recipeId });
       expect(producer.manifestVersion).toMatch(/^\d+\.\d+\.\d+/u);
       expect(producer.contentDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
-      // The decomposer and the published snapshot must agree on identity.
       expect<unknown>(decomposerFor(recipeId).producer).toEqual(producer);
     }
   });
@@ -223,7 +218,6 @@ describe("bundled recipe conversion milestone", () => {
       );
       expect({ recipeId, ok: Either.isRight(result) }).toEqual({ recipeId, ok: true });
       if (!Either.isRight(result)) continue;
-      // The nondefault answer stays visible as a persistable option.
       expect<unknown>(result.right.provenance.options[name]).toEqual(value);
     }
   });

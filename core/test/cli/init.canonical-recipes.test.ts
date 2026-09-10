@@ -294,14 +294,12 @@ describe("lando init — canonical common-stack recipes", () => {
 
         const landofile = await discoverFrom(result.directory);
         expect(landofile.name).toBe(canonical.answers.name);
+        const manifest = bundledManifest(canonical.recipe);
         expect(landofile.recipe).toMatchObject({
           id: canonical.recipe,
-          version: bundledManifest(canonical.recipe).version,
-          producer: bundledManifest(canonical.recipe).snapshot?.identity,
-          options:
-            Object.keys(bundledManifest(canonical.recipe).snapshot?.optionTypes ?? {}).length === 0
-              ? {}
-              : result.answers,
+          version: manifest.version,
+          producer: manifest.snapshot?.identity,
+          options: Object.keys(manifest.snapshot?.optionTypes ?? {}).length === 0 ? {} : result.answers,
         });
 
         const services = landofile.services ?? {};

@@ -424,7 +424,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
     // The write plan is all-or-nothing for the auxiliary scaffold: one existing
     // destination withholds the whole set. The pipeline skips per destination,
-    // so authorized dests are withheld from it rather than filtered after.
+    // so excluded dests must be withheld before the pipeline writes anything.
     const authorized = new Set(writePlan.write);
     const pipelineManifest = {
       ...manifest,

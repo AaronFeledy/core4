@@ -108,8 +108,8 @@ interface EncodedRecipeLandofile extends RecipeLandofilePreview {
   readonly containsSecret: (value: unknown) => boolean;
 }
 
-// Decompose, validate and encode without touching disk. The write path and the
-// pre-write preview share this, so a previewed Landofile is the committed one.
+// Preview and commit share validation and encoding; prompt answers can change
+// between the preview and the write.
 const encodeRecipeLandofile = (
   request: RecipeLandofilePreviewRequest & {
     readonly appRoot?: string;
