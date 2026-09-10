@@ -10,6 +10,7 @@ export * from "./provenance.ts";
 export * from "./snapshot-template.ts";
 export {
   canonicalJson,
+  classifyHunk,
   deriveHunkId,
   selectMigrationPath,
   validateMigrationChain,

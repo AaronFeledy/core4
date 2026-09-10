@@ -1,8 +1,8 @@
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { LandofileFormConflictError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
-import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
+import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { parseExpressionEither } from "@lando/sdk/expressions";
 import {
   isBareRecipeReference,
   renderRecipeSnapshot,
@@ -13,11 +13,20 @@ import { sameRecipeVersion } from "@lando/sdk/schema";
 import { Effect, Either } from "effect";
 
 import { getAtPath } from "@lando/engine/config-write/dot-path";
-import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-live";
 import { parseLandofile } from "@lando/landofile/parser";
 
 import { lookupRecipeSnapshot } from "../../recipes/builtin/snapshots.ts";
 import type { AppConfigExplainResult, ExplainBlockedReason } from "./app-config-explain-output.ts";
+import {
+  CANONICAL_LANDOFILE,
+  PROGRAMMATIC_LANDOFILE,
+  applyServiceMap,
+  collectRecipeSites,
+  discoverRecipeAnalysisRoot,
+  generatedServiceNames,
+  provenanceWithoutServiceMap,
+  renderCurrentValue,
+} from "./app-config-recipe-analysis.ts";
 
 export {
   AppConfigExplainResultSchema,
@@ -32,20 +41,9 @@ export interface AppConfigExplainOptions {
 
 export type AppConfigExplainError = LandofileNotFoundError | LandofileParseError;
 
-const CANONICAL_LANDOFILE = ".lando.yml";
-const PROGRAMMATIC_LANDOFILE = ".lando.ts";
-
 type ExplainComparison = AppConfigExplainResult["comparison"];
 type ExplainReference = AppConfigExplainResult["options"][number]["references"][number];
 type ExplainTakenOverSite = AppConfigExplainResult["options"][number]["takenOver"][number];
-
-/** One value site whose expression reads at least one `recipe.<option>`. */
-interface RecipeSite {
-  readonly path: string;
-  readonly source: string;
-  readonly template: ExpressionTemplate;
-  readonly options: ReadonlySet<string>;
-}
 
 const REMEDIATION: Readonly<Record<ExplainBlockedReason, string>> = {
   "no-recipe": "Only a Landofile written by `lando init` from a recipe records provenance to explain.",
@@ -71,113 +69,6 @@ const blocked = (reason: ExplainBlockedReason, detail: string): ExplainCompariso
   remediation: REMEDIATION[reason],
 });
 
-/** Dotted path in the grammar `getAtPath` reads: `services.web.env`, `tooling.test.cmds[0]`. */
-const dotPath = (segments: ReadonlyArray<string | number>): string =>
-  segments.reduce<string>(
-    (accumulator, segment) =>
-      typeof segment === "number"
-        ? `${accumulator}[${segment}]`
-        : accumulator === ""
-          ? segment
-          : `${accumulator}.${segment}`,
-    "",
-  );
-
-const collectRecipeOptionNames = (node: ExpressionNode, into: Set<string>): void => {
-  switch (node.kind) {
-    case "Path": {
-      const first = node.segments[0];
-      if (node.head === "recipe" && first?.type === "prop") into.add(first.name);
-      for (const segment of node.segments) {
-        if (segment.type === "dynamic") collectRecipeOptionNames(segment.expr, into);
-      }
-      return;
-    }
-    case "Access": {
-      collectRecipeOptionNames(node.target, into);
-      for (const segment of node.segments) {
-        if (segment.type === "dynamic") collectRecipeOptionNames(segment.expr, into);
-      }
-      return;
-    }
-    case "ArrayLiteral": {
-      for (const element of node.elements) collectRecipeOptionNames(element, into);
-      return;
-    }
-    case "ObjectLiteral": {
-      for (const entry of node.entries) collectRecipeOptionNames(entry.value, into);
-      return;
-    }
-    case "Call": {
-      for (const argument of node.args) collectRecipeOptionNames(argument, into);
-      return;
-    }
-    case "Conditional": {
-      collectRecipeOptionNames(node.test, into);
-      collectRecipeOptionNames(node.consequent, into);
-      collectRecipeOptionNames(node.alternate, into);
-      return;
-    }
-    default:
-      return;
-  }
-};
-
-const recipeOptionsInTemplate = (template: ExpressionTemplate): ReadonlySet<string> => {
-  const names = new Set<string>();
-  for (const segment of template.segments) {
-    if (segment.kind === "InterpolationSegment") collectRecipeOptionNames(segment.expression, names);
-  }
-  return names;
-};
-
-/**
- * Every value site in `value` whose expression reads a recipe option.
- *
- * The walk is deliberately syntactic: it parses but never evaluates, so a site
- * is reported exactly as the file authored it.
- */
-const collectRecipeSites = (value: unknown, filePath: string): ReadonlyArray<RecipeSite> => {
-  const sites: RecipeSite[] = [];
-  const visit = (current: unknown, path: ReadonlyArray<string | number>): void => {
-    if (typeof current === "string") {
-      if (!current.includes("{{")) return;
-      const parsed = parseExpressionEither(current, { filePath });
-      if (Either.isLeft(parsed)) return;
-      const options = recipeOptionsInTemplate(parsed.right);
-      if (options.size === 0) return;
-      sites.push({ path: dotPath(path), source: current, template: parsed.right, options });
-      return;
-    }
-    if (Array.isArray(current)) {
-      current.forEach((entry, index) => visit(entry, [...path, index]));
-      return;
-    }
-    if (typeof current === "object" && current !== null) {
-      for (const [key, entry] of Object.entries(current as Record<string, unknown>)) {
-        visit(entry, [...path, key]);
-      }
-    }
-  };
-  visit(value, []);
-  return sites;
-};
-
-/** Rewrite a generated `services.<generated>` path prefix to its current name. */
-const applyServiceMap = (path: string, serviceMap: ReadonlyMap<string, string>): string => {
-  const prefix = "services.";
-  if (serviceMap.size === 0 || !path.startsWith(prefix)) return path;
-  const rest = path.slice(prefix.length);
-  const dot = rest.indexOf(".");
-  const bracket = rest.indexOf("[");
-  const end = Math.min(dot === -1 ? rest.length : dot, bracket === -1 ? rest.length : bracket);
-  const current = serviceMap.get(rest.slice(0, end));
-  return current === undefined ? path : `${prefix}${current}${rest.slice(end)}`;
-};
-
-const renderCurrentValue = (value: unknown): string =>
-  value === undefined ? "(absent)" : (JSON.stringify(value) ?? "null");
-
 const readOptions = (
   provenance: LandofileRecipeProvenance | undefined,
 ): ReadonlyMap<string, RecipeOptionValue> => {
@@ -194,36 +85,6 @@ const readDefaults = (snapshot: RecipeSnapshot | undefined): ReadonlyMap<string,
   return defaults;
 };
 
-const generatedServiceNames = (rendered: unknown): ReadonlySet<string> => {
-  if (typeof rendered !== "object" || rendered === null) return new Set();
-  const services = (rendered as { readonly services?: unknown }).services;
-  if (typeof services !== "object" || services === null || Array.isArray(services)) return new Set();
-  return new Set(Object.keys(services as Record<string, unknown>));
-};
-
-/** Independently readable identity and options when only the service map is unusable. */
-const provenanceWithoutServiceMap = (raw: unknown): LandofileRecipeProvenance | undefined => {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
-  const rest = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "services"));
-  const retried = validateLandofileRecipeProvenance(rest);
-  if (Either.isLeft(retried) || isBareRecipeReference(retried.right)) return undefined;
-  return retried.right;
-};
-
-const discoverExplainRoot = async (
-  cwd: string,
-): Promise<{ readonly appRoot: string; readonly dualForm: boolean }> => {
-  try {
-    const found = await findDiscoveredLandofilePath(cwd);
-    return { appRoot: found.appRoot, dualForm: false };
-  } catch (cause) {
-    if (cause instanceof LandofileFormConflictError) {
-      return { appRoot: dirname(cause.yamlPath), dualForm: true };
-    }
-    throw cause;
-  }
-};
-
 interface SemanticComparison {
   readonly comparison: ExplainComparison;
   /** Generated sites keyed by option name, empty unless the comparison matched. */
@@ -232,8 +93,6 @@ interface SemanticComparison {
 }
 
 /**
- * Compare the current authoring document against the recipe's generated data.
- *
  * A generated site stays managed only while the current value parses to the
  * exact same expression tree. Equality of the resolved value proves nothing:
  * replacing `{{ recipe.php }}` with the same PHP version is still a takeover,
@@ -388,8 +247,6 @@ const readProvenance = (
 };
 
 /**
- * Read-only recipe provenance report.
- *
  * The canonical Landofile is parsed raw and alone: merging layers would resolve
  * `{{ recipe.<option> }}` into its value and destroy the very sites this report
  * exists to show, and following includes is forbidden outright. Nothing here
@@ -401,7 +258,7 @@ export const appConfigExplain = (
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const discovered = yield* Effect.tryPromise({
-      try: () => discoverExplainRoot(cwd),
+      try: () => discoverRecipeAnalysisRoot(cwd),
       catch: (cause) =>
         cause instanceof LandofileNotFoundError
           ? cause

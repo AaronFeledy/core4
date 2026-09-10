@@ -70,6 +70,19 @@ Report recipe provenance and which generated value sites are still managed.
 
 Validate the current app's Landofile against the canonical schema.
 
+## `lando app:config:migrate`
+
+Migrate managed recipe configuration through satisfied recipe history.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Preview every migration hunk without writing. |
+| `--no-interactive` | Never prompt for migration approval. |
+| `--yes, -y` | Approve selectable migration hunks. |
+
 ## `lando app:config:set`
 
 Set a value in the app's Landofile.

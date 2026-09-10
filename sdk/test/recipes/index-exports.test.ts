@@ -8,6 +8,7 @@ test("recipes exports every public helper", () => {
       "SNAPSHOT_RENDER_BUDGET",
       "approvedSecretReferencesOnly",
       "canonicalJson",
+      "classifyHunk",
       "computeRecipeContentDigest",
       "collectSnapshotTemplateViolations",
       "deriveHunkId",

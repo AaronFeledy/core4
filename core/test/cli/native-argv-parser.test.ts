@@ -268,6 +268,11 @@ describe("native argv parser seam", () => {
       "app:config:explain",
       "--format=json",
     ]);
+    expect(normalizeCompiledCommandArgv(["app", "config", "migrate", "--dry-run", "--yes"])).toEqual([
+      "app:config:migrate",
+      "--dry-run",
+      "--yes",
+    ]);
     expect(normalizeCompiledCommandArgv(["meta", "global", "restart"])).toEqual(["meta:global:restart"]);
     expect(normalizeCompiledCommandArgv(["global", "rebuild"])).toEqual(["global:rebuild"]);
     expect(normalizeCompiledCommandArgv(["meta", "global", "rebuild"])).toEqual(["meta:global:rebuild"]);
