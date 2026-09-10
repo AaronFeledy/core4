@@ -401,7 +401,7 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
       'echo "$1" "$2"',
     ].join("\n");
 
-  const withTooling = (cmd: string, options: string, extra: ReadonlyArray<string> = []) =>
+  const withTooling = (cmd: string, options: string) =>
     [
       "name: recipeapp",
       "runtime: 4",
@@ -409,7 +409,6 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
       "services:",
       "  appserver:",
       '    type: "php:8.3"',
-      ...extra,
       "tooling:",
       "  scaffold:",
       "    service: appserver",

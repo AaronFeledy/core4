@@ -92,7 +92,6 @@ const withInertShellText = (template: ExpressionTemplate): ExpressionTemplate =>
 export interface UnresolvedLoadScopeExpression {
   /** Dotted path of the value site holding the expression. */
   readonly path: string;
-  /** Why the site could not be resolved. */
   readonly reason: string;
 }
 
@@ -169,14 +168,15 @@ export const materializeLoadScopeExpressions = (
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );
       if (Either.isLeft(evaluated)) {
-        unresolved.push({
-          path: path.join("."),
-          reason: evaluated.left.message.startsWith("Expression budget exceeded")
-            ? "it exceeds the load-time expression budget"
-            : needsOptions
-              ? "it references a recipe option the Landofile does not set"
-              : "it references an environment variable that is not set and declares no default",
-        });
+        let reason: string;
+        if (evaluated.left.message.startsWith("Expression budget exceeded")) {
+          reason = "it exceeds the load-time expression budget";
+        } else if (needsOptions) {
+          reason = "it references a recipe option the Landofile does not set";
+        } else {
+          reason = "it references an environment variable that is not set and declares no default";
+        }
+        unresolved.push({ path: path.join("."), reason });
         return value;
       }
       return evaluated.right;
