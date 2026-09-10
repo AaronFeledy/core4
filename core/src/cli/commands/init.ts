@@ -3,8 +3,9 @@ import { join, resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
+import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { InitTargetExistsError } from "@lando/sdk/errors";
-import type { FileFormat, PromptBatchOptions, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
+import type { PromptBatchOptions, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 import { type ConfigTranslatorShape, RecipeManifestService } from "@lando/sdk/services";
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 
@@ -47,18 +48,6 @@ const loadRecipeEncoder = async (): Promise<ConfigTranslatorShape> => {
   const loader = module?.configTranslators?.get("lando4");
   if (loader === undefined) throw new Error("Missing bundled lando4 encoder.");
   return loader();
-};
-
-// Code files map to js/ts so their ownership marker is a valid `//` line, not a
-// `#` that would corrupt the scaffolded source.
-export const inferRecipeScaffoldFormat = (dest: string): FileFormat => {
-  if (dest.endsWith(".lando.yml") || dest.endsWith(".lando.yaml")) return "landofile";
-  if (dest.endsWith(".yml") || dest.endsWith(".yaml")) return "yaml";
-  if (dest.endsWith(".json")) return "json";
-  if (dest.endsWith(".js") || dest.endsWith(".cjs") || dest.endsWith(".mjs")) return "javascript";
-  if (dest.endsWith(".ts") || dest.endsWith(".cts") || dest.endsWith(".mts")) return "typescript";
-  if (dest.endsWith(".env")) return "env";
-  return "text";
 };
 
 const sortedRecipeCatalog = () =>
@@ -364,14 +353,22 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const existing = new Set<string>();
   const scaffoldDests = files
     .map((file) => file.dest)
-    .filter((dest) => dest !== ".lando.yml" && dest !== ".lando.ts");
-  const effectiveDests = [".lando.yml", ...scaffoldDests];
+    .filter((dest) => dest !== LANDOFILE_NAME && dest !== LANDOFILE_TS_NAME);
+  const effectiveDests = [LANDOFILE_NAME, ...scaffoldDests];
+  // Probe every Landofile form the loader would treat as this app, not only
+  // the dest init writes. An existing .lando.ts must conflict so we never
+  // drop a sibling .lando.yml beside it.
+  const landofileForms = [LANDOFILE_NAME, LANDOFILE_TS_NAME] as const;
   await Promise.all(
-    effectiveDests.map(async (dest) => {
+    [...new Set([...effectiveDests, ...landofileForms])].map(async (dest) => {
       if (await Bun.file(join(directory, dest)).exists()) existing.add(dest);
     }),
   );
-  const writePlan = planInitWrites(effectiveDests, existing);
+  const existingLandofile = landofileForms.find((dest) => existing.has(dest));
+  const writePlan = planInitWrites(
+    existingLandofile === undefined ? effectiveDests : [existingLandofile, ...scaffoldDests],
+    existing,
+  );
   const filesToWrite = writePlan.write;
   const postInitActions = (manifest.postInit ?? []).filter(
     (action) => writePlan.skippedScaffold.length === 0 || action.type === "message",
@@ -432,7 +429,8 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     const pipelineManifest = {
       ...manifest,
       files: files.filter(
-        (file) => file.dest === ".lando.yml" || file.dest === ".lando.ts" || authorized.has(file.dest),
+        (file) =>
+          file.dest === LANDOFILE_NAME || file.dest === LANDOFILE_TS_NAME || authorized.has(file.dest),
       ),
     };
 

@@ -853,17 +853,16 @@ const makeScratchAppService = (
       }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
-      const content = yield* fileSystem.readText(landofilePath).pipe(
+      const landofile = yield* withProcessCwd(scratchPaths.root, () =>
+        loadCurrentLandofile(landofileService),
+      ).pipe(
         Effect.mapError((cause) =>
           scratchAppError(
             "materialize",
-            `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+            `Unable to load the rendered scratch Landofile at ${landofilePath}.`,
             cause,
           ),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root).pipe(
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
       const recipeLandofile = { ...landofile, name: scratchId };

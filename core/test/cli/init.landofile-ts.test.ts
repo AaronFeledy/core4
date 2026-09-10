@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
 import { type LandofileShape, ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
+import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
@@ -118,6 +119,28 @@ const planLandofile = (landofile: LandofileShape) =>
   );
 
 describe("node-ts recipe pipeline", () => {
+  test("refuses when a TypeScript Landofile already exists at the destination", async () => {
+    await withTempCwd(async (dir) => {
+      const destination = join(dir, "existing");
+      await mkdir(destination);
+      await Bun.write(join(destination, ".lando.ts"), 'export default { name: "already" };\n');
+
+      await expect(
+        initApp({
+          cwd: dir,
+          destination,
+          full: false,
+          recipe: "lamp",
+          name: "existing",
+          nonInteractive: true,
+          runPostInit: false,
+        }),
+      ).rejects.toBeInstanceOf(InitTargetExistsError);
+      expect(await Bun.file(join(destination, ".lando.yml")).exists()).toBe(false);
+      expect(await Bun.file(join(destination, ".lando.ts")).text()).toContain("already");
+    });
+  });
+
   test("emits exactly one canonical Landofile at .lando.yml", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({

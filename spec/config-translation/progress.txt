@@ -872,3 +872,11 @@
   - Option-derived value sites stay `{{ recipe.<option> }}` in the written file; the literal lives under `recipe.options` and the loader resolves it. A test that used to read a literal out of the emitted YAML must now either load the file or assert the provenance option plus the expression site - retargeting it to the resolved surface is not a weakened assertion.
   - `initApp` remains the only public bind site, so the switch is one lookup plus one pipeline call. The cost is in the write semantics underneath it, not the call graph.
 ---
+
+## 2026-09-09 22:40 - US-609E Review
+- Review-work failed on scratch planning and a secret-return nit; Bugbot flagged a high init conflict. Fixed: init now treats an existing `.lando.ts` as a Landofile conflict so it cannot drop `.lando.yml` beside it, and recipe-mode scratch loads through the existing user-Landofile path so `{{ recipe.* }}` sites resolve before plan.
+- Review notes (deferred/rejected): InitAppResult still returns collected prompt answers including secrets — no bundled recipe declares secret prompts and CLI output does not expose that object. Transaction TOCTOU overwrite after preflight — cooperative lock is not CAS (US-608C/D), not an AC. Full `bun test` — loop forbids the full suite; uninstall-runtime-service failures are unchanged from origin/main. Coordinated-plan markdown/JSON mismatch — already recorded as a human-owned spec-tree gap. node-ts manifest still advertising `.lando.ts` — per-recipe metadata owned by US-609E3, not this cutover.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 30 init/milestone and 61 scratch spot checks passed.
+- Guide-Coverage-Skip: review repaired init conflict detection and scratch load reuse; no new user-facing init flag or recipe README contract.
+- **Learnings for future iterations:** After init writes expression-bearing Landofiles, any consumer that raw-parses `.lando.yml` will plan `php:{{ recipe.php }}`. Reuse `loadUserLandofile` / discover, do not add a second materializer.
+---
