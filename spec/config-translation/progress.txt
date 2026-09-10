@@ -941,3 +941,9 @@
 - Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 45 migrate/analysis/command/fixture/output tests passed; `bun run dev:guides docs/guides/recipes/migrating-recipes.mdx --once` 4/4 passed.
 - **Learnings for future iterations:** `<UseFixture name="x">` copies to `<testDir>/x` and chdirs there; `<Verify file>` is resolved from `testDir`, so the path must be `x/.lando.yml`, not `.lando.yml`.
 ---
+
+## 2026-09-10 12:05 - US-611B Review
+- Post-commit Bugbot: already-satisfied rename now requires every managed reference to already match the rendered after-state, not just a present target key.
+- Review notes (deferred/rejected): none new.
+- Verification: typecheck, lint passed; 25 migrate analysis/command tests passed.
+---

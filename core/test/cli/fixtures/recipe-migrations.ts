@@ -200,6 +200,11 @@ export const partialRenameLandofile = (): string =>
     '  database:\n    type: "{{ recipe.database }}"\n',
     "  db:\n    type: redis:7\n",
   );
+export const staleRenameRefsLandofile = (): string =>
+  managedLandofile().replace(
+    '  database:\n    type: "{{ recipe.database }}"\n',
+    '  db:\n    type: "{{ recipe.database }}"\n',
+  );
 export const parseMigrationLandofile = (text: string) => {
   const document = Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
     Bun.YAML.parse(text),

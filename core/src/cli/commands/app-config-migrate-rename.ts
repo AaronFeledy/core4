@@ -105,3 +105,46 @@ export const renameMigrationService = (
   }
   return { kind: "applied", document };
 };
+
+/** True when the document already holds the rendered after-state, including renamed refs. */
+export const renameAfterStateMatches = (
+  hunk: Extract<RecipeMigrationHunk, { readonly kind: "rename" }>,
+  context: {
+    readonly document: unknown;
+    readonly renderedOld: unknown;
+    readonly renderedNew: unknown;
+    readonly serviceMap: ReadonlyMap<string, string>;
+  },
+): boolean => {
+  let matches = true;
+  const visit = (value: unknown, segments: readonly (string | number)[]): void => {
+    if (Array.isArray(value)) {
+      value.forEach((entry: unknown, index) => visit(entry, [...segments, index]));
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const [key, entry] of Object.entries(value)) visit(entry, [...segments, key]);
+      return;
+    }
+    if (typeof value !== "string") return;
+    const path = dotPath(segments);
+    if (path === hunk.old || path.startsWith(`${hunk.old}.`)) return;
+    const isReference = segments.includes("dependsOn") || segments.at(-1) === "service";
+    if (!isReference && !value.includes("{{")) return;
+    const nextSegments = segments;
+    const next = getBySegments(context.renderedNew, nextSegments);
+    const mappedSegments =
+      segments[0] === "services" && typeof segments[1] === "string" && context.serviceMap.has(segments[1])
+        ? [segments[0], context.serviceMap.get(segments[1]) ?? segments[1], ...segments.slice(2)]
+        : segments;
+    const current = getBySegments(context.document, mappedSegments);
+    if (next === undefined || (!matchesGenerated(current, next) && !isDeepStrictEqual(current, next)))
+      matches = false;
+  };
+  visit(context.renderedOld, []);
+  if (/^services\.[^.\[]+$/.test(hunk.old) && /^services\.[^.\[]+$/.test(hunk.new)) {
+    const mapped = getAtPath(context.document, dotPath(["recipe", "services", hunk.old.slice(9)]));
+    if (mapped !== hunk.new.slice(9)) matches = false;
+  }
+  return matches;
+};

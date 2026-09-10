@@ -15,7 +15,11 @@ import type {
 } from "@lando/sdk/schema";
 import { Either } from "effect";
 import type { MigrateHunkBlockReason, MigrateHunkResult } from "./app-config-migrate-output.ts";
-import { matchesGenerated, renameMigrationService } from "./app-config-migrate-rename.ts";
+import {
+  matchesGenerated,
+  renameAfterStateMatches,
+  renameMigrationService,
+} from "./app-config-migrate-rename.ts";
 import { applyServiceMap, collectRecipeSites } from "./app-config-recipe-analysis.ts";
 
 export type RecipeMigrationAnalysisInput = {
@@ -165,7 +169,16 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
               if (analyzed.classification === "already-satisfied") {
                 const expected = getAtPath(renderedNew.right, hunk.new);
                 const actual = getAtPath(candidate, applyServiceMap(hunk.new, serviceMap));
-                if (!matchesGenerated(actual, expected) && !isDeepStrictEqual(actual, expected))
+                const refsMatch = renameAfterStateMatches(hunk, {
+                  document: candidate,
+                  renderedOld: renderedOld.right,
+                  renderedNew: renderedNew.right,
+                  serviceMap,
+                });
+                if (
+                  (!matchesGenerated(actual, expected) && !isDeepStrictEqual(actual, expected)) ||
+                  !refsMatch
+                )
                   hunks[index] = block(analyzed, "rename-target-collision");
               } else if (analyzed.classification === "selected") {
                 const renamed = renameMigrationService(hunk, {

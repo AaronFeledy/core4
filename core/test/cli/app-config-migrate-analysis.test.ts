@@ -13,6 +13,7 @@ import {
   partialRenameLandofile,
   renameCollisionFixture,
   renamedServiceLandofile,
+  staleRenameRefsLandofile,
   takenOverLandofile,
 } from "./fixtures/recipe-migrations.ts";
 
@@ -259,6 +260,19 @@ describe("pure recipe migration analysis", () => {
       "already-satisfied",
     ]);
     expect(result.committed).toEqual(input.target.identity);
+  });
+
+  test("blocks a pre-moved service whose managed references still use the old name", () => {
+    // Given
+    const input = inputFor(staleRenameRefsLandofile());
+    // When
+    const result = analyzeRecipeMigration(input);
+    // Then
+    expect(result.edges.map(statuses)).toEqual(["satisfied", "blocking"]);
+    expect(result.committed).toEqual(input.migrations[0].to);
+    expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
+    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "tooling.mysql.service")).toBe("database");
   });
 
   test("blocks a partial rename whose target exists with unrelated content", () => {
