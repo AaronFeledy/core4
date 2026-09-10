@@ -1,7 +1,7 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { LandofileFormConflictError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import {
   isBareRecipeReference,
@@ -201,6 +201,29 @@ const generatedServiceNames = (rendered: unknown): ReadonlySet<string> => {
   return new Set(Object.keys(services as Record<string, unknown>));
 };
 
+/** Independently readable identity and options when only the service map is unusable. */
+const provenanceWithoutServiceMap = (raw: unknown): LandofileRecipeProvenance | undefined => {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const rest = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "services"));
+  const retried = validateLandofileRecipeProvenance(rest);
+  if (Either.isLeft(retried) || isBareRecipeReference(retried.right)) return undefined;
+  return retried.right;
+};
+
+const discoverExplainRoot = async (
+  cwd: string,
+): Promise<{ readonly appRoot: string; readonly dualForm: boolean }> => {
+  try {
+    const found = await findDiscoveredLandofilePath(cwd);
+    return { appRoot: found.appRoot, dualForm: false };
+  } catch (cause) {
+    if (cause instanceof LandofileFormConflictError) {
+      return { appRoot: dirname(cause.yamlPath), dualForm: true };
+    }
+    throw cause;
+  }
+};
+
 interface SemanticComparison {
   readonly comparison: ExplainComparison;
   /** Generated sites keyed by option name, empty unless the comparison matched. */
@@ -268,6 +291,23 @@ const compareAgainstSnapshot = (
   }
 
   const serviceMap = new Map(mappings);
+  const destinations = new Map<string, string>();
+  for (const name of generated) {
+    const current = serviceMap.get(name) ?? name;
+    const previous = destinations.get(current);
+    if (previous !== undefined) {
+      return {
+        comparison: blocked(
+          "invalid-service-map",
+          `\`recipe.services\` maps both ${previous} and ${name} onto "${current}".`,
+        ),
+        takenOver: empty,
+        services: [],
+      };
+    }
+    destinations.set(current, name);
+  }
+
   const takenOver = new Map<string, ExplainTakenOverSite[]>();
   for (const site of collectRecipeSites(rendered.right, filePath)) {
     const path = applyServiceMap(site.path, serviceMap);
@@ -315,12 +355,17 @@ const readProvenance = (
   if (Either.isLeft(validated)) {
     const reason: ExplainBlockedReason =
       validated.left.reason === "service-map-not-injective" ? "invalid-service-map" : "invalid-provenance";
+    const facts =
+      validated.left.reason === "service-map-not-injective" ? provenanceWithoutServiceMap(raw) : undefined;
     return {
       form: "declarative",
       recipe:
-        typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string"
-          ? { id: (raw as { readonly id: string }).id }
-          : undefined,
+        facts !== undefined
+          ? { id: facts.id, version: facts.version, producer: facts.producer }
+          : typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string"
+            ? { id: (raw as { readonly id: string }).id }
+            : undefined,
+      ...(facts === undefined ? {} : { provenance: facts }),
       blockedComparison: blocked(reason, validated.left.message),
     };
   }
@@ -355,8 +400,8 @@ export const appConfigExplain = (
 ): Effect.Effect<AppConfigExplainResult, AppConfigExplainError, never> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
-    const appRoot = yield* Effect.tryPromise({
-      try: async () => (await findDiscoveredLandofilePath(cwd)).appRoot,
+    const discovered = yield* Effect.tryPromise({
+      try: () => discoverExplainRoot(cwd),
       catch: (cause) =>
         cause instanceof LandofileNotFoundError
           ? cause
@@ -365,10 +410,15 @@ export const appConfigExplain = (
               cwd,
             }),
     });
+    const { appRoot, dualForm } = discovered;
 
     const programmaticPath = join(appRoot, PROGRAMMATIC_LANDOFILE);
-    const programmatic = yield* Effect.promise(() => Bun.file(programmaticPath).exists());
-    if (programmatic) {
+    const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
+    const [programmaticFile, yamlExists] = yield* Effect.promise(() =>
+      Promise.all([Bun.file(programmaticPath).exists(), Bun.file(landofilePath).exists()]),
+    );
+    const programmatic = dualForm || programmaticFile;
+    if (programmatic && !yamlExists) {
       return {
         landofilePath: programmaticPath,
         form: "programmatic",
@@ -381,7 +431,6 @@ export const appConfigExplain = (
       } satisfies AppConfigExplainResult;
     }
 
-    const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
     const content = yield* Effect.tryPromise({
       try: () => Bun.file(landofilePath).text(),
       catch: (cause) =>
@@ -401,19 +450,25 @@ export const appConfigExplain = (
     const read = readProvenance(recipeField);
 
     const includes = document.includes !== undefined;
+    const skipSemantic = programmatic || includes || read.blockedComparison !== undefined;
     const semantic =
-      read.provenance === undefined || includes
+      skipSemantic || read.provenance === undefined
         ? undefined
         : compareAgainstSnapshot(read.provenance, document, landofilePath);
 
-    const comparison: ExplainComparison =
-      read.blockedComparison ??
-      (includes
-        ? blocked(
-            "includes-present",
-            "This Landofile pulls in `includes:`, whose content is never followed for comparison.",
-          )
-        : (semantic?.comparison ?? blocked("no-recipe", "This Landofile records no `recipe:` provenance.")));
+    const comparison: ExplainComparison = programmatic
+      ? blocked(
+          "programmatic-landofile",
+          "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
+        )
+      : (read.blockedComparison ??
+        (includes
+          ? blocked(
+              "includes-present",
+              "This Landofile pulls in `includes:`, whose content is never followed for comparison.",
+            )
+          : (semantic?.comparison ??
+            blocked("no-recipe", "This Landofile records no `recipe:` provenance."))));
 
     const matched = comparison.status === "matched";
     const recordedOptions = readOptions(read.provenance);

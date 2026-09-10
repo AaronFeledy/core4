@@ -901,3 +901,11 @@
   - Do not add a `redactionTokens` hook by reflex. `collectLandofileRedactionTokens` expects a Landofile, not a command result, and provenance carries no secrets by contract, so the global secrets redactor at the machine boundary is the whole requirement.
   - The generated command registry manifest and command ids under `core/src/cli/generated/` are gitignored derived output. Adding a command changes only the hand-listed catalog plus `docs/reference/commands.mdx`; `codegen:check` still has to run.
 ---
+
+## 2026-09-10 08:50 - US-610 Review
+- Review-work failed on dual-form discovery, implicit service-map collisions, and dropped facts for invalid maps; Bugbot flagged the same form-conflict wrap. Fixed: `.lando.yml` plus `.lando.ts` now reports YAML facts and blocks comparison instead of pretending the app is missing; effective destinations including identity mappings must stay injective; a non-injective map still reports producer, version, and option values.
+- Review notes (deferred/rejected): FileSystem wrapping of the raw Landofile read — AC requires raw parse, not the materializing loader, and is not a new I/O seam. Splitting the 464-line command — out-of-scope refactor. Missing-default `chosen-by-value` — intentional for init `name`. Output-amplification DoS — MEDIUM, not story-blocking.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 23 explain unit/scenario tests passed.
+- Guide-Coverage-Skip: review repaired discovery and map injectivity without a new CLI flag or guide-covered contract.
+- **Learnings for future iterations:** `recipe.services` injectivity is not just unique explicit targets. An unmapped generated service still occupies its own name, so `appserver: database` collides with implicit `database: database`.
+---

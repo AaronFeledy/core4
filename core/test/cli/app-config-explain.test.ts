@@ -233,7 +233,30 @@ describe("appConfigExplain", () => {
       ].join("\n"),
     });
     await withApp(collide, async (cwd) => {
-      expect(blockedReason(await explain(cwd))).toBe("invalid-service-map");
+      const result = await explain(cwd);
+      expect(blockedReason(result)).toBe("invalid-service-map");
+      expect(result.recipe?.producer).toEqual(lampProducer);
+      expect(optionNamed(result, "php").value).toBe("8.3");
+    });
+  });
+
+  it("blocks a rename that collides with an implicit identity mapping", async () => {
+    const collide = landofile({
+      recipeBlock: [
+        "recipe:",
+        "  id: lamp",
+        "  options:",
+        '    php: "8.3"',
+        PRODUCER_YAML(),
+        "  services:",
+        "    appserver: database",
+        `  version: ${lampProducer.manifestVersion}`,
+      ].join("\n"),
+    });
+    await withApp(collide, async (cwd) => {
+      const result = await explain(cwd);
+      expect(blockedReason(result)).toBe("invalid-service-map");
+      expect(optionNamed(result, "php").value).toBe("8.3");
     });
   });
 
@@ -318,6 +341,21 @@ describe("appConfigExplain", () => {
       },
       { fileName: ".lando.ts" },
     );
+  });
+
+  it("blocks a dual-form Landofile while still reporting YAML facts", async () => {
+    await withApp(landofile(), async (cwd) => {
+      writeFileSync(
+        join(cwd, ".lando.ts"),
+        'throw new Error("app:config:explain must never execute .lando.ts");\n',
+      );
+      const result = await explain(cwd);
+      expect(result.form).toBe("declarative");
+      expect(blockedReason(result)).toBe("programmatic-landofile");
+      expect(result.recipe?.producer).toEqual(lampProducer);
+      expect(optionNamed(result, "php").value).toBe("8.3");
+      expect(optionNamed(result, "php").takenOver).toEqual([]);
+    });
   });
 
   it("fails with LandofileNotFoundError when no Landofile is in scope", async () => {
