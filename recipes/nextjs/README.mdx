@@ -71,7 +71,8 @@ lando npm install
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"NEXTAUTH_PROVIDER\":\\s*\"nextauth\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"database\":)" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"none\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"database\":\\s*\\{)" } }} />
     </Step>
   </Scenario>
 </Guide>
