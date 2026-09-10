@@ -570,4 +570,25 @@ describe("braced shell forms stay unsupported on the load path", () => {
       expect(failureMessage(exit)).toContain("Configuration expressions");
     });
   });
+
+  test("resolves a recipe option beside an escaped $${ form on a file whose raw scan is skipped", async () => {
+    // Given a `load(` occurrence anywhere in the file skips the raw pre-parse scan.
+    await withApp(
+      {
+        ".lando.yml": landofile("php:{{ recipe.php }}-$${FLAVOR}", [
+          "    environment:",
+          "      CA: \"{{ load('./ca.pem') }}\"",
+        ]),
+        "ca.pem": "pem",
+      },
+      async (appRoot) => {
+        // When
+        const landofile = await Effect.runPromise(load(appRoot));
+
+        // Then
+        const services = landofile.services as Record<string, Record<string, unknown>>;
+        expect(services.appserver?.type).toBe("php:8.3-${FLAVOR}");
+      },
+    );
+  });
 });

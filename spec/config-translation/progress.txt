@@ -799,3 +799,10 @@
   - **Follow-up defect, not this story:** event-invoked tooling re-evaluates string `cmd` / `cmds[]` through the generic evaluator (`engine/src/tooling/step-runner.ts` via `resolveToolingTaskShape`), which resolves `$name` from `env` and blanks it. Direct tooling hands the command to `sh -c` untouched, so a shell-heavy task works when run directly and corrupts when run from an event step. Pre-existing on main and independent of this change, but drupal's scaffold command is now reachable through it.
   - **Design note for that fix:** an additive `ParseExpressionOptions` bare-parameter mode plus a shell-source site classifier (string `tooling.*.cmd` / `cmds[]`, event `cmd`, command-valued `defer`) is the shape to reach for. It would let the parser, not a predicate, decide that bare `$name` is text, remove the replay step, and distinguish `${VAR}` from `$VAR` structurally. It is a 1-2 day change across the parser, loader, and step runner, so it belongs to its own story.
 ---
+
+## 2026-09-09 19:59 - US-609E8 Review
+- Review-work failed on an escape-unaware `${` substring guard; Bugbot found no bugs. Fixed: load-path braced-form detection now ignores the parser's `$${` escape on scan-skipped files while still rejecting unescaped `${VAR}` / `${secret:...}`.
+- Review notes (deferred/rejected): Drupal AppPlanner.plan harness — AC3 "plans" is the loaded Landofile being planner-ready (resolved recipe/env sites, deferred app/proxy hostnames); invoking engine AppPlanner is a planner-owned surface and US-609E aggregate evidence. Full `bun test` — loop forbids the full suite; uninstall-runtime-service failures are unchanged from origin/main.
+- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 35 focused tests passed across landofile recipe-option, sdk scopes, and drupal load files.
+- Guide-Coverage-Skip: internal loader escape-aware braced-form guard; expressions.mdx already documents blocked `${...}` shell params; no user-facing CLI or guide-covered public contract change.
+---

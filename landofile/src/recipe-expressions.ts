@@ -37,16 +37,32 @@ const LOAD_EXPRESSION_BUDGET: EvaluationBudget = {
 };
 
 /**
+ * True when the source contains an unescaped `${...}` form.
+ *
+ * The parser treats `$${` as a literal `${` escape. A parsed segment cannot
+ * tell `${VAR}` from `$VAR`, so the load path asks the raw source. Matching
+ * the substring `${` is not enough: it also matches that escape.
+ */
+export const sourceHasUnescapedBracedForm = (source: string): boolean => {
+  let index = source.indexOf("${");
+  while (index !== -1) {
+    if (index === 0 || source[index - 1] !== "$") return true;
+    index = source.indexOf("${", index + 2);
+  }
+  return false;
+};
+
+/**
  * True when a value site's expressions may resolve from loader-owned data.
  *
  * The raw source decides the braced question, not the AST: a parsed segment
  * cannot tell `${VAR}` from `$VAR`, and only the bare spelling is inert here.
- * `${...}` parameter and `${secret:...}` references stay unsupported on the
- * load path - including on the files whose raw pre-parse scan is skipped - so a
- * site carrying one is left for the strict path to reject.
+ * Unescaped `${...}` parameter and `${secret:...}` references stay unsupported
+ * on the load path - including on the files whose raw pre-parse scan is skipped
+ * - so a site carrying one is left for the strict path to reject.
  */
 const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean =>
-  !source.includes("${") &&
+  !sourceHasUnescapedBracedForm(source) &&
   expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
 
 /**
@@ -60,8 +76,8 @@ const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean
  *
  * Only `$` immediately followed by an identifier start becomes a segment, so
  * `$$`, `$1` and `$(cmd)` are already literal text and need no replay. Only the
- * bare spelling is rewritten because {@link resolvableAtLoad} refuses any source
- * containing `${`, which every operator spelling requires.
+ * bare spelling is rewritten because {@link resolvableAtLoad} refuses unescaped
+ * `${`, which every operator spelling requires.
  */
 const withInertShellText = (template: ExpressionTemplate): ExpressionTemplate => ({
   whole: template.whole,
