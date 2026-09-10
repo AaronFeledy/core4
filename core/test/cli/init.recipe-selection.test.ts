@@ -162,7 +162,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created first-app at");
       const landofile = await Bun.file(join(dir, ".lando.yml")).text();
-      expect(landofile).toContain(`recipe: ${first?.id}`);
+      expect(landofile.match(/^recipe:\n {2}id: ([^\n]+)$/m)?.[1]).toBe(first?.id);
     });
   });
 

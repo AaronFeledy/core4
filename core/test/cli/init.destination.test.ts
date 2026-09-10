@@ -27,6 +27,24 @@ const fileExists = async (path: string): Promise<boolean> => {
 };
 
 describe("initApp destination + runPostInit", () => {
+  test("creates a destination directory that does not exist yet", async () => {
+    // The scaffold transaction locks a canonical app root, so `--name` /
+    // `--destination` targets must be created before it prepares anything.
+    await withTempDir("lando-init-missing-dest-", async (cwd) => {
+      const result = await initApp({
+        cwd,
+        full: false,
+        recipe: "lamp",
+        name: "not-yet-created",
+        nonInteractive: true,
+        runPostInit: false,
+      });
+
+      expect(result.directory).toBe(join(cwd, "not-yet-created"));
+      expect(await fileExists(join(cwd, "not-yet-created", ".lando.yml"))).toBe(true);
+    });
+  });
+
   test("renders into an explicit destination instead of <cwd>/<appName>", async () => {
     await withTempDir("lando-init-cwd-", async (cwd) => {
       await withTempDir("lando-init-dest-", async (destination) => {

@@ -10,10 +10,11 @@ import { AppPlanner, LandofileService } from "@lando/core/services";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { initApp } from "../../src/cli/commands/init.ts";
-import { BUILTIN_RECIPE_RENDERERS } from "../../src/recipes/builtin/registry.ts";
+import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
 interface CanonicalAnswers {
   readonly name: string;
@@ -174,22 +175,15 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
       const manifestFiles = manifest.files ?? [];
       expect(manifestFiles.length, `[${recipeId}] manifest.files must be non-empty`).toBeGreaterThan(0);
 
-      const renderer = BUILTIN_RECIPE_RENDERERS.get(recipeId);
-      expect(renderer, `[${recipeId}] missing registered renderer`).toBeDefined();
-      if (renderer === undefined) return;
-
-      const rendered = renderer.render({ appName: answersEntry.name, answers });
-      for (const file of manifestFiles) {
-        expect(
-          rendered.has(file.dest),
-          `[${recipeId}] renderer did not emit manifest file ${file.dest}`,
-        ).toBe(true);
-        const content = rendered.get(file.dest);
-        expect(
-          typeof content === "string" && content.length > 0,
-          `[${recipeId}] renderer emitted empty content for ${file.dest} (rendered map)`,
-        ).toBe(true);
-      }
+      expect(BUILTIN_RECIPE_DECOMPOSERS.has(recipeId), `[${recipeId}] missing registered decomposer`).toBe(
+        true,
+      );
+      const effectiveDests = [
+        ".lando.yml",
+        ...manifestFiles
+          .map((file) => file.dest)
+          .filter((dest) => dest !== ".lando.yml" && dest !== ".lando.ts"),
+      ];
 
       await withTempCwd(async (dir) => {
         const result = await initApp({
@@ -198,35 +192,30 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
           recipe: recipeId,
           nonInteractive: true,
           answers,
+          userDataRoot: join(dir, "lando-data"),
           postInitIO: { out: () => {}, err: () => {} },
         });
         expect(result.appName, `[${recipeId}] initApp.appName`).toBe(answersEntry.name);
 
-        for (const file of manifestFiles) {
-          const path = join(result.directory, file.dest);
+        const preview = await previewBuiltinRecipe(recipeId, answersEntry.name, result.answers);
+        expect(await Bun.file(join(result.directory, ".lando.yml")).text()).toBe(preview.text);
+        for (const dest of effectiveDests) {
+          const path = join(result.directory, dest);
           const handle = Bun.file(path);
           const exists = await handle.exists();
-          expect(exists, `[${recipeId}] expected generated file ${file.dest} at ${path}`).toBe(true);
+          expect(exists, `[${recipeId}] expected generated file ${dest} at ${path}`).toBe(true);
           if (!exists) continue;
-          expect(
-            handle.size,
-            `[${recipeId}] generated file ${file.dest} is empty at ${path}`,
-          ).toBeGreaterThan(0);
+          expect(handle.size, `[${recipeId}] generated file ${dest} is empty at ${path}`).toBeGreaterThan(0);
         }
 
         await withScrubbedRecipeEnv(async () => {
           const landofile = await discoverFrom(result.directory);
           expect(landofile.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
-          const recipeFieldOmitAllowlist = new Set(["node-postgres", "node-ts"]);
-          if (recipeFieldOmitAllowlist.has(recipeId)) {
-            if (landofile.recipe !== undefined) {
-              expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe (when present)`).toBe(
-                recipeId,
-              );
-            }
-          } else {
-            expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe`).toBe(recipeId);
-          }
+          expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe`).toMatchObject({
+            id: recipeId,
+            version: manifest.version,
+            producer: manifest.snapshot?.identity,
+          });
 
           const appPlan = await planLandofile(landofile);
           expect(appPlan.name, `[${recipeId}] AppPlanner.plan returned wrong app name`).toBe(

@@ -3,6 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { ServiceName } from "@lando/core/schema";
+import { LandofileService } from "@lando/core/services";
+import { Effect } from "effect";
+
+import { TestLandofileServiceLive } from "../_support/landofile-layer.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
@@ -72,7 +78,22 @@ describe("lando init — Drupal recipe", () => {
       expect(landofile).toContain("vendor/bin/drush");
       expect(landofile).toContain("drupal-scaffold:");
       expect(landofile).toContain("arguments: false");
-      expect(landofile).toContain("# primary URL: http(s)://drupal-app.lndo.site");
+      const previousCwd = process.cwd();
+      try {
+        process.chdir(appDir);
+        const loaded = await Effect.runPromise(
+          Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+            Effect.provide(TestLandofileServiceLive),
+          ),
+        );
+        // App identity and proxy domain are bound later by the planner, not init.
+        expect(loaded.name).toBe("drupal-app");
+        expect(loaded.services?.[ServiceName.make("appserver")]?.routes).toEqual([
+          { hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" },
+        ]);
+      } finally {
+        process.chdir(previousCwd);
+      }
       expect(landofile).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
     });
   });

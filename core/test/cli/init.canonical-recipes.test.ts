@@ -8,8 +8,12 @@ import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { BUILTIN_RECIPE_RENDERERS, builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
+import {
+  BUILTIN_RECIPE_DECOMPOSERS,
+  builtinRecipeDecomposerIds,
+} from "../../src/recipes/builtin/decomposers.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { bundledManifest } from "../_support/recipe-output.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-canonical-")));
@@ -237,9 +241,9 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
 ];
 
-describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
+describe("BUILTIN_RECIPE_DECOMPOSERS — bundled set", () => {
   test("contains every shipped bundled recipe id", () => {
-    const ids = builtinRecipeIds();
+    const ids = builtinRecipeDecomposerIds();
     const required = [
       "node-postgres",
       "wordpress",
@@ -268,7 +272,7 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
     ];
     expect([...ids].sort()).toEqual([...required].sort());
     for (const id of required) {
-      expect(BUILTIN_RECIPE_RENDERERS.has(id)).toBe(true);
+      expect(BUILTIN_RECIPE_DECOMPOSERS.has(id)).toBe(true);
     }
   });
 });
@@ -290,7 +294,13 @@ describe("lando init — canonical common-stack recipes", () => {
 
         const landofile = await discoverFrom(result.directory);
         expect(landofile.name).toBe(canonical.answers.name);
-        expect(landofile.recipe).toBe(canonical.recipe);
+        const manifest = bundledManifest(canonical.recipe);
+        expect(landofile.recipe).toMatchObject({
+          id: canonical.recipe,
+          version: manifest.version,
+          producer: manifest.snapshot?.identity,
+          options: Object.keys(manifest.snapshot?.optionTypes ?? {}).length === 0 ? {} : result.answers,
+        });
 
         const services = landofile.services ?? {};
         const actualServiceNames = Object.keys(services).sort();
@@ -313,8 +323,8 @@ describe("lando init — canonical common-stack recipes", () => {
   }
 });
 
-describe("lando init — managed-file ownership markers", () => {
-  test("node-postgres scaffold carries format-correct ownership markers and a ledger", async () => {
+describe("lando init — transaction and user-owned scaffolds", () => {
+  test("node-postgres scaffold has no ownership markers or managed-file ledger", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -328,27 +338,17 @@ describe("lando init — managed-file ownership markers", () => {
       });
 
       const landofile = await Bun.file(join(result.directory, ".lando.yml")).text();
-      expect(landofile.split("\n")[0]).toBe(
-        "# lando-generated:node-postgres:.lando.yml — managed by Lando; delete this line to adopt this file.",
-      );
+      expect(landofile).not.toContain("lando-generated");
 
       const packageJson = JSON.parse(await Bun.file(join(result.directory, "package.json")).text());
-      expect(packageJson["x-lando-generated"]).toBe("node-postgres:package.json");
+      expect(packageJson["x-lando-generated"]).toBeUndefined();
       expect(packageJson.name).toBe("marker-app");
 
       const serverJs = await Bun.file(join(result.directory, "server.js")).text();
-      expect(serverJs.split("\n")[0]).toBe(
-        "// lando-generated:node-postgres:server.js — managed by Lando; delete this line to adopt this file.",
-      );
+      expect(serverJs).not.toContain("lando-generated");
 
-      const ledgerDir = (await readdir(join(dir, "lando-data", "managed-files")))[0];
-      const ledger = JSON.parse(
-        await Bun.file(join(dir, "lando-data", "managed-files", ledgerDir ?? "", "ledger.json")).text(),
-      );
-      const owners = (ledger.data.entries as Array<{ owner: string; format: string }>).map(
-        (entry) => entry.format,
-      );
-      expect(owners.sort()).toEqual(["javascript", "json", "landofile"]);
+      const entries = await readdir(join(dir, "lando-data"), { recursive: true });
+      expect(entries.filter((entry) => entry.endsWith("ledger.json"))).toEqual([]);
     });
   });
 });
