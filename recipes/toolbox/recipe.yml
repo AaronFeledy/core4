@@ -22,3 +22,46 @@ files:
 postInit:
   - type: message
     text: Run `lando start` to boot the toolbox service, or run one-shot tools against it.
+
+snapshot:
+  identity:
+    sourceKind: "bundled"
+    packageName: "@lando/recipe-toolbox"
+    recipeId: "toolbox"
+    manifestVersion: "0.1.0"
+    contentDigest: "sha256:4b5e0f9d25dcd214e0bbe5ade44833400aee0e7afade5d633fa4a6a333afa4dd"
+  optionTypes:
+  defaults:
+  template:
+    expression:
+      kind: "ObjectLiteral"
+      entries:
+        - key: "runtime"
+          value:
+            kind: "Literal"
+            value: 4
+        - key: "services"
+          value:
+            kind: "ObjectLiteral"
+            entries:
+              - key: "toolbox"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "type"
+                      value:
+                        kind: "Literal"
+                        value: "lando"
+                    - key: "primary"
+                      value:
+                        kind: "Literal"
+                        value: true
+                    - key: "image"
+                      value:
+                        kind: "Literal"
+                        value: "debian:12.11-slim"
+                    - key: "command"
+                      value:
+                        kind: "Literal"
+                        value: "sleep infinity"
+  assets: []

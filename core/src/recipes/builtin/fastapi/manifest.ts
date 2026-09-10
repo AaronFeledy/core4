@@ -1,3 +1,5 @@
+import { fastapiSnapshotYaml } from "./snapshot.ts";
+
 export const FASTAPI_RECIPE_ID = "fastapi";
 
 export const fastapiRecipeSource = `${FASTAPI_RECIPE_ID}/recipe.yml`;
@@ -25,4 +27,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring FastAPI up.
+
+${fastapiSnapshotYaml}
 `;

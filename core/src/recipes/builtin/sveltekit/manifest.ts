@@ -1,3 +1,5 @@
+import { sveltekitSnapshotYaml } from "./snapshot.ts";
+
 export const SVELTEKIT_RECIPE_ID = "sveltekit";
 
 export const sveltekitRecipeSource = `${SVELTEKIT_RECIPE_ID}/recipe.yml`;
@@ -48,4 +50,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring SvelteKit up.
+
+${sveltekitSnapshotYaml}
 `;

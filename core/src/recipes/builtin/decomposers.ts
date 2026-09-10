@@ -6,18 +6,29 @@
  */
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
+import { astroDecomposer } from "./astro/decomposer.ts";
 import { backdropDecomposer } from "./backdrop/decomposer.ts";
+import { djangoDecomposer } from "./django/decomposer.ts";
 import { drupalCmsDecomposer } from "./drupal-cms/decomposer.ts";
 import { drupalDecomposer } from "./drupal/decomposer.ts";
+import { eleventyDecomposer } from "./eleventy/decomposer.ts";
+import { emptyDecomposer } from "./empty/decomposer.ts";
+import { fastapiDecomposer } from "./fastapi/decomposer.ts";
+import { hugoDecomposer } from "./hugo/decomposer.ts";
+import { jekyllDecomposer } from "./jekyll/decomposer.ts";
 import { joomlaDecomposer } from "./joomla/decomposer.ts";
 import { lampDecomposer } from "./lamp/decomposer.ts";
 import { laravelDecomposer } from "./laravel/decomposer.ts";
 import { lempDecomposer } from "./lemp/decomposer.ts";
 import { meanDecomposer } from "./mean/decomposer.ts";
+import { nextjsDecomposer } from "./nextjs/decomposer.ts";
 import { nodeApiDecomposer } from "./node-api/decomposer.ts";
 import { nodePostgresDecomposer } from "./node-postgres/decomposer.ts";
 import { nodeTsDecomposer } from "./node-ts/decomposer.ts";
+import { railsDecomposer } from "./rails/decomposer.ts";
+import { sveltekitDecomposer } from "./sveltekit/decomposer.ts";
 import { symfonyDecomposer } from "./symfony/decomposer.ts";
+import { toolboxDecomposer } from "./toolbox/decomposer.ts";
 import { wordpressDecomposer } from "./wordpress/decomposer.ts";
 
 const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
@@ -34,6 +45,17 @@ const DECOMPOSERS: ReadonlyArray<readonly [string, RecipeDecomposerFactory]> = [
   ["node-api", nodeApiDecomposer],
   ["mean", meanDecomposer],
   ["node-ts", nodeTsDecomposer],
+  ["astro", astroDecomposer],
+  ["sveltekit", sveltekitDecomposer],
+  ["nextjs", nextjsDecomposer],
+  ["django", djangoDecomposer],
+  ["fastapi", fastapiDecomposer],
+  ["rails", railsDecomposer],
+  ["jekyll", jekyllDecomposer],
+  ["hugo", hugoDecomposer],
+  ["eleventy", eleventyDecomposer],
+  ["empty", emptyDecomposer],
+  ["toolbox", toolboxDecomposer],
 ];
 
 export const BUILTIN_RECIPE_DECOMPOSERS: ReadonlyMap<string, RecipeDecomposerFactory> = new Map(DECOMPOSERS);

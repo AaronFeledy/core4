@@ -1,3 +1,5 @@
+import { eleventySnapshotYaml } from "./snapshot.ts";
+
 export const ELEVENTY_RECIPE_ID = "eleventy";
 
 export const eleventyRecipeSource = `${ELEVENTY_RECIPE_ID}/recipe.yml`;
@@ -26,4 +28,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to serve the Eleventy site.
+
+${eleventySnapshotYaml}
 `;

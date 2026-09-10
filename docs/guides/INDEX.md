@@ -172,11 +172,21 @@ outside `docs/guides/` so they are not gate-validated here.
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
+| `django` | Django (Python + PostgreSQL + Redis; optional Celery worker) | `recipes/django/README.mdx` | Shipped |
+| `fastapi` | FastAPI (Python + PostgreSQL + Redis) | `recipes/fastapi/README.mdx` | Shipped |
 | `mean` | MEAN-style Node API (MongoDB, optional Redis) | `recipes/mean/README.mdx` | Shipped |
 | `node-postgres` | Node + Postgres walking skeleton | `recipes/node-postgres/README.mdx` | Shipped |
 | `node-api` | Node API (Express, Fastify, or Hono; optional Postgres) | `recipes/node-api/README.mdx` | Shipped |
 | `node-ts` | Node with an environment-adaptive programmatic Landofile | `recipes/node-ts/README.mdx` | Shipped |
 | `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis, rails and bundle tooling) | `recipes/rails/README.mdx` | Shipped |
+| `astro` | Astro (Node; optional Postgres or MariaDB content source) | `recipes/astro/README.mdx` | Shipped |
+| `sveltekit` | SvelteKit (Node, adapter picker; optional Postgres or MariaDB) | `recipes/sveltekit/README.mdx` | Shipped |
+| `nextjs` | Next.js (Node + Postgres by default; optional auth helper) | `recipes/nextjs/README.mdx` | Shipped |
+| `jekyll` | Jekyll (Ruby build service + nginx static frontend) | `recipes/jekyll/README.mdx` | Shipped |
+| `hugo` | Hugo (Node build service + nginx static frontend) | `recipes/hugo/README.mdx` | Shipped |
+| `eleventy` | Eleventy (Node build service + nginx static frontend) | `recipes/eleventy/README.mdx` | Shipped |
+| `empty` | Blank Landofile starter with no services | `recipes/empty/README.mdx` | Shipped |
+| `toolbox` | Disposable CLI tool runner on a pinned Debian image | `recipes/toolbox/README.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 

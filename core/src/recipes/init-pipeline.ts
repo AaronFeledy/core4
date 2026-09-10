@@ -1,6 +1,7 @@
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
+import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -19,7 +20,12 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Either, Option, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
-import { auxiliaryDestination, writeAuxiliaryScaffold } from "./init-pipeline/files.ts";
+import {
+  type RecipeAuxiliaryContentSource,
+  auxiliaryDestination,
+  readAuxiliaryScaffoldContent,
+  writeAuxiliaryScaffold,
+} from "./init-pipeline/files.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import { containsSecretValue, secretReference } from "./init-pipeline/secrets.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
@@ -64,6 +70,7 @@ export interface RecipeInitPipelineRequest {
   readonly appName: string;
   readonly encoder: ConfigTranslatorShape;
   readonly journalRoot: () => string;
+  readonly contentSource?: RecipeAuxiliaryContentSource;
   readonly checkpoint?: NonNullable<TransactionOptions["checkpoint"]>;
   readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
 }
@@ -172,13 +179,23 @@ export const runRecipeInitPipeline = (
     if (containsSecret(encoded.text)) return yield* Effect.fail(blocked("encode"));
     const basename = request.landofileBasename ?? ".lando.yml";
     const landofilePath = join(request.appRoot, basename);
-    yield* Effect.try({
-      try: () => {
-        for (const file of request.manifest.files ?? []) {
+    // The pipeline owns the Landofile itself, so a manifest entry that targets a
+    // Landofile layer is the recipe's own template and is never written here.
+    const auxiliaryEntries = (request.manifest.files ?? [])
+      .map((file, index) => ({ file, index }))
+      .filter(
+        ({ file }) =>
+          file.dest !== basename && file.dest !== LANDOFILE_NAME && file.dest !== LANDOFILE_TS_NAME,
+      );
+    yield* Effect.tryPromise({
+      try: async () => {
+        for (const { file } of auxiliaryEntries) {
           auxiliaryDestination(request.appRoot, file.dest);
-          if (!isAbsolute(file.src)) {
-            throw new RangeError("Auxiliary source must be an absolute path resolved by the caller.");
-          }
+          await readAuxiliaryScaffoldContent({
+            file,
+            appName: request.appName,
+            contentSource: request.contentSource,
+          });
         }
       },
       catch: () => blocked("validate"),
@@ -213,13 +230,15 @@ export const runRecipeInitPipeline = (
         failedAction,
         rolledBack: false,
       });
-    for (const [index, file] of (request.manifest.files ?? []).entries()) {
+    for (const { file, index } of auxiliaryEntries) {
       const path = yield* Effect.tryPromise({
         try: () =>
           writeAuxiliaryScaffold({
             appRoot: request.appRoot,
             file,
+            appName: request.appName,
             containsSecret,
+            contentSource: request.contentSource,
           }),
         catch: () => postFailure(`files[${index}]`),
       });

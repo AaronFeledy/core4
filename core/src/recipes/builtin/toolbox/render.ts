@@ -1,11 +1,8 @@
 import type { RecipeRenderer } from "../registry";
+import { TOOLBOX_IMAGE } from "./image";
 import { TOOLBOX_RECIPE_ID } from "./manifest";
 
-/**
- * Version-pinned general-purpose CLI image for one-shot tool execution.
- * Pinned to an exact Debian point release; never a floating tag.
- */
-export const TOOLBOX_IMAGE = "debian:12.11-slim";
+export { TOOLBOX_IMAGE } from "./image";
 
 const renderLandofile = (appName: string): string =>
   [
