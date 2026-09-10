@@ -95,7 +95,7 @@ lando npm run check
 
 `lando svelte` runs `npx svelte-kit` inside `web`. Day-to-day scripts stay on npm: `dev`, `build`, `preview`, and `check`.
 
-Serve through the proxy on port `3000` (that is what Traefik targets for Node today) and allow your app hostname. Vite 8 does not accept `--allowed-hosts` on the CLI, so put `server` settings in `vite.config.ts` (swap `sveltekit-demo` for your app name):
+Serve through the proxy on port `3000` so the `lando info` proxy URLs reach the app; `5173` is what the recipe writes as Vite's default. Vite 8 does not accept `--allowed-hosts` on the CLI, so put `server` settings in `vite.config.ts` (swap `sveltekit-demo` for your app name):
 
 ```ts
 import { defineConfig } from 'vite';
