@@ -1,7 +1,8 @@
 import {
   type EvaluationBudget,
+  type ExpressionTemplate,
   evaluateTemplateEither,
-  expressionTouchesOnlyScopes,
+  expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { Either } from "effect";
@@ -35,11 +36,62 @@ const LOAD_EXPRESSION_BUDGET: EvaluationBudget = {
   maxCollectionSize: 256,
 };
 
+/**
+ * True when the source contains an unescaped `${...}` form.
+ *
+ * The parser treats `$${` as a literal `${` escape. A parsed segment cannot
+ * tell `${VAR}` from `$VAR`, so the load path asks the raw source. Matching
+ * the substring `${` is not enough: it also matches that escape.
+ */
+export const sourceHasUnescapedBracedForm = (source: string): boolean => {
+  let index = source.indexOf("${");
+  while (index !== -1) {
+    if (index === 0 || source[index - 1] !== "$") return true;
+    index = source.indexOf("${", index + 2);
+  }
+  return false;
+};
+
+/**
+ * True when a value site's expressions may resolve from loader-owned data.
+ *
+ * The raw source decides the braced question, not the AST: a parsed segment
+ * cannot tell `${VAR}` from `$VAR`, and only the bare spelling is inert here.
+ * Unescaped `${...}` parameter and `${secret:...}` references stay unsupported
+ * on the load path - including on the files whose raw pre-parse scan is skipped
+ * - so a site carrying one is left for the strict path to reject.
+ */
+const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean =>
+  !sourceHasUnescapedBracedForm(source) &&
+  expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
+
+/**
+ * Replays bare shell-parameter text as a literal segment.
+ *
+ * The evaluator resolves `$name` from the `env` scope. That text is not the
+ * loader's: a Landofile value carrying `$name` and no expression is returned
+ * byte-for-byte today, and the string usually goes on to a container shell that
+ * owns those names. So the loader resolves the `{{ ... }}` interpolations around
+ * the text and leaves the text itself exactly as authored.
+ *
+ * Only `$` immediately followed by an identifier start becomes a segment, so
+ * `$$`, `$1` and `$(cmd)` are already literal text and need no replay. Only the
+ * bare spelling is rewritten because {@link resolvableAtLoad} refuses unescaped
+ * `${`, which every operator spelling requires.
+ */
+const withInertShellText = (template: ExpressionTemplate): ExpressionTemplate => ({
+  whole: template.whole,
+  segments: template.segments.map((segment) =>
+    segment.kind === "ShellParamSegment" && segment.operator === "plain"
+      ? ({ kind: "LiteralSegment", text: `$${segment.name}` } as const)
+      : segment,
+  ),
+});
+
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
   /** Dotted path of the value site holding the expression. */
   readonly path: string;
-  /** Why the site could not be resolved. */
   readonly reason: string;
 }
 
@@ -104,26 +156,27 @@ export const materializeLoadScopeExpressions = (
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath });
       if (Either.isLeft(parsed)) return value;
-      if (!expressionTouchesOnlyScopes(parsed.right, LOAD_RESOLVABLE_EXPRESSION_SCOPES)) return value;
-      const needsOptions = !expressionTouchesOnlyScopes(parsed.right, ["env"]);
+      if (!resolvableAtLoad(value, parsed.right)) return value;
+      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
       if (needsOptions && options === undefined) {
         unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
         return value;
       }
       const evaluated = evaluateTemplateEither(
-        parsed.right,
+        withInertShellText(parsed.right),
         options === undefined ? { env } : { env, recipe: options },
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );
       if (Either.isLeft(evaluated)) {
-        unresolved.push({
-          path: path.join("."),
-          reason: evaluated.left.message.startsWith("Expression budget exceeded")
-            ? "it exceeds the load-time expression budget"
-            : needsOptions
-              ? "it references a recipe option the Landofile does not set"
-              : "it references an environment variable that is not set and declares no default",
-        });
+        let reason: string;
+        if (evaluated.left.message.startsWith("Expression budget exceeded")) {
+          reason = "it exceeds the load-time expression budget";
+        } else if (needsOptions) {
+          reason = "it references a recipe option the Landofile does not set";
+        } else {
+          reason = "it references an environment variable that is not set and declares no default";
+        }
+        unresolved.push({ path: path.join("."), reason });
         return value;
       }
       return evaluated.right;

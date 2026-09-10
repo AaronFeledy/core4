@@ -14,7 +14,7 @@ import {
   type ExpressionNode,
   type ExpressionTemplate,
   evaluateTemplateEither,
-  expressionTouchesOnlyScopes,
+  expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 
@@ -25,7 +25,7 @@ import {
   type LandofileLoadSource,
 } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
-import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
+import { LOAD_DEFERRED_EXPRESSION_SCOPES, sourceHasUnescapedBracedForm } from "./recipe-expressions.ts";
 
 export interface ResolveLandofileLoadExpressionsOptions {
   readonly value: unknown;
@@ -146,7 +146,14 @@ export const resolveLandofileLoadExpressions = (
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
           if (Either.isLeft(parsed)) throw parsed.left;
-          if (expressionTouchesOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)) {
+          // Unescaped `${...}` parameter and `${secret:...}` references are
+          // not supported on this path, and a parsed segment cannot tell them
+          // from a bare `$name` or the `$${` escape, so the raw source decides
+          // before the segment-level question.
+          if (
+            !sourceHasUnescapedBracedForm(value) &&
+            expressionInterpolationsTouchOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)
+          ) {
             return value;
           }
           const expression = templateExpression(parsed.right);
