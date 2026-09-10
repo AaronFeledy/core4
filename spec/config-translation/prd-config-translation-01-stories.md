@@ -8,7 +8,7 @@ Normative design: [`spec-config-translation.md`](./spec-config-translation.md). 
 |---|---|---|
 | US-609C | explicit translation preview | `docs/guides/landofile/config-translate.mdx` |
 | US-609E | recipe init cutover | affected recipe READMEs |
-| US-610 | explanation | `docs/guides/recipes/explain.mdx` |
+| US-610 | explanation | `docs/guides/landofile/config-explain.mdx` |
 | US-611B | migration | `docs/guides/recipes/migrating-recipes.mdx` |
 
 ### US-607: Amend the durable core specification

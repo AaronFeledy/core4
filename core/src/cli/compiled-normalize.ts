@@ -97,6 +97,7 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
   if (argv[1] !== "config") return argv;
   if (argv[2] === "translate") return ["app:config:translate", ...argv.slice(3)];
   if (argv[2] === "lint") return ["app:config:lint", ...argv.slice(3)];
+  if (argv[2] === "explain") return ["app:config:explain", ...argv.slice(3)];
   if (argv[2] === "set") return ["app:config:set", ...argv.slice(3)];
   if (argv[2] === "unset") return ["app:config:unset", ...argv.slice(3)];
   if (argv[2] === "edit") return ["app:config:edit", ...argv.slice(3)];

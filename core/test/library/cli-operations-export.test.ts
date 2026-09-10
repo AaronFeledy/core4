@@ -58,6 +58,13 @@ describe("@lando/core/cli/operations package export", () => {
     expect(operations.appConfigTranslate).toBeFunction();
   });
 
+  test("exposes the config explain operation", async () => {
+    const operations = await import("@lando/core/cli/operations");
+
+    expect(operations.appConfigExplain).toBeFunction();
+    expect(operations.renderAppConfigExplainResult).toBeFunction();
+  });
+
   test("resolves from the workspace package name", async () => {
     const operations = await import("@lando/core/cli/operations");
 
