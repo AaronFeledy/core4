@@ -390,3 +390,184 @@ describe("mixed recipe and env expressions in one Landofile", () => {
     });
   });
 });
+
+describe("shell parameter text alongside deferred-scope expressions", () => {
+  const shellCommand = (major: string): string =>
+    [
+      "set -eu",
+      "app_root=$(printenv LANDO_APP_ROOT 2>/dev/null || echo /app)",
+      'printf "%s\\n" "$$" > "$app_root/pid"',
+      `composer create-project 'drupal/recommended-project:^${major}' "$app_root"`,
+      'echo "$1" "$2"',
+    ].join("\n");
+
+  const withTooling = (cmd: string, options: string, extra: ReadonlyArray<string> = []) =>
+    [
+      "name: recipeapp",
+      "runtime: 4",
+      provenance(options),
+      "services:",
+      "  appserver:",
+      '    type: "php:8.3"',
+      ...extra,
+      "tooling:",
+      "  scaffold:",
+      "    service: appserver",
+      `    cmd: ${JSON.stringify(cmd)}`,
+      "",
+    ].join("\n");
+
+  test("resolves a recipe option inside a shell command and preserves every shell parameter", async () => {
+    await withApp(
+      { ".lando.yml": withTooling(shellCommand("{{ recipe.drupal }}"), '    drupal: "11"') },
+      async (appRoot) => {
+        // When
+        const landofile = await Effect.runPromise(load(appRoot));
+
+        // Then
+        const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
+        expect(tooling.scaffold?.cmd).toBe(shellCommand("11"));
+      },
+    );
+  });
+
+  test("resolves recipe and env expressions in one shell command", async () => {
+    await withEnv({ LANDO_SCAFFOLD_FLAVOR: "slim" }, async () => {
+      const cmd = [
+        'app_root="$PWD"',
+        "install '{{ recipe.package }}' --flavor={{ default(env.LANDO_SCAFFOLD_FLAVOR, 'full') }}",
+        'echo "$app_root"',
+      ].join("\n");
+      await withApp({ ".lando.yml": withTooling(cmd, '    package: "drupal/core"') }, async (appRoot) => {
+        // When
+        const landofile = await Effect.runPromise(load(appRoot));
+
+        // Then
+        const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
+        expect(tooling.scaffold?.cmd).toBe(
+          ['app_root="$PWD"', "install 'drupal/core' --flavor=slim", 'echo "$app_root"'].join("\n"),
+        );
+      });
+    });
+  });
+
+  test("fails closed when a shell command references an option the Landofile does not set", async () => {
+    await withApp(
+      { ".lando.yml": withTooling(shellCommand("{{ recipe.missing }}"), '    drupal: "11"') },
+      async (appRoot) => {
+        // When
+        const exit = await Effect.runPromiseExit(load(appRoot));
+
+        // Then
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(failureMessage(exit)).toContain("tooling.scaffold.cmd");
+        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
+      },
+    );
+  });
+
+  test("leaves a shell command that also reads a planner-owned scope untouched", async () => {
+    const cmd = ['curl "https://{{ app.name }}.{{ proxy.defaultDomain }}"', 'echo "$app_root"'].join("\n");
+    await withApp({ ".lando.yml": withTooling(cmd, '    drupal: "11"') }, async (appRoot) => {
+      // When
+      const landofile = await Effect.runPromise(load(appRoot));
+
+      // Then
+      const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
+      expect(tooling.scaffold?.cmd).toBe(cmd);
+    });
+  });
+
+  test("still rejects a shell command that reaches the host through a helper", async () => {
+    const cmd = ['echo "$app_root"', "run {{ which('git') }}"].join("\n");
+    await withApp({ ".lando.yml": withTooling(cmd, '    drupal: "11"') }, async (appRoot) => {
+      // When
+      const exit = await Effect.runPromiseExit(load(appRoot));
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureMessage(exit)).toContain("Template expressions");
+    });
+  });
+
+  test("still rejects a shell command that reads a scope the loader does not own", async () => {
+    const cmd = ['echo "$app_root"', "run {{ nope.value }}"].join("\n");
+    await withApp({ ".lando.yml": withTooling(cmd, '    drupal: "11"') }, async (appRoot) => {
+      // When
+      const exit = await Effect.runPromiseExit(load(appRoot));
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureMessage(exit)).toContain("Template expressions");
+    });
+  });
+
+  test("leaves a shell command that carries no expression byte-identical", async () => {
+    const cmd = "echo $HOME and $$ and $(date)";
+    await withApp({ ".lando.yml": withTooling(cmd, '    drupal: "11"') }, async (appRoot) => {
+      // When
+      const landofile = await Effect.runPromise(load(appRoot));
+
+      // Then
+      const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
+      expect(tooling.scaffold?.cmd).toBe(cmd);
+    });
+  });
+});
+
+describe("braced shell forms stay unsupported on the load path", () => {
+  const landofile = (value: string, extra: ReadonlyArray<string> = []) =>
+    [
+      "name: recipeapp",
+      "runtime: 4",
+      provenance('    php: "8.3"'),
+      "services:",
+      "  appserver:",
+      `    type: ${JSON.stringify(value)}`,
+      ...extra,
+      "",
+    ].join("\n");
+
+  test("rejects a parameter reference beside a resolvable expression", async () => {
+    await withApp({ ".lando.yml": landofile("php:{{ recipe.php }}-${LANDO_FLAVOR}") }, async (appRoot) => {
+      // When
+      const exit = await Effect.runPromiseExit(load(appRoot));
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureMessage(exit)).toContain("Configuration expressions");
+    });
+  });
+
+  test("rejects a parameter reference on a file whose raw scan is skipped", async () => {
+    // Given a `load(` occurrence anywhere in the file skips the raw pre-parse scan.
+    await withApp(
+      {
+        ".lando.yml": landofile("php:{{ recipe.php }}-${LANDO_FLAVOR}", [
+          "    environment:",
+          "      CA: \"{{ load('./ca.pem') }}\"",
+        ]),
+        "ca.pem": "pem",
+      },
+      async (appRoot) => {
+        // When
+        const exit = await Effect.runPromiseExit(load(appRoot));
+
+        // Then
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(failureMessage(exit)).toContain("not supported");
+      },
+    );
+  });
+
+  test("rejects a secret reference beside a resolvable expression", async () => {
+    await withApp({ ".lando.yml": landofile("php:{{ recipe.php }}-${secret:token}") }, async (appRoot) => {
+      // When
+      const exit = await Effect.runPromiseExit(load(appRoot));
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureMessage(exit)).toContain("Configuration expressions");
+    });
+  });
+});

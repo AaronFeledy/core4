@@ -17,7 +17,7 @@ import {
   NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import { expressionTouchesOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
+import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/services";
 
@@ -93,7 +93,10 @@ const quotedStrings = (content: string): ReadonlyArray<string> =>
 
 const isDeferredScopeTemplate = (value: string): boolean => {
   const parsed = parseExpressionEither(value, { filePath: "<landofile>" });
-  return Either.isRight(parsed) && expressionTouchesOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES);
+  return (
+    Either.isRight(parsed) &&
+    expressionInterpolationsTouchOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)
+  );
 };
 
 const scanForConfigExpression = (content: string): { description: string } | undefined => {

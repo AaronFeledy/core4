@@ -14,7 +14,7 @@ import {
   type ExpressionNode,
   type ExpressionTemplate,
   evaluateTemplateEither,
-  expressionTouchesOnlyScopes,
+  expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 
@@ -146,7 +146,13 @@ export const resolveLandofileLoadExpressions = (
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
           if (Either.isLeft(parsed)) throw parsed.left;
-          if (expressionTouchesOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)) {
+          // `${...}` parameter and `${secret:...}` references are not supported
+          // on this path, and a parsed segment cannot tell them from a bare
+          // `$name`, so the raw source decides before the segment-level question.
+          if (
+            !value.includes("${") &&
+            expressionInterpolationsTouchOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)
+          ) {
             return value;
           }
           const expression = templateExpression(parsed.right);

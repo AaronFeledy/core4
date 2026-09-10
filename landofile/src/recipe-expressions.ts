@@ -1,7 +1,8 @@
 import {
   type EvaluationBudget,
+  type ExpressionTemplate,
   evaluateTemplateEither,
-  expressionTouchesOnlyScopes,
+  expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { Either } from "effect";
@@ -34,6 +35,42 @@ const LOAD_EXPRESSION_BUDGET: EvaluationBudget = {
   maxOutputBytes: 65536,
   maxCollectionSize: 256,
 };
+
+/**
+ * True when a value site's expressions may resolve from loader-owned data.
+ *
+ * The raw source decides the braced question, not the AST: a parsed segment
+ * cannot tell `${VAR}` from `$VAR`, and only the bare spelling is inert here.
+ * `${...}` parameter and `${secret:...}` references stay unsupported on the
+ * load path - including on the files whose raw pre-parse scan is skipped - so a
+ * site carrying one is left for the strict path to reject.
+ */
+const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean =>
+  !source.includes("${") &&
+  expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
+
+/**
+ * Replays bare shell-parameter text as a literal segment.
+ *
+ * The evaluator resolves `$name` from the `env` scope. That text is not the
+ * loader's: a Landofile value carrying `$name` and no expression is returned
+ * byte-for-byte today, and the string usually goes on to a container shell that
+ * owns those names. So the loader resolves the `{{ ... }}` interpolations around
+ * the text and leaves the text itself exactly as authored.
+ *
+ * Only `$` immediately followed by an identifier start becomes a segment, so
+ * `$$`, `$1` and `$(cmd)` are already literal text and need no replay. Only the
+ * bare spelling is rewritten because {@link resolvableAtLoad} refuses any source
+ * containing `${`, which every operator spelling requires.
+ */
+const withInertShellText = (template: ExpressionTemplate): ExpressionTemplate => ({
+  whole: template.whole,
+  segments: template.segments.map((segment) =>
+    segment.kind === "ShellParamSegment" && segment.operator === "plain"
+      ? ({ kind: "LiteralSegment", text: `$${segment.name}` } as const)
+      : segment,
+  ),
+});
 
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
@@ -104,14 +141,14 @@ export const materializeLoadScopeExpressions = (
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath });
       if (Either.isLeft(parsed)) return value;
-      if (!expressionTouchesOnlyScopes(parsed.right, LOAD_RESOLVABLE_EXPRESSION_SCOPES)) return value;
-      const needsOptions = !expressionTouchesOnlyScopes(parsed.right, ["env"]);
+      if (!resolvableAtLoad(value, parsed.right)) return value;
+      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
       if (needsOptions && options === undefined) {
         unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
         return value;
       }
       const evaluated = evaluateTemplateEither(
-        parsed.right,
+        withInertShellText(parsed.right),
         options === undefined ? { env } : { env, recipe: options },
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );

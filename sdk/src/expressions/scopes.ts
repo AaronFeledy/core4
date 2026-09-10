@@ -24,6 +24,16 @@ interface DependencyAccumulator {
   analyzable: boolean;
 }
 
+/**
+ * How to read `${VAR}` and `${secret:...}` template text.
+ *
+ * `dependency` treats it as a host/secret read the caller must not accept
+ * blindly. `inert` treats it as opaque TEXT belonging to whoever consumes the
+ * rendered string - a container shell, for instance - so only the `{{ ... }}`
+ * interpolations count as reads.
+ */
+type ShellTextReading = "dependency" | "inert";
+
 const visitNode = (node: ExpressionNode, into: DependencyAccumulator): void => {
   switch (node.kind) {
     case "Literal":
@@ -69,7 +79,11 @@ const visitSegment = (segment: PathSegment, into: DependencyAccumulator): void =
   if (segment.type === "dynamic") visitNode(segment.expr, into);
 };
 
-const visitTemplateSegment = (segment: ExpressionSegment, into: DependencyAccumulator): void => {
+const visitTemplateSegment = (
+  segment: ExpressionSegment,
+  into: DependencyAccumulator,
+  shellText: ShellTextReading,
+): void => {
   switch (segment.kind) {
     case "LiteralSegment":
     case "CommentSegment":
@@ -79,16 +93,27 @@ const visitTemplateSegment = (segment: ExpressionSegment, into: DependencyAccumu
       return;
     case "ShellParamSegment":
     case "SecretRefSegment":
-      into.analyzable = false;
+      if (shellText === "dependency") into.analyzable = false;
       return;
   }
 };
 
-const analyzeExpressionDependencies = (ast: ExpressionTemplate | ExpressionNode): ExpressionDependencies => {
+const analyzeExpressionDependencies = (
+  ast: ExpressionTemplate | ExpressionNode,
+  shellText: ShellTextReading,
+): ExpressionDependencies => {
   const into: DependencyAccumulator = { scopes: new Set(), callees: new Set(), analyzable: true };
-  if (isTemplate(ast)) for (const segment of ast.segments) visitTemplateSegment(segment, into);
+  if (isTemplate(ast)) for (const segment of ast.segments) visitTemplateSegment(segment, into, shellText);
   else visitNode(ast, into);
   return into;
+};
+
+const satisfies = (dependencies: ExpressionDependencies, allowed: ReadonlyArray<string>): boolean => {
+  if (!dependencies.analyzable) return false;
+  const allowedSet = new Set(allowed);
+  for (const scope of dependencies.scopes) if (!allowedSet.has(scope)) return false;
+  for (const callee of dependencies.callees) if (!PURE_EXPRESSION_HELPER_NAMES.has(callee)) return false;
+  return true;
 };
 
 /**
@@ -104,11 +129,23 @@ const analyzeExpressionDependencies = (ast: ExpressionTemplate | ExpressionNode)
 export const expressionTouchesOnlyScopes = (
   ast: ExpressionTemplate | ExpressionNode,
   allowed: ReadonlyArray<string>,
-): boolean => {
-  const dependencies = analyzeExpressionDependencies(ast);
-  if (!dependencies.analyzable) return false;
-  const allowedSet = new Set(allowed);
-  for (const scope of dependencies.scopes) if (!allowedSet.has(scope)) return false;
-  for (const callee of dependencies.callees) if (!PURE_EXPRESSION_HELPER_NAMES.has(callee)) return false;
-  return true;
-};
+): boolean => satisfies(analyzeExpressionDependencies(ast, "dependency"), allowed);
+
+/**
+ * True when every `{{ ... }}` interpolation in a template reads only the given
+ * context scopes through pure helpers, treating `${VAR}` and `${secret:...}`
+ * text as inert.
+ *
+ * This answers a deliberately narrower question than
+ * {@link expressionTouchesOnlyScopes}: whether the EXPRESSIONS in a string are
+ * safe to resolve, not whether the whole string is free of host-shaped syntax.
+ * A caller that replays the shell and secret text verbatim instead of
+ * evaluating it - because that text belongs to a shell it will hand the string
+ * to - wants this predicate. A caller that is about to evaluate the template as
+ * written wants the stricter one, because the evaluator resolves `${VAR}` from
+ * the `env` scope and `${secret:...}` from the secret scope.
+ */
+export const expressionInterpolationsTouchOnlyScopes = (
+  ast: ExpressionTemplate | ExpressionNode,
+  allowed: ReadonlyArray<string>,
+): boolean => satisfies(analyzeExpressionDependencies(ast, "inert"), allowed);
