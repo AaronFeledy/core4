@@ -136,14 +136,23 @@ const buildSpawnOptions = (input: ProcessSpawnOptions) => {
   };
 };
 
+const acquireProcess = (input: ProcessSpawnOptions) =>
+  Effect.try({
+    try: () => Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input)),
+    catch: (cause) => execError(input, cause),
+  });
+
+const releaseProcess = (proc: Bun.Subprocess<"pipe" | "ignore", "pipe", "pipe">) =>
+  Effect.promise(async () => {
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    await proc.exited;
+  });
+
 const runProcess = (
   input: ProcessSpawnOptions,
 ): Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError> =>
   Effect.acquireUseRelease(
-    Effect.try({
-      try: () => Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input)),
-      catch: (cause) => execError(input, cause),
-    }),
+    acquireProcess(input),
     (proc) => {
       const startedAt = Date.now();
       const collect = Effect.tryPromise({
@@ -167,61 +176,41 @@ const runProcess = (
             }),
           );
     },
-    (proc) =>
-      Effect.promise(async () => {
-        if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
-        await proc.exited;
-      }),
+    releaseProcess,
   );
 
-async function* streamProcess(input: ProcessSpawnOptions): AsyncGenerator<ProcessStreamChunk> {
-  const proc = Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input));
-
-  await writeStdin(proc.stdin, input.stdin);
-
-  // Interleave stdout and stderr via a shared async queue so that chunks are
-  // yielded in arrival order and neither pipe can block the other.
-  type Queued = { value: ProcessStreamChunk } | { done: true };
-  const queue: Queued[] = [];
-  const resolvers: Array<() => void> = [];
-
-  const enqueue = (item: Queued): void => {
-    queue.push(item);
-    resolvers.shift()?.();
-  };
-
-  const dequeue = (): Promise<Queued> =>
-    new Promise<Queued>((res) => {
-      if (queue.length > 0) {
-        res(queue.shift() as Queued);
-      } else {
-        resolvers.push(() => res(queue.shift() as Queued));
-      }
-    });
-
-  let open = 2;
-  const close = (): void => {
-    if (--open === 0) enqueue({ done: true });
-  };
-
-  void (async () => {
-    for await (const chunk of proc.stdout) enqueue({ value: { kind: "stdout", chunk } });
-    close();
-  })();
-
-  void (async () => {
-    for await (const chunk of proc.stderr) enqueue({ value: { kind: "stderr", chunk } });
-    close();
-  })();
-
-  for (;;) {
-    const item = await dequeue();
-    if ("done" in item) break;
-    yield item.value;
-  }
-
-  await proc.exited;
-}
+const streamProcess = (input: ProcessSpawnOptions) =>
+  Stream.acquireRelease(acquireProcess(input), releaseProcess).pipe(
+    Stream.flatMap((proc) => {
+      const startedAt = Date.now();
+      const outputs = (["stdout", "stderr"] as const).map((kind) =>
+        Stream.fromReadableStream({
+          evaluate: () => proc[kind],
+          onError: (cause) => execError(input, cause),
+          // Release readers without awaiting pipe cancellation before the process finalizer can kill it.
+          releaseLockOnEnd: true,
+        }).pipe(Stream.map((chunk): ProcessStreamChunk => ({ kind, chunk }))),
+      );
+      const completion = Stream.fromEffect(
+        Effect.tryPromise({
+          try: () => Promise.all([writeStdin(proc.stdin, input.stdin), proc.exited]),
+          catch: (cause) => execError(input, cause),
+        }),
+      ).pipe(Stream.drain);
+      const output = Stream.mergeAll([...outputs, completion], { concurrency: 3, bufferSize: 16 });
+      return input.timeoutMs === undefined
+        ? output
+        : output.pipe(
+            Stream.interruptWhen(
+              Effect.sleep(input.timeoutMs).pipe(
+                Effect.zipRight(
+                  Effect.suspend(() => Effect.fail(timeoutError(input, Date.now() - startedAt))),
+                ),
+              ),
+            ),
+          );
+    }),
+  );
 
 const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
   run: (input) =>
@@ -243,7 +232,7 @@ const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
       return result;
     }),
   stream: (input) =>
-    Stream.fromAsyncIterable(streamProcess(input), (cause) => execError(input, cause)).pipe(
+    streamProcess(input).pipe(
       Stream.catchAll((error) =>
         Stream.fromEffect(redactProcessError(input, error).pipe(Effect.flatMap(Effect.fail))),
       ),
