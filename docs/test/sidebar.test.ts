@@ -9,6 +9,7 @@ const landingPagePath = join(docsRoot, "index.md");
 
 const GROUP_LABELS = ["Guides", "Recipes", "Reference", "Embedding", "Telemetry", "Contributing"] as const;
 const RECIPE_IDS = [
+  "astro",
   "backdrop",
   "drupal",
   "drupal-cms",
@@ -120,6 +121,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/astro-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
     expect(slugs).toContain("guides/recipes/programmatic-recipe");
