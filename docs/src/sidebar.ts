@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
@@ -144,6 +145,7 @@ export const sidebar = [
       { label: "Backdrop", slug: "recipes/backdrop" },
       { label: "Drupal", slug: "recipes/drupal" },
       { label: "Drupal CMS", slug: "recipes/drupal-cms" },
+      { label: "Django", slug: "recipes/django" },
       { label: "Joomla", slug: "recipes/joomla" },
       { label: "LAMP", slug: "recipes/lamp" },
       { label: "Laravel", slug: "recipes/laravel" },

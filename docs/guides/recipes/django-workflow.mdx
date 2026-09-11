@@ -1,0 +1,129 @@
+---
+id: django-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, django, python, postgres, redis]
+---
+
+# Run the Django recipe
+
+```sh
+lando init --recipe django --name=django-demo --yes
+lando start
+```
+
+`--yes` keeps Celery off. Init writes `.lando.yml` only. Start brings up Python, Postgres, and Redis. Drop a Django project in so `manage.py` exists, then serve it.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `python:3.12`, `framework: django`, port `8000`, depends on `database` and `cache` |
+| `database` | `type: postgres` |
+| `cache` | `type: redis` |
+| `worker` (optional) | `python:3.12`, `framework: django`, `command: celery -A app worker --loglevel=info` with `--answer=celery=true` |
+| Tooling | `lando django` (`python manage.py`) and `lando pip` on `web` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. `framework: django` sets `DJANGO_SETTINGS_MODULE=config.settings` on `web`.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="django-workflow" display="django-demo" />
+      <Run command="lando init --recipe django --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"python:3\\.12\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"django\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"django\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold Django with pip and django-admin
+
+Install Django into the running `web` service, then create the project in the app root (`.lando.yml` can already be there):
+
+```sh
+lando pip install 'Django>=5,<6' 'psycopg[binary]>=3'
+lando exec web -- django-admin startproject config .
+```
+
+Pin what you installed for the next rebuild:
+
+```sh
+lando exec web -- pip freeze > requirements.txt
+```
+
+Then the day-to-day tools work:
+
+```sh
+lando django --version
+lando django check
+lando pip --version
+lando exec cache -- redis-cli ping
+lando exec database -- psql -U lando -d django-demo -c 'SELECT 1'
+```
+
+Add a Celery worker at init with `--answer=celery=true`:
+
+```sh
+lando init --recipe django --name=django-celery --yes --answer=celery=true
+```
+
+That service runs `celery -A app worker --loglevel=info`. Point Celery at your real app module before you start it.
+
+## Connect Django to Postgres and Redis
+
+| Setting | Postgres | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `django-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Port | `5432` | `6379` |
+
+Put host `database` in `DATABASES`, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings.
+
+Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
+
+```sh
+lando django migrate --noinput
+lando django runserver 0.0.0.0:8000
+```
+
+Bind `0.0.0.0` so Traefik can reach the process. Then open the URL from `lando info`.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Django recipe](/recipes/django/)
+- [Add Python](../services/python.mdx)
+- [Add Postgres](../services/postgres.mdx)
+- [Add Redis](../services/redis.mdx)
