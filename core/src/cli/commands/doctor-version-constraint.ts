@@ -3,7 +3,6 @@ import { relative } from "node:path";
 import { Effect, Either, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-import { StateStore } from "@lando/sdk/services";
 
 import { findDiscoveredLandofilePath, loadLandofileLayers } from "@lando/engine/services/landofile-live";
 import { CORE_VERSION } from "@lando/engine/version";
@@ -15,6 +14,7 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import { StateStoreLive } from "@lando/state-store/service";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";
@@ -106,8 +106,6 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
   never
 > =>
   Effect.gen(function* () {
-    const stateStore = yield* Effect.serviceOption(StateStore);
-    if (stateStore._tag === "None") return undefined;
     const cwd = process.cwd();
     const redactor = createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
     const redact = redactor.redactString;
@@ -134,7 +132,7 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
     const discovered = discovery.right;
     const { appRoot, filePath } = discovered;
     const resolved = yield* Effect.either(
-      loadLandofileLayers(appRoot, filePath).pipe(Effect.provideService(StateStore, stateStore.value)),
+      loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLive)),
     );
     if (Either.isLeft(resolved)) {
       if (resolved.left._tag === "LandofileParseError") {
