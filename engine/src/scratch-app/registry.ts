@@ -21,6 +21,7 @@ import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "@lando/state-store
 import { resolveStatePath } from "@lando/state-store/paths";
 import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 
 const REGISTRY_VERSION = 1 as const;
 
@@ -189,7 +190,7 @@ const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Eff
  */
 export const acquireScratchRegistryLock = (
   paths: ScratchRegistryPaths = scratchRegistryPaths(),
-  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, ScratchAppError> =>
   acquireAdvisoryLockAt(paths.lock, "registry.lock", { privateFileAccess }).pipe(
     Effect.mapError((cause) =>
@@ -233,7 +234,7 @@ const openRegistryBucket = (
     );
 
 export const makeScratchRegistry = (
-  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ): ScratchRegistryService => {
   const withBucket = <A>(
     operation: string,
@@ -277,8 +278,6 @@ export const makeScratchRegistry = (
   return { read, upsert, remove, list, get };
 };
 
-export const ScratchRegistryLive = Layer.succeed(ScratchRegistry, makeScratchRegistry());
-
 export const ScratchRegistryWithProcessRunnerLive: Layer.Layer<ScratchRegistry, never, ProcessRunner> =
   Layer.effect(
     ScratchRegistry,
@@ -286,3 +285,5 @@ export const ScratchRegistryWithProcessRunnerLive: Layer.Layer<ScratchRegistry, 
       makeScratchRegistry(makeOwnerOnlyFileAccess({ processRunner })),
     ),
   );
+
+export const ScratchRegistryLive = Layer.succeed(ScratchRegistry, makeScratchRegistry(ownerOnlyFileAccess));
