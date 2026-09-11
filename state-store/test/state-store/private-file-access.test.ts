@@ -3,6 +3,7 @@ import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { Effect } from "effect";
+import { writeFileAtomicScoped } from "../../src/atomic.ts";
 import {
   PrivateFileAccessError,
   type PrivateFileAccessLiveOptions,
@@ -224,16 +225,21 @@ describe("owner-only private file access", () => {
   );
 
   test.skipIf(process.platform !== "win32")(
-    "rejects a native Windows file after its owner-only DACL is widened",
+    "rejects a native Unicode atomic private file after its DACL is independently widened",
     async () => {
       // Given a natively enforced private file whose DACL is then widened to Everyone read access
-      const dir = await mkdtemp(join(tmpdir(), "lando-private-acl-tamper-"));
-      const path = join(dir, "private file.json");
-      const handle = await open(path, "wx", 0o600);
-      await handle.close();
+      const dir = await mkdtemp(join(tmpdir(), "lando-private-acl-café-資料-😀-"));
+      const path = join(dir, "秘密-é-🔒.json");
       try {
         await runWithAccess({ platform: "win32", env: process.env }, async (access) => {
-          await access.enforce(path);
+          await Effect.runPromise(
+            writeFileAtomicScoped(path, "private payload", {
+              mode: 0o600,
+              privateFileAccess: access.enforce,
+            }),
+          );
+          await access.verify(path);
+          expect(await Bun.file(path).text()).toBe("private payload");
           const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
           if (systemRoot === undefined) throw new Error("native Windows system root is unavailable");
           const script = `
