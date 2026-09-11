@@ -1,4 +1,4 @@
-import { copyPresentHostEnv, type HostEnv } from "./host-env-copy.ts";
+import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 /**
  * Host vars used by Node hyperlink/color detectors (supports-hyperlinks,

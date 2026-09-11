@@ -1,5 +1,5 @@
 import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/session-env.ts";
-import { copyPresentHostEnv, type HostEnv } from "./host-env-copy.ts";
+import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
 

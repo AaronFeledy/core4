@@ -5,10 +5,12 @@ import { copyPresentHostEnv } from "../../src/config/host-env-copy.ts";
 describe("copyPresentHostEnv", () => {
   test("copies only allowlisted names that are set", () => {
     expect(
-      copyPresentHostEnv(
-        { KEEP: "yes", ALSO: "", SKIP: "no", MISSING: undefined },
-        ["KEEP", "ALSO", "MISSING", "ABSENT"],
-      ),
+      copyPresentHostEnv({ KEEP: "yes", ALSO: "", SKIP: "no", MISSING: undefined }, [
+        "KEEP",
+        "ALSO",
+        "MISSING",
+        "ABSENT",
+      ]),
     ).toEqual({ KEEP: "yes", ALSO: "" });
   });
 
