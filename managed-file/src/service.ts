@@ -990,11 +990,9 @@ const makeManagedFileServiceLive = (privateFileAccess: PrivateFileAccess): Layer
     }),
   );
 
-export const ManagedFileServiceWithProcessRunnerLive: Layer.Layer<ManagedFileService, never, ProcessRunner> =
+export const ManagedFileServiceLive: Layer.Layer<ManagedFileService, never, ProcessRunner> =
   Layer.unwrapEffect(
     Effect.map(ProcessRunner, (processRunner) =>
       makeManagedFileServiceLive(makeOwnerOnlyFileAccess({ processRunner })),
     ),
   );
-
-export const ManagedFileServiceLive = ManagedFileServiceWithProcessRunnerLive;
