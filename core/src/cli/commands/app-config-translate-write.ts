@@ -73,6 +73,7 @@ export const writeTranslateTargets = ({
     const receipt = yield* transactions
       .run({
         appRoot,
+        readConditions: [...expectedBefore].map(([path, expectedBefore]) => ({ path, expectedBefore })),
         operations: [
           ...preview.targets.map((target) => ({
             kind: "write" as const,

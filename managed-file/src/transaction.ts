@@ -20,7 +20,7 @@ import {
   journalDirectory,
   openJournal,
 } from "./transaction-journal.ts";
-import { TransactionRequest, planTransaction } from "./transaction-plan.ts";
+import { TransactionRequest, planTransaction, verifyTransactionConditions } from "./transaction-plan.ts";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
 export { ManagedFileTransactionError, TransactionRequest };
@@ -64,7 +64,11 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
   });
   const leases = new WeakMap<
     PreparedTransaction,
-    { readonly journal: Journal; readonly store: Effect.Effect.Success<ReturnType<typeof openJournal>> }
+    {
+      readonly journal: Journal;
+      readonly store: Effect.Effect.Success<ReturnType<typeof openJournal>>;
+      readonly readConditions: TransactionRequest["readConditions"];
+    }
   >();
   const checkpoint = (point: TransactionCheckpoint, index = -1) =>
     Effect.suspend(() => options.checkpoint?.(point, index) ?? Effect.void).pipe(
@@ -157,7 +161,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
           const journal: Journal = { id, root, state: "prepared", entries };
           yield* store.write(journal);
           retained = true;
-          leases.set(prepared, { journal, store });
+          leases.set(prepared, { journal, store, readConditions: request.readConditions });
           yield* checkpoint("prepared");
           return prepared;
         }),
@@ -168,7 +172,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
     Effect.gen(function* () {
       const lease = leases.get(prepared);
       if (lease === undefined) return yield* Effect.fail(transactionError("journal", "commit"));
-      const { journal, store } = lease;
+      const { journal, store, readConditions } = lease;
       leases.delete(prepared);
       const current = yield* store.read;
       if (JSON.stringify(current) !== JSON.stringify(journal))
@@ -177,8 +181,14 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
         yield* transactionIO("commit", () => verifyState(journal.root, entry, entry.before));
         yield* transactionIO("commit", () => verifyBackup(journal.root, entry, options.privateFileAccess));
       }
+      yield* transactionIO("commit", () =>
+        verifyTransactionConditions(journal.root, readConditions, "commit"),
+      );
       yield* store.write({ ...journal, state: "committing" });
       yield* checkpoint("committing");
+      yield* transactionIO("commit", () =>
+        verifyTransactionConditions(journal.root, readConditions, "commit"),
+      );
       for (const [index, entry] of journal.entries.entries()) {
         yield* transactionIO("commit", () =>
           mutateEntry(journal.root, entry, options.privateFileAccess),

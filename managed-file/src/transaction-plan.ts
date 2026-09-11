@@ -4,8 +4,24 @@ import { transactionError } from "./transaction-error.ts";
 import { digestOf, sameState, snapshot, statMaybe, targetPath } from "./transaction-fs.ts";
 import type { Entry } from "./transaction-journal.ts";
 
+const ExpectedBefore = Schema.Union(
+  Schema.Struct({ present: Schema.Literal(false) }),
+  Schema.Struct({
+    present: Schema.Literal(true),
+    digest: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)),
+  }),
+);
+
 export const TransactionRequest = Schema.Struct({
   appRoot: Schema.String,
+  readConditions: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        expectedBefore: ExpectedBefore,
+      }),
+    ),
+  ),
   operations: Schema.Array(
     Schema.Union(
       Schema.Struct({
@@ -40,6 +56,25 @@ export const TransactionRequest = Schema.Struct({
   ),
 });
 export type TransactionRequest = typeof TransactionRequest.Type;
+
+/** Advisory-lock preconditions, not filesystem CAS against non-cooperating writers. */
+export const verifyTransactionConditions = async (
+  root: string,
+  conditions: TransactionRequest["readConditions"],
+  phase: "prepare" | "commit",
+): Promise<void> => {
+  for (const condition of conditions ?? []) {
+    const path = await targetPath(root, condition.path);
+    const before = await snapshot(path);
+    const expected = condition.expectedBefore;
+    if (
+      expected.present !== before.state.present ||
+      (expected.present && (!before.state.present || expected.digest !== before.state.digest))
+    ) {
+      throw transactionError("conflict", phase, condition.path);
+    }
+  }
+};
 interface PlannedEntry {
   readonly entry: Entry;
   readonly beforeBytes: Uint8Array;
@@ -51,6 +86,7 @@ export const planTransaction = async (
   request: TransactionRequest,
   id: string,
 ): Promise<readonly PlannedEntry[]> => {
+  await verifyTransactionConditions(root, request.readConditions, "prepare");
   const plans: PlannedEntry[] = [];
   const targets = new Set<string>();
   const artifacts = new Set<string>();
@@ -101,7 +137,10 @@ export const planTransaction = async (
       afterBytes,
     });
   }
-  const paths = [...targets, ...artifacts];
+  const sources = await Promise.all(
+    (request.readConditions ?? []).map((condition) => targetPath(root, condition.path)),
+  );
+  const paths = [...new Set([...targets, ...sources]), ...artifacts];
   if (
     paths.length !== new Set(paths).size ||
     paths.some((path) => paths.some((other) => other !== path && other.startsWith(`${path}${sep}`)))
