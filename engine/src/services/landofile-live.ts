@@ -38,36 +38,36 @@ export const lintLandofile = (options: LintLandofileOptions = {}) =>
   lintLandofilePackage({ ...options, templates: options.templates ?? landofileRuntimeInputs().templates });
 
 export const resolveLandofileIncludes = (options: ResolveLandofileIncludesOptions) =>
-  Effect.flatMap(Effect.serviceOption(StateStore), (stateStore) =>
-    resolveLandofileIncludesPackage({
-      ...options,
-      ports: options.ports ?? landofileRuntimeInputs().ports,
-      ...(options.stateStore === undefined && stateStore._tag === "Some"
-        ? { stateStore: stateStore.value }
-        : {}),
-    }),
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      resolveLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
   );
 
 export const updateLandofileIncludes = (options: UpdateLandofileIncludesOptions) =>
-  Effect.flatMap(Effect.serviceOption(StateStore), (stateStore) =>
-    updateLandofileIncludesPackage({
-      ...options,
-      ports: options.ports ?? landofileRuntimeInputs().ports,
-      ...(options.stateStore === undefined && stateStore._tag === "Some"
-        ? { stateStore: stateStore.value }
-        : {}),
-    }),
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      updateLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
   );
 
 export const verifyLandofileIncludes = (options: VerifyLandofileIncludesOptions) =>
-  Effect.flatMap(Effect.serviceOption(StateStore), (stateStore) =>
-    verifyLandofileIncludesPackage({
-      ...options,
-      ports: options.ports ?? landofileRuntimeInputs().ports,
-      ...(options.stateStore === undefined && stateStore._tag === "Some"
-        ? { stateStore: stateStore.value }
-        : {}),
-    }),
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      verifyLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
   );
 
 export { findDiscoveredLandofilePath };
@@ -76,18 +76,18 @@ export const loadLandofileFile = (
   filePath: string,
   context?: Parameters<typeof loadLandofileFilePackage>[1],
 ) =>
-  Effect.flatMap(Effect.serviceOption(StateStore), (stateStore) =>
+  Effect.flatMap(StateStore, (stateStore) =>
     loadLandofileFilePackage(filePath, context, {
       ...landofileRuntimeInputs(),
-      ...(stateStore._tag === "Some" ? { stateStore: stateStore.value } : {}),
+      stateStore,
     }),
   );
 
 export const loadLandofileLayers = (appRoot: string, canonicalPath: string) =>
-  Effect.flatMap(Effect.serviceOption(StateStore), (stateStore) =>
+  Effect.flatMap(StateStore, (stateStore) =>
     loadLandofileLayersPackage(appRoot, canonicalPath, {
       ...landofileRuntimeInputs(),
-      ...(stateStore._tag === "Some" ? { stateStore: stateStore.value } : {}),
+      stateStore,
     }),
   );
 
