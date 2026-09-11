@@ -7,9 +7,11 @@ import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("init-events"),
@@ -36,6 +38,7 @@ const eventRuntime = (
   failures: ReadonlySet<string> = new Set(),
 ) =>
   Layer.mergeAll(
+    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => void published.push(event._tag)),
       subscribe: () => Effect.die("not used"),
