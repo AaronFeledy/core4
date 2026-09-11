@@ -6,6 +6,11 @@ const WorkerRequest = Schema.Struct({
   operation: Schema.Literal("enforce", "verify"),
   path: Schema.String,
 });
+const WorkerFrame = Schema.Struct({
+  id: Schema.String,
+  operation: Schema.Literal("enforce", "verify"),
+  pathBase64: Schema.String,
+});
 
 export type WorkerRequest = typeof WorkerRequest.Type;
 export type WorkerOutcome =
@@ -16,6 +21,7 @@ export interface RecordingWorkerSpawn {
   readonly spawn: PrivateFileAccessSpawn;
   readonly commands: ReadonlyArray<ReadonlyArray<string>>;
   readonly requests: ReadonlyArray<WorkerRequest>;
+  readonly frames: ReadonlyArray<Uint8Array>;
   readonly firstRequest: Promise<void>;
   readonly spawnCount: () => number;
   readonly killCount: () => number;
@@ -28,6 +34,7 @@ export const makeRecordingWorkerSpawn = (
   }),
 ): RecordingWorkerSpawn => {
   const requests: WorkerRequest[] = [];
+  const frames: Uint8Array[] = [];
   const commands: Array<ReadonlyArray<string>> = [];
   let spawns = 0;
   let kills = 0;
@@ -61,8 +68,16 @@ export const makeRecordingWorkerSpawn = (
     const processHandle: PrivateFileAccessProcess = {
       stdin: {
         write: (data) => {
+          frames.push(typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data));
           const text = typeof data === "string" ? data : new TextDecoder().decode(data);
-          const request = Schema.decodeUnknownSync(WorkerRequest)(JSON.parse(text.trim()));
+          const frame = Schema.decodeUnknownSync(WorkerFrame, { onExcessProperty: "error" })(
+            JSON.parse(text.trim()),
+          );
+          const request = {
+            id: frame.id,
+            operation: frame.operation,
+            path: Buffer.from(frame.pathBase64, "base64").toString("utf16le"),
+          };
           requests.push(request);
           resolveFirstRequest();
           Promise.resolve(respond(request)).then(
@@ -98,6 +113,7 @@ export const makeRecordingWorkerSpawn = (
     spawn,
     commands,
     requests,
+    frames,
     firstRequest,
     spawnCount: () => spawns,
     killCount: () => kills,

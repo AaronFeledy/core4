@@ -31,7 +31,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
   try {
     $request = $line | ConvertFrom-Json
     $id = [string]$request.id
-    $path = [string]$request.path
+    $pathBase64 = [string]$request.pathBase64
+    $path = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($pathBase64))
+    if ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($path)) -cne $pathBase64 -or $path.Contains([char]0)) { throw 'Invalid private file path encoding.' }
     $operation = [string]$request.operation
     if ([String]::IsNullOrWhiteSpace($id) -or [String]::IsNullOrWhiteSpace($path)) { throw 'Invalid private file request.' }
     if ($operation -eq 'enforce') {
@@ -163,7 +165,8 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
     sequence += 1;
     const id = String(sequence);
     try {
-      await child.stdin.write(`${JSON.stringify({ id, operation, path })}\n`);
+      const pathBase64 = Buffer.from(path, "utf16le").toString("base64");
+      await child.stdin.write(`${JSON.stringify({ id, operation, pathBase64 })}\n`);
       await child.stdin.flush();
       const result = await Promise.race([
         readLine(stdout, lineState).then((line) => ({ kind: "response" as const, line })),

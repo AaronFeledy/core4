@@ -19,6 +19,26 @@ const settlesAsRejected = async (operation: Promise<void>): Promise<boolean> =>
   );
 
 describe("private-file ACL worker lifecycle", () => {
+  test.each(["enforce", "verify"] as const)(
+    "sends ASCII-only %s frames for Unicode paths",
+    async (operation) => {
+      // Given non-ASCII names, a surrogate pair, and isolated UTF-16 surrogate code units
+      const path = "D:\\café-資料-😀\\秘密-\ud800-\udfff.json";
+      const spawn = makeRecordingWorkerSpawn();
+      const worker = makeWorker(spawn);
+      try {
+        // When the path crosses the subprocess boundary
+        await worker[operation](path);
+        // Then every wire byte is ASCII and the semantic path is preserved exactly
+        expect(spawn.frames).toHaveLength(1);
+        expect(spawn.frames.every((frame) => frame.every((byte) => byte < 128))).toBe(true);
+        expect(spawn.requests).toEqual([{ id: "1", operation, path }]);
+      } finally {
+        await worker.close();
+      }
+    },
+  );
+
   test("closes promptly while an active request never responds", async () => {
     // Given an active request whose worker never writes a response
     const spawn = makeRecordingWorkerSpawn(() => new Promise(() => undefined));
