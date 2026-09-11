@@ -7,6 +7,7 @@ import {
   makeOwnerOnlyFileAccess,
 } from "@lando/state-store/private-file-access";
 
+import { ProcessRunnerLive } from "../services/process-runner.ts";
 import { writeAtomicCacheFile } from "./atomic.ts";
 
 interface CacheEntry {
@@ -82,8 +83,6 @@ const makeCacheServiceLayer = (privateFileAccess: ReturnType<typeof makeOwnerOnl
     ),
   );
 
-export const CacheServiceLive = makeCacheServiceLayer(makeOwnerOnlyFileAccess());
-
 export const makeCacheServiceWithProcessRunnerLive = (
   options: Omit<OwnerOnlyFileAccessOptions, "processRunner"> = {},
 ): Layer.Layer<CacheService, never, ProcessRunner> =>
@@ -94,5 +93,7 @@ export const makeCacheServiceWithProcessRunnerLive = (
   );
 
 export const CacheServiceWithProcessRunnerLive = makeCacheServiceWithProcessRunnerLive();
+
+export const CacheServiceLive = CacheServiceWithProcessRunnerLive.pipe(Layer.provide(ProcessRunnerLive));
 
 export { CacheService };
