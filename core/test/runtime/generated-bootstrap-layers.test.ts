@@ -38,7 +38,8 @@ describe("generated bootstrap layers", () => {
     const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
 
     // When: command-registry and subscriber-runtime composition is inspected.
-    const subscriberInstall = "makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS)";
+    const subscriberInstall =
+      "makeSubscriberRuntimeWithProcessRunnerLive(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
     const commandRegistryInstall = "CommandRegistryLive.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
