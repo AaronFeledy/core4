@@ -51,6 +51,46 @@ const plan: AppPlan = {
 };
 
 describe("exec command spec", () => {
+  test("does not attach stdin for non-interactive execution", async () => {
+    const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      execStream: (_target, command) => {
+        stdinModes.push(command.stdin);
+        return Stream.fromIterable([{ exitCode: 0 }]);
+      },
+    };
+    const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
+    const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+
+    try {
+      await Effect.runPromise(
+        Effect.scoped(
+          Layer.build(runtime.layer).pipe(
+            Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+            Effect.flatMap((context) =>
+              execSpec
+                .run({
+                  argv: [],
+                  parsedArgv: ["cat"],
+                  flags: { interactive: true },
+                  args: {},
+                  interaction: "non-interactive",
+                })
+                .pipe(Effect.provide(context)),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+      else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
+    }
+
+    expect(stdinModes).toEqual([undefined]);
+  });
+
   test.each([
     { name: "one-shot default", interactive: false, expectedStdin: undefined },
     { name: "explicit interactive input", interactive: true, expectedStdin: "inherit" },
