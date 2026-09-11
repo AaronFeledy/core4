@@ -103,17 +103,15 @@ const redactProcessError = (input: ProcessSpawnOptions, error: ProcessExecError 
     });
   });
 
-interface BunFileSink {
-  write: (chunk: string | Uint8Array) => number;
-  end: () => void;
-}
-
-const writeStdin = (stdin: BunFileSink | null | undefined, input: string | Uint8Array | undefined): void => {
+const writeStdin = async (
+  stdin: Bun.FileSink | null | undefined,
+  input: string | Uint8Array | undefined,
+): Promise<void> => {
   if (stdin === undefined || stdin === null || input === undefined) {
     return;
   }
-  stdin.write(typeof input === "string" ? textEncoder.encode(input) : input);
-  stdin.end();
+  await stdin.write(typeof input === "string" ? textEncoder.encode(input) : input);
+  await stdin.end();
 };
 
 /**
@@ -138,47 +136,48 @@ const buildSpawnOptions = (input: ProcessSpawnOptions) => {
   };
 };
 
-const runProcess = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
-  const startedAt = Date.now();
-  const proc = Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input));
-
-  writeStdin(proc.stdin as BunFileSink | null | undefined, input.stdin);
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const timeoutGate =
-    input.timeoutMs === undefined
-      ? new Promise<void>(() => {})
-      : new Promise<void>((resolve) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            proc.kill();
-            resolve();
-          }, input.timeoutMs);
-        });
-
-  await Promise.race([proc.exited, timeoutGate]);
-  if (timer !== undefined) {
-    clearTimeout(timer);
-  }
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  if (timedOut) {
-    throw timeoutError(input, Date.now() - startedAt);
-  }
-
-  return { exitCode, stdout, stderr };
-};
+const runProcess = (
+  input: ProcessSpawnOptions,
+): Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError> =>
+  Effect.acquireUseRelease(
+    Effect.try({
+      try: () => Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input)),
+      catch: (cause) => execError(input, cause),
+    }),
+    (proc) => {
+      const startedAt = Date.now();
+      const collect = Effect.tryPromise({
+        try: async () => {
+          const [stdout, stderr, exitCode] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+            writeStdin(proc.stdin, input.stdin),
+          ]);
+          return { exitCode, stdout, stderr };
+        },
+        catch: (cause) => execError(input, cause),
+      });
+      return input.timeoutMs === undefined
+        ? collect
+        : collect.pipe(
+            Effect.timeoutFail({
+              duration: input.timeoutMs,
+              onTimeout: () => timeoutError(input, Date.now() - startedAt),
+            }),
+          );
+    },
+    (proc) =>
+      Effect.promise(async () => {
+        if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+        await proc.exited;
+      }),
+  );
 
 async function* streamProcess(input: ProcessSpawnOptions): AsyncGenerator<ProcessStreamChunk> {
   const proc = Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input));
 
-  writeStdin(proc.stdin as BunFileSink | null | undefined, input.stdin);
+  await writeStdin(proc.stdin, input.stdin);
 
   // Interleave stdout and stderr via a shared async queue so that chunks are
   // yielded in arrival order and neither pipe can block the other.
@@ -231,13 +230,9 @@ const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
         _tag: "pre-process-exec",
         ...processEventShape(input),
       });
-      const result = yield* Effect.tryPromise({
-        try: () => runProcess(input),
-        catch: (cause) =>
-          cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
-            ? cause
-            : execError(input, cause),
-      }).pipe(Effect.catchAll((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail)));
+      const result = yield* runProcess(input).pipe(
+        Effect.catchAll((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail)),
+      );
       yield* publishRedactedProcessEvent(input, {
         _tag: "post-process-exec",
         ...processEventShape(input),
