@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { parseLandofile } from "@lando/landofile/parser";
 import { InteractionService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { AppConfigMigrateResultSchema, appConfigMigrate } from "../../src/cli/commands/app-config-migrate.ts";
+import { AppConfigMigrateResultSchema } from "../../src/cli/commands/app-config-migrate.ts";
 import { makeTestInteractionService } from "../../src/testing/interaction.ts";
+import { appConfigMigrateWithOwnerOnlyFileAccess as appConfigMigrate } from "../_support/private-file-access.ts";
 import {
   conflictingSecondEdgeFixture,
   makeMigrationFixture,

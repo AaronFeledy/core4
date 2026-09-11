@@ -24,7 +24,7 @@ import { startApp } from "@lando/engine/operations/start";
 import { stopApp } from "@lando/engine/operations/stop";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import type { RendererIO } from "@lando/renderer/io";
-import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { appConfigOptionsFromInput } from "../command-specs/app/config";
 import { logsFollowFromInput, logsOptionsFromInput } from "../command-specs/app/logs";
@@ -462,13 +462,17 @@ export const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void
   if (rejectInvalidInvocation("app:config:translate", argv)) return Promise.resolve();
   const { write, list, detect, from, to, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
-    appConfigTranslate({
-      write,
-      list,
-      detect,
-      ...(from === undefined ? {} : { from }),
-      ...(to === undefined ? {} : { to }),
-      ...(files.length === 0 ? {} : { files }),
+    Effect.gen(function* () {
+      const privateFileAccess = yield* PrivateFileAccessService;
+      return yield* appConfigTranslate({
+        write,
+        list,
+        detect,
+        privateFileAccess,
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to }),
+        ...(files.length === 0 ? {} : { files }),
+      });
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigTranslateResult(value),
