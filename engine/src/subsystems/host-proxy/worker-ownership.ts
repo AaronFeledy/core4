@@ -7,7 +7,8 @@ import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
-import { withAdvisoryLock } from "@lando/state-store/lock";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
@@ -20,6 +21,7 @@ import {
 export interface TerminateHostProxyWorkerOptions {
   readonly paths?: RootOverrides;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
+  readonly privateFileAccess?: PrivateFileAccess;
 }
 
 export type TerminateOwnershipResult = "terminated" | "absent";
@@ -54,6 +56,7 @@ export const terminateOwnedHostProxyWorker = (
         );
       }),
     ),
+    options.privateFileAccess,
   ).pipe(Effect.catchAll(() => Effect.succeed("absent" as const)));
 
 export const removeOwnedHostProxyWorkerState = (
@@ -83,7 +86,7 @@ export const terminateOwnedHostProxyWorkersInRoot = (
         if (legacyRecord === undefined) continue;
         const legacyDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId));
         if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
-        yield* withAdvisoryLock(
+        yield* withAdvisoryLockUsing(options.privateFileAccess)(
           recordPath,
           "host-proxy-worker",
           terminateControlRecord(

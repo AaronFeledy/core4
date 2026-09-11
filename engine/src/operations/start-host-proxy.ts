@@ -2,11 +2,18 @@ import { Effect, Ref, Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
-import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
+import {
+  EventService,
+  PathsService,
+  ProcessRunner,
+  type RootOverrides,
+  type ShellRunner,
+} from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { prepareHostProxyShimArtifact } from "../composition.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
@@ -105,6 +112,7 @@ export const startHostProxyRunLandoSession = (
     const platform = landoPaths.platform;
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
     const events = yield* EventService;
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
     return yield* runWithTaskTree(
       makeTaskTree(events, {
         parentId: startHostProxyTreeId(String(plan.id)),
@@ -122,6 +130,9 @@ export const startHostProxyRunLandoSession = (
             paths: { ...landoPaths.roots, platform },
             shimArtifactPath,
             shimTarget,
+            privateFileAccess: makeOwnerOnlyFileAccess(
+              processRunner._tag === "Some" ? { processRunner: processRunner.value } : {},
+            ),
             ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
           });
           yield* tree.completeTask("session", "Host-proxy session ready");
