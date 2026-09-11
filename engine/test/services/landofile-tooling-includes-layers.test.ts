@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { compileToolingCommands } from "../../src/cache/command-compiler";
 import { loadLandofileLayers } from "../../src/services/landofile-live";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test("a higher Landofile layer removes internal provenance from its task winner", async () => {
   // Given a base-layer internal include shadowed by a canonical-layer task
@@ -34,7 +35,9 @@ test("a higher Landofile layer removes internal provenance from its task winner"
     );
 
     // When all Landofile layers are loaded and command metadata is compiled
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const commands = compileToolingCommands(resolved);
 
     // Then the higher-layer winner is visible and carries no stale internal provenance
@@ -61,7 +64,9 @@ test("an authored internal fragment hides its compiled commands", async () => {
     );
 
     // When the Landofile is loaded and command metadata is compiled
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const commands = compileToolingCommands(resolved);
 
     // Then the contributed command exists but is hidden from listings
@@ -98,7 +103,9 @@ test("composes canonical tooling declarations from every Landofile layer", async
     );
 
     // When the complete Landofile is loaded
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
 
     // Then no layer's declaration is replaced by a higher layer's includes array
     expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["a:abuild", "b:bbuild"]);
@@ -131,7 +138,9 @@ test("keeps sibling canonical declarations sharing a namespace in one layer", as
     );
 
     // When the complete Landofile is loaded through the layer path
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
 
     // Then the layer path agrees with direct include resolution and drops neither fragment
     expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["shared:atask", "shared:btask"]);
@@ -172,7 +181,9 @@ test("a higher layer overrides a canonical tooling declaration sharing its names
     );
 
     // When the complete Landofile is loaded and command metadata is compiled
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const commands = compileToolingCommands(resolved);
 
     // Then the shadowed source is never read and the base layer's flags still apply
@@ -201,7 +212,9 @@ test("resolves tooling includes only after Landofile layers merge", async () => 
     );
 
     // When the complete Landofile is loaded and command metadata is compiled
-    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const resolved = await Effect.runPromise(
+      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const commands = compileToolingCommands(resolved);
 
     // Then only the winning declaration is resolved
