@@ -25,4 +25,27 @@ describe("Landofile runtime input failures", () => {
     }
     expect(failure.value.kind).toBe("source-unresolved");
   });
+
+  test("fails in the typed channel when include resolution has no StateStore", async () => {
+    // Given / When
+    const exit = await Effect.runPromiseExit(
+      resolveLandofileIncludes({
+        landofile: { includes: ["github:acme/fragments/fragment.yml"] },
+        appRoot: "/tmp/lando-missing-state-store",
+        cacheRoot: "/tmp/lando-missing-state-store-cache",
+      }),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new TypeError("Expected include resolution to fail");
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag !== "Some") throw new TypeError("Expected a typed include failure");
+    expect(failure.value._tag).toBe("LandofileIncludeError");
+    if (failure.value._tag !== "LandofileIncludeError") {
+      throw new TypeError(`Expected LandofileIncludeError, got ${failure.value._tag}`);
+    }
+    expect(failure.value.message).toContain("StateStore");
+  });
 });

@@ -19,7 +19,13 @@ import {
 } from "@lando/sdk/errors";
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
-import { ConfigService, LandofileService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/services";
+import {
+  ConfigService,
+  LandofileService,
+  Logger,
+  ManagedFileTransactionGuard,
+  StateStore,
+} from "@lando/sdk/services";
 
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
@@ -504,6 +510,7 @@ export const loadLandofileLayers = (
                 resolveTooling: false,
                 loadPolicy: runtime.policy,
                 ...(inputs?.ports === undefined ? {} : { ports: inputs.ports }),
+                ...(inputs?.stateStore === undefined ? {} : { stateStore: inputs.stateStore }),
                 ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
@@ -546,6 +553,7 @@ export const loadLandofileLayers = (
                 sourcePath: canonicalPath,
                 loadPolicy: runtime.policy,
                 ...(inputs?.ports === undefined ? {} : { ports: inputs.ports }),
+                ...(inputs?.stateStore === undefined ? {} : { stateStore: inputs.stateStore }),
                 ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
@@ -623,6 +631,7 @@ export const makeLandofileServiceLive = (inputs: LandofileRuntimeInputs) =>
     LandofileService,
     Effect.gen(function* () {
       const transactionGuard = yield* ManagedFileTransactionGuard;
-      return { discover: makeDiscoverLandofile({ ...inputs, transactionGuard }) };
+      const stateStore = yield* StateStore;
+      return { discover: makeDiscoverLandofile({ ...inputs, transactionGuard, stateStore }) };
     }),
   );

@@ -5,7 +5,7 @@ import { Effect, ExecutionStrategy, Scope } from "effect";
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
@@ -22,7 +22,7 @@ import {
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 
-type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd;
+type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
 interface ResolvedLandofilePlan {
   readonly plan: AppPlan;
@@ -79,7 +79,8 @@ const planFromShape = (
 ): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
     const sourcePath = join(appRoot, ".lando.yml");
-    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath });
+    const stateStore = yield* StateStore;
+    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath, stateStore });
     yield* assertUserAppIdNotReserved(landofile);
     yield* assertLandoVersionConstraint(landofile, { sourcePath });
     return yield* planResolvedLandofile(landofile, appRoot);
