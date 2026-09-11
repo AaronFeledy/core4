@@ -39,12 +39,14 @@ import {
   type ManagedFileApplyOptions,
   type ManagedFileSelector,
   ManagedFileService,
+  ProcessRunner,
 } from "@lando/sdk/services";
 
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { withAdvisoryLock } from "@lando/state-store/lock";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
@@ -817,9 +819,12 @@ const resolveMissingTargetRealPath = async (target: string): Promise<string> => 
 export const makeDiskBackend = (options: {
   readonly defaultBase: () => string;
   readonly ledgerRoot: () => string;
+  readonly privateFileAccess?: PrivateFileAccess;
 }): Effect.Effect<ManagedFileBackend> =>
   Effect.gen(function* () {
-    const stateStore = makeStateStore();
+    const stateStore = makeStateStore(
+      options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess },
+    );
 
     const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
       const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(
@@ -901,7 +906,12 @@ export const makeDiskBackend = (options: {
           ),
         ),
       writeAtomic: (abs, content, operation, mode) =>
-        writeFileAtomicScoped(abs, content, mode === undefined ? {} : { mode }).pipe(
+        writeFileAtomicScoped(abs, content, {
+          ...(mode === undefined ? {} : { mode }),
+          ...(options.privateFileAccess === undefined
+            ? {}
+            : { privateFileAccess: options.privateFileAccess.enforce }),
+        }).pipe(
           Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
         ),
       removeFile: (abs, operation) =>
@@ -918,7 +928,7 @@ export const makeDiskBackend = (options: {
       mutateLedger: (operation, f) =>
         ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
           Effect.flatMap((bucket) =>
-            withAdvisoryLock(
+            withAdvisoryLockUsing(options.privateFileAccess)(
               bucket.path,
               operation,
               bucket.get.pipe(
@@ -961,23 +971,34 @@ const makeLiveManagedFileEvents = (
  * still work; an absent `RedactionService` falls back to the standalone secrets
  * redactor so event payloads are never retained raw.
  */
-export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.effect(
-  ManagedFileService,
-  Effect.gen(function* () {
-    const backend = yield* makeDiskBackend({
-      defaultBase: () => process.cwd(),
-      ledgerRoot: () => resolveLandoRoots().userDataRoot,
-    });
-    const eventService = yield* Effect.serviceOption(EventService);
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const redactorOptions = { sourceEnv: { ...process.env } };
-    const redactor =
-      redaction._tag === "None"
-        ? createStandaloneRedactor("secrets", redactorOptions)
-        : yield* redaction.value.forProfile("secrets", redactorOptions);
-    return yield* makeManagedFileService(
-      backend,
-      makeLiveManagedFileEvents(eventService, redactor.redactString),
-    );
-  }),
-);
+const makeManagedFileServiceLive = (privateFileAccess: PrivateFileAccess): Layer.Layer<ManagedFileService> =>
+  Layer.effect(
+    ManagedFileService,
+    Effect.gen(function* () {
+      const backend = yield* makeDiskBackend({
+        defaultBase: () => process.cwd(),
+        ledgerRoot: () => resolveLandoRoots().userDataRoot,
+        privateFileAccess,
+      });
+      const eventService = yield* Effect.serviceOption(EventService);
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactorOptions = { sourceEnv: { ...process.env } };
+      const redactor =
+        redaction._tag === "None"
+          ? createStandaloneRedactor("secrets", redactorOptions)
+          : yield* redaction.value.forProfile("secrets", redactorOptions);
+      return yield* makeManagedFileService(
+        backend,
+        makeLiveManagedFileEvents(eventService, redactor.redactString),
+      );
+    }),
+  );
+
+export const ManagedFileServiceLive = makeManagedFileServiceLive(makeOwnerOnlyFileAccess());
+
+export const ManagedFileServiceWithProcessRunnerLive: Layer.Layer<ManagedFileService, never, ProcessRunner> =
+  Layer.unwrapEffect(
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeManagedFileServiceLive(makeOwnerOnlyFileAccess({ processRunner })),
+    ),
+  );

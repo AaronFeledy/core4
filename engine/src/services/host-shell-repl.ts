@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { DEFAULT_SHELL_HISTORY_LIMIT, appendShellHistory, readShellHistory } from "./host-shell-history.ts";
 import { runHostShellLine } from "./host-shell-line.ts";
 import { makeStatefulShellRedactor } from "./host-shell-redactor.ts";
@@ -83,6 +84,7 @@ const parseExit = (line: string, lastStatus: number): number | undefined => {
 
 export const runHostShellRepl = (
   spec: HostShellReplSpec,
+  privateFileAccess?: PrivateFileAccess,
 ): Effect.Effect<ShellInteractiveResult, ShellExecError> =>
   Effect.gen(function* () {
     const eventService = yield* Effect.serviceOption(EventService);
@@ -115,7 +117,8 @@ export const runHostShellRepl = (
       try: async (effectSignal) => {
         const iterator = io.input[Symbol.asyncIterator]();
         const historyLimit = spec.historyLimit ?? DEFAULT_SHELL_HISTORY_LIMIT;
-        if (spec.historyFile !== undefined) await readShellHistory(spec.historyFile, historyLimit);
+        if (spec.historyFile !== undefined)
+          await readShellHistory(spec.historyFile, historyLimit, privateFileAccess);
         let lastStatus = 0;
         let pending: Promise<ShellReplInput> | undefined;
         let abortIdle: (() => void) | undefined;
@@ -184,7 +187,7 @@ export const runHostShellRepl = (
               });
             const persistHistory = async (): Promise<void> => {
               if (spec.historyFile === undefined) return;
-              await appendShellHistory(spec.historyFile, command, historyLimit);
+              await appendShellHistory(spec.historyFile, command, historyLimit, privateFileAccess);
             };
             const outputRedactor = makeStatefulShellRedactor(
               redactor,

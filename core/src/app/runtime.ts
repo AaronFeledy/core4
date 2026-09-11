@@ -14,7 +14,7 @@ import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services
 import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
 import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
 import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
+import { ScratchRegistryWithProcessRunnerLive } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
 import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
@@ -50,13 +50,13 @@ export const openLandoRuntime = (
     });
     const scratchDeps = Layer.mergeAll(
       appLayer,
-      ScratchRegistryLive,
+      ScratchRegistryWithProcessRunnerLive.pipe(Layer.provide(appLayer)),
       ScratchResourceScannerLive,
       ScratchInitAppPortLive,
     );
     const layer = Layer.mergeAll(
       appLayer,
-      ScratchRegistryLive,
+      ScratchRegistryWithProcessRunnerLive.pipe(Layer.provide(appLayer)),
       ScratchResourceScannerLive,
       ScratchInitAppPortLive,
       ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),

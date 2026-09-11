@@ -4,22 +4,22 @@ import { readFile } from "node:fs/promises";
 // `StateBucket`. All atomic write, advisory cross-process locking, corruption
 // quarantine, and version-envelope handling are delegated to `StateStore`
 // (`core/src/state/`); this module only owns the scratch entry schema and the
-// `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The bucket
-// is opened from the dependency-free `makeStateStore()` factory (the same value
-// `StateStoreLive` wraps) so `makeScratchRegistry()` stays a zero-arg synchronous
-// constructor usable without a `StateStore` service in context.
+// `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The live
+// layer derives private-file access from the process runner before opening the
+// bucket so Windows ACL enforcement never relies on an ambient subprocess path.
 
 import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
-import type { StateBucket } from "@lando/sdk/services";
+import { ProcessRunner, type StateBucket } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { encodeFrame } from "@lando/state-store/codec";
-import { acquireAdvisoryLockAt, withAdvisoryLock } from "@lando/state-store/lock";
+import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 const REGISTRY_VERSION = 1 as const;
@@ -136,7 +136,7 @@ const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   }
 };
 
-const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> =>
+const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Effect<void, ScratchAppError> =>
   resolveStatePath("userCache", "scratch", "registry.bin", "registry.migrate").pipe(
     Effect.mapError((cause) =>
       scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
@@ -154,13 +154,18 @@ const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> =>
       const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
         Schema.encode(RegistryEntriesSchema)(entries).pipe(
           Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
-          Effect.flatMap((body) => writeFileAtomicScoped(registryFile, body)),
+          Effect.flatMap((body) =>
+            writeFileAtomicScoped(registryFile, body, {
+              mode: 0o600,
+              privateFileAccess: privateFileAccess.enforce,
+            }),
+          ),
           Effect.mapError((cause) =>
             scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
           ),
         );
 
-      return withAdvisoryLock(
+      return withAdvisoryLockUsing(privateFileAccess)(
         registryFile,
         "registry.migrate",
         inspectLegacyEnvelope.pipe(
@@ -184,8 +189,9 @@ const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> =>
  */
 export const acquireScratchRegistryLock = (
   paths: ScratchRegistryPaths = scratchRegistryPaths(),
+  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, ScratchAppError> =>
-  acquireAdvisoryLockAt(paths.lock, "registry.lock").pipe(
+  acquireAdvisoryLockAt(paths.lock, "registry.lock", { privateFileAccess }).pipe(
     Effect.mapError((cause) =>
       scratchRegistryError("registry.lock", "Unable to acquire the scratch registry lock.", cause),
     ),
@@ -204,14 +210,17 @@ export class ScratchRegistry extends Context.Tag("@lando/core/ScratchRegistry")<
   ScratchRegistryService
 >() {}
 
-const openRegistryBucket = (): Effect.Effect<StateBucket<RegistryEntries>, ScratchAppError> =>
-  makeStateStore()
+const openRegistryBucket = (
+  privateFileAccess: PrivateFileAccess,
+): Effect.Effect<StateBucket<RegistryEntries>, ScratchAppError> =>
+  makeStateStore({ privateFileAccess })
     .open<RegistryEntries, RegistryEntries>({
       root: "userCache",
       namespace: "scratch",
       key: "registry.bin",
       schema: RegistryEntriesSchema,
       version: REGISTRY_VERSION,
+      mode: 0o600,
       codec: "json",
       lock: "advisory",
       onCorrupt: "quarantine",
@@ -223,15 +232,17 @@ const openRegistryBucket = (): Effect.Effect<StateBucket<RegistryEntries>, Scrat
       ),
     );
 
-export const makeScratchRegistry = (): ScratchRegistryService => {
+export const makeScratchRegistry = (
+  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
+): ScratchRegistryService => {
   const withBucket = <A>(
     operation: string,
     message: string,
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
-    migrateLegacyEnvelope().pipe(
+    migrateLegacyEnvelope(privateFileAccess).pipe(
       Effect.zipRight(
-        openRegistryBucket().pipe(
+        openRegistryBucket(privateFileAccess).pipe(
           Effect.flatMap((bucket) =>
             use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
           ),
@@ -266,7 +277,12 @@ export const makeScratchRegistry = (): ScratchRegistryService => {
   return { read, upsert, remove, list, get };
 };
 
-export const ScratchRegistryLive = Layer.effect(
-  ScratchRegistry,
-  Effect.sync(() => makeScratchRegistry()),
-);
+export const ScratchRegistryLive = Layer.succeed(ScratchRegistry, makeScratchRegistry());
+
+export const ScratchRegistryWithProcessRunnerLive: Layer.Layer<ScratchRegistry, never, ProcessRunner> =
+  Layer.effect(
+    ScratchRegistry,
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeScratchRegistry(makeOwnerOnlyFileAccess({ processRunner })),
+    ),
+  );

@@ -5,11 +5,11 @@ import { Effect, Schema } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 
-const stateStore = makeStateStore();
 const HistorySchema = Schema.Array(Schema.String);
 
 // StateStore path-root containment realpath-checks the root. Create the per-app
@@ -29,10 +29,10 @@ const ensureHistoryRoot = (path: string): Effect.Effect<void, StateStoreError> =
       }),
   });
 
-const historyBucket = (path: string, limit: number) =>
+const historyBucket = (path: string, limit: number, privateFileAccess?: PrivateFileAccess) =>
   ensureHistoryRoot(path).pipe(
     Effect.flatMap(() =>
-      stateStore.open({
+      makeStateStore(privateFileAccess === undefined ? {} : { privateFileAccess }).open({
         root: { path: AbsolutePath.make(dirname(path)) },
         key: basename(path),
         schema: HistorySchema,
@@ -56,17 +56,26 @@ const historyBucket = (path: string, limit: number) =>
     ),
   );
 
-export const readShellHistory = async (path: string, limit: number): Promise<ReadonlyArray<string>> =>
+export const readShellHistory = async (
+  path: string,
+  limit: number,
+  privateFileAccess?: PrivateFileAccess,
+): Promise<ReadonlyArray<string>> =>
   Effect.runPromise(
-    historyBucket(path, limit).pipe(
+    historyBucket(path, limit, privateFileAccess).pipe(
       Effect.flatMap((bucket) => bucket.get),
       Effect.map((lines) => lines ?? []),
     ),
   );
 
-export const appendShellHistory = async (path: string, line: string, limit: number): Promise<void> => {
+export const appendShellHistory = async (
+  path: string,
+  line: string,
+  limit: number,
+  privateFileAccess?: PrivateFileAccess,
+): Promise<void> => {
   await Effect.runPromise(
-    historyBucket(path, limit).pipe(
+    historyBucket(path, limit, privateFileAccess).pipe(
       Effect.flatMap((bucket) =>
         bucket.update((current) => (limit <= 0 ? [] : [...(current ?? []), line].slice(-limit))),
       ),

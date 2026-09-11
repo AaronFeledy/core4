@@ -50,6 +50,7 @@ import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
@@ -1094,9 +1095,10 @@ export const ScratchAppServiceLive = makeScratchAppServiceLayer(loadUserLandofil
  */
 export const detachScratchApp = (
   id: string,
+  privateFileAccess = makeOwnerOnlyFileAccess(),
 ): Effect.Effect<void, ScratchAppNotFoundError | ScratchAppError> =>
   Effect.gen(function* () {
-    const registry = makeScratchRegistry();
+    const registry = makeScratchRegistry(privateFileAccess);
     const entry = yield* registry.get(id);
     if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
     const { ownerPid: _ownerPid, ...rest } = entry;
