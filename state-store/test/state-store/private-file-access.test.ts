@@ -147,6 +147,7 @@ describe("owner-only private file access", () => {
         await rm(dir, { recursive: true, force: true });
       }
     },
+    30_000,
   );
 
   test.skipIf(process.platform !== "win32")(

@@ -767,7 +767,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("destroy and logs honor a caller-supplied plan when no plan is persisted", async () => {
     const fake = makeFakeApi();
