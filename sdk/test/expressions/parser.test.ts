@@ -263,6 +263,20 @@ describe("parseExpression paths and literals", () => {
 });
 
 describe("parseExpression template segments", () => {
+  test("preserves bare shell parameters as inert text without changing braced forms or escapes", () => {
+    // Given / When
+    const template = parseTemplate("$BARE ${BRACED:-fallback} $${ESCAPED}", {
+      bareShellParameters: "preserve",
+    });
+
+    // Then
+    expect(template.segments).toEqual([
+      { kind: "LiteralSegment", text: "$BARE " },
+      { kind: "ShellParamSegment", name: "BRACED", operator: "default-empty", word: "fallback" },
+      { kind: "LiteralSegment", text: " ${ESCAPED}" },
+    ]);
+  });
+
   test("parses all braced shell parameter operators", () => {
     const segments = shellSegments(
       "${VAR} ${EMPTY:-default} ${UNSET-default} ${REQUIRED:?message} ${ALT:+alt}",

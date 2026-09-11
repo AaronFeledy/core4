@@ -11,6 +11,7 @@ import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 import { type ManagedFileContractHarness, runManagedFileContract } from "@lando/sdk/test";
 
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
 
@@ -40,7 +41,11 @@ describe("ManagedFileService contract suite", () => {
 
     try {
       const service = await run(
-        makeDiskBackend({ defaultBase: () => base, ledgerRoot: () => dataRoot }).pipe(
+        makeDiskBackend({
+          defaultBase: () => base,
+          ledgerRoot: () => dataRoot,
+          privateFileAccess: ownerOnlyFileAccess,
+        }).pipe(
           Effect.flatMap((backend) =>
             makeManagedFileService(backend, {
               redactText: redact,

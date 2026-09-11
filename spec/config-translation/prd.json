@@ -282,7 +282,7 @@
       "description": "As a maintainer, the complete 24-recipe registry has aggregate evidence across six cohesive implementation batches.",
       "acceptanceCriteria": [
         "Verify the exact `core/build.config.ts` 24-id registry has one passing batch story per recipe id, current declarative snapshot, generated or existing executable README, default/nondefault coverage, and explicit auxiliary inventory.",
-        "Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no per-recipe implementation (decomposers, snapshots, manifests, scaffold assets) and no new loader or pipeline enabler surfaces \u2014 load-path expression resolution and the auxiliary content-source port are owned by US-609E7, and composite string-site interpolation on the load path is owned by US-609E8."
+        "Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no per-recipe implementation (decomposers, snapshots, manifests, scaffold assets) and no new loader or pipeline enabler surfaces; load-path expression resolution and the auxiliary content-source port are owned by US-609E7, and composite string-site interpolation on the load path is owned by US-609E8."
       ],
       "dependsOn": [
         "US-609E1",
@@ -295,7 +295,7 @@
         "US-609E8"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -308,7 +308,7 @@
       ],
       "dependsOn": ["US-609B", "US-609E"],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -323,7 +323,7 @@
       ],
       "dependsOn": ["US-608D", "US-609B", "US-610"],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

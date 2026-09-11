@@ -33,10 +33,76 @@ const runProcess = (input: Parameters<Context.Tag.Service<typeof ProcessRunner>[
   );
 
 describe("ProcessRunnerLive", () => {
+  for (const mode of ["interrupt", "timeout"] as const) {
+    test(`kills and reaps a SIGTERM-resistant child on ${mode}`, async () => {
+      const ready = Promise.withResolvers<number>();
+      const controller = new AbortController();
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: async (request) => {
+          ready.resolve(Number(await request.text()));
+          return new Response("ready");
+        },
+      });
+      const program = Effect.flatMap(ProcessRunner, (runner) =>
+        runner.run({
+          cmd: process.execPath,
+          args: [
+            "-e",
+            `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`,
+          ],
+          ...(mode === "timeout" ? { timeoutMs: 300 } : {}),
+        }),
+      ).pipe(Effect.provide(ProcessRunnerLive));
+      const completion = Effect.runPromiseExit(program, { signal: controller.signal });
+      let pid: number | undefined;
+      try {
+        const childPid = await Effect.runPromise(
+          Effect.promise(() => ready.promise).pipe(Effect.timeout("2 seconds")),
+        );
+        pid = childPid;
+        if (mode === "interrupt") controller.abort();
+        const exit = await Effect.runPromise(
+          Effect.promise(() => completion).pipe(Effect.timeout("1 second")),
+        );
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit) && mode === "timeout") {
+          const error = Cause.failureOption(exit.cause);
+          expect(error._tag === "Some" && error.value instanceof ProcessTimeoutError).toBe(true);
+        }
+        expect(() => process.kill(childPid, 0)).toThrow();
+      } finally {
+        controller.abort();
+        if (pid !== undefined) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch (cause) {
+            expect(cause).toMatchObject({ code: "ESRCH" });
+          }
+        }
+        await server.stop(true);
+      }
+    }, 4000);
+  }
+
   test("runs a command and captures stdout", async () => {
     const result = await runProcess({ cmd: "echo", args: ["hello"] });
 
     expect(result).toEqual({ exitCode: 0, stdout: "hello\n", stderr: "" });
+  });
+
+  test("preserves stdin and drains both output pipes while the child runs", async () => {
+    const result = await runProcess({
+      cmd: process.execPath,
+      args: [
+        "-e",
+        'const input = await Bun.stdin.text(); process.stdout.write(input.repeat(65536)); process.stderr.write("e".repeat(65536));',
+      ],
+      stdin: "input",
+      timeoutMs: 2000,
+    });
+    expect(result).toEqual({ exitCode: 0, stdout: "input".repeat(65536), stderr: "e".repeat(65536) });
   });
 
   test("returns non-zero exit as data", async () => {

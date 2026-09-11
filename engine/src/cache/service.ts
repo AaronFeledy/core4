@@ -1,8 +1,13 @@
 import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
-import { CacheService } from "@lando/sdk/services";
+import { CacheService, ProcessRunner } from "@lando/sdk/services";
+import {
+  type OwnerOnlyFileAccessOptions,
+  makeOwnerOnlyFileAccess,
+} from "@lando/state-store/private-file-access";
 
+import { ProcessRunnerLive } from "../services/process-runner.ts";
 import { writeAtomicCacheFile } from "./atomic.ts";
 
 interface CacheEntry {
@@ -38,6 +43,7 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Schema<
 
 const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
+  privateFileAccess: ReturnType<typeof makeOwnerOnlyFileAccess>,
 ): Context.Tag.Service<typeof CacheService> => ({
   read: <A, I>(key: string, schema?: Schema.Schema<A, I>) =>
     Effect.gen(function* () {
@@ -65,13 +71,29 @@ const makeCacheService = (
         }),
       );
     }),
-  writeAtomic: (path, content) => writeAtomicCacheFile(path, content),
+  writeAtomic: (path, content) => writeAtomicCacheFile(path, content, privateFileAccess.enforce),
   invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
 });
 
-export const CacheServiceLive = Layer.effect(
-  CacheService,
-  Ref.make<ReadonlyMap<string, CacheEntry>>(new Map()).pipe(Effect.map(makeCacheService)),
-);
+const makeCacheServiceLayer = (privateFileAccess: ReturnType<typeof makeOwnerOnlyFileAccess>) =>
+  Layer.effect(
+    CacheService,
+    Ref.make<ReadonlyMap<string, CacheEntry>>(new Map()).pipe(
+      Effect.map((entries) => makeCacheService(entries, privateFileAccess)),
+    ),
+  );
+
+export const makeCacheServiceWithProcessRunnerLive = (
+  options: Omit<OwnerOnlyFileAccessOptions, "processRunner"> = {},
+): Layer.Layer<CacheService, never, ProcessRunner> =>
+  Layer.unwrapEffect(
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeCacheServiceLayer(makeOwnerOnlyFileAccess({ ...options, processRunner })),
+    ),
+  );
+
+export const CacheServiceWithProcessRunnerLive = makeCacheServiceWithProcessRunnerLive();
+
+export const CacheServiceLive = CacheServiceWithProcessRunnerLive.pipe(Layer.provide(ProcessRunnerLive));
 
 export { CacheService };

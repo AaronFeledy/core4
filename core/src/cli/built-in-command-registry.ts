@@ -3,7 +3,9 @@ import { NotImplementedError } from "@lando/sdk/errors";
 import { buildBuiltInCommandIndex } from "./built-in-command-index";
 import { appCacheRefreshSpec } from "./command-specs/app/cache/refresh";
 import { appConfigSpec } from "./command-specs/app/config";
+import { appConfigExplainSpec } from "./command-specs/app/config/explain";
 import { appConfigLintSpec } from "./command-specs/app/config/lint";
+import { appConfigMigrateSpec } from "./command-specs/app/config/migrate";
 import { appConfigTranslateSpec } from "./command-specs/app/config/translate";
 import {
   appConfigEditSpec,
@@ -143,6 +145,8 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       appCacheRefreshSpec,
       appConfigSpec,
       appConfigLintSpec,
+      appConfigExplainSpec,
+      appConfigMigrateSpec,
       appConfigTranslateSpec,
       appConfigSetSpec,
       appConfigUnsetSpec,

@@ -40,13 +40,25 @@ describe("codegen clean-checkout bootstrap", () => {
     const commandIds = await import(join(root, "core/src/cli/generated/command-ids.ts"));
     const mcpAllowlist = await import(join(root, "mcp/src/generated/mcp-allowlist.ts"));
     const hostProxyAllowlist = await import(join(root, "core/src/cli/generated/host-proxy-allowlist.ts"));
+    const recipePostInitAllowlist = await import(join(root, "core/src/cli/allowlists/recipe-post-init.ts"));
     const commandRegistryManifest = await import(
       join(root, "core/src/cli/generated/command-registry-manifest.ts")
     );
     expect(commandIds.BUILT_IN_COMMAND_IDS).toEqual([]);
     expect(mcpAllowlist.MCP_DEFAULT_ALLOWLIST).toEqual([]);
     expect(hostProxyAllowlist.HOST_PROXY_RUNLANDO_ALLOWLIST).toEqual([]);
+    expect(recipePostInitAllowlist.RECIPE_POST_INIT_COMMAND_IDS).toEqual([]);
     expect(commandRegistryManifest.COMMAND_REGISTRY_MANIFEST.commands).toEqual({});
     expect(commandRegistryManifest.COMMAND_REGISTRY_MANIFEST.topics).toEqual({});
+  });
+
+  test("preserves an existing post-init allowlist during bootstrap", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-codegen-bootstrap-"));
+    roots.push(root);
+    const path = join(root, "core/src/cli/allowlists/recipe-post-init.ts");
+    const source = 'export const RECIPE_POST_INIT_COMMAND_IDS = ["app:start"] as const;\n';
+    await Bun.write(path, source);
+    await ensureCodegenBootstrapModules(root);
+    expect(await Bun.file(path).text()).toBe(source);
   });
 });

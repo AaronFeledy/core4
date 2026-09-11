@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
 import { type LandofileShape, ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
+import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { initApp } from "../../src/cli/commands/init.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
-import { nodeTsRenderer } from "../../src/recipes/builtin/node-ts/render.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
 const FORBIDDEN_RUNTIME_BUILTINS = [
   "fs",
@@ -117,21 +118,51 @@ const planLandofile = (landofile: LandofileShape) =>
     ),
   );
 
-describe("node-ts recipe renderer", () => {
-  test("emits exactly one file at .lando.ts", () => {
-    const rendered = nodeTsRenderer.render({ appName: "demo-app", answers: {} });
-    expect([...rendered.keys()]).toEqual([".lando.ts"]);
+describe("node-ts recipe pipeline", () => {
+  test("refuses when a TypeScript Landofile already exists at the destination", async () => {
+    await withTempCwd(async (dir) => {
+      const destination = join(dir, "existing");
+      await mkdir(destination);
+      await Bun.write(join(destination, ".lando.ts"), 'export default { name: "already" };\n');
+
+      await expect(
+        initApp({
+          cwd: dir,
+          destination,
+          full: false,
+          recipe: "lamp",
+          name: "existing",
+          nonInteractive: true,
+          runPostInit: false,
+        }),
+      ).rejects.toBeInstanceOf(InitTargetExistsError);
+      expect(await Bun.file(join(destination, ".lando.yml")).exists()).toBe(false);
+      expect(await Bun.file(join(destination, ".lando.ts")).text()).toContain("already");
+    });
   });
 
-  test("rendered .lando.ts contains no forbidden node builtin or URL-scheme import", () => {
-    const rendered = nodeTsRenderer.render({ appName: "demo-app", answers: {} });
-    const tsSource = rendered.get(".lando.ts");
-    if (tsSource === undefined) throw new Error("expected .lando.ts to be rendered");
-    const source = tsSource;
+  test("emits exactly one canonical Landofile at .lando.yml", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "node-ts",
+        nonInteractive: true,
+        answers: { name: "demo-app" },
+        runPostInit: false,
+      });
+      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(result.directory, ".lando.ts")).exists()).toBe(false);
+      expect(result.skippedScaffold).toEqual([]);
+    });
+  });
+
+  test("encoded node-ts Landofile contains no forbidden node builtin or URL-scheme import", async () => {
+    const { text: tsSource } = await previewBuiltinRecipe("node-ts", "demo-app");
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];
-    for (const match of source.matchAll(importPattern)) {
+    for (const match of tsSource.matchAll(importPattern)) {
       matchedSpecifiers.push(match[1] as string);
     }
     expect(matchedSpecifiers).toEqual([]);
@@ -147,14 +178,14 @@ describe("node-ts recipe renderer", () => {
     }
   });
 
-  test("manifest yaml advertises .lando.ts as the only emitted dest", () => {
-    expect(nodeTsRecipeYaml).toContain("dest: .lando.ts");
-    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.yml");
+  test("manifest yaml advertises .lando.yml as the only emitted dest", () => {
+    expect(nodeTsRecipeYaml).toContain("dest: .lando.yml");
+    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.ts");
   });
 });
 
-describe("lando init — programmatic Landofile (node-ts)", () => {
-  test("writes .lando.ts (and not .lando.yml) at the expected path", async () => {
+describe("lando init — canonical Landofile (node-ts)", () => {
+  test("writes .lando.yml (and not .lando.ts) at the expected path", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -166,12 +197,12 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
       });
 
       expect(result.appName).toBe("node-ts-app");
-      expect(await Bun.file(join(result.directory, ".lando.ts")).exists()).toBe(true);
-      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(false);
+      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(result.directory, ".lando.ts")).exists()).toBe(false);
     });
   });
 
-  test("LandofileService discovers and validates the generated .lando.ts (defaults)", async () => {
+  test("LandofileService discovers and validates the generated .lando.yml (defaults)", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -233,15 +264,21 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
     });
   });
 
-  test("renderer round-trips an app name containing apostrophes and backslashes via JSON.stringify", async () => {
+  test("encoder round-trips an app name containing quotes and backslashes", async () => {
+    // Lando's own reader is the oracle here: the emitted provenance carries an
+    // unquoted `packageName: @lando/recipe-node-ts`, which a general YAML
+    // parser rejects on the reserved `@` indicator even though every reader on
+    // the production path accepts it.
     const trickyName = `quote\\and"backslash`;
-    const rendered = nodeTsRenderer.render({ appName: trickyName, answers: {} });
-    const tsSource = rendered.get(".lando.ts");
-    if (tsSource === undefined) throw new Error("expected .lando.ts to be rendered");
-    expect(tsSource).toContain(`name: ${JSON.stringify(trickyName)},`);
+    const { text } = await previewBuiltinRecipe("node-ts", trickyName);
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), text, "utf8");
+      const landofile = await discoverFrom(dir);
+      expect(landofile.name).toBe(trickyName);
+    });
   });
 
-  test("rendered .lando.ts file on disk is the renderer output under a // ownership marker", async () => {
+  test("canonical .lando.yml on disk is byte-identical to the preview without ownership markers", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -252,12 +289,10 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         postInitIO: { out: () => {}, err: () => {} },
       });
 
-      const onDisk = await readFile(join(result.directory, ".lando.ts"), "utf8");
-      const body = nodeTsRenderer.render({ appName: "byte-parity-app", answers: {} }).get(".lando.ts") ?? "";
-      const markerLine =
-        "// lando-generated:node-ts:.lando.ts — managed by Lando; delete this line to adopt this file.";
-      expect(onDisk.split("\n")[0]).toBe(markerLine);
-      expect(onDisk.slice(markerLine.length + 1)).toBe(body.endsWith("\n") ? body : `${body}\n`);
+      const onDisk = await readFile(join(result.directory, ".lando.yml"), "utf8");
+      const { text } = await previewBuiltinRecipe("node-ts", "byte-parity-app", result.answers);
+      expect(onDisk).not.toContain("lando-generated");
+      expect(onDisk).toBe(text);
     });
   });
 });

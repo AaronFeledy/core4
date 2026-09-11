@@ -8,7 +8,9 @@ import type { AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { withAdvisoryLock } from "@lando/state-store/lock";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { ownerOnlyFileAccess } from "../../services/private-file-access.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 
@@ -91,6 +93,7 @@ export const writeWorkerRecord = (
   app: AppRef,
   paths: RootOverrides | undefined,
   record: HostProxyWorkerRecord,
+  privateFileAccess?: PrivateFileAccess,
 ) => {
   const path = workerStatePath(app, paths);
   return Effect.tryPromise({
@@ -103,6 +106,7 @@ export const writeWorkerRecord = (
         `${JSON.stringify(Schema.encodeUnknownSync(HostProxyWorkerRecord)(record), null, 2)}\n`,
         {
           mode: 0o600,
+          ...(privateFileAccess === undefined ? {} : { privateFileAccess: privateFileAccess.enforce }),
         },
       ).pipe(Effect.mapError((cause) => stateError("Failed to write host-proxy worker state.", path, cause))),
     ),
@@ -113,4 +117,5 @@ export const withWorkerRecordLock = <A, E>(
   app: Pick<AppRef, "id" | "root">,
   paths: RootOverrides | undefined,
   body: Effect.Effect<A, E>,
-) => withAdvisoryLock(workerStatePath(app, paths), "host-proxy-worker", body);
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+) => withAdvisoryLockUsing(privateFileAccess)(workerStatePath(app, paths), "host-proxy-worker", body);

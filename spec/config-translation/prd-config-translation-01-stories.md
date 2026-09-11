@@ -8,7 +8,7 @@ Normative design: [`spec-config-translation.md`](./spec-config-translation.md). 
 |---|---|---|
 | US-609C | explicit translation preview | `docs/guides/landofile/config-translate.mdx` |
 | US-609E | recipe init cutover | affected recipe READMEs |
-| US-610 | explanation | `docs/guides/recipes/explain.mdx` |
+| US-610 | explanation | `docs/guides/landofile/config-explain.mdx` |
 | US-611B | migration | `docs/guides/recipes/migrating-recipes.mdx` |
 
 ### US-607: Amend the durable core specification
@@ -187,13 +187,31 @@ Normative design: [`spec-config-translation.md`](./spec-config-translation.md). 
 - [ ] Replace `core/src/recipes/builtin/toolbox/{manifest,render}.ts` rendering from `recipes/toolbox/recipe.yml` with deterministic decomposition and publish its declarative current snapshot.
 - [ ] Cover default/nondefault options, declared files/postInit or an explicit empty inventory, generated `recipes/toolbox/README.mdx`, provider-free init, and applicable standard gates.
 
+### US-609E7: Enable native-load expression resolution and auxiliary content sources
+
+**Description:** As the recipe cutover enabler, the native load path resolves recipe and env expression scopes and the init pipeline can source bundled auxiliary assets, so decomposer-emitted Landofiles plan and scaffold without renderer fallback.
+
+**Acceptance Criteria:**
+- [ ] Materialize `{{ recipe.<option> }}` on the native Landofile load path per spec §7.3.1: defer the `recipe` scope through raw scan and post-parse validation, resolve post-merge from that same file's merged `recipe.options` with no recipe lookup and no recipe code, skip the inert `recipe:` provenance subtree, leave planner-owned `app`/`proxy` sites untouched, and fail closed with a Landofile validation error naming each unresolved path.
+- [ ] Resolve the `env` expression scope on the same deferred-scope path so every expression the 24 bundled decomposer snapshots emit (including node-ts) loads and plans, with loader tests covering recipe+env mixed files.
+- [ ] Give the private init pipeline a content-source port so `writeAuxiliaryScaffold` can write bundled in-memory assets (mean, node-postgres, rails) without an absolute on-disk `src`, rendering `template: true` assets before write; typecheck, test, lint, and boundary gates pass.
+
+### US-609E8: Enable composite expression interpolation on the native load path
+
+**Description:** As the recipe cutover enabler, string-site values that mix literal text with deferred-scope expressions load, defer, and resolve per spec §7.3.1, so every decomposer-emitted Landofile (including drupal tooling commands) loads and plans without renderer fallback.
+
+**Acceptance Criteria:**
+- [ ] Widen the raw pre-parse scan in `landofile/src/service.ts` (`scanContentForUnsupportedExpressions` / `scanForConfigExpression`) so a quoted string-site scalar that interpolates literal text with one or more expressions touching only load-deferred scopes (`recipe`, `env`) is deferred instead of rejected, while whole-scalar handling, rejection of non-deferred scopes, and the `{{{{` / `$${` escapes stay behavior-compatible.
+- [ ] Resolve composite interpolation post-merge in the same deferred-scope materializer US-609E7 built: mixed literal+expression string sites render as strings per spec §7.3.1 while whole-scalar expressions keep type preservation, planner-owned `app`/`proxy` sites stay untouched, and each unresolved path fails closed with the same Landofile validation error shape.
+- [ ] Loader tests cover the drupal mixed literal+option tooling scalar shape and mixed recipe+env composite sites, and the decomposed drupal Landofile loads and plans in the loader test harness; typecheck, test, lint, and boundary gates pass.
+
 ### US-609E: Verify the bundled recipe conversion milestone
 
 **Description:** As a maintainer, the complete 24-recipe registry has aggregate evidence across six cohesive implementation batches.
 
 **Acceptance Criteria:**
 - [ ] Verify the exact `core/build.config.ts` 24-id registry has one passing batch story per recipe id, current declarative snapshot, generated or existing executable README, default/nondefault coverage, and explicit auxiliary inventory.
-- [ ] Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no recipe-specific implementation.
+- [ ] Switch the single public init registry to the prepared replacements, delete obsolete renderer bindings and the expander with no runtime fallback, publish prepared executable READMEs, and run aggregate recipe, guide-drift, transcript, schema, typecheck, test, lint, codegen, and boundary gates; this story adds no per-recipe implementation (decomposers, snapshots, manifests, scaffold assets) and no new loader or pipeline enabler surfaces; load-path expression resolution and the auxiliary content-source port are owned by US-609E7, and composite string-site interpolation on the load path is owned by US-609E8.
 
 ### US-610: Explain provenance without inferring intent
 

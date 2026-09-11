@@ -13,15 +13,18 @@ import {
   ManagedFileService,
   PathsService,
   PluginRegistry,
+  ProcessRunner,
   type RegisteredCommand,
   StateStore,
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
+import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 import { makePublishRender } from "./publish-render.ts";
 import { resolveNotifyConfig } from "./subscriber-config.ts";
 import type { IndexedSubscriber } from "./subscriber-index.ts";
@@ -142,6 +145,7 @@ const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> =>
 export const makeSubscriberRuntimeLive = (
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ) =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
@@ -181,6 +185,7 @@ export const makeSubscriberRuntimeLive = (
             managedFileService: managedFiles,
             stateStore,
             pluginStateRoot,
+            privateFileAccess,
             publishRender: makePublishRender(events, redaction),
           });
           const getHandler = yield* makeCachedSubscriberHandler(
@@ -215,4 +220,14 @@ export const makeSubscriberRuntimeLive = (
         },
       });
     }),
+  );
+
+export const makeSubscriberRuntimeWithProcessRunnerLive = (
+  modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
+  builtIns: ReadonlyArray<string> = builtInCommandIds(),
+) =>
+  Layer.unwrapEffect(
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeSubscriberRuntimeLive(modules, builtIns, makeOwnerOnlyFileAccess({ processRunner })),
+    ),
   );

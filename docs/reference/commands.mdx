@@ -62,9 +62,31 @@ Flags:
 | --- | --- |
 | `--editor` | Editor binary for edit. |
 
+## `lando app:config:explain`
+
+Report recipe provenance and which generated value sites are still managed.
+
+Aliases: `lando config:explain`
+
 ## `lando app:config:lint`
 
 Validate the current app's Landofile against the canonical schema.
+
+Aliases: `lando config:lint`
+
+## `lando app:config:migrate`
+
+Migrate managed recipe configuration through satisfied recipe history.
+
+Aliases: `lando config:migrate`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Preview every migration hunk without writing. |
+| `--no-interactive` | Never prompt for migration approval. |
+| `--yes, -y` | Approve selectable migration hunks. |
 
 ## `lando app:config:set`
 
@@ -89,6 +111,7 @@ Flags:
 
 Translate a non-canonical config file into a canonical v4 Landofile.
 
+Aliases: `lando config:translate`
 
 Flags:
 

@@ -9,9 +9,11 @@
  */
 import { Effect } from "effect";
 
-import type { ScratchAppService } from "@lando/sdk/services";
+import { ProcessRunner, type ScratchAppService } from "@lando/sdk/services";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { detachScratchApp } from "@lando/engine/scratch-app/service";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { RendererMode } from "./bug-report";
 import { initOptionsFromInput } from "./command-specs/apps/init";
@@ -42,6 +44,7 @@ import {
   scratchStop,
 } from "./commands/scratch";
 import {
+  defaultScratchRunDeps,
   normalizeScratchRunArgvForParsing,
   parseScratchRunArgv,
   renderScratchRunResult,
@@ -151,7 +154,16 @@ const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> => {
 const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      scratchRun({ ...parseScratchRunArgv(argv), signal }),
+      Effect.gen(function* () {
+        const processRunner = yield* ProcessRunner;
+        return yield* scratchRun(
+          { ...parseScratchRunArgv(argv), signal },
+          {
+            ...defaultScratchRunDeps,
+            detach: (id) => detachScratchApp(id, makeOwnerOnlyFileAccess({ processRunner })),
+          },
+        );
+      }),
       scratchRunRuntimeLayer(),
       renderScratchRunResult,
       { successExitCode: scratchRunSuccessExitCode },
@@ -161,18 +173,29 @@ const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
 export const dispatchAppsCommand = async (argv: ReadonlyArray<string>): Promise<boolean> => {
   if (argv[0] === "init" || argv[0] === "apps:init") {
     const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
-    await runCompiledCommand(
-      Effect.tryPromise({
-        try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
-        catch: (error) => error,
-      }),
-      makeLandoRuntime(
-        cliRuntimeOptions({
-          bootstrap: "minimal",
-          plugins: { policy: "discovery" },
+    await runWithProcessAbortSignal((signal) =>
+      runCompiledCommand(
+        Effect.gen(function* () {
+          const processRunner = yield* ProcessRunner;
+          return yield* Effect.tryPromise({
+            try: () =>
+              initApp({
+                ...initOptionsFromInput(input),
+                signal,
+                onWarn: emitDiagnosticLine,
+                privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+              }),
+            catch: (error) => error,
+          });
         }),
+        makeLandoRuntime(
+          cliRuntimeOptions({
+            bootstrap: "minimal",
+            plugins: { policy: "discovery" },
+          }),
+        ),
+        (result) => `Created ${result.appName} at ${result.directory}`,
       ),
-      (result) => `Created ${result.appName} at ${result.directory}`,
     );
     return true;
   }

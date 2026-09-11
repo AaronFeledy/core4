@@ -14,6 +14,7 @@ import { resolveNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
 import { makeLandoPluginContext } from "@lando/engine/plugins/context";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
 
@@ -436,7 +437,7 @@ describe("subscriber runtime", () => {
     const context = makeLandoPluginContext({
       id: "@example/subscriber",
       managedFileService,
-      stateStore: makeStateStore(),
+      stateStore: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       pluginStateRoot: Schema.decodeUnknownSync(AbsolutePath)("/tmp/lando-subscriber-test"),
       publishRender: () => Effect.void,
     });

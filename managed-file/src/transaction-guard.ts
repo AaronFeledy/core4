@@ -1,6 +1,7 @@
 import { resolveLandoRoots } from "@lando/paths";
-import { ManagedFileTransactionGuard } from "@lando/sdk/services";
-import { Layer } from "effect";
+import { ManagedFileTransactionGuard, ProcessRunner } from "@lando/sdk/services";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Layer } from "effect";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
 /**
@@ -9,12 +10,24 @@ import { makeTransactionRecovery } from "./transaction-recovery.ts";
  * transaction, cleans up a committed one, and refuses a `blocked` one. It loads
  * no translator and renders no migration UI.
  */
-export const makeManagedFileTransactionGuard = (options: { readonly journalRoot: () => string }) => {
-  const recovery = makeTransactionRecovery({ journalRoot: options.journalRoot });
+export const makeManagedFileTransactionGuard = (options: {
+  readonly journalRoot: () => string;
+  readonly privateFileAccess: PrivateFileAccess;
+}) => {
+  const recovery = makeTransactionRecovery({
+    journalRoot: options.journalRoot,
+    privateFileAccess: options.privateFileAccess,
+  });
   return { ensureConsistent: recovery.ensureConsistent, pending: recovery.pending };
 };
 
-export const ManagedFileTransactionGuardLive: Layer.Layer<ManagedFileTransactionGuard> = Layer.succeed(
-  ManagedFileTransactionGuard,
-  makeManagedFileTransactionGuard({ journalRoot: () => resolveLandoRoots().userDataRoot }),
-);
+export const ManagedFileTransactionGuardLive: Layer.Layer<ManagedFileTransactionGuard, never, ProcessRunner> =
+  Layer.effect(
+    ManagedFileTransactionGuard,
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeManagedFileTransactionGuard({
+        journalRoot: () => resolveLandoRoots().userDataRoot,
+        privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+      }),
+    ),
+  );

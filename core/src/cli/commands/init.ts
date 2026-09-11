@@ -3,27 +3,23 @@ import { join, resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
+import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { InitTargetExistsError } from "@lando/sdk/errors";
-import type {
-  FileFormat,
-  ManagedFile,
-  PortablePath,
-  PromptBatchOptions,
-  RecipePrompt,
-  RecipePromptChoice,
-} from "@lando/sdk/schema";
-import { RecipeManifestService } from "@lando/sdk/services";
+import type { PromptBatchOptions, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
+import { type ConfigTranslatorShape, RecipeManifestService } from "@lando/sdk/services";
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
-import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";
+import { lookupRecipeDecomposer } from "../../recipes/builtin/decomposers";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest";
-import { lookupRecipeRenderer } from "../../recipes/builtin/registry";
+import { bundledRecipeContentSource } from "../../recipes/builtin/scaffold-assets";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source";
+import { previewRecipeLandofile, runRecipeInitPipeline } from "../../recipes/init-pipeline";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service";
 import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime";
@@ -47,16 +43,12 @@ import { planInitWrites } from "./init-write-plan";
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";
 
-// Code files map to js/ts so their ownership marker is a valid `//` line, not a
-// `#` that would corrupt the scaffolded source.
-export const inferRecipeScaffoldFormat = (dest: string): FileFormat => {
-  if (dest.endsWith(".lando.yml") || dest.endsWith(".lando.yaml")) return "landofile";
-  if (dest.endsWith(".yml") || dest.endsWith(".yaml")) return "yaml";
-  if (dest.endsWith(".json")) return "json";
-  if (dest.endsWith(".js") || dest.endsWith(".cjs") || dest.endsWith(".mjs")) return "javascript";
-  if (dest.endsWith(".ts") || dest.endsWith(".cts") || dest.endsWith(".mts")) return "typescript";
-  if (dest.endsWith(".env")) return "env";
-  return "text";
+const loadRecipeEncoder = async (): Promise<ConfigTranslatorShape> => {
+  const { BUNDLED_PLUGIN_MODULES } = await import("../../plugins/generated/bundled.ts");
+  const module = BUNDLED_PLUGIN_MODULES.find((module) => module.configTranslators?.has("lando4"));
+  const loader = module?.configTranslators?.get("lando4");
+  if (loader === undefined) throw new Error("Missing bundled lando4 encoder.");
+  return loader();
 };
 
 const sortedRecipeCatalog = () =>
@@ -95,6 +87,7 @@ const resolveRecipeSelection = async (
 };
 
 export interface InitAppOptions {
+  readonly signal?: AbortSignal;
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
@@ -121,6 +114,7 @@ export interface InitAppOptions {
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
+  readonly privateFileAccess?: PrivateFileAccess;
   readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
@@ -132,10 +126,21 @@ export interface InitAppOptions {
 export interface InitAppResult {
   readonly appName: string;
   readonly directory: string;
+  /** Collected nonsecret answers only. Secret prompt values are never returned. */
   readonly answers: PromptAnswers;
   readonly postInit: PostInitOutcome;
   readonly skippedScaffold: ReadonlyArray<string>;
 }
+
+export const stripSecretInitAnswers = (
+  prompts: ReadonlyArray<RecipePrompt>,
+  answers: PromptAnswers,
+): PromptAnswers => {
+  const secretNames = new Set(
+    prompts.filter((prompt) => prompt.type === "secret").map((prompt) => prompt.name),
+  );
+  return Object.fromEntries(Object.entries(answers).filter(([name]) => !secretNames.has(name)));
+};
 
 const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
   if (resolved.manifest !== undefined) return { resolved, manifest: resolved.manifest };
@@ -296,8 +301,8 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
             ? await loadRegistryRecipe(options)
             : await loadRecipe(recipeRef, cwd);
 
-  const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
-  if (renderer === undefined) {
+  const decomposer = resolved.root === undefined ? lookupRecipeDecomposer(manifest.id) : undefined;
+  if (decomposer === undefined) {
     throw new Error(
       `Recipe file rendering for "${recipeRef}" is not supported; only bundled built-in recipes are supported.`,
     );
@@ -310,10 +315,25 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     typeof presetAnswers[APP_NAME_PROMPT] === "string" && presetAnswers[APP_NAME_PROMPT] !== ""
       ? presetAnswers[APP_NAME_PROMPT]
       : defaultAppNameFromCwd(options.destination ?? cwd);
-  const previewYaml =
-    renderer.render({ appName: previewAppName, answers: presetAnswers }).get(".lando.yml") ?? "";
+  const encoderPromise = loadRecipeEncoder();
+  const previewYaml = await encoderPromise
+    .then((encoder) =>
+      Effect.runPromise(
+        previewRecipeLandofile({
+          manifest,
+          decomposer,
+          appName: previewAppName,
+          answers: presetAnswers,
+          encoder,
+        }),
+      ),
+    )
+    .then(
+      ({ text }) => text,
+      () => "",
+    );
 
-  const collected = await prompter.promptAll(prompts, {
+  const prompted = await prompter.promptAll(prompts, {
     answers: presetAnswers,
     cwd,
     ...(options.yes === undefined ? {} : { yes: options.yes }),
@@ -328,6 +348,10 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     },
   } satisfies InternalPromptBatchOptions);
 
+  // Prompt collection validates declared prompts. Preserve additional explicit
+  // options for decomposers, which own their recipe-specific option contract.
+  const collected = { ...presetAnswers, ...prompted };
+  const publicAnswers = stripSecretInitAnswers(prompts, collected);
   const appNameValue = collected[APP_NAME_PROMPT];
   if (typeof appNameValue !== "string" || appNameValue === "") {
     throw new Error(`Recipe "${recipeRef}" requires a text answer for prompt 'name'.`);
@@ -345,17 +369,25 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     ...(options.name === undefined ? {} : { name: options.name }),
   });
   const existing = new Set<string>();
+  const scaffoldDests = files
+    .map((file) => file.dest)
+    .filter((dest) => dest !== LANDOFILE_NAME && dest !== LANDOFILE_TS_NAME);
+  const effectiveDests = [LANDOFILE_NAME, ...scaffoldDests];
+  // Probe every Landofile form the loader would treat as this app, not only
+  // the dest init writes. An existing .lando.ts must conflict so we never
+  // drop a sibling .lando.yml beside it.
+  const landofileForms = [LANDOFILE_NAME, LANDOFILE_TS_NAME] as const;
   await Promise.all(
-    files.map(async (file) => {
-      if (await Bun.file(join(directory, file.dest)).exists()) existing.add(file.dest);
+    [...new Set([...effectiveDests, ...landofileForms])].map(async (dest) => {
+      if (await Bun.file(join(directory, dest)).exists()) existing.add(dest);
     }),
   );
+  const existingLandofile = landofileForms.find((dest) => existing.has(dest));
   const writePlan = planInitWrites(
-    files.map((file) => file.dest),
+    existingLandofile === undefined ? effectiveDests : [existingLandofile, ...scaffoldDests],
     existing,
   );
-  const writeDests = new Set(writePlan.write);
-  const filesToWrite = files.filter((file) => writeDests.has(file.dest));
+  const filesToWrite = writePlan.write;
   const postInitActions = (manifest.postInit ?? []).filter(
     (action) => writePlan.skippedScaffold.length === 0 || action.type === "message",
   );
@@ -377,6 +409,10 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   await Effect.runPromise(tree.start);
   await Effect.runPromise(tree.startTask("render"));
 
+  let postInit: PostInitOutcome = { executed: [] };
+  let skippedScaffold: ReadonlyArray<string> = [];
+  let postInitStarted = false;
+
   try {
     if (writePlan.landofileConflict !== undefined) {
       const conflictPath = join(directory, writePlan.landofileConflict);
@@ -391,79 +427,92 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       });
     }
 
-    const rendered = renderer.render({ appName, answers: collected });
-
+    const secretNames = new Set(
+      prompts.filter((prompt) => prompt.type === "secret").map((prompt) => prompt.name),
+    );
+    const secretAnswers: Record<string, string> = {};
+    for (const name of secretNames) {
+      const value = collected[name];
+      if (typeof value === "string") secretAnswers[name] = value;
+    }
+    // The transaction resolves and locks a canonical app root, so the
+    // destination must exist before it prepares anything.
     await mkdir(directory, { recursive: true });
 
-    const managedFiles = filesToWrite.map((file): ManagedFile => {
-      const content = rendered.get(file.dest);
-      if (content === undefined) {
-        throw new Error(
-          `Recipe "${recipeRef}" lists file dest "${file.dest}" in its manifest but its renderer did not produce content for it.`,
-        );
-      }
-      return {
-        id: `${manifest.id}:${file.dest}`,
-        owner: manifest.id,
-        path: file.dest as PortablePath,
-        mode: "file",
-        format: inferRecipeScaffoldFormat(file.dest),
-        content: { kind: "text", value: content },
-        onConflict: "fail",
-      };
-    });
-
-    await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const backend = yield* makeDiskBackend({
-            defaultBase: () => directory,
-            ledgerRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
-          });
-          const service = yield* makeManagedFileService(backend);
-          yield* service.apply(managedFiles);
-        }),
+    // The write plan is all-or-nothing for the auxiliary scaffold: one existing
+    // destination withholds the whole set. The pipeline skips per destination,
+    // so excluded dests must be withheld before the pipeline writes anything.
+    const authorized = new Set(writePlan.write);
+    const pipelineManifest = {
+      ...manifest,
+      files: files.filter(
+        (file) =>
+          file.dest === LANDOFILE_NAME || file.dest === LANDOFILE_TS_NAME || authorized.has(file.dest),
       ),
+    };
+
+    const result = await Effect.runPromise(
+      runRecipeInitPipeline({
+        appRoot: directory,
+        manifest: pipelineManifest,
+        decomposer,
+        answers: publicAnswers,
+        secretAnswers,
+        appName,
+        encoder: await encoderPromise,
+        journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
+        contentSource: bundledRecipeContentSource(manifest.id),
+        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+        ...(resolved.root === undefined ? {} : { sourceRoot: resolved.root }),
+        runPostInit: async (bound) => {
+          if (
+            !shouldRunPostInit ||
+            (writePlan.skippedScaffold.length > 0 &&
+              bound.actions.some((action) => action.type !== "message"))
+          ) {
+            return { executed: [] };
+          }
+          if (!postInitStarted) {
+            await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
+            await Effect.runPromise(tree.startTask("postinit"));
+            postInitStarted = true;
+          }
+          return runPostInit({
+            ...bound,
+            ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
+            ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+            ...(options.postInitCommandRunner === undefined
+              ? {}
+              : { commandRunner: options.postInitCommandRunner }),
+            ...(resolved.root === undefined ? {} : { recipeRoot: resolved.root }),
+          });
+        },
+      }),
+      options.signal === undefined ? undefined : { signal: options.signal },
     );
+    postInit = result.postInit;
+    const written = new Set(result.auxiliaryFiles);
+    skippedScaffold = scaffoldDests.filter((dest) => !written.has(join(directory, dest)));
   } catch (cause) {
     if (cause instanceof InitTargetExistsError) throw cause;
 
-    await Effect.runPromise(tree.failTask("render", "Render failed"));
+    await Effect.runPromise(
+      tree.failTask(
+        postInitStarted ? "postinit" : "render",
+        postInitStarted ? "Post-init failed" : "Render failed",
+      ),
+    );
     await Effect.runPromise(tree.close("Initialization failed"));
     throw cause;
   }
 
-  await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
-
-  let postInit: PostInitOutcome = { executed: [] };
-  if (shouldRunPostInit) {
-    await Effect.runPromise(tree.startTask("postinit"));
-
-    try {
-      postInit = await runPostInit({
-        actions: postInitActions,
-        destination: directory,
-        recipeId: manifest.id,
-        appName,
-        answers: collected,
-        ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
-        ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
-        ...(options.postInitCommandRunner === undefined
-          ? {}
-          : { commandRunner: options.postInitCommandRunner }),
-        ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
-        ...(resolved.root === undefined ? {} : { recipeRoot: resolved.root }),
-      });
-    } catch (cause) {
-      await Effect.runPromise(tree.failTask("postinit", "Post-init failed"));
-      await Effect.runPromise(tree.close("Initialization failed"));
-      throw cause;
-    }
-
+  if (postInitStarted) {
     await Effect.runPromise(tree.completeTask("postinit", `Ran ${postInit.executed.length} actions`));
+  } else {
+    await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
   }
 
   await Effect.runPromise(tree.close(`Initialized ${appName}`));
 
-  return { appName, directory, answers: collected, postInit, skippedScaffold: writePlan.skippedScaffold };
+  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
 };

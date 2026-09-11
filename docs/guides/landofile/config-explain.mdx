@@ -1,0 +1,134 @@
+---
+id: config-explain
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, config, explain]
+---
+
+# See which Landofile values your recipe still manages
+
+```sh
+lando app:config:explain
+```
+
+Run that from an app directory. Lando reads the Landofile, compares the recorded recipe options against the recipe's published defaults, and prints where each option still flows into your services. It's a read-only provenance report: nothing is written, `.lando.ts` never executes, `includes:` are not followed, no plan is built, and no provider is contacted.
+
+## Read the report
+
+For a Landofile that `lando init --recipe=lamp` produced with `php` set to `8.2` and the `webroot` expression replaced by a literal, the report (after the `Landofile:` path line) reads:
+
+```text
+Recipe: lamp 0.1.0
+Producer: bundled @lando/recipe-lamp
+Digest: sha256:c0b2cde89f016351b3fd769068969460e7ebdcc01853ff6e61381f1290853fd8
+Comparison: matched against snapshot 0.1.0
+
+composer: "2"
+  default: "2"
+  status: accepted-by-value
+  references: services.appserver.composer = {{ recipe.composer }}
+
+database: "mariadb:11.4"
+  default: "mariadb:11.4"
+  status: accepted-by-value
+  references: services.database.type = {{ recipe.database }}
+
+name: "explain-demo"
+  status: chosen-by-value
+  references: none
+
+php: "8.2"
+  default: "8.3"
+  status: chosen-by-value
+  references: services.appserver.type = php:{{ recipe.php }}
+
+webroot: "/app"
+  default: "/app"
+  status: accepted-by-value
+  references: none
+  taken over: services.appserver.webroot was {{ recipe.webroot }}, now "/app"
+```
+
+Each option gets a `status`, its `references` (the sites that still hold the generated `{{ recipe.<name> }}` expression), and any `taken over` sites.
+
+### Status is a value comparison, not a mind reader
+
+`accepted-by-value` means the recorded value equals the recipe default at the recorded version. `chosen-by-value` means it differs. That's all. Lando doesn't know whether you typed `8.2` at the prompt or accepted a default that later changed; it only compares values. `name` shows `chosen-by-value` with no `default` line because `lando init` records it while the recipe publishes no default for it.
+
+### A site is managed only while the whole expression survives
+
+A reference counts only when the site still holds the complete generated expression. Replace `{{ recipe.webroot }}` with `/app` and the site is `taken over`, even though `/app` is exactly what the expression would have produced. Same value, different ownership. Edit the option under `recipe.options` if you want the recipe to keep steering it; edit the service directly if you want it out of the recipe's hands.
+
+## Get JSON
+
+```sh
+lando app:config:explain --format=json
+```
+
+The JSON envelope's `result` carries `landofilePath`, `form`, `recipe`, `comparison`, and an `options` array. Each option has `name`, `value`, optional `default`, `status`, `references` (`path` + `expression`), and `takenOver` (`path`, `generatedExpression`, `currentValue`). Scripts and agents should read this instead of scraping the text.
+
+## When the comparison is blocked
+
+Blocking is normal, and honest. The semantic comparison needs a recorded producer identity, option values, and a recipe version the installed recipe still publishes. When any of that is missing, Lando says so and still reports the bounded facts it can read straight out of the file.
+
+| Situation | `comparison.reason` |
+| --- | --- |
+| Bare `recipe: lamp` with no options block | `bare-provenance` |
+| A `.lando.ts` Landofile (never executed) | `programmatic-landofile` |
+| `includes:` present (never followed) | `includes-present` |
+| No installed recipe publishes that id | `unknown-recipe` |
+| Recorded version differs from what the installed recipe publishes | `identity-mismatch` |
+
+Each blocked report carries a `detail` and a `remediation` line telling you what to change.
+
+A bare `recipe: lamp` gives you this:
+
+```text
+Recipe: lamp
+Comparison: blocked (bare-provenance)
+  This Landofile records a recipe id with no producer identity or option values.
+  Re-run `lando init` with this recipe to record the producer identity and option values a comparison needs.
+
+composer: (not recorded)
+  references: services.appserver.composer = {{ recipe.composer }}
+
+database: (not recorded)
+  references: services.database.type = {{ recipe.database }}
+
+php: (not recorded)
+  references: services.appserver.type = php:{{ recipe.php }}
+```
+
+No defaults, no statuses, just the `{{ recipe.* }}` sites that exist in the file. In JSON, `form` is `"bare"` and `comparison` carries `reason`, `detail`, and `remediation`.
+
+<Guide>
+  <Scenario id="managed" render>
+    <Step name="explain-managed">
+      <UseFixture name="managed-lamp" />
+      <Run command="lando app:config:explain" />
+      <Run command="lando app:config:explain --format=json" />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"status\":\\s*\"matched\"" } }} />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"chosen-by-value\"" } }} />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.appserver\\.webroot\"" } }} />
+    </Step>
+    <Step name="managed-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="blocked-bare" render>
+    <Step name="explain-bare">
+      <UseFixture name="bare-recipe" />
+      <Run command="lando app:config:explain" />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"bare-provenance\"" } }} />
+    </Step>
+    <Step name="bare-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Translate a config into a v4 Landofile](./config-translate.mdx)

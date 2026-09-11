@@ -91,6 +91,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
 | PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
+| — | — | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
 | PRD-10 | US-164 | tooling output via renderer task tree | `docs/guides/tooling/output-streaming.mdx` | Shipped |
@@ -216,6 +217,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
 | — | — | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
 | — | — | Drupal multisite configuration | `docs/guides/recipes/drupal-multisite.mdx` | Shipped |
+| — | — | `app:config:migrate` recipe migration edges | `docs/guides/recipes/migrating-recipes.mdx` | Shipped |
 | — | — | PHP version selection matrix | `docs/guides/services/php-version-matrix.mdx` | Shipped |
 | — | — | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |
 | — | — | PHP service customization | `docs/guides/services/php-customization.mdx` | Shipped |

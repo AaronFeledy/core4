@@ -5,9 +5,10 @@ import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
 
-import { PrivilegeService } from "@lando/sdk/services";
+import { PrivilegeService, ProcessRunner } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
@@ -250,9 +251,17 @@ const tryReadText = (path: string, readText: (path: string) => string): string |
   }
 };
 
-const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
+const defaultTeardownHostProxySessions = async (
+  userDataRoot: string,
+  privateFileAccess?: PrivateFileAccess,
+): Promise<void> => {
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
-  await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot));
+  await Effect.runPromise(
+    terminateOwnedHostProxyWorkersInRoot(
+      userDataRoot,
+      privateFileAccess === undefined ? {} : { privateFileAccess },
+    ),
+  );
 };
 
 const defaultTeardownRuntimeService = (
@@ -807,12 +816,26 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
   Effect.gen(function* () {
     const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const privilege = yield* Effect.serviceOption(PrivilegeService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const elevate =
       options.elevate ??
       (privilege._tag === "Some"
         ? (command: ReadonlyArray<string>) => Effect.runPromise(privilege.value.elevate(command))
         : undefined);
-    const resolvedOptions = elevate === undefined ? options : { ...options, elevate };
+    const teardownHostProxySessions =
+      options.teardownHostProxySessions ??
+      ((userDataRoot: string) =>
+        defaultTeardownHostProxySessions(
+          userDataRoot,
+          processRunner._tag === "Some"
+            ? makeOwnerOnlyFileAccess({ processRunner: processRunner.value })
+            : undefined,
+        ));
+    const resolvedOptions = {
+      ...options,
+      ...(elevate === undefined ? {} : { elevate }),
+      teardownHostProxySessions,
+    };
     const dryRun = options.dryRun === true;
     const yes = options.yes === true;
     const requestedMode: UninstallMode | undefined =

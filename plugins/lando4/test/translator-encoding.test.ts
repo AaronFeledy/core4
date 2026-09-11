@@ -78,7 +78,7 @@ describe("lando4 encoding", () => {
   test("rejects an expression-only context even when a fragment is provided", async () => {
     const exit = await Effect.runPromiseExit(
       encodeOf({
-        context: "{{ env.CONFIG }}",
+        context: "{{ env.CONFIG }}" as never,
         fragment: { services: { web: { port: "{{ env.LOCAL_PORT }}" } } },
       }),
     );

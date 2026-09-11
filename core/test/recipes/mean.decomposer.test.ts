@@ -11,7 +11,6 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Either, Schema } from "effect";
 import { meanDecomposer } from "../../src/recipes/builtin/mean/decomposer.ts";
 import { meanRecipeYaml } from "../../src/recipes/builtin/mean/manifest.ts";
-import { meanRenderer } from "../../src/recipes/builtin/mean/render.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "../../src/recipes/builtin/mean/scaffold.ts";
 import {
   MEAN_CONTENT_DIGEST,
@@ -19,7 +18,9 @@ import {
   meanProducer,
   meanSnapshot,
 } from "../../src/recipes/builtin/mean/snapshot.ts";
+import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
+import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";
 
 const defaults = { ...meanDefaults };
 const validInput: RecipeDecomposeInput = { producer: meanProducer, options: defaults, secrets: {} };
@@ -135,9 +136,14 @@ describe("mean decomposition", () => {
     },
   );
 
-  test("preserves renderer asset bytes when rendering the probe app", () => {
-    const files = meanRenderer.render({ appName: "probe", answers: {} });
-    expect(files.get("package.json")).toBe(MEAN_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", "probe"));
-    expect(files.get("server.js")).toBe(MEAN_SERVER_JS);
+  test("preserves neutral scaffold bytes when rendering the probe app", async () => {
+    const source = bundledRecipeContentSource("mean");
+    const packageJson = await source({ src: "templates/package.json", dest: "package.json" });
+    expect(packageJson).toBe(MEAN_PACKAGE_JSON_TEMPLATE);
+    if (packageJson === undefined) throw new Error("Missing package scaffold");
+    expect(renderAuxiliaryScaffold(packageJson, "probe")).toBe(
+      MEAN_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", "probe"),
+    );
+    expect(await source({ src: "templates/server.js", dest: "server.js" })).toBe(MEAN_SERVER_JS);
   });
 });

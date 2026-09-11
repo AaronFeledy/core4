@@ -17,6 +17,7 @@ import {
   stripHostProxyRunLando,
 } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -322,7 +323,10 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 
 const runOnce = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
 const appliedPlanState = (stateDir: string) =>
-  makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+  makePluginStateStore(
+    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+    AbsolutePath.make(stateDir),
+  );
 
 describe("provider-lando cross-process state", () => {
   test("persists a host-proxy-sanitized applied plan while applying the runtime plan", async () => {

@@ -11,7 +11,6 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Either, Schema } from "effect";
 import { railsDecomposer } from "../../src/recipes/builtin/rails/decomposer.ts";
 import { railsRecipeSource, railsRecipeYaml } from "../../src/recipes/builtin/rails/manifest.ts";
-import { railsRenderer } from "../../src/recipes/builtin/rails/render.ts";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
 import {
   RAILS_CONTENT_DIGEST,
@@ -19,6 +18,7 @@ import {
   railsProducer,
   railsSnapshot,
 } from "../../src/recipes/builtin/rails/snapshot.ts";
+import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...railsDefaults };
@@ -128,8 +128,10 @@ describe("rails decomposition", () => {
     ]);
   });
 
-  test("hashes the Gemfile source the still-bound renderer writes", () => {
-    expect(railsRenderer.render({ appName: "rails-canon", answers: {} }).get("Gemfile")).toBe(RAILS_GEMFILE);
+  test("hashes the Gemfile source the bundled content source supplies", async () => {
+    expect(await bundledRecipeContentSource("rails")({ src: "templates/Gemfile", dest: "Gemfile" })).toBe(
+      RAILS_GEMFILE,
+    );
   });
 
   test("publishes a self-consistent migratable snapshot with a matching content identity", () => {

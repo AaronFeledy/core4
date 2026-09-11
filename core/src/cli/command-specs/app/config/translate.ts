@@ -1,3 +1,7 @@
+import { ProcessRunner } from "@lando/sdk/services";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
+
 import { Flags } from "../../../spec/metadata";
 
 import {
@@ -14,7 +18,9 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   id: "app:config:translate",
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
+  recipePostInitAllowed: true,
   topLevelAlias: false,
+  aliases: ["config:translate"],
   bootstrap: "plugins",
   flags: {
     list: Flags.boolean({
@@ -47,19 +53,22 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       default: "yaml",
     }),
   },
-  run: (input) => {
-    const flags = extractSpecFlags(input);
-    const files = Array.isArray(flags.file)
-      ? flags.file.filter((file): file is string => typeof file === "string")
-      : undefined;
-    return appConfigTranslate({
-      write: flags.write === true,
-      list: flags.list === true,
-      detect: flags.detect === true,
-      ...(typeof flags.from === "string" ? { from: flags.from } : {}),
-      ...(typeof flags.to === "string" ? { to: flags.to } : {}),
-      ...(files === undefined ? {} : { files }),
-    });
-  },
+  run: (input) =>
+    Effect.gen(function* () {
+      const flags = extractSpecFlags(input);
+      const files = Array.isArray(flags.file)
+        ? flags.file.filter((file): file is string => typeof file === "string")
+        : undefined;
+      const processRunner = yield* ProcessRunner;
+      return yield* appConfigTranslate({
+        write: flags.write === true,
+        list: flags.list === true,
+        detect: flags.detect === true,
+        ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+        ...(typeof flags.to === "string" ? { to: flags.to } : {}),
+        ...(files === undefined ? {} : { files }),
+        privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+      });
+    }),
   render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
 };

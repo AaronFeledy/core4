@@ -24,11 +24,13 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
@@ -256,8 +258,9 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch recipe acquire did not apply a plan");
       const rendered = await readFile(join(appliedPlan.root, ".lando.yml"), "utf8");
-      expect(rendered).toContain("type: php:8.2");
-      expect(rendered).not.toContain("type: php:8.3");
+      expect(rendered).toContain('    php: "8.2"');
+      expect(rendered).not.toContain('    php: "8.3"');
+      expect(rendered).toContain('    type: "php:{{ recipe.php }}"');
     });
   });
 
@@ -275,7 +278,8 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch recipe acquire did not apply a plan");
       const rendered = await readFile(join(appliedPlan.root, ".lando.yml"), "utf8");
-      expect(rendered).toContain("type: php:8.3");
+      expect(rendered).toContain('    php: "8.3"');
+      expect(rendered).toContain('    type: "php:{{ recipe.php }}"');
     });
   });
 

@@ -11,7 +11,6 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Either, Schema } from "effect";
 import { nodePostgresDecomposer } from "../../src/recipes/builtin/node-postgres/decomposer.ts";
 import { nodePostgresRecipeYaml } from "../../src/recipes/builtin/node-postgres/manifest.ts";
-import { nodePostgresRenderer } from "../../src/recipes/builtin/node-postgres/render.ts";
 import {
   NODE_POSTGRES_PACKAGE_JSON_TEMPLATE,
   NODE_POSTGRES_SERVER_JS,
@@ -22,7 +21,9 @@ import {
   nodePostgresProducer,
   nodePostgresSnapshot,
 } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
+import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
+import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...nodePostgresDefaults };
@@ -146,14 +147,16 @@ describe("node-postgres decomposition", () => {
     expect(Either.getOrThrow(renderRecipeSnapshot(nodePostgresSnapshot, {}))).toEqual(authoringOf({}));
   });
 
-  test("preserves auxiliary renderer bytes when the app name is probe", () => {
-    const rendered = nodePostgresRenderer.render({ appName: "probe", answers: {} });
-    expect(rendered.get("package.json")).toBe(
-      NODE_POSTGRES_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", "probe"),
-    );
-    expect(rendered.get("package.json")).toBe(
+  test("preserves auxiliary scaffold bytes when the app name is probe", async () => {
+    const source = bundledRecipeContentSource("node-postgres");
+    const packageJson = await source({ src: "templates/package.json", dest: "package.json" });
+    expect(packageJson).toBe(NODE_POSTGRES_PACKAGE_JSON_TEMPLATE);
+    if (packageJson === undefined) throw new Error("Missing package scaffold");
+    const rendered = renderAuxiliaryScaffold(packageJson, "probe");
+    expect(rendered).toBe(NODE_POSTGRES_PACKAGE_JSON_TEMPLATE.replaceAll("{{ app.name }}", "probe"));
+    expect(rendered).toBe(
       `${JSON.stringify({ name: "probe", scripts: { start: "node server.js" } }, null, 2)}\n`,
     );
-    expect(rendered.get("server.js")).toBe(NODE_POSTGRES_SERVER_JS);
+    expect(await source({ src: "templates/server.js", dest: "server.js" })).toBe(NODE_POSTGRES_SERVER_JS);
   });
 });

@@ -55,6 +55,11 @@ describe("app command aliases", () => {
     expect(aliasesById.get("app:exec")).toContain("exec");
     expect(aliasesById.get("app:ssh")).toContain("ssh");
     expect(aliasesById.get("app:shell")).toContain("shell");
+    expect(aliasesById.get("app:config:lint")).toContain("config:lint");
+    expect(aliasesById.get("app:config:explain")).toContain("config:explain");
+    expect(aliasesById.get("app:config:translate")).toContain("config:translate");
+    expect(aliasesById.get("app:config:migrate")).toContain("config:migrate");
+    expect(aliasesById.get("meta:config")).not.toContain("config:lint");
     expect(aliasesById.get("apps:scratch:start")).toEqual(
       expect.arrayContaining(["scratch:start", "scratch"]),
     );

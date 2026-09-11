@@ -843,67 +843,85 @@
     "surface": "schema:ConfigTranslateDocumentSetInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The complete encoder context intentionally becomes object-only at the root while its recipe field adds provenance and keeps expressions at typed value sites; root expressions were never valid Landofiles."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The optional fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateLayerFragment",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateOutput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The output wire fragment intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously valid output fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateResult",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
-  },
-  {
-    "surface": "schema:LandofileAuthoringFragment",
-    "changeKind": "ref-graph-changed",
-    "path": "$.$defs",
-    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+    "justification": "The result wire fragment intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously valid output fragment remains valid."
   },
   {
     "surface": "schema:LandofileAuthoringFragmentWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringFragmentWire.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
-  },
-  {
-    "surface": "schema:LandofileAuthoringShape",
-    "changeKind": "ref-graph-changed",
-    "path": "$.$defs",
-    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+    "justification": "The fragment wire root remains object-or-expression; its object branch intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references."
   },
   {
     "surface": "schema:LandofileAuthoringShapeWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShapeWire.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The complete authoring wire root intentionally drops the document-level expression alternative; the root is a Landofile object and expressions remain available only at typed value sites."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShape.anyOf",
+    "justification": "The complete authoring root intentionally drops the document-level expression alternative; the root is a Landofile object and expressions remain available only at typed value sites."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileRecipeProvenanceAuthoring.anyOf",
+    "justification": "The refined recipe-provenance definition remains an object while its expression alternative moves beside the definition reference at the recipe value site."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringFragment.anyOf",
+    "justification": "The fragment root remains object-or-expression; its object branch intentionally adds recipe provenance and lifts the provenance expression alternative beside its definition reference."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileRecipeProvenanceAuthoringFragment.anyOf",
+    "justification": "The partial refined recipe-provenance definition remains an object while its expression alternative moves beside the definition reference at the recipe value site."
+  },
+  {
+    "surface": "schema:RecipeDecomposeResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.RecipeDecomposeResult.fragment.anyOf",
+    "justification": "The decompose result still carries the same authoring wire fragment; its union content changes only because recipe-provenance expressions move beside refined definition references."
   },
   {
     "surface": "schema:LandofileShape",
@@ -928,5 +946,29 @@
     "changeKind": "unsupported-construct",
     "path": "$.landofile.recipe.anyOf",
     "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:ConfigTranslateRecipeRequestInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:ConfigTranslateSecretReference",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:RecipeDecomposeInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
   }
 ]

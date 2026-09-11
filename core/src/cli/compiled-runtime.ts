@@ -9,6 +9,7 @@ import type {
   FileSystem,
   GlobalAppService,
   PluginRegistry,
+  ProcessRunner,
   Renderer,
   RuntimeProviderRegistry,
   ScratchAppService,
@@ -200,6 +201,6 @@ export const scratchRunRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
-    ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry,
+    ScratchAppService | ConfigService | FileSystem | ProcessRunner | RuntimeProviderRegistry,
     ConfigError | LandoRuntimeBootstrapError
   >;

@@ -18,8 +18,12 @@ for (const operation of ["publish", "finish-mode"] as const) {
     await fs.writeFile(join(appRoot, backup), before.bytes, { mode: 0o600 });
     const bytes = new TextEncoder().encode("new");
     let stage: Stage | undefined;
-    await createStage(`${target}.lando-stage.test`, bytes, (created) => {
-      stage = created;
+    await createStage({
+      path: `${target}.lando-stage.test`,
+      bytes,
+      record: (created) => {
+        stage = created;
+      },
     });
     if (stage === undefined) throw new Error("missing stage");
     const entry = {

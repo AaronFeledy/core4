@@ -15,11 +15,13 @@ import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
 
-import { withAdvisoryLock } from "@lando/state-store/lock";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { makeStateStore } from "@lando/state-store/service";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
-const store = makeStateStore();
+const store = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+const withAdvisoryLock = withAdvisoryLockUsing(ownerOnlyFileAccess);
 
 const run = <A>(effect: Effect.Effect<A, StateStoreError>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));

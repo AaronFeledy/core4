@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { ManagedFileTransactionPendingReport } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
+import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { type ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
 import { canonicalRoot, finishAppliedMode, mutateEntry, removeRecordedStage } from "./transaction-fs.ts";
@@ -15,6 +16,7 @@ export interface RecoveryOutcome {
 export interface RecoveryOptions {
   readonly journalRoot: () => string;
   readonly checkpoint?: (point: string, index: number) => Effect.Effect<void, ManagedFileTransactionError>;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 type JournalStore = Effect.Effect.Success<ReturnType<typeof openJournal>>;
@@ -40,7 +42,10 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
     Effect.gen(function* () {
       const root = yield* transactionIO("recover", () => canonicalRoot(appRoot));
       const dir = journalDirectory(root, options.journalRoot());
-      const store = yield* openJournal(root, dir, { createDirectory });
+      const store = yield* openJournal(root, dir, {
+        createDirectory,
+        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+      });
       return { root, dir, store };
     });
 
@@ -64,19 +69,32 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
     transactionIO("cleanup", async () => {
       for (const entry of journal.entries)
         if (entry.stage !== undefined && entry.after.present)
-          await removeRecordedStage(entry.stage, entry.after.digest);
+          await removeRecordedStage(entry.stage, entry.after.digest, options.privateFileAccess);
     }).pipe(Effect.uninterruptible);
 
   const rollForward = (root: string, journal: Journal, store: JournalStore) =>
     Effect.gen(function* () {
-      const classified = yield* transactionIO("recover", () => preflight(root, journal));
+      const classified = yield* transactionIO("recover", async () => {
+        try {
+          return await preflight(root, journal, options.privateFileAccess);
+        } catch (cause) {
+          if (cause instanceof PrivateFileAccessError) {
+            throw transactionError("conflict", "recover");
+          }
+          throw cause;
+        }
+      });
       if (journal.state === "prepared") yield* store.write({ ...journal, state: "committing" });
       yield* checkpoint("recovering");
       for (const [index, { entry, disposition }] of classified.entries()) {
         if (disposition === "pending")
-          yield* transactionIO("recover", () => mutateEntry(root, entry)).pipe(Effect.uninterruptible);
+          yield* transactionIO("recover", () => mutateEntry(root, entry, options.privateFileAccess)).pipe(
+            Effect.uninterruptible,
+          );
         else if (disposition === "applied-needs-mode")
-          yield* transactionIO("recover", () => finishAppliedMode(root, entry)).pipe(Effect.uninterruptible);
+          yield* transactionIO("recover", () =>
+            finishAppliedMode(root, entry, options.privateFileAccess),
+          ).pipe(Effect.uninterruptible);
         yield* checkpoint("after-recovery-mutation", index);
       }
       yield* store.write({ ...journal, state: "committed" });
@@ -89,6 +107,7 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
       yield* Effect.acquireRelease(
         acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
           expireLiveOwner: false,
+          privateFileAccess: options.privateFileAccess,
         }).pipe(Effect.mapError(() => transactionError("lock", "recover"))),
         (lock) => lock.release,
       );

@@ -5,6 +5,7 @@ import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
@@ -32,6 +33,7 @@ export interface DetachedHostProxyWorkerOptions {
   readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
+  readonly privateFileAccess?: PrivateFileAccess;
 }
 
 export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
@@ -86,21 +88,26 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
               const closed = new Promise<void>((resolveClosedPromise) => {
                 resolveClosed = resolveClosedPromise;
               });
-              return writeWorkerRecord(options.app, options.paths, {
-                appId: options.app.id,
-                appRoot: options.app.root,
-                providerId: String(options.plan.provider),
-                pid: worker.pid,
-                ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-                ...(ready.url === undefined ? {} : { url: ready.url }),
-                ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                ...(probeServices.length === 0 ? {} : { probeServices }),
-                shimPath: ready.shimPath,
-                transport,
-                protocolVersion: 1,
-                startedAt: new Date().toISOString(),
-                controlToken: ready.controlToken,
-              }).pipe(
+              return writeWorkerRecord(
+                options.app,
+                options.paths,
+                {
+                  appId: options.app.id,
+                  appRoot: options.app.root,
+                  providerId: String(options.plan.provider),
+                  pid: worker.pid,
+                  ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                  ...(ready.url === undefined ? {} : { url: ready.url }),
+                  ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                  ...(probeServices.length === 0 ? {} : { probeServices }),
+                  shimPath: ready.shimPath,
+                  transport,
+                  protocolVersion: 1,
+                  startedAt: new Date().toISOString(),
+                  controlToken: ready.controlToken,
+                },
+                options.privateFileAccess,
+              ).pipe(
                 Effect.zipLeft(Ref.set(keepWorker, true)),
                 Effect.as({
                   appId: ready.appId,
@@ -127,6 +134,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
           ),
       );
     }),
+    options.privateFileAccess,
   ).pipe(
     Effect.catchAll((cause) =>
       Effect.fail(

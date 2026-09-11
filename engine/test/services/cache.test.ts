@@ -5,7 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
-import { Cause, DateTime, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
+import {
+  Cause,
+  type Context,
+  DateTime,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Schema,
+  Stream,
+  TestClock,
+  TestContext,
+} from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import {
@@ -20,7 +32,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { CacheService } from "@lando/sdk/services";
+import { CacheService, ProcessRunner } from "@lando/sdk/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   type AppPlanCacheKeyInput,
@@ -38,7 +50,7 @@ import {
   writeCwdAppMapEntry,
 } from "../../src/cache/cwd-app-map.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import { CacheServiceLive, makeCacheServiceWithProcessRunnerLive } from "../../src/cache/service.ts";
 
 const CachedValue = Schema.Struct({
   name: Schema.String,
@@ -109,6 +121,33 @@ const providerCapabilities: ProviderCapabilities = {
 };
 
 describe("CacheServiceLive", () => {
+  test("uses the composed process runner before writing a private Windows cache file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-cache-private-access-"));
+    const path = join(root, "plan.bin");
+    const invocations: Array<Parameters<Context.Tag.Service<typeof ProcessRunner>["run"]>[0]> = [];
+    const processRunner: Context.Tag.Service<typeof ProcessRunner> = {
+      run: (input) => {
+        invocations.push(input);
+        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+      },
+      stream: () => Stream.empty,
+    };
+    const cacheLayer = makeCacheServiceWithProcessRunnerLive({
+      platform: "win32",
+      env: { SystemRoot: "C:\\Windows" },
+    }).pipe(Layer.provide(Layer.succeed(ProcessRunner, processRunner)));
+
+    await Effect.runPromise(
+      Effect.flatMap(CacheService, (cache) => cache.writeAtomic(path, "private-cache")).pipe(
+        Effect.provide(cacheLayer),
+      ),
+    );
+
+    expect(await readFile(path, "utf8")).toBe("private-cache");
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]?.env?.LANDO_PRIVATE_FILE_PATH).toStartWith(`${path}.tmp-`);
+  });
+
   test("six-layer source fingerprints are stable and invalidate when any layer changes", async () => {
     const appRoot = await mkdtemp(join(tmpdir(), "lando-layer-fingerprint-"));
     await writeFile(join(appRoot, ".lando.yml"), "name: app\n");
