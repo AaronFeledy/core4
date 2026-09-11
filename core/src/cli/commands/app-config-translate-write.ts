@@ -3,15 +3,27 @@ import { join, relative } from "node:path";
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { ConfigTranslateError } from "@lando/sdk/errors";
+import type { ConfigTranslateDocument } from "@lando/sdk/schema";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import type { DocumentSetShape } from "./app-config-translate-document-set.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 
-export const writeTranslateTargets = (
-  appRoot: string,
-  preview: Extract<AppConfigTranslateResult, { readonly mode: "preview" }>,
-  shape: DocumentSetShape,
-) =>
+interface WriteTranslateTargetsRequest {
+  readonly appRoot: string;
+  readonly preview: Extract<AppConfigTranslateResult, { readonly mode: "preview" }>;
+  readonly shape: DocumentSetShape;
+  readonly documents: ReadonlyArray<ConfigTranslateDocument>;
+  readonly privateFileAccess?: PrivateFileAccess;
+}
+
+export const writeTranslateTargets = ({
+  appRoot,
+  preview,
+  shape,
+  documents,
+  privateFileAccess,
+}: WriteTranslateTargetsRequest) =>
   Effect.gen(function* () {
     if (preview.target !== "lando4")
       return yield* Effect.fail(
@@ -45,7 +57,19 @@ export const writeTranslateTargets = (
           }),
         );
     }
-    const transactions = makeManagedFileTransactions({ journalRoot: () => resolveLandoRoots().userDataRoot });
+    const expectedBefore = new Map(
+      documents.map((document) => [
+        String(document.path ?? document.sourceId),
+        {
+          present: true as const,
+          digest: new Bun.CryptoHasher("sha256").update(document.bytes).digest("hex"),
+        },
+      ]),
+    );
+    const transactions = makeManagedFileTransactions({
+      journalRoot: () => resolveLandoRoots().userDataRoot,
+      ...(privateFileAccess === undefined ? {} : { privateFileAccess }),
+    });
     const receipt = yield* transactions
       .run({
         appRoot,
@@ -54,10 +78,14 @@ export const writeTranslateTargets = (
             kind: "write" as const,
             path: relative(appRoot, target.path),
             content: target.content,
+            expectedBefore: expectedBefore.get(relative(appRoot, target.path).replaceAll("\\", "/")) ?? {
+              present: false as const,
+            },
           })),
           ...preview.deletions.map((deletion) => ({
             kind: "remove" as const,
             path: String(deletion.sourceId),
+            expectedBefore: expectedBefore.get(String(deletion.sourceId)) ?? { present: false as const },
           })),
         ],
       })
