@@ -118,7 +118,7 @@ export interface InitAppOptions {
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
   readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.

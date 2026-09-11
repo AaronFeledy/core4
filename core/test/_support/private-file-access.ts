@@ -4,6 +4,7 @@ import {
   PrivateFileAccessService,
 } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
+import { type InitAppOptions, type InitAppResult, initApp } from "../../src/cli/commands/init.ts";
 
 export const ownerOnlyFileAccess: PrivateFileAccess = {
   enforce: (path) =>
@@ -23,5 +24,9 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
       ),
     ),
 };
+
+export const initAppWithOwnerOnlyFileAccess = (
+  options: Omit<InitAppOptions, "privateFileAccess">,
+): Promise<InitAppResult> => initApp({ ...options, privateFileAccess: ownerOnlyFileAccess });
 
 export { PrivateFileAccessLive as privateFileAccessLive };
