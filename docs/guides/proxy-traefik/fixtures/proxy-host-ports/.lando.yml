@@ -1,0 +1,10 @@
+name: proxy-host-ports
+services:
+  app:
+    type: "node:22"
+    primary: true
+router:
+  httpPort: 8080
+  httpsPort: 8443
+  httpFallbacks: [8000, 8888, 8008, 38080]
+  httpsFallbacks: [4443, 4433, 4444, 444, 38443]

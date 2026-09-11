@@ -1,0 +1,10 @@
+name: proxy-preferred-only
+services:
+  app:
+    type: "node:22"
+    primary: true
+router:
+  httpPort: 80
+  httpsPort: 443
+  httpFallbacks: []
+  httpsFallbacks: []
