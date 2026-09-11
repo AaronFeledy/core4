@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { type FileHandle, mkdir, open, rename, unlink } from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
-import type { OwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 
 export interface AtomicWriteOptions {
   readonly mode?: number;
@@ -28,7 +28,12 @@ export const writeFileAtomicViaRename = async (
     const handle = await open(tempPath, "w", options.mode);
     try {
       if (options.mode === 0o600 && options.privateFileAccess !== undefined) {
+        const identity = await handle.stat();
         await options.privateFileAccess(tempPath);
+        const current = await lstat(tempPath);
+        if (current.dev !== identity.dev || current.ino !== identity.ino) {
+          throw new PrivateFileAccessError(tempPath);
+        }
       }
       await handle.writeFile(content);
       await (options.syncFile ?? ((h: FileHandle) => h.sync()))(handle);
