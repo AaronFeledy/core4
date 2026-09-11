@@ -7,6 +7,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 
@@ -29,10 +30,10 @@ const ensureHistoryRoot = (path: string): Effect.Effect<void, StateStoreError> =
       }),
   });
 
-const historyBucket = (path: string, limit: number, privateFileAccess?: PrivateFileAccess) =>
+const historyBucket = (path: string, limit: number, privateFileAccess: PrivateFileAccess) =>
   ensureHistoryRoot(path).pipe(
     Effect.flatMap(() =>
-      makeStateStore(privateFileAccess === undefined ? {} : { privateFileAccess }).open({
+      makeStateStore({ privateFileAccess }).open({
         root: { path: AbsolutePath.make(dirname(path)) },
         key: basename(path),
         schema: HistorySchema,
@@ -59,7 +60,7 @@ const historyBucket = (path: string, limit: number, privateFileAccess?: PrivateF
 export const readShellHistory = async (
   path: string,
   limit: number,
-  privateFileAccess?: PrivateFileAccess,
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ): Promise<ReadonlyArray<string>> =>
   Effect.runPromise(
     historyBucket(path, limit, privateFileAccess).pipe(
@@ -72,7 +73,7 @@ export const appendShellHistory = async (
   path: string,
   line: string,
   limit: number,
-  privateFileAccess?: PrivateFileAccess,
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ): Promise<void> => {
   await Effect.runPromise(
     historyBucket(path, limit, privateFileAccess).pipe(
