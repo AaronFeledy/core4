@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
-import { Effect } from "effect";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { Flags } from "../../spec/metadata";
 
@@ -10,6 +10,7 @@ import {
   type UninstallOptions,
   type UninstallResult,
   UninstallResultSchema,
+  uninstall,
 } from "@lando/engine/operations/uninstall";
 import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
@@ -372,7 +373,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   };
 };
 
-export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never> = {
+export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, PrivateFileAccessService> = {
   resultSchema: UninstallResultSchema,
   id: "meta:uninstall",
   summary: "Remove Lando-owned installed files after confirmation.",
@@ -399,7 +400,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never
       default: false,
     }),
   },
-  run: () => Effect.die("not yet implemented: meta:uninstall"),
+  run: (input) => uninstall(uninstallOptionsFromInput(input)),
   successExitCode: (result) => (result.refused || result.failed ? 1 : undefined),
   render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
 };
