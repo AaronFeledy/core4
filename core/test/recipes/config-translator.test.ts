@@ -35,7 +35,7 @@ const request = (id = "example", version = "1.0.0") =>
     recipe: { id, version },
     sourceId: "recipe:example:init",
     answers: { name: "option-value-must-not-leak" },
-    secretAnswers: { password: { disposition: "secret-store", reference: "vault:example" } },
+    secretAnswers: { password: { disposition: "secret-store", reference: "${secret:example}" } },
   });
 const authoredFragment = (options: Record<string, string>) => ({
   ...fragment,
@@ -122,7 +122,7 @@ describe("recipe config translator", () => {
           expect(value).toEqual({
             producer,
             options: { name: "option-value-must-not-leak" },
-            secrets: { password: { disposition: "secret-store", reference: "vault:example" } },
+            secrets: { password: { disposition: "secret-store", reference: "${secret:example}" } },
           });
           return decompose(value);
         },
