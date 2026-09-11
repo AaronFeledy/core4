@@ -224,5 +224,3 @@ export const StateStoreLive: Layer.Layer<StateStore, never, ProcessRunner> = Lay
     }),
   ),
 );
-
-export const StateStoreWithProcessRunnerLive = StateStoreLive;
