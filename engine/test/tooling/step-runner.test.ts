@@ -141,6 +141,24 @@ describe("runToolingStepProgram conditions and leaves", () => {
     ]);
   });
 
+  test("preserves bare shell variables while resolving expressions and braced parameters", async () => {
+    // Given
+    const tools = harness();
+
+    // When
+    const exit = await run(
+      [{ cmd: "echo $CONTAINER_VAR {{ vars.suffix }} ${HOST_VALUE:-fallback} $${ESCAPED}" }],
+      tools,
+      { suffix: "done" },
+    );
+
+    // Then
+    expect(exit._tag).toBe("Success");
+    expect(tools.seen.map(({ command }) => command)).toEqual([
+      "echo $CONTAINER_VAR done fallback ${ESCAPED}",
+    ]);
+  });
+
   test("overlays evaluated task vars at highest precedence while preserving event and loop scope", async () => {
     // Given
     const observed: Array<Readonly<Record<string, unknown>>> = [];

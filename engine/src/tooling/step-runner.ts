@@ -25,7 +25,7 @@ const resolve = (
   value: string,
   context: ExpressionContext,
 ): Effect.Effect<unknown, ToolingStepExpressionError> =>
-  parseExpression(value, { filePath: EXPRESSION_FILE }).pipe(
+  parseExpression(value, { filePath: EXPRESSION_FILE, bareShellParameters: "preserve" }).pipe(
     Effect.flatMap((template) => evaluateTemplate(template, context, { filePath: EXPRESSION_FILE })),
   );
 
