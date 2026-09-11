@@ -8,6 +8,7 @@ import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {
@@ -720,7 +721,10 @@ describe("provider-podman RuntimeProvider contract", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
     try {
       const firstFake = makeFakeApi();
-      const firstState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const firstState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+      );
       const firstProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
@@ -737,7 +741,10 @@ describe("provider-podman RuntimeProvider contract", () => {
       await Effect.runPromise(Effect.scoped(firstProvider.apply(plan, { reconcile: true })));
 
       const secondFake = makeFakeApi();
-      const secondState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const secondState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+      );
       const secondProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
