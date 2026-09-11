@@ -49,12 +49,12 @@ describe("generated bootstrap layers", () => {
 
     expect(minimal).not.toContain("makePluginRegistryLive");
     expect(minimal).toContain('from "@lando/managed-file/transaction"');
-    expect(minimal).toContain("    ManagedFileTransactionGuardLive,");
+    expect(minimal).toContain("    ManagedFileTransactionGuardLive.pipe(Layer.provide(ProcessRunnerLive)),");
     expect(commands).toContain("makeEngineLandofileServiceLive");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
     expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");
-    expect(commands).toContain(
-      "makeEngineLandofileServiceLive(landofileRuntimeInputs()).pipe(\n    Layer.provide(pluginsBase),",
+    expect(commands).toMatch(
+      /makeEngineLandofileServiceLive\(landofileRuntimeInputs\(\)\)\.pipe\(\s*Layer\.provide\(pluginsBase\),?\s*\)/,
     );
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
