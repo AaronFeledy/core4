@@ -11,23 +11,7 @@ import {
   makeOwnerOnlyFileAccess,
 } from "../../src/private-file-access.ts";
 
-const nativeProcessRunner: PrivateFileAccessProcessRunner = {
-  run: (input) =>
-    Effect.promise(async () => {
-      const processHandle = Bun.spawn([input.cmd, ...input.args], {
-        env: { ...process.env, ...input.env },
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [exitCode, stdout, stderr] = await Promise.all([
-        processHandle.exited,
-        new Response(processHandle.stdout).text(),
-        new Response(processHandle.stderr).text(),
-      ]);
-      return { exitCode, stdout, stderr };
-    }),
-};
+import { nativeProcessRunner } from "../private-file-access.ts";
 
 describe("owner-only private file access", () => {
   test("passes an untrusted file path only as process data", async () => {
