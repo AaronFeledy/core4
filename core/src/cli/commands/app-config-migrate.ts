@@ -16,6 +16,7 @@ import {
   sameRecipeVersion,
 } from "@lando/sdk/schema";
 import { InteractionService, ManagedFileTransactionGuard } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Either, Option, Schema } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
@@ -47,6 +48,7 @@ export interface AppConfigMigrateOptions {
   readonly yes?: boolean;
   readonly dryRun?: boolean;
   readonly nonInteractive?: boolean;
+  readonly privateFileAccess?: PrivateFileAccess;
   readonly recipes?: ReadonlyMap<
     string,
     { readonly snapshot: RecipeSnapshot; readonly migrations: ReadonlyArray<RecipeMigration> }
@@ -102,13 +104,16 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
       });
       const programmatic = dualForm || (yield* Effect.promise(() => Bun.file(programmaticPath).exists()));
       if (programmatic) return blocked("programmatic-landofile", "TypeScript is opaque; never executed.");
-      const parsed = yield* Effect.tryPromise({
-        try: () => Bun.file(landofilePath).text(),
+      const originalBytes = yield* Effect.tryPromise({
+        try: () => Bun.file(landofilePath).bytes(),
         catch: () => "Cannot read the canonical Landofile.",
-      }).pipe(
-        Effect.flatMap((content) => parseLandofile({ file: landofilePath, content, cwd: appRoot })),
-        Effect.either,
-      );
+      }).pipe(Effect.either);
+      if (Either.isLeft(originalBytes)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
+      const parsed = yield* parseLandofile({
+        file: landofilePath,
+        content: new TextDecoder().decode(originalBytes.right),
+        cwd: appRoot,
+      }).pipe(Effect.either);
       if (Either.isLeft(parsed)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
       const document: Record<string, unknown> = yield* Schema.decodeUnknown(
         Schema.Record({ key: Schema.String, value: Schema.Unknown }),
@@ -221,7 +226,14 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
           }),
         );
       if (!options.dryRun && analysis.committed !== undefined) {
-        yield* writeRecipeMigration(appRoot, analysis.document);
+        yield* writeRecipeMigration({
+          appRoot,
+          document: analysis.document,
+          expectedBefore: originalBytes.right,
+          ...(options.privateFileAccess === undefined
+            ? {}
+            : { privateFileAccess: options.privateFileAccess }),
+        });
       }
       let precedingBlock = false;
       const edges: AppConfigMigrateResult["edges"] = analysis.edges.map((edge) => {
