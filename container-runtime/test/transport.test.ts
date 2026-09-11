@@ -48,6 +48,15 @@ class FakeConnection implements SocketHttpConnection {
   }
 }
 
+class CountingDestroyConnection extends FakeConnection {
+  destroyCalls = 0;
+
+  override destroy(): void {
+    this.destroyCalls += 1;
+    super.destroy();
+  }
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
@@ -189,6 +198,35 @@ describe("socket HTTP transport", () => {
     expect(connection.writes[0]).toContain("Upgrade: tcp");
     expect(connection.writes[0]).not.toContain("Connection: close");
     expect(connection.writes.at(-1)).toBe("typed\n");
+  });
+
+  test("stops the stdin pump before destroying a completed hijacked stream", async () => {
+    // Given
+    const connection = new CountingDestroyConnection([
+      bytes("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\ndone"),
+    ]);
+    let rejectNext: ((cause: Error) => void) | undefined;
+    const stdin: AsyncIterable<Bytes> = {
+      [Symbol.asyncIterator]: () => ({
+        next: () =>
+          new Promise<IteratorResult<Bytes>>((_, reject) => {
+            rejectNext = reject;
+          }),
+        return: () => {
+          rejectNext?.(new Error("stdin closed"));
+          return Promise.resolve({ done: true, value: undefined });
+        },
+      }),
+    };
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    // When
+    const chunks = await Array.fromAsync(client.stream({ method: "POST", path: "/exec/abc/start", stdin }));
+    await Promise.resolve();
+
+    // Then
+    expect(chunks).toEqual([bytes("done")]);
+    expect(connection.destroyCalls).toBe(1);
   });
 
   test("does not override an explicit Connection header when stdin is present", async () => {
