@@ -174,7 +174,7 @@ const main = async (): Promise<void> => {
       "",
       "## Start opt-in",
       "",
-      'For `app:start`, use a direct answer guard such as `when: "{{ options.start }}"`. A matching recipe prompt must be `confirm` with a false or omitted default. An undeclared answer can instead be supplied explicitly with `--answer start=true`. Only boolean `true` or the CLI answer string `true` opts in; missing and negative answers skip the action.',
+      'For `app:start`, use a direct answer guard such as `when: "{{ options.start }}"`. A matching recipe prompt must be `confirm` with a false or omitted default. An explicit answer such as `--answer start=true` can only satisfy that declared matching prompt. Only boolean `true` or the CLI answer string `true` opts in; missing and negative answers skip the action.',
       "",
       "```yaml",
       "prompts:",
