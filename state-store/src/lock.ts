@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { Effect, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "./private-file-access.ts";
 
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 10;
@@ -79,7 +80,11 @@ export const makeLockToken = (): string =>
 const acquire = (
   lockPath: string,
   token: string,
-  options: { readonly operation: string; readonly expireLiveOwner?: boolean },
+  options: {
+    readonly operation: string;
+    readonly expireLiveOwner?: boolean;
+    readonly privateFileAccess?: PrivateFileAccess;
+  },
 ): Effect.Effect<void, StateStoreError> =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
@@ -92,6 +97,7 @@ const acquire = (
               const identity = await handle.stat();
               try {
                 await handle.chmod(0o600);
+                await (options.privateFileAccess ?? makeOwnerOnlyFileAccess()).enforce(lockPath);
                 await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }));
                 await handle.sync();
               } catch (cause) {
@@ -120,6 +126,7 @@ const acquire = (
               (process.getuid !== undefined && identity.uid !== process.getuid())
             )
               return false;
+            await (options.privateFileAccess ?? makeOwnerOnlyFileAccess()).verify(lockPath);
             const staleByMtime = Date.now() - identity.mtimeMs > LOCK_STALE_MS;
             const current = await readLockRecord(lockPath).catch((error: unknown) => {
               // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
@@ -158,8 +165,15 @@ const acquire = (
     return yield* Effect.fail(lockError(options.operation, lockPath));
   });
 
-const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
+const release = (
+  lockPath: string,
+  token: string,
+  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
+): Effect.Effect<void, never> =>
   Effect.promise(async () => {
+    const identity = await lockIdentity(lockPath);
+    if (identity === null) return;
+    await privateFileAccess.verify(lockPath);
     const current = await readLockRecord(lockPath);
     if (current?.token === token) {
       await unlink(lockPath).catch((cause: unknown) => {
@@ -179,11 +193,17 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
 export const acquireAdvisoryLockAt = (
   lockPath: string,
   operation: string,
-  options: { readonly expireLiveOwner?: boolean } = {},
+  options: {
+    readonly expireLiveOwner?: boolean;
+    readonly privateFileAccess?: PrivateFileAccess;
+  } = {},
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
   const token = makeLockToken();
   return acquire(lockPath, token, { operation, ...options }).pipe(
-    Effect.as({ token, release: release(lockPath, token) }),
+    Effect.as({
+      token,
+      release: release(lockPath, token, options.privateFileAccess ?? makeOwnerOnlyFileAccess()),
+    }),
   );
 };
 
@@ -197,18 +217,25 @@ export const withAdvisoryLock = <A, E>(
   file: string,
   operation: string,
   body: Effect.Effect<A, E>,
-): Effect.Effect<A, E | StateStoreError> =>
-  canonicalLockTarget(file).pipe(
-    Effect.flatMap((canonicalFile) => {
-      const lockPath = `${canonicalFile}.lock`;
-      const token = makeLockToken();
-      const fileLocked = Effect.acquireUseRelease(
-        acquire(lockPath, token, { operation }),
-        () => body,
-        () => release(lockPath, token),
-      );
-      return guardFor(canonicalFile).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
-    }),
-  );
+): Effect.Effect<A, E | StateStoreError> => withAdvisoryLockUsing()(file, operation, body);
+
+export const withAdvisoryLockUsing =
+  (privateFileAccess?: PrivateFileAccess) =>
+  <A, E>(file: string, operation: string, body: Effect.Effect<A, E>): Effect.Effect<A, E | StateStoreError> =>
+    canonicalLockTarget(file).pipe(
+      Effect.flatMap((canonicalFile) => {
+        const lockPath = `${canonicalFile}.lock`;
+        const token = makeLockToken();
+        const fileLocked = Effect.acquireUseRelease(
+          acquire(lockPath, token, {
+            operation,
+            ...(privateFileAccess === undefined ? {} : { privateFileAccess }),
+          }),
+          () => body,
+          () => release(lockPath, token, privateFileAccess ?? makeOwnerOnlyFileAccess()),
+        );
+        return guardFor(canonicalFile).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
+      }),
+    );
 
 export const LOCK_STALE_THRESHOLD_MS = LOCK_STALE_MS;
