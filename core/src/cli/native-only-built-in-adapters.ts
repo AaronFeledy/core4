@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
-import { EventService } from "@lando/sdk/services";
+import { EventService, ProcessRunner } from "@lando/sdk/services";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
@@ -22,12 +23,14 @@ export const runNativeOnlyBuiltIn = async (
       await runCompiledCommand(
         Effect.gen(function* () {
           const events = yield* EventService;
+          const processRunner = yield* ProcessRunner;
           return yield* Effect.tryPromise({
             try: () =>
               initApp({
                 ...initOptionsFromInput(input),
                 onWarn: emitDiagnosticLine,
                 events,
+                privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
               }),
             catch: (error) => error,
           });

@@ -18,6 +18,7 @@ import {
   type ConfigTranslatorShape,
   type RecipeDecomposerFactory,
 } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Either, Option, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
 import {
@@ -28,6 +29,7 @@ import {
 } from "./init-pipeline/files.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import { containsSecretValue, secretReference } from "./init-pipeline/secrets.ts";
+import { postInitAuthorizationIssue } from "./post-init/authorization.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
 import { makeRecipeTranslatorModule } from "./translator-module.ts";
 
@@ -71,7 +73,9 @@ export interface RecipeInitPipelineRequest {
   readonly encoder: ConfigTranslatorShape;
   readonly journalRoot: () => string;
   readonly contentSource?: RecipeAuxiliaryContentSource;
+  readonly sourceRoot?: string;
   readonly checkpoint?: NonNullable<TransactionOptions["checkpoint"]>;
+  readonly privateFileAccess?: PrivateFileAccess;
   readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
 }
 export interface RecipeInitPipelineResult {
@@ -119,7 +123,10 @@ const encodeRecipeLandofile = (
   Effect.gen(function* () {
     const validated = validateRecipeSecretPrompts(request.manifest);
     if (Either.isLeft(validated)) return yield* Effect.fail(blocked("secret-prompts"));
-    const raw = Object.values(request.secretAnswers ?? {}).filter((value) => value.length > 0);
+    const raw = validated.right
+      .filter(({ disposition }) => disposition.kind === "init-only")
+      .map(({ promptName }) => request.secretAnswers?.[promptName])
+      .filter((value): value is string => value !== undefined && value.length > 0);
     const containsSecret = (value: unknown) => containsSecretValue(raw, value);
     if (
       containsSecret([
@@ -133,9 +140,16 @@ const encodeRecipeLandofile = (
     ) {
       return yield* Effect.fail(blocked("secret-prompts"));
     }
-    const references = Object.fromEntries(
-      validated.right.map(({ promptName, disposition }) => [promptName, secretReference(disposition)]),
-    );
+    const references = yield* Effect.try({
+      try: () =>
+        Object.fromEntries(
+          validated.right.map(({ promptName, disposition }) => [
+            promptName,
+            secretReference(disposition, request.secretAnswers?.[promptName]),
+          ]),
+        ),
+      catch: () => blocked("secret-prompts"),
+    });
     const input = yield* Schema.decodeUnknown(ConfigTranslateRecipeRequestInput)({
       _tag: "recipe-request",
       recipe: { id: request.manifest.id, version: request.manifest.version },
@@ -217,6 +231,13 @@ export const runRecipeInitPipeline = (
   never
 > =>
   Effect.gen(function* () {
+    if (
+      (request.manifest.postInit ?? []).some(
+        (action) => postInitAuthorizationIssue(action, request.manifest.prompts) !== undefined,
+      )
+    ) {
+      return yield* Effect.fail(blocked("validate"));
+    }
     const { text, diagnostics, redact, containsSecret } = yield* encodeRecipeLandofile(request);
     const basename = request.landofileBasename ?? ".lando.yml";
     const landofilePath = join(request.appRoot, basename);
@@ -228,6 +249,13 @@ export const runRecipeInitPipeline = (
         ({ file }) =>
           file.dest !== basename && file.dest !== LANDOFILE_NAME && file.dest !== LANDOFILE_TS_NAME,
       );
+    if (
+      auxiliaryEntries.some(
+        ({ file }) => file.when !== undefined || file.mode !== undefined || file.engine !== undefined,
+      )
+    ) {
+      return yield* Effect.fail(blocked("validate"));
+    }
     yield* Effect.tryPromise({
       try: async () => {
         for (const { file } of auxiliaryEntries) {
@@ -236,6 +264,7 @@ export const runRecipeInitPipeline = (
             file,
             appName: request.appName,
             contentSource: request.contentSource,
+            sourceRoot: request.sourceRoot,
           });
         }
       },
@@ -244,10 +273,11 @@ export const runRecipeInitPipeline = (
     const receipt = yield* makeManagedFileTransactions({
       journalRoot: request.journalRoot,
       ...(request.checkpoint === undefined ? {} : { checkpoint: request.checkpoint }),
+      ...(request.privateFileAccess === undefined ? {} : { privateFileAccess: request.privateFileAccess }),
     })
       .run({
         appRoot: request.appRoot,
-        operations: [{ kind: "write", path: basename, content: text }],
+        operations: [{ kind: "write", path: basename, content: text, expectedBefore: { present: false } }],
       })
       .pipe(
         Effect.mapError(
@@ -282,6 +312,7 @@ export const runRecipeInitPipeline = (
             appName: request.appName,
             containsSecret,
             contentSource: request.contentSource,
+            sourceRoot: request.sourceRoot,
           }),
         catch: () => postFailure(`files[${index}]`),
       });

@@ -8,6 +8,7 @@ import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { PromptBatchOptions, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 import { type ConfigTranslatorShape, RecipeManifestService } from "@lando/sdk/services";
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
@@ -112,6 +113,7 @@ export interface InitAppOptions {
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
+  readonly privateFileAccess?: PrivateFileAccess;
   readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
@@ -123,10 +125,21 @@ export interface InitAppOptions {
 export interface InitAppResult {
   readonly appName: string;
   readonly directory: string;
+  /** Collected nonsecret answers only. Secret prompt values are never returned. */
   readonly answers: PromptAnswers;
   readonly postInit: PostInitOutcome;
   readonly skippedScaffold: ReadonlyArray<string>;
 }
+
+export const stripSecretInitAnswers = (
+  prompts: ReadonlyArray<RecipePrompt>,
+  answers: PromptAnswers,
+): PromptAnswers => {
+  const secretNames = new Set(
+    prompts.filter((prompt) => prompt.type === "secret").map((prompt) => prompt.name),
+  );
+  return Object.fromEntries(Object.entries(answers).filter(([name]) => !secretNames.has(name)));
+};
 
 const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
   if (resolved.manifest !== undefined) return { resolved, manifest: resolved.manifest };
@@ -319,7 +332,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       () => "",
     );
 
-  const collected = await prompter.promptAll(prompts, {
+  const prompted = await prompter.promptAll(prompts, {
     answers: presetAnswers,
     cwd,
     ...(options.yes === undefined ? {} : { yes: options.yes }),
@@ -334,6 +347,10 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     },
   } satisfies InternalPromptBatchOptions);
 
+  // Prompt collection validates declared prompts. Preserve additional explicit
+  // options for decomposers, which own their recipe-specific option contract.
+  const collected = { ...presetAnswers, ...prompted };
+  const publicAnswers = stripSecretInitAnswers(prompts, collected);
   const appNameValue = collected[APP_NAME_PROMPT];
   if (typeof appNameValue !== "string" || appNameValue === "") {
     throw new Error(`Recipe "${recipeRef}" requires a text answer for prompt 'name'.`);
@@ -412,7 +429,6 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     const secretNames = new Set(
       prompts.filter((prompt) => prompt.type === "secret").map((prompt) => prompt.name),
     );
-    const answers = Object.fromEntries(Object.entries(collected).filter(([name]) => !secretNames.has(name)));
     const secretAnswers: Record<string, string> = {};
     for (const name of secretNames) {
       const value = collected[name];
@@ -439,12 +455,14 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         appRoot: directory,
         manifest: pipelineManifest,
         decomposer,
-        answers,
+        answers: publicAnswers,
         secretAnswers,
         appName,
         encoder: await encoderPromise,
         journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
         contentSource: bundledRecipeContentSource(manifest.id),
+        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+        ...(resolved.root === undefined ? {} : { sourceRoot: resolved.root }),
         runPostInit: async (bound) => {
           if (
             !shouldRunPostInit ||
@@ -494,5 +512,5 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   await Effect.runPromise(tree.close(`Initialized ${appName}`));
 
-  return { appName, directory, answers: collected, postInit, skippedScaffold };
+  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
 };

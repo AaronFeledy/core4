@@ -9,7 +9,8 @@
  */
 import { Effect } from "effect";
 
-import type { ScratchAppService } from "@lando/sdk/services";
+import { ProcessRunner, type ScratchAppService } from "@lando/sdk/services";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
@@ -162,9 +163,17 @@ export const dispatchAppsCommand = async (argv: ReadonlyArray<string>): Promise<
   if (argv[0] === "init" || argv[0] === "apps:init") {
     const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
     await runCompiledCommand(
-      Effect.tryPromise({
-        try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
-        catch: (error) => error,
+      Effect.gen(function* () {
+        const processRunner = yield* ProcessRunner;
+        return yield* Effect.tryPromise({
+          try: () =>
+            initApp({
+              ...initOptionsFromInput(input),
+              onWarn: emitDiagnosticLine,
+              privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+            }),
+          catch: (error) => error,
+        });
       }),
       makeLandoRuntime(
         cliRuntimeOptions({

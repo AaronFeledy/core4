@@ -1,4 +1,5 @@
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { RecipeFile } from "@lando/sdk/schema";
 
@@ -7,7 +8,7 @@ import type { RecipeFile } from "@lando/sdk/schema";
  *
  * A bundled recipe carries its auxiliary assets in memory, so its manifest
  * `src` is a label rather than a path on disk. A source returns `undefined` for
- * an entry it does not own, which falls back to reading an absolute `src`.
+ * an entry it does not own, which falls back to reading `src` from `sourceRoot`.
  */
 export type RecipeAuxiliaryContentSource = (file: RecipeFile) => Promise<string | undefined>;
 
@@ -45,14 +46,47 @@ export const readAuxiliaryScaffoldContent = async (options: {
   readonly file: RecipeFile;
   readonly appName: string;
   readonly contentSource?: RecipeAuxiliaryContentSource | undefined;
+  readonly sourceRoot?: string | undefined;
 }): Promise<string> => {
-  const supplied = await options.contentSource?.(options.file);
-  // Without a content source a relative src would resolve against the process
-  // working directory, so the caller must resolve it instead.
-  if (supplied === undefined && !isAbsolute(options.file.src)) {
-    throw new RangeError("Auxiliary source must be an absolute path or supplied by a content source.");
+  if (
+    options.file.when !== undefined ||
+    options.file.mode !== undefined ||
+    options.file.engine !== undefined
+  ) {
+    throw new RangeError("Auxiliary when, mode, and engine fields are not supported by recipe init.");
   }
-  const content = supplied ?? (await Bun.file(options.file.src).text());
+  const supplied = await options.contentSource?.(options.file);
+  let content = supplied;
+  if (content === undefined) {
+    if (options.sourceRoot === undefined) {
+      throw new RangeError("Auxiliary source requires a recipe root or content source.");
+    }
+    const declaredRoot = resolve(options.sourceRoot);
+    const source = resolve(declaredRoot, options.file.src);
+    const lexicalLocal = relative(declaredRoot, source);
+    if (isAbsolute(lexicalLocal) || lexicalLocal === ".." || lexicalLocal.startsWith(`..${sep}`)) {
+      throw new RangeError("Auxiliary source must be inside the recipe root.");
+    }
+    let lexicalCurrent = declaredRoot;
+    for (const segment of lexicalLocal.split(sep).filter(Boolean)) {
+      lexicalCurrent = resolve(lexicalCurrent, segment);
+      if ((await lstat(lexicalCurrent)).isSymbolicLink()) {
+        throw new RangeError("Unsafe auxiliary source symlink.");
+      }
+    }
+    const root = await realpath(declaredRoot);
+    const canonicalSource = await realpath(source);
+    const canonicalLocal = relative(root, canonicalSource);
+    if (isAbsolute(canonicalLocal) || canonicalLocal === ".." || canonicalLocal.startsWith(`..${sep}`)) {
+      throw new RangeError("Auxiliary source must be inside the recipe root.");
+    }
+    const handle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      content = await handle.readFile({ encoding: "utf8" });
+    } finally {
+      await handle.close();
+    }
+  }
   return options.file.template === true ? renderAuxiliaryScaffold(content, options.appName) : content;
 };
 
@@ -62,6 +96,7 @@ export const writeAuxiliaryScaffold = async (options: {
   readonly appName: string;
   readonly containsSecret: (value: unknown) => boolean;
   readonly contentSource?: RecipeAuxiliaryContentSource | undefined;
+  readonly sourceRoot?: string | undefined;
 }): Promise<string | undefined> => {
   const path = auxiliaryDestination(options.appRoot, options.file.dest);
   // Never follow an auxiliary parent symlink, including one pointing inside the app.
