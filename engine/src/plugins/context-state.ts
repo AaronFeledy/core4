@@ -8,7 +8,6 @@ import type { StateStoreShape } from "@lando/sdk/services";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 
 export type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 
@@ -21,7 +20,7 @@ const stateRootPathOf = (root: unknown): string | undefined => {
 export const makePluginStateStore = (
   store: StateStoreShape,
   pluginStateRoot: AbsolutePath,
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): PluginStateStore => {
   const open: PluginStateStore["open"] = (spec) => {
     if ("root" in spec && stateRootPathOf(spec.root) !== pluginStateRoot) {

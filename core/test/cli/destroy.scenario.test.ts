@@ -38,6 +38,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
 import {
   setActiveCommandId,
@@ -260,6 +261,7 @@ const makeDestroyLayer = (
     stop: Effect.void,
   });
   const commandLayer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(
       PathsService,

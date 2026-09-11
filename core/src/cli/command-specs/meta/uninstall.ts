@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
+import { Effect } from "effect";
 
 import { Flags } from "../../spec/metadata";
 
@@ -9,7 +10,6 @@ import {
   type UninstallOptions,
   type UninstallResult,
   UninstallResultSchema,
-  uninstall,
 } from "@lando/engine/operations/uninstall";
 import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
@@ -399,7 +399,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never
       default: false,
     }),
   },
-  run: (input) => uninstall(uninstallOptionsFromInput(input)),
+  run: () => Effect.die("not yet implemented: meta:uninstall"),
   successExitCode: (result) => (result.refused || result.failed ? 1 : undefined),
   render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
 };

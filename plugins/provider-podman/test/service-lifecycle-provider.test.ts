@@ -6,7 +6,6 @@ import { Cause, DateTime, Effect, Exit } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/core/testing";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
@@ -19,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import { persistAppliedPlan } from "../src/applied-state.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("lifecycle-app");
@@ -87,6 +87,7 @@ const makeProvider = async (api: PodmanApiClient) => {
   const state = makePluginStateStore(
     makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
     AbsolutePath.make(stateDir),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(state, plan));
   return Effect.runPromise(

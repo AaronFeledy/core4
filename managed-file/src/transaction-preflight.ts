@@ -1,6 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { relative } from "node:path";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
 import { sameState, snapshot, statMaybe, targetPath, verifyBackup } from "./transaction-fs.ts";
 import type { Entry, Journal } from "./transaction-journal.ts";
@@ -128,7 +128,7 @@ const classifyEntry = async (
 export const preflight = async (
   root: string,
   journal: Journal,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<readonly Classified[]> => {
   validatePlan(journal);
   const classified: Classified[] = [];

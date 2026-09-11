@@ -41,6 +41,7 @@ import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -207,6 +208,7 @@ const makeLayer = (options: {
     select: () => Effect.succeed(options.provider),
   });
   return Layer.mergeAll(
+    PrivateFileAccessLive,
     landofileLayer,
     plannerLayer,
     registryLayer,

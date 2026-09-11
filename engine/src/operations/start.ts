@@ -24,6 +24,7 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import {
   publishedTargetsFromEndpoints,
@@ -70,6 +71,7 @@ type StartAppServices =
   | ManagedFileTransactionGuard
   | PathsService
   | PluginRegistry
+  | PrivateFileAccessService
   | RouterService
   | RedactionService
   | RuntimeProviderRegistry

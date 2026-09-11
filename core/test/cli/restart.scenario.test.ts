@@ -44,6 +44,7 @@ import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
@@ -162,6 +163,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
+    PrivateFileAccessLive,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -218,6 +220,7 @@ const makeRestartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-restart",

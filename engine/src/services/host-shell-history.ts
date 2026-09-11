@@ -7,7 +7,6 @@ import { AbsolutePath } from "@lando/sdk/schema";
 
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 
@@ -60,7 +59,7 @@ const historyBucket = (path: string, limit: number, privateFileAccess: PrivateFi
 export const readShellHistory = async (
   path: string,
   limit: number,
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): Promise<ReadonlyArray<string>> =>
   Effect.runPromise(
     historyBucket(path, limit, privateFileAccess).pipe(
@@ -73,7 +72,7 @@ export const appendShellHistory = async (
   path: string,
   line: string,
   limit: number,
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   await Effect.runPromise(
     historyBucket(path, limit, privateFileAccess).pipe(

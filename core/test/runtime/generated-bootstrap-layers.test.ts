@@ -39,7 +39,7 @@ describe("generated bootstrap layers", () => {
 
     // When: command-registry and subscriber-runtime composition is inspected.
     const subscriberInstall =
-      "makeSubscriberRuntimeWithProcessRunnerLive(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
+      "makeSubscriberRuntimeWithPrivateFileAccessLive(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
     const commandRegistryInstall = "CommandRegistryLive.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
@@ -50,7 +50,12 @@ describe("generated bootstrap layers", () => {
 
     expect(minimal).not.toContain("makePluginRegistryLive");
     expect(minimal).toContain('from "@lando/managed-file/transaction"');
-    expect(minimal).toContain("    ManagedFileTransactionGuardLive.pipe(Layer.provide(ProcessRunnerLive)),");
+    expect(minimal).toContain(
+      "    ManagedFileTransactionGuardWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+    );
+    expect(minimal).toContain(
+      "    StateStoreWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+    );
     expect(commands).toContain("makeEngineLandofileServiceLive");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
     expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");

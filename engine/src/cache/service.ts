@@ -1,13 +1,13 @@
 import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
-import { CacheService, ProcessRunner } from "@lando/sdk/services";
+import { CacheService } from "@lando/sdk/services";
 import {
-  type OwnerOnlyFileAccessOptions,
-  makeOwnerOnlyFileAccess,
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
 } from "@lando/state-store/private-file-access";
 
-import { ProcessRunnerLive } from "../services/process-runner.ts";
 import { writeAtomicCacheFile } from "./atomic.ts";
 
 interface CacheEntry {
@@ -43,7 +43,7 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Schema<
 
 const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
-  privateFileAccess: ReturnType<typeof makeOwnerOnlyFileAccess>,
+  privateFileAccess: PrivateFileAccess,
 ): Context.Tag.Service<typeof CacheService> => ({
   read: <A, I>(key: string, schema?: Schema.Schema<A, I>) =>
     Effect.gen(function* () {
@@ -75,7 +75,7 @@ const makeCacheService = (
   invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
 });
 
-const makeCacheServiceLayer = (privateFileAccess: ReturnType<typeof makeOwnerOnlyFileAccess>) =>
+const makeCacheServiceLayer = (privateFileAccess: PrivateFileAccess) =>
   Layer.effect(
     CacheService,
     Ref.make<ReadonlyMap<string, CacheEntry>>(new Map()).pipe(
@@ -83,17 +83,16 @@ const makeCacheServiceLayer = (privateFileAccess: ReturnType<typeof makeOwnerOnl
     ),
   );
 
-export const makeCacheServiceWithProcessRunnerLive = (
-  options: Omit<OwnerOnlyFileAccessOptions, "processRunner"> = {},
-): Layer.Layer<CacheService, never, ProcessRunner> =>
-  Layer.unwrapEffect(
-    Effect.map(ProcessRunner, (processRunner) =>
-      makeCacheServiceLayer(makeOwnerOnlyFileAccess({ ...options, processRunner })),
-    ),
-  );
+export const CacheServiceWithPrivateFileAccessLive: Layer.Layer<
+  CacheService,
+  never,
+  PrivateFileAccessService
+> = Layer.unwrapEffect(
+  Effect.map(PrivateFileAccessService, (privateFileAccess) => makeCacheServiceLayer(privateFileAccess)),
+);
 
-export const CacheServiceWithProcessRunnerLive = makeCacheServiceWithProcessRunnerLive();
-
-export const CacheServiceLive = CacheServiceWithProcessRunnerLive.pipe(Layer.provide(ProcessRunnerLive));
+export const CacheServiceLive = CacheServiceWithPrivateFileAccessLive.pipe(
+  Layer.provide(PrivateFileAccessLive),
+);
 
 export { CacheService };

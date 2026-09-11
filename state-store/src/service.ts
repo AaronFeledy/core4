@@ -8,7 +8,6 @@ import { Effect, Layer } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import {
-  ProcessRunner,
   type StateBucket,
   type StateBucketSpec,
   type StateMigrator,
@@ -20,7 +19,11 @@ import { writeFileAtomicScoped } from "./atomic.ts";
 import { type DecodedFrame, decodeFrame, encodeFrame, isCustomCodec, makeSchemaCodec } from "./codec.ts";
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "./private-file-access.ts";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "./private-file-access.ts";
 
 const isMissing = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "ENOENT";
@@ -216,11 +219,16 @@ export const makeStateStore = (options: {
     ),
 });
 
-export const StateStoreLive: Layer.Layer<StateStore, never, ProcessRunner> = Layer.effect(
-  StateStore,
-  Effect.map(ProcessRunner, (processRunner) =>
-    makeStateStore({
-      privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
-    }),
-  ),
+export const StateStoreWithPrivateFileAccessLive: Layer.Layer<StateStore, never, PrivateFileAccessService> =
+  Layer.effect(
+    StateStore,
+    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+      makeStateStore({
+        privateFileAccess,
+      }),
+    ),
+  );
+
+export const StateStoreLive: Layer.Layer<StateStore> = StateStoreWithPrivateFileAccessLive.pipe(
+  Layer.provide(PrivateFileAccessLive),
 );

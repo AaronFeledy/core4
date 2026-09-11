@@ -5,11 +5,11 @@ import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const ValueSchema = Schema.Struct({ value: Schema.String });
 const PackageManifestSchema = Schema.Struct({

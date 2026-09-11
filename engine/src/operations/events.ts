@@ -11,6 +11,7 @@ import type { AppLifecycleEventName, AppPlan, EventStep } from "@lando/sdk/schem
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
@@ -145,8 +146,9 @@ export const runAppEvent = (
     return yield* Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
       const redactionOption = yield* Effect.serviceOption(RedactionService);
+      const privateFileAccess = yield* Effect.serviceOption(PrivateFileAccessService);
       const shellRunner = yield* Effect.serviceOption(ShellRunner);
-      if (Option.isNone(eventsOption) || Option.isNone(redactionOption)) {
+      if (Option.isNone(eventsOption) || Option.isNone(redactionOption) || Option.isNone(privateFileAccess)) {
         return yield* Effect.fail(
           new LandofileEventStepFailedError({
             message: `Event ${event} requires the app event runtime.`,
@@ -230,6 +232,7 @@ export const runAppEvent = (
           plan,
           event,
           events: eventsOption.value,
+          privateFileAccess: privateFileAccess.value,
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,

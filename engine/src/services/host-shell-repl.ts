@@ -84,7 +84,7 @@ const parseExit = (line: string, lastStatus: number): number | undefined => {
 
 export const runHostShellRepl = (
   spec: HostShellReplSpec,
-  privateFileAccess?: PrivateFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): Effect.Effect<ShellInteractiveResult, ShellExecError> =>
   Effect.gen(function* () {
     const eventService = yield* Effect.serviceOption(EventService);

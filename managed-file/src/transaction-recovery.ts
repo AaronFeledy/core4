@@ -44,7 +44,7 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
       const dir = journalDirectory(root, options.journalRoot());
       const store = yield* openJournal(root, dir, {
         createDirectory,
-        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+        privateFileAccess: options.privateFileAccess,
       });
       return { root, dir, store };
     });

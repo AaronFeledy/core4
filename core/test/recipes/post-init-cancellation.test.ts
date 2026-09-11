@@ -12,6 +12,7 @@ import { runBoundPostInit } from "../../src/recipes/init-pipeline/post-init";
 import * as postInitRuntime from "../../src/recipes/post-init/runtime";
 import { createDefaultChoicesCommandRunner } from "../../src/recipes/prompts/choices-command";
 import { defaultChoicesCommandSpawner } from "../../src/recipes/prompts/choices-command";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe";
 
 test("initApp cancellation kills and reaps its post-init child", async () => {
@@ -55,6 +56,7 @@ test("initApp cancellation kills and reaps its post-init child", async () => {
     full: false,
     nonInteractive: true,
     signal: controller.signal,
+    privateFileAccess: ownerOnlyFileAccess,
   };
   const completion = initApp(options).then(
     () => "success",
@@ -103,6 +105,7 @@ test("cancellation through post-init kills and reaps the live runner child", asy
   const program = runBoundPostInit({
     request: {
       appRoot: process.cwd(),
+      privateFileAccess: ownerOnlyFileAccess,
       journalRoot: () => process.cwd(),
       appName: "test",
       answers: {},
@@ -172,6 +175,7 @@ test("interrupts the nested runner when post-init is cancelled", async () => {
   const program = runBoundPostInit({
     request: {
       appRoot: process.cwd(),
+      privateFileAccess: ownerOnlyFileAccess,
       journalRoot: () => process.cwd(),
       manifest: { ...isolatedInitManifest, postInit: [{ type: "command", cmd: "app:config:translate" }] },
       appName: "test",

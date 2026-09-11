@@ -55,7 +55,6 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -1096,7 +1095,7 @@ export const ScratchAppServiceLive = makeScratchAppServiceLayer(loadUserLandofil
  */
 export const detachScratchApp = (
   id: string,
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): Effect.Effect<void, ScratchAppNotFoundError | ScratchAppError> =>
   Effect.gen(function* () {
     const registry = makeScratchRegistry(privateFileAccess);

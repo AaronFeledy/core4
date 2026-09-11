@@ -5,9 +5,17 @@ import { dirname, join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { type DiscoveredApp, buildUninstallPlan, uninstall } from "@lando/engine/operations/uninstall";
+import {
+  type DiscoveredApp,
+  buildUninstallPlan,
+  uninstall as uninstallEffect,
+} from "@lando/engine/operations/uninstall";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { metaUninstallSpec, uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
+
+const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-test-"));

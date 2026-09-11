@@ -25,6 +25,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -135,6 +136,7 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     NoopTransactionGuardLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
