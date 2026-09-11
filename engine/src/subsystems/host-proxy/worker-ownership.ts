@@ -9,6 +9,7 @@ import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { ownerOnlyFileAccess } from "../../services/private-file-access.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
@@ -86,7 +87,7 @@ export const terminateOwnedHostProxyWorkersInRoot = (
         if (legacyRecord === undefined) continue;
         const legacyDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId));
         if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
-        yield* withAdvisoryLockUsing(options.privateFileAccess)(
+        yield* withAdvisoryLockUsing(options.privateFileAccess ?? ownerOnlyFileAccess)(
           recordPath,
           "host-proxy-worker",
           terminateControlRecord(

@@ -10,6 +10,7 @@ import type { RootOverrides } from "@lando/paths";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { ownerOnlyFileAccess } from "../../services/private-file-access.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 
@@ -116,5 +117,5 @@ export const withWorkerRecordLock = <A, E>(
   app: Pick<AppRef, "id" | "root">,
   paths: RootOverrides | undefined,
   body: Effect.Effect<A, E>,
-  privateFileAccess?: PrivateFileAccess,
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ) => withAdvisoryLockUsing(privateFileAccess)(workerStatePath(app, paths), "host-proxy-worker", body);
