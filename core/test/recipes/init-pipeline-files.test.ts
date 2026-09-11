@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { type FileHandle, mkdir, mkdtemp, open, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { readAuxiliaryScaffoldContent } from "../../src/recipes/init-pipeline/files.ts";
@@ -82,4 +82,35 @@ test("does not follow a relative auxiliary source symlink", async () => {
       sourceRoot,
     }),
   ).rejects.toThrow("symlink");
+});
+
+test("rejects a source when its validated parent is replaced before open", async () => {
+  // Given a validated source parent and an attacker-controlled replacement.
+  const sourceRoot = await temporary();
+  const sourceParent = join(sourceRoot, "templates");
+  const parkedParent = join(sourceRoot, "templates-original");
+  const outsideParent = await temporary();
+  await mkdir(sourceParent);
+  await Bun.write(join(sourceParent, "notice.txt"), "trusted");
+  await Bun.write(join(outsideParent, "notice.txt"), "attacker-controlled");
+  let openedHandle: FileHandle | undefined;
+
+  // When the parent is replaced after validation but before the pathname opens.
+  const result = readAuxiliaryScaffoldContent({
+    file: { src: "templates/notice.txt", dest: "notice.txt" },
+    appName: "parent-swap",
+    sourceRoot,
+    openSource: async (path: string, flags: number) => {
+      await rename(sourceParent, parkedParent);
+      await symlink(outsideParent, sourceParent);
+      openedHandle = await open(path, flags);
+      return openedHandle;
+    },
+  });
+
+  // Then no replacement bytes are accepted and the rejected handle is closed.
+  expect(result).rejects.toThrow("changed during open");
+  expect(openedHandle).toBeDefined();
+  if (openedHandle === undefined) throw new TypeError("Expected the injected source opener to run.");
+  expect(openedHandle.stat()).rejects.toThrow();
 });

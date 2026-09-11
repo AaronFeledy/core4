@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { RecipeFile } from "@lando/sdk/schema";
 
@@ -11,6 +11,8 @@ import type { RecipeFile } from "@lando/sdk/schema";
  * an entry it does not own, which falls back to reading `src` from `sourceRoot`.
  */
 export type RecipeAuxiliaryContentSource = (file: RecipeFile) => Promise<string | undefined>;
+
+type RecipeAuxiliarySourceOpener = (path: string, flags: number) => Promise<FileHandle>;
 
 /**
  * Renders a `template: true` auxiliary asset.
@@ -46,6 +48,7 @@ export const readAuxiliaryScaffoldContent = async (options: {
   readonly file: RecipeFile;
   readonly appName: string;
   readonly contentSource?: RecipeAuxiliaryContentSource | undefined;
+  readonly openSource?: RecipeAuxiliarySourceOpener | undefined;
   readonly sourceRoot?: string | undefined;
 }): Promise<string> => {
   if (
@@ -76,12 +79,37 @@ export const readAuxiliaryScaffoldContent = async (options: {
     }
     const root = await realpath(declaredRoot);
     const canonicalSource = await realpath(source);
+    const canonicalParent = dirname(canonicalSource);
     const canonicalLocal = relative(root, canonicalSource);
     if (isAbsolute(canonicalLocal) || canonicalLocal === ".." || canonicalLocal.startsWith(`..${sep}`)) {
       throw new RangeError("Auxiliary source must be inside the recipe root.");
     }
-    const handle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const validatedParent = await lstat(canonicalParent);
+    const validatedSource = await lstat(canonicalSource);
+    const openSource: RecipeAuxiliarySourceOpener = options.openSource ?? open;
+    const handle = await openSource(source, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
+      const openedSource = await handle.stat();
+      const currentCanonicalSource = await realpath(source);
+      const currentCanonicalParent = await realpath(dirname(source));
+      const currentCanonicalLocal = relative(root, currentCanonicalSource);
+      const currentParent = await lstat(currentCanonicalParent);
+      const currentSource = await lstat(currentCanonicalSource);
+      if (
+        isAbsolute(currentCanonicalLocal) ||
+        currentCanonicalLocal === ".." ||
+        currentCanonicalLocal.startsWith(`..${sep}`) ||
+        currentCanonicalSource !== canonicalSource ||
+        currentCanonicalParent !== canonicalParent ||
+        currentParent.dev !== validatedParent.dev ||
+        currentParent.ino !== validatedParent.ino ||
+        currentSource.dev !== validatedSource.dev ||
+        currentSource.ino !== validatedSource.ino ||
+        openedSource.dev !== validatedSource.dev ||
+        openedSource.ino !== validatedSource.ino
+      ) {
+        throw new RangeError("Auxiliary source changed during open.");
+      }
       content = await handle.readFile({ encoding: "utf8" });
     } finally {
       await handle.close();
