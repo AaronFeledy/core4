@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
@@ -150,6 +151,7 @@ export const sidebar = [
       { label: "LEMP", slug: "recipes/lemp" },
       { label: "MEAN", slug: "recipes/mean" },
       { label: "Rails", slug: "recipes/rails" },
+      { label: "SvelteKit", slug: "recipes/sveltekit" },
       { label: "Symfony", slug: "recipes/symfony" },
       { label: "WordPress", slug: "recipes/wordpress" },
     ],
