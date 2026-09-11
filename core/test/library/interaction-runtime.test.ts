@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import { makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { withInteractionServiceOverride } from "../../src/interaction/testing-override.ts";
 import { makeTestInteractionService } from "../../src/testing/interaction.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-interaction-lib-")));
