@@ -49,7 +49,7 @@ const versionError = (operation: string, path: string, cause: unknown): StateSto
 const buildBucket = <A, I>(
   spec: StateBucketSpec<A, I>,
   file: string,
-  privateFileAccess?: PrivateFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ): StateBucket<A> => {
   const path = file as AbsolutePath;
   const onCorrupt = spec.onCorrupt ?? "quarantine";
@@ -59,7 +59,7 @@ const buildBucket = <A, I>(
   const codec = spec.codec;
   const writeOptions = {
     ...(spec.mode === undefined ? {} : { mode: spec.mode }),
-    ...(privateFileAccess === undefined ? {} : { privateFileAccess: privateFileAccess.enforce }),
+    privateFileAccess: privateFileAccess.enforce,
   };
 
   const readBytes = Effect.tryPromise({
@@ -207,18 +207,16 @@ const buildBucket = <A, I>(
  * Build the {@link StateStoreShape}: `open` resolves and containment-checks a
  * bucket's path (no read/write IO) and returns a {@link StateBucket} closure.
  */
-export const makeStateStore = (
-  options: { readonly privateFileAccess?: PrivateFileAccess } = {},
-): StateStoreShape => ({
+export const makeStateStore = (options: {
+  readonly privateFileAccess: PrivateFileAccess;
+}): StateStoreShape => ({
   open: <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
     resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
       Effect.map((resolved) => buildBucket(spec, resolved.file, options.privateFileAccess)),
     ),
 });
 
-export const StateStoreLive: Layer.Layer<StateStore> = Layer.succeed(StateStore, makeStateStore());
-
-export const StateStoreWithProcessRunnerLive: Layer.Layer<StateStore, never, ProcessRunner> = Layer.effect(
+export const StateStoreLive: Layer.Layer<StateStore, never, ProcessRunner> = Layer.effect(
   StateStore,
   Effect.map(ProcessRunner, (processRunner) =>
     makeStateStore({
@@ -226,3 +224,5 @@ export const StateStoreWithProcessRunnerLive: Layer.Layer<StateStore, never, Pro
     }),
   ),
 );
+
+export const StateStoreWithProcessRunnerLive = StateStoreLive;

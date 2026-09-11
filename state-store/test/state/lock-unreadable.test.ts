@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { acquireAdvisoryLockAt } from "../../src/lock.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 test("preserves a live replacement inode during unreadable stale takeover", async () => {
   // Given an old unreadable inode replaced while its record is being read
@@ -25,7 +26,10 @@ test("preserves a live replacement inode during unreadable stale takeover", asyn
     const result = await Effect.runPromise(
       Effect.either(
         Effect.acquireUseRelease(
-          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+          acquireAdvisoryLockAt(path, "test", {
+            expireLiveOwner: false,
+            privateFileAccess: ownerOnlyFileAccess,
+          }),
           () => Effect.void,
           (lock) => lock.release,
         ),
@@ -56,7 +60,10 @@ for (const old of [true, false]) {
         const result = await Effect.runPromise(
           Effect.either(
             Effect.acquireUseRelease(
-              acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+              acquireAdvisoryLockAt(path, "test", {
+                expireLiveOwner: false,
+                privateFileAccess: ownerOnlyFileAccess,
+              }),
               () => Effect.void,
               (lock) => lock.release,
             ),
@@ -110,7 +117,10 @@ for (const kind of ["symlink", "directory", "foreign-owner"] as const) {
         const result = await Effect.runPromise(
           Effect.either(
             Effect.acquireUseRelease(
-              acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+              acquireAdvisoryLockAt(path, "test", {
+                expireLiveOwner: false,
+                privateFileAccess: ownerOnlyFileAccess,
+              }),
               () => Effect.void,
               (lock) => lock.release,
             ),

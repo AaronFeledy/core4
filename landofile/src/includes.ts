@@ -15,8 +15,9 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot } from "@lando/sdk/services";
-
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
@@ -855,7 +856,7 @@ const LockEntrySchema = Schema.Struct({
 });
 const LockEntriesSchema = Schema.Array(LockEntrySchema);
 
-const lockfileStore = makeStateStore();
+const lockfileStore = makeStateStore({ privateFileAccess: makeOwnerOnlyFileAccess() });
 const lockTextDecoder = new TextDecoder();
 
 /**

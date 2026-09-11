@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { acquireAdvisoryLockAt } from "../../src/lock.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 for (const method of ["chmod", "writeFile"] as const) {
   for (const replaced of [false, true]) {
@@ -28,7 +29,9 @@ for (const method of ["chmod", "writeFile"] as const) {
       });
       try {
         // When initialization fails after exclusive creation
-        const result = await Effect.runPromise(Effect.either(acquireAdvisoryLockAt(path, "test")));
+        const result = await Effect.runPromise(
+          Effect.either(acquireAdvisoryLockAt(path, "test", { privateFileAccess: ownerOnlyFileAccess })),
+        );
         // Then the failure is surfaced and cleanup is bounded to the original inode
         expect(result._tag).toBe("Left");
         if (result._tag === "Left") expect(result.left.cause).toBe(injected);
