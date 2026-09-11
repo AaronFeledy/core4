@@ -65,6 +65,28 @@ test("restricts immutable backups before writing bytes", async () => {
 });
 
 for (const artifact of ["stage", "backup"] as const) {
+  test(`rejects a successful ACL swap before writing the ${artifact}`, async () => {
+    // Given an ACL hook that secures a replacement instead of the opened inode
+    const path = join(await temporary(), artifact);
+    const bytes = new TextEncoder().encode("sensitive bytes");
+    const privateFileAccess: PrivateFileAccess = {
+      enforce: async (created) => {
+        await rename(created, `${created}.original`);
+        await writeFile(created, "foreign");
+      },
+      verify: () => Promise.resolve(),
+    };
+    // When enforcement reports success after swapping the pathname
+    const operation =
+      artifact === "stage"
+        ? createStage({ path, bytes, record: () => undefined, privateFileAccess })
+        : ensureBackup({ path, bytes, privateFileAccess });
+    // Then neither inode receives sensitive bytes
+    await expect(operation).rejects.toMatchObject({ _tag: "ManagedFileTransactionError" });
+    expect(await readFile(`${path}.original`, "utf8")).toBe("");
+    expect(await readFile(path, "utf8")).toBe("foreign");
+  });
+
   test(`removes an empty ${artifact} when access restriction fails`, async () => {
     // Given an owner-only access operation that fails
     const path = join(await temporary(), artifact);

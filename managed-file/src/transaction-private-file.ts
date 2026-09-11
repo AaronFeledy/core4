@@ -42,7 +42,13 @@ export const createPrivateFile = async (options: CreatePrivateFileOptions): Prom
   try {
     try {
       await handle.chmod(0o600);
-      await (options.privateFileAccess ?? enforceOwnerOnlyFileAccess)(options.path);
+      if (options.privateFileAccess !== undefined || process.platform === "win32") {
+        await (options.privateFileAccess ?? enforceOwnerOnlyFileAccess)(options.path);
+        const current = await lstat(options.path);
+        if (current.dev !== identity.dev || current.ino !== identity.ino) {
+          throw transactionError("path", "prepare", options.path);
+        }
+      }
       await handle.writeFile(options.bytes);
       await handle.sync();
     } finally {
