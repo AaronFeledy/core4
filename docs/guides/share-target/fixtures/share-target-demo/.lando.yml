@@ -1,0 +1,7 @@
+name: share-target-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+  storybook:
+    type: "node:22"
