@@ -87,6 +87,10 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+      - name: Native Windows private-file ACL tests
+        if: matrix.platform == 'windows-x64'
+        run: bun test state-store/test/state-store/private-file-access.test.ts
+
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
