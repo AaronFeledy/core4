@@ -29,6 +29,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -80,7 +81,7 @@ const toProviderUnavailableFromCapability = (
 
 export const makeRuntimeProviderRegistry = (
   modules: ReadonlyArray<LandoPluginModule>,
-  privateFileAccess: PrivateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ) => {
   const capabilityIndex = makePluginCapabilityIndex(modules);
 
@@ -214,5 +215,5 @@ export const makeRuntimeProviderRegistryWithProcessRunner = (modules: ReadonlyAr
 export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.suspend(() =>
-  makeRuntimeProviderRegistry(bundledPluginModules()),
+  makeRuntimeProviderRegistry(bundledPluginModules(), ownerOnlyFileAccess),
 );

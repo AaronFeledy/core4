@@ -15,7 +15,9 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { PluginRegistryLive } from "../../src/plugins/registry";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry";
 
