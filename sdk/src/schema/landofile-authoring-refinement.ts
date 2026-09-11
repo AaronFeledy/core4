@@ -1,4 +1,8 @@
 import { type SchemaAST as AST, Option, ParseResult } from "effect";
+import { RecipeServiceMap } from "./recipe-identity.ts";
+
+const recipeServiceMapFilter =
+  RecipeServiceMap.ast._tag === "Refinement" ? RecipeServiceMap.ast.filter : undefined;
 
 export const containerKind = (ast: AST.AST): "array" | "object" | undefined => {
   switch (ast._tag) {
@@ -91,6 +95,18 @@ export const authoringContainerFilter =
     if (partial && !hasRequiredShape(refinement.from, input)) return Option.none();
     const sources = expressionSources(input);
     if (sources.size === 0) return refinement.filter(input, parseOptions, self);
+    if (
+      refinement.filter === recipeServiceMapFilter &&
+      typeof input === "object" &&
+      input !== null &&
+      !Array.isArray(input)
+    ) {
+      const literals = Object.fromEntries(
+        Object.entries(input).filter(([, value]) => !containsExpression(value)),
+      );
+      const literalResult = refinement.filter(literals, parseOptions, self);
+      if (Option.isSome(literalResult)) return literalResult;
+    }
     const result = refinement.filter(projectExpressions(input), parseOptions, self);
     if (Option.isNone(result)) return result;
     const dependsOnExpression = ParseResult.ArrayFormatter.formatIssueSync(result.value).some(
