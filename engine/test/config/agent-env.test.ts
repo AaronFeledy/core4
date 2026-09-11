@@ -213,6 +213,20 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
     expect(filtered).toEqual({});
   });
 
+  test("does not forward interactive TTY capability fingerprints beyond TERM", () => {
+    const filtered = filterHostProxyEnv({
+      TERM: "xterm-ghostty",
+      COLORTERM: "truecolor",
+      TERM_PROGRAM: "ghostty",
+      TERM_PROGRAM_VERSION: "1.2.0",
+      VTE_VERSION: "6003",
+      WT_SESSION: "session-id",
+      KONSOLE_VERSION: "230800",
+      HOST_SECRET: "shh",
+    });
+    expect(filtered).toEqual({ TERM: "xterm-ghostty" });
+  });
+
   test("skips unset values so no empty vars poison the host program", () => {
     const filtered = filterHostProxyEnv({ LANG: undefined, CI: "1" });
     expect(Object.hasOwn(filtered, "LANG")).toBe(false);
