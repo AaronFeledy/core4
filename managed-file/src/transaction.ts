@@ -46,13 +46,13 @@ export type TransactionCheckpoint =
 export interface TransactionOptions {
   readonly journalRoot: () => string;
   readonly checkpoint?: (point: TransactionCheckpoint, index: number) => Effect.Effect<void, unknown>;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export const makeManagedFileTransactions = (options: TransactionOptions) => {
   const recovery = makeTransactionRecovery({
     journalRoot: options.journalRoot,
-    ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+    privateFileAccess: options.privateFileAccess,
     ...(options.checkpoint === undefined
       ? {}
       : {
@@ -95,9 +95,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       yield* Effect.acquireRelease(
         acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
           expireLiveOwner: false,
-          ...(options.privateFileAccess === undefined
-            ? {}
-            : { privateFileAccess: options.privateFileAccess }),
+          privateFileAccess: options.privateFileAccess,
         }).pipe(Effect.mapError(() => transactionError("lock", "prepare"))),
         (lock) => lock.release,
       );

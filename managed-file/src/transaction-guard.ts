@@ -12,11 +12,11 @@ import { makeTransactionRecovery } from "./transaction-recovery.ts";
  */
 export const makeManagedFileTransactionGuard = (options: {
   readonly journalRoot: () => string;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }) => {
   const recovery = makeTransactionRecovery({
     journalRoot: options.journalRoot,
-    ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+    privateFileAccess: options.privateFileAccess,
   });
   return { ensureConsistent: recovery.ensureConsistent, pending: recovery.pending };
 };

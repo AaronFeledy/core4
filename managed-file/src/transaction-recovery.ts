@@ -16,7 +16,7 @@ export interface RecoveryOutcome {
 export interface RecoveryOptions {
   readonly journalRoot: () => string;
   readonly checkpoint?: (point: string, index: number) => Effect.Effect<void, ManagedFileTransactionError>;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 type JournalStore = Effect.Effect.Success<ReturnType<typeof openJournal>>;
@@ -107,9 +107,7 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
       yield* Effect.acquireRelease(
         acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
           expireLiveOwner: false,
-          ...(options.privateFileAccess === undefined
-            ? {}
-            : { privateFileAccess: options.privateFileAccess }),
+          privateFileAccess: options.privateFileAccess,
         }).pipe(Effect.mapError(() => transactionError("lock", "recover"))),
         (lock) => lock.release,
       );
