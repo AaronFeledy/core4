@@ -375,6 +375,20 @@ describe("appConfigExplain", () => {
     });
   });
 
+  it("returns a tagged truncated report when current expression enumeration exceeds its limit", async () => {
+    const references = Array.from(
+      { length: 140 },
+      (_, index) => `  service${index}:\n    type: "php:{{ recipe.php }}"`,
+    ).join("\n");
+    await withApp(landofile({ extra: references }), async (cwd) => {
+      const result = await explain(cwd);
+      expect(result.bounds._tag).toBe("truncated");
+      expect(optionNamed(result, "php").references.length).toBeLessThan(140);
+      if (result.bounds._tag === "truncated") expect(result.bounds.omitted.references).toBeGreaterThan(0);
+      expect(Schema.is(AppConfigExplainResultSchema)(result)).toBe(true);
+    });
+  });
+
   it("decodes and renders through the published result schema", async () => {
     await withApp(landofile({ php: "8.2", appserverType: "php:8.2" }), async (cwd) => {
       const result = await explain(cwd);
