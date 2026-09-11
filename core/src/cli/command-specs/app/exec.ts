@@ -22,6 +22,11 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   flags: {
     user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),
     cwd: Flags.string({ description: "Working directory inside the service." }),
+    interactive: Flags.boolean({
+      char: "i",
+      description: "Attach host stdin to the command.",
+      default: false,
+    }),
   },
   args: {
     command: Args.string({
@@ -41,7 +46,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
     };
     if (json) return execApp({ ...base, tty: false, interactive: false });
     const tty = process.stdout.isTTY === true;
-    const interactive = process.stdin.isTTY === true;
+    const interactive = flags.interactive === true;
     return withInheritedStdinRawMode(
       tty && interactive,
       execApp(attachExecHostIo({ ...base, tty, interactive })),

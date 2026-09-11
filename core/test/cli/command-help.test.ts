@@ -50,6 +50,17 @@ describe("renderCommandHelp", () => {
     expect(commandStructureExample("app:start")).toBe("lando start");
   });
 
+  test("exec attaches stdin only through an explicit interactive flag", () => {
+    // Given
+    const entry = requireBuiltIn("app:exec");
+
+    // When
+    const interactive = entry.spec.flags?.interactive;
+
+    // Then
+    expect(interactive).toMatchObject({ type: "boolean", char: "i", default: false });
+  });
+
   test("uses the typeable name in USAGE instead of the canonical id", () => {
     // Given app:start, whose typeable name is start
     const entry = requireBuiltIn("app:start");
