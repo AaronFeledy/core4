@@ -32,7 +32,7 @@ services:
 lando share --target storybook:6006
 ```
 
-`--target` accepts `service[:port]`. Same form for Vite on the primary service: `lando share --target app:5173`.
+`--target` takes `service[:port]`. Vite on the primary service is the same move: `lando share --target app:5173`.
 
 ## Point `--target` at a route or loopback URL
 
@@ -41,7 +41,7 @@ lando share --target storybook.share-target-demo.lndo.site
 lando share --target http://127.0.0.1:5173
 ```
 
-A value that starts with `http://` or `https://` is a loopback URL. A `service:port` pair with a numeric port is a service endpoint. Anything else is a route id, usually the hostname `lando info` prints. `lando share --target storybook` with no port is a route id, not a service.
+`http://` or `https://` means a loopback URL. `storybook:6006` is a service and port. Anything else is a route id, usually the hostname `lando info` prints. Drop the port and `lando share --target storybook` is a route id, not a service.
 
 ## See what will be shared
 
@@ -66,7 +66,11 @@ lando share:stop <session>
 
 ## When no tunnel plugin is installed
 
-Starting a public URL needs a TunnelService plugin. Without one, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`. Install a tunnel plugin, then rerun the command. Bundled tunnel connectors ship in Lando 4.1.
+```sh
+lando plugin:add <tunnel-service-plugin>
+```
+
+Or `lando setup --provider=<provider-with-tunnels>`. Then rerun `lando share`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`. Bundled tunnel connectors ship in Lando 4.1.
 
 <Guide>
   <Scenario id="share-help" render>
@@ -112,5 +116,4 @@ Starting a public URL needs a TunnelService plugin. Without one, `share`, `share
 
 ## Next
 
-- [Everyday commands](./everyday-commands.mdx)
-- [Reach an app from another device](../subsystems/external-access.mdx)
+Back to the loop: [Everyday commands](./everyday-commands.mdx). LAN reach is a bind, not a tunnel: [Reach an app from another device](../subsystems/external-access.mdx).
