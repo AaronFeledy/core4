@@ -30,10 +30,156 @@ describe("authoring AST derivation", () => {
     const decode = Schema.decodeUnknownEither(Schema.make(derived));
     expect(decode({ o: {} })._tag).toBe("Right");
   });
+
+  test("preserves object refinements while projecting a transformed input shape", () => {
+    // Given
+    const schema = Schema.transform(
+      Schema.Struct({ value: Schema.Number }).pipe(
+        Schema.filter(({ value }) => value > 0 || "Expected a positive value"),
+      ),
+      Schema.Struct({ value: Schema.Number }),
+      { strict: true, decode: (value) => value, encode: (value) => value },
+    );
+    const derived = Schema.make(
+      Public.deriveAuthoringAst(schema.ast, {
+        partial: false,
+        slotFor: (kind: string) => new AST.Literal(`<slot:${kind}>`),
+      }),
+    );
+
+    // When
+    const result = Schema.decodeUnknownEither(derived)({ value: -1 });
+
+    // Then
+    expect(result._tag).toBe("Left");
+  });
 });
 
 // ==== Public authoring schema contracts
 describe("Landofile authoring schemas", () => {
+  const producer = {
+    sourceKind: "bundled",
+    packageName: "@lando/recipe-demo",
+    manifestVersion: "1.0.0",
+    contentDigest: `sha256:${"a".repeat(64)}`,
+  } as const;
+  const authoringDecoders = [
+    ["complete shape", Schema.decodeUnknownEither(Public.LandofileAuthoringShape)],
+    ["fragment", Schema.decodeUnknownEither(Public.LandofileAuthoringFragment)],
+  ] as const;
+
+  test.each(authoringDecoders)(
+    "accepts matching unresolved provenance identity in the %s",
+    (_name, decode) => {
+      // Given
+      const expression = "{{ env.RECIPE_ID }}";
+      const input = {
+        recipe: {
+          id: expression,
+          version: "1.0.0",
+          producer: { ...producer, recipeId: expression },
+          options: {},
+        },
+      };
+
+      // When
+      const result = decode(input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
+  test.each(authoringDecoders)(
+    "rejects mismatched literal provenance identity in the %s",
+    (_name, decode) => {
+      // Given
+      const input = {
+        recipe: {
+          id: "demo",
+          version: "1.0.0",
+          producer: { ...producer, recipeId: "other" },
+          options: {},
+        },
+      };
+
+      // When
+      const result = decode(input);
+
+      // Then
+      expect(result._tag).toBe("Left");
+    },
+  );
+
+  test.each(authoringDecoders)(
+    "rejects an invalid literal inside unresolved provenance in the %s",
+    (_name, decode) => {
+      // Given
+      const expression = "{{ env.RECIPE_ID }}";
+      const input = {
+        recipe: {
+          id: expression,
+          version: "1.0.0",
+          producer: { ...producer, recipeId: expression, manifestVersion: "not-semver" },
+          options: {},
+        },
+      };
+
+      // When
+      const result = decode(input);
+
+      // Then
+      expect(result._tag).toBe("Left");
+    },
+  );
+
+  test.each(authoringDecoders)(
+    "rejects literal provenance mismatch with an unrelated option expression in the %s",
+    (_name, decode) => {
+      // Given
+      const input = {
+        recipe: {
+          id: "demo",
+          version: "1.0.0",
+          producer: { ...producer, recipeId: "other" },
+          options: { php: "{{ env.PHP_VERSION }}" },
+        },
+      };
+
+      // When
+      const result = decode(input);
+
+      // Then
+      expect(result._tag).toBe("Left");
+    },
+  );
+
+  test("defers complete-object provenance semantics for an incomplete fragment", () => {
+    // Given / When
+    const result = Schema.decodeUnknownEither(Public.LandofileAuthoringFragment)({
+      recipe: { id: "demo" },
+    });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test("rejects an expression at the complete Landofile root", () => {
+    // Given / When
+    const result = Schema.decodeUnknownEither(Public.LandofileAuthoringShape)("{{ vars.landofile }}");
+
+    // Then
+    expect(result._tag).toBe("Left");
+  });
+
+  test("keeps the complete Landofile root object-only without inventing required fields", () => {
+    // Given / When
+    const result = Schema.decodeUnknownEither(Public.LandofileAuthoringShape)({});
+
+    // Then
+    expect(result).toMatchObject({ _tag: "Right", right: {} });
+  });
+
   test("decodes a whole string expression without resolving it", () => {
     // Given
     const input = { name: '{{ env.X | default("a") }}' };

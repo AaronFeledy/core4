@@ -5,6 +5,7 @@ import {
   authoringExpressionSlot,
   isPlainAuthoringString,
 } from "./landofile-authoring-expression.ts";
+import { authoringContainerFilter, containerKind } from "./landofile-authoring-refinement.ts";
 import { LandofileShape } from "./landofile.ts";
 
 // ==== Generic wire-tree authoring types
@@ -40,11 +41,17 @@ export type AuthoringDeepPartial<T> = T extends AuthoringExpression | string | n
 export interface DeriveAuthoringOptions {
   readonly partial: boolean;
   readonly slotFor: (kind: AuthoringExpressionExpectedType) => AST.AST;
+  readonly rootExpression?: boolean;
 }
 
 const caches = new WeakMap<
   DeriveAuthoringOptions["slotFor"],
-  readonly [WeakMap<AST.AST, AST.AST>, WeakMap<AST.AST, AST.AST>]
+  readonly [
+    WeakMap<AST.AST, AST.AST>,
+    WeakMap<AST.AST, AST.AST>,
+    WeakMap<AST.AST, AST.AST>,
+    WeakMap<AST.AST, AST.AST>,
+  ]
 >();
 
 const union = (members: ReadonlyArray<AST.AST>, annotations?: AST.Annotations): AST.AST => {
@@ -95,18 +102,24 @@ const leafKind = (ast: AST.AST): "string" | "number" | "boolean" | undefined => 
 export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions): AST.AST => {
   let pair = caches.get(options.slotFor);
   if (!pair) {
-    pair = [new WeakMap(), new WeakMap()];
+    pair = [new WeakMap(), new WeakMap(), new WeakMap(), new WeakMap()];
     caches.set(options.slotFor, pair);
   }
-  const memo = pair[options.partial ? 1 : 0];
-  const derive = (node: AST.AST): AST.AST => {
+  const derive = (node: AST.AST, allowExpression: boolean): AST.AST => {
+    const memo = options.partial
+      ? allowExpression
+        ? pair[3]
+        : pair[2]
+      : allowExpression
+        ? pair[1]
+        : pair[0];
     const cached = memo.get(node);
     if (cached) return cached;
-    const result = walk(node);
+    const result = walk(node, allowExpression);
     memo.set(node, result);
     return result;
   };
-  const walk = (node: AST.AST): AST.AST => {
+  const walk = (node: AST.AST, allowExpression: boolean): AST.AST => {
     const kind = leafKind(node);
     if (kind) {
       const leaf =
@@ -117,13 +130,20 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
                 : Option.some(new ParseResult.Type(self, input, "Expected plain authoring text")),
             )
           : node;
-      return union([leaf, options.slotFor(kind)]);
+      return allowExpression ? union([leaf, options.slotFor(kind)]) : leaf;
     }
     switch (node._tag) {
       case "Transformation":
-        return derive(node.from);
-      case "Refinement":
-        return AST.annotations(derive(node.from), authoringAnnotations(node, options.partial));
+        return derive(node.from, allowExpression);
+      case "Refinement": {
+        const refined = new AST.Refinement(
+          derive(node.from, false),
+          authoringContainerFilter(node, options.partial),
+          authoringAnnotations(node, options.partial),
+        );
+        const kind = containerKind(node.from);
+        return allowExpression && kind !== undefined ? union([refined, options.slotFor(kind)]) : refined;
+      }
       case "TypeLiteral": {
         const object = new AST.TypeLiteral(
           node.propertySignatures.map(
@@ -131,54 +151,58 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
               new AST.PropertySignature(
                 property.name,
                 options.partial
-                  ? union([derive(property.type), AST.undefinedKeyword])
-                  : derive(property.type),
+                  ? union([derive(property.type, true), AST.undefinedKeyword])
+                  : derive(property.type, true),
                 options.partial || property.isOptional,
                 property.isReadonly,
                 property.annotations,
               ),
           ),
           node.indexSignatures.map(
-            (index) => new AST.IndexSignature(index.parameter, derive(index.type), index.isReadonly),
+            (index) => new AST.IndexSignature(index.parameter, derive(index.type, true), index.isReadonly),
           ),
           authoringAnnotations(node, options.partial),
         );
-        return union([object, options.slotFor("object")]);
+        return allowExpression ? union([object, options.slotFor("object")]) : object;
       }
-      case "TupleType":
-        return union([
-          new AST.TupleType(
-            node.elements.map(
-              (element) =>
-                new AST.OptionalType(derive(element.type), element.isOptional, element.annotations),
-            ),
-            node.rest.map((rest) => new AST.Type(derive(rest.type), rest.annotations)),
-            node.isReadonly,
-            node.annotations,
+      case "TupleType": {
+        const tuple = new AST.TupleType(
+          node.elements.map(
+            (element) =>
+              new AST.OptionalType(derive(element.type, true), element.isOptional, element.annotations),
           ),
-          options.slotFor("array"),
-        ]);
+          node.rest.map((rest) => new AST.Type(derive(rest.type, true), rest.annotations)),
+          node.isReadonly,
+          node.annotations,
+        );
+        return allowExpression ? union([tuple, options.slotFor("array")]) : tuple;
+      }
       case "Union":
-        return union(node.types.map(derive), authoringAnnotations(node, options.partial));
+        return union(
+          node.types.map((member) => derive(member, allowExpression)),
+          authoringAnnotations(node, options.partial),
+        );
       case "Suspend":
-        return new AST.Suspend(() => derive(node.f()), node.annotations);
+        return new AST.Suspend(() => derive(node.f(), allowExpression), node.annotations);
       default:
         return node;
     }
   };
-  return derive(ast);
+  return derive(ast, options.rootExpression ?? true);
 };
 
 // ==== Public schemas retain expression source on their encoded side
 interface LandofileEncoded extends Schema.Schema.Encoded<typeof LandofileShape> {}
+type AuthoringRootValue<T extends object> = { readonly [K in keyof T]: AuthoringValue<T[K]> };
+type AuthoringRootEncoded<T extends object> = { readonly [K in keyof T]: AuthoringEncoded<T[K]> };
 const slotFor = (kind: AuthoringExpressionExpectedType): AST.AST => authoringExpressionSlot(kind).ast;
 
 // Explicit schema types keep declaration emit from expanding the entire Landofile tree.
 export const LandofileAuthoringShape: Schema.Schema<
-  AuthoringValue<LandofileEncoded>,
-  AuthoringEncoded<LandofileEncoded>
-> = Schema.make<AuthoringValue<LandofileEncoded>, AuthoringEncoded<LandofileEncoded>>(
-  deriveAuthoringAst(LandofileShape.ast, { partial: false, slotFor }),
+  AuthoringRootValue<LandofileEncoded>,
+  AuthoringRootEncoded<LandofileEncoded>
+> = Schema.make<AuthoringRootValue<LandofileEncoded>, AuthoringRootEncoded<LandofileEncoded>>(
+  deriveAuthoringAst(LandofileShape.ast, { partial: false, rootExpression: false, slotFor }),
 ).annotations({
   identifier: "LandofileAuthoringShape",
   title: "Landofile authoring shape",
@@ -199,7 +223,7 @@ export const LandofileAuthoringFragment: Schema.Schema<
     "Recursively partial Landofile authoring values with parsed, unresolved expressions at typed value sites.",
 });
 
-export const LandofileAuthoringShapeWire: Schema.Schema<AuthoringEncoded<LandofileEncoded>> =
+export const LandofileAuthoringShapeWire: Schema.Schema<AuthoringRootEncoded<LandofileEncoded>> =
   Schema.encodedSchema(LandofileAuthoringShape).annotations({
     identifier: "LandofileAuthoringShapeWire",
     title: "Landofile authoring shape wire form",

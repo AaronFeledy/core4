@@ -86,4 +86,28 @@ describe("config translation schemas", () => {
     // Then
     expect(Either.isLeft(result)).toBe(true);
   });
+  test.each([
+    "",
+    "raw-secret",
+    "vault:example",
+    "${secret:}",
+    "x${secret:API_KEY}",
+    "${secret:a}${secret:b}",
+  ])("rejects the noncanonical stored-secret reference %s", (reference) => {
+    const result = Schema.decodeUnknownEither(schema.ConfigTranslateSecretReference)({
+      disposition: "secret-store",
+      reference,
+    });
+    expect(Either.isLeft(result)).toBe(true);
+  });
+  test.each(["${secret:API_KEY}", "${secret:team/database}"])(
+    "accepts the canonical secret-store reference %s",
+    (reference) => {
+      const result = Schema.decodeUnknownEither(schema.ConfigTranslateSecretReference)({
+        disposition: "secret-store",
+        reference,
+      });
+      expect(Either.isRight(result)).toBe(true);
+    },
+  );
 });

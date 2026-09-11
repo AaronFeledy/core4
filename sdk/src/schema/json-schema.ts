@@ -2575,6 +2575,17 @@ const isSelfExplanatoryPublicField = (schemaName: string, name: string): boolean
     `${schemaName.replace(/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/, "LandofileShape")}.${name}`,
   ) || name.startsWith("x-");
 
+const hasUsefulFieldDescription = (property: AST.PropertySignature): boolean =>
+  hasOwnUsefulDescription(property.annotations) ||
+  hasOwnUsefulDescription(property.type.annotations) ||
+  hasOptionalMemberUsefulDescription(property.type);
+
+const inheritsLandofileFieldDescription = (schemaName: string, name: PropertyKey): boolean => {
+  if (!/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/.test(schemaName)) return false;
+  const property = AST.getPropertySignatures(LandofileShape.ast).find((entry) => entry.name === name);
+  return property !== undefined && hasUsefulFieldDescription(property);
+};
+
 const schemaFromAst = (ast: AST.AST): Schema.Schema.AnyNoContext =>
   Schema.make(ast) as Schema.Schema.AnyNoContext;
 
@@ -2634,6 +2645,7 @@ export const validatePublicSchemaAnnotations = (
         !hasOwnUsefulDescription(property.annotations) &&
         !hasOwnUsefulDescription(property.type.annotations) &&
         !hasOptionalMemberUsefulDescription(property.type) &&
+        !inheritsLandofileFieldDescription(schemaName, property.name) &&
         !(
           AST.isUnion(schema.ast) &&
           schema.ast.types.every((member) => {
