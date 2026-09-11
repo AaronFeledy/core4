@@ -19,6 +19,7 @@ export interface ChoicesCommandResult {
 export interface ChoicesCommandInput {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
+  readonly signal?: AbortSignal;
 }
 
 export type ChoicesCommandRunner = (input: ChoicesCommandInput) => Promise<ChoicesCommandResult>;
@@ -26,6 +27,7 @@ export type ChoicesCommandRunner = (input: ChoicesCommandInput) => Promise<Choic
 export interface ChoicesCommandSpawnerOptions {
   readonly cmd: ReadonlyArray<string>;
   readonly cwd: string;
+  readonly signal?: AbortSignal;
 }
 
 export interface ChoicesCommandSpawner {
@@ -33,20 +35,31 @@ export interface ChoicesCommandSpawner {
 }
 
 export const defaultChoicesCommandSpawner: ChoicesCommandSpawner = {
-  spawn: async ({ cmd, cwd }) => {
-    const proc = Bun.spawn({
+  spawn: async ({ cmd, cwd, signal }) => {
+    const cancelled = () => new DOMException("Command cancelled.", "AbortError");
+    if (signal?.aborted) throw cancelled();
+    await using proc = Bun.spawn({
       cmd: [...cmd],
       cwd,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      ...(signal === undefined ? {} : { signal }),
+      killSignal: "SIGKILL",
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { exitCode, stdout, stderr };
+    const abort = Promise.withResolvers<never>();
+    const onAbort = () => abort.reject(cancelled());
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      const [stdout, stderr, exitCode] = await Promise.race([
+        Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]),
+        abort.promise,
+      ]);
+      return { exitCode, stdout, stderr };
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    }
   },
 };
 
@@ -121,7 +134,8 @@ export const createDefaultChoicesCommandRunner = (
     argv,
     options.standalone === undefined ? undefined : { standalone: options.standalone },
   );
-  return ({ command, args }) => spawner.spawn({ cmd: [...prefix, command, ...args], cwd });
+  return ({ command, args, signal }) =>
+    spawner.spawn({ cmd: [...prefix, command, ...args], cwd, ...(signal === undefined ? {} : { signal }) });
 };
 
 export type ChoicesParseFailureKind = "unparseable" | "empty";
