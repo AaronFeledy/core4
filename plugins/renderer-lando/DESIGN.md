@@ -137,6 +137,7 @@ rail, these glyphs, or these colors.
 - **Placement**: opt-in identity artwork for welcome and empty-state screens. It is not automatically added to task trees, prompts, logs, or machine output.
 - **Lifecycle**: the caller provides an already acquired OpenTUI module and renderer. The component owns no terminal, timers, or global resize listeners; destroy it with its parent renderable tree.
 - **Source**: `src/logo.ts` owns the pure rasterizer and supported sizes. Approved text fixtures live in `test/__frames__/logo-*.txt`; do not stretch or wrap a smaller frame to make a larger one.
+- **Small-size consistency**: use a 4x4 area sample per braille dot and continuous minimum stroke widths. The 8-, 10-, and 12-column planets must not grow narrow two-dot caps above or below their round bodies.
 
 Create the component inside an existing TTY OpenTUI surface:
 

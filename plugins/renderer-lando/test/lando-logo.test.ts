@@ -3,6 +3,30 @@ import { describe, expect, test } from "bun:test";
 import { LANDO_LOGO_WIDTHS, pickLandoLogoWidth, renderLandoLogo } from "../src/logo.ts";
 
 describe("Lando logo artwork", () => {
+  test("small planets do not grow narrow caps at their top and bottom", () => {
+    // These center-adjacent pixels formed two-dot spikes with the old 2x2 sampling.
+    for (const [width, capRow] of [
+      [8, 4],
+      [10, 5],
+      [12, 6],
+    ] as const) {
+      const { lines } = renderLandoLogo(width);
+      const masks = [
+        [1, 8],
+        [2, 16],
+        [4, 32],
+        [64, 128],
+      ] as const;
+      for (const y of [capRow, width * 2 - 1 - capRow]) {
+        for (const x of [width - 1, width]) {
+          const cell = lines[Math.floor(y / 4)]?.charCodeAt(Math.floor(x / 2)) ?? 0x2800;
+          const bit = masks[y % 4]?.[x % 2] ?? 0;
+          expect((cell - 0x2800) & bit).toBe(0);
+        }
+      }
+    }
+  });
+
   for (const width of LANDO_LOGO_WIDTHS) {
     test(`${width} columns preserves the approved artwork and cell dimensions`, async () => {
       const logo = renderLandoLogo(width);

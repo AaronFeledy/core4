@@ -12,15 +12,19 @@ const BRAILLE_DOTS = [
   [1, 3, 128],
 ] as const;
 
+// A 4x4 area sample avoids the narrow caps that a 2x2 half-coverage tie
+// adds to small planets. Use the same sampling grid at every icon size.
+const SAMPLE_OFFSETS = [-0.375, -0.125, 0.125, 0.375] as const;
+
 /** Rasterize the planet, enclosing circle, and 20-degree rising orbit into 2x4-dot cells. */
 export const renderLandoLogo = (width: (typeof LANDO_LOGO_WIDTHS)[number]) => {
   const height = width / 2;
   const radius = width - 0.65;
   const cosine = Math.cos(Math.PI / 9);
   const sine = Math.sin(Math.PI / 9);
-  // Keep the approved small icons crisp; grow stroke weight with larger artwork.
-  const outline = width <= 10 ? 0.48 : radius * 0.052;
-  const orbit = width <= 10 ? 0.52 : radius * 0.056;
+  // Minimum readable strokes, then continuous proportional growth.
+  const outline = Math.max(0.48, radius * 0.052);
+  const orbit = Math.max(0.52, radius * 0.056);
   const major = radius * 0.99;
   const minor = radius * 0.24;
 
@@ -44,10 +48,10 @@ export const renderLandoLogo = (width: (typeof LANDO_LOGO_WIDTHS)[number]) => {
         const x = column * 2 + dx - (width * 2 - 1) / 2;
         const y = row * 4 + dy - (height * 4 - 1) / 2;
         let coverage = 0;
-        for (const ox of [-0.25, 0.25]) {
-          for (const oy of [-0.25, 0.25]) coverage += Number(hasInk(x + ox, y + oy));
+        for (const ox of SAMPLE_OFFSETS) {
+          for (const oy of SAMPLE_OFFSETS) coverage += Number(hasInk(x + ox, y + oy));
         }
-        if (coverage >= 2) mask |= bit;
+        if (coverage >= 8) mask |= bit;
       }
       // U+2800 keeps blank cells explicit, including the right-hand padding.
       return String.fromCharCode(0x2800 + mask);
