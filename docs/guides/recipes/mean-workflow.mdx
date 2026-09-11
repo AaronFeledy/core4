@@ -1,0 +1,154 @@
+---
+id: mean-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, mean, node, mongodb, redis]
+---
+
+# Run the MEAN recipe
+
+```sh
+lando init --recipe mean --name=mean-demo --yes
+lando start
+```
+
+`--yes` is consent on init. It skips prompts. It is not a start flag.
+
+First start builds `api` and `database`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`. Those URLs return HTTP 502 until the scaffold is serving. The next section covers install plus a Landofile `command` or `lando node server.js`.
+
+## See what the recipe writes
+
+Init writes `.lando.yml`, `package.json`, and `server.js`. The Express scaffold listens on `PORT` and answers `GET /` with plain text.
+
+| Piece | What you get |
+| --- | --- |
+| `api` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `MONGO_URL` pointed at `database` |
+| `database` | `type: mongodb` |
+| `cache` (optional) | `type: redis` plus `REDIS_URL` when you pass `--answer=redis=true` |
+| Tooling | `lando npm` and `lando node` against `api` |
+| Scaffold | `package.json` with Express, `server.js` starter |
+
+Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTTPS.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="mean-workflow" display="mean-demo" />
+      <Run command="lando init --recipe mean --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mongodb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="redis-node22" render>
+    <Step name="init">
+      <Variable name="appName" value="mean-workflow-redis" display="mean-redis" />
+      <Run command="lando init --recipe mean --name={{appName}} --yes --answer=node=22 --answer=redis=true" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "REDIS_URL" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Install deps and run the scaffold
+
+After start, install into the `api` service:
+
+```sh
+lando npm install
+lando npm --version
+lando node --version
+```
+
+Point `api` at the scaffold server. Delete the `# lando-generated:...` line at the top of `.lando.yml` so Lando stops managing that file, then set a command on `api`:
+
+```yaml
+services:
+  api:
+    type: node:lts
+    port: 3000
+    command: node server.js
+```
+
+Restart so the command sticks:
+
+```sh
+lando restart
+lando info
+```
+
+Open the URL `lando info` prints. A fresh scaffold answers `Hello from Lando`.
+
+Prefer a one-shot serve without editing the Landofile? Run the scaffold through tooling instead:
+
+```sh
+lando node server.js
+```
+
+That binds port `3000` inside `api` until you stop it.
+
+## Talk to MongoDB
+
+`MONGO_URL` on `api` already targets the app network:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Port | `27017` |
+| Database | app name (here `mean-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Auth source | `admin` |
+
+Ping from the database service:
+
+```sh
+lando exec database -- mongosh --quiet -u lando -p lando --authenticationDatabase admin --eval 'db.runCommand({ ping: 1 })'
+```
+
+Use `process.env.MONGO_URL` from Node. Do not hardcode credentials in app code you commit.
+
+## Optional Redis
+
+```sh
+lando init --recipe mean --name=mean-redis --yes --answer=node=22 --answer=redis=true
+```
+
+That adds `cache` (`type: redis`) and sets `REDIS_URL=redis://cache:6379` on `api`.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [MEAN recipe](/recipes/mean/)
+- [Add Node](../services/node.mdx)
+- [Add MongoDB](../services/mongodb.mdx)
+- [Add Redis](../services/redis.mdx)
