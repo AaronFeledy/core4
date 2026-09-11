@@ -18,15 +18,18 @@ import {
   ManagedFileService,
   PathsService,
   PluginRegistry,
+  ProcessRunner,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -76,7 +79,10 @@ const toProviderUnavailableFromCapability = (
   });
 };
 
-export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginModule>) => {
+export const makeRuntimeProviderRegistry = (
+  modules: ReadonlyArray<LandoPluginModule>,
+  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+) => {
   const capabilityIndex = makePluginCapabilityIndex(modules);
 
   return Layer.effect(
@@ -169,6 +175,7 @@ export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginMo
             managedFileService,
             stateStore,
             pluginStateRoot,
+            privateFileAccess,
             ...(publishRender === undefined ? {} : { publishRender }),
           });
           const provider = contribution
@@ -198,8 +205,15 @@ export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginMo
   );
 };
 
+export const makeRuntimeProviderRegistryWithProcessRunner = (modules: ReadonlyArray<LandoPluginModule>) =>
+  Layer.unwrapEffect(
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeRuntimeProviderRegistry(modules, makeOwnerOnlyFileAccess({ processRunner })),
+    ),
+  );
+
 export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.suspend(() =>
-  makeRuntimeProviderRegistry(bundledPluginModules()),
+  makeRuntimeProviderRegistry(bundledPluginModules(), ownerOnlyFileAccess),
 );

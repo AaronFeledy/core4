@@ -4,7 +4,7 @@ Priorities are global across the three coordinated PRDs. A dependency must have 
 
 Run `bun run spec/config-translation/check-coordinated-plan.mjs --initial` before execution. During implementation, omit `--initial` to validate progress: a completed story requires completed prerequisites. The three queues are one graph, not independently runnable branches.
 
-Recipe rollout is one staged cutover, not a dual shipping path. US-609E0 builds the private replacement pipeline against an isolated test recipe. US-609E1 through US-609E6 implement and test grouped replacements while the existing CLI still uses the existing registry. Their instruction to replace a renderer means preparing its replacement, not removing the still-bound entry early. US-609E switches the single registry once, deletes obsolete render bindings and the expander, and publishes the prepared user examples. No runtime flag or fallback selects old versus new behavior. Every intermediate story keeps existing public guides green. README.mdx files in the recipe criteria are authored source; scaffold README outputs are generated from them, never hand-edited.
+Recipe rollout is one staged cutover, not a dual shipping path. US-609E0 builds the private replacement pipeline against an isolated test recipe. US-609E1 through US-609E6 implement and test grouped replacements while the existing CLI still uses the existing registry. Their instruction to replace a renderer means preparing its replacement, not removing the still-bound entry early. US-609E7 enables native recipe/env expression resolution and auxiliary content sources; US-609E8 adds composite string-site interpolation. US-609E depends on all six recipe batches and both loader enablers exactly once, switches the single registry once, deletes obsolete render bindings and the expander, and publishes the prepared user examples. No runtime flag or fallback selects old versus new behavior. Every intermediate story keeps existing public guides green. README.mdx files in the recipe criteria are authored source; scaffold README outputs are generated from them, never hand-edited.
 
 ## Standard gates
 
@@ -37,6 +37,8 @@ Recipe rollout is one staged cutover, not a dual shipping path. US-609E0 builds 
 | 13 | US-609E4 | astro, sveltekit, nextjs | recipe | US-609E0 |
 | 14 | US-609E5 | django, fastapi, rails | recipe | US-609E0 |
 | 15 | US-609E6 | jekyll, hugo, eleventy, empty, toolbox | recipe | US-609E0 |
-| 16 | US-609E | recipe milestone verification | aggregate | US-609E1, US-609E2, US-609E3, US-609E4, US-609E5, US-609E6 |
-| 17 | US-610 | explain | user | US-609B, US-609E |
-| 18 | US-611B | migration analysis and commit | user | US-608D, US-609B, US-610 |
+| 16 | US-609E7 | native-load expressions and auxiliary content sources | core | US-609E6 |
+| 17 | US-609E8 | native-load composite interpolation | core | US-609E7 |
+| 18 | US-609E | recipe milestone verification | aggregate | US-609E1, US-609E2, US-609E3, US-609E4, US-609E5, US-609E6, US-609E7, US-609E8 |
+| 19 | US-610 | explain | user | US-609B, US-609E |
+| 20 | US-611B | migration analysis and commit | user | US-608D, US-609B, US-610 |

@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import {
+  ProcessRunner,
   type StateBucket,
   type StateBucketSpec,
   type StateMigrator,
@@ -17,8 +18,9 @@ import {
 
 import { writeFileAtomicScoped } from "./atomic.ts";
 import { type DecodedFrame, decodeFrame, encodeFrame, isCustomCodec, makeSchemaCodec } from "./codec.ts";
-import { withAdvisoryLock } from "./lock.ts";
+import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "./private-file-access.ts";
 
 const isMissing = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "ENOENT";
@@ -44,14 +46,21 @@ const versionError = (operation: string, path: string, cause: unknown): StateSto
     remediation: "The durable state version could not be migrated.",
   });
 
-const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBucket<A> => {
+const buildBucket = <A, I>(
+  spec: StateBucketSpec<A, I>,
+  file: string,
+  privateFileAccess: PrivateFileAccess,
+): StateBucket<A> => {
   const path = file as AbsolutePath;
   const onCorrupt = spec.onCorrupt ?? "quarantine";
   const lockMode = spec.lock ?? "none";
   const fallback: A | null = spec.default ?? null;
   const schema = makeSchemaCodec(spec.schema);
   const codec = spec.codec;
-  const writeOptions = spec.mode === undefined ? {} : { mode: spec.mode };
+  const writeOptions = {
+    ...(spec.mode === undefined ? {} : { mode: spec.mode }),
+    privateFileAccess: privateFileAccess.enforce,
+  };
 
   const readBytes = Effect.tryPromise({
     try: () => Bun.file(file).bytes(),
@@ -141,7 +150,7 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
     operation: string,
     effect: Effect.Effect<B, E>,
   ): Effect.Effect<B, E | StateStoreError> =>
-    lockMode === "advisory" ? withAdvisoryLock(file, operation, effect) : effect;
+    lockMode === "advisory" ? withAdvisoryLockUsing(privateFileAccess)(file, operation, effect) : effect;
 
   const modify = <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
     lock(
@@ -198,11 +207,20 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
  * Build the {@link StateStoreShape}: `open` resolves and containment-checks a
  * bucket's path (no read/write IO) and returns a {@link StateBucket} closure.
  */
-export const makeStateStore = (): StateStoreShape => ({
+export const makeStateStore = (options: {
+  readonly privateFileAccess: PrivateFileAccess;
+}): StateStoreShape => ({
   open: <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
     resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
-      Effect.map((resolved) => buildBucket(spec, resolved.file)),
+      Effect.map((resolved) => buildBucket(spec, resolved.file, options.privateFileAccess)),
     ),
 });
 
-export const StateStoreLive: Layer.Layer<StateStore> = Layer.succeed(StateStore, makeStateStore());
+export const StateStoreLive: Layer.Layer<StateStore, never, ProcessRunner> = Layer.effect(
+  StateStore,
+  Effect.map(ProcessRunner, (processRunner) =>
+    makeStateStore({
+      privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+    }),
+  ),
+);

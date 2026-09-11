@@ -61,10 +61,12 @@ const typeableFor = (
   canonicalId: string,
   builtInAliases: ReadonlyArray<string>,
   aliasPolicy?: HelpAliasPolicy,
+  implicitNamespaceStrip = false,
 ) =>
   typeableName({
     canonicalId,
     builtInAliases,
+    implicitNamespaceStrip,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   });
 
@@ -161,7 +163,7 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
 
 export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelpOptions): string => {
   const style = helpStyle(options?.styled === true);
-  const names = typeableFor(entry.id, [], options?.aliasPolicy);
+  const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
   const lines = [
     entry.summary,
     "",

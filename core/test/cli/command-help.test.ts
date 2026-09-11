@@ -62,6 +62,21 @@ describe("renderCommandHelp", () => {
     expect(sectionBody(help, "USAGE")).not.toContain("app:start");
   });
 
+  test.each(["lint", "explain", "translate", "migrate"])(
+    "renders registered config:%s as the typeable config command name",
+    (verb) => {
+      // Given
+      const entry = requireBuiltIn(`config:${verb}`);
+
+      // When
+      const help = renderCommandHelp(entry);
+
+      // Then
+      expect(sectionBody(help, "USAGE")).toContain(`lando config:${verb}`);
+      expect(sectionBody(help, "ALIASES")).toContain(`app:config:${verb}`);
+    },
+  );
+
   test("lists only extra names under ALIASES", () => {
     // Given start, whose primary typeable name is already in USAGE
     const entry = requireBuiltIn("start");

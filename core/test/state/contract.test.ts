@@ -8,6 +8,7 @@ import { Effect, Schema } from "effect";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateStoreContractHarness, runStateStoreContract } from "@lando/sdk/test";
 
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -46,7 +47,7 @@ describe("StateStore contract suite", () => {
   test("StateStoreLive satisfies the StateStore contract", async () => {
     const harness: StateStoreContractHarness = {
       name: "StateStoreLive",
-      store: makeStateStore(),
+      store: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       root,
       readRaw,
       list,

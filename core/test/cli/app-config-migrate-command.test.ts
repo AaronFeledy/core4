@@ -3,10 +3,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseLandofile } from "@lando/landofile/parser";
-import { ManagedFileTransactionGuard } from "@lando/sdk/services";
+import { InteractionService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { AppConfigMigrateResultSchema, appConfigMigrate } from "../../src/cli/commands/app-config-migrate.ts";
-import { makeMigrationFixture, managedLandofile } from "./fixtures/recipe-migrations.ts";
+import { makeTestInteractionService } from "../../src/testing/interaction.ts";
+import {
+  conflictingSecondEdgeFixture,
+  makeMigrationFixture,
+  managedLandofile,
+} from "./fixtures/recipe-migrations.ts";
 
 const roots: string[] = [];
 const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -51,6 +56,39 @@ test("fails closed when selectable hunks lack non-interactive approval", async (
     _tag: "Left",
     left: { _tag: "AppConfigMigrateError", reason: "confirmation-required" },
   });
+});
+
+test("preserves an edit made while migration approval is pending", async () => {
+  // Given migration analysis over the original bytes and an interactive approval seam
+  const input = await setup();
+  const path = join(input.cwd, ".lando.yml");
+  const concurrent = managedLandofile().replace("port: 80", "port: 9000");
+  const interaction = makeTestInteractionService();
+  let edited = false;
+  const service = {
+    ...interaction.service,
+    isInteractive: Effect.succeed(true),
+    confirm: () =>
+      Effect.promise(async () => {
+        if (!edited) {
+          edited = true;
+          await Bun.write(path, concurrent);
+        }
+        return true;
+      }),
+  };
+
+  // When the first confirmation edits the file before transaction preparation
+  const result = await Effect.runPromise(
+    appConfigMigrate(input).pipe(Effect.provideService(InteractionService, service), Effect.either),
+  );
+
+  // Then prepare reports a conflict and the concurrent bytes survive
+  expect(result).toMatchObject({
+    _tag: "Left",
+    left: { _tag: "AppConfigMigrateCommitError", phase: "prepare", reason: "conflict" },
+  });
+  expect(await Bun.file(path).text()).toBe(concurrent);
 });
 
 test("inspects pending recovery without locking when dry-run input is invalid", async () => {
@@ -127,6 +165,28 @@ test("writes the final producer through the coordinator when all hunks are appro
     }),
   );
   expect(written).toMatchObject({ recipe: { producer: makeMigrationFixture().target.identity } });
+});
+
+test("commits the satisfied first edge to disk when the second edge blocks", async () => {
+  // Given a real Landofile whose taken-over port blocks only the second migration edge
+  const input = await setup();
+  const fixture = conflictingSecondEdgeFixture();
+  const path = join(input.cwd, ".lando.yml");
+  await Bun.write(path, managedLandofile().replace("port: 80", "port: 9000"));
+
+  // When the command applies every selectable hunk
+  const result = await Effect.runPromise(appConfigMigrate({ ...input, yes: true }));
+
+  // Then the first edge is durably committed and the blocking second edge is not fabricated as applied
+  expect(result.status).toBe("partial");
+  expect(result.edges.map((edge) => edge.status)).toEqual(["satisfied", "blocked"]);
+  const written = await Effect.runPromise(
+    parseLandofile({ file: path, content: await Bun.file(path).text(), cwd: input.cwd }),
+  );
+  expect(written).toMatchObject({
+    recipe: { producer: fixture.snapshots[1].identity },
+    services: { appserver: { port: 9000, environment: { FEATURE: "enabled" } } },
+  });
 });
 
 test("preserves bytes when an approved migration is repeated", async () => {

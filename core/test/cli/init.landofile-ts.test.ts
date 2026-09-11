@@ -178,9 +178,9 @@ describe("node-ts recipe pipeline", () => {
     }
   });
 
-  test("manifest yaml advertises .lando.ts as the only emitted dest", () => {
-    expect(nodeTsRecipeYaml).toContain("dest: .lando.ts");
-    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.yml");
+  test("manifest yaml advertises .lando.yml as the only emitted dest", () => {
+    expect(nodeTsRecipeYaml).toContain("dest: .lando.yml");
+    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.ts");
   });
 });
 

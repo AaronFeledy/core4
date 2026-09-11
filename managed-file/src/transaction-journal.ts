@@ -2,6 +2,7 @@ import { basename, dirname } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { syncDirectory } from "@lando/state-store/atomic";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
 import { transactionError, transactionIO } from "./transaction-error.ts";
@@ -62,11 +63,15 @@ export const journalDirectory = (root: string, userDataRoot: string): string =>
 export const openJournal = (
   root: string,
   dir: string,
-  options: { readonly createDirectory?: boolean } = {},
+  options: {
+    readonly createDirectory?: boolean;
+    readonly privateFileAccess?: PrivateFileAccess;
+  } = {},
 ) =>
   Effect.gen(function* () {
+    const privateFileAccess = options.privateFileAccess ?? makeOwnerOnlyFileAccess();
     if (options.createDirectory !== false) yield* transactionIO("inspect", () => ensureDirectory(dir));
-    const bucket = yield* makeStateStore()
+    const bucket = yield* makeStateStore({ privateFileAccess })
       .open({
         root: { path: Schema.decodeUnknownSync(AbsolutePath)(dir) },
         key: "transaction.json",
@@ -90,6 +95,11 @@ export const openJournal = (
           (process.platform !== "win32" && ((stats.mode & 0o077) !== 0 || stats.uid !== process.getuid?.())))
       ) {
         return yield* Effect.fail(transactionError("journal", "inspect"));
+      }
+      if (stats !== null) {
+        yield* transactionIO("inspect", () => privateFileAccess.verify(bucket.path)).pipe(
+          Effect.mapError(() => transactionError("journal", "inspect")),
+        );
       }
       const journal = yield* bucket.get.pipe(Effect.mapError(() => transactionError("journal", "inspect")));
       if (journal !== null && journal.root !== root)

@@ -292,6 +292,26 @@ type LandofileLoadError =
   | NotImplementedError
   | ToolingIncludeCycleError;
 
+const materializeLoadExpressions = (
+  value: Record<string, unknown>,
+  filePath: string,
+  env: Readonly<Record<string, string>>,
+): Effect.Effect<Record<string, unknown>, LandofileValidationError> => {
+  const materialized = materializeLoadScopeExpressions(value, filePath, env);
+  if (materialized.unresolved.length === 0) return Effect.succeed(materialized.value);
+  const issues = materialized.unresolved.map(({ path, reason }) => `${path} (${reason})`);
+  return Effect.fail(
+    new LandofileValidationError({
+      message: `Landofile cannot resolve configuration expressions: ${issues.join(", ")}. Set the missing recipe option or environment variable, add a default(), or replace the expression with a literal value.`,
+      file: filePath,
+      issues,
+    }),
+  );
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 interface LandofileLoadContext {
   readonly appRoot: string;
   readonly layer: LandofileLayer;
@@ -367,7 +387,15 @@ export const loadLandofileFile = (
           .pipe(Effect.catchAll(() => Effect.void)),
       );
     }
-    const landofile = yield* validateLandofile(filePath, resolved.value);
+    const materialized =
+      context === undefined && isRecord(resolved.value)
+        ? yield* materializeLoadExpressions(
+            resolved.value,
+            filePath,
+            inputs?.templates.context?.env ?? hostExpressionEnvironment(),
+          )
+        : resolved.value;
+    const landofile = yield* validateLandofile(filePath, materialized);
     return rememberLandofileAppRoot(
       rememberLandofileReferencedFiles(landofile, resolved.dependencies),
       resolvedContext.appRoot,
@@ -489,22 +517,12 @@ export const loadLandofileLayers = (
           ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
           ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
         };
-        const materialized = materializeLoadScopeExpressions(
+        return materializeLoadExpressions(
           merged,
           canonicalPath,
           inputs?.templates.context?.env ?? hostExpressionEnvironment(),
-        );
-        if (materialized.unresolved.length > 0) {
-          const issues = materialized.unresolved.map(({ path, reason }) => `${path} (${reason})`);
-          return Effect.fail(
-            new LandofileValidationError({
-              message: `Landofile cannot resolve configuration expressions: ${issues.join(", ")}. Set the missing recipe option or environment variable, add a default(), or replace the expression with a literal value.`,
-              file: canonicalPath,
-              issues,
-            }),
-          );
-        }
-        return rejectComposeKeys(canonicalPath, materialized.value)
+        )
+          .pipe(Effect.flatMap((materialized) => rejectComposeKeys(canonicalPath, materialized)))
           .pipe(
             Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
             Effect.map((landofile) =>

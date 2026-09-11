@@ -16,12 +16,14 @@ import {
   EventService,
   type LandoEvent,
   type ProcessResult,
+  ProcessRunner,
   type ShellCommandOptions,
   type ShellReplIO,
   ShellRunner,
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
@@ -151,6 +153,7 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
 
 export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
+  privateFileAccess?: ReturnType<typeof makeOwnerOnlyFileAccess>,
 ): Context.Tag.Service<typeof ShellRunner> => {
   const service: Context.Tag.Service<typeof ShellRunner> = {
     exec: (command, options) =>
@@ -174,10 +177,20 @@ export const makeShellRunnerService = (
       }),
     run: (command, options) => service.exec(command, options),
     runScript: (path, options) => service.exec(`bun ${quoteShellPath(path)}`, options),
-    interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }),
+    interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }, privateFileAccess),
   };
   return service;
 };
 
 export const makeShellRunnerLive = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
   Layer.succeed(ShellRunner, makeShellRunnerService(makeReplIO));
+
+export const makeShellRunnerWithProcessRunnerLive = (
+  makeReplIO: () => ShellReplIO,
+): Layer.Layer<ShellRunner, never, ProcessRunner> =>
+  Layer.effect(
+    ShellRunner,
+    Effect.map(ProcessRunner, (processRunner) =>
+      makeShellRunnerService(makeReplIO, makeOwnerOnlyFileAccess({ processRunner })),
+    ),
+  );

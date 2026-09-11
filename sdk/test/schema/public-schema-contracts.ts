@@ -569,6 +569,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   },
   RecipeDecomposeInput: { producer: recipeProducerFixture, options: { php: "8.3" }, secrets: {} },
   RecipeDecomposeResult: { fragment: {}, provenance: recipeProvenanceFixture },
+  ConfigTranslateSecretReference: { disposition: "secret-store", reference: "${secret:API_KEY}" },
 
   AuthoringExpression: Schema.decodeUnknownSync(authoringExpressionSlot("string"))("{{ env.NAME }}"),
   ConfigTranslateDocumentBytes: "bmFtZTogZGVtbwo=",

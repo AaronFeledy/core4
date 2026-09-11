@@ -5,6 +5,11 @@ import { createStage, digestOf, mutateEntry, snapshot } from "../src/transaction
 import type { Stage } from "../src/transaction-journal.ts";
 import { fixture } from "./transaction-fixture.ts";
 
+const privateFileAccess = {
+  enforce: () => Promise.resolve(),
+  verify: () => Promise.resolve(),
+};
+
 for (const platform of ["win32", "linux"] as const) {
   test(`checks stage permissions using ${platform} semantics before publishing`, async () => {
     // Given a writable stage with Windows-style synthetic permission bits.
@@ -18,8 +23,13 @@ for (const platform of ["win32", "linux"] as const) {
     await writeFile(join(appRoot, backup), before.bytes, { mode: 0o600 });
     const bytes = new TextEncoder().encode("new");
     let stage: Stage | undefined;
-    await createStage(stagePath, bytes, (created) => {
-      stage = created;
+    await createStage({
+      path: stagePath,
+      bytes,
+      record: (created) => {
+        stage = created;
+      },
+      privateFileAccess,
     });
     if (stage === undefined) throw new Error("missing stage");
     await chmod(stagePath, 0o666);
@@ -34,7 +44,7 @@ for (const platform of ["win32", "linux"] as const) {
     try {
       Object.defineProperty(process, "platform", { value: platform });
       // When commit validates and publishes the stage.
-      const mutation = mutateEntry(appRoot, entry);
+      const mutation = mutateEntry(appRoot, entry, privateFileAccess);
       // Then Windows accepts its synthetic mode; POSIX still rejects a public stage.
       if (platform === "win32") {
         await mutation;

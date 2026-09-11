@@ -14,6 +14,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 export const startSpec: LandoCommandSpec<StartAppResult> = {
   resultSchema: StartAppResultSchema,
   id: "app:start",
+  recipePostInitAllowed: true,
   helpGroup: "common",
   mcpAllowed: true,
   summary: "Start the current Lando app.",

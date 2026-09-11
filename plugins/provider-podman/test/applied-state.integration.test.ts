@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import { makePluginStateStore } from "@lando/core/testing";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import {
@@ -69,7 +70,8 @@ const withStateRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> =
   }
 };
 
-const stateFor = (root: string) => makePluginStateStore(makeStateStore(), AbsolutePath.make(root));
+const stateFor = (root: string) =>
+  makePluginStateStore(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }), AbsolutePath.make(root));
 
 describe("provider-podman applied state", () => {
   test("credential-bearing proxy env round-trips across fresh stores", async () => {

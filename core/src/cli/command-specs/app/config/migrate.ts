@@ -1,4 +1,6 @@
-import { Schema } from "effect";
+import { ProcessRunner } from "@lando/sdk/services";
+import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Schema } from "effect";
 import {
   type AppConfigMigrateOptions,
   type AppConfigMigrateResult,
@@ -28,6 +30,7 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
   summary: "Migrate managed recipe configuration through satisfied recipe history.",
   namespace: "app",
   topLevelAlias: false,
+  aliases: ["config:migrate"],
   bootstrap: "minimal",
   flags: {
     "dry-run": Flags.boolean({
@@ -42,7 +45,14 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
     }),
     format: Flags.string({ description: "Output format.", options: ["text", "json"], default: "text" }),
   },
-  run: (input) => appConfigMigrate(appConfigMigrateOptionsFromInput(input)),
+  run: (input) =>
+    Effect.gen(function* () {
+      const processRunner = yield* ProcessRunner;
+      return yield* appConfigMigrate({
+        ...appConfigMigrateOptionsFromInput(input),
+        privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+      });
+    }),
   render: (result) =>
     renderAppConfigMigrateResult(Schema.decodeUnknownSync(AppConfigMigrateResultSchema)(result)),
 };

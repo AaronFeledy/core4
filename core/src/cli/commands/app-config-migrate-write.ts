@@ -1,9 +1,11 @@
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
 
@@ -53,7 +55,19 @@ export const honorMigrationJournal = (
   );
 };
 
-export const writeRecipeMigration = (appRoot: string, document: Record<string, unknown>) =>
+interface WriteRecipeMigrationRequest {
+  readonly appRoot: string;
+  readonly document: Record<string, unknown>;
+  readonly expectedBefore: Uint8Array;
+  readonly privateFileAccess?: PrivateFileAccess;
+}
+
+export const writeRecipeMigration = ({
+  appRoot,
+  document,
+  expectedBefore,
+  privateFileAccess,
+}: WriteRecipeMigrationRequest) =>
   Effect.gen(function* () {
     const content = yield* emitLandofileYamlEither(document).pipe(
       Effect.mapError(
@@ -66,8 +80,24 @@ export const writeRecipeMigration = (appRoot: string, document: Record<string, u
       ),
     );
     const redactor = createStandaloneRedactor("secrets");
-    yield* makeManagedFileTransactions({ journalRoot: () => resolveLandoRoots().userDataRoot })
-      .run({ appRoot, operations: [{ kind: "write", path: CANONICAL_LANDOFILE, content }] })
+    yield* makeManagedFileTransactions({
+      journalRoot: () => resolveLandoRoots().userDataRoot,
+      privateFileAccess: privateFileAccess ?? ownerOnlyFileAccess,
+    })
+      .run({
+        appRoot,
+        operations: [
+          {
+            kind: "write",
+            path: CANONICAL_LANDOFILE,
+            content,
+            expectedBefore: {
+              present: true,
+              digest: new Bun.CryptoHasher("sha256").update(expectedBefore).digest("hex"),
+            },
+          },
+        ],
+      })
       .pipe(
         Effect.mapError(
           (error) =>

@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,6 +20,45 @@ const serviceFor = (shape: LandofileShape): Context.Tag.Service<typeof Landofile
 });
 
 describe("user app resolution seam", () => {
+  test("materializes recipe expressions when loading a non-layer file", async () => {
+    // Given
+    const resolution = makeResolution();
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-resolution-file-"));
+    const filePath = join(appRoot, "custom.yml");
+    await writeFile(
+      filePath,
+      [
+        "name: direct",
+        "recipe:",
+        '  id: "lamp"',
+        '  version: "0.1.0"',
+        "  producer:",
+        '    sourceKind: "bundled"',
+        '    packageName: "@lando/recipe-lamp"',
+        '    recipeId: "lamp"',
+        '    manifestVersion: "0.1.0"',
+        `    contentDigest: "sha256:${"0".repeat(64)}"`,
+        "  options:",
+        '    php: "8.4"',
+        "services:",
+        "  appserver:",
+        '    type: "php:{{ recipe.php }}"',
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      // When
+      const result = await Effect.runPromise(resolution.loadUserLandofileFile(filePath));
+
+      // Then
+      const appserver = result.services === undefined ? undefined : Object.values(result.services)[0];
+      expect(appserver?.type).toBe("php:8.4");
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
+  });
+
   test("loadUserLandofile returns the discovered Landofile for a normal app", async () => {
     // Given
     const resolution = makeResolution();

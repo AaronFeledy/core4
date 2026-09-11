@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { relative } from "node:path";
+import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
 import { sameState, snapshot, statMaybe, targetPath, verifyBackup } from "./transaction-fs.ts";
 import type { Entry, Journal } from "./transaction-journal.ts";
@@ -41,19 +42,29 @@ const stagePath = async (root: string, entry: Entry): Promise<string> => {
 };
 
 /** An applied write must still be the renamed stage inode with no stage left behind. */
-const requireApplied = async (root: string, entry: Entry): Promise<void> => {
+const requireApplied = async (
+  root: string,
+  entry: Entry,
+  privateFileAccess: PrivateFileAccess,
+): Promise<void> => {
   if (!entry.after.present) return;
   const stage = entry.stage;
   if (stage === undefined) throw transactionError("journal", "recover", entry.path);
   const path = await stagePath(root, entry);
   if ((await statMaybe(path)) !== null) throw transactionError("conflict", "recover", entry.path);
-  const target = await lstat(await targetPath(root, entry.path));
+  const targetPathname = await targetPath(root, entry.path);
+  const target = await lstat(targetPathname);
   if (String(target.dev) !== stage.dev || String(target.ino) !== stage.ino)
     throw transactionError("conflict", "recover", entry.path);
+  await privateFileAccess.verify(targetPathname);
 };
 
 /** A pending write must still hold its exclusive owner-only stage byte for byte. */
-const requirePending = async (root: string, entry: Entry): Promise<void> => {
+const requirePending = async (
+  root: string,
+  entry: Entry,
+  privateFileAccess: PrivateFileAccess,
+): Promise<void> => {
   if (!entry.after.present) return;
   const stage = entry.stage;
   if (stage === undefined) throw transactionError("journal", "recover", entry.path);
@@ -71,21 +82,26 @@ const requirePending = async (root: string, entry: Entry): Promise<void> => {
   ) {
     throw transactionError("conflict", "recover", entry.path);
   }
+  await privateFileAccess.verify(path);
   const read = await snapshot(path);
   if (!read.state.present || read.state.digest !== entry.after.digest)
     throw transactionError("conflict", "recover", entry.path);
 };
 
-const classifyEntry = async (root: string, entry: Entry): Promise<Disposition> => {
+const classifyEntry = async (
+  root: string,
+  entry: Entry,
+  privateFileAccess: PrivateFileAccess,
+): Promise<Disposition> => {
   const path = await targetPath(root, entry.path);
   const current = (await snapshot(path)).state;
-  await verifyBackup(root, entry);
+  await verifyBackup(root, entry, privateFileAccess);
   if (sameState(current, entry.after)) {
-    await requireApplied(root, entry);
+    await requireApplied(root, entry, privateFileAccess);
     return "applied";
   }
   if (sameState(current, entry.before)) {
-    await requirePending(root, entry);
+    await requirePending(root, entry, privateFileAccess);
     return "pending";
   }
   const stage = entry.stage;
@@ -109,10 +125,14 @@ const classifyEntry = async (root: string, entry: Entry): Promise<Disposition> =
  * before/after plan before any target is touched. Any lock, path, absence,
  * symlink, hash, mode, backup, or stage mismatch throws instead of guessing.
  */
-export const preflight = async (root: string, journal: Journal): Promise<readonly Classified[]> => {
+export const preflight = async (
+  root: string,
+  journal: Journal,
+  privateFileAccess = makeOwnerOnlyFileAccess(),
+): Promise<readonly Classified[]> => {
   validatePlan(journal);
   const classified: Classified[] = [];
   for (const entry of journal.entries)
-    classified.push({ entry, disposition: await classifyEntry(root, entry) });
+    classified.push({ entry, disposition: await classifyEntry(root, entry, privateFileAccess) });
   return classified;
 };

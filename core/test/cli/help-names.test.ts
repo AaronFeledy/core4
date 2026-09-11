@@ -62,10 +62,10 @@ describe("typeableName", () => {
     expect(result.extras).toEqual(["app:start"]);
   });
 
-  test("strips the namespace prefix when builtInAliases is empty", () => {
+  test("does not advertise a namespace-stripped name that is not registered", () => {
     const result = typeableName({ canonicalId: "app:greet", builtInAliases: [] });
-    expect(result.primary).toBe("greet");
-    expect(result.extras).toEqual(["app:greet"]);
+    expect(result.primary).toBe("app:greet");
+    expect(result.extras).toEqual([]);
   });
 
   test("returns the canonical id when aliases are disabled", () => {

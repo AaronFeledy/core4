@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/core/testing";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -183,7 +184,10 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
     makeRuntimeProvider({
       platform: "linux",
       dockerApi,
-      appliedPlanState: makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir)),
+      appliedPlanState: makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+      ),
       appliedPlanStateDir: stateDir,
       sanitizeAppliedPlan: (applied) => applied,
     }),
