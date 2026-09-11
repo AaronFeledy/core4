@@ -112,8 +112,10 @@ describe("node-ts decomposition", () => {
     }
   });
 
-  test("publishes an empty auxiliary inventory while retaining the bound renderer manifest", () => {
-    expect(manifest.files).toEqual([{ src: "templates/.lando.ts.tmpl", dest: ".lando.ts", template: true }]);
+  test("publishes the canonical Landofile target used by the init pipeline", () => {
+    expect(manifest.files).toEqual([
+      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
+    ]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
@@ -124,7 +126,7 @@ describe("node-ts decomposition", () => {
     expect(nodeTsSnapshot.identity.contentDigest).toBe(NODE_TS_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(NODE_TS_CONTENT_DIGEST).toBe(
-      "sha256:df6b7b0ed7834bde8d310b856db4cd798ef8a1d84cea578e3e0ceef2ecd40ec5",
+      "sha256:538a62f8272df47d0d25ea1ffabcb8234ba3ff96bde7e7aa9beb85bad9c67c12",
     );
   });
 
