@@ -13,8 +13,29 @@ export const TransactionRequest = Schema.Struct({
         path: Schema.String,
         content: Schema.Union(Schema.String, Schema.Uint8ArrayFromSelf),
         secret: Schema.optional(Schema.Boolean),
+        expectedBefore: Schema.optional(
+          Schema.Union(
+            Schema.Struct({ present: Schema.Literal(false) }),
+            Schema.Struct({
+              present: Schema.Literal(true),
+              digest: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)),
+            }),
+          ),
+        ),
       }),
-      Schema.Struct({ kind: Schema.Literal("remove"), path: Schema.String }),
+      Schema.Struct({
+        kind: Schema.Literal("remove"),
+        path: Schema.String,
+        expectedBefore: Schema.optional(
+          Schema.Union(
+            Schema.Struct({ present: Schema.Literal(false) }),
+            Schema.Struct({
+              present: Schema.Literal(true),
+              digest: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)),
+            }),
+          ),
+        ),
+      }),
     ),
   ),
 });
@@ -39,6 +60,14 @@ export const planTransaction = async (
     if (targets.has(target)) throw transactionError("path", "prepare", operation.path);
     targets.add(target);
     const before = await snapshot(target);
+    const expected = operation.expectedBefore;
+    if (
+      expected !== undefined &&
+      (expected.present !== before.state.present ||
+        (expected.present && (!before.state.present || expected.digest !== before.state.digest)))
+    ) {
+      throw transactionError("conflict", "prepare", operation.path);
+    }
     const backup = `${path}.bak.${before.state.present ? before.state.digest : ""}`;
     let afterBytes: Uint8Array;
     let after: Entry["after"];
