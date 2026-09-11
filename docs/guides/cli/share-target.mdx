@@ -8,6 +8,14 @@ tags: [beta, docs, cli, share]
 
 # Share a service or extra port
 
+Install a TunnelService plugin before you share. Bundled tunnel connectors ship in Lando 4.1.
+
+```sh
+lando plugin:add <tunnel-service-plugin>
+```
+
+Or `lando setup --provider=<provider-with-tunnels>`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`.
+
 `lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan.
 
 ```sh
@@ -32,7 +40,7 @@ services:
 lando share --target storybook:6006
 ```
 
-`--target` takes `service[:port]`. Vite on the primary service is the same move: `lando share --target app:5173`.
+`--target` takes `service[:port]`, a route id, or a loopback URL. Vite on the primary service is the same move: `lando share --target app:5173`.
 
 ## Point `--target` at a route or loopback URL
 
@@ -63,14 +71,6 @@ lando share:stop <session>
 `lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that.
 
 `--detach` records a tunnel as a detached session. `--provider` selects a TunnelService plugin id. `--yes` answers confirmation prompts.
-
-## When no tunnel plugin is installed
-
-```sh
-lando plugin:add <tunnel-service-plugin>
-```
-
-Or `lando setup --provider=<provider-with-tunnels>`. Then rerun `lando share`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`. Bundled tunnel connectors ship in Lando 4.1.
 
 <Guide>
   <Scenario id="share-help" render>
