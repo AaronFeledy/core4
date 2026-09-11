@@ -143,9 +143,9 @@ export const sidebar = [
     label: "Recipes",
     items: [
       { label: "Backdrop", slug: "recipes/backdrop" },
+      { label: "Django", slug: "recipes/django" },
       { label: "Drupal", slug: "recipes/drupal" },
       { label: "Drupal CMS", slug: "recipes/drupal-cms" },
-      { label: "Django", slug: "recipes/django" },
       { label: "Joomla", slug: "recipes/joomla" },
       { label: "LAMP", slug: "recipes/lamp" },
       { label: "Laravel", slug: "recipes/laravel" },

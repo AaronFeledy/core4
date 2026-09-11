@@ -10,9 +10,9 @@ const landingPagePath = join(docsRoot, "index.md");
 const GROUP_LABELS = ["Guides", "Recipes", "Reference", "Embedding", "Telemetry", "Contributing"] as const;
 const RECIPE_IDS = [
   "backdrop",
+  "django",
   "drupal",
   "drupal-cms",
-  "django",
   "joomla",
   "lamp",
   "laravel",
