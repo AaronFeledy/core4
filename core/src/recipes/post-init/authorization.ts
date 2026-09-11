@@ -37,6 +37,8 @@ export const postInitAuthorizationIssue = (
       const name = answerGuard(action.when);
       if (name === undefined) return "app:start requires an explicit options.<answer> when guard.";
       const prompt = prompts?.find((candidate) => candidate.name === name);
+      if (prompts !== undefined && prompt === undefined)
+        return "app:start requires a declared opt-in prompt.";
       if (
         prompt !== undefined &&
         (prompt.type !== "confirm" ||

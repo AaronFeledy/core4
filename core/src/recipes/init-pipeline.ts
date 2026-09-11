@@ -233,7 +233,7 @@ export const runRecipeInitPipeline = (
   Effect.gen(function* () {
     if (
       (request.manifest.postInit ?? []).some(
-        (action) => postInitAuthorizationIssue(action, request.manifest.prompts) !== undefined,
+        (action) => postInitAuthorizationIssue(action, request.manifest.prompts ?? []) !== undefined,
       )
     ) {
       return yield* Effect.fail(blocked("validate"));

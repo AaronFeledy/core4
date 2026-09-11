@@ -160,7 +160,7 @@ const validateSemantics = (
 
   if (manifest.postInit !== undefined) {
     for (const [index, action] of manifest.postInit.entries()) {
-      const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts);
+      const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
       if (authorizationIssue !== undefined) issues.push(`postInit[${index}]: ${authorizationIssue}`);
       if (action.type !== "bun") continue;
       if (action.verb === "add") {

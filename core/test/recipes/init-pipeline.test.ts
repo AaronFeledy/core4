@@ -128,6 +128,29 @@ test("blocks unauthorized post-init actions before writing any scaffold", async 
   expect(await Bun.file(landofile).exists()).toBe(false);
   expect(await Bun.file(auxiliary).exists()).toBe(false);
 });
+test("blocks app:start without a declared opt-in prompt before writing any scaffold", async () => {
+  // Given a direct pipeline caller with an app:start guard that names no declared prompt
+  const { request, calls, landofile, auxiliary } = await fixture();
+  const unauthorized: RecipeInitPipelineRequest = {
+    ...request,
+    manifest: {
+      ...request.manifest,
+      postInit: [
+        ...(request.manifest.postInit ?? []),
+        { type: "command", cmd: "app:start", when: "options.start" },
+      ],
+    },
+  };
+
+  // When the pipeline authorizes post-init before committing
+  const error = await failure(unauthorized);
+
+  // Then the missing opt-in declaration fails closed before every write
+  expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "validate" });
+  expect(calls).toEqual([]);
+  expect(await Bun.file(landofile).exists()).toBe(false);
+  expect(await Bun.file(auxiliary).exists()).toBe(false);
+});
 test("preview fails closed on the same blocking diagnostics as the write path", async () => {
   const { request, landofile } = await fixture();
   const encode = request.encoder.encode;
