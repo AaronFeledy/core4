@@ -10,6 +10,33 @@ import { writeFileAtomicScoped } from "../../src/atomic.ts";
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
 describe("writeFileAtomicScoped", () => {
+  test("rejects a successful ACL swap before writing secrets", async () => {
+    // Given an ACL hook that swaps the opened inode
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "state.json");
+    const temp = `${target}.tmp-fixed`;
+    try {
+      // When enforcement succeeds on the replacement
+      const result = await Effect.runPromiseExit(
+        writeFileAtomicScoped(target, "secret", {
+          mode: 0o600,
+          randomId: () => "fixed",
+          privateFileAccess: async (created) => {
+            await rename(created, `${created}.original`);
+            await writeFile(created, "foreign");
+          },
+        }),
+      );
+      // Then the original stays empty and nothing is published
+      expect(result._tag).toBe("Failure");
+      expect(await Bun.file(`${temp}.original`).text()).toBe("");
+      expect(await Bun.file(temp).text()).toBe("foreign");
+      expect(await Bun.file(target).exists()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("syncs the parent after publishing the complete target", async () => {
     // Given a real destination and a directory durability observer
     const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
