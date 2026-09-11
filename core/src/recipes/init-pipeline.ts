@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
@@ -273,7 +274,7 @@ export const runRecipeInitPipeline = (
     const receipt = yield* makeManagedFileTransactions({
       journalRoot: request.journalRoot,
       ...(request.checkpoint === undefined ? {} : { checkpoint: request.checkpoint }),
-      ...(request.privateFileAccess === undefined ? {} : { privateFileAccess: request.privateFileAccess }),
+      privateFileAccess: request.privateFileAccess ?? ownerOnlyFileAccess,
     })
       .run({
         appRoot: request.appRoot,

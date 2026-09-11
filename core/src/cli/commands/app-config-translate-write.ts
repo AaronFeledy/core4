@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { ConfigTranslateError } from "@lando/sdk/errors";
@@ -68,7 +69,7 @@ export const writeTranslateTargets = ({
     );
     const transactions = makeManagedFileTransactions({
       journalRoot: () => resolveLandoRoots().userDataRoot,
-      ...(privateFileAccess === undefined ? {} : { privateFileAccess }),
+      privateFileAccess: privateFileAccess ?? ownerOnlyFileAccess,
     });
     const receipt = yield* transactions
       .run({
