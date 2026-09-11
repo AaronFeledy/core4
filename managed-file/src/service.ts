@@ -819,12 +819,10 @@ const resolveMissingTargetRealPath = async (target: string): Promise<string> => 
 export const makeDiskBackend = (options: {
   readonly defaultBase: () => string;
   readonly ledgerRoot: () => string;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }): Effect.Effect<ManagedFileBackend> =>
   Effect.gen(function* () {
-    const stateStore = makeStateStore(
-      options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess },
-    );
+    const stateStore = makeStateStore({ privateFileAccess: options.privateFileAccess });
 
     const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
       const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(
@@ -908,9 +906,7 @@ export const makeDiskBackend = (options: {
       writeAtomic: (abs, content, operation, mode) =>
         writeFileAtomicScoped(abs, content, {
           ...(mode === undefined ? {} : { mode }),
-          ...(options.privateFileAccess === undefined
-            ? {}
-            : { privateFileAccess: options.privateFileAccess.enforce }),
+          privateFileAccess: options.privateFileAccess.enforce,
         }).pipe(
           Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
         ),
@@ -994,11 +990,11 @@ const makeManagedFileServiceLive = (privateFileAccess: PrivateFileAccess): Layer
     }),
   );
 
-export const ManagedFileServiceLive = makeManagedFileServiceLive(makeOwnerOnlyFileAccess());
-
 export const ManagedFileServiceWithProcessRunnerLive: Layer.Layer<ManagedFileService, never, ProcessRunner> =
   Layer.unwrapEffect(
     Effect.map(ProcessRunner, (processRunner) =>
       makeManagedFileServiceLive(makeOwnerOnlyFileAccess({ processRunner })),
     ),
   );
+
+export const ManagedFileServiceLive = ManagedFileServiceWithProcessRunnerLive;

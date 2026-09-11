@@ -9,7 +9,14 @@ import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ManagedFileServiceLive, makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import {
+  ManagedFileServiceLive as ManagedFileServiceUnprovided,
+  makeDiskBackend,
+  makeManagedFileService,
+} from "@lando/managed-file/service";
+const ManagedFileServiceLive = ManagedFileServiceUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
@@ -136,7 +143,13 @@ describe("ManagedFile lifecycle events", () => {
   });
 
   test("library callers without an EventService still apply with no events", async () => {
-    const backend = await run(makeDiskBackend({ defaultBase: () => "/noop", ledgerRoot: () => "/noop" }));
+    const backend = await run(
+      makeDiskBackend({
+        defaultBase: () => "/noop",
+        ledgerRoot: () => "/noop",
+        privateFileAccess: ownerOnlyFileAccess,
+      }),
+    );
     const service = await run(makeManagedFileService(backend));
     expect(service.apply).toBeDefined();
   });
@@ -259,9 +272,11 @@ describe("ManagedFile conflict backups", () => {
     const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-mfb-data-")));
     try {
       const service = await run(
-        makeDiskBackend({ defaultBase: () => base, ledgerRoot: () => dataRoot }).pipe(
-          Effect.flatMap((backend) => makeManagedFileService(backend)),
-        ),
+        makeDiskBackend({
+          defaultBase: () => base,
+          ledgerRoot: () => dataRoot,
+          privateFileAccess: ownerOnlyFileAccess,
+        }).pipe(Effect.flatMap((backend) => makeManagedFileService(backend))),
       );
       const mf = file({ id: "d:bk", path: "bk.txt", onConflict: "overwrite" });
       await runScoped(service.apply([mf]));

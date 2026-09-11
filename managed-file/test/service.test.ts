@@ -7,6 +7,7 @@ import { Effect, Exit, type Scope } from "effect";
 
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
+import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeLandoPaths } from "@lando/paths";
 import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
@@ -527,9 +528,11 @@ describe("ManagedFileService (disk backend)", () => {
   };
 
   const makeService = (dirs: { base: string; dataRoot: string }) =>
-    makeDiskBackend({ defaultBase: () => dirs.base, ledgerRoot: () => dirs.dataRoot }).pipe(
-      Effect.flatMap(makeManagedFileService),
-    );
+    makeDiskBackend({
+      defaultBase: () => dirs.base,
+      ledgerRoot: () => dirs.dataRoot,
+      privateFileAccess: ownerOnlyFileAccess,
+    }).pipe(Effect.flatMap(makeManagedFileService));
 
   test("read-only ledger access does not create the ledger root", async () => {
     await withTemp(async (dirs) => {
