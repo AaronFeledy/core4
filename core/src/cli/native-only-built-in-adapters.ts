@@ -11,7 +11,7 @@ import { runMetaShellenv, runMetaUninstall } from "./cli-adapters/meta-plugin";
 import { initOptionsFromInput } from "./command-specs/apps/init";
 import { initApp } from "./commands/init";
 import { compiledCommandInputFromArgv } from "./compiled-input";
-import { emitDiagnosticLine, runCompiledCommand } from "./compiled-runtime";
+import { emitDiagnosticLine, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 
 export const runNativeOnlyBuiltIn = async (
   entry: BuiltInCommandEntry,
@@ -20,23 +20,26 @@ export const runNativeOnlyBuiltIn = async (
   switch (entry.spec.id) {
     case "apps:init": {
       const input = compiledCommandInputFromArgv(entry.spec.id, argv);
-      await runCompiledCommand(
-        Effect.gen(function* () {
-          const events = yield* EventService;
-          const processRunner = yield* ProcessRunner;
-          return yield* Effect.tryPromise({
-            try: () =>
-              initApp({
-                ...initOptionsFromInput(input),
-                onWarn: emitDiagnosticLine,
-                events,
-                privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
-              }),
-            catch: (error) => error,
-          });
-        }),
-        makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
-        (result) => `Created ${result.appName} at ${result.directory}`,
+      await runWithProcessAbortSignal((signal) =>
+        runCompiledCommand(
+          Effect.gen(function* () {
+            const events = yield* EventService;
+            const processRunner = yield* ProcessRunner;
+            return yield* Effect.tryPromise({
+              try: () =>
+                initApp({
+                  ...initOptionsFromInput(input),
+                  signal,
+                  onWarn: emitDiagnosticLine,
+                  events,
+                  privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+                }),
+              catch: (error) => error,
+            });
+          }),
+          makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+          (result) => `Created ${result.appName} at ${result.directory}`,
+        ),
       );
       return;
     }

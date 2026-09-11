@@ -87,6 +87,7 @@ const resolveRecipeSelection = async (
 };
 
 export interface InitAppOptions {
+  readonly signal?: AbortSignal;
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
@@ -487,6 +488,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
           });
         },
       }),
+      options.signal === undefined ? undefined : { signal: options.signal },
     );
     postInit = result.postInit;
     const written = new Set(result.auxiliaryFiles);

@@ -173,26 +173,29 @@ const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
 export const dispatchAppsCommand = async (argv: ReadonlyArray<string>): Promise<boolean> => {
   if (argv[0] === "init" || argv[0] === "apps:init") {
     const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
-    await runCompiledCommand(
-      Effect.gen(function* () {
-        const processRunner = yield* ProcessRunner;
-        return yield* Effect.tryPromise({
-          try: () =>
-            initApp({
-              ...initOptionsFromInput(input),
-              onWarn: emitDiagnosticLine,
-              privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
-            }),
-          catch: (error) => error,
-        });
-      }),
-      makeLandoRuntime(
-        cliRuntimeOptions({
-          bootstrap: "minimal",
-          plugins: { policy: "discovery" },
+    await runWithProcessAbortSignal((signal) =>
+      runCompiledCommand(
+        Effect.gen(function* () {
+          const processRunner = yield* ProcessRunner;
+          return yield* Effect.tryPromise({
+            try: () =>
+              initApp({
+                ...initOptionsFromInput(input),
+                signal,
+                onWarn: emitDiagnosticLine,
+                privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+              }),
+            catch: (error) => error,
+          });
         }),
+        makeLandoRuntime(
+          cliRuntimeOptions({
+            bootstrap: "minimal",
+            plugins: { policy: "discovery" },
+          }),
+        ),
+        (result) => `Created ${result.appName} at ${result.directory}`,
       ),
-      (result) => `Created ${result.appName} at ${result.directory}`,
     );
     return true;
   }

@@ -1,13 +1,90 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { plugin } from "@lando/lando4";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Exit, Stream } from "effect";
+import { initApp } from "../../src/cli/commands/init";
 import { RecipeInitPostInitError } from "../../src/recipes/init-pipeline";
 import { runBoundPostInit } from "../../src/recipes/init-pipeline/post-init";
+import * as postInitRuntime from "../../src/recipes/post-init/runtime";
 import { createDefaultChoicesCommandRunner } from "../../src/recipes/prompts/choices-command";
 import { defaultChoicesCommandSpawner } from "../../src/recipes/prompts/choices-command";
 import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe";
+
+test("initApp cancellation kills and reaps its post-init child", async () => {
+  // Given a real init pipeline whose post-init action runs a harmless child
+  const root = await mkdtemp(join(tmpdir(), "lando-init-abort-"));
+  const controller = new AbortController();
+  const ready = Promise.withResolvers<number>();
+  const finished = Promise.withResolvers<void>();
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async (request) => {
+      ready.resolve(Number(await request.text()));
+      return new Response("ready");
+    },
+  });
+  const action = spyOn(postInitRuntime, "runPostInit").mockImplementation(async (bound) => {
+    if (bound.spawner === undefined) throw new Error("Missing bound spawner");
+    try {
+      await bound.spawner.spawn({
+        cmd: [
+          process.execPath,
+          "-e",
+          `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`,
+        ],
+        cwd: bound.destination,
+        env: {},
+      });
+      return { executed: [] };
+    } finally {
+      finished.resolve();
+    }
+  });
+  let pid: number | undefined;
+  const options = {
+    cwd: root,
+    destination: join(root, "app"),
+    userDataRoot: join(root, "data"),
+    recipe: "empty",
+    name: "test",
+    full: false,
+    nonInteractive: true,
+    signal: controller.signal,
+  };
+  const completion = initApp(options).then(
+    () => "success",
+    () => "failure",
+  );
+  try {
+    pid = await Effect.runPromise(Effect.promise(() => ready.promise).pipe(Effect.timeout("2 seconds")));
+    // When the caller aborts init rather than its internal post-init wrapper
+    controller.abort();
+    // Then init fails promptly and the real child is killed and reaped
+    expect(await Effect.runPromise(Effect.promise(() => completion).pipe(Effect.timeout("500 millis")))).toBe(
+      "failure",
+    );
+    await Effect.runPromise(Effect.promise(() => finished.promise).pipe(Effect.timeout("500 millis")));
+    expect(() => process.kill(pid ?? 0, 0)).toThrow();
+  } finally {
+    controller.abort();
+    if (pid !== undefined) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (cause) {
+        expect(cause).toMatchObject({ code: "ESRCH" });
+      }
+    }
+    await completion;
+    action.mockRestore();
+    await server.stop(true);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 5000);
 
 test("cancellation through post-init kills and reaps the live runner child", async () => {
   const ready = Promise.withResolvers<number>();
