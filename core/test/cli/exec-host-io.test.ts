@@ -29,6 +29,26 @@ describe("attachExecHostIo", () => {
     expect(attached.stdinStream).not.toBe(stdin);
     expect(destroyOnReturn).toBe(false);
   });
+
+  test("disables the container TTY when interactive stdin is piped", () => {
+    // Given
+    const options = { command: ["cat"], interactive: true, tty: true } as const;
+    const stdin = {
+      isTTY: false,
+      readableFlowing: null,
+      resume: () => {},
+      pause: () => {},
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<Uint8Array>>(() => {}) }),
+      iterator: () => stdin[Symbol.asyncIterator](),
+    };
+
+    // When
+    const attached = attachExecHostIo(options, stdin);
+
+    // Then
+    expect(attached.tty).toBe(false);
+    expect(attached.terminalResize).toBeUndefined();
+  });
 });
 
 describe("withInheritedStdinRawMode", () => {

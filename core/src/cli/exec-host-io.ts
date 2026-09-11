@@ -68,10 +68,11 @@ export const attachExecHostIo = (
   options: ExecAppOptions,
   stdin: InheritedStdin = process.stdin,
 ): ExecAppHostOptions => {
-  const tty = options.tty === true;
   const interactive = options.interactive === true;
+  const tty = options.tty === true && (interactive ? stdin.isTTY === true : true);
   return {
     ...options,
+    tty,
     ...(tty ? { env: ttySizeEnv(options.env), terminalResize: stdoutResizeStream() } : {}),
     ...(interactive
       ? { stdinStream: { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) } }
