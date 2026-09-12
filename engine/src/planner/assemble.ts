@@ -246,7 +246,7 @@ export const planApp = (
     });
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
-      const routes = yield* normalizeAuthoredRoutes({ name, appRoot, service, landofile });
+      const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
       const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
       const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
       const serviceWithEnvironment: ServiceConfig = !hasEnvFiles

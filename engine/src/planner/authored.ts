@@ -97,7 +97,6 @@ export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: Ser
 
 export const normalizeAuthoredRoutes = (input: {
   readonly name: string;
-  readonly appRoot: string;
   readonly service: ServiceConfig;
   readonly landofile: LandofileShape;
 }): Effect.Effect<ReadonlyArray<NormalizedRoute>, RouteInputError> => {
