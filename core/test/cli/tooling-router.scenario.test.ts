@@ -79,6 +79,47 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
   );
 };
 
+/** Fresh cache for a Landofile task that declares flags and args, as the normalizer would compile it. */
+const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: string): Promise<void> => {
+  await Effect.runPromise(
+    writeAppCommandCacheStrict({
+      landofile: { name: `router-${taskName}` },
+      entries: [
+        {
+          id: `app:${taskName}`,
+          summary: "Greet a target environment",
+          hidden: false,
+          service: "web",
+          input: {
+            flags: [
+              {
+                name: "name",
+                alias: "n",
+                boolean: false,
+                required: false,
+                default: "world",
+                description: "Who to greet",
+              },
+            ],
+            args: [
+              {
+                name: "target",
+                order: 0,
+                required: true,
+                choices: ["dev", "prod"],
+                description: "Environment to greet",
+              },
+            ],
+          },
+        },
+      ],
+      cwd: fixture.root,
+      cacheRoot: fixture.cacheRoot,
+      now: () => 100,
+    }),
+  );
+};
+
 const runProcess = async (command: ReadonlyArray<string>, fixture: RouterFixture): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...command],
@@ -382,5 +423,36 @@ test("Given a directory outside an app, when a source command is unknown, then n
     expect(result.stderr).toContain("Command unknown-outside-app not found");
   } finally {
     await source.cleanup();
+  }
+}, 30_000);
+
+test("Given a cached task that declares input, when help is in its tail, then both dispatchers render its declared help", async () => {
+  const source = await makeFixture("source-declared-help");
+  const compiled = await makeFixture("compiled-declared-help");
+  try {
+    // Given
+    await writeFreshDeclaredInputCache(source, "greet");
+    await writeFreshDeclaredInputCache(compiled, "greet");
+
+    // When
+    const [sourceResult, compiledResult] = await Promise.all([
+      runSource(source, ["greet", "--help"]),
+      runCompiledDispatcher(compiled, ["greet", "-h"]),
+    ]);
+
+    // Then — declared input means Lando owns argv, so help renders instead of reaching the task
+    for (const result of [sourceResult, compiledResult]) {
+      expect(result.exitCode, `${result.stderr}\n${result.stdout}`).toBe(0);
+      expect(result.stdout).toContain("USAGE");
+      expect(result.stdout).toContain("lando greet [flags] <TARGET>");
+      expect(result.stdout).toContain("--name, -n");
+      expect(result.stdout).toContain("[default: world]");
+      expect(result.stdout).toContain("ARGUMENTS");
+      expect(result.stdout).toContain("target");
+      expect(result.stdout).toContain("(dev, prod)");
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain("ToolingInputError");
+    }
+  } finally {
+    await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
