@@ -1012,7 +1012,7 @@ describe("update signed manifest", () => {
     expect(renames.map(([, to]) => to)).toEqual([`${executablePath}.bak`, executablePath, executablePath]);
   });
 
-  test("POSIX self-update restores the backup when re-exec fails after replacement", async () => {
+  test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
     const root = await makeTempRoot("lando-self-update-exec-rollback-");
     const executablePath = join(root, "lando");
     await writeFile(executablePath, "old-binary");
@@ -1045,8 +1045,8 @@ describe("update signed manifest", () => {
     );
 
     expect(tag).toBe("UpdatePermissionError");
-    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
-    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(await readFile(executablePath, "utf8")).toBe("new-binary");
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
   });
 
   test("POSIX self-update restores the backup when the replaced binary fails its launch probe", async () => {

@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
 import { Effect } from "effect";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
@@ -83,6 +84,49 @@ test("holds the mutation lock through both moves and makes the outcome available
   expect(await Bun.file(f.input.backupPath).text()).toBe("old");
   expect((await Effect.runPromise(f.handoff.consumeDeferred(f.input.token)))?.updatedCore).toBe(true);
   expect(await Effect.runPromise(f.handoff.consumeDeferred(f.input.token))).toBeUndefined();
+});
+
+test("a competing lock participant cannot mutate between validation and replacement", async () => {
+  const f = await fixture();
+  const attempted = Promise.withResolvers<void>();
+  let mutated = false;
+  let competitor: Promise<void> | undefined;
+  const lockPath = join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock");
+  await Effect.runPromise(
+    runWindowsReplacement(f.input, f.handoff, async (from, to) => {
+      if (from === f.input.executablePath) {
+        competitor = Effect.runPromise(
+          Effect.acquireUseRelease(
+            acquireAdvisoryLockAt(lockPath, "plugin:add", {
+              expireLiveOwner: false,
+              privateFileAccess: {
+                enforce: async () => undefined,
+                verify: async () => {
+                  attempted.resolve();
+                },
+              },
+            }),
+            () =>
+              Effect.promise(async () => {
+                expect(await Bun.file(f.input.executablePath).text()).toBe("new");
+                await writeFile(
+                  join(f.input.precondition.pluginsRoot, "registry.json"),
+                  "competing mutation",
+                );
+                mutated = true;
+              }),
+            (lock) => lock.release,
+          ),
+        );
+        await attempted.promise;
+      }
+      expect(mutated).toBe(false);
+      await rename(from, to);
+    }),
+  );
+  await competitor;
+  expect(mutated).toBe(true);
+  expect(await Bun.file(f.input.executablePath).text()).toBe("new");
 });
 
 test.each(["^4.0.0", "<4.2.0"])(

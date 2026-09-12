@@ -280,19 +280,11 @@ const applyPosixSelfUpdate = ({
             Effect.mapError(
               (cause) =>
                 new UpdatePermissionError({
-                  message: `Failed to exec updated Lando binary at ${executablePath}.`,
+                  message: `Failed to exec updated Lando binary at ${executablePath}; the new binary remains installed.`,
                   path: executablePath,
-                  remediation: posixPermissionRemediation(executablePath),
+                  remediation: `Run Lando again to use the installed update. The backup at ${backupPath} is retained; do not restore it without checking active plugin compatibility.`,
                   cause,
                 }),
-            ),
-            Effect.tapError(() =>
-              // rename(2) atomically replaces the destination; do not rm first or the
-              // executable path is briefly absent on rollback.
-              Effect.tryPromise({
-                try: () => selfUpdate.rename(backupPath, executablePath),
-                catch: () => undefined,
-              }).pipe(Effect.catchAll(() => Effect.void)),
             ),
           );
       }),

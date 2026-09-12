@@ -1,10 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { withPluginMutationLock } from "../../src/plugins/mutation-lock";
+import { guardCoreReplacement } from "../../src/update/compatibility";
 import { type UpdateOptions, update } from "../../src/update/operation";
 
 const roots: string[] = [];
@@ -55,6 +57,80 @@ const fixture = async (): Promise<UpdateOptions> => {
     verifyManifestSignature: () => Effect.void,
   };
 };
+
+test("failed re-exec cannot restore old core beneath a plugin activated after replacement", async () => {
+  // Given a real mutation lock guarding a compatible empty active set.
+  const options = await fixture();
+  const root = roots[roots.length - 1];
+  if (root === undefined || options.fetchManifestBytes === undefined) throw new Error("missing fixture");
+  const fetchManifest = options.fetchManifestBytes;
+  const executablePath = join(root, "lando");
+  const pluginsRoot = join(root, "plugins");
+  await writeFile(executablePath, "old");
+  const precondition = { pluginsRoot, currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0" };
+  // When a competing invocation activates a new-core-only plugin after lock release,
+  // then execve fails in the original invocation.
+  const result = await run({
+    ...options,
+    verifyChecksumSignature: () => Effect.void,
+    fetchManifestBytes: async (url) =>
+      url === "https://fixture.invalid/lando"
+        ? binaryBytes
+        : url === "https://fixture.invalid/SHA256SUMS"
+          ? new TextEncoder().encode(`${binarySha}  lando\n`)
+          : fetchManifest(url),
+    runPluginUpdates: () =>
+      Effect.succeed({
+        rows: [],
+        updatedPlugins: [],
+        blockCore: false,
+        hasFailures: false,
+        guardCoreReplacement: (body) => guardCoreReplacement(precondition, body),
+      }),
+    selfUpdate: {
+      executablePath,
+      platform: "linux",
+      arch: "x64",
+      argv: [],
+      execve: () =>
+        withPluginMutationLock(
+          pluginsRoot,
+          "plugin:add",
+          Effect.tryPromise(async () => {
+            expect(await Bun.file(executablePath).text()).toBe("candidate");
+            const plugin = join(root, "new-only");
+            await mkdir(plugin);
+            await writeFile(
+              join(plugin, "package.json"),
+              JSON.stringify({
+                name: "new-only",
+                version: "1.0.0",
+                landoPlugin: {
+                  name: "new-only",
+                  version: "1.0.0",
+                  api: 4,
+                  entry: "index.js",
+                  requires: { "@lando/core": ">=4.2.0" },
+                },
+              }),
+            );
+            await writeFile(join(plugin, "index.js"), "export {};");
+            await writeFile(
+              join(pluginsRoot, "registry.json"),
+              JSON.stringify({
+                "new-only": { name: "new-only", version: "1.0.0", path: plugin, source: "linked" },
+              }),
+            );
+          }),
+        ).pipe(Effect.zipRight(Effect.fail(new Error("execve failed")))),
+    },
+  });
+  // Then the active plugin still has the compatible core, with a retained backup and tagged failure.
+  expect(result.hasFailures).toBe(true);
+  expect(result.coreFailure?.tag).toBe("UpdatePermissionError");
+  expect(await Bun.file(executablePath).text()).toBe("candidate");
+  expect(await Bun.file(`${executablePath}.bak`).text()).toBe("old");
+});
 
 test.each([false, true])("core-only retains plugin safety validation (dryRun=%s)", async (dryRun) => {
   // Given: installed plugins cannot support the proposed core.
