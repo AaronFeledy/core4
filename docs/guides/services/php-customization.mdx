@@ -40,7 +40,7 @@ provider. Changing `db_client` changes the build key, so a running app needs
 `lando rebuild -y`. A custom `image:` still validates the option but skips
 the install steps.
 
-Oracle's Bookworm client repository publishes these MySQL clients for amd64 only. On arm64, the generated build step stops with an unsupported-architecture message instead of substituting MariaDB or another MySQL series. Automatic selection also stops when a custom MySQL image has unknown compatibility or when one app declares mixed MySQL series. Set an explicit `db_client` only after verifying that client against your server, or set `db_client: false`.
+Oracle MySQL clients are unavailable on arm64 for all three series: 8.0, 8.4, and 9.7. Their generated install commands exit non-zero with `Unsupported architecture` before installing anything. This is fail-closed behavior, not arm64 support; no MariaDB or wrong-series MySQL client is substituted. Oracle's Bookworm client repository supplies the amd64 path only. Automatic selection also stops when a custom MySQL image has unknown compatibility or when one app declares mixed MySQL series. Set an explicit `db_client` only after verifying that client against your server, or set `db_client: false`.
 
 ```yaml
 services:
