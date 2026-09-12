@@ -3,6 +3,7 @@ import type { HostTerminal } from "@lando/sdk/schema";
 interface TerminalEnvOptions {
   readonly tty: boolean;
   readonly hostTerminal?: HostTerminal;
+  readonly hostEnv?: Readonly<Record<string, string | undefined>>;
   readonly serviceEnv?: Readonly<Record<string, string>>;
   readonly env?: Readonly<Record<string, string>>;
 }
@@ -11,8 +12,8 @@ export const withTerminalEnv = (options: TerminalEnvOptions): Record<string, str
   if (!options.tty) return options.env === undefined ? undefined : { ...options.env };
 
   const terminalEnv: Record<string, string> = {
-    COLUMNS: String(options.hostTerminal?.columns ?? 80),
-    LINES: String(options.hostTerminal?.rows ?? 24),
+    COLUMNS: String(options.hostTerminal?.columns ?? (options.hostEnv?.COLUMNS || 80)),
+    LINES: String(options.hostTerminal?.rows ?? (options.hostEnv?.LINES || 24)),
   };
   if (options.hostTerminal?.term !== undefined) terminalEnv.TERM = options.hostTerminal.term;
   if (options.hostTerminal?.colorterm !== undefined) terminalEnv.COLORTERM = options.hostTerminal.colorterm;

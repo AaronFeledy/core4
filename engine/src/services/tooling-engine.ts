@@ -99,6 +99,7 @@ const execSpec = (input: {
   // will not see a TTY and Composer will print progress on new lines.
   const merged = withTerminalEnv({
     tty: input.tty,
+    hostEnv: process.env,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
     ...(input.env === undefined ? {} : { env: input.env }),

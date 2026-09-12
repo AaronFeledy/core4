@@ -3,6 +3,29 @@ import { describe, expect, test } from "bun:test";
 import { withTerminalEnv } from "../../src/config/terminal-env.ts";
 
 describe("withTerminalEnv", () => {
+  test.each([undefined, {}])("uses host dimensions without attached dimensions (%j)", (hostTerminal) => {
+    // Given
+    const hostEnv = { COLUMNS: "117", LINES: "39", TERM: "host-term", COLORTERM: "truecolor" };
+
+    // When
+    const env = withTerminalEnv({
+      tty: true,
+      hostEnv,
+      ...(hostTerminal === undefined ? {} : { hostTerminal }),
+    });
+
+    // Then
+    expect(env).toEqual({ COLUMNS: "117", LINES: "39" });
+  });
+
+  test("uses defaults when host dimensions are empty", () => {
+    // When
+    const env = withTerminalEnv({ tty: true, hostEnv: { COLUMNS: "", LINES: "" } });
+
+    // Then
+    expect(env).toEqual({ COLUMNS: "80", LINES: "24" });
+  });
+
   test("adds only PTY dimensions when no terminal is attached", () => {
     // When
     const env = withTerminalEnv({ tty: true });
@@ -16,6 +39,7 @@ describe("withTerminalEnv", () => {
     const env = withTerminalEnv({
       tty: true,
       hostTerminal: { term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 },
+      hostEnv: { COLUMNS: "117", LINES: "39" },
     });
 
     // Then

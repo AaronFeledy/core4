@@ -405,16 +405,27 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     // Given
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const savedColumns = process.env.COLUMNS;
+    const savedLines = process.env.LINES;
+    process.env.COLUMNS = "117";
+    process.env.LINES = "39";
 
     // When
-    await Effect.runPromise(
-      execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
-        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
-      ),
-    );
+    try {
+      await Effect.runPromise(
+        execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      );
+    } finally {
+      if (savedColumns === undefined) Reflect.deleteProperty(process.env, "COLUMNS");
+      else process.env.COLUMNS = savedColumns;
+      if (savedLines === undefined) Reflect.deleteProperty(process.env, "LINES");
+      else process.env.LINES = savedLines;
+    }
 
     // Then
-    expect(calls[0]?.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
+    expect(calls[0]?.env).toMatchObject({ COLUMNS: "117", LINES: "39" });
     expect(calls[0]?.env).not.toHaveProperty("TERM");
     expect(calls[0]?.env).not.toHaveProperty("COLORTERM");
   });

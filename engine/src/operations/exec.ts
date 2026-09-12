@@ -221,6 +221,7 @@ export const execApp = (
     const attachStdin = inheritStdin(options);
     const mergedEnv = withTerminalEnv({
       tty,
+      hostEnv: process.env,
       ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
       serviceEnv: service.environment,
       ...(env === undefined ? {} : { env }),
