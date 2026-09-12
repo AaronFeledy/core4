@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
@@ -344,6 +346,7 @@ const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly
   "dev.lando.provider": plan.provider,
   "dev.lando.store": store.name,
   "dev.lando.scope": store.scope,
+  "dev.lando.volume-instance": randomUUID(),
   "dev.lando.volume-selector": volumeSelectorValue({
     providerId: plan.provider,
     appId: plan.id,
