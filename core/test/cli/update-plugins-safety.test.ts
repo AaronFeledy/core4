@@ -82,6 +82,25 @@ async function fixture() {
 
 const input = { currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0", combined: true, dryRun: false };
 
+test("core-only validation never resolves or upgrades plugin candidates", async () => {
+  // Given: a floating plugin is installed.
+  const f = await fixture();
+  const runner = await f.runner({
+    fetchPackument: async () => {
+      throw new Error("must not resolve candidates");
+    },
+  });
+  // When: only core safety validation is requested.
+  const result = await Effect.runPromise(
+    runner({ ...input, targetCoreVersion: "5.0.0", upgradePlugins: false }),
+  );
+  // Then: the incompatible installed plugin blocks core and remains unchanged.
+  expect(result.rows).toEqual([]);
+  expect(result.updatedPlugins).toEqual([]);
+  expect(result.blockCore).toBe(true);
+  expect((await readInstalledPluginRegistry(f.pluginsRoot))[name]?.version).toBe("1.0.0");
+});
+
 test("core closure includes incompatible plugins added after inventory", async () => {
   // Given: an incompatible pinned plugin appears during resolution.
   const f = await fixture();

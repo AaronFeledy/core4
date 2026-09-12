@@ -118,11 +118,16 @@ export const makePluginUpdateRunner = (
 
     return (input) =>
       Effect.gen(function* () {
-        const inventory = yield* inventoryFor(pluginsRoot, trustStore, registryClient);
+        const inventory = yield* inventoryFor(
+          pluginsRoot,
+          trustStore,
+          registryClient,
+          input.upgradePlugins !== false,
+        );
         const plan = planUpdates({
           currentCoreVersion: input.currentCoreVersion,
           targetCoreVersion: input.targetCoreVersion,
-          selection: input.combined ? "all" : "plugins",
+          selection: input.upgradePlugins === false ? "core" : input.combined ? "all" : "plugins",
           plugins: inventory,
         });
         const plannedRows = plan.rows.filter((row): row is PluginUpdatePlanRow => row.kind === "plugin");

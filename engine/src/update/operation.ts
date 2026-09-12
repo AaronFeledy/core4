@@ -98,6 +98,7 @@ export interface PluginUpdateRunInput {
   readonly targetCoreVersion: string;
   readonly combined: boolean;
   readonly dryRun: boolean;
+  readonly upgradePlugins?: boolean;
 }
 
 export interface PluginUpdateRunResult {
@@ -442,12 +443,13 @@ const defaultUpdate = (
     yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
     const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
     const pluginExecution =
-      options.only === "core" || options.runPluginUpdates === undefined
+      options.runPluginUpdates === undefined
         ? undefined
         : yield* options.runPluginUpdates({
             currentCoreVersion: options.currentVersion,
             targetCoreVersion: manifest.latest,
-            combined: options.only === undefined && hasNewCoreVersion,
+            combined: hasNewCoreVersion,
+            upgradePlugins: options.only !== "core",
             dryRun: options.dryRun,
           });
     const pendingResult: UpdateResult = {
