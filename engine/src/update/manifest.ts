@@ -32,6 +32,7 @@ export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 import { CoreUpdateFailureSchema } from "./errors.ts";
 
 export const UpdateResultSchema = Schema.Struct({
+  coreReplacementPending: Schema.optional(Schema.Boolean),
   coreFailure: Schema.optional(CoreUpdateFailureSchema),
   updatedCore: Schema.Boolean,
   updatedPlugins: Schema.Array(Schema.String),

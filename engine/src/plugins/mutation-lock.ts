@@ -14,7 +14,7 @@ export const withPluginMutationLock = <A, E, R>(
   Effect.gen(function* () {
     const privateFileAccess = yield* PrivateFileAccessService;
     const context = yield* Effect.context<R>();
-    return yield* withAdvisoryLockUsing(privateFileAccess)(
+    return yield* withAdvisoryLockUsing(privateFileAccess, { expireLiveOwner: false })(
       join(pluginsRoot, ".lando-plugin-mutation"),
       operation,
       Effect.provide(body, context),

@@ -5,6 +5,25 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 
 describe("update replacement handoff", () => {
+  test("preserves the abort reason alongside completed plugin receipts", async () => {
+    // Given: plugin work succeeded but replacement was aborted.
+    const handoff = makeUpdateHandoff(makeTestStateStore().service);
+    const result = {
+      updatedCore: false,
+      updatedPlugins: ["fixture"],
+      hasFailures: true,
+      coreFailure: {
+        tag: "UpdatePermissionError",
+        message: "Plugin compatibility changed.",
+        remediation: "The plugin set changed; re-run lando update.",
+      },
+    };
+    // When: the next process consumes the receipt.
+    const token = await Effect.runPromise(handoff.save(result));
+    const receipt = await Effect.runPromise(handoff.consume(token));
+    // Then: neither the failure nor completed work is lost.
+    expect(receipt).toEqual(result);
+  });
   test("stores a schema-versioned receipt and consumes it exactly once", async () => {
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);

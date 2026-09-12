@@ -5,9 +5,9 @@ import {
   type PluginUpdateInventoryItem,
   type PluginUpdateMetadata,
   type PluginUpdatePlanRow,
-  type PluginUpdateRunResult,
   type PluginUpdateRunner,
-  UpdatePermissionError,
+  checkCoreReplacement,
+  guardCoreReplacement,
   planUpdates,
 } from "@lando/engine/operations/update";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
-import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
+import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import {
@@ -186,49 +186,20 @@ export const makePluginUpdateRunner = (
             rows.push({ ...row, status: "failed", reason: "apply-failed" });
           }
         }
-        const checkCore = inventoryFor(pluginsRoot, trustStore, registryClient, false).pipe(
-          Effect.map(
-            (active) =>
-              input.combined &&
-              planUpdates({
-                currentCoreVersion: input.currentCoreVersion,
-                targetCoreVersion: input.targetCoreVersion,
-                selection: "all",
-                plugins: active.map((item) => ({ ...item, requestedSelector: item.currentVersion })),
-              }).rows.some((row) => row.kind === "core" && row.status === "blocked"),
-          ),
-        );
-        const guardCoreReplacement: NonNullable<PluginUpdateRunResult["guardCoreReplacement"]> = (body) =>
-          withPluginMutationLock(
-            pluginsRoot,
-            "meta:update",
-            Effect.gen(function* () {
-              if (yield* checkCore)
-                return yield* Effect.fail(
-                  new UpdatePermissionError({
-                    message: "The active plugin set is incompatible with the target core version.",
-                    remediation: "Resolve plugin compatibility and run lando update again.",
-                  }),
-                );
-              return yield* body;
-            }),
-          ).pipe(
-            Effect.mapError((error) =>
-              error instanceof NotImplementedError
-                ? new UpdatePermissionError({
-                    message: error.message,
-                    remediation: error.remediation,
-                  })
-                : error,
-            ),
-          );
-        const blockCore = yield* checkCore;
+        const coreReplacementPrecondition = {
+          pluginsRoot,
+          currentCoreVersion: input.currentCoreVersion,
+          targetCoreVersion: input.targetCoreVersion,
+        };
+        const blockCore =
+          input.combined && (yield* Effect.isFailure(checkCoreReplacement(coreReplacementPrecondition)));
         return {
           rows,
           updatedPlugins,
           blockCore,
           hasFailures: blockCore || plan.hasFailures || rows.some((row) => row.status === "failed"),
-          guardCoreReplacement,
+          coreReplacementPrecondition,
+          guardCoreReplacement: (body) => guardCoreReplacement(coreReplacementPrecondition, body),
         };
       });
   });

@@ -24,7 +24,7 @@ import {
 } from "@lando/engine/operations/update";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
 import { updateOptionsFromInput, updateSpec } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
@@ -739,7 +739,12 @@ describe("update signed manifest", () => {
       ),
     );
 
-    expect(result).toEqual({ updatedCore: true, updatedPlugins: [], coreUpdateAvailable: true });
+    expect(result).toEqual({
+      updatedCore: false,
+      coreReplacementPending: true,
+      updatedPlugins: [],
+      coreUpdateAvailable: true,
+    });
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
     expect(renames).toEqual([]);
     expect(probes).toHaveLength(1);
@@ -806,7 +811,7 @@ describe("update signed manifest", () => {
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
   });
 
-  test("Windows replacement helper waits for the running exe lock before swapping", () => {
+  test("Windows batch delegates every replacement to the locked helper and honors failure", () => {
     const script = buildWindowsReplacementScript({
       executablePath: "C:\\Lando\\lando.exe",
       stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
@@ -815,19 +820,10 @@ describe("update signed manifest", () => {
       manualFallback: "fallback",
     });
 
-    expect(script).toContain(
-      [
-        ":wait",
-        'move /Y "%TARGET%" "%BACKUP%" >nul 2>nul',
-        "if not errorlevel 1 goto install",
-        "timeout /t 1 /nobreak >nul 2>nul",
-        "goto wait",
-        ":install",
-      ].join("\r\n"),
-    );
-    expect(script).not.toContain("if errorlevel 1 exit /b 1\r\n:install");
-    expect(script).toContain('move /Y "%CANDIDATE%" "%TARGET%" >nul 2>nul');
-    expect(script).toContain('move /Y "%BACKUP%" "%TARGET%" >nul 2>nul');
+    expect(script).toContain("--lando-update-replacement");
+    expect(script).toContain("if errorlevel 1 exit /b 1");
+    expect(script).not.toContain("move /Y");
+    expect(script).not.toContain("goto wait");
     expect(script).not.toContain('start "" "%TARGET%"');
   });
 
@@ -836,6 +832,7 @@ describe("update signed manifest", () => {
     const stagedBinaryPath = join(root, ".lando-update-abc", "lando.exe");
     await mkdir(dirname(stagedBinaryPath), { recursive: true });
     await writeFile(stagedBinaryPath, "new-windows-binary");
+    await writeFile(join(root, "lando.exe"), "old-windows-binary");
     const spawns: UpdateWindowsReplacementSpawnInput[] = [];
 
     await Effect.runPromise(
@@ -846,11 +843,17 @@ describe("update signed manifest", () => {
           backupPath: join(root, "lando.exe.bak"),
           attemptedVersion: "4.4.0",
           manualFallback: "fallback",
+          precondition: {
+            pluginsRoot: join(root, "plugins"),
+            currentCoreVersion: "4.2.0",
+            targetCoreVersion: "4.4.0",
+          },
+          completedResult: { updatedCore: false, updatedPlugins: [] },
         },
         (input) => {
           spawns.push(input);
         },
-      ),
+      ).pipe(Effect.provideService(StateStore, makeTestStateStore().service)),
     );
 
     expect(spawns).toEqual([
@@ -861,7 +864,7 @@ describe("update signed manifest", () => {
       },
     ]);
     expect(await readFile(join(root, ".lando-update-abc", "replace-lando.cmd"), "utf8")).toContain(
-      "goto wait",
+      "--lando-update-replacement",
     );
   });
 

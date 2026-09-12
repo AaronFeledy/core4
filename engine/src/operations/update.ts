@@ -19,6 +19,7 @@ export {
 } from "../update/manifest.ts";
 export type { UpdateManifestFetcher } from "../update/manifest.ts";
 export { makeUpdateHandoff } from "../update/handoff.ts";
+export { checkCoreReplacement, guardCoreReplacement } from "../update/compatibility.ts";
 export type { StoredUpdateResult, UpdateHandoff } from "../update/handoff.ts";
 export { planUpdates } from "../update/plugin-plan.ts";
 export type {
@@ -52,6 +53,7 @@ export type {
   UpdateManifestSignatureVerifier,
 } from "../update/verify.ts";
 export { buildWindowsReplacementScript, scheduleWindowsReplacement } from "../update/windows.ts";
+export { runWindowsReplacementProcess } from "../update/windows-helper.ts";
 export type {
   UpdateWindowsReplacement,
   UpdateWindowsReplacementInput,

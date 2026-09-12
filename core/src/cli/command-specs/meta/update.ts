@@ -42,13 +42,15 @@ export const renderUpdateResult = (result: UpdateResult): string => {
   const coreStatus =
     result.coreFailure !== undefined
       ? "failed"
-      : result.coreBlocked
-        ? "blocked"
-        : result.updatedCore
-          ? "updated"
-          : result.coreUpdateAvailable
-            ? "available"
-            : "unchanged";
+      : result.coreReplacementPending
+        ? "scheduled"
+        : result.coreBlocked
+          ? "blocked"
+          : result.updatedCore
+            ? "updated"
+            : result.coreUpdateAvailable
+              ? "available"
+              : "unchanged";
   const core = [
     `core: ${coreStatus}`,
     ...(result.coreFailure === undefined

@@ -214,7 +214,7 @@ export const acquireAdvisoryLockAt = (
  * or interrupt).
  */
 export const withAdvisoryLockUsing =
-  (privateFileAccess: PrivateFileAccess) =>
+  (privateFileAccess: PrivateFileAccess, options: { readonly expireLiveOwner?: boolean } = {}) =>
   <A, E>(file: string, operation: string, body: Effect.Effect<A, E>): Effect.Effect<A, E | StateStoreError> =>
     canonicalLockTarget(file).pipe(
       Effect.flatMap((canonicalFile) => {
@@ -224,6 +224,7 @@ export const withAdvisoryLockUsing =
           acquire(lockPath, token, {
             operation,
             privateFileAccess,
+            ...options,
           }),
           () => body,
           () => release(lockPath, token, privateFileAccess),

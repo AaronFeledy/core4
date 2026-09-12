@@ -9,6 +9,7 @@ import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { CORE_VERSION } from "../version";
+import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import {
   type CoreUpdateFailureSchema,
   type UpdateError,
@@ -86,7 +87,8 @@ export interface UpdateOptions {
 }
 
 export interface UpdateResult {
-  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type;
+  readonly coreReplacementPending?: boolean;
+  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type | undefined;
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
   readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
@@ -104,6 +106,7 @@ export interface PluginUpdateRunInput {
 }
 
 export interface PluginUpdateRunResult {
+  readonly coreReplacementPrecondition?: CoreReplacementPrecondition;
   readonly rows: ReadonlyArray<PluginUpdatePlanRow>;
   readonly updatedPlugins: ReadonlyArray<string>;
   readonly blockCore: boolean;
@@ -302,12 +305,16 @@ const applyWindowsSelfUpdate = ({
   executablePath,
   selfUpdate,
   guardCoreReplacement = (body) => body,
+  precondition,
+  completedResult,
 }: {
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: ResolvedSelfUpdateOptions;
   readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
+  readonly precondition?: CoreReplacementPrecondition | undefined;
+  readonly completedResult?: UpdateResult | undefined;
 }): Effect.Effect<void, UpdateError, ProcessRunner> =>
   Effect.gen(function* () {
     const tempDir = yield* Effect.tryPromise({
@@ -329,6 +336,8 @@ const applyWindowsSelfUpdate = ({
       backupPath,
       attemptedVersion,
       manualFallback,
+      ...(precondition === undefined ? {} : { precondition }),
+      ...(completedResult === undefined ? {} : { completedResult }),
     };
 
     yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes, executablePath, manualFallback).pipe(
@@ -358,15 +367,21 @@ const applySelfUpdate = ({
   executablePath,
   selfUpdate,
   guardCoreReplacement,
+  precondition,
+  completedResult,
 }: {
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: ResolvedSelfUpdateOptions;
   readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
+  readonly precondition?: CoreReplacementPrecondition | undefined;
+  readonly completedResult?: UpdateResult | undefined;
 }): Effect.Effect<void, UpdateError, ProcessRunner> =>
   selfUpdate.platform === "win32"
     ? applyWindowsSelfUpdate({
+        precondition,
+        completedResult,
         attemptedVersion,
         binaryBytes,
         executablePath,
@@ -516,6 +531,8 @@ const defaultUpdate = (
           executablePath: selfUpdate.executablePath,
           selfUpdate,
           guardCoreReplacement: pluginExecution?.guardCoreReplacement,
+          precondition: pluginExecution?.coreReplacementPrecondition,
+          completedResult: pendingResult,
         }).pipe(
           Effect.tapError((error) =>
             writeUpdateFailureState({
@@ -538,7 +555,10 @@ const defaultUpdate = (
       }
       return {
         manifest,
-        result: pendingResult,
+        result:
+          selfUpdate?.platform === "win32" && pendingResult.updatedCore
+            ? { ...pendingResult, updatedCore: false, coreReplacementPending: true }
+            : pendingResult,
       };
     }).pipe(
       Effect.catchAll((error) =>
@@ -606,6 +626,7 @@ export const update = (
       const receipt = yield* options.handoff.consume(options.handoff.token);
       if (receipt !== undefined) {
         const consumed: UpdateResult = {
+          ...(receipt.coreFailure === undefined ? {} : { coreFailure: receipt.coreFailure }),
           updatedCore: receipt.updatedCore,
           updatedPlugins: receipt.updatedPlugins,
           ...(receipt.pluginResults === undefined ? {} : { pluginResults: receipt.pluginResults }),
