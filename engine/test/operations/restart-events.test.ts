@@ -6,7 +6,7 @@ import { RouterService, ToolingEngine } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveEvents, effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
 import { byTag, makeHarness, plan } from "./start-progress-topology-support.ts";
 
 const recordingEngine = (executed: string[], failure?: string) => ({
@@ -30,16 +30,19 @@ const recordingEngine = (executed: string[], failure?: string) => ({
 });
 
 const eventPlan = () =>
-  attachEffectiveEvents(plan, {
-    "pre-init": ["{{ event._tag }}"],
-    "post-init": ["{{ event._tag }}"],
-    "pre-restart": ["{{ event._tag }}"],
-    "pre-stop": ["{{ event._tag }}"],
-    "post-stop": ["{{ event._tag }}"],
-    "pre-start": ["{{ event._tag }}"],
-    "post-start": ["{{ event._tag }}"],
-    "post-restart": ["{{ event._tag }}"],
-  });
+  attachEffectiveEvents(
+    { ...plan },
+    {
+      "pre-init": ["{{ event._tag }}"],
+      "post-init": ["{{ event._tag }}"],
+      "pre-restart": ["{{ event._tag }}"],
+      "pre-stop": ["{{ event._tag }}"],
+      "post-stop": ["{{ event._tag }}"],
+      "pre-start": ["{{ event._tag }}"],
+      "post-start": ["{{ event._tag }}"],
+      "post-restart": ["{{ event._tag }}"],
+    },
+  );
 
 const restartHarness = (failure?: string) => {
   const executed: string[] = [];
@@ -81,6 +84,15 @@ const startHarness = (failure?: string) => {
 };
 
 describe("restart lifecycle brackets", () => {
+  test("event fixtures leave the shared topology plan without lifecycle hooks", () => {
+    // Given a shared plan used by the topology tests
+    // When a restart fixture attaches its lifecycle hooks
+    const plannedApp = eventPlan();
+    // Then only the restart fixture carries those hooks
+    expect(effectiveEventsForPlan(plannedApp)?.["pre-start"]).toEqual(["{{ event._tag }}"]);
+    expect(effectiveEventsForPlan(plan)).toBeUndefined();
+  });
+
   test("restart brackets retain the inner stop and start event order", async () => {
     // Given
     const harness = restartHarness();
