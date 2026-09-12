@@ -14,6 +14,7 @@ import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
+import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { makeLandoPaths } from "@lando/paths";
 import { parseNpmPackageSpec } from "../../recipes/npm-source";
@@ -290,49 +291,57 @@ export const pluginRemove = (
     );
     if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
-    const hasModuleDir = existsSync(moduleDir);
-    const hasVersionedDir = existsSync(versionedDir);
-    if (!hasModuleDir && !hasVersionedDir) {
-      yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
-      yield* invalidatePluginCommandCache({
-        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-      });
-      return { pluginName: options.name, removed: false };
-    }
+    if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };
 
-    if (hasModuleDir) {
-      const spawner = options.spawner ?? defaultSpawner;
-      const { exitCode, stderr } = yield* Effect.promise(() =>
-        spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-      );
-      if (exitCode !== 0) {
-        return yield* Effect.fail(removeFailure(options.name, stderr));
-      }
-      yield* Effect.tryPromise({
-        try: () => updateManagedRootManifest(pluginsRoot, options.name),
-        catch: (cause) =>
-          cause instanceof NotImplementedError
-            ? cause
-            : new NotImplementedError({
-                message: `Failed to update managed plugin root package.json: ${String(cause)}`,
-                commandId: "meta:plugin:remove",
-                remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
-              }),
-      });
-      yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
-    }
-    if (hasVersionedDir) {
-      yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
-    }
+    return yield* withPluginMutationLock(
+      pluginsRoot,
+      "meta:plugin:remove",
+      Effect.gen(function* () {
+        const hasModuleDir = existsSync(moduleDir);
+        const hasVersionedDir = existsSync(versionedDir);
+        if (!hasModuleDir && !hasVersionedDir) {
+          yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+          yield* invalidatePluginCommandCache({
+            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+          });
+          return { pluginName: options.name, removed: false };
+        }
 
-    yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+        if (hasModuleDir) {
+          const spawner = options.spawner ?? defaultSpawner;
+          const { exitCode, stderr } = yield* Effect.promise(() =>
+            spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
+          );
+          if (exitCode !== 0) {
+            return yield* Effect.fail(removeFailure(options.name, stderr));
+          }
+          yield* Effect.tryPromise({
+            try: () => updateManagedRootManifest(pluginsRoot, options.name),
+            catch: (cause) =>
+              cause instanceof NotImplementedError
+                ? cause
+                : new NotImplementedError({
+                    message: `Failed to update managed plugin root package.json: ${String(cause)}`,
+                    commandId: "meta:plugin:remove",
+                    remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
+                  }),
+          });
+          yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+        }
+        if (hasVersionedDir) {
+          yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+        }
 
-    const trustStore = options.trustStore;
-    if (trustStore !== undefined) trustStore.delete(options.name);
-    yield* invalidatePluginCommandCache({
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
-    return { pluginName: options.name, removed: true };
+        yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+
+        const trustStore = options.trustStore;
+        if (trustStore !== undefined) trustStore.delete(options.name);
+        yield* invalidatePluginCommandCache({
+          ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+        });
+        return { pluginName: options.name, removed: true };
+      }),
+    );
   });
 
 export const renderPluginRemoveResult = (result: PluginRemoveResult): string =>
