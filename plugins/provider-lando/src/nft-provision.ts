@@ -1,17 +1,5 @@
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  readlink,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { gunzipSync, zstdDecompressSync } from "node:zlib";
 
 import { Effect, Schema } from "effect";
@@ -26,6 +14,9 @@ const NFT_LIB_DIRNAME = "nft";
 const VERSION_MARKER = ".nft.version";
 const WRAPPER_MODE = 0o755;
 const BINARY_MODE = 0o755;
+const MAX_DECOMPRESSED_BYTES = 64 * 1024 ** 2;
+const DECOMPRESSION_TIMEOUT_MS = 30_000;
+const MAX_DECOMPRESSION_STDERR_BYTES = 64 * 1024;
 
 const NftPackageSchema = Schema.Struct({
   name: Schema.String.pipe(Schema.minLength(1)),
@@ -70,6 +61,9 @@ const provisionError = (message: string, cause?: unknown): ProviderUnavailableEr
     remediation: nftRemediation,
     ...(cause === undefined ? {} : { cause }),
   });
+
+const hasErrorCode = (cause: unknown, code: string): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
 
 export const resolveNftHostKey = (platform: string, arch: string): string | undefined => {
   if (platform !== "linux" && platform !== "wsl") return undefined;
@@ -179,33 +173,195 @@ const runProcess = async (
   return { exitCode, stdout: new Uint8Array(stdout), stderr };
 };
 
-export const decompressXz = async (bytes: Uint8Array): Promise<Uint8Array> => {
-  try {
-    const python = await runProcess(
-      "python3",
-      ["-c", "import lzma,sys; sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))"],
-      bytes,
-    );
-    if (python.exitCode === 0 && python.stdout.length > 0) return python.stdout;
-  } catch {
-    // Fall through to xz(1).
+export interface NftDecompressionOptions {
+  readonly maxDecompressedBytes?: number;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+class NftDecompressionCapError extends Error {}
+class NftDecompressionTimeoutError extends Error {}
+class NftDecompressionCancelledError extends Error {}
+
+const concatChunks = (chunks: ReadonlyArray<Uint8Array>, length: number): Uint8Array => {
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
-  const xz = await runProcess("xz", ["-dc"], bytes);
+  return bytes;
+};
+
+const collectBoundedOutput = async (
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  failOnLimit: boolean,
+): Promise<Uint8Array> => {
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for await (const chunk of stream) {
+    const remaining = maxBytes - length;
+    if (chunk.byteLength > remaining) {
+      if (failOnLimit) {
+        throw new NftDecompressionCapError(
+          `The nft package exceeded the decompressed-size cap of ${maxBytes} bytes.`,
+        );
+      }
+      if (remaining > 0) {
+        chunks.push(chunk.subarray(0, remaining));
+        length += remaining;
+      }
+      continue;
+    }
+    chunks.push(chunk);
+    length += chunk.byteLength;
+  }
+  return concatChunks(chunks, length);
+};
+
+const writeProcessInput = async (sink: Bun.FileSink | null | undefined, bytes: Uint8Array): Promise<void> => {
+  if (sink === null || sink === undefined) return;
+  await sink.write(bytes);
+  await sink.flush();
+  await sink.end();
+};
+
+interface BoundedDecompressProcessInput {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly stdin: Uint8Array;
+  readonly maxDecompressedBytes: number;
+  readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
+}
+
+const runBoundedDecompressProcess = async (
+  input: BoundedDecompressProcessInput,
+): Promise<{ readonly exitCode: number; readonly stdout: Uint8Array; readonly stderr: string }> => {
+  if (input.signal?.aborted === true) {
+    throw new NftDecompressionCancelledError("Nft package decompression was cancelled.");
+  }
+  const proc = Bun.spawn([input.command, ...input.args], {
+    env: process.env,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = collectBoundedOutput(proc.stdout, input.maxDecompressedBytes, true);
+  const stderr = collectBoundedOutput(proc.stderr, MAX_DECOMPRESSION_STDERR_BYTES, false);
+  const inputWrite = writeProcessInput(proc.stdin, input.stdin);
+  void inputWrite.catch(() => undefined);
+  const exit = proc.exited;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new NftDecompressionTimeoutError(`Nft package decompression timed out after ${input.timeoutMs}ms.`),
+        ),
+      input.timeoutMs,
+    );
+  });
+  let abortListener: (() => void) | undefined;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    if (input.signal === undefined) return;
+    abortListener = () =>
+      reject(new NftDecompressionCancelledError("Nft package decompression was cancelled."));
+    input.signal.addEventListener("abort", abortListener, { once: true });
+  });
+  try {
+    const [stdoutBytes, stderrBytes, exitCode] = await Promise.race([
+      Promise.all([stdout, stderr, exit, inputWrite]).then(
+        ([stdoutBytes, stderrBytes, exitCode]) => [stdoutBytes, stderrBytes, exitCode] as const,
+      ),
+      timeout,
+      cancelled,
+    ]);
+    return { exitCode, stdout: stdoutBytes, stderr: new TextDecoder().decode(stderrBytes) };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (abortListener !== undefined) input.signal?.removeEventListener("abort", abortListener);
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    await proc.exited;
+    await Promise.allSettled([stdout, stderr]);
+  }
+};
+
+const resolveDecompressionOptions = (
+  options?: NftDecompressionOptions,
+): Required<Pick<NftDecompressionOptions, "maxDecompressedBytes" | "timeoutMs">> &
+  Pick<NftDecompressionOptions, "signal"> => ({
+  maxDecompressedBytes: options?.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES,
+  timeoutMs: options?.timeoutMs ?? DECOMPRESSION_TIMEOUT_MS,
+  ...(options?.signal === undefined ? {} : { signal: options.signal }),
+});
+
+export const decompressXz = async (
+  bytes: Uint8Array,
+  options?: NftDecompressionOptions,
+): Promise<Uint8Array> => {
+  const resolved = resolveDecompressionOptions(options);
+  try {
+    const python = await runBoundedDecompressProcess({
+      command: "python3",
+      args: ["-c", "import lzma,sys; sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))"],
+      stdin: bytes,
+      ...resolved,
+    });
+    if (python.exitCode === 0 && python.stdout.length > 0) return python.stdout;
+  } catch (cause) {
+    if (
+      cause instanceof NftDecompressionCapError ||
+      cause instanceof NftDecompressionTimeoutError ||
+      cause instanceof NftDecompressionCancelledError
+    ) {
+      throw cause;
+    }
+  }
+  const xz = await runBoundedDecompressProcess({ command: "xz", args: ["-dc"], stdin: bytes, ...resolved });
   if (xz.exitCode !== 0) {
     throw new Error(xz.stderr.trim() || "Failed to decompress xz payload.");
   }
   return xz.stdout;
 };
 
-export const decompressDebDataTar = async (memberName: string, bytes: Uint8Array): Promise<Uint8Array> => {
+export const decompressDebDataTar = async (
+  memberName: string,
+  bytes: Uint8Array,
+  options?: NftDecompressionOptions,
+): Promise<Uint8Array> => {
+  const resolved = resolveDecompressionOptions(options);
   if (memberName.endsWith(".tar.gz") || memberName.endsWith(".tgz")) {
-    return new Uint8Array(gunzipSync(Buffer.from(bytes)));
+    try {
+      return new Uint8Array(
+        gunzipSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
+      );
+    } catch (cause) {
+      if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) {
+        throw new NftDecompressionCapError(
+          `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
+        );
+      }
+      throw cause;
+    }
   }
   if (memberName.endsWith(".tar.zst") || memberName.endsWith(".tar.zstd")) {
-    return new Uint8Array(zstdDecompressSync(Buffer.from(bytes)));
+    try {
+      return new Uint8Array(
+        zstdDecompressSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
+      );
+    } catch (cause) {
+      if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) {
+        throw new NftDecompressionCapError(
+          `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
+        );
+      }
+      throw cause;
+    }
   }
   if (memberName.endsWith(".tar.xz")) {
-    return decompressXz(bytes);
+    return decompressXz(bytes, resolved);
   }
   if (memberName.endsWith(".tar")) return bytes;
   throw new Error(`Unsupported deb data archive "${memberName}".`);
@@ -395,58 +551,9 @@ export const collectNftDebPayload = (
   return nft === undefined ? { libs } : { nft, libs };
 };
 
-const collectNftFromExtractedTree = async (
-  root: string,
-): Promise<{
-  readonly nft?: Uint8Array;
-  readonly libs: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
-}> => {
-  const entries: TarEntry[] = [];
-  const walk = async (dir: string): Promise<void> => {
-    for (const ent of await readdir(dir, { withFileTypes: true })) {
-      const full = join(dir, ent.name);
-      const name = relative(root, full).replaceAll("\\", "/");
-      if (ent.isDirectory()) {
-        await walk(full);
-        continue;
-      }
-      if (ent.isSymbolicLink()) {
-        entries.push({ name, kind: "symlink", linkname: await readlink(full) });
-        continue;
-      }
-      if (ent.isFile()) {
-        entries.push({ name, kind: "file", bytes: new Uint8Array(await readFile(full)) });
-      }
-    }
-  };
-  await walk(root);
-  return collectNftDebPayload(entries);
-};
-
-const extractNftFromDebWithDpkg = async (
-  deb: Uint8Array,
-): Promise<{
-  readonly nft?: Uint8Array;
-  readonly libs: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
-}> => {
-  const tmp = await mkdtemp(join(tmpdir(), "lando-nft-deb-"));
-  try {
-    const debPath = join(tmp, "pkg.deb");
-    const dest = join(tmp, "out");
-    await writeFile(debPath, deb);
-    await mkdir(dest, { recursive: true });
-    const result = await runProcess("dpkg-deb", ["-x", debPath, dest]);
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr.trim() || "dpkg-deb failed to extract the nft helper package.");
-    }
-    return await collectNftFromExtractedTree(dest);
-  } finally {
-    await rm(tmp, { recursive: true, force: true });
-  }
-};
-
 const extractNftFromDebArchive = async (
   deb: Uint8Array,
+  options?: NftDecompressionOptions,
 ): Promise<{
   readonly nft?: Uint8Array;
   readonly libs: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
@@ -456,21 +563,18 @@ const extractNftFromDebArchive = async (
   if (data === undefined) {
     throw new Error("Debian package is missing a data.tar.* member.");
   }
-  const tar = await decompressDebDataTar(data.name, data.bytes);
+  const tar = await decompressDebDataTar(data.name, data.bytes, options);
   return collectNftDebPayload(parseTarEntries(tar));
 };
 
 export const extractNftFromDeb = async (
   deb: Uint8Array,
+  options?: NftDecompressionOptions,
 ): Promise<{
   readonly nft?: Uint8Array;
   readonly libs: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
 }> => {
-  try {
-    return await extractNftFromDebWithDpkg(deb);
-  } catch {
-    return extractNftFromDebArchive(deb);
-  }
+  return extractNftFromDebArchive(deb, options);
 };
 
 const nftLooksUsable = async (runtimeBinDir: string): Promise<boolean> => {
@@ -569,7 +673,7 @@ export const ensureManagedNft = (
         allowFileSource: pkg.url.startsWith("file://"),
       });
       const extracted = yield* Effect.tryPromise({
-        try: () => extractNftFromDeb(artifact.bytes),
+        try: (signal) => extractNftFromDeb(artifact.bytes, { signal }),
         catch: (cause) => provisionError(`Failed to extract nft helper from ${pkg.filename}.`, cause),
       });
       if (extracted.nft !== undefined) nft = extracted.nft;
