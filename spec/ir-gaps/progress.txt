@@ -162,3 +162,55 @@ Verification: typecheck, lint, check:boundaries, check:guide-coverage, check:sch
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 65 then 8 focused tests pass
 ---
+
+## 2026-09-12 07:10 - US-614 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a lamp app, and proved task/restart event brackets against the binary: pre/body/post order, pre-fail skips body, body-fail keeps exit 3 and skips post, post-fail is `LandofileEventStepFailedError` with `secret=[redacted]` tail, unknown events list the twelve lifecycle names plus `pre-build`/`post-build`, and `command: app:build` from `pre-build` is `LandofileEventLifecycleReentryError`. Adjacent `php` tooling, lint, stop, and destroy stayed green.
+- **Out-of-scope finding:** `curl http://us614-verify.lndo.site:8000/` returned Traefik `404 page not found` after setup warned ports 80/443 were in use and fell back to 8000/4443; `lando exec appserver -- php /app/index.php` printed `us614-ok`. Suspected host/WSL mirrored bind on 80/443, not US-614.
+- **Out-of-scope finding:** `lando apps:list` still shows ghost `qa950-mysqlnservices-n-database-n-type-mysqln-creds-n-use` (empty services, missing `/tmp/qa950/mysql`) after destroy; leftover managed-runtime network JSON from prior QA, no running containers.
+---
+
+## 2026-09-12 08:15 - Babysit
+- PR: #965 https://github.com/AaronFeledy/core4/pull/965
+- CI outcome: pass (after fixing unit-tests-linux-x64-shard 3)
+- Review feedback: fixed (isolated restart event fixtures from the shared topology plan so start-progress-topology tests stop inheriting lifecycle hooks; realigned schema contract fixture order with the public registry). Bugbot could not run — Cursor usage limit.
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-12 08:35 - US-615 (complete)
+
+Concise routes now lower to explicit, provider-neutral middleware.
+
+- A route may be authored as a shorthand string (`hostname[:port][/path]`, wildcards anywhere in the host, and every combination of the three) or as the object form. One pure normalizer turns both into a single canonical IR before backend resolution, and every consumer reads that IR: the planner, TLS SAN generation, and the router. Shorthand is accepted structurally by the schema rather than rewritten at decode, so an authored Landofile still round-trips its own spelling through `app:config` and friends.
+- Five provider-neutral filters ship: strip prefix, add prefix, request header, response header, and redirect. They are a discriminated union on `type`, so an unsupported filter is a decode failure rather than something a proxy discovers at runtime. A filter's optional `name` is its layer-merge identity and never an HTTP header name; header filters carry `header` plus `value`. Across Landofile layers, filters merge by `name`, fall back to type identity when unnamed, and a named filter never collapses into an unnamed one. Merged lists keep first-appearance order, which is the order the router renders them in.
+- Layer identity is path-scoped rather than global. Adding `type` to the shared array-identity key list would have collapsed two mounts of the same kind into one, so the filter rule applies only to `filters` arrays and every other array merges exactly as before.
+- Nothing strips a path implicitly. A `pathPrefix` route matches on the prefix and forwards the full path; only an explicit strip filter removes it. The Traefik renderer emits a middleware block plus a per-router middleware list in authored order, and a route with no filters renders byte-identically to before.
+- A wildcard hostname compiles to an anchored `HostRegexp` with the wildcard expanded and every other metacharacter escaped. A hostname without a wildcard keeps emitting `Host()` verbatim.
+- Invalid input fails closed with a new source-aware tagged error naming the authored key (`services.<svc>.routes[2]`, `proxy.<svc>[0]`) and a remediation. It is raised before any provider action and surfaces identically from the planner and from config lint.
+- The published route-filter contract suite now runs against the shipped filter implementations instead of hand-written reference transforms, and two dead proxy stubs that duplicated the route and filter schemas were deleted.
+
+Verification: typecheck, lint, boundaries, schema snapshot codegen, schema compatibility, guide lint, and guide coverage pass; focused suites pass across sdk schema, landofile normalize/merge/filters/lint, engine planner/services/lifecycle/proxy contract, proxy-traefik rendering, and core CLI config scenarios; the new `route-shorthand` guide runs 3/3 scenarios. A socket-gated live integration test pins the routing behavior end to end: a filtered route strips its prefix and gains its response header, while the sibling route without a strip filter forwards the prefix and 404s.
+
+- **Learnings for future iterations:**
+  - `yield*` on an `Either` inside `Effect.gen` does not unwrap it, so raw authored values sail past the normalizer and blow up downstream. Convert at the boundary with an explicit `Either.isLeft` branch, which is also the house style here.
+  - Widening a publicly registered schema is a four-file move, not one: the schema, the JSON-schema registry, the ordered fixture list, and the compatibility exceptions. A union widening produces one exception entry per embedding surface, so expect dozens rather than one.
+  - The live provider socket resolver finds a managed socket left on the host from earlier runs, so a `*.integration.test.ts` gated on it will actually try to start containers locally instead of skipping. Those files are excluded from the unit shards; run them only in the sandbox.
+  - Guide fixtures key off the frontmatter `id`, not the MDX directory, so a guide at `proxy/route-shorthand.mdx` reads fixtures from `docs/guides/route-shorthand/fixtures/`.
+---
+
+## 2026-09-12 - US-615 Review
+- Fixed wildcard HostRegexp authorities so proxy status and TLS doctor still see them; named overlays that change filter type now replace instead of keeping stale fields; planner RouteInputError no longer fabricates `.lando.yml`.
+- Review notes (deferred/rejected): same-host pathPrefix collapse in `pushRoute` is pre-existing; Traefik HostRegexp vs Host() priority is out of AC; full layered-file provenance is not required because the AC names the authored key path; lint keeps `ConfigLintViolation` rather than returning `RouteInputError`; shorthand route arrays replacing on merge is the existing scalar-array law (converting at merge would break round-trip); extra §10.2 filters stay out of this story; header CRLF and Traefik backtick injection were security PASS / defense-in-depth only.
+- Verification: typecheck, lint passed; focused merge/normalize/routing/planner tests passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed.
+- **Learnings for future iterations:** persisted YAML parsers must track renderer grammar changes (`Host` vs `HostRegexp`); discriminated-union merge cannot deep-merge when `type` changes.
+---
+## 2026-09-12 09:56 - US-615 Drift Audit
+- Trigger: 2 cycles, ~2074 net lines, 8 commits
+- Ceremony: unused planner route-wrapper param; rewritePath kept as a frozen adjacent filter in the contract suite
+- Weakened proofs: live routing test hits renderer+Traefik, not Landofile→planner→ProxyService; HostRegexp recovery is proven only on the pure parser — left in place rather than growing a second live path
+- Contract: discover compatibility note implied it raises RouteInputError
+- Deferred work re-examined: rewritePath was owned by this branch's contract suite so it was excised; remaining review deferrals still hold
+- Fixed: dropped unused planner param; removed rewritePath contract stub; corrected discover error-channel note
+- Split/excise decisions: none; extra §10.2 rewritePath harness excised without a PRD split or passes flip
+- Verification: typecheck pass, lint pass, 127 targeted tests pass
+---

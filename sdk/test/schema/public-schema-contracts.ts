@@ -125,6 +125,9 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RouteRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RoutePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProxyCapabilities: "sdk/test/contract/router-service.test.ts",
+  RouteFilterType: "sdk/test/schema/route-filter.test.ts",
+  RouteFilter: "sdk/test/schema/route-filter.test.ts",
+  RouteInputError: "sdk/test/schema/route-filter.test.ts",
   ProxyConfig: "sdk/test/contract/router-service.test.ts",
   RouterConfig: "sdk/test/schema/router-config.test.ts",
   ProxyAuthority: "sdk/test/contract/router-service.test.ts",
@@ -152,6 +155,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   EndpointInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RouteInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HealthcheckInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RouteObjectInput: "sdk/test/schema/route-filter.test.ts",
   ToolingVar: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingFlagShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingArgShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -541,6 +545,7 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  RouteFilter: { type: "stripPrefix", prefix: "/api" },
   RecipeSourceKind: "bundled",
   RecipeContentDigest: `sha256:${"a".repeat(64)}`,
   RecipeOptionValue: "8.3",

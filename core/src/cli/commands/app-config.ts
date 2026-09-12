@@ -14,6 +14,7 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
@@ -107,6 +108,7 @@ type AppConfigError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileWriteValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
