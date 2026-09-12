@@ -21,23 +21,24 @@ import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-pr
 import {
   hostProxyMountInfoFromPlan,
   hostProxyWorkerArgv,
-  removeOwnedHostProxyWorkerState,
-  startDetachedHostProxyWorker,
-  terminateOwnedHostProxyWorker,
-  terminateOwnedHostProxyWorkersInRoot,
+  removeOwnedHostProxyWorkerState as removeOwnedHostProxyWorkerStateWithPrivateFileAccess,
+  startDetachedHostProxyWorker as startDetachedHostProxyWorkerWithPrivateFileAccess,
+  terminateOwnedHostProxyWorker as terminateOwnedHostProxyWorkerWithPrivateFileAccess,
+  terminateOwnedHostProxyWorkersInRoot as terminateOwnedHostProxyWorkersInRootWithPrivateFileAccess,
   workerStatePath,
 } from "@lando/engine/subsystems/host-proxy/worker";
 import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
-  probeWorker,
-  readWorkerRecord,
-  writeWorkerRecord,
+  probeWorker as probeWorkerWithPrivateFileAccess,
+  readWorkerRecord as readWorkerRecordWithPrivateFileAccess,
+  writeWorkerRecord as writeWorkerRecordWithPrivateFileAccess,
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import "../../../src/runtime/engine-composition.ts";
+import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const spacedApp = {
@@ -93,6 +94,45 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
 });
 
 const tempRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-host-proxy-worker-"));
+const startDetachedHostProxyWorker = (
+  options: Omit<Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0], "privateFileAccess">,
+) =>
+  startDetachedHostProxyWorkerWithPrivateFileAccess({ ...options, privateFileAccess: ownerOnlyFileAccess });
+const terminateOwnedHostProxyWorker = (
+  app: Parameters<typeof terminateOwnedHostProxyWorkerWithPrivateFileAccess>[0],
+  options: Omit<
+    Parameters<typeof terminateOwnedHostProxyWorkerWithPrivateFileAccess>[1],
+    "privateFileAccess"
+  >,
+) =>
+  terminateOwnedHostProxyWorkerWithPrivateFileAccess(app, {
+    ...options,
+    privateFileAccess: ownerOnlyFileAccess,
+  });
+const terminateOwnedHostProxyWorkersInRoot = (
+  userDataRoot: Parameters<typeof terminateOwnedHostProxyWorkersInRootWithPrivateFileAccess>[0],
+) =>
+  terminateOwnedHostProxyWorkersInRootWithPrivateFileAccess(userDataRoot, {
+    privateFileAccess: ownerOnlyFileAccess,
+  });
+const writeWorkerRecord = (
+  app: Parameters<typeof writeWorkerRecordWithPrivateFileAccess>[0],
+  paths: Parameters<typeof writeWorkerRecordWithPrivateFileAccess>[1],
+  record: Parameters<typeof writeWorkerRecordWithPrivateFileAccess>[2],
+) => writeWorkerRecordWithPrivateFileAccess(app, paths, record, ownerOnlyFileAccess);
+const readWorkerRecord = (
+  app: Parameters<typeof readWorkerRecordWithPrivateFileAccess>[0],
+  paths?: Parameters<typeof readWorkerRecordWithPrivateFileAccess>[1],
+) => readWorkerRecordWithPrivateFileAccess(app, paths);
+const probeWorker = (record: Parameters<typeof probeWorkerWithPrivateFileAccess>[0]) =>
+  probeWorkerWithPrivateFileAccess(record);
+const removeOwnedHostProxyWorkerState = (
+  app: Parameters<typeof removeOwnedHostProxyWorkerStateWithPrivateFileAccess>[0],
+  paths: Parameters<typeof removeOwnedHostProxyWorkerStateWithPrivateFileAccess>[1],
+) =>
+  removeOwnedHostProxyWorkerStateWithPrivateFileAccess(app, paths, {
+    privateFileAccess: ownerOnlyFileAccess,
+  });
 const workerEntry = hostProxyWorkerEntry();
 
 const fakeShim = async (root: string): Promise<string> => {

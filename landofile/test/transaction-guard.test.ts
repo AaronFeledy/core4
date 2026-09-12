@@ -3,11 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
-import { ConfigService, LandofileService, ManagedFileTransactionGuard } from "@lando/sdk/services";
+import {
+  ConfigService,
+  LandofileService,
+  ManagedFileTransactionGuard,
+  StateStore,
+} from "@lando/sdk/services";
 import { Context, Effect, Either, Layer } from "effect";
 import { withResolvedCwd } from "../src/app-resolution.ts";
 import { loadLandofileFile, loadLandofileLayers, makeLandofileServiceLive } from "../src/service.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+
+const TestStateStoreLive = Layer.succeed(StateStore, makeTestLandofileStateStore());
 
 const withApp = async (run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-guard-load-"));
@@ -98,10 +105,13 @@ test("captures the required guard in Live while discover remains context-free", 
       transactionGuard: { ensureConsistent: () => Effect.void, pending: () => Effect.succeed(null) },
     }).pipe(
       Layer.provide(
-        Layer.succeed(ManagedFileTransactionGuard, {
-          ensureConsistent: () => Effect.fail(failure),
-          pending: () => Effect.succeed(null),
-        }),
+        Layer.merge(
+          Layer.succeed(ManagedFileTransactionGuard, {
+            ensureConsistent: () => Effect.fail(failure),
+            pending: () => Effect.succeed(null),
+          }),
+          TestStateStoreLive,
+        ),
       ),
     );
     const service = await Effect.runPromise(
@@ -194,14 +204,17 @@ test("recovers the cwd file set before walking to a parent Landofile", async () 
       templates: { modules: [] },
     }).pipe(
       Layer.provide(
-        Layer.succeed(ManagedFileTransactionGuard, {
-          ensureConsistent: (appRoot: string) =>
-            Effect.promise(async () => {
-              roots.push(appRoot);
-              if (appRoot === child) await writeFile(join(child, ".lando.yml"), "name: child\n");
-            }),
-          pending: () => Effect.succeed(null),
-        }),
+        Layer.merge(
+          Layer.succeed(ManagedFileTransactionGuard, {
+            ensureConsistent: (appRoot: string) =>
+              Effect.promise(async () => {
+                roots.push(appRoot);
+                if (appRoot === child) await writeFile(join(child, ".lando.yml"), "name: child\n");
+              }),
+            pending: () => Effect.succeed(null),
+          }),
+          TestStateStoreLive,
+        ),
       ),
     );
     const service = await Effect.runPromise(

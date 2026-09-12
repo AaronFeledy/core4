@@ -33,7 +33,7 @@ export interface DetachedHostProxyWorkerOptions {
   readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
@@ -47,6 +47,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
           yield* replaceExistingHostProxyWorker(options.app, {
             ...(options.paths === undefined ? {} : { paths: options.paths }),
             ...(options.terminateProcess === undefined ? {} : { terminateProcess: options.terminateProcess }),
+            privateFileAccess: options.privateFileAccess,
           });
           const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
           return spawnWorker({
@@ -152,5 +153,8 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
     ),
   );
 
-export const removeHostProxyWorkerState = (app: AppRef, paths?: RootOverrides): Effect.Effect<void, never> =>
-  removeOwnedHostProxyWorkerState(app, paths);
+export const removeHostProxyWorkerState = (
+  app: AppRef,
+  paths: RootOverrides | undefined,
+  privateFileAccess: PrivateFileAccess,
+): Effect.Effect<void, never> => removeOwnedHostProxyWorkerState(app, paths, { privateFileAccess });

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { Flags } from "../../spec/metadata";
 
@@ -372,7 +373,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   };
 };
 
-export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never> = {
+export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, PrivateFileAccessService> = {
   resultSchema: UninstallResultSchema,
   id: "meta:uninstall",
   summary: "Remove Lando-owned installed files after confirmation.",

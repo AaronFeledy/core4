@@ -8,6 +8,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
+import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -161,7 +162,9 @@ describe("lando app:includes:verify (source dispatch)", () => {
         ].join("\n"),
       );
 
-      const exit = await Effect.runPromiseExit(appIncludesVerify({ cwd: dir }));
+      const exit = await Effect.runPromiseExit(
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
@@ -184,7 +187,9 @@ describe("lando app:includes:verify (source dispatch)", () => {
         "name: demo\nservices:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
       );
 
-      const exit = await Effect.runPromiseExit(appIncludesVerify({ cwd: dir }));
+      const exit = await Effect.runPromiseExit(
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {

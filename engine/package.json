@@ -138,7 +138,6 @@
     "./services/json-fetch": "./src/services/json-fetch.ts",
     "./services/landofile-live": "./src/services/landofile-live.ts",
     "./services/planner": "./src/services/planner.ts",
-    "./services/private-file-access": "./src/services/private-file-access.ts",
     "./services/privilege": "./src/services/privilege.ts",
     "./services/process-runner": "./src/services/process-runner.ts",
     "./services/secret-store": "./src/services/secret-store.ts",

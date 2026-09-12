@@ -12,6 +12,7 @@ import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/
 import type { PluginStateBucketSpec } from "../../src/plugins/context-state.ts";
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const Doc = Schema.Struct({ count: Schema.Number, label: Schema.String });
 type Doc = typeof Doc.Type;
@@ -51,6 +52,7 @@ const makeContext = async (id: string) =>
   makeLandoPluginContext({
     id,
     managedFileService: (await run(makeTestManagedFileStore())).service,
+    privateFileAccess: ownerOnlyFileAccess,
     stateStore: makeTestStateStore().service,
     pluginStateRoot: await ensurePluginStateRoot(id),
   });
@@ -150,12 +152,14 @@ describe("LandoPluginContext stateStore scoping", () => {
     const pluginA = makeLandoPluginContext({
       id: "plugin-a",
       managedFileService,
+      privateFileAccess: ownerOnlyFileAccess,
       stateStore,
       pluginStateRoot: await ensurePluginStateRoot("plugin-a"),
     });
     const pluginB = makeLandoPluginContext({
       id: "plugin-b",
       managedFileService,
+      privateFileAccess: ownerOnlyFileAccess,
       stateStore,
       pluginStateRoot: await ensurePluginStateRoot("plugin-b"),
     });
@@ -178,6 +182,7 @@ describe("LandoPluginContext stateStore scoping", () => {
     const plugin = makeLandoPluginContext({
       id: "plugin-a",
       managedFileService: (await run(makeTestManagedFileStore())).service,
+      privateFileAccess: ownerOnlyFileAccess,
       stateStore,
       pluginStateRoot: await ensurePluginStateRoot("plugin-a"),
     });

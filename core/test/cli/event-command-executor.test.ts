@@ -30,6 +30,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
@@ -40,6 +41,7 @@ import { validateEventCommandInput } from "../../src/cli/event-command-input.ts"
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
   message: Schema.String,
@@ -92,11 +94,12 @@ const makeHarness = (): Harness => {
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
+      Context.add(PrivateFileAccessService, ownerOnlyFileAccess),
       Context.add(
         ShellRunner,
         makeShellRunnerService(() => {
           throw new TypeError("Interactive shell IO was not expected in this test.");
-        }),
+        }, ownerOnlyFileAccess),
       ),
     ),
   };

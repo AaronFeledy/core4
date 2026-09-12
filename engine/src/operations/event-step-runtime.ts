@@ -14,6 +14,7 @@ import {
   ToolingEngine,
   type ToolingEngineResult,
 } from "@lando/sdk/services";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
@@ -46,6 +47,7 @@ interface EventRuntimeOptions {
   readonly plan: AppPlan;
   readonly event: AppLifecycleEventName;
   readonly events: Context.Tag.Service<typeof EventService>;
+  readonly privateFileAccess: PrivateFileAccess;
   readonly hostRunner?: Context.Tag.Service<typeof ShellRunner>;
   readonly redactor: Redactor;
   readonly redactorFor: (
@@ -197,7 +199,7 @@ const runTask = (
       const script = yield* runBunShellTooling(
         { name: leaf.task, cwd: String(options.plan.root), renderProgress: false },
         String(options.plan.root),
-      );
+      ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
       if (script !== undefined) {
         return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
       }

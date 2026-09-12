@@ -1,4 +1,5 @@
-import { ManagedFileTransactionGuard } from "@lando/sdk/services";
+import { ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
@@ -7,4 +8,16 @@ export const NoopTransactionGuardLive = Layer.succeed(ManagedFileTransactionGuar
   pending: () => Effect.succeed(null),
 });
 
-export const TestLandofileServiceLive = LandofileServiceLive.pipe(Layer.provide(NoopTransactionGuardLive));
+const TestStateStoreLive = Layer.succeed(
+  StateStore,
+  makeStateStore({
+    privateFileAccess: {
+      enforce: async () => undefined,
+      verify: async () => undefined,
+    },
+  }),
+);
+
+export const TestLandofileServiceLive = LandofileServiceLive.pipe(
+  Layer.provide(Layer.merge(NoopTransactionGuardLive, TestStateStoreLive)),
+);

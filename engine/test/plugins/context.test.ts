@@ -8,6 +8,7 @@ import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
@@ -30,6 +31,7 @@ const pluginContext = (
   makeLandoPluginContext({
     id,
     managedFileService,
+    privateFileAccess: ownerOnlyFileAccess,
     stateStore: makeTestStateStore().service,
     pluginStateRoot: AbsolutePath.make(`/tmp/lando-plugin-context/${id}`),
   });

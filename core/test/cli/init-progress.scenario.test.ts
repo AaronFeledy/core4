@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import type { LandoEvent } from "@lando/sdk/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-progress-")));

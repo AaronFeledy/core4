@@ -19,6 +19,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
@@ -88,6 +89,7 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),

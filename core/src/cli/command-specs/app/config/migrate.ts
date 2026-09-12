@@ -1,5 +1,4 @@
-import { ProcessRunner } from "@lando/sdk/services";
-import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import {
   type AppConfigMigrateOptions,
@@ -47,10 +46,10 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
   },
   run: (input) =>
     Effect.gen(function* () {
-      const processRunner = yield* ProcessRunner;
+      const privateFileAccess = yield* PrivateFileAccessService;
       return yield* appConfigMigrate({
         ...appConfigMigrateOptionsFromInput(input),
-        privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+        privateFileAccess,
       });
     }),
   render: (result) =>

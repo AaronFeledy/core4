@@ -25,6 +25,7 @@ import {
   findPrimaryServiceName,
   readScratchLandofile,
 } from "@lando/engine/scratch-app/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { parseAnswerFlags } from "../prompts/answer-flags";
 import type { RenderContext } from "../renderer-boundary";
 
@@ -71,7 +72,12 @@ export type ScratchRunError =
   | ConfigError
   | LandofileVersionConstraintError;
 
-export type ScratchRunServices = ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry;
+export type ScratchRunServices =
+  | ScratchAppService
+  | ConfigService
+  | FileSystem
+  | PrivateFileAccessService
+  | RuntimeProviderRegistry;
 
 const VALUE_FLAGS = new Map<string, "from" | "service" | "answer">([
   ["--from", "from"],
@@ -242,14 +248,19 @@ export const scratchRunOptionsFromInput = (input: unknown): ScratchRunOptions =>
 
 export interface ScratchRunDeps {
   readonly acquireWithPlan: typeof acquireScratchAppWithPlan;
-  readonly detach: typeof detachScratchApp;
+  readonly detach: (
+    id: string,
+  ) => Effect.Effect<void, ScratchAppError | ScratchAppNotFoundError, PrivateFileAccessService>;
   readonly readLandofile: typeof readScratchLandofile;
   readonly stdinIsTty: () => boolean;
 }
 
 export const defaultScratchRunDeps: ScratchRunDeps = {
   acquireWithPlan: acquireScratchAppWithPlan,
-  detach: detachScratchApp,
+  detach: (id) =>
+    PrivateFileAccessService.pipe(
+      Effect.flatMap((privateFileAccess) => detachScratchApp(id, privateFileAccess)),
+    ),
   readLandofile: readScratchLandofile,
   stdinIsTty: () => process.stdin.isTTY === true,
 };

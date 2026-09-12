@@ -10,9 +10,9 @@ import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
-import { initApp } from "../../src/cli/commands/init.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
 const FORBIDDEN_RUNTIME_BUILTINS = [

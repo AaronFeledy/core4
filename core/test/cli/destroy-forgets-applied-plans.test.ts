@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { DateTime, Effect, Exit } from "effect";
 
 import { makePluginStateStore, stripHostProxyRunLando } from "@lando/core/testing";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeLandoPaths } from "@lando/paths";
 import { makeProviderLayer, persistAppliedPlan } from "@lando/provider-lando";
 import {
@@ -19,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
 
@@ -88,6 +88,7 @@ const liveAppliedState = (userDataRoot: string) => {
     appliedPlanState: makePluginStateStore(
       makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       AbsolutePath.make(pluginStateDir),
+      ownerOnlyFileAccess,
     ),
   };
 };

@@ -1,13 +1,19 @@
 import { Args, Flags } from "../../spec/metadata";
 
-import { type ExecAppResult, execApp, execAppRedactionTokens } from "@lando/engine/operations/exec";
+import {
+  type ExecAppError,
+  type ExecAppResult,
+  type ExecAppServices,
+  execApp,
+  execAppRedactionTokens,
+} from "@lando/engine/operations/exec";
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
-export const execSpec: LandoCommandSpec<ExecAppResult> = {
+export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
   resultSchema: EmptyResultSchema,
   id: "app:exec",
   helpGroup: "common",
@@ -22,6 +28,11 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   flags: {
     user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),
     cwd: Flags.string({ description: "Working directory inside the service." }),
+    interactive: Flags.boolean({
+      char: "i",
+      description: "Attach host stdin to the command.",
+      default: false,
+    }),
   },
   args: {
     command: Args.string({
@@ -41,7 +52,12 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
     };
     if (json) return execApp({ ...base, tty: false, interactive: false });
     const tty = process.stdout.isTTY === true;
-    const interactive = process.stdin.isTTY === true;
+    const nonInteractive =
+      typeof input === "object" &&
+      input !== null &&
+      "interaction" in input &&
+      input.interaction === "non-interactive";
+    const interactive = flags.interactive === true && !nonInteractive;
     return withInheritedStdinRawMode(
       tty && interactive,
       execApp(attachExecHostIo({ ...base, tty, interactive })),

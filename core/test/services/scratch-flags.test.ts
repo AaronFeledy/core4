@@ -35,8 +35,11 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const StateStoreLive = StateStoreUnprovided.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+);
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
@@ -196,6 +199,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
+    PrivateFileAccessLive,
     landofileServiceLive,
     plannerLive,
     registryLive,
@@ -217,7 +221,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   return Layer.mergeAll(
     scratchDeps,
     makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  );
+  ).pipe(Layer.provide(PrivateFileAccessLive));
 };
 
 const primaryService = (plan: AppPlan): ServicePlan => {

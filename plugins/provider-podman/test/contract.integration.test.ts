@@ -8,7 +8,6 @@ import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {
@@ -28,6 +27,7 @@ import {
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");
@@ -724,6 +724,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       const firstState = makePluginStateStore(
         makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
         AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
       );
       const firstProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
@@ -744,6 +745,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       const secondState = makePluginStateStore(
         makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
         AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
       );
       const secondProvider = await Effect.runPromise(
         RuntimeProvider.pipe(

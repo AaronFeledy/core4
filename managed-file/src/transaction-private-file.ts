@@ -1,7 +1,7 @@
 import { lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { syncDirectory } from "@lando/state-store/atomic";
-import { type OwnerOnlyFileAccess, enforceOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
 
 export interface PrivateFileIdentity {
@@ -42,8 +42,11 @@ export const createPrivateFile = async (options: CreatePrivateFileOptions): Prom
   try {
     try {
       await handle.chmod(0o600);
-      if (options.privateFileAccess !== undefined || process.platform === "win32") {
-        await (options.privateFileAccess ?? enforceOwnerOnlyFileAccess)(options.path);
+      if (process.platform === "win32" && options.privateFileAccess === undefined) {
+        throw new PrivateFileAccessError(options.path);
+      }
+      if (options.privateFileAccess !== undefined) {
+        await options.privateFileAccess(options.path);
         const current = await lstat(options.path);
         if (current.dev !== identity.dev || current.ino !== identity.ino) {
           throw transactionError("path", "prepare", options.path);

@@ -7,6 +7,7 @@ import { makePluginStateStore } from "@lando/core/testing";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, Downloader, LogFileHelperAssets, PathsService } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { manifest, plugin } from "../src/index.ts";
 
@@ -62,6 +63,7 @@ describe("provider-lando plugin descriptor", () => {
       stateStore: makePluginStateStore(
         stateStore,
         AbsolutePath.make("/tmp/provider-lando-plugin-descriptor/state"),
+        ownerOnlyFileAccess,
       ),
       events: { publishRender: () => Effect.void },
     };

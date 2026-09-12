@@ -34,6 +34,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -223,6 +224,7 @@ const makeStopLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
@@ -438,6 +440,7 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
@@ -667,6 +670,7 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),

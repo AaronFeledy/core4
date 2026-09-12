@@ -18,6 +18,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { EventServiceLive, ProviderExecToolingEngineLive } from "@lando/core/testing";
@@ -193,6 +194,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           });
 
           const toolingLayer = Layer.mergeAll(
+            PrivateFileAccessLive,
             Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
             Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
             Layer.succeed(RuntimeProviderRegistry, {

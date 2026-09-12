@@ -3,11 +3,7 @@ import { constants } from "node:fs";
 import { lstat, open, rename, unlink } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { syncDirectory } from "@lando/state-store/atomic";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessError,
-  makeOwnerOnlyFileAccess,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
 import type { Entry, FileState, Stage } from "./transaction-journal.ts";
 import { createPrivateFile, hasCode, statMaybe, targetPath } from "./transaction-private-file.ts";
@@ -56,7 +52,7 @@ export const verifyState = async (root: string, entry: Entry, state: FileState):
 const verifyPrivateFile = async (
   path: string,
   digest: string,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   const stats = await statMaybe(path);
   if (
@@ -80,7 +76,7 @@ const verifyPrivateFile = async (
 export const verifyBackup = async (
   root: string,
   entry: Entry,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   if (!entry.before.present) return;
   const path = await targetPath(root, entry.before.backup);
@@ -91,7 +87,7 @@ export interface CreateStageOptions {
   readonly path: string;
   readonly bytes: Uint8Array;
   readonly record: (stage: Stage) => void;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export const createStage = async (options: CreateStageOptions): Promise<void> => {
@@ -99,9 +95,7 @@ export const createStage = async (options: CreateStageOptions): Promise<void> =>
     path: options.path,
     bytes: options.bytes,
     statMaybe,
-    ...(options.privateFileAccess === undefined
-      ? {}
-      : { privateFileAccess: options.privateFileAccess.enforce }),
+    privateFileAccess: options.privateFileAccess.enforce,
     record: (identity) =>
       options.record({ path: options.path, dev: String(identity.dev), ino: String(identity.ino) }),
   });
@@ -110,7 +104,7 @@ export const createStage = async (options: CreateStageOptions): Promise<void> =>
 export interface EnsureBackupOptions {
   readonly path: string;
   readonly bytes: Uint8Array;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export const ensureBackup = async (options: EnsureBackupOptions): Promise<void> => {
@@ -119,9 +113,7 @@ export const ensureBackup = async (options: EnsureBackupOptions): Promise<void> 
       path: options.path,
       bytes: options.bytes,
       statMaybe,
-      ...(options.privateFileAccess === undefined
-        ? {}
-        : { privateFileAccess: options.privateFileAccess.enforce }),
+      privateFileAccess: options.privateFileAccess.enforce,
     });
   } catch (cause) {
     if (!hasCode(cause, "EEXIST")) throw cause;
@@ -137,7 +129,7 @@ export const ensureBackup = async (options: EnsureBackupOptions): Promise<void> 
 export const removeRecordedStage = async (
   stage: Stage,
   digest: string,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   const stats = await statMaybe(stage.path);
   if (
@@ -165,7 +157,7 @@ export const removeRecordedStage = async (
 export const finishAppliedMode = async (
   root: string,
   entry: Entry,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   const stage = entry.stage;
   if (!entry.after.present || stage === undefined) throw transactionError("journal", "recover");
@@ -196,7 +188,7 @@ export const finishAppliedMode = async (
 export const mutateEntry = async (
   root: string,
   entry: Entry,
-  privateFileAccess = makeOwnerOnlyFileAccess(),
+  privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
   await verifyState(root, entry, entry.before);
   const path = resolve(root, entry.path);

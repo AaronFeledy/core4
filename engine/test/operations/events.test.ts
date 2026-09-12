@@ -25,6 +25,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent } from "../../src/operations/events.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
@@ -34,6 +35,7 @@ import {
 } from "../../src/services/event-command-executor.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("event-reentry"),
@@ -58,6 +60,7 @@ const runWithFakes = (
 ) => {
   const services = Layer.mergeAll(
     EventServiceLive,
+    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(RedactionService, {
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
@@ -141,6 +144,7 @@ const eventRuntime = (
 ) =>
   Layer.mergeAll(
     EventServiceLive,
+    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(RedactionService, {
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),

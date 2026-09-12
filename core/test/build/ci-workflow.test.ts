@@ -379,7 +379,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("          bun-version-file: .bun-version");
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
-    expect(staticChecksPlatform).toContain("        if: matrix.platform == 'windows-x64'");
+    expect(staticChecksPlatform).toContain("        if: startsWith(matrix.platform, 'windows-')");
     expect(staticChecksPlatform).toContain(
       "        run: bun test state-store/test/state-store/private-file-access.test.ts",
     );

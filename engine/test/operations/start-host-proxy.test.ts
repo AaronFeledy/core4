@@ -17,6 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
@@ -105,6 +106,7 @@ const capabilitiesFor = (
 });
 
 const runtimeLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
   EventServiceLive,
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),

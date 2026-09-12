@@ -20,6 +20,7 @@ import type {
 import { RouterService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { runAppInitEvents } from "./events.ts";
@@ -43,6 +44,7 @@ type RestartAppServices =
   | LandofileService
   | ManagedFileTransactionGuard
   | PathsService
+  | PrivateFileAccessService
   | PluginRegistry
   | RouterService
   | RedactionService

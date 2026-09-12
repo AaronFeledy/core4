@@ -9,7 +9,6 @@ import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { ownerOnlyFileAccess } from "../../services/private-file-access.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
@@ -22,7 +21,7 @@ import {
 export interface TerminateHostProxyWorkerOptions {
   readonly paths?: RootOverrides;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export type TerminateOwnershipResult = "terminated" | "absent";
@@ -32,7 +31,7 @@ const removeRunDir = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): 
 
 export const replaceExistingHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
-  options: TerminateHostProxyWorkerOptions = {},
+  options: TerminateHostProxyWorkerOptions,
 ) =>
   readWorkerRecord(app, options.paths).pipe(
     Effect.flatMap((record) => {
@@ -43,7 +42,7 @@ export const replaceExistingHostProxyWorker = (
 
 export const terminateOwnedHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
-  options: TerminateHostProxyWorkerOptions = {},
+  options: TerminateHostProxyWorkerOptions,
 ) =>
   withWorkerRecordLock(
     app,
@@ -62,8 +61,8 @@ export const terminateOwnedHostProxyWorker = (
 
 export const removeOwnedHostProxyWorkerState = (
   app: Pick<AppRef, "id" | "root">,
-  paths?: RootOverrides,
-  options: Omit<TerminateHostProxyWorkerOptions, "paths"> = {},
+  paths: RootOverrides | undefined,
+  options: Omit<TerminateHostProxyWorkerOptions, "paths">,
 ): Effect.Effect<void, never> =>
   terminateOwnedHostProxyWorker(app, { ...options, ...(paths === undefined ? {} : { paths }) }).pipe(
     Effect.asVoid,
@@ -71,7 +70,7 @@ export const removeOwnedHostProxyWorkerState = (
 
 export const terminateOwnedHostProxyWorkersInRoot = (
   userDataRoot: string,
-  options: Omit<TerminateHostProxyWorkerOptions, "paths"> = {},
+  options: Omit<TerminateHostProxyWorkerOptions, "paths">,
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const paths = makeLandoPaths({ userDataRoot });
@@ -87,7 +86,7 @@ export const terminateOwnedHostProxyWorkersInRoot = (
         if (legacyRecord === undefined) continue;
         const legacyDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId));
         if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
-        yield* withAdvisoryLockUsing(options.privateFileAccess ?? ownerOnlyFileAccess)(
+        yield* withAdvisoryLockUsing(options.privateFileAccess)(
           recordPath,
           "host-proxy-worker",
           terminateControlRecord(

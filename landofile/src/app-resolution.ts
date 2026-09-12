@@ -176,6 +176,7 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
               appRoot,
               sourcePath: filePath,
               ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
+              ...(options.inputs?.stateStore === undefined ? {} : { stateStore: options.inputs.stateStore }),
             }),
           ),
           Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
@@ -200,6 +201,9 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
                 appRoot,
                 sourcePath: filePath,
                 ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
+                ...(options.inputs?.stateStore === undefined
+                  ? {}
+                  : { stateStore: options.inputs.stateStore }),
               }),
             ),
           )

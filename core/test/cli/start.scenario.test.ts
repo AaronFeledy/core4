@@ -47,6 +47,7 @@ import {
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -279,6 +280,7 @@ const emptyPluginRegistry = {
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
   NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
@@ -453,6 +455,7 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-start",
@@ -720,6 +723,7 @@ const makeAutoStartLayer = async (options: {
   };
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -1958,6 +1962,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2086,6 +2091,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2208,6 +2214,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2333,6 +2340,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2456,6 +2464,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2608,6 +2617,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2752,6 +2762,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
