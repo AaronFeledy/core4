@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import { attachRouteFilter } from "@lando/landofile/route-filters";
 import { RouteFilter, RouteFilterType } from "@lando/sdk/schema";
@@ -10,13 +10,10 @@ import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@l
  *
  * The five shipped authorable filters — `stripPrefix`, `addPrefix`,
  * `requestHeader`, `responseHeader`, `redirect` — attach through
- * `attachRouteFilter` onto the route's `filters` array. `rewritePath` remains
- * a contract-only reference transform; core does not ship it as an authorable
- * filter type.
+ * `attachRouteFilter` onto the route's `filters` array.
  */
 
 const SHIPPED_FILTER_IDS = RouteFilterType.literals;
-const REFERENCE_FILTER_IDS = ["rewritePath"] as const;
 
 const [stripPrefixSchema, addPrefixSchema, requestHeaderSchema, responseHeaderSchema, redirectSchema] =
   RouteFilter.members;
@@ -35,24 +32,6 @@ const baseRoute: Route = { hostname: "app.lndo.site", scheme: "https", service: 
 
 const applyShipped = (route: Route, filter: unknown): Effect.Effect<Route> =>
   Effect.succeed(attachRouteFilter(route, filter));
-
-/**
- * Contract-only reference transform. Core does not ship `rewritePath` as an
- * authorable filter type.
- */
-const rewritePath: Filter<{ to: string }> = {
-  id: "rewritePath",
-  schema: Schema.Struct({ to: Schema.String }),
-  validOptions: { to: "/api" },
-  invalidOptions: { to: 123 },
-  input: { ...baseRoute, pathPrefix: "/old" },
-  apply: (route, options) => Effect.succeed({ ...route, pathPrefix: options.to }),
-  expected: { ...baseRoute, pathPrefix: "/api" },
-  applySequence: [
-    { ...baseRoute, pathPrefix: "/a" },
-    { ...baseRoute, pathPrefix: "/b" },
-  ],
-};
 
 const stripPrefixFilter = { type: "stripPrefix", prefix: "/api" } as const;
 const stripPrefix: Filter<typeof stripPrefixFilter> = {
@@ -115,7 +94,6 @@ const redirect: Filter<typeof redirectFilter> = {
 };
 
 const builtInFilters = [
-  { id: rewritePath.id, run: () => runRouteFilterContractSuite(rewritePath) },
   { id: stripPrefix.id, run: () => runRouteFilterContractSuite(stripPrefix) },
   { id: addPrefix.id, run: () => runRouteFilterContractSuite(addPrefix) },
   { id: requestHeader.id, run: () => runRouteFilterContractSuite(requestHeader) },
@@ -134,9 +112,9 @@ describe("RouteFilter contract — built-in filters", () => {
     ]);
   });
 
-  test("every built-in filter id has a reference transform under test", () => {
+  test("every shipped filter id has a contract harness", () => {
     const coveredIds = new Set(builtInFilters.map((filter) => filter.id));
-    for (const id of [...SHIPPED_FILTER_IDS, ...REFERENCE_FILTER_IDS]) {
+    for (const id of SHIPPED_FILTER_IDS) {
       expect(coveredIds.has(id)).toBe(true);
     }
   });
