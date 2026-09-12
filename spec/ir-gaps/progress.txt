@@ -260,3 +260,11 @@ Verification: typecheck, lint, check:boundaries, check:schema-compatibility, che
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 326 then 51 focused tests pass
 ---
+
+## 2026-09-12 13:25 - Babysit
+- PR: #968 https://github.com/AaronFeledy/core4/pull/968
+- CI outcome: pass (after triage; initially failed library-api-tests-runner and unit-tests-linux-x64-shard 3)
+- Review feedback: fixed (documented additive build-user SDK exports; expect `user: "root"` on planned trust-store step)
+- Drift check: clean
+- Merge: merged (squash)
+---

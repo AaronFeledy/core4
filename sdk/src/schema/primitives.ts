@@ -37,6 +37,25 @@ export const ContainerUser = Schema.String.pipe(Schema.pattern(CONTAINER_USER_PA
 });
 export type ContainerUser = typeof ContainerUser.Type;
 
+/**
+ * An absolute path inside a container. The leading slash is required so a
+ * destination is never resolved against an unknown working directory, and NUL
+ * and backslash are rejected so the value stays safe to carry into a mount
+ * destination and a provider request.
+ */
+export const ABSOLUTE_CONTAINER_PATH_PATTERN = /^\/[^\0\\]*$/u;
+
+export const isAbsoluteContainerPath = (value: string): boolean =>
+  ABSOLUTE_CONTAINER_PATH_PATTERN.test(value);
+
+export const AbsoluteContainerPath = Schema.String.pipe(
+  Schema.pattern(ABSOLUTE_CONTAINER_PATH_PATTERN),
+).annotations({
+  description:
+    "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
+});
+export type AbsoluteContainerPath = typeof AbsoluteContainerPath.Type;
+
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 

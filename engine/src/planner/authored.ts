@@ -24,6 +24,7 @@ import {
   toAppFeatureDraft,
 } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
+import { serviceHomeIntent } from "./home.ts";
 import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
 import { servicePlanError } from "./service-types.ts";
 import { applyAuthoredStorage } from "./storage.ts";
@@ -225,6 +226,11 @@ export const planServiceDrafts = (input: {
         hostnames: service.hostnames ?? [],
         authoredArtifact,
         authored,
+        homeIntent: serviceHomeIntent({
+          service,
+          serviceTypeId: serviceType.id,
+          identity: serviceType.identity,
+        }),
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
         routes,

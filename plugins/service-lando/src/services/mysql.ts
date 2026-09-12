@@ -129,6 +129,7 @@ export const mysqlServiceType: ServiceType = {
   id: "mysql",
   name: "mysql",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);

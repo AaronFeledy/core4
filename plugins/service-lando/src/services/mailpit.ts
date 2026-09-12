@@ -72,6 +72,7 @@ export const mailpitServiceType: ServiceType = {
   id: "mailpit",
   name: "mailpit",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MailpitServiceConfig,
   resolve: (input) =>
     Effect.succeed({

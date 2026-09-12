@@ -6,6 +6,7 @@ import {
   type ConfigExpressionError,
   GlobalAppError,
   type GlobalDistConflictError,
+  type HomePathCapabilityError,
   type LandofileParseError,
   type LandofileUnknownEventError,
   type LandofileValidationError,
@@ -57,6 +58,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 
 type GlobalUninstallError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

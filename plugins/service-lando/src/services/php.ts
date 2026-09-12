@@ -196,6 +196,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: PhpServiceConfig,
   resolve: (input) =>
     Effect.try({

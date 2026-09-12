@@ -97,6 +97,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.try({

@@ -4,7 +4,12 @@ import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceImageIdentity,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
@@ -80,6 +85,8 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
+const IDENTITY: ServiceImageIdentity = { defaultUser: "root", homes: { root: "/root" } };
+
 const resolveMeilisearchService: ServiceType["resolve"] = (input) =>
   Effect.succeed({
     base: "lando",
@@ -91,6 +98,7 @@ export const meilisearch1ServiceType: ServiceType = {
   id: "meilisearch:1",
   name: "meilisearch",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveMeilisearchService,
 };
@@ -100,6 +108,7 @@ export const meilisearchServiceType: ServiceType = {
   id: "meilisearch",
   name: "meilisearch",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveMeilisearchService,
 };

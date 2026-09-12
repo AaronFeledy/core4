@@ -93,6 +93,7 @@ export const apacheServiceType: ServiceType = {
   id: "apache",
   name: "apache",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

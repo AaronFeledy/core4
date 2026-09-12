@@ -26,6 +26,7 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
@@ -223,7 +224,9 @@ export type StartAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | HostProxySocketStaleError
@@ -272,7 +275,9 @@ export type StopAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -388,7 +393,9 @@ export type InfoAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -421,6 +428,7 @@ export type ExecAppError =
   | AppIdReservedError
   | ComposeKeyRejectedError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
@@ -441,6 +449,7 @@ export type ExecAppError =
   | ProviderError
   | ProviderUnavailableError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | ToolingExecError;
 
@@ -475,6 +484,7 @@ export type ToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | ComposeKeyRejectedError
@@ -498,6 +508,7 @@ export type ToolingError =
   | ShellExecError
   | ShellScriptOutsideRootError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | ToolingCompileError
   | ToolingDisabledError
@@ -530,7 +541,9 @@ export type LogsAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
