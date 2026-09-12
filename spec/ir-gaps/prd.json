@@ -13,7 +13,9 @@
         "Execute mixed string/object steps in order, resolve `:<flag>` from validated values, route `:host` through the host engine without provider initialization, and honor task/step user and directory precedence.",
         "Reject unknown services, missing dynamic flags, invalid args, disabled direct/stale-cache calls, and unsupported fields with tagged source-aware errors; CLI/MCP parity, guide, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 21,
       "passes": true,
       "notes": ""
@@ -26,7 +28,9 @@
         "Extend event names from fully resolved layered/included tooling before semantic validation, add restart brackets, report the complete valid set, and bound nested command-event recursion with visited-stack cycle and depth rejection.",
         "Preserve event order and primary-service default; pre/body/post follow command semantics and post-step failure is fatal with redacted tail; guide and applicable standard gates pass."
       ],
-      "dependsOn": ["US-613"],
+      "dependsOn": [
+        "US-613"
+      ],
       "priority": 22,
       "passes": true,
       "notes": ""
@@ -39,7 +43,9 @@
         "Normalize host, port, path, wildcard, and combined shorthand; implement strip/add prefix, request/response header, and redirect filters merged by name then type identity and rendered in authored order with no implicit stripping.",
         "Tagged invalid input, schema/merge/filter contracts, Traefik goldens, real routing evidence, guide, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 23,
       "passes": true,
       "notes": ""
@@ -52,9 +58,11 @@
         "Accept string or `{run,user?}` steps, resolve omitted users per service during planning, and carry every resolved user through `BuildPlan`, provider execution, and ordered build-key hashing.",
         "Artifact generation switches USER only when needed and restores the final service USER; app steps pass explicit users; root/interleaved/provider/guide and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -65,7 +73,9 @@
         "Define `home: false | {path?: AbsoluteContainerPath}` with default enabled: known catalog user/home metadata creates one idempotent service-scoped store; custom/compose images lacking known USER/HOME fail `HomePathCapabilityError` before provider action unless disabled or given an explicit path.",
         "Deduplicate equivalent authored storage, preserve ownership, exclude changing contents from build keys, and realize host alias/IP only from declared capability and known gateway data; guide, real runtime, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 25,
       "passes": false,
       "notes": ""
@@ -78,7 +88,9 @@
         "Resolve router enablement through normal precedence; false prevents router startup/publication and info reports only published endpoints.",
         "Add `scanner: false | {path?, okCodes?, retries?, timeout?}` and run bounded post-start `UrlScanner` through `runProbe`; redact errors and warn without failing start; real route/scan, guide, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 26,
       "passes": false,
       "notes": ""
@@ -91,7 +103,9 @@
         "Add `solr.config.dir` mounted read-only as the config source copied into each declared core's `/var/solr/data/<core>/conf`, plus `config.server` for PostgreSQL at `/etc/lando/postgresql.conf` with `-c config_file=...`, MySQL/MariaDB at `/etc/mysql/conf.d/99-lando.cnf`, and MongoDB at `/etc/lando/mongod.conf` with `--config`.",
         "Validate app-relative regular sources, containment and symlink safety before provider action; source identity enters plan/build keys; golden plans, real config loading, README, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 27,
       "passes": false,
       "notes": ""
@@ -104,7 +118,9 @@
         "Implement deterministic `node.globals` and additive PHP `composer: {version, packages}` while preserving string and false forms; normalize package order and validate versions.",
         "Hash commands, resolved users, versions, packages, and sources while redacting secrets; unchanged-build, real invocation, README, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-616"],
+      "dependsOn": [
+        "US-616"
+      ],
       "priority": 28,
       "passes": false,
       "notes": ""
@@ -117,7 +133,9 @@
         "Apply Redis password to startup, healthcheck, creds, tooling, and redaction and use `persist` for durable versus ephemeral data intent.",
         "Add Mailpit `mailFrom?: false | ServiceName[]`: omitted targets every resolved PHP service, false targets none, arrays dedupe in authored order and reject unknown/non-PHP names; only targets receive sendmail wiring; real runtime/mail, README, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 29,
       "passes": false,
       "notes": ""
@@ -132,7 +150,9 @@
         "For info, add repeatable `--service/-s` and library/MCP `services?: ServiceName[]`, dedupe first occurrence, validate all names before inspection, and select no dependencies.",
         "Return the existing schema-stable info shape in app-plan order for selected services only; empty selection retains all-services behavior; CLI/library/MCP, guide, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 30,
       "passes": false,
       "notes": ""
@@ -145,7 +165,9 @@
         "Add `appEnv` and `appLabels` only to v4 global config: config layers deep-merge low to high, environment overrides replace the whole map, and each user-app service's authored map wins; never apply to global/scratch apps or import Lando 3 global state.",
         "Limit each map to 256 entries; env keys are POSIX identifiers, values at most 32 KiB, encoded map at most 1 MiB, and the exact generated catalog of core-owned `LANDO`/`LANDO_*` keys is reserved rather than an ad hoc wildcard; label keys are 1..253 bytes without NUL or `=`, values at most 4 KiB, map at most 256 KiB, and `dev.lando.*` is reserved; redaction, guide, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 31,
       "passes": false,
       "notes": ""
@@ -158,7 +180,9 @@
         "Apache uses authored webroot for generated config/routes and Node uses authored port for endpoints, health, and generated commands.",
         "Make ServiceType version metadata the single shipped matrix used by planner validation, generated docs, and tests; reject unknown/absent versions including unavailable old PHP images with tagged remediation; supported real-runtime, rejection, README, and applicable standard gates pass."
       ],
-      "dependsOn": ["US-607"],
+      "dependsOn": [
+        "US-607"
+      ],
       "priority": 32,
       "passes": false,
       "notes": ""
