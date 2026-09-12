@@ -36,6 +36,7 @@ export interface DraftServicePlan {
   healthcheck?: ServicePlan["healthcheck"];
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
+  provenance?: ServicePlan["provenance"];
 }
 
 /** Deterministic metadata stamped on every composed plan (no wall-clock). */
